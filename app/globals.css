@@ -1,0 +1,113 @@
+/* app/globals.css */
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    sans-serif;
+  background: #f9fafb;
+  color: #111827;
+}
+
+.site-header,
+.site-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 24px;
+  background: white;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.site-footer {
+  border-top: 1px solid #e5e7eb;
+  border-bottom: none;
+  margin-top: 40px;
+}
+
+.logo {
+  font-weight: 700;
+}
+
+main {
+  padding: 24px;
+}
+
+.hero {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  align-items: center;
+}
+
+.hero-text {
+  flex: 1;
+  min-width: 260px;
+}
+
+.hero-text h1 {
+  font-size: 2rem;
+  margin-bottom: 8px;
+}
+
+.hero-text p {
+  margin-bottom: 16px;
+  color: #4b5563;
+}
+
+.hero-cta button {
+  padding: 8px 16px;
+  margin-right: 8px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+}
+
+.hero-cta button:first-child {
+  background: #2563eb;
+  color: white;
+}
+
+.hero-cta .secondary {
+  background: white;
+  border: 1px solid #d1d5db;
+}
+
+.hero-carousel {
+  flex: 1;
+  min-width: 260px;
+}
+
+.carousel {
+  background: white;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 10px 25px rgba(15, 23, 42, 0.08);
+}
+
+.carousel-slide p {
+  margin: 0;
+  font-size: 1.1rem;
+  text-align: center;
+}
+
+.carousel-dots {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.carousel-dots button {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  border: none;
+  background: #e5e7eb;
+  cursor: pointer;
+}
+
+.carousel-dots button.active {
+  width: 18px;
+  background: #2563eb;
+}
+
