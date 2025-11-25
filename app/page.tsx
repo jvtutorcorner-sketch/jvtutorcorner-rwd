@@ -2,6 +2,7 @@
 'use client';
 
 import { useEffect, useState, FormEvent } from 'react';
+import { useRouter } from 'next/navigation';
 import zhTW from '@/locales/zh-TW/common.json';
 import en from '@/locales/en/common.json';
 import { Carousel } from '@/components/Carousel';
@@ -35,10 +36,16 @@ function useI18n() {
   return { t, locale, setLocale };
 }
 
+type SearchTarget = 'teachers' | 'courses';
+
 export default function HomePage() {
   const { t } = useI18n();
+  const router = useRouter();
 
-  // 搜尋條件 state（先純粹 log，用不到後端）
+  // 搜尋目標：老師 / 課程
+  const [target, setTarget] = useState<SearchTarget>('teachers');
+
+  // 搜尋條件 state
   const [subject, setSubject] = useState('');
   const [language, setLanguage] = useState('');
   const [region, setRegion] = useState('');
@@ -46,8 +53,17 @@ export default function HomePage() {
 
   const handleSearch = (e: FormEvent) => {
     e.preventDefault();
-    console.log('搜尋條件', { subject, language, region, mode });
-    alert('目前是示範版，搜尋結果先用 /teachers /courses 頁面查看 🙂');
+
+    const params = new URLSearchParams();
+    if (subject) params.set('subject', subject);
+    if (language) params.set('language', language);
+    if (region) params.set('region', region);
+    if (mode) params.set('mode', mode);
+
+    const basePath = target === 'teachers' ? '/teachers' : '/courses';
+    const url = params.toString() ? `${basePath}?${params.toString()}` : basePath;
+
+    router.push(url);
   };
 
   const recommendedTeachers = TEACHERS.slice(0, 3);
@@ -61,12 +77,12 @@ export default function HomePage() {
           <h1>{t('hero_title')}</h1>
           <p>{t('hero_subtitle')}</p>
           <div className="hero-cta">
-            <button onClick={() => alert('之後可導向 /teachers')}>
+            <button onClick={() => router.push('/teachers')}>
               {t('cta_find_teacher')}
             </button>
             <button
               className="secondary"
-              onClick={() => alert('之後可導向 /courses')}
+              onClick={() => router.push('/courses')}
             >
               {t('cta_find_course')}
             </button>
@@ -86,6 +102,33 @@ export default function HomePage() {
       {/* 搜尋區塊 */}
       <section className="section search-section">
         <h2 className="section-title">找老師 / 找課程</h2>
+
+        {/* 搜尋目標切換 */}
+        <div className="search-target-toggle">
+          <button
+            type="button"
+            className={
+              target === 'teachers'
+                ? 'search-target-button active'
+                : 'search-target-button'
+            }
+            onClick={() => setTarget('teachers')}
+          >
+            搜尋老師
+          </button>
+          <button
+            type="button"
+            className={
+              target === 'courses'
+                ? 'search-target-button active'
+                : 'search-target-button'
+            }
+            onClick={() => setTarget('courses')}
+          >
+            搜尋課程
+          </button>
+        </div>
+
         <form className="search-form" onSubmit={handleSearch}>
           <div className="search-row">
             <div className="field">
@@ -123,6 +166,7 @@ export default function HomePage() {
                 <option value="">線上 / 不限</option>
                 <option value="台北">台北</option>
                 <option value="新北">新北</option>
+                <option value="東京">東京</option>
                 <option value="其他">其他</option>
               </select>
             </div>
@@ -197,4 +241,3 @@ export default function HomePage() {
     </div>
   );
 }
-

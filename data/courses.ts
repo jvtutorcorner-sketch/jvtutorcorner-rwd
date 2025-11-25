@@ -10,6 +10,11 @@ export type Course = {
   durationMinutes: number;
   tags: string[];
   mode: 'online' | 'onsite';
+  description?: string;
+  nextStartDate?: string;
+  totalSessions?: number;
+  seatsLeft?: number;
+  currency?: string;
 };
 
 export const COURSES: Course[] = [
@@ -24,6 +29,12 @@ export const COURSES: Course[] = [
     durationMinutes: 90,
     tags: ['英檢中級', '聽力閱讀', '寫作口說'],
     mode: 'online',
+    description:
+      '針對英檢中級設計的完整衝刺課程，每週 2 堂，涵蓋聽、說、讀、寫四大範疇，課堂中會演練歷屆試題並教你掌握得分關鍵。',
+    nextStartDate: '2025-12-10',
+    totalSessions: 24,
+    seatsLeft: 5,
+    currency: 'TWD',
   },
   {
     id: 'c2',
@@ -36,6 +47,12 @@ export const COURSES: Course[] = [
     durationMinutes: 90,
     tags: ['會考', '歷屆試題', '觀念統整'],
     mode: 'online',
+    description:
+      '針對國三會考數學設計，重點整理＋歷屆試題分析，用系統化方式幫助學生建立解題架構，而不是死背公式。',
+    nextStartDate: '2025-12-05',
+    totalSessions: 16,
+    seatsLeft: 8,
+    currency: 'TWD',
   },
   {
     id: 'c3',
@@ -48,6 +65,12 @@ export const COURSES: Course[] = [
     durationMinutes: 60,
     tags: ['商用英文', '簡報', '會議'],
     mode: 'online',
+    description:
+      '針對需要參與英文會議的職場人士設計，實際演練會議開場、意見表達、反對與折衷、結論收斂等情境。',
+    nextStartDate: '2025-12-15',
+    totalSessions: 10,
+    seatsLeft: 3,
+    currency: 'TWD',
   },
   {
     id: 'c4',
@@ -60,6 +83,11 @@ export const COURSES: Course[] = [
     durationMinutes: 60,
     tags: ['旅遊', '日常會話'],
     mode: 'online',
+    description:
+      '從零開始學習旅遊常用句型，包含交通、購物、用餐、問路等實用情境，讓你去日本不再只會說「すみません」。',
+    nextStartDate: '2025-12-20',
+    totalSessions: 8,
+    seatsLeft: 10,
+    currency: 'TWD',
   },
 ];
-

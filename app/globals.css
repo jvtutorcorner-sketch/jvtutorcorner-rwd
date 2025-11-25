@@ -342,3 +342,212 @@ main {
   }
 }
 
+/* 搜尋目標切換（老師 / 課程） */
+.search-target-toggle {
+  display: inline-flex;
+  border-radius: 999px;
+  background: #e5e7eb;
+  padding: 4px;
+  margin-bottom: 12px;
+}
+
+.search-target-button {
+  border: none;
+  background: transparent;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  color: #4b5563;
+}
+
+.search-target-button.active {
+  background: #4f46e5;
+  color: #ffffff;
+}
+
+/* 課程詳細頁 layout */
+
+.course-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr);
+  gap: 24px;
+}
+
+.course-main {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.course-section {
+  background: white;
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 10px 25px rgba(15, 23, 42, 0.05);
+}
+
+.course-side {
+  display: flex;
+  flex-direction: column;
+}
+
+.course-side-card {
+  background: white;
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 10px 25px rgba(15, 23, 42, 0.08);
+}
+
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.9rem;
+  padding: 4px 0;
+}
+
+.info-row span:first-child {
+  color: #6b7280;
+}
+
+.course-side-note {
+  font-size: 0.8rem;
+  color: #6b7280;
+  margin-top: 8px;
+}
+
+/* 報名按鈕 */
+
+.enroll-button {
+  width: 100%;
+  padding: 10px 16px;
+  border-radius: 999px;
+  border: none;
+  background: #16a34a;
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.enroll-button:hover {
+  background: #15803d;
+}
+
+/* 卡片底部按鈕 */
+
+.card-button {
+  display: inline-block;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid #2563eb;
+  font-size: 0.85rem;
+  color: #2563eb;
+  cursor: pointer;
+}
+
+.card-button:hover {
+  background: #2563eb;
+  color: white;
+}
+
+/* RWD：課程頁在手機改成上下排列 */
+
+@media (max-width: 768px) {
+  .course-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Modal: 報名表單 */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 40;
+}
+
+.modal {
+  background: white;
+  border-radius: 16px;
+  padding: 20px 20px 16px;
+  max-width: 420px;
+  width: 100%;
+  box-shadow: 0 20px 40px rgba(15, 23, 42, 0.3);
+}
+
+.modal h3 {
+  margin: 0 0 4px;
+  font-size: 1.2rem;
+}
+
+.modal-subtitle {
+  margin: 0 0 16px;
+  font-size: 0.9rem;
+  color: #4b5563;
+}
+
+.modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* 讓 modal 裡的 field 跟外面共用 field 樣式 */
+.modal-form .field input {
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid #d1d5db;
+  font-size: 0.9rem;
+}
+
+.modal-form .field input:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.2);
+}
+
+.modal-actions {
+  margin-top: 8px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.modal-button {
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: none;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.modal-button.secondary {
+  background: #e5e7eb;
+  color: #111827;
+}
+
+.modal-button.primary {
+  background: #2563eb;
+  color: white;
+}
+
+.modal-button.primary:hover {
+  background: #1d4ed8;
+}
+
+.form-error {
+  font-size: 0.8rem;
+  color: #b91c1c;
+}
+
+/* 報名摘要文字 */
+
+.enroll-summary {
+  font-size: 0.8rem;
+  color: #4b5563;
+  margin-top: 6px;
+}
