@@ -1,32 +1,27 @@
 // app/courses/page.tsx
-'use client';
-
-import { useSearchParams } from 'next/navigation';
 import { COURSES } from '@/data/courses';
 import { CourseCard } from '@/components/CourseCard';
 
-export default function CoursesPage() {
-  const searchParams = useSearchParams();
+type CoursesPageProps = {
+  searchParams?: {
+    subject?: string;
+    language?: string;
+    region?: string;
+    mode?: string;
+  };
+};
 
-  const subject = searchParams.get('subject') || '';
-  const language = searchParams.get('language') || '';
-  const mode = searchParams.get('mode') || '';
+export default function CoursesPage({ searchParams }: CoursesPageProps) {
+  const subject = searchParams?.subject ?? '';
+  const language = searchParams?.language ?? '';
+  const mode = searchParams?.mode ?? '';
   // region 目前課程資料沒有地區欄位，先忽略
-  // const region = searchParams.get('region') || '';
+  // const region = searchParams?.region ?? '';
 
   const filtered = COURSES.filter((c) => {
-    if (subject && c.subject !== subject) {
-      return false;
-    }
-
-    if (language && !c.language.includes(language)) {
-      return false;
-    }
-
-    if (mode && c.mode !== mode) {
-      return false;
-    }
-
+    if (subject && c.subject !== subject) return false;
+    if (language && !c.language.includes(language)) return false;
+    if (mode && c.mode !== mode) return false;
     return true;
   });
 

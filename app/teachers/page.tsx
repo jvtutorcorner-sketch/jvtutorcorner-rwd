@@ -1,32 +1,27 @@
 // app/teachers/page.tsx
-'use client';
-
-import { useSearchParams } from 'next/navigation';
 import { TEACHERS } from '@/data/teachers';
 import { TeacherCard } from '@/components/TeacherCard';
 
-export default function TeachersPage() {
-  const searchParams = useSearchParams();
+type TeachersPageProps = {
+  searchParams?: {
+    subject?: string;
+    language?: string;
+    region?: string;
+    mode?: string;
+  };
+};
 
-  const subject = searchParams.get('subject') || '';
-  const language = searchParams.get('language') || '';
-  const region = searchParams.get('region') || '';
-  // mode 目前沒用在老師資料上
-  // const mode = searchParams.get('mode') || '';
+export default function TeachersPage({ searchParams }: TeachersPageProps) {
+  const subject = searchParams?.subject ?? '';
+  const language = searchParams?.language ?? '';
+  const region = searchParams?.region ?? '';
+  // mode 目前沒有用在老師資料上
+  // const mode = searchParams?.mode ?? '';
 
   const filtered = TEACHERS.filter((t) => {
-    if (subject && !t.subjects.includes(subject)) {
-      return false;
-    }
-
-    if (language && !t.languages.includes(language)) {
-      return false;
-    }
-
-    if (region && !t.location.includes(region)) {
-      return false;
-    }
-
+    if (subject && !t.subjects.includes(subject)) return false;
+    if (language && !t.languages.includes(language)) return false;
+    if (region && !t.location.includes(region)) return false;
     return true;
   });
 
