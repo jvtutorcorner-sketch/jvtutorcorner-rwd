@@ -10,7 +10,7 @@ export type EnrollmentStatus =
   | 'FAILED';         // 金流失敗或其他錯誤
 
 export type EnrollmentRecord = {
-  id: string;            // 主鍵
+  id: string;
   name: string;
   email: string;
   courseId: string;
@@ -18,31 +18,35 @@ export type EnrollmentRecord = {
   status: EnrollmentStatus;
   createdAt: string;
   updatedAt: string;
-  paymentProvider?: string;   // 之後接 Stripe / 綠界 / TapPay 可用
-  paymentSessionId?: string;  // 金流交易或 session ID
+  paymentProvider?: string;
+  paymentSessionId?: string;
 };
 
 const TABLE_NAME = process.env.ENROLLMENTS_TABLE;
 
-if (!TABLE_NAME) {
+// 開發環境用的 in-memory 暫存
+const LOCAL_ENROLLMENTS: EnrollmentRecord[] = [];
+
+// 判斷是否真的要用 DynamoDB
+// - production 且有設定 TABLE_NAME 才啟用
+const useDynamo =
+  process.env.NODE_ENV === 'production' && typeof TABLE_NAME === 'string' && TABLE_NAME.length > 0;
+
+if (!useDynamo) {
   console.warn(
-    'ENROLLMENTS_TABLE 環境變數未設定，/api/enroll 將無法寫入 DynamoDB。',
+    '[enroll API] 目前不使用 DynamoDB（可能是開發環境或未設定 ENROLLMENTS_TABLE），將使用記憶體暫存。',
+  );
+} else {
+  console.log(
+    `[enroll API] 將使用 DynamoDB Table: ${TABLE_NAME}`,
   );
 }
 
 function generateId() {
-  // 簡單的 ID 生成（避免為了 crypto 再額外 import）
   return `enr_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;
 }
 
 export async function POST(request: NextRequest) {
-  if (!TABLE_NAME) {
-    return NextResponse.json(
-      { ok: false, error: '伺服器尚未設定 ENROLLMENTS_TABLE。' },
-      { status: 500 },
-    );
-  }
-
   try {
     const body = await request.json();
     const { name, email, courseId, courseTitle } = body || {};
@@ -69,20 +73,25 @@ export async function POST(request: NextRequest) {
       email: String(email).trim(),
       courseId: String(courseId),
       courseTitle: String(courseTitle),
-      status: 'PENDING_PAYMENT',   // 之後金流成功再更新為 'PAID'
+      status: 'PENDING_PAYMENT',
       createdAt: now,
       updatedAt: now,
-      // paymentProvider / paymentSessionId 之後接 Stripe 再填
     };
 
-    await ddbDocClient.send(
-      new PutCommand({
-        TableName: TABLE_NAME,
-        Item: item,
-      }),
-    );
-
-    console.log('DynamoDB 已寫入報名資料:', item);
+    if (useDynamo) {
+      // 寫進 DynamoDB（production / Amplify）
+      await ddbDocClient.send(
+        new PutCommand({
+          TableName: TABLE_NAME,
+          Item: item,
+        }),
+      );
+      console.log('DynamoDB 已寫入報名資料:', item);
+    } else {
+      // 開發環境：先放在記憶體陣列
+      LOCAL_ENROLLMENTS.push(item);
+      console.log('LOCAL_ENROLLMENTS 暫存報名資料:', item);
+    }
 
     return NextResponse.json(
       {
@@ -91,35 +100,42 @@ export async function POST(request: NextRequest) {
       },
       { status: 200 },
     );
-  } catch (err: any) {
+  } catch (err) {
     console.error('處理報名請求時發生錯誤:', err);
-
     return NextResponse.json(
-      {
-        ok: false,
-        error: '伺服器錯誤。',
-        // 下面這行是為了 debug，之後上正式環境可以改掉
-        debug: err?.message ?? String(err),
-      },
+      { ok: false, error: '伺服器錯誤。' },
       { status: 500 },
     );
   }
 }
 
-// Demo: 方便在 dev / 後台快速查看最近的報名資料
 export async function GET() {
-  if (!TABLE_NAME) {
-    return NextResponse.json(
-      { ok: false, error: '伺服器尚未設定 ENROLLMENTS_TABLE。' },
-      { status: 500 },
-    );
-  }
-
   try {
+    if (!useDynamo) {
+      // 開發環境：回傳記憶體暫存
+      return NextResponse.json(
+        {
+          ok: true,
+          total: LOCAL_ENROLLMENTS.length,
+          data: LOCAL_ENROLLMENTS,
+          source: 'memory',
+        },
+        { status: 200 },
+      );
+    }
+
+    // production：從 DynamoDB 讀取
+    if (!TABLE_NAME) {
+      return NextResponse.json(
+        { ok: false, error: '伺服器尚未設定 ENROLLMENTS_TABLE。' },
+        { status: 500 },
+      );
+    }
+
     const res = await ddbDocClient.send(
       new ScanCommand({
         TableName: TABLE_NAME,
-        Limit: 50, // Demo：看前 50 筆就好
+        Limit: 50,
       }),
     );
 
@@ -130,11 +146,12 @@ export async function GET() {
         ok: true,
         total: items.length,
         data: items,
+        source: 'dynamodb',
       },
       { status: 200 },
     );
   } catch (err) {
-    console.error('讀取 DynamoDB 報名資料時發生錯誤:', err);
+    console.error('讀取報名資料時發生錯誤:', err);
     return NextResponse.json(
       { ok: false, error: '伺服器錯誤。' },
       { status: 500 },
