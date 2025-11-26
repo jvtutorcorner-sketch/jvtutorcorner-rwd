@@ -1,0 +1,200 @@
+// app/pricing/page.tsx
+'use client';
+
+import { useEffect, useState } from 'react';
+import Link from 'next/link';
+import {
+  PLAN_LABELS,
+  PLAN_DESCRIPTIONS,
+  getStoredUser,
+  clearStoredUser,
+  StoredUser,
+  PlanId,
+} from '@/lib/mockAuth';
+
+type PlanConfig = {
+  id: PlanId;
+  priceHint: string;
+  badge?: string;
+  features: string[];
+  target: string;
+};
+
+const PLANS: PlanConfig[] = [
+  {
+    id: 'basic',
+    priceHint: '最低入門價（可到時再定價）',
+    target: '剛開始嘗試線上家教、想先試水溫的學生與家長。',
+    features: [
+      '可預約老師',
+      '一般畫質視訊上課',
+      '無內建白板（可自行使用紙本或截圖）',
+      'App 基本功能：課表、通知、簡單評價',
+    ],
+  },
+  {
+    id: 'pro',
+    priceHint: '主力方案，建議訂為 Basic 的 2–3 倍',
+    badge: '推薦',
+    target: '固定每週上課、重視白板與錄影回放的學生／家長。',
+    features: [
+      '高畫質視訊（720p / 1080p 視實作而定）',
+      '內建線上白板，可畫圖、寫題目、標註重點',
+      '課後雲端錄影回放（保留 7–30 天，可再調整）',
+      '優先客服：App 內客服／Line 客服',
+      '老師選擇更多，可篩選專長、評價、時薪區間',
+    ],
+  },
+  {
+    id: 'elite',
+    priceHint: '高客單價、可採合約制或專案報價',
+    target: '國際學校、補教體系或願意投資高額家教的 VIP 家長。',
+    features: [
+      '高速視訊、優先走高頻寬節點',
+      '支援並行串流：小班團體課＋家長旁聽',
+      '完整錄影，雲端保留 180–365 天，並可提供下載',
+      '高端師資：資深老師、名校背景、雙語／全英教學',
+      '專屬客服窗口與學習報表：出席率、時數、主題統計',
+    ],
+  },
+];
+
+export default function PricingPage() {
+  const [user, setUser] = useState<StoredUser | null>(null);
+
+  useEffect(() => {
+    setUser(getStoredUser());
+  }, []);
+
+  const handleLogout = () => {
+    clearStoredUser();
+    setUser(null);
+    alert('已登出測試帳號。');
+  };
+
+  return (
+    <div className="page">
+      <header className="page-header">
+        <h1>方案與價格（Pricing）</h1>
+        <p>
+          依照不同的學習深度與需求，將家教平台分為{' '}
+          <strong>Basic / Pro / Elite</strong> 三種方案，
+          核心差異在於視訊品質、白板與錄影回放、以及師資與服務等級。
+        </p>
+
+        <div style={{ marginTop: '1rem' }}>
+          {user ? (
+            <div className="tag">
+              目前以測試帳號{' '}
+              <strong>{user.email}</strong> 登入，
+              所屬方案：<strong>{PLAN_LABELS[user.plan]}</strong>
+              <button
+                style={{ marginLeft: 12 }}
+                className="card-button secondary"
+                onClick={handleLogout}
+              >
+                登出
+              </button>
+              <Link
+                href="/login"
+                className="card-button secondary"
+                style={{ marginLeft: 8 }}
+              >
+                切換測試帳號
+              </Link>
+            </div>
+          ) : (
+            <div className="tag">
+              尚未登入測試帳號。
+              <Link href="/login" className="card-button secondary">
+                前往登入頁登入測試
+              </Link>
+            </div>
+          )}
+        </div>
+      </header>
+
+      <section className="section">
+        <div className="card-grid">
+          {PLANS.map((plan) => {
+            const isCurrent = user?.plan === plan.id;
+
+            return (
+              <div
+                key={plan.id}
+                className={`card pricing-card ${
+                  plan.badge ? 'pricing-card-highlight' : ''
+                }`}
+              >
+                <header className="pricing-header">
+                  <h2>{PLAN_LABELS[plan.id]}</h2>
+                  <p className="pricing-subtitle">
+                    {PLAN_DESCRIPTIONS[plan.id]}
+                  </p>
+                  {plan.badge && (
+                    <span className="tag tag-accent">{plan.badge}</span>
+                  )}
+                </header>
+
+                <div className="pricing-price">
+                  <p>{plan.priceHint}</p>
+                  <small>（實際價格可在上線前再細部調整）</small>
+                </div>
+
+                <div className="pricing-target">
+                  <h3>適合對象</h3>
+                  <p>{plan.target}</p>
+                </div>
+
+                <div className="pricing-features">
+                  <h3>包含功能</h3>
+                  <ul>
+                    {plan.features.map((f) => (
+                      <li key={f}>{f}</li>
+                    ))}
+                  </ul>
+                </div>
+
+                <div className="card-actions">
+                  {isCurrent ? (
+                    <button className="card-button" disabled>
+                      ✓ 目前登入的測試帳號就是此方案
+                    </button>
+                  ) : (
+                    <Link
+                      href="/login"
+                      className="card-button primary"
+                    >
+                      使用對應測試帳號登入試用此方案
+                    </Link>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="section">
+        <div className="card">
+          <h2>測試流程建議</h2>
+          <ol>
+            <li>
+              先到 <Link href="/login">/login</Link> 使用{' '}
+              <code>basic@test.com</code> + <code>123456</code> 登入，
+              觀察 Basic 方案在價目頁的呈現方式。
+            </li>
+            <li>
+              再登出後改用 <code>pro@test.com</code>、最後是{' '}
+              <code>elite@test.com</code>，確認三種方案的差異文案是否清楚。
+            </li>
+            <li>
+              之後若要接金流，只要在資料庫裡建立實際的訂閱紀錄，
+              把目前的測試登入邏輯改成真正的會員身份，就可以無縫升級。
+            </li>
+          </ol>
+        </div>
+      </section>
+    </div>
+  );
+}

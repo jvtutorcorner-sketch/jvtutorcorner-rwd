@@ -4,7 +4,7 @@ import './globals.css';
 import Script from 'next/script';
 import { GA_MEASUREMENT_ID } from '@/lib/gtag';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
-
+import Link from 'next/link';
 export const metadata: Metadata = {
   title: 'Tutor Platform',
   description: 'Online tutoring platform with video and whiteboard.',
@@ -44,7 +44,13 @@ export default function RootLayout({
 
         <header className="site-header">
           <div className="logo">Tutor Corner</div>
-          <nav>{/* 之後可以放導覽連結 */}</nav>
+          <nav className="main-nav">
+            <Link href="/">首頁</Link>
+            <Link href="/teachers">老師</Link>
+            <Link href="/courses">課程</Link>
+            <Link href="/pricing">方案價格</Link>
+            <Link href="/login">登入</Link>
+          </nav>
           <LanguageSwitcher />
         </header>
 

@@ -3,6 +3,7 @@
 
 import { useEffect, useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import zhTW from '@/locales/zh-TW/common.json';
 import en from '@/locales/en/common.json';
 import { Carousel } from '@/components/Carousel';
@@ -10,6 +11,7 @@ import { TEACHERS } from '@/data/teachers';
 import { COURSES } from '@/data/courses';
 import { TeacherCard } from '@/components/TeacherCard';
 import { CourseCard } from '@/components/CourseCard';
+import { AuthStatusBar } from '@/components/AuthStatusBar';
 
 type Locale = 'zh-TW' | 'en';
 type Messages = typeof zhTW;
@@ -71,6 +73,11 @@ export default function HomePage() {
 
   return (
     <div className="home">
+      {/* 登入狀態列：未登入顯示登入按鈕，登入後顯示帳號 + 登出 */}
+      <section className="section">
+        <AuthStatusBar />
+      </section>
+
       {/* Hero + Carousel */}
       <section className="hero">
         <div className="hero-text">
@@ -194,9 +201,9 @@ export default function HomePage() {
       <section className="section">
         <div className="section-header">
           <h2 className="section-title">推薦老師</h2>
-          <a href="/teachers" className="section-link">
+          <Link href="/teachers" className="section-link">
             看全部老師 →
-          </a>
+          </Link>
         </div>
         <div className="card-grid">
           {recommendedTeachers.map((teacher) => (
@@ -209,9 +216,9 @@ export default function HomePage() {
       <section className="section">
         <div className="section-header">
           <h2 className="section-title">熱門課程</h2>
-          <a href="/courses" className="section-link">
+          <Link href="/courses" className="section-link">
             看全部課程 →
-          </a>
+          </Link>
         </div>
         <div className="card-grid">
           {hotCourses.map((course) => (
