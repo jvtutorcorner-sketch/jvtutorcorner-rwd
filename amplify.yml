@@ -5,7 +5,7 @@ applications:
         build:
           commands:
             - '# Push Amplify backend (AppSync/GraphQL, functions, auth, storage)'
-            - 'echo "Skipping amplifyPush in CI (disabled in repo). If you need backend push, run amplifyPush locally or enable this step."'
+            - 'echo "Skipping amplifyPush in CI (disabled in repo). If you need backend push, run amplifyPush locally or enable this step."' 
     frontend:
       phases:
         preBuild:
