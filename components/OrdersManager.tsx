@@ -143,6 +143,13 @@ export default function OrdersManager() {
     }
   }
 
+  function confirmAndPatch(orderId: string | undefined, label: string, status: string) {
+    if (!orderId) return;
+    const ok = typeof window !== 'undefined' ? window.confirm(`確定要 ${label} 嗎？這個操作不可逆。`) : true;
+    if (!ok) return;
+    patchOrder(orderId, status);
+  }
+
   return (
     <div>
       <h3>訂單管理</h3>
@@ -187,36 +194,36 @@ export default function OrdersManager() {
       {loading && <p>載入中…</p>}
       {error && <p style={{ color: 'red' }}>{error}</p>}
 
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <thead>
-          <tr>
-            <th style={{ borderBottom: '1px solid #ddd', textAlign: 'left' }}>OrderId</th>
-            <th style={{ borderBottom: '1px solid #ddd', textAlign: 'left' }}>EnrollmentId</th>
-            <th style={{ borderBottom: '1px solid #ddd', textAlign: 'left' }}>CourseId</th>
-            <th style={{ borderBottom: '1px solid #ddd', textAlign: 'left' }}>Amount</th>
-            <th style={{ borderBottom: '1px solid #ddd', textAlign: 'left' }}>Currency</th>
-            <th style={{ borderBottom: '1px solid #ddd', textAlign: 'left' }}>Status</th>
-            <th style={{ borderBottom: '1px solid #ddd', textAlign: 'left' }}>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {orders.map((o, idx) => (
-            <tr key={o.orderId || o.id || idx}>
-              <td style={{ padding: '8px 4px' }}>{o.orderId || o.id}</td>
-              <td style={{ padding: '8px 4px' }}>{o.enrollmentId}</td>
-              <td style={{ padding: '8px 4px' }}>{o.courseId}</td>
-              <td style={{ padding: '8px 4px' }}>{o.amount}</td>
-              <td style={{ padding: '8px 4px' }}>{o.currency}</td>
-              <td style={{ padding: '8px 4px' }}>{o.status}</td>
-              <td style={{ padding: '8px 4px' }}>
-                <button onClick={() => o.orderId && patchOrder(o.orderId, 'PAID')} style={{ marginRight: 8 }}>Set PAID</button>
-                <button onClick={() => o.orderId && patchOrder(o.orderId, 'CANCELLED')} style={{ marginRight: 8 }}>Cancel</button>
-                <button onClick={() => o.orderId && patchOrder(o.orderId, 'REFUNDED')}>Refund</button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #ddd' }}>
+            <thead>
+              <tr>
+                <th style={{ border: '1px solid #ddd', padding: '8px 6px', textAlign: 'left' }}>OrderId</th>
+                <th style={{ border: '1px solid #ddd', padding: '8px 6px', textAlign: 'left' }}>EnrollmentId</th>
+                <th style={{ border: '1px solid #ddd', padding: '8px 6px', textAlign: 'left' }}>CourseId</th>
+                <th style={{ border: '1px solid #ddd', padding: '8px 6px', textAlign: 'left' }}>Amount</th>
+                <th style={{ border: '1px solid #ddd', padding: '8px 6px', textAlign: 'left' }}>Currency</th>
+                <th style={{ border: '1px solid #ddd', padding: '8px 6px', textAlign: 'left' }}>Status</th>
+                <th style={{ border: '1px solid #ddd', padding: '8px 6px', textAlign: 'left' }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {orders.map((o, idx) => (
+                <tr key={o.orderId || o.id || idx}>
+                  <td style={{ padding: '8px 6px', border: '1px solid #ddd' }}>{o.orderId || o.id}</td>
+                  <td style={{ padding: '8px 6px', border: '1px solid #ddd' }}>{o.enrollmentId}</td>
+                  <td style={{ padding: '8px 6px', border: '1px solid #ddd' }}>{o.courseId}</td>
+                  <td style={{ padding: '8px 6px', border: '1px solid #ddd' }}>{o.amount}</td>
+                  <td style={{ padding: '8px 6px', border: '1px solid #ddd' }}>{o.currency}</td>
+                  <td style={{ padding: '8px 6px', border: '1px solid #ddd' }}>{o.status}</td>
+                  <td style={{ padding: '8px 6px', border: '1px solid #ddd' }}>
+                    <button onClick={() => confirmAndPatch(o.orderId, '標示為已付款', 'PAID')} style={{ marginRight: 8 }}>Set PAID</button>
+                    <button onClick={() => confirmAndPatch(o.orderId, '取消訂單', 'CANCELLED')} style={{ marginRight: 8 }}>Cancel</button>
+                    <button onClick={() => confirmAndPatch(o.orderId, '退款', 'REFUNDED')}>Refund</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
 
       <div style={{ marginTop: 12 }}>
         <button onClick={handlePrev} disabled={history.length === 0} style={{ marginRight: 8 }}>Previous</button>

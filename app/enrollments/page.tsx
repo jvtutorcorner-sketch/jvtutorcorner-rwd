@@ -8,10 +8,8 @@ export const metadata = {
 export default function Page() {
   return (
     <main style={{ padding: 24 }}>
-      <h1>我的報名與訂單</h1>
-      <p>此頁顯示四階段金流流程的 demo 操作介面（建立訂單 → 付款確認 → 課程生效 → 退款/取消）。</p>
-      <SimulationButtons />
-      <EnrollmentManager />
+      <h1>我的報名已合併到「訂單紀錄」</h1>
+      <p>報名與相關示範操作已移到 <a href="/orders">訂單紀錄</a> 頁面，請至該頁查看或使用示範按鈕。</p>
     </main>
   );
 }

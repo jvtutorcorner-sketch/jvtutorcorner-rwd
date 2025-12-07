@@ -9,24 +9,30 @@ type TeachersPageProps = {
     language?: string;
     region?: string;
     mode?: string;
+    teacher?: string;
   };
 };
 
 export default function TeachersPage({ searchParams }: TeachersPageProps) {
-  const subject = searchParams?.subject ?? '';
-  const language = searchParams?.language ?? '';
-  const region = searchParams?.region ?? '';
+  const teacher = (searchParams?.teacher ?? '').trim().toLowerCase();
+  const language = (searchParams?.language ?? '').trim().toLowerCase();
+  const region = (searchParams?.region ?? '').trim().toLowerCase();
   // mode 目前沒有用在老師資料上
   // const mode = searchParams?.mode ?? '';
 
   const filtered = TEACHERS.filter((t) => {
-    if (subject && !t.subjects.some((s) => s.includes(subject))) return false;
-    if (language && !t.languages.includes(language)) return false;
-    if (region && !t.location.includes(region)) return false;
+    if (teacher && !t.name.toLowerCase().includes(teacher)) return false;
+    if (language) {
+      const ok = t.languages.some((l) => l.toLowerCase().includes(language));
+      if (!ok) return false;
+    }
+    if (region) {
+      if (!t.location.toLowerCase().includes(region)) return false;
+    }
     return true;
   });
 
-  const hasFilter = subject || language || region;
+  const hasFilter = Boolean(teacher || language || region);
 
   // build option lists from TEACHERS data
   const subjectOptions = Array.from(
@@ -59,7 +65,7 @@ export default function TeachersPage({ searchParams }: TeachersPageProps) {
       {/* 搜尋表單（移到專業師資頁面） */}
       <section className="section">
         <SearchForm
-          initial={{ subject, language, region }}
+          initial={{ teacher, language, region }}
           targetPath="/teachers"
           subjectOptions={subjectOptions}
           languageOptions={languageOptions}

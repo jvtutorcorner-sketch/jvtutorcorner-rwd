@@ -26,37 +26,54 @@ export default function LoginPage() {
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
+    (async () => {
+      try {
+        // Try server-side profiles first
+        const res = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
+        });
+        const data = await res.json();
+        if (res.ok && data?.ok) {
+          const role = data.profile?.role as string | undefined;
+          const plan = (data.profile?.plan as any) || 'basic';
+          const user: StoredUser = { email: email.trim().toLowerCase(), plan, role: role === 'admin' ? 'admin' : 'user' };
+          setStoredUser(user);
+          setCurrentUser(user);
+          window.dispatchEvent(new Event('tutor:auth-changed'));
+          if (role === 'admin') {
+            alert('Admin 登入成功，將導向管理後台。');
+            router.push('/admin/orders');
+            return;
+          }
+          alert(`登入成功！\n目前使用方案：${PLAN_LABELS[user.plan]}\n接下來會導向到價目頁 /pricing。`);
+          router.push('/pricing');
+          return;
+        }
 
-    const trimmedEmail = email.trim().toLowerCase();
-    const userConfig = MOCK_USERS[trimmedEmail];
-
-    if (!userConfig) {
-      setError('帳號不存在，請使用下方提供的測試帳號。');
-      return;
-    }
-
-    if (password !== TEST_PASSWORD) {
-      setError('密碼錯誤，統一測試密碼為：123456');
-      return;
-    }
-
-    const user: StoredUser = {
-      email: trimmedEmail,
-      plan: userConfig.plan,
-    };
-
-    setStoredUser(user);
-    setCurrentUser(user);
-
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new Event('tutor:auth-changed'));
-    }
-
-    alert(
-      `登入成功！\n目前使用方案：${PLAN_LABELS[user.plan]}（測試帳號）\n接下來會導向到價目頁 /pricing。`,
-    );
-
-    router.push('/pricing');
+        // Fallback to mock users
+        const trimmedEmail = email.trim().toLowerCase();
+        const userConfig = MOCK_USERS[trimmedEmail];
+        if (!userConfig) {
+          setError('帳號不存在，請先建立帳戶或使用測試帳號。');
+          return;
+        }
+        if (password !== TEST_PASSWORD) {
+          setError('密碼錯誤，統一測試密碼為：123456');
+          return;
+        }
+        const user: StoredUser = { email: trimmedEmail, plan: userConfig.plan };
+        setStoredUser(user);
+        setCurrentUser(user);
+        window.dispatchEvent(new Event('tutor:auth-changed'));
+        alert(`登入成功！\n目前使用方案：${PLAN_LABELS[user.plan]}（測試帳號）\n接下來會導向到價目頁 /pricing。`);
+        router.push('/pricing');
+      } catch (err) {
+        console.error(err);
+        setError('登入時發生錯誤，請稍後再試。');
+      }
+    })();
   };
 
   const handleLogout = () => {
@@ -87,6 +104,12 @@ export default function LoginPage() {
               帳號：<strong>{currentUser.email}</strong>
               <br />
               方案：<strong>{PLAN_LABELS[currentUser.plan]}</strong>
+              {('role' in currentUser && (currentUser as any).role === 'admin') && (
+                <>
+                  <br />
+                  <strong style={{ color: 'crimson' }}>Admin</strong>
+                </>
+              )}
             </p>
             <div className="card-actions">
               <button className="card-button" onClick={handleLogout}>
@@ -95,6 +118,11 @@ export default function LoginPage() {
               <Link href="/pricing" className="card-button secondary">
                 前往價目頁 /pricing
               </Link>
+              {('role' in currentUser && (currentUser as any).role === 'admin') && (
+                <Link href="/admin/orders" className="card-button secondary">
+                  管理後台：訂單
+                </Link>
+              )}
             </div>
           </div>
         </section>

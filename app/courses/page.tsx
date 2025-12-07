@@ -9,24 +9,31 @@ type CoursesPageProps = {
     language?: string;
     region?: string;
     mode?: string;
+    teacher?: string;
   };
 };
 
 export default function CoursesPage({ searchParams }: CoursesPageProps) {
   const subject = searchParams?.subject ?? '';
   const language = searchParams?.language ?? '';
+  const teacher = searchParams?.teacher ?? '';
   const mode = searchParams?.mode ?? '';
   // region 目前課程資料沒有地區欄位，先忽略
   // const region = searchParams?.region ?? '';
 
+  const subjectTrim = subject.trim().toLowerCase();
+  const languageTrim = language.trim().toLowerCase();
+  const teacherTrim = teacher.trim().toLowerCase();
+
   const filtered = COURSES.filter((c) => {
-    if (subject && c.subject !== subject) return false;
-    if (language && !c.language.includes(language)) return false;
+    if (subjectTrim && !c.subject.toLowerCase().includes(subjectTrim)) return false;
+    if (languageTrim && !c.language.toLowerCase().includes(languageTrim)) return false;
+    if (teacherTrim && !c.teacherName.toLowerCase().includes(teacherTrim)) return false;
     if (mode && c.mode !== mode) return false;
     return true;
   });
 
-  const hasFilter = subject || language || mode;
+  const hasFilter = Boolean(subjectTrim || languageTrim || teacherTrim || mode);
 
   return (
     <div className="page">
@@ -42,7 +49,7 @@ export default function CoursesPage({ searchParams }: CoursesPageProps) {
       {/* 搜尋表單（移到課程總覽頁面） */}
       <section className="section">
         <SearchForm
-          initial={{ subject, language, mode }}
+          initial={{ subject, language, mode, teacher }}
           targetPath="/courses"
         />
       </section>

@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { getStoredUser, type StoredUser } from '@/lib/mockAuth';
+import EnrollmentManager from '@/components/EnrollmentManager';
+import SimulationButtons from '@/components/SimulationButtons';
 import Link from 'next/link';
 
 type Order = {
@@ -56,15 +58,6 @@ export default function OrdersPage() {
   // Always render the same header structure to avoid hydration mismatches
   return (
     <div className="page">
-      <header className="page-header">
-        <h1>訂單紀錄</h1>
-        <p>
-          {user
-            ? '以下顯示你的近期訂單（開發模式可能來自本機 `.local_data/orders.json`）。'
-            : ''}
-        </p>
-      </header>
-
       <section className="section">
         {!user ? (
           <>
@@ -80,28 +73,40 @@ export default function OrdersPage() {
         ) : !orders || orders.length === 0 ? (
           <p>目前沒有訂單紀錄。</p>
         ) : (
-          <table className="orders-table">
-            <thead>
-              <tr>
-                <th>訂單編號</th>
-                <th>課程 / ID</th>
-                <th>金額</th>
-                <th>狀態</th>
-                <th>建立時間</th>
-              </tr>
-            </thead>
-            <tbody>
-              {orders.map((o) => (
-                <tr key={o.orderId}>
-                  <td>{o.orderId}</td>
-                  <td>{o.courseId ?? '-'}</td>
-                  <td>{o.amount ? `${o.amount} ${o.currency ?? 'TWD'}` : '-'}</td>
-                  <td>{o.status ?? '-'}</td>
-                  <td>{o.createdAt ? new Date(o.createdAt).toLocaleString() : '-'}</td>
+          <>
+            <section style={{ marginBottom: 16 }}>
+              <h2>報名與訂單操作（示範）</h2>
+              <p>下面提供示範按鈕與報名管理器，用於建立測試報名與訂單（僅在開發模式）。</p>
+              <SimulationButtons />
+            </section>
+
+            <section style={{ marginBottom: 16 }}>
+              <EnrollmentManager />
+            </section>
+
+            <table className="orders-table" style={{ borderCollapse: 'collapse', border: '2px solid #ccc', width: '100%' }}>
+              <thead>
+                <tr>
+                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>訂單編號</th>
+                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>課程 / ID</th>
+                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>金額</th>
+                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>狀態</th>
+                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>建立時間</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {orders.map((o) => (
+                  <tr key={o.orderId}>
+                    <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.orderId}</td>
+                    <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.courseId ?? '-'}</td>
+                    <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.amount ? `${o.amount} ${o.currency ?? 'TWD'}` : '-'}</td>
+                    <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.status ?? '-'}</td>
+                    <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.createdAt ? new Date(o.createdAt).toLocaleString() : '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
         )}
       </section>
     </div>

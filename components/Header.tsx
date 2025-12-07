@@ -87,7 +87,6 @@ export default function Header() {
         {hydrated && user ? (
           <ul className="account-nav-left">
             <li><NavLink href="/orders" title="訂單紀錄 - 檢視你的購買紀錄">我的訂單</NavLink></li>
-            <li><NavLink href="/enrollments" title="報名紀錄 - 檢視你的課程報名">我的報名</NavLink></li>
           </ul>
         ) : null}
 

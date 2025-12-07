@@ -23,6 +23,17 @@ type PlanConfig = {
 
 const PLANS: PlanConfig[] = [
   {
+    id: 'viewer',
+    badge: '預設',
+    priceHint: 'NT$0 / 新辦帳戶（僅查詢）',
+    target: '新辦帳戶：只需瀏覽與查詢師資／課程的使用者。',
+    features: [
+      '僅能瀏覽與查詢老師和課程清單',
+      '無法預約或參與付費課程',
+      '無白板與錄影回放功能',
+    ],
+  },
+  {
     id: 'basic',
     priceHint: '最低入門價（可到時再定價）',
     target: '剛開始嘗試線上家教、想先試水溫的學生與家長。',

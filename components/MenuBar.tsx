@@ -10,7 +10,18 @@ export default function MenuBar() {
   const router = useRouter();
 
   useEffect(() => {
-    setUser(getStoredUser());
+    const sync = () => setUser(getStoredUser());
+    // initial
+    sync();
+    // listen for auth changes triggered elsewhere
+    if (typeof window !== 'undefined') {
+      window.addEventListener('tutor:auth-changed', sync);
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('tutor:auth-changed', sync);
+      }
+    };
   }, []);
 
   function handleLogout() {
@@ -27,6 +38,9 @@ export default function MenuBar() {
     <nav className="homepage-menu" aria-label="主選單">
       <ul className="menu-left">
         <li><Link href="/teachers">師資</Link></li>
+        {user?.role === 'admin' && (
+          <li><Link href="/admin/orders">管理後台</Link></li>
+        )}
         <li><Link href="/courses">課程總覽</Link></li>
         <li><Link href="/about">關於我們</Link></li>
       </ul>

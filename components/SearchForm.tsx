@@ -10,12 +10,15 @@ type Props = {
     language?: string;
     region?: string;
     mode?: string;
+    teacher?: string;
   };
   targetPath?: string; // e.g. '/teachers' or '/courses'
   subjectOptions?: string[];
   languageOptions?: string[];
   regionOptions?: string[];
   modeOptions?: string[];
+  // add teacher initial for courses page
+  teacherOptions?: string[];
 };
 
 export default function SearchForm({
@@ -29,20 +32,38 @@ export default function SearchForm({
   const router = useRouter();
   const [subject, setSubject] = useState(initial?.subject ?? '');
   const [language, setLanguage] = useState(initial?.language ?? '');
+  const [teacher, setTeacher] = useState(initial?.teacher ?? '');
   const [region, setRegion] = useState(initial?.region ?? '');
   const [mode, setMode] = useState<'online' | 'onsite' | ''>(
     (initial?.mode as 'online' | 'onsite' | '') ?? ''
   );
+
+  const isTeacherPage = (targetPath || '').startsWith('/teachers');
+  const isCoursePage = (targetPath || '').startsWith('/courses');
+  // hide region and mode on teacher and course pages per UX request
+  const hideRegionAndMode = isTeacherPage || isCoursePage;
 
 
   const handleSearch = (e?: FormEvent) => {
     if (e) e.preventDefault();
 
     const params = new URLSearchParams();
-    if (subject) params.set('subject', subject);
-    if (language) params.set('language', language);
-    if (region) params.set('region', region);
-    if (mode) params.set('mode', mode);
+    // For teacher and course pages, use trimmed fuzzy inputs for teacher+language
+    if (isTeacherPage || isCoursePage) {
+      const l = language.trim();
+      const t = teacher.trim();
+      if (l) params.set('language', l);
+      if (t) params.set('teacher', t);
+    } else {
+      // other pages keep subject/language selects
+      if (subject) params.set('subject', subject);
+      if (language) params.set('language', language);
+    }
+
+    if (!hideRegionAndMode) {
+      if (region) params.set('region', region);
+      if (mode) params.set('mode', mode);
+    }
 
     const base = targetPath || window.location.pathname;
     const url = params.toString() ? `${base}?${params.toString()}` : base;
@@ -54,57 +75,83 @@ export default function SearchForm({
     <div className="search-block">
       <form className="search-form" onSubmit={handleSearch}>
             <div className="search-row">
-              <div className="field">
-                <label>科目</label>
-                <select value={subject} onChange={(e) => setSubject(e.target.value)}>
-                  <option value="">不限</option>
-                  {(subjectOptions ?? ['英文', '數學', '日文']).map((s: string) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="field">
-                <label>授課語言</label>
-                <select value={language} onChange={(e) => setLanguage(e.target.value)}>
-                  <option value="">不限</option>
-                  {(languageOptions ?? ['中文', '英文', '日文']).map((l: string) => (
-                    <option key={l} value={l}>
-                      {l}
-                    </option>
-                  ))}
-                </select>
-              </div>
+                <div className="field">
+                  {/* If on teachers or courses, show teacher text input instead of subject */}
+                  {(isTeacherPage || isCoursePage) ? (
+                    <div className="field">
+                      <label>老師</label>
+                      <input
+                        value={teacher}
+                        onChange={(e) => setTeacher(e.target.value)}
+                        placeholder="老師姓名，支援模糊搜尋（可輸入部分名稱）"
+                      />
+                    </div>
+                  ) : (
+                    <div className="field">
+                      <label>科目</label>
+                      <select value={subject} onChange={(e) => setSubject(e.target.value)}>
+                        <option value="">不限</option>
+                        {(subjectOptions ?? ['英文', '數學', '日文']).map((s: string) => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
+                <div className="field">
+                  <label>授課語言</label>
+                  {isTeacherPage || isCoursePage ? (
+                    <input
+                      value={language}
+                      onChange={(e) => setLanguage(e.target.value)}
+                      placeholder="例如：中文、英文，支援模糊搜尋"
+                    />
+                  ) : (
+                    <select value={language} onChange={(e) => setLanguage(e.target.value)}>
+                      <option value="">不限</option>
+                      {(languageOptions ?? ['中文', '英文', '日文']).map((l: string) => (
+                        <option key={l} value={l}>
+                          {l}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                {/* teacher input shown above for teacher/course pages */}
+                </div>
+                
             </div>
 
-        <div className="search-row">
-          <div className="field">
-            <label>地區</label>
-            <select value={region} onChange={(e) => setRegion(e.target.value)}>
-              <option value="">線上 / 不限</option>
-              {(regionOptions ?? ['線上', '台北', '新北', '東京', '其他']).map((r: string) => (
-                <option key={r} value={r}>
-                  {r}
-                </option>
-              ))}
-            </select>
+        {!hideRegionAndMode && (
+          <div className="search-row">
+            <div className="field">
+              <label>地區</label>
+              <select value={region} onChange={(e) => setRegion(e.target.value)}>
+                <option value="">線上 / 不限</option>
+                {(regionOptions ?? ['線上', '台北', '新北', '東京', '其他']).map((r: string) => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label>授課方式</label>
+              <select
+                value={mode}
+                onChange={(e) => setMode(e.target.value as 'online' | 'onsite' | '')}
+              >
+                <option value="">不限</option>
+                {(modeOptions ?? ['online', 'onsite']).map((m: string) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
-          <div className="field">
-            <label>授課方式</label>
-            <select
-              value={mode}
-              onChange={(e) => setMode(e.target.value as 'online' | 'onsite' | '')}
-            >
-              <option value="">不限</option>
-              {(modeOptions ?? ['online', 'onsite']).map((m: string) => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
+        )}
 
         <div className="search-actions">
           <button type="submit" className="search-button">
