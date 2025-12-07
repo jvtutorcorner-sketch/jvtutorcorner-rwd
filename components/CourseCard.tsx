@@ -1,5 +1,6 @@
 // components/CourseCard.tsx
 import { Course } from '@/data/courses';
+import Link from 'next/link';
 
 interface CourseCardProps {
   course: Course;
@@ -7,7 +8,7 @@ interface CourseCardProps {
 
 export const CourseCard: React.FC<CourseCardProps> = ({ course }) => {
   return (
-    <div className="card">
+    <Link href={`/courses/${course.id}`} className="card">
       <h3 className="card-title">{course.title}</h3>
       <p className="card-subtitle">
         {course.subject}｜{course.level}
@@ -30,7 +31,7 @@ export const CourseCard: React.FC<CourseCardProps> = ({ course }) => {
           </span>
         ))}
       </div>
-    </div>
+    </Link>
   );
 };
 
