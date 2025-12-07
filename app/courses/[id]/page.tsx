@@ -1,9 +1,11 @@
 
+"use client";
+
 import { useParams, useRouter } from 'next/navigation';
 import { useMemo } from 'react';
 import { COURSES } from '@/data/courses';
 import { EnrollButton } from '@/components/EnrollButton';
-import AgoraWhiteboard from '@/components/AgoraWhiteboard';
+import AgoraWhiteboard from '../../../components/AgoraWhiteboard';
 
 export default function CourseDetailPage() {
   const params = useParams<{ id: string }>();
