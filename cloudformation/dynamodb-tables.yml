@@ -1,0 +1,155 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  CloudFormation template to create DynamoDB tables used by JV Tutor Corner.
+  This stack creates two tables: teachers and courses. Tables are configured
+  with on-demand billing (PAY_PER_REQUEST) and include optional TTL attribute.
+
+Parameters:
+  TeachersTableName:
+    Type: String
+    Default: jvtutorcorner-teachers
+    Description: DynamoDB table name for teacher records
+  CoursesTableName:
+    Type: String
+    Default: jvtutorcorner-courses
+    Description: DynamoDB table name for course records
+
+Resources:
+  TeachersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref TeachersTableName
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: location
+          AttributeType: S
+        - AttributeName: rating
+          AttributeType: N
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+      GlobalSecondaryIndexes:
+        - IndexName: LocationRatingIndex
+          KeySchema:
+            - AttributeName: location
+              KeyType: HASH
+            - AttributeName: rating
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: false
+      Tags:
+        - Key: Project
+          Value: jvtutorcorner
+
+  CoursesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref CoursesTableName
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: subject
+          AttributeType: S
+        - AttributeName: teacherName
+          AttributeType: S
+        - AttributeName: nextStartDate
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+      GlobalSecondaryIndexes:
+        - IndexName: SubjectStartDateIndex
+          KeySchema:
+            - AttributeName: subject
+              KeyType: HASH
+            - AttributeName: nextStartDate
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: TeacherNameIndex
+          KeySchema:
+            - AttributeName: teacherName
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: false
+      Tags:
+        - Key: Project
+          Value: jvtutorcorner
+
+Outputs:
+  TeachersTableName:
+    Description: Name of teachers DynamoDB table
+    Value: !Ref TeachersTableName
+  TeachersTableArn:
+    Description: ARN of teachers DynamoDB table
+    Value: !GetAtt TeachersTable.Arn
+  CoursesTableName:
+    Description: Name of courses DynamoDB table
+    Value: !Ref CoursesTableName
+  CoursesTableArn:
+    Description: ARN of courses DynamoDB table
+    Value: !GetAtt CoursesTable.Arn
+AWSTemplateFormatVersion: '2010-09-09'
+Description: "Create DynamoDB tables for jvtutorcorner (orders and enrollments)."
+
+Resources:
+  OrdersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${OrdersTableName}'
+      AttributeDefinitions:
+        - AttributeName: orderId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: orderId
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  EnrollmentsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${EnrollmentsTableName}'
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+Parameters:
+  OrdersTableName:
+    Type: String
+    Description: Name for the Orders DynamoDB table
+    Default: jvtutorcorner-orders
+
+  EnrollmentsTableName:
+    Type: String
+    Description: Name for the Enrollments DynamoDB table
+    Default: jvtutorcorner-enrollments
+
+Outputs:
+  OrdersTableName:
+    Description: "Orders table name"
+    Value: !Ref OrdersTableName
+
+  OrdersTableArn:
+    Description: "Orders table ARN"
+    Value: !GetAtt OrdersTable.Arn
+
+  EnrollmentsTableName:
+    Description: "Enrollments table name"
+    Value: !Ref EnrollmentsTableName
+
+  EnrollmentsTableArn:
+    Description: "Enrollments table ARN"
+    Value: !GetAtt EnrollmentsTable.Arn

@@ -3,6 +3,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   PLAN_LABELS,
   PLAN_DESCRIPTIONS,
@@ -69,8 +70,17 @@ export default function PricingPage() {
   const handleLogout = () => {
     clearStoredUser();
     setUser(null);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('tutor:auth-changed'));
+    }
+    router.refresh();
     alert('已登出測試帳號。');
   };
+  const router = useRouter();
+
+  function handleSwitchAccount() {
+    router.push('/login');
+  }
 
   return (
     <div className="page">
@@ -82,36 +92,7 @@ export default function PricingPage() {
           核心差異在於視訊品質、白板與錄影回放、以及師資與服務等級。
         </p>
 
-        <div style={{ marginTop: '1rem' }}>
-          {user ? (
-            <div className="tag">
-              目前以測試帳號{' '}
-              <strong>{user.email}</strong> 登入，
-              所屬方案：<strong>{PLAN_LABELS[user.plan]}</strong>
-              <button
-                style={{ marginLeft: 12 }}
-                className="card-button secondary"
-                onClick={handleLogout}
-              >
-                登出
-              </button>
-              <Link
-                href="/login"
-                className="card-button secondary"
-                style={{ marginLeft: 8 }}
-              >
-                切換測試帳號
-              </Link>
-            </div>
-          ) : (
-            <div className="tag">
-              尚未登入測試帳號。
-              <Link href="/login" className="card-button secondary">
-                前往登入頁登入測試
-              </Link>
-            </div>
-          )}
-        </div>
+        {/* Auth tag removed from Pricing page per request */}
       </header>
 
       <section className="section">

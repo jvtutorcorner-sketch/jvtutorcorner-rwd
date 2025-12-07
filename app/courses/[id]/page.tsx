@@ -1,10 +1,9 @@
-// app/courses/[id]/page.tsx
-'use client';
 
 import { useParams, useRouter } from 'next/navigation';
 import { useMemo } from 'react';
 import { COURSES } from '@/data/courses';
 import { EnrollButton } from '@/components/EnrollButton';
+import AgoraWhiteboard from '@/components/AgoraWhiteboard';
 
 export default function CourseDetailPage() {
   const params = useParams<{ id: string }>();
@@ -65,6 +64,11 @@ export default function CourseDetailPage() {
           <div className="course-section">
             <h2>課程介紹</h2>
             <p>{description || '這是一門精心設計的主題式課程。'}</p>
+          </div>
+
+          <div className="course-section">
+            <h2>互動白板</h2>
+            <AgoraWhiteboard channelName={id} />
           </div>
 
           <div className="course-section">

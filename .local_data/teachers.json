@@ -1,0 +1,70 @@
+[
+  {
+    "id": "t1",
+    "name": "林老師",
+    "avatarUrl": "https://avatars.githubusercontent.com/u/1?v=4",
+    "subjects": [
+      "英文",
+      "英檢中級"
+    ],
+    "languages": [
+      "中文",
+      "英文"
+    ],
+    "rating": 4.9,
+    "hourlyRate": 800,
+    "location": "線上 / 台北",
+    "intro": "10 年雙語教學經驗，專攻英檢、TOEIC 口說與寫作。"
+  },
+  {
+    "id": "t2",
+    "name": "陳老師",
+    "avatarUrl": "https://avatars.githubusercontent.com/u/2?v=4",
+    "subjects": [
+      "數學",
+      "國中會考",
+      "高中學測"
+    ],
+    "languages": [
+      "中文"
+    ],
+    "rating": 4.8,
+    "hourlyRate": 700,
+    "location": "線上 / 新北",
+    "intro": "擅長用生活化例子解釋數學觀念，陪學生建立自信。"
+  },
+  {
+    "id": "t3",
+    "name": "王老師",
+    "avatarUrl": "https://avatars.githubusercontent.com/u/3?v=4",
+    "subjects": [
+      "英文會話",
+      "商用英文"
+    ],
+    "languages": [
+      "中文",
+      "英文"
+    ],
+    "rating": 5,
+    "hourlyRate": 1000,
+    "location": "線上",
+    "intro": "前外商 PM，實戰職場英文表達與會議溝通。"
+  },
+  {
+    "id": "t4",
+    "name": "佐藤先生",
+    "avatarUrl": "https://avatars.githubusercontent.com/u/4?v=4",
+    "subjects": [
+      "日文會話",
+      "旅遊日文"
+    ],
+    "languages": [
+      "日文",
+      "中文"
+    ],
+    "rating": 4.7,
+    "hourlyRate": 900,
+    "location": "線上 / 東京",
+    "intro": "日本在地老師，從零基礎開始練習自然對話。"
+  }
+]

@@ -1,6 +1,7 @@
 // app/courses/page.tsx
 import { COURSES } from '@/data/courses';
 import { CourseCard } from '@/components/CourseCard';
+import SearchForm from '@/components/SearchForm';
 
 type CoursesPageProps = {
   searchParams?: {
@@ -37,6 +38,14 @@ export default function CoursesPage({ searchParams }: CoursesPageProps) {
           <p>主題式課程，從國中、高中到成人進修都能找到。</p>
         )}
       </header>
+
+      {/* 搜尋表單（移到課程總覽頁面） */}
+      <section className="section">
+        <SearchForm
+          initial={{ subject, language, mode }}
+          targetPath="/courses"
+        />
+      </section>
 
       <section className="section">
         {filtered.length === 0 ? (

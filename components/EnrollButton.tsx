@@ -82,9 +82,38 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
       console.log('前端收到報名成功回應:', enrollment);
 
       setSubmissions((prev) => [...prev, enrollment]);
+      // 建立對應訂單
+      try {
+        const orderRes = await fetch('/api/orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            courseId,
+            enrollmentId: (enrollment as any).id,
+            amount: 0,
+            currency: 'TWD',
+          }),
+        });
+
+        const orderData = await orderRes.json();
+        console.log('訂單建立回應:', orderData);
+
+        // 為了 demo / 測試，模擬金流回呼 (實際上應由金流提供者 call webhook)
+        if (orderData?.order?.orderId) {
+          await fetch('/api/payments/webhook', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ orderId: orderData.order.orderId, status: 'PAID' }),
+          });
+          alert('已模擬付款完成，課程應已生效（Demo）。');
+        }
+      } catch (err) {
+        console.error('建立訂單或模擬付款失敗:', err);
+        alert('報名成功，但建立訂單或模擬付款時發生錯誤（請查看 console）。');
+      }
+
       resetForm();
       setIsOpen(false);
-      alert('已送出報名意願（Demo），目前資料已送到 /api/enroll。');
     } catch (err) {
       console.error('呼叫 /api/enroll 時發生錯誤:', err);
       setError('無法連線到伺服器，請稍後再試。');

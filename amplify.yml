@@ -1,0 +1,23 @@
+version: 1
+applications:
+  - backend:
+      phases:
+        build:
+          commands:
+            - '# Push Amplify backend (AppSync/GraphQL, functions, auth, storage)'
+            - amplifyPush --simple
+    frontend:
+      phases:
+        preBuild:
+          commands:
+            - npm ci
+        build:
+          commands:
+            - npm run build
+      artifacts:
+        baseDirectory: .next
+        files:
+          - '**/*'
+      cache:
+        paths:
+          - node_modules/**/*

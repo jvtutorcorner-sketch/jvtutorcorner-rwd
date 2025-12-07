@@ -1,6 +1,7 @@
 // app/teachers/page.tsx
 import { TEACHERS } from '@/data/teachers';
 import { TeacherCard } from '@/components/TeacherCard';
+import SearchForm from '@/components/SearchForm';
 
 type TeachersPageProps = {
   searchParams?: {
@@ -19,13 +20,30 @@ export default function TeachersPage({ searchParams }: TeachersPageProps) {
   // const mode = searchParams?.mode ?? '';
 
   const filtered = TEACHERS.filter((t) => {
-    if (subject && !t.subjects.includes(subject)) return false;
+    if (subject && !t.subjects.some((s) => s.includes(subject))) return false;
     if (language && !t.languages.includes(language)) return false;
     if (region && !t.location.includes(region)) return false;
     return true;
   });
 
   const hasFilter = subject || language || region;
+
+  // build option lists from TEACHERS data
+  const subjectOptions = Array.from(
+    new Set(TEACHERS.flatMap((t) => t.subjects))
+  ).sort();
+
+  const languageOptions = Array.from(
+    new Set(TEACHERS.flatMap((t) => t.languages))
+  ).sort();
+
+  const regionOptions = Array.from(
+    new Set(
+      TEACHERS.flatMap((t) =>
+        t.location.split('/').map((s) => s.trim())
+      )
+    )
+  ).sort();
 
   return (
     <div className="page">
@@ -37,6 +55,17 @@ export default function TeachersPage({ searchParams }: TeachersPageProps) {
           <p>依照科目、語言與時薪，找到最適合你的老師。</p>
         )}
       </header>
+
+      {/* 搜尋表單（移到專業師資頁面） */}
+      <section className="section">
+        <SearchForm
+          initial={{ subject, language, region }}
+          targetPath="/teachers"
+          subjectOptions={subjectOptions}
+          languageOptions={languageOptions}
+          regionOptions={regionOptions}
+        />
+      </section>
 
       <section className="section">
         {filtered.length === 0 ? (

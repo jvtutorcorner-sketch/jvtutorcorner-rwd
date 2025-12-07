@@ -24,9 +24,11 @@ export function AuthStatusBar() {
   const handleLogout = () => {
     clearStoredUser();
     setUser(null);
-    alert('已登出測試帳號。');
-    // 重新整理首頁，確保上方狀態同步更新
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('tutor:auth-changed'));
+    }
     router.refresh();
+    alert('已登出測試帳號。');
   };
 
   if (!user) {

@@ -1,0 +1,42 @@
+[
+  {
+    "id": "enr_1765099479860_ae26fed0",
+    "name": "Demo Student",
+    "email": "demo@example.com",
+    "courseId": "demo-course-001",
+    "courseTitle": "示範課程",
+    "status": "CANCELLED",
+    "createdAt": "2025-12-07T09:24:39.860Z",
+    "updatedAt": "2025-12-07T09:36:03.856Z"
+  },
+  {
+    "id": "enr_1765099561836_8fc1e13a",
+    "name": "Demo Student",
+    "email": "demo@example.com",
+    "courseId": "demo-course-001",
+    "courseTitle": "示範課程",
+    "status": "ACTIVE",
+    "createdAt": "2025-12-07T09:26:01.836Z",
+    "updatedAt": "2025-12-07T09:26:01.924Z"
+  },
+  {
+    "id": "enr_1765106792906_2bee6dc3",
+    "name": "Demo Student",
+    "email": "demo@example.com",
+    "courseId": "demo-course-001",
+    "courseTitle": "示範課程",
+    "status": "ACTIVE",
+    "createdAt": "2025-12-07T11:26:32.906Z",
+    "updatedAt": "2025-12-07T11:26:34.326Z"
+  },
+  {
+    "id": "enr_1765107052260_438f5266",
+    "name": "Demo Student",
+    "email": "demo@example.com",
+    "courseId": "demo-course-001",
+    "courseTitle": "示範課程",
+    "status": "ACTIVE",
+    "createdAt": "2025-12-07T11:30:52.260Z",
+    "updatedAt": "2025-12-07T11:30:53.140Z"
+  }
+]

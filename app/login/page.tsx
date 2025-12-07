@@ -48,6 +48,10 @@ export default function LoginPage() {
     setStoredUser(user);
     setCurrentUser(user);
 
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('tutor:auth-changed'));
+    }
+
     alert(
       `登入成功！\n目前使用方案：${PLAN_LABELS[user.plan]}（測試帳號）\n接下來會導向到價目頁 /pricing。`,
     );
@@ -58,6 +62,10 @@ export default function LoginPage() {
   const handleLogout = () => {
     clearStoredUser();
     setCurrentUser(null);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('tutor:auth-changed'));
+    }
+    router.refresh();
     alert('已登出測試帳號。');
   };
 

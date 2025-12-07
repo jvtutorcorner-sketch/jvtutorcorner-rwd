@@ -1,0 +1,126 @@
+[
+  {
+    "pk": "HOMEPAGE#RECOMMENDED_TEACHER",
+    "sk": "t1",
+    "type": "recommended_teacher",
+    "id": "t1",
+    "name": "林老師",
+    "avatarUrl": "https://avatars.githubusercontent.com/u/1?v=4",
+    "subjects": [
+      "英文",
+      "英檢中級"
+    ],
+    "rating": 4.9,
+    "hourlyRate": 800,
+    "intro": "10 年雙語教學經驗，專攻英檢、TOEIC 口說與寫作。",
+    "createdAt": "2025-12-07T10:23:33.384Z"
+  },
+  {
+    "pk": "HOMEPAGE#RECOMMENDED_TEACHER",
+    "sk": "t2",
+    "type": "recommended_teacher",
+    "id": "t2",
+    "name": "陳老師",
+    "avatarUrl": "https://avatars.githubusercontent.com/u/2?v=4",
+    "subjects": [
+      "數學",
+      "國中會考",
+      "高中學測"
+    ],
+    "rating": 4.8,
+    "hourlyRate": 700,
+    "intro": "擅長用生活化例子解釋數學觀念，陪學生建立自信。",
+    "createdAt": "2025-12-07T10:23:33.385Z"
+  },
+  {
+    "pk": "HOMEPAGE#RECOMMENDED_TEACHER",
+    "sk": "t3",
+    "type": "recommended_teacher",
+    "id": "t3",
+    "name": "王老師",
+    "avatarUrl": "https://avatars.githubusercontent.com/u/3?v=4",
+    "subjects": [
+      "英文會話",
+      "商用英文"
+    ],
+    "rating": 5,
+    "hourlyRate": 1000,
+    "intro": "前外商 PM，實戰職場英文表達與會議溝通。",
+    "createdAt": "2025-12-07T10:23:33.385Z"
+  },
+  {
+    "pk": "HOMEPAGE#POPULAR_COURSE",
+    "sk": "c1",
+    "type": "popular_course",
+    "id": "c1",
+    "title": "英檢中級衝刺班（12 週）",
+    "subject": "英文",
+    "teacherName": "林老師",
+    "pricePerSession": 900,
+    "durationMinutes": 90,
+    "tags": [
+      "英檢中級",
+      "聽力閱讀",
+      "寫作口說"
+    ],
+    "mode": "online",
+    "nextStartDate": "2025-12-10",
+    "createdAt": "2025-12-07T10:23:33.385Z"
+  },
+  {
+    "pk": "HOMEPAGE#POPULAR_COURSE",
+    "sk": "c2",
+    "type": "popular_course",
+    "id": "c2",
+    "title": "國三會考總復習：數學重點題型",
+    "subject": "數學",
+    "teacherName": "陳老師",
+    "pricePerSession": 750,
+    "durationMinutes": 90,
+    "tags": [
+      "會考",
+      "歷屆試題",
+      "觀念統整"
+    ],
+    "mode": "online",
+    "nextStartDate": "2025-12-05",
+    "createdAt": "2025-12-07T10:23:33.385Z"
+  },
+  {
+    "pk": "HOMEPAGE#POPULAR_COURSE",
+    "sk": "c3",
+    "type": "popular_course",
+    "id": "c3",
+    "title": "商用英語會議表達技巧",
+    "subject": "英文",
+    "teacherName": "王老師",
+    "pricePerSession": 1200,
+    "durationMinutes": 60,
+    "tags": [
+      "商用英文",
+      "簡報",
+      "會議"
+    ],
+    "mode": "online",
+    "nextStartDate": "2025-12-15",
+    "createdAt": "2025-12-07T10:23:33.385Z"
+  },
+  {
+    "pk": "HOMEPAGE#POPULAR_COURSE",
+    "sk": "c4",
+    "type": "popular_course",
+    "id": "c4",
+    "title": "旅遊日文：跟團自助都好用",
+    "subject": "日文",
+    "teacherName": "佐藤先生",
+    "pricePerSession": 850,
+    "durationMinutes": 60,
+    "tags": [
+      "旅遊",
+      "日常會話"
+    ],
+    "mode": "online",
+    "nextStartDate": "2025-12-20",
+    "createdAt": "2025-12-07T10:23:33.385Z"
+  }
+]

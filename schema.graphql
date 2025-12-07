@@ -10,6 +10,7 @@ type Student @model @auth(rules: [{ allow: owner }]) {
   appointments: [Appointment] @hasMany(indexName: "byStudent", fields: ["id"])
   payments: [Payment] @hasMany(indexName: "byStudent", fields: ["id"])
   courseActivities: [CourseActivity] @hasMany(indexName: "byStudent", fields: ["id"])
+  courseRecords: [CourseRecord] @hasMany(indexName: "byStudent", fields: ["id"])
 }
 
 type Teacher @model @auth(rules: [{ allow: owner }]) {
@@ -47,6 +48,7 @@ type Course @model @auth(rules: [{ allow: public, operations: [read] }]) {
   teacher: Teacher @belongsTo(fields: ["teacherID"])
   appointments: [Appointment] @hasMany(indexName: "byCourse", fields: ["id"])
   activities: [CourseActivity] @hasMany(indexName: "byCourse", fields: ["id"])
+  courseRecords: [CourseRecord] @hasMany(indexName: "byCourse", fields: ["id"])
 }
 
 # New types for the requested features
@@ -59,58 +61,193 @@ enum AppointmentStatus {
 
 type Appointment @model @auth(rules: [{ allow: owner }]) {
   id: ID!
-  startTime: AWSDateTime!
-  endTime: AWSDateTime!
-  status: AppointmentStatus!
-  # Relationships
-  studentID: ID! @index(name: "byStudent", sortKeyFields: ["startTime"])
-  student: Student @belongsTo(fields: ["studentID"])
-  teacherID: ID! @index(name: "byTeacher", sortKeyFields: ["startTime"])
-  teacher: Teacher @belongsTo(fields: ["teacherID"])
-  courseID: ID! @index(name: "byCourse", sortKeyFields: ["startTime"])
-  course: Course @belongsTo(fields: ["courseID"])
-  payment: Payment @hasOne
-}
+  # Base types defined from existing data structures
 
-enum PaymentStatus {
-  PENDING
-  PAID
-  FAILED
-}
+  type Student @model @auth(rules: [{ allow: owner }]) {
+    id: ID!
+    name: String!
+    level: String
+    goals: [String]
+    preferredSubjects: [String]
+    # Relationships
+    appointments: [Appointment] @hasMany(indexName: "byStudent", fields: ["id"])
+    payments: [Payment] @hasMany(indexName: "byStudent", fields: ["id"])
+    courseActivities: [CourseActivity] @hasMany(indexName: "byStudent", fields: ["id"])
+    courseRecords: [CourseRecord] @hasMany(indexName: "byStudent", fields: ["id"])
+  }
 
-type Payment @model @auth(rules: [{ allow: owner }]) {
-  id: ID!
-  amount: Float!
-  currency: String!
-  status: PaymentStatus!
-  paymentMethod: String
-  createdAt: AWSDateTime
-  # Relationships
-  studentID: ID! @index(name: "byStudent", sortKeyFields: ["createdAt"])
-  student: Student @belongsTo(fields: ["studentID"])
-  appointmentID: ID
-  appointment: Appointment @belongsTo(fields: ["appointmentID"])
-}
+  type Teacher @model @auth(rules: [{ allow: owner }]) {
+    id: ID!
+    name: String!
+    avatarUrl: AWSURL
+    subjects: [String]
+    languages: [String]
+    rating: Float
+    hourlyRate: Float
+    location: String
+    intro: String
+    # Relationships
+    courses: [Course] @hasMany(indexName: "byTeacher", fields: ["id"])
+    appointments: [Appointment] @hasMany(indexName: "byTeacher", fields: ["id"])
+  }
 
-type CourseActivity @model @auth(rules: [{ allow: owner }]) {
-  id: ID!
-  timestamp: AWSDateTime!
-  description: String!
-  # Relationships
-  courseID: ID! @index(name: "byCourse", sortKeyFields: ["timestamp"])
-  course: Course @belongsTo(fields: ["courseID"])
-  studentID: ID! @index(name: "byStudent", sortKeyFields: ["timestamp"])
-  student: Student @belongsTo(fields: ["studentID"])
-}
+  type Course @model @auth(rules: [{ allow: public, operations: [read] }]) {
+    id: ID!
+    title: String!
+    subject: String
+    level: String
+    language: String
+    pricePerSession: Float
+    durationMinutes: Int
+    tags: [String]
+    mode: CourseMode
+    description: String
+    nextStartDate: AWSDate
+    totalSessions: Int
+    seatsLeft: Int
+    currency: String
+    # Relationships
+    teacherID: ID! @index(name: "byTeacher", sortKeyFields: ["title"])
+    teacher: Teacher @belongsTo(fields: ["teacherID"])
+    appointments: [Appointment] @hasMany(indexName: "byCourse", fields: ["id"])
+    activities: [CourseActivity] @hasMany(indexName: "byCourse", fields: ["id"])
+    courseRecords: [CourseRecord] @hasMany(indexName: "byCourse", fields: ["id"])
+  }
 
-enum CourseMode {
-  online
-  onsite
-}
+  # New types for the requested features
 
-# Existing type from the investigation, keeping it for now.
-type WhiteboardEvent @model @auth(rules: [{allow: public}]) {
-  id: ID!
-  event: AWSJSON!
-  room: String!
-}
+  enum AppointmentStatus {
+    SCHEDULED
+    COMPLETED
+    CANCELLED
+  }
+
+  type Appointment @model @auth(rules: [{ allow: owner }]) {
+    id: ID!
+    startTime: AWSDateTime!
+    endTime: AWSDateTime!
+    status: AppointmentStatus!
+    # Relationships
+    studentID: ID! @index(name: "byStudent", sortKeyFields: ["startTime"])
+    student: Student @belongsTo(fields: ["studentID"])
+    teacherID: ID! @index(name: "byTeacher", sortKeyFields: ["startTime"])
+    teacher: Teacher @belongsTo(fields: ["teacherID"])
+    courseID: ID! @index(name: "byCourse", sortKeyFields: ["startTime"])
+    course: Course @belongsTo(fields: ["courseID"])
+    payment: Payment @hasOne
+  }
+
+  enum PaymentStatus {
+    PENDING
+    PAID
+    FAILED
+  }
+
+  type Payment @model @auth(rules: [{ allow: owner }]) {
+    id: ID!
+    amount: Float!
+    currency: String!
+    status: PaymentStatus!
+    paymentMethod: String
+    createdAt: AWSDateTime
+    # Relationships
+    studentID: ID! @index(name: "byStudent", sortKeyFields: ["createdAt"])
+    student: Student @belongsTo(fields: ["studentID"])
+    appointmentID: ID
+    appointment: Appointment @belongsTo(fields: ["appointmentID"])
+  }
+
+  type CourseActivity @model @auth(rules: [{ allow: owner }]) {
+    id: ID!
+    timestamp: AWSDateTime!
+    description: String!
+    # Relationships
+    courseID: ID! @index(name: "byCourse", sortKeyFields: ["timestamp"])
+    course: Course @belongsTo(fields: ["courseID"])
+    studentID: ID! @index(name: "byStudent", sortKeyFields: ["timestamp"])
+    student: Student @belongsTo(fields: ["studentID"])
+  }
+
+  type CourseRecord @model @auth(rules: [{ allow: owner }]) {
+    id: ID!
+    date: AWSDate!
+    notes: String
+    status: String!
+    # Relationships
+    courseID: ID! @index(name: "byCourse", sortKeyFields: ["date"])
+    course: Course @belongsTo(fields: ["courseID"])
+    studentID: ID! @index(name: "byStudent", sortKeyFields: ["date"])
+    student: Student @belongsTo(fields: ["studentID"])
+  }
+
+  enum CourseMode {
+    online
+    onsite
+  }
+
+  # Existing type from the investigation, keeping it for now.
+  type WhiteboardEvent @model @auth(rules: [{allow: public}]) {
+    id: ID!
+    event: AWSJSON!
+    room: String!
+  }
+
+  # Enrollment & Order types for payment flow
+  enum EnrollmentStatus {
+    PENDING_PAYMENT
+    PAID
+    ACTIVE
+    CANCELLED
+    REFUNDED
+    FAILED
+  }
+
+  enum OrderStatus {
+    PENDING
+    PAID
+    CANCELLED
+    REFUNDED
+    FAILED
+  }
+
+  type Enrollment @model @auth(rules: [{ allow: owner }, { allow: groups, groups: ["Teacher","Admin"] }]) {
+    id: ID!
+    studentID: ID! @index(name: "byStudent", sortKeyFields: ["createdAt"])
+    student: Student @belongsTo(fields: ["studentID"])
+    courseID: ID! @index(name: "byCourse", sortKeyFields: ["createdAt"])
+    course: Course @belongsTo(fields: ["courseID"])
+    status: EnrollmentStatus!
+    paymentProvider: String
+    paymentSessionId: String
+    createdAt: AWSDateTime
+    updatedAt: AWSDateTime
+    order: Order @hasOne(fields: ["orderId"])
+    orderId: ID
+  }
+
+  type Order @model @auth(rules: [{ allow: owner }, { allow: groups, groups: ["Teacher","Admin"] }]) {
+    id: ID!
+    amount: Float!
+    currency: String!
+    status: OrderStatus!
+    paymentProvider: String
+    transactionId: String
+    enrollmentID: ID @index(name: "byEnrollment", sortKeyFields: ["createdAt"])
+    enrollment: Enrollment @belongsTo(fields: ["enrollmentID"])
+    createdAt: AWSDateTime
+    updatedAt: AWSDateTime
+  }
+
+  type Refund @model @auth(rules: [{ allow: owner }, { allow: groups, groups: ["Teacher","Admin"] }]) {
+    id: ID!
+    orderID: ID! @index(name: "byOrder", sortKeyFields: ["createdAt"])
+    order: Order @belongsTo(fields: ["orderID"])
+    amount: Float!
+    currency: String!
+    providerRefundId: String
+    status: String
+    reason: String
+    createdAt: AWSDateTime
+    updatedAt: AWSDateTime
+  }
+    status: String

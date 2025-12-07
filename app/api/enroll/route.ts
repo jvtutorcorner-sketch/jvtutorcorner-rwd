@@ -2,12 +2,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { PutCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { ddbDocClient } from '@/lib/dynamo';
+import fs from 'fs';
+import path from 'path';
 
 export const runtime = 'nodejs'; // 🔴 強制用 Node.js runtime（給 Amplify / Next 用）
 
 export type EnrollmentStatus =
   | 'PENDING_PAYMENT' // 已填寫報名資料，尚未付款
   | 'PAID'            // 金流回呼確認已付款
+  | 'ACTIVE'          // 課程生效並開通
   | 'CANCELLED'       // 學生取消
   | 'FAILED';         // 金流失敗或其他錯誤
 
@@ -26,8 +29,40 @@ export type EnrollmentRecord = {
 
 const TABLE_NAME = process.env.ENROLLMENTS_TABLE;
 
-// 開發環境用的 in-memory 暫存
-const LOCAL_ENROLLMENTS: EnrollmentRecord[] = [];
+// local persistence for development fallback
+const DATA_DIR = path.resolve(process.cwd(), '.local_data');
+const ENROLL_FILE = path.join(DATA_DIR, 'enrollments.json');
+
+let LOCAL_ENROLLMENTS: EnrollmentRecord[] = [];
+
+function ensureDataDir() {
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+  } catch (e) {
+    console.warn('[enroll API] failed to create .local_data dir', (e as any)?.message || e);
+  }
+}
+
+function loadLocalEnrollments() {
+  try {
+    if (fs.existsSync(ENROLL_FILE)) {
+      const raw = fs.readFileSync(ENROLL_FILE, 'utf8');
+      LOCAL_ENROLLMENTS = JSON.parse(raw || '[]');
+    }
+  } catch (e) {
+    console.warn('[enroll API] failed to load local enrollments', (e as any)?.message || e);
+    LOCAL_ENROLLMENTS = [];
+  }
+}
+
+function saveLocalEnrollments() {
+  try {
+    ensureDataDir();
+    fs.writeFileSync(ENROLL_FILE, JSON.stringify(LOCAL_ENROLLMENTS, null, 2), 'utf8');
+  } catch (e) {
+    console.warn('[enroll API] failed to save local enrollments', (e as any)?.message || e);
+  }
+}
 
 // production 且有 TABLE_NAME 才真的用 DynamoDB
 const useDynamo =
@@ -44,6 +79,9 @@ if (!useDynamo) {
     `[enroll API] 使用 DynamoDB Table: ${TABLE_NAME}`,
   );
 }
+
+// load persisted enrollments in dev fallback
+if (!useDynamo) loadLocalEnrollments();
 
 function generateId() {
   return `enr_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;
@@ -109,6 +147,65 @@ export async function POST(request: NextRequest) {
       { ok: false, error: '伺服器錯誤。' },
       { status: 500 },
     );
+  }
+}
+
+export async function PATCH(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { id, status, paymentProvider, paymentSessionId } = body || {};
+
+    if (!id || !status) {
+      return NextResponse.json({ ok: false, error: '需要 id 與 status' }, { status: 400 });
+    }
+
+    // dev: 更新記憶體
+    if (!useDynamo) {
+      const idx = LOCAL_ENROLLMENTS.findIndex((e) => e.id === id);
+      if (idx === -1) {
+        return NextResponse.json({ ok: false, error: '找不到該報名紀錄' }, { status: 404 });
+      }
+
+      const existing = LOCAL_ENROLLMENTS[idx];
+      const updated = {
+        ...existing,
+        status,
+        paymentProvider: paymentProvider || existing.paymentProvider,
+        paymentSessionId: paymentSessionId || existing.paymentSessionId,
+        updatedAt: new Date().toISOString(),
+      };
+
+      LOCAL_ENROLLMENTS[idx] = updated;
+
+      // persist to disk for dev
+      saveLocalEnrollments();
+
+      return NextResponse.json({ ok: true, enrollment: updated }, { status: 200 });
+    }
+
+    // production: update DynamoDB
+    if (!TABLE_NAME) {
+      return NextResponse.json({ ok: false, error: '伺服器尚未設定 ENROLLMENTS_TABLE。' }, { status: 500 });
+    }
+
+    // 使用 PutCommand 覆寫
+    const updatedAt = new Date().toISOString();
+    const Item = {
+      id,
+      status,
+      paymentProvider: paymentProvider || undefined,
+      paymentSessionId: paymentSessionId || undefined,
+      updatedAt,
+    };
+
+    await ddbDocClient.send(
+      new PutCommand({ TableName: TABLE_NAME, Item }),
+    );
+
+    return NextResponse.json({ ok: true, enrollment: Item }, { status: 200 });
+  } catch (err: any) {
+    console.error('[enroll API] PATCH 發生錯誤:', err?.message || err, err?.stack);
+    return NextResponse.json({ ok: false, error: '伺服器錯誤。' }, { status: 500 });
   }
 }
 
