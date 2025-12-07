@@ -154,6 +154,9 @@ export default function LoginPage() {
               <Link href="/pricing" className="modal-button secondary">
                 先看價目表
               </Link>
+              <Link href="/login/register" className="modal-button secondary">
+                建立帳戶
+              </Link>
             </div>
           </form>
         </div>
