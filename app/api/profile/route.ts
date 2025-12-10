@@ -2,8 +2,20 @@ import { NextResponse } from 'next/server';
 import fs from 'fs/promises';
 import path from 'path';
 import resolveDataFile from '@/lib/localData';
+import { ddbDocClient } from '@/lib/dynamo';
+import { ScanCommand, GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
 
 async function readProfiles(): Promise<any[]> {
+  const PROFILES_TABLE = process.env.DYNAMODB_TABLE_PROFILES || process.env.PROFILES_TABLE || '';
+  const useDynamo = typeof PROFILES_TABLE === 'string' && PROFILES_TABLE.length > 0;
+  if (useDynamo) {
+    try {
+      const res: any = await ddbDocClient.send(new ScanCommand({ TableName: PROFILES_TABLE }));
+      return res.Items || [];
+    } catch (e) {
+      console.warn('[profile] Dynamo scan failed, falling back to file', (e as any)?.message || e);
+    }
+  }
   try {
     const DATA_FILE = await resolveDataFile('profiles.json');
     const raw = await fs.readFile(DATA_FILE, 'utf8');
@@ -14,6 +26,19 @@ async function readProfiles(): Promise<any[]> {
 }
 
 async function writeProfiles(arr: any[]) {
+  const PROFILES_TABLE = process.env.DYNAMODB_TABLE_PROFILES || process.env.PROFILES_TABLE || '';
+  const useDynamo = typeof PROFILES_TABLE === 'string' && PROFILES_TABLE.length > 0;
+  if (useDynamo) {
+    try {
+      // overwrite all items by writing each item (demo convenience)
+      for (const item of arr) {
+        await ddbDocClient.send(new PutCommand({ TableName: PROFILES_TABLE, Item: item }));
+      }
+      return;
+    } catch (e) {
+      console.warn('[profile API] Dynamo write failed', (e as any)?.message || e);
+    }
+  }
   try {
     const DATA_FILE = await resolveDataFile('profiles.json');
     await fs.writeFile(DATA_FILE, JSON.stringify(arr, null, 2), 'utf8');
@@ -55,14 +80,43 @@ export async function PATCH(req: Request) {
     const email = body.email ? String(body.email).toLowerCase() : undefined;
     const id = body.id;
 
-    const profiles = await readProfiles();
-    const idx = profiles.findIndex((p) => {
-      if (email) return String(p.email).toLowerCase() === email;
-      return p.roid_id === id || p.id === id;
-    });
-    if (idx === -1) return NextResponse.json({ ok: false, message: 'Profile not found' }, { status: 404 });
+    const PROFILES_TABLE = process.env.DYNAMODB_TABLE_PROFILES || process.env.PROFILES_TABLE || '';
+    const useDynamo = typeof PROFILES_TABLE === 'string' && PROFILES_TABLE.length > 0;
+    let profile: any = null;
+    let profiles = [] as any[];
 
-    const profile = profiles[idx];
+    if (useDynamo) {
+      try {
+        if (email) {
+          const scanRes: any = await ddbDocClient.send(new ScanCommand({ TableName: PROFILES_TABLE, FilterExpression: 'email = :email', ExpressionAttributeValues: { ':email': email } }));
+          profile = scanRes?.Items?.[0] || null;
+        } else if (id) {
+          try {
+            const getRes: any = await ddbDocClient.send(new GetCommand({ TableName: PROFILES_TABLE, Key: { id } }));
+            profile = getRes?.Item || null;
+            if (!profile) {
+              // fallback: scan by roid_id
+              const scanRes: any = await ddbDocClient.send(new ScanCommand({ TableName: PROFILES_TABLE, FilterExpression: 'roid_id = :rid', ExpressionAttributeValues: { ':rid': id } }));
+              profile = scanRes?.Items?.[0] || null;
+            }
+          } catch (e) {
+            console.warn('[profile GET] Dynamo get/scan failed', (e as any)?.message || e);
+          }
+        }
+      } catch (e) {
+        console.warn('[profile GET] Dynamo lookup failed', (e as any)?.message || e);
+      }
+    }
+
+    if (!profile) {
+      profiles = await readProfiles();
+      const idx = profiles.findIndex((p) => {
+        if (email) return String(p.email).toLowerCase() === email;
+        return p.roid_id === id || p.id === id;
+      });
+      if (idx === -1) return NextResponse.json({ ok: false, message: 'Profile not found' }, { status: 404 });
+      profile = profiles[idx];
+    }
     // apply allowed updates (for demo, we allow adding/updating payment info and names)
     const updates: any = {};
     if (body.firstName !== undefined) updates.firstName = body.firstName;
@@ -90,8 +144,21 @@ export async function PATCH(req: Request) {
     } catch {}
 
     const merged = { ...profile, ...updates, updatedAtUtc: nowUtc, updatedAtLocal: local };
-    profiles[idx] = merged;
-    await writeProfiles(profiles);
+    // persist
+    if (useDynamo) {
+      try {
+        await ddbDocClient.send(new PutCommand({ TableName: PROFILES_TABLE, Item: merged }));
+        return NextResponse.json({ ok: true, profile: merged });
+      } catch (e) {
+        console.error('[profile PATCH] Dynamo write failed', (e as any)?.message || e);
+        return NextResponse.json({ ok: false, message: 'Failed to update profile' }, { status: 500 });
+      }
+    }
+
+    const profilesAll = await readProfiles();
+    const idx2 = profilesAll.findIndex((p) => p.roid_id === merged.roid_id || p.id === merged.id);
+    if (idx2 !== -1) profilesAll[idx2] = merged; else profilesAll.push(merged);
+    await writeProfiles(profilesAll);
     return NextResponse.json({ ok: true, profile: merged });
   } catch (err: any) {
     console.error('[profile PATCH] error', err?.message || err);

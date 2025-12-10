@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import fs from 'fs/promises';
 import path from 'path';
 import resolveDataFile from '@/lib/localData';
+import { ddbDocClient } from '@/lib/dynamo';
+import { ScanCommand } from '@aws-sdk/lib-dynamodb';
 
 async function readProfiles() {
   try {
@@ -34,8 +36,24 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, profile: publicProfile });
     }
 
-    const profiles = await readProfiles();
-    const found = profiles.find((p: any) => p.email === String(email).toLowerCase() && p.password === password);
+    const PROFILES_TABLE = process.env.DYNAMODB_TABLE_PROFILES || process.env.PROFILES_TABLE || '';
+    const useDynamo = typeof PROFILES_TABLE === 'string' && PROFILES_TABLE.length > 0;
+
+    let found: any = null;
+    if (useDynamo) {
+      try {
+        const scanRes: any = await ddbDocClient.send(new ScanCommand({ TableName: PROFILES_TABLE, FilterExpression: 'email = :email AND password = :pw', ExpressionAttributeValues: { ':email': String(email).toLowerCase(), ':pw': password } }));
+        if (scanRes?.Count > 0) found = scanRes.Items[0];
+      } catch (e) {
+        console.warn('[login] Dynamo scan failed, falling back to file', (e as any)?.message || e);
+      }
+    }
+
+    if (!found) {
+      const profiles = await readProfiles();
+      found = profiles.find((p: any) => p.email === String(email).toLowerCase() && p.password === password);
+    }
+
     if (!found) {
       return NextResponse.json({ ok: false }, { status: 401 });
     }
