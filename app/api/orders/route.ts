@@ -5,6 +5,7 @@ import { DynamoDBDocumentClient, PutCommand, ScanCommand } from '@aws-sdk/lib-dy
 import { randomUUID } from 'crypto';
 import fs from 'fs';
 import path from 'path';
+import resolveDataFile from '@/lib/localData';
 
 const client = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(client);
@@ -15,24 +16,14 @@ const getUserId = async (): Promise<string | null> => {
 };
 
 // Development fallback: keep orders in memory when DynamoDB isn't configured
-const DATA_DIR = path.resolve(process.cwd(), '.local_data');
-const ORDERS_FILE = path.join(DATA_DIR, 'orders.json');
-
 let LOCAL_ORDERS: any[] = [];
 const ORDERS_TABLE = process.env.DYNAMODB_TABLE_ORDERS;
 const useDynamo =
   process.env.NODE_ENV === 'production' && typeof ORDERS_TABLE === 'string' && ORDERS_TABLE.length > 0;
 
-function ensureDataDirOrders() {
+async function loadLocalOrders() {
   try {
-    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-  } catch (e) {
-    console.warn('[orders API] failed to create .local_data dir', (e as any)?.message || e);
-  }
-}
-
-function loadLocalOrders() {
-  try {
+    const ORDERS_FILE = await resolveDataFile('orders.json');
     if (fs.existsSync(ORDERS_FILE)) {
       const raw = fs.readFileSync(ORDERS_FILE, 'utf8');
       LOCAL_ORDERS = JSON.parse(raw || '[]');
@@ -43,9 +34,9 @@ function loadLocalOrders() {
   }
 }
 
-function saveLocalOrders() {
+async function saveLocalOrders() {
   try {
-    ensureDataDirOrders();
+    const ORDERS_FILE = await resolveDataFile('orders.json');
     fs.writeFileSync(ORDERS_FILE, JSON.stringify(LOCAL_ORDERS, null, 2), 'utf8');
   } catch (e) {
     console.warn('[orders API] failed to save local orders', (e as any)?.message || e);
@@ -54,8 +45,8 @@ function saveLocalOrders() {
 
 if (!useDynamo) {
   console.warn(`[orders API] Not using DynamoDB (NODE_ENV=${process.env.NODE_ENV}, DYNAMODB_TABLE_ORDERS=${ORDERS_TABLE}). Using LOCAL_ORDERS fallback.`);
-  // load persisted orders in dev
-  loadLocalOrders();
+  // load persisted orders in dev (non-blocking)
+  loadLocalOrders().catch(() => {});
 } else {
   console.log(`[orders API] Using DynamoDB Table: ${ORDERS_TABLE}`);
 }
@@ -100,7 +91,8 @@ export async function POST(request: Request) {
     } else {
       // dev fallback: push to in-memory store
         LOCAL_ORDERS.unshift(order);
-        saveLocalOrders();
+        // persist to disk when possible
+        saveLocalOrders().catch(() => {});
     }
 
     return NextResponse.json({

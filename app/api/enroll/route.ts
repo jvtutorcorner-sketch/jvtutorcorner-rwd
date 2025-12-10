@@ -4,6 +4,7 @@ import { PutCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { ddbDocClient } from '@/lib/dynamo';
 import fs from 'fs';
 import path from 'path';
+import resolveDataFile from '@/lib/localData';
 
 export const runtime = 'nodejs'; // 🔴 強制用 Node.js runtime（給 Amplify / Next 用）
 
@@ -30,21 +31,11 @@ export type EnrollmentRecord = {
 const TABLE_NAME = process.env.ENROLLMENTS_TABLE;
 
 // local persistence for development fallback
-const DATA_DIR = path.resolve(process.cwd(), '.local_data');
-const ENROLL_FILE = path.join(DATA_DIR, 'enrollments.json');
-
 let LOCAL_ENROLLMENTS: EnrollmentRecord[] = [];
 
-function ensureDataDir() {
+async function loadLocalEnrollments() {
   try {
-    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-  } catch (e) {
-    console.warn('[enroll API] failed to create .local_data dir', (e as any)?.message || e);
-  }
-}
-
-function loadLocalEnrollments() {
-  try {
+    const ENROLL_FILE = await resolveDataFile('enrollments.json');
     if (fs.existsSync(ENROLL_FILE)) {
       const raw = fs.readFileSync(ENROLL_FILE, 'utf8');
       LOCAL_ENROLLMENTS = JSON.parse(raw || '[]');
@@ -55,9 +46,9 @@ function loadLocalEnrollments() {
   }
 }
 
-function saveLocalEnrollments() {
+async function saveLocalEnrollments() {
   try {
-    ensureDataDir();
+    const ENROLL_FILE = await resolveDataFile('enrollments.json');
     fs.writeFileSync(ENROLL_FILE, JSON.stringify(LOCAL_ENROLLMENTS, null, 2), 'utf8');
   } catch (e) {
     console.warn('[enroll API] failed to save local enrollments', (e as any)?.message || e);
@@ -81,7 +72,10 @@ if (!useDynamo) {
 }
 
 // load persisted enrollments in dev fallback
-if (!useDynamo) loadLocalEnrollments();
+if (!useDynamo) {
+  // initialize persisted enrollments (non-blocking)
+  loadLocalEnrollments().catch(() => {});
+}
 
 function generateId() {
   return `enr_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;

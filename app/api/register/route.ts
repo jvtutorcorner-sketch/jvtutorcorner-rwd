@@ -1,20 +1,20 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs/promises';
 import path from 'path';
-
-const DATA_FILE = path.join(process.cwd(), '.local_data', 'profiles.json');
+import resolveDataFile from '@/lib/localData';
 
 async function readProfiles() {
   try {
+    const DATA_FILE = await resolveDataFile('profiles.json');
     const raw = await fs.readFile(DATA_FILE, 'utf8');
-    return JSON.parse(raw);
+    return JSON.parse(raw || '[]');
   } catch (err) {
     return [];
   }
 }
 
 async function writeProfiles(profiles: any[]) {
-  await fs.mkdir(path.dirname(DATA_FILE), { recursive: true });
+  const DATA_FILE = await resolveDataFile('profiles.json');
   await fs.writeFile(DATA_FILE, JSON.stringify(profiles, null, 2), 'utf8');
 }
 

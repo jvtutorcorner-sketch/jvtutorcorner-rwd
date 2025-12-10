@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs/promises';
 import path from 'path';
-
-const SETTINGS_FILE = path.join(process.cwd(), '.local_data', 'admin_settings.json');
+import resolveDataFile from '@/lib/localData';
 
 async function readSettings() {
   try {
+    const SETTINGS_FILE = await resolveDataFile('admin_settings.json');
     const raw = await fs.readFile(SETTINGS_FILE, 'utf8');
     return JSON.parse(raw);
   } catch (err) {
@@ -34,7 +34,7 @@ async function readSettings() {
 }
 
 async function writeSettings(obj: any) {
-  await fs.mkdir(path.join(process.cwd(), '.local_data'), { recursive: true });
+  const SETTINGS_FILE = await resolveDataFile('admin_settings.json');
   await fs.writeFile(SETTINGS_FILE, JSON.stringify(obj, null, 2), 'utf8');
 }
 
