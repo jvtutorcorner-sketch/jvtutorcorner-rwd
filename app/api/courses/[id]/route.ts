@@ -22,7 +22,7 @@ async function writeCourses(arr: any[]) {
   }
 }
 
-export async function DELETE(req: Request, { params }: { params: { id: string } }) {
+export async function DELETE(req: Request, { params }: { params: any }) {
   try {
     const id = params.id;
     const courses = await readCourses();
@@ -37,7 +37,7 @@ export async function DELETE(req: Request, { params }: { params: { id: string } 
   }
 }
 
-export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+export async function PATCH(req: Request, { params }: { params: any }) {
   try {
     const id = params.id;
     const body = await req.json();

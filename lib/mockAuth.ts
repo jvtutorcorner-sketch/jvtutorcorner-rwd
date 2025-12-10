@@ -69,8 +69,12 @@ export const MOCK_USERS: Record<
 export type StoredUser = {
   email: string;
   plan: PlanId;
-  // optional role for admin demo: 'admin' means elevated permissions
-  role?: 'admin' | 'user';
+  // optional role for admin/teacher demo
+  role?: 'admin' | 'user' | 'teacher';
+  // optional display/name fields used in various UIs
+  displayName?: string;
+  firstName?: string;
+  lastName?: string;
 };
 
 export const STORAGE_KEY = 'tutor_mock_user';

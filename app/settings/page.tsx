@@ -2,15 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
 import { getStoredUser, setStoredUser, PLAN_LABELS, PLAN_PRICES } from '@/lib/mockAuth';
 import type { PlanId } from '@/lib/mockAuth';
 
 export default function SettingsPage() {
   const [user, setUser] = useState<any>(null);
   const [hydrated, setHydrated] = useState(false);
-  const searchParams = useSearchParams();
-  const tab = (searchParams?.get('tab') || '').toLowerCase();
+  const [tab, setTab] = useState('');
   const [loading, setLoading] = useState(false);
   // payment fields moved to Pricing (upgrade) page
   const [firstName, setFirstName] = useState(user?.firstName || '');
@@ -33,6 +31,8 @@ export default function SettingsPage() {
     if (typeof window !== 'undefined') {
       setHydrated(true);
       setUser(getStoredUser());
+      const sp = new URLSearchParams(window.location.search);
+      setTab((sp.get('tab') || '').toLowerCase());
     }
   }, []);
 
