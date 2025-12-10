@@ -46,7 +46,8 @@ export default function SimulationButtons({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || "create order failed");
-      log("建立訂單成功: " + data.order?.orderId);
+      const displayId = data.order?.orderNumber || data.order?.orderId;
+      log("建立訂單成功: " + displayId);
       return { message: "ok", data };
     } catch (err: any) {
       log("建立訂單失敗: " + (err?.message || String(err)));

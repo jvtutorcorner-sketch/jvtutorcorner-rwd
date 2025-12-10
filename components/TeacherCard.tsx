@@ -7,8 +7,12 @@ interface TeacherCardProps {
 }
 
 export const TeacherCard: React.FC<TeacherCardProps> = ({ teacher }) => {
+  const href = teacher.id
+    ? `/teachers/${encodeURIComponent(String(teacher.id))}`
+    : `/teachers?teacher=${encodeURIComponent(String(teacher.name))}`;
+
   return (
-    <Link href={`/teachers/${teacher.id}`} className="card card-link">
+    <Link href={href} className="card card-link">
       <div className="card-header">
         <img
           src={teacher.avatarUrl}

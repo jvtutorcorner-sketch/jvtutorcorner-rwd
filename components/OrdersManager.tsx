@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from 'next/link';
 
 type Order = {
   orderId?: string;
+  orderNumber?: string;
   id?: string;
   userId?: string;
   enrollmentId?: string;
@@ -83,8 +85,9 @@ export default function OrdersManager() {
       return;
     }
 
-    const headers = ['orderId', 'enrollmentId', 'courseId', 'amount', 'currency', 'status', 'createdAt', 'updatedAt'];
+    const headers = ['orderNumber','orderId', 'enrollmentId', 'courseId', 'amount', 'currency', 'status', 'createdAt', 'updatedAt'];
     const rows = orders.map((o) => [
+      o.orderNumber || o.orderId || o.id || '',
       o.orderId || o.id || '',
       o.enrollmentId || '',
       o.courseId || '',
@@ -194,7 +197,7 @@ export default function OrdersManager() {
       {loading && <p>載入中…</p>}
       {error && <p style={{ color: 'red' }}>{error}</p>}
 
-      <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #ddd' }}>
+      <table className="orders-table" style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #ddd' }}>
             <thead>
               <tr>
                 <th style={{ border: '1px solid #ddd', padding: '8px 6px', textAlign: 'left' }}>OrderId</th>
@@ -208,8 +211,10 @@ export default function OrdersManager() {
             </thead>
             <tbody>
               {orders.map((o, idx) => (
-                <tr key={o.orderId || o.id || idx}>
-                  <td style={{ padding: '8px 6px', border: '1px solid #ddd' }}>{o.orderId || o.id}</td>
+                  <tr key={o.orderId || o.id || idx}>
+                  <td style={{ padding: '8px 6px', border: '1px solid #ddd' }}>
+                    <Link href={`/admin/orders/${o.orderId}`}>{o.orderNumber || o.orderId || o.id}</Link>
+                  </td>
                   <td style={{ padding: '8px 6px', border: '1px solid #ddd' }}>{o.enrollmentId}</td>
                   <td style={{ padding: '8px 6px', border: '1px solid #ddd' }}>{o.courseId}</td>
                   <td style={{ padding: '8px 6px', border: '1px solid #ddd' }}>{o.amount}</td>

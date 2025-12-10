@@ -46,6 +46,7 @@ export function AuthStatusBar() {
   // 已登入 → 顯示帳號資訊 + 登出按鈕
   return (
     <div className="tag" style={{ marginBottom: '1rem' }}>
+      {user.lastName ? <div style={{ fontWeight: 700 }}>{user.lastName}</div> : null}
       目前以 <strong>{user.email}</strong> 登入，
       方案：<strong>{PLAN_LABELS[user.plan]}</strong>
       <button

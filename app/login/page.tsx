@@ -38,7 +38,13 @@ export default function LoginPage() {
         if (res.ok && data?.ok) {
           const role = data.profile?.role as string | undefined;
           const plan = (data.profile?.plan as any) || 'basic';
-          const user: StoredUser = { email: email.trim().toLowerCase(), plan, role: role === 'admin' ? 'admin' : 'user' };
+          const user: StoredUser = {
+            email: email.trim().toLowerCase(),
+            plan,
+            role: role === 'admin' ? 'admin' : 'user',
+            firstName: data.profile?.firstName,
+            lastName: data.profile?.lastName,
+          };
           setStoredUser(user);
           setCurrentUser(user);
           window.dispatchEvent(new Event('tutor:auth-changed'));
@@ -141,6 +147,9 @@ export default function LoginPage() {
             </li>
             <li>
               <strong>Elite：</strong> elite@test.com （Elite 高級會員）
+            </li>
+            <li>
+              <strong>Teacher：</strong> teacher@test.com （示範老師帳號）
             </li>
           </ul>
         </div>

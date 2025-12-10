@@ -60,7 +60,8 @@ export default function EnrollmentManager() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || "Failed to create order");
-      alert("Order created: " + (data.order?.orderId || "(no id)"));
+      const display = data.order?.orderNumber || data.order?.orderId || '(no id)';
+      alert("Order created: " + display);
       await load();
     } catch (err: any) {
       alert("Create order error: " + (err?.message || err));

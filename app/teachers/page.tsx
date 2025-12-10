@@ -13,10 +13,12 @@ type TeachersPageProps = {
   };
 };
 
-export default function TeachersPage({ searchParams }: TeachersPageProps) {
-  const teacher = (searchParams?.teacher ?? '').trim().toLowerCase();
-  const language = (searchParams?.language ?? '').trim().toLowerCase();
-  const region = (searchParams?.region ?? '').trim().toLowerCase();
+export default async function TeachersPage({ searchParams }: TeachersPageProps) {
+  // `searchParams` may be a Promise in Next.js; await to unwrap per runtime.
+  const params = (await (searchParams as any)) || {};
+  const teacher = (params?.teacher ?? '').trim().toLowerCase();
+  const language = (params?.language ?? '').trim().toLowerCase();
+  const region = (params?.region ?? '').trim().toLowerCase();
   // mode 目前沒有用在老師資料上
   // const mode = searchParams?.mode ?? '';
 

@@ -26,6 +26,9 @@ export async function POST(req: Request) {
     }
 
     const email = String(body.email).toLowerCase();
+    if (body.bio && String(body.bio).length > 500) {
+      return NextResponse.json({ message: 'bio too long (max 500 chars)' }, { status: 400 });
+    }
     const profiles = await readProfiles();
     if (profiles.find((p: any) => p.email === email)) {
       return NextResponse.json({ message: 'Email already registered' }, { status: 409 });
@@ -34,7 +37,12 @@ export async function POST(req: Request) {
     // Note: For simplicity, password is stored as-is. In production, hash passwords.
     // Ensure teachers do not store a plan (explicitly null)
     const plan = body.role === 'teacher' ? null : (body.plan ?? null);
+    // normalize id -> roid_id
     const profile = { ...body, email, plan };
+    if (profile.id && !profile.roid_id) {
+      profile.roid_id = profile.id;
+      delete profile.id;
+    }
     profiles.push(profile);
     await writeProfiles(profiles);
     return NextResponse.json({ ok: true, profile }, { status: 201 });

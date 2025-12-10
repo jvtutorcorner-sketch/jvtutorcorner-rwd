@@ -88,6 +88,17 @@ a {
   padding: 6px 8px;
 }
 
+.menu-user .menu-user-last {
+  font-weight: 700;
+  color: #111827;
+  line-height: 1;
+}
+.menu-user .menu-user-email {
+  font-size: 0.85rem;
+  color: #6b7280;
+  line-height: 1;
+}
+
 @media (max-width: 640px) {
   .homepage-menu ul { gap: 10px; }
   .homepage-menu .menu-left a { padding: 6px 8px; }
@@ -387,6 +398,49 @@ nav.main-nav a.active {
   box-shadow: 0 10px 25px rgba(15, 23, 42, 0.05);
 }
 
+/* Avatar dropdown shared styling */
+.avatar-dropdown {
+  position: relative;
+  min-width: 180px;
+}
+.avatar-dropdown ul {
+  list-style: none;
+  margin: 0;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.avatar-dropdown .menu-link,
+.avatar-dropdown .menu-logout,
+.avatar-dropdown [role="menuitem"] {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: transparent;
+  color: #111827;
+  cursor: pointer;
+  font-weight: 600;
+}
+.avatar-dropdown .menu-link:hover,
+.avatar-dropdown .menu-link:focus,
+.avatar-dropdown .menu-logout:hover,
+.avatar-dropdown [role="menuitem"]:hover {
+  background: rgba(37,99,235,0.06);
+  outline: none;
+}
+.avatar-dropdown .menu-logout {
+  background: #fff;
+  border: none;
+  color: #ef4444;
+}
+.avatar-dropdown .menu-logout:focus {
+  box-shadow: 0 0 0 3px rgba(239,68,68,0.12);
+}
+
+
 .card-header {
   display: flex;
   gap: 12px;
@@ -609,6 +663,13 @@ nav.main-nav a.active {
   background: #15803d;
 }
 
+.enroll-button:disabled {
+  background: #9ae6b4;
+  cursor: not-allowed;
+  opacity: 0.9;
+  color: #ffffff;
+}
+
 /* 卡片底部按鈕 */
 
 .card-button {
@@ -726,4 +787,37 @@ nav.main-nav a.active {
   font-size: 0.8rem;
   color: #4b5563;
   margin-top: 6px;
+}
+
+/* Auth warning for actions that require login */
+.auth-warning {
+  color: #dc2626; /* red-600 */
+  margin-top: 8px;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+/* Orders table zebra striping */
+.orders-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+}
+.orders-table th,
+.orders-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid #e5e7eb;
+  text-align: left;
+}
+.orders-table thead th {
+  background: #f3f4f6;
+}
+.orders-table tbody tr:nth-child(odd) {
+  background: #ffffff;
+}
+.orders-table tbody tr:nth-child(even) {
+  background: #f7f7f7;
+}
+.orders-table tbody tr:hover {
+  background: #eef2ff;
 }

@@ -84,7 +84,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ or
     if (!useDynamo) {
       const idx = LOCAL_ORDERS.findIndex((o) => o.orderId === orderId);
       if (idx === -1) return NextResponse.json({ error: 'Order not found' }, { status: 404 });
-      LOCAL_ORDERS[idx] = { ...LOCAL_ORDERS[idx], status, updatedAt: new Date().toISOString() };
+      const now = new Date().toISOString();
+      // update status, updatedAt and derived orderNumber (userId + updatedAt)
+      LOCAL_ORDERS[idx] = { ...LOCAL_ORDERS[idx], status, updatedAt: now, orderNumber: `${LOCAL_ORDERS[idx].userId || 'unknown'}-${now}` };
       updated = LOCAL_ORDERS[idx];
       saveLocalOrders();
     } else {
@@ -97,7 +99,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ or
         return NextResponse.json({ error: 'Order not found' }, { status: 404 });
       }
 
-      updated = { ...existing.Item, status, updatedAt: new Date().toISOString() } as any;
+      const now = new Date().toISOString();
+      updated = { ...existing.Item, status, updatedAt: now, orderNumber: `${existing.Item.userId || 'unknown'}-${now}` } as any;
 
       await docClient.send(new PutCommand({ TableName, Item: updated }));
     }

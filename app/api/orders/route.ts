@@ -75,9 +75,12 @@ export async function POST(request: Request) {
 
     const orderId = randomUUID();
     const createdAt = new Date().toISOString();
+    // Human-friendly display number which includes user id and timestamp (updated on status changes)
+    const orderNumber = `${userId}-${createdAt}`;
 
     const order = {
       orderId,
+      orderNumber,
       userId,
       courseId,
       enrollmentId: enrollmentId || null,

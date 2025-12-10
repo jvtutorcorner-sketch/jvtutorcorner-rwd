@@ -26,7 +26,8 @@ function simpleMarkdownToHtml(md: string) {
 export default function RegisterPage() {
   const router = useRouter();
   const [role, setRole] = useState<"student" | "teacher">("student");
-  const [nickname, setNickname] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -38,16 +39,12 @@ export default function RegisterPage() {
   const [country, setCountry] = useState<string>("");
   const [bio, setBio] = useState("");
   const [plan, setPlan] = useState<PlanId | null>("viewer");
-  const [cardNumber, setCardNumber] = useState("");
-  const [cardExpiry, setCardExpiry] = useState("");
-  const [cardCvc, setCardCvc] = useState("");
-  const [cardCountry, setCardCountry] = useState<string>("TW");
+  // credit card fields moved to post-login settings; do not collect on registration
   const [saved, setSaved] = useState(false);
   const [termsHtml, setTermsHtml] = useState<string | null>(null);
   const [termsScrolledToBottom, setTermsScrolledToBottom] = useState(false);
   const termsRef = useRef<HTMLDivElement | null>(null);
   const [termsAccepted, setTermsAccepted] = useState(false);
-  const planPanelRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     // generate UUID once on mount
@@ -71,15 +68,7 @@ export default function RegisterPage() {
     return () => { mounted = false; };
   }, []);
 
-  useEffect(() => {
-    // when plan changes, reset plan panel scroll and bring into view
-    if (planPanelRef.current) {
-      planPanelRef.current.scrollTop = 0;
-      try {
-        planPanelRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      } catch {}
-    }
-  }, [plan]);
+  // plan selection moved to user settings; registration defaults to 'viewer'
 
   const countries = useMemo(
     () => [
@@ -108,6 +97,58 @@ export default function RegisterPage() {
     [],
   );
 
+    // map country code -> IANA time zone name (used for local formatting)
+    const countryTimezones: Record<string, string> = {
+      TW: 'Asia/Taipei',
+      JP: 'Asia/Tokyo',
+      US: 'America/New_York',
+      GB: 'Europe/London',
+      HK: 'Asia/Hong_Kong',
+      MO: 'Asia/Macau',
+      CN: 'Asia/Shanghai',
+      KR: 'Asia/Seoul',
+      SG: 'Asia/Singapore',
+      MY: 'Asia/Kuala_Lumpur',
+      AU: 'Australia/Sydney',
+      NZ: 'Pacific/Auckland',
+      CA: 'America/Toronto',
+      DE: 'Europe/Berlin',
+      FR: 'Europe/Paris',
+      ES: 'Europe/Madrid',
+      IT: 'Europe/Rome',
+      IN: 'Asia/Kolkata',
+      BR: 'America/Sao_Paulo',
+      MX: 'America/Mexico_City',
+      ZA: 'Africa/Johannesburg',
+    };
+
+    function formatLocalIso(timezone?: string) {
+      const now = new Date();
+      const utcIso = now.toISOString();
+      if (!timezone) return { utc: utcIso, local: utcIso, timezone: 'UTC' };
+      try {
+        const fmt = new Intl.DateTimeFormat('sv-SE', {
+          timeZone: timezone,
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: false,
+        });
+        // 'sv-SE' style yields YYYY-MM-DD HH:MM:SS which we convert to ISO-like
+        const parts = fmt.formatToParts(now).reduce((acc: any, part) => {
+          acc[part.type] = (acc[part.type] || '') + part.value;
+          return acc;
+        }, {});
+        const localIsoLike = `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}`;
+        return { utc: utcIso, local: localIsoLike, timezone };
+      } catch (e) {
+        return { utc: utcIso, local: utcIso, timezone: 'UTC' };
+      }
+    }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -122,61 +163,41 @@ export default function RegisterPage() {
       return;
     }
 
-    // If selected plan requires payment, validate card fields
-    if (plan && plan !== 'viewer') {
-      const num = cardNumber.replace(/\s+/g, '');
-      if (num.length < 13 || num.length > 19) {
-        setFormError('卡號長度應介於 13 到 19 碼');
-        return;
-      }
-      // expiry MM/YY or MM/YYYY
-      const m = cardExpiry.match(/^(0[1-9]|1[0-2])\/(\d{2}|\d{4})$/);
-      if (!m) {
-        setFormError('到期日格式請使用 MM/YY 或 MM/YYYY');
-        return;
-      }
-      const month = parseInt(m[1], 10);
-      const year = parseInt(m[2].length === 2 ? '20' + m[2] : m[2], 10);
-      const expDate = new Date(year, month - 1, 1);
-      const now = new Date();
-      // set to last day of month
-      expDate.setMonth(expDate.getMonth() + 1);
-      if (expDate <= now) {
-        setFormError('信用卡已過期，請輸入未來的到期日');
-        return;
-      }
+    // Payment/card capture is done after login in user settings; registration does not store card data.
 
-      if (!/^[0-9]{3,4}$/.test(cardCvc)) {
-        setFormError('安全碼 CVC 應為 3 或 4 位數');
-        return;
-      }
+    const combinedName = `${firstName || ''} ${lastName || ''}`.trim();
 
-      if (!cardCountry) {
-        setFormError('請選擇發卡國家/地區');
-        return;
-      }
+    if (!termsAccepted) {
+      setFormError('請先閱讀並同意服務條款與隱私權政策。');
+      return;
     }
 
+    // validate bio length
+    if (bio && bio.length > 500) {
+      setFormError('自我介紹請勿超過 500 字');
+      return;
+    }
+
+    const timezoneName = countryTimezones[country || 'TW'] || 'UTC';
+    const times = formatLocalIso(timezoneName);
+
     const payload = {
-      id: uuid,
-      role,
-      nickname,
+      roid_id: uuid,
       email: email.trim().toLowerCase(),
-      password,
-      birthdate,
-      gender,
-      country,
-      bio,
-      plan,
-      // Card fields included for later PayPal verification (demo only)
-      card: plan === 'viewer' ? undefined : {
-        number: cardNumber,
-        expiry: cardExpiry,
-        cvc: cardCvc,
-        country: cardCountry,
-      },
-      createdAt: new Date().toISOString(),
-    } as const;
+      password: password || undefined,
+      firstName: firstName || undefined,
+      lastName: lastName || undefined,
+      role,
+      plan: plan ?? null,
+      bio: bio || undefined,
+      country: country || undefined,
+      timezone: times.timezone,
+      termsAccepted: !!termsAccepted,
+      createdAtUtc: times.utc,
+      createdAtLocal: times.local,
+      updatedAtUtc: times.utc,
+      updatedAtLocal: times.local,
+    };
 
     try {
       const res = await fetch('/api/register', {
@@ -185,13 +206,48 @@ export default function RegisterPage() {
         body: JSON.stringify(payload),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.message || '註冊失敗');
+      if (!res.ok) {
+        // show server message inline instead of throwing an exception
+        const message = data?.message || '註冊失敗';
+        setFormError(message);
+        // focus email for duplicate-email errors
+        try {
+          const el = document.querySelector('input[type="email"]') as HTMLInputElement | null;
+          if (el) el.focus();
+        } catch (e) {
+          // ignore focus errors in SSR
+        }
+        return;
+      }
       setSaved(true);
       setTimeout(() => router.push('/login'), 900);
     } catch (err: any) {
       console.error(err);
-      alert(err.message || '儲存失敗');
+      setFormError(err?.message || '儲存失敗');
     }
+  };
+
+  // Preview the exact DynamoDB-like item that will be written (for developer visibility)
+  const getDynamoPreview = () => {
+    const tz = countryTimezones[country || 'TW'] || 'UTC';
+    const t = formatLocalIso(tz);
+    const combinedName = `${firstName || ''} ${lastName || ''}`.trim();
+    return {
+      roid_id: uuid,
+      email: email.trim().toLowerCase(),
+      password: password || undefined,
+      firstName: firstName || undefined,
+      lastName: lastName || undefined,
+      nickname: combinedName || undefined,
+      role,
+      plan: plan ?? null,
+      country: country || undefined,
+      timezone: t.timezone,
+      termsAccepted: !!termsAccepted,
+      createdAtUtc: t.utc,
+      updatedAtUtc: t.utc,
+      bio: bio || undefined,
+    } as const;
   };
 
   return (
@@ -225,22 +281,23 @@ export default function RegisterPage() {
                     name="role"
                     checked={role === "teacher"}
                     onChange={() => {
-                      setRole("teacher");
-                      setPlan(null);
-                      // clear any card fields when switching to teacher
-                      setCardNumber('');
-                      setCardExpiry('');
-                      setCardCvc('');
-                      setCardCountry('TW');
-                    }}
+                        setRole("teacher");
+                        setPlan(null);
+                      }}
                   /> Teacher
                 </label>
               </div>
             </div>
 
-            <div className="field">
-              <label>暱稱</label>
-              <input value={nickname} onChange={(e) => setNickname(e.target.value)} />
+            <div className="field-row">
+              <div className="field">
+                <label>First Name</label>
+                <input value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+              </div>
+              <div className="field">
+                <label>Last Name</label>
+                <input value={lastName} onChange={(e) => setLastName(e.target.value)} />
+              </div>
             </div>
 
             <div className="field">
@@ -280,7 +337,13 @@ export default function RegisterPage() {
 
             <div className="field">
               <label>自動生成 ID</label>
-              <input value={uuid} readOnly />
+              <input
+                value={uuid}
+                readOnly
+                disabled
+                aria-label="自動生成 ID（已鎖定）"
+                style={{ background: '#f3f4f6', cursor: 'not-allowed' }}
+              />
             </div>
 
             <div className="field">
@@ -309,80 +372,27 @@ export default function RegisterPage() {
 
             <div className="field">
               <label>自我介紹（Markdown 支援）</label>
-              <textarea rows={6} value={bio} onChange={(e) => setBio(e.target.value)} placeholder={`使用 Markdown 撰寫，例如：\n# 教學經驗\n**10 年**教學`} />
+              <textarea
+                rows={6}
+                value={bio}
+                onChange={(e) => setBio(e.target.value)}
+                placeholder={
+                  `例如：我愛教育（限制500字）\n` +
+                  `e.g.: I love education (max 500 characters)`
+                }
+              />
               <small>預覽：</small>
               <div className="card" style={{ padding: 12 }} dangerouslySetInnerHTML={{ __html: simpleMarkdownToHtml(bio) }} />
             </div>
 
+            {/* Plan selection moved to user settings — registration defaults to viewer */}
+
             <div className="field">
-              <label>方案選擇與價格</label>
-                {role === 'student' && (
-                  <>
-                    <select value={plan ?? 'viewer'} onChange={(e) => setPlan(e.target.value as PlanId)}>
-                      {Object.keys(PLAN_LABELS).map((k) => (
-                        <option key={k} value={k}>{PLAN_LABELS[k as PlanId]}</option>
-                      ))}
-                    </select>
-
-                    <div
-                      ref={planPanelRef}
-                      className="card"
-                      style={{ marginTop: 8, padding: 12 }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <strong>{PLAN_LABELS[plan as PlanId]}</strong>
-                        <span className="muted">{PLAN_PRICES[plan as PlanId]}</span>
-                      </div>
-                      <p className="muted" style={{ marginTop: 6 }}>{PLAN_DESCRIPTIONS[plan as PlanId]}</p>
-
-                      <div style={{ height: 120, overflow: 'auto', borderTop: '1px solid #eee', marginTop: 8, paddingTop: 8 }}>
-                        <ul style={{ margin: 0, paddingLeft: 16 }}>
-                          {PLAN_FEATURES[plan as PlanId].map((f: string, i: number) => (
-                            <li key={i}>{f}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    </div>
-                  </>
-                )}
+              <label>將寫入的 DynamoDB schema（預覽）</label>
+              <pre style={{ background: '#111827', color: '#f8fafc', padding: 12, borderRadius: 8, maxHeight: 240, overflow: 'auto' }}>{JSON.stringify(getDynamoPreview(), null, 2)}</pre>
             </div>
 
-            {plan !== 'viewer' && (
-              <div className="field">
-                <label>信用卡資料（示範）</label>
-                <input
-                  placeholder="卡號（僅數字）"
-                  value={cardNumber}
-                  onChange={(e) => setCardNumber(e.target.value.replace(/[^0-9 ]/g, ''))}
-                />
-
-                <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                  <input
-                    placeholder="到期（MM/YY）"
-                    value={cardExpiry}
-                    onChange={(e) => setCardExpiry(e.target.value)}
-                    style={{ flex: 1 }}
-                  />
-                  <input
-                    placeholder="CVC"
-                    value={cardCvc}
-                    onChange={(e) => setCardCvc(e.target.value.replace(/[^0-9]/g, ''))}
-                    style={{ width: 120 }}
-                  />
-                </div>
-
-                <div style={{ marginTop: 8 }}>
-                  <label>發卡國家/地區</label>
-                  <select value={cardCountry} onChange={(e) => setCardCountry(e.target.value)}>
-                    {countries.map((c) => (
-                      <option key={c.code} value={c.code}>{`${c.label} ${c.code}`}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <small className="muted">注意：目前示範會將信用卡資料保存在本機／後端測試檔中，請勿輸入真實信用卡資訊。</small>
-              </div>
-            )}
+            {/* Payment details moved to user settings after login; registration does not collect card info. */}
 
             <div className="field">
               <label>服務條款（請閱讀下方內容至最底後方可勾選同意）</label>
@@ -403,7 +413,6 @@ export default function RegisterPage() {
                 dangerouslySetInnerHTML={{ __html: termsHtml || '<p>載入條款中... 或放置一份 PDF 到 public/terms.pdf 並提供下載。</p>' }}
               />
               <div style={{ marginTop: 8, display: 'flex', gap: 12, alignItems: 'center' }}>
-                <a href="/terms.pdf" target="_blank" rel="noreferrer" className="card-button secondary">下載 PDF</a>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <input
                     type="checkbox"

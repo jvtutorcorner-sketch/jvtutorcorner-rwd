@@ -1,7 +1,9 @@
 // components/EnrollButton.tsx
-'use client';
+"use client";
 
 import { useState, FormEvent } from 'react';
+import Link from 'next/link';
+import { getStoredUser } from '@/lib/mockAuth';
 
 interface EnrollButtonProps {
   courseId: string;
@@ -9,6 +11,7 @@ interface EnrollButtonProps {
 }
 
 type Enrollment = {
+  id?: string;
   name: string;
   email: string;
   courseId: string;
@@ -21,11 +24,13 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
   courseTitle,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [submissions, setSubmissions] = useState<Enrollment[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const storedUser = typeof window !== 'undefined' ? getStoredUser() : null;
 
   const resetForm = () => {
     setName('');
@@ -33,22 +38,26 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
     setError(null);
   };
 
-  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  const handleSubmit = async (e: FormEvent<HTMLFormElement> | null) => {
+    if (e) e.preventDefault();
 
-    if (!name.trim() || !email.trim()) {
+    // If storedUser exists, use its email as contact; otherwise fallback to form inputs
+    const contactEmail = storedUser?.email || email;
+    const contactName = storedUser ? (storedUser.email.split('@')[0] || storedUser.email) : name;
+
+    if (!contactName.trim() || !contactEmail.trim()) {
       setError('請填寫姓名與 Email。');
       return;
     }
 
-    if (!email.includes('@')) {
+    if (!contactEmail.includes('@')) {
       setError('Email 格式看起來不正確。');
       return;
     }
 
     const payload = {
-      name: name.trim(),
-      email: email.trim(),
+      name: contactName.trim(),
+      email: contactEmail.trim(),
       courseId,
       courseTitle,
     };
@@ -98,7 +107,7 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
         const orderData = await orderRes.json();
         console.log('訂單建立回應:', orderData);
 
-        // 為了 demo / 測試，模擬金流回呼 (實際上應由金流提供者 call webhook)
+        // demo: simulate payment webhook
         if (orderData?.order?.orderId) {
           await fetch('/api/payments/webhook', {
             method: 'POST',
@@ -113,6 +122,7 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
       }
 
       resetForm();
+      setConfirmOpen(false);
       setIsOpen(false);
     } catch (err) {
       console.error('呼叫 /api/enroll 時發生錯誤:', err);
@@ -124,9 +134,25 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
 
   return (
     <>
-      <button className="enroll-button" onClick={() => setIsOpen(true)}>
+      <button
+        className="enroll-button"
+        onClick={() => {
+          if (!storedUser) {
+            // not logged in: do nothing (button disabled visually); provide hint instead
+            return;
+          }
+          // logged in: open confirmation modal
+          setConfirmOpen(true);
+        }}
+        disabled={!storedUser}
+        title={!storedUser ? '請先登入以報名課程' : `以 ${storedUser.email} 報名`}
+      >
         立即報名
       </button>
+
+      {!storedUser && (
+        <p className="auth-warning">請先登入才能報名，請先前往 <Link href="/login">登入</Link>。</p>
+      )}
 
       {submissions.length > 0 && (
         <p className="enroll-summary">
@@ -134,62 +160,39 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
         </p>
       )}
 
-      {isOpen && (
-        <div className="modal-backdrop" onClick={() => setIsOpen(false)}>
+      {/* Confirmation modal for logged-in users */}
+      {confirmOpen && (
+        <div className="modal-backdrop" onClick={() => setConfirmOpen(false)}>
           <div
             className="modal"
             onClick={(e) => {
-              e.stopPropagation(); // 避免點到內容也關閉
+              e.stopPropagation();
             }}
           >
-            <h3>報名課程</h3>
+            <h3>確認報名</h3>
             <p className="modal-subtitle">課程：{courseTitle}</p>
+            <p>你將使用帳號：<strong>{storedUser?.email}</strong> 進行報名。確定要建立報名並建立訂單嗎？</p>
 
-            <form onSubmit={handleSubmit} className="modal-form">
-              <div className="field">
-                <label htmlFor="name">姓名</label>
-                <input
-                  id="name"
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="請輸入您的姓名"
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="email">Email</label>
-                <input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="example@mail.com"
-                />
-              </div>
+            {error && <p className="form-error">{error}</p>}
 
-              {error && <p className="form-error">{error}</p>}
-
-              <div className="modal-actions">
-                <button
-                  type="button"
-                  className="modal-button secondary"
-                  onClick={() => {
-                    resetForm();
-                    setIsOpen(false);
-                  }}
-                  disabled={isSubmitting}
-                >
-                  取消
-                </button>
-                <button
-                  type="submit"
-                  className="modal-button primary"
-                  disabled={isSubmitting}
-                >
-                  {isSubmitting ? '送出中…' : '送出報名'}
-                </button>
-              </div>
-            </form>
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="modal-button secondary"
+                onClick={() => setConfirmOpen(false)}
+                disabled={isSubmitting}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                className="modal-button primary"
+                onClick={() => handleSubmit(null)}
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? '處理中…' : '確認並建立訂單'}
+              </button>
+            </div>
           </div>
         </div>
       )}

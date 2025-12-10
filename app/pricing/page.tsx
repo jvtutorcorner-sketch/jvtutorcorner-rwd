@@ -7,8 +7,11 @@ import { useRouter } from 'next/navigation';
 import {
   PLAN_LABELS,
   PLAN_DESCRIPTIONS,
+  PLAN_PRICES,
+  PLAN_FEATURES,
   getStoredUser,
   clearStoredUser,
+  setStoredUser,
   StoredUser,
   PlanId,
 } from '@/lib/mockAuth';
@@ -73,9 +76,18 @@ const PLANS: PlanConfig[] = [
 
 export default function PricingPage() {
   const [user, setUser] = useState<StoredUser | null>(null);
+  const [plan, setPlan] = useState<PlanId | ''>('');
+  const [cardNumber, setCardNumber] = useState('');
+  const [cardExpiry, setCardExpiry] = useState('');
+  const [cardCvc, setCardCvc] = useState('');
+  const [cardCountry, setCardCountry] = useState('TW');
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
     setUser(getStoredUser());
+    const u = getStoredUser();
+    if (u) setPlan(u.plan);
   }, []);
 
   const handleLogout = () => {
@@ -164,6 +176,87 @@ export default function PricingPage() {
               </div>
             );
           })}
+        </div>
+      </section>
+
+      <section className="section">
+        <div className="card">
+          <h2>升級方案 / 付款</h2>
+          <p>在此可以選擇方案並填寫示範付款資訊（示範用途，請勿輸入真實卡號）。</p>
+
+          <form onSubmit={async (e) => {
+            e.preventDefault();
+            setMessage(null);
+            if (!plan) {
+              setMessage('請選擇一個方案');
+              return;
+            }
+            setLoading(true);
+            try {
+              const payload: any = { plan };
+              // demo-only card object
+              payload.card = {
+                number: cardNumber.replace(/\s+/g, ''),
+                expiry: cardExpiry,
+                cvc: cardCvc,
+                country: cardCountry,
+              };
+              const stored = getStoredUser();
+              if (stored) payload.email = stored.email;
+              const res = await fetch('/api/profile', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+              });
+              const data = await res.json();
+              if (!res.ok) throw new Error(data?.message || '更新失敗');
+              setMessage('方案已更新（示範）');
+              // update local stored user plan
+              if (stored) {
+                const updated = { ...stored, plan } as StoredUser;
+                setStoredUser(updated);
+                setUser(updated);
+              }
+            } catch (err: any) {
+              setMessage(err?.message || '更新失敗');
+            } finally {
+              setLoading(false);
+            }
+          }} className="modal-form">
+            <div className="field">
+              <label>方案選擇</label>
+              <select value={plan} onChange={(e) => setPlan(e.target.value as PlanId)}>
+                <option value="">-- 選擇方案 --</option>
+                {(Object.keys(PLAN_LABELS) as PlanId[]).map((k) => (
+                  <option key={k} value={k}>{PLAN_LABELS[k]} — {PLAN_PRICES[k]}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="field" style={{ marginTop: 8 }}>
+              <label>信用卡（示範）</label>
+              <input placeholder="卡號（僅數字）" value={cardNumber} onChange={(e) => setCardNumber(e.target.value.replace(/[^0-9 ]/g, ''))} />
+              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                <input placeholder="到期（MM/YY）" value={cardExpiry} onChange={(e) => setCardExpiry(e.target.value)} style={{ flex: 1 }} />
+                <input placeholder="CVC" value={cardCvc} onChange={(e) => setCardCvc(e.target.value.replace(/[^0-9]/g, ''))} style={{ width: 120 }} />
+              </div>
+              <div style={{ marginTop: 8 }}>
+                <label>發卡國家/地區</label>
+                <select value={cardCountry} onChange={(e) => setCardCountry(e.target.value)}>
+                  <option value="TW">台灣 TW</option>
+                  <option value="US">美國 US</option>
+                  <option value="JP">日本 JP</option>
+                </select>
+              </div>
+              <small className="muted">示範用途：請勿輸入真實卡號或敏感資料。</small>
+            </div>
+
+            <div className="modal-actions" style={{ marginTop: 12 }}>
+              <button type="submit" className="modal-button primary" disabled={loading}>{loading ? '處理中…' : '儲存並升級'}</button>
+              <button type="button" onClick={() => { setPlan(user?.plan || ''); setCardNumber(''); setCardExpiry(''); setCardCvc(''); setCardCountry('TW'); }} style={{ marginLeft: 12 }}>還原</button>
+            </div>
+            {message && <p style={{ marginTop: 8 }}>{message}</p>}
+          </form>
         </div>
       </section>
 

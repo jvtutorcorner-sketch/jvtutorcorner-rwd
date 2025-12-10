@@ -13,6 +13,22 @@ async function readSettings() {
       teacherPage: { showContact: true, showIntro: true, showSubjects: true },
       studentPage: { showGoals: true, showPreferredSubjects: true },
       defaultPlan: 'basic',
+      // siteUrl can be edited by admins to indicate the canonical site URL
+      siteUrl: '',
+      // pageVisibility maps route -> metadata + separate visibility for menu and dropdown-menu
+      pageVisibility: {
+        '/': { label: '首頁', menu: { admin: true, teacher: true, user: true }, dropdown: { admin: true, teacher: true, user: true } },
+        '/teachers': { label: '師資', menu: { admin: true, teacher: true, user: true }, dropdown: { admin: true, teacher: true, user: true } },
+        '/pricing': { label: '方案與價格', menu: { admin: true, teacher: true, user: true }, dropdown: { admin: true, teacher: true, user: true } },
+        '/courses': { label: '課程總覽', menu: { admin: true, teacher: true, user: true }, dropdown: { admin: true, teacher: true, user: true } },
+        '/testimony': { label: '學員見證', menu: { admin: true, teacher: true, user: true }, dropdown: { admin: true, teacher: true, user: true } },
+        '/about': { label: '關於我們', menu: { admin: true, teacher: true, user: true }, dropdown: { admin: true, teacher: true, user: true } },
+        '/orders': { label: '我的訂單', menu: { admin: true, teacher: false, user: true }, dropdown: { admin: true, teacher: false, user: true } },
+        '/admin/orders': { label: '後台：訂單管理', menu: { admin: true, teacher: false, user: false }, dropdown: { admin: true, teacher: false, user: false } },
+        '/admin/settings': { label: '後台：網站設定', menu: { admin: true, teacher: false, user: false }, dropdown: { admin: true, teacher: false, user: false } },
+        '/my-courses': { label: '我的課程 (老師)', menu: { admin: true, teacher: true, user: false }, dropdown: { admin: true, teacher: true, user: false } },
+        '/settings': { label: '個人設定', menu: { admin: true, teacher: true, user: true }, dropdown: { admin: true, teacher: true, user: true } },
+      },
     };
   }
 }

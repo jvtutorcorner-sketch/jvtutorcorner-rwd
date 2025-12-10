@@ -1,6 +1,8 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { TEACHERS, type Teacher } from '@/data/teachers';
 import { COURSES } from '@/data/courses';
+import TeacherDashboard from '@/components/TeacherDashboard';
 import { promises as fs } from 'fs';
 import path from 'path';
 
@@ -9,8 +11,20 @@ type Props = { params: { id: string } };
 export default async function TeacherPage({ params }: Props) {
   const id = params?.id ? decodeURIComponent(params.id) : '';
 
-  // Try find by id first; if not present try matching by name
-  let teacher: Teacher | undefined = TEACHERS.find((t) => t.id === id || t.name === id);
+  // If no id was provided, avoid rendering an empty-detail page — redirect to the teachers list.
+  if (!id) {
+    redirect('/teachers');
+  }
+
+  // Normalize incoming id/name for robust matching (trim + case-insensitive)
+  const idNorm = String(id).trim().toLowerCase();
+
+  // Try find by id first; if not present try matching by name (case-insensitive, trimmed)
+  let teacher: Teacher | undefined = TEACHERS.find((t) => {
+    const tid = String(t.id || '').trim().toLowerCase();
+    const tname = String(t.name || '').trim().toLowerCase();
+    return tid === idNorm || tname === idNorm;
+  });
 
   // Fallback: if not found in bundled data, try reading local fallback file (.local_data/teachers.json)
   if (!teacher) {
@@ -18,7 +32,11 @@ export default async function TeacherPage({ params }: Props) {
       const localPath = path.resolve(process.cwd(), '.local_data/teachers.json');
       const raw = await fs.readFile(localPath, 'utf8');
       const arr = JSON.parse(raw) as Array<Record<string, any>>;
-      teacher = arr.find((t) => t.id === id || t.name === id) as Teacher | undefined;
+      teacher = arr.find((t) => {
+        const tid = String(t.id || '').trim().toLowerCase();
+        const tname = String(t.name || '').trim().toLowerCase();
+        return tid === idNorm || tname === idNorm;
+      }) as Teacher | undefined;
       // If found, we can continue rendering with that teacher
     } catch (e) {
       // ignore — file not present or parse error
@@ -34,7 +52,7 @@ export default async function TeacherPage({ params }: Props) {
 
         <div style={{ display: 'grid', gap: 12, marginTop: 12 }}>
           {TEACHERS.map((t) => (
-            <Link key={t.id} href={`/teachers/${t.id}`} className="card card-link">
+            <Link key={t.id} href={`/teachers/${encodeURIComponent(String(t.id))}`} className="card card-link">
               <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
                 <img src={t.avatarUrl} alt={t.name} style={{ width: 64, height: 64, borderRadius: 6, objectFit: 'cover' }} />
                 <div>
@@ -73,7 +91,14 @@ export default async function TeacherPage({ params }: Props) {
                 <div className="muted">⭐ {teacher.rating.toFixed(1)} • NT$ {teacher.hourlyRate}/時</div>
               </div>
               <div>
-                <Link href={`/teachers/${teacher.id}/book`} className="card-button primary">預約此老師</Link>
+                <Link
+                  href={
+                    teacher.id
+                      ? `/teachers/${encodeURIComponent(String(teacher.id))}/book`
+                      : `/teachers?teacher=${encodeURIComponent(String(teacher.name))}`
+                  }
+                  className="card-button primary"
+                >預約此老師</Link>
               </div>
             </div>
 
@@ -89,6 +114,11 @@ export default async function TeacherPage({ params }: Props) {
             </div>
           </div>
         </div>
+      </section>
+
+      {/* Teacher dashboard (client-side) for owners/admins */}
+      <section className="section">
+        <TeacherDashboard teacherId={(teacher as any).id || ''} teacherName={teacher.name} />
       </section>
 
       <section className="section">
@@ -113,6 +143,7 @@ export default async function TeacherPage({ params }: Props) {
               </div>
             ))}
           </div>
+
         )}
       </section>
     </div>

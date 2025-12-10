@@ -22,13 +22,15 @@ export async function POST(req: Request) {
 
     // Demo admin credentials (hardcoded for local/demo use only)
     if (String(email).toLowerCase() === 'admin@jvtutorcorner.com' && password === '123456') {
-      const publicProfile = { id: 'admin', nickname: 'Administrator', plan: 'elite', role: 'admin' };
+      const publicProfile: any = { roid_id: 'admin', nickname: 'Administrator', plan: 'elite', role: 'admin' };
+      publicProfile.id = publicProfile.roid_id;
       return NextResponse.json({ ok: true, profile: publicProfile });
     }
 
     // Demo teacher credentials for local testing
     if (String(email).toLowerCase() === 'teacher@test.com' && password === '123456') {
-      const publicProfile = { id: 'teacher-demo', nickname: 'Demo Teacher', plan: null, role: 'teacher' };
+      const publicProfile: any = { roid_id: 'teacher-demo', nickname: 'Demo Teacher', plan: null, role: 'teacher' };
+      publicProfile.id = publicProfile.roid_id;
       return NextResponse.json({ ok: true, profile: publicProfile });
     }
 
@@ -38,8 +40,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false }, { status: 401 });
     }
 
-    // Return minimal public profile info
-    const publicProfile = { id: found.id, nickname: found.nickname, plan: found.plan, role: found.role };
+    // Return minimal public profile info (include names if available)
+    const publicProfile: any = { roid_id: found.roid_id || found.id, nickname: found.nickname, plan: found.plan, role: found.role };
+    // keep legacy id key for compatibility
+    publicProfile.id = found.id || publicProfile.roid_id;
+    if (found.firstName) publicProfile.firstName = found.firstName;
+    if (found.lastName) publicProfile.lastName = found.lastName;
     return NextResponse.json({ ok: true, profile: publicProfile });
   } catch (err: any) {
     console.error(err);

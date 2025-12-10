@@ -8,6 +8,7 @@ import Link from 'next/link';
 
 type Order = {
   orderId: string;
+  orderNumber?: string;
   userId?: string;
   courseId?: string;
   amount?: number;
@@ -87,6 +88,7 @@ export default function OrdersPage() {
             <table className="orders-table" style={{ borderCollapse: 'collapse', border: '2px solid #ccc', width: '100%' }}>
               <thead>
                 <tr>
+                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>使用者</th>
                   <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>訂單編號</th>
                   <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>課程 / ID</th>
                   <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>金額</th>
@@ -97,7 +99,10 @@ export default function OrdersPage() {
               <tbody>
                 {orders.map((o) => (
                   <tr key={o.orderId}>
-                    <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.orderId}</td>
+                    <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.userId || user?.email || '-'}</td>
+                    <td style={{ border: '2px solid #ccc', padding: '6px' }}>
+                      <Link href={`/orders/${o.orderId}`}>{o.orderId}</Link>
+                    </td>
                     <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.courseId ?? '-'}</td>
                     <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.amount ? `${o.amount} ${o.currency ?? 'TWD'}` : '-'}</td>
                     <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.status ?? '-'}</td>
