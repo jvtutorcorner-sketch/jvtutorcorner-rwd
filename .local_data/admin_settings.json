@@ -1,0 +1,158 @@
+{
+  "teacherPage": {
+    "showContact": true,
+    "showIntro": true,
+    "showSubjects": true
+  },
+  "studentPage": {
+    "showGoals": true,
+    "showPreferredSubjects": true
+  },
+  "defaultPlan": "basic",
+  "siteUrl": "",
+  "pageVisibility": {
+    "/": {
+      "label": "首頁",
+      "menu": {
+        "admin": true,
+        "teacher": true,
+        "user": true
+      },
+      "dropdown": {
+        "admin": false,
+        "teacher": false,
+        "user": false
+      }
+    },
+    "/teachers": {
+      "label": "師資",
+      "menu": {
+        "admin": true,
+        "teacher": true,
+        "user": true
+      },
+      "dropdown": {
+        "admin": false,
+        "teacher": false,
+        "user": false
+      }
+    },
+    "/pricing": {
+      "label": "方案與價格",
+      "menu": {
+        "admin": true,
+        "teacher": true,
+        "user": true
+      },
+      "dropdown": {
+        "admin": false,
+        "teacher": false,
+        "user": false
+      }
+    },
+    "/courses": {
+      "label": "課程總覽",
+      "menu": {
+        "admin": true,
+        "teacher": true,
+        "user": true
+      },
+      "dropdown": {
+        "admin": false,
+        "teacher": false,
+        "user": false
+      }
+    },
+    "/testimony": {
+      "label": "學員見證",
+      "menu": {
+        "admin": false,
+        "teacher": false,
+        "user": false
+      },
+      "dropdown": {
+        "admin": false,
+        "teacher": false,
+        "user": false
+      }
+    },
+    "/about": {
+      "label": "關於我們",
+      "menu": {
+        "admin": true,
+        "teacher": true,
+        "user": true
+      },
+      "dropdown": {
+        "admin": false,
+        "teacher": false,
+        "user": false
+      }
+    },
+    "/orders": {
+      "label": "我的課程(學生用)",
+      "menu": {
+        "admin": false,
+        "teacher": false,
+        "user": true
+      },
+      "dropdown": {
+        "admin": true,
+        "teacher": false,
+        "user": true
+      }
+    },
+    "/admin/orders": {
+      "label": "所有訂單管理",
+      "menu": {
+        "admin": false,
+        "teacher": false,
+        "user": false
+      },
+      "dropdown": {
+        "admin": true,
+        "teacher": false,
+        "user": false
+      }
+    },
+    "/admin/settings": {
+      "label": "Admin 網頁設定",
+      "menu": {
+        "admin": false,
+        "teacher": false,
+        "user": false
+      },
+      "dropdown": {
+        "admin": true,
+        "teacher": false,
+        "user": false
+      }
+    },
+    "/my-courses": {
+      "label": "我的課程(老師用)",
+      "menu": {
+        "admin": false,
+        "teacher": true,
+        "user": false
+      },
+      "dropdown": {
+        "admin": true,
+        "teacher": true,
+        "user": false
+      }
+    },
+    "/settings": {
+      "label": "個人設定",
+      "menu": {
+        "admin": false,
+        "teacher": false,
+        "user": false
+      },
+      "dropdown": {
+        "admin": true,
+        "teacher": true,
+        "user": true
+      }
+    }
+  }
+}
