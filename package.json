@@ -13,8 +13,10 @@
     "@aws-sdk/client-dynamodb": "^3.940.0",
     "@aws-sdk/lib-dynamodb": "^3.940.0",
     "@paypal/react-paypal-js": "^8.9.2",
+    "agora-access-token": "^2.0.4",
+    "agora-rtc-sdk-ng": "^4.24.2",
     "aws-amplify": "^6.15.8",
-    "next": "16.0.3",
+    "next": "^16.0.10",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
