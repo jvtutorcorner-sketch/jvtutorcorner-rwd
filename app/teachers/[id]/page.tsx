@@ -6,18 +6,19 @@ import TeacherDashboard from '@/components/TeacherDashboard';
 import { promises as fs } from 'fs';
 import path from 'path';
 
-type Props = { params: { id: string } };
+type Props = { params: Promise<{ id: string }> };
 
 export default async function TeacherPage({ params }: Props) {
-  const id = params?.id ? decodeURIComponent(params.id) : '';
+  const { id } = await params;
+  const decodedId = id ? decodeURIComponent(id) : '';
 
   // If no id was provided, avoid rendering an empty-detail page — redirect to the teachers list.
-  if (!id) {
+  if (!decodedId) {
     redirect('/teachers');
   }
 
   // Normalize incoming id/name for robust matching (trim + case-insensitive)
-  const idNorm = String(id).trim().toLowerCase();
+  const idNorm = String(decodedId).trim().toLowerCase();
 
   // Try find by id first; if not present try matching by name (case-insensitive, trimmed)
   let teacher: Teacher | undefined = TEACHERS.find((t) => {
@@ -47,7 +48,7 @@ export default async function TeacherPage({ params }: Props) {
     return (
       <div className="page">
         <h1>找不到老師</h1>
-        <p>抱歉，我們找不到該位老師（ID: {id || '<空>'}）。</p>
+        <p>抱歉，我們找不到該位老師（ID: {decodedId || '<空>'}）。</p>
         <p className="muted">請確認網址是否正確，或從下方師資列表選擇老師：</p>
 
         <div style={{ display: 'grid', gap: 12, marginTop: 12 }}>
