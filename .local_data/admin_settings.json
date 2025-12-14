@@ -325,6 +325,27 @@
         "student": true,
         "test": true
       }
+    },
+    "/classroom/test": {
+      "label": "視訊白板測試",
+      "menu": {
+        "admin": false,
+        "teacher": false,
+        "student": false,
+        "test": false
+      },
+      "dropdown": {
+        "admin": false,
+        "teacher": false,
+        "student": false,
+        "test": false
+      },
+      "page": {
+        "admin": true,
+        "teacher": true,
+        "student": true,
+        "test": true
+      }
     }
   },
   "roles": [
@@ -810,6 +831,41 @@
           "roleName": "Admin",
           "menuVisible": false,
           "dropdownVisible": true,
+          "pageVisible": true
+        },
+        {
+          "roleId": "teacher",
+          "roleName": "Teacher",
+          "menuVisible": false,
+          "dropdownVisible": false,
+          "pageVisible": true
+        },
+        {
+          "roleId": "student",
+          "roleName": "Student",
+          "menuVisible": false,
+          "dropdownVisible": false,
+          "pageVisible": true
+        },
+        {
+          "roleId": "test",
+          "roleName": "test",
+          "menuVisible": false,
+          "dropdownVisible": false,
+          "pageVisible": true
+        }
+      ]
+    },
+    {
+      "id": "/classroom/test",
+      "path": "/classroom/test",
+      "label": "視訊白板測試",
+      "permissions": [
+        {
+          "roleId": "admin",
+          "roleName": "Admin",
+          "menuVisible": false,
+          "dropdownVisible": false,
           "pageVisible": true
         },
         {
