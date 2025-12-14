@@ -117,16 +117,7 @@ export default function TeacherDashboard({ teacherId, teacherName }: Props) {
         <p className="muted">非此老師或非管理者，僅顯示公開資訊。</p>
       ) : (
         <div style={{ marginBottom: 12 }}>
-          <form onSubmit={handleAddCourse} style={{ display: 'grid', gap: 8 }}>
-            <h4>新增課程（示範）</h4>
-            <input placeholder="課程標題" value={newCourseTitle} onChange={(e) => setNewCourseTitle(e.target.value)} required />
-            <input placeholder="價格（每堂）" value={newCoursePrice} onChange={(e) => setNewCoursePrice(e.target.value)} />
-            <input type="date" placeholder="開始日期" value={newStartDate} onChange={(e) => setNewStartDate(e.target.value)} />
-            <input placeholder="所屬會員方案（可空）" value={newMembershipPlan} onChange={(e) => setNewMembershipPlan(e.target.value)} />
-            <div>
-              <button type="submit" className="modal-button primary">新增</button>
-            </div>
-          </form>
+          <p className="muted">管理功能已移除：若需新增或管理課程，請使用後台或專用管理介面。</p>
         </div>
       )}
 

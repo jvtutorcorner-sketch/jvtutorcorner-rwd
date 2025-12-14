@@ -1,0 +1,28 @@
+{
+  "roles": [
+    {
+      "id": "admin",
+      "name": "Admin",
+      "description": "管理员",
+      "isActive": true
+    },
+    {
+      "id": "teacher",
+      "name": "Teacher",
+      "description": "教师",
+      "isActive": true
+    },
+    {
+      "id": "student",
+      "name": "Student",
+      "description": "学生",
+      "isActive": true
+    },
+    {
+      "id": "test",
+      "name": "test",
+      "description": "測試",
+      "isActive": true
+    }
+  ]
+}

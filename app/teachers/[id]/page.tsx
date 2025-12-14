@@ -2,7 +2,6 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { TEACHERS, type Teacher } from '@/data/teachers';
 import { COURSES } from '@/data/courses';
-import TeacherDashboard from '@/components/TeacherDashboard';
 import { promises as fs } from 'fs';
 import path from 'path';
 
@@ -117,10 +116,7 @@ export default async function TeacherPage({ params }: Props) {
         </div>
       </section>
 
-      {/* Teacher dashboard (client-side) for owners/admins */}
-      <section className="section">
-        <TeacherDashboard teacherId={(teacher as any).id || ''} teacherName={teacher.name} />
-      </section>
+      {/* 教師管理面板已移除 */}
 
       <section className="section">
         <h2>該老師的課程</h2>
