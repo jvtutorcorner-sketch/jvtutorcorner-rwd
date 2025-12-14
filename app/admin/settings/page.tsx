@@ -3,12 +3,38 @@
 import { useEffect, useState } from 'react';
 import { PLAN_LABELS } from '@/lib/mockAuth';
 
+// 页面权限类型
+type PagePermission = {
+  roleId: string;
+  roleName: string;
+  menuVisible: boolean;
+  dropdownVisible: boolean;
+  pageVisible: boolean;
+};
+
+// 页面配置类型
+type PageConfig = {
+  id: string;
+  path: string;
+  label?: string;
+  permissions: PagePermission[];
+};
+
+// 角色类型
+type Role = {
+  id: string;
+  name: string;
+  description?: string;
+  isActive: boolean;
+};
+
+// 设置类型
 type Settings = {
   teacherPage: { showContact?: boolean; showIntro?: boolean; showSubjects?: boolean };
   studentPage: { showGoals?: boolean; showPreferredSubjects?: boolean };
   defaultPlan?: string;
   siteUrl?: string;
-  pageVisibility?: Record<string, { label?: string; menu?: { admin?: boolean; teacher?: boolean; user?: boolean }; dropdown?: { admin?: boolean; teacher?: boolean; user?: boolean } }>;
+  pageConfigs: PageConfig[];
 };
 
 export default function AdminSettingsPage() {
@@ -16,18 +42,138 @@ export default function AdminSettingsPage() {
   const [saving, setSaving] = useState(false);
   const [selectedMenuRows, setSelectedMenuRows] = useState<string[]>([]);
   const [selectedDropdownRows, setSelectedDropdownRows] = useState<string[]>([]);
+  const [selectedPageRows, setSelectedPageRows] = useState<string[]>([]);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserPlan, setNewUserPlan] = useState<string>('basic');
   const [createMsg, setCreateMsg] = useState<string | null>(null);
+  const [newPagePath, setNewPagePath] = useState('');
+  const [newPageLabel, setNewPageLabel] = useState('');
+  const [roles, setRoles] = useState<Role[]>([]);
+  const [rolesLoading, setRolesLoading] = useState(true);
 
   useEffect(() => {
-    (async () => {
-      const res = await fetch('/api/admin/settings');
-      const data = await res.json();
-      if (res.ok && data.ok) setSettings(data.settings);
-    })();
+    loadSettings();
+    loadRoles();
   }, []);
+
+  async function loadSettings() {
+    try {
+      // 加载设置
+      const settingsRes = await fetch('/api/admin/settings');
+      const settingsData = await settingsRes.json();
+
+      // 加载角色
+      const rolesRes = await fetch('/api/admin/roles');
+      const rolesData = await rolesRes.json();
+
+      if (settingsRes.ok && settingsData.ok && rolesRes.ok && rolesData.ok) {
+        // 转换旧数据格式到新格式
+        const convertedSettings = convertOldSettingsToNew(settingsData.settings, rolesData.roles);
+        setSettings(convertedSettings);
+        setRoles(rolesData.roles);
+        setRolesLoading(false);
+      } else {
+        setRolesLoading(false);
+      }
+    } catch (error) {
+      console.error('Failed to load data:', error);
+    }
+  }
+
+  async function loadRoles() {
+    try {
+      const response = await fetch('/api/admin/roles');
+      const data = await response.json();
+      if (response.ok && data.ok) {
+        setRoles(data.roles);
+      }
+    } catch (error) {
+      console.error('Failed to load roles:', error);
+    } finally {
+      setRolesLoading(false);
+    }
+  }
+
+  function addNewPage() {
+    if (!settings) {
+      alert('設定尚未載入');
+      return;
+    }
+
+    if (!newPagePath.trim()) {
+      alert('請輸入頁面路徑');
+      return;
+    }
+
+    if (settings.pageConfigs.some(pc => pc.path === newPagePath.trim())) {
+      alert('此頁面路徑已存在');
+      return;
+    }
+
+    const newPermissions: PagePermission[] = roles
+      .filter(role => role.isActive)
+      .map(role => ({
+        roleId: role.id,
+        roleName: role.name,
+        menuVisible: false,
+        dropdownVisible: false,
+        pageVisible: false
+      }));
+
+    const newPageConfig: PageConfig = {
+      id: newPagePath.trim(),
+      path: newPagePath.trim(),
+      label: newPageLabel.trim() || newPagePath.trim(),
+      permissions: newPermissions
+    };
+
+    setSettings(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        pageConfigs: [...prev.pageConfigs, newPageConfig]
+      };
+    });
+
+    // 清空输入框
+    setNewPagePath('');
+    setNewPageLabel('');
+  }
+
+  // 转换旧的 pageVisibility 格式到新的 PageConfig 格式
+  function convertOldSettingsToNew(oldSettings: any, roles: any[]): Settings {
+    const pageConfigs: PageConfig[] = [];
+
+    if (oldSettings.pageVisibility) {
+      Object.entries(oldSettings.pageVisibility).forEach(([path, config]: [string, any]) => {
+        const permissions: PagePermission[] = roles
+          .filter(role => role.isActive)
+          .map((role: any) => ({
+            roleId: role.id,
+            roleName: role.name,
+            menuVisible: config.menu?.[role.id.toLowerCase()] || false,
+            dropdownVisible: config.dropdown?.[role.id.toLowerCase()] || false,
+            pageVisible: config.page?.[role.id.toLowerCase()] || false
+          }));
+
+        pageConfigs.push({
+          id: path,
+          path,
+          label: config.label,
+          permissions
+        });
+      });
+    }
+
+    return {
+      teacherPage: oldSettings.teacherPage || { showContact: true, showIntro: true, showSubjects: true },
+      studentPage: oldSettings.studentPage || { showGoals: true, showPreferredSubjects: true },
+      defaultPlan: oldSettings.defaultPlan || 'basic',
+      siteUrl: oldSettings.siteUrl || '',
+      pageConfigs
+    };
+  }
 
   async function save() {
     if (!settings) {
@@ -75,12 +221,14 @@ export default function AdminSettingsPage() {
     }
   }
 
-  
-
   if (!settings) return <main style={{ padding: 24 }}>Loading settings…</main>;
 
-  // Build the pages list from settings.pageVisibility so edits persist
-  const pages = Object.entries(settings.pageVisibility || {}).map(([path, info]) => ({ path, label: info.label || '', menu: info.menu || {}, dropdown: info.dropdown || {} }));
+  // 构建页面列表从 pageConfigs（需要从外部获取角色数据）
+  const pages = settings.pageConfigs.map(config => ({
+    path: config.path,
+    label: config.label || '',
+    permissions: config.permissions
+  }));
 
   return (
     <main style={{ padding: 24 }}>
@@ -94,183 +242,14 @@ export default function AdminSettingsPage() {
         </div>
       </div>
 
-      <section style={{ marginTop: 16 }}>
-        <h3>頁面存取權限（Menu）</h3>
-        <p style={{ marginTop: 6 }}>編輯左側主選單中各頁面的可見性與名稱/URL。</p>
-        <div style={{ marginTop: 8, overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, border: '2px solid #ddd' }}>
-            <thead>
-              <tr style={{ background: '#f8f9fa' }}>
-                <th style={{ padding: 10, borderRight: '2px solid #ddd', width: 56 }}>選取</th>
-                <th style={{ textAlign: 'left', padding: 10, borderRight: '2px solid #ddd' }}>頁面名稱</th>
-                <th style={{ textAlign: 'left', padding: 10, borderRight: '2px solid #ddd' }}>URL</th>
-                <th style={{ padding: 10, borderRight: '2px solid #ddd', textAlign: 'center' }}>Admin</th>
-                <th style={{ padding: 10, borderRight: '2px solid #ddd', textAlign: 'center' }}>Teacher</th>
-                <th style={{ padding: 10, textAlign: 'center' }}>Student</th>
-                <th style={{ padding: 10, borderLeft: '2px solid #ddd' }}>操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pages.map((p, idx) => {
-                const vis = settings.pageVisibility?.[p.path] || { label: p.label, menu: {}, dropdown: {} };
-                const displayLabel = (vis.label && vis.label.length > 0) ? vis.label : p.path;
-                const rowBg = idx % 2 === 0 ? '#ffffff' : '#f6f6f6';
-                const isSelected = selectedMenuRows.includes(p.path);
-                return (
-                  <tr key={p.path} style={{ background: rowBg, borderTop: '2px solid #ddd' }}>
-                    <td style={{ padding: 8, borderRight: '2px solid #ddd', textAlign: 'center' }}>
-                      <input type="checkbox" checked={isSelected} onChange={(e) => {
-                        if (e.target.checked) setSelectedMenuRows((s) => [...s, p.path]);
-                        else setSelectedMenuRows((s) => s.filter((x) => x !== p.path));
-                      }} />
-                    </td>
-                    <td style={{ padding: 8, borderRight: '2px solid #ddd' }}>
-                      <input disabled={!isSelected} value={settings.pageVisibility?.[p.path]?.label ?? ''} placeholder={p.path} onChange={(e) => {
-                        const next = { ...(settings.pageVisibility || {}), [p.path]: { ...(settings.pageVisibility?.[p.path] || {}), label: e.target.value } };
-                        setSettings({ ...settings, pageVisibility: next });
-                      }} style={{ width: '100%', padding: 6 }} />
-                    </td>
-                    <td style={{ padding: 8, borderRight: '2px solid #ddd' }}>
-                      <input disabled={!isSelected} value={p.path} onChange={(e) => {
-                        const newUrl = e.target.value || '';
-                        const current = settings.pageVisibility || {};
-                        const entry = current[p.path];
-                        if (!entry) return;
-                        const next = { ...current } as any;
-                        next[newUrl] = { ...(next[newUrl] || {}), ...entry };
-                        if (newUrl !== p.path) delete next[p.path];
-                        setSettings({ ...settings, pageVisibility: next });
-                        // update menu selection only
-                        setSelectedMenuRows((s) => s.map((x) => x === p.path ? newUrl : x));
-                      }} style={{ width: '100%', padding: 6 }} />
-                    </td>
-                    <td style={{ padding: 8, borderRight: '2px solid #ddd', textAlign: 'center' }}>
-                      <input disabled={!isSelected} type="checkbox" checked={!!(vis.menu?.admin)} onChange={(e) => {
-                        const next = { ...(settings.pageVisibility || {}), [p.path]: { ...(settings.pageVisibility?.[p.path] || {}), menu: { ...(settings.pageVisibility?.[p.path]?.menu || {}), admin: e.target.checked } } };
-                        setSettings({ ...settings, pageVisibility: next });
-                      }} />
-                    </td>
-                    <td style={{ padding: 8, borderRight: '2px solid #ddd', textAlign: 'center' }}>
-                      <input disabled={!isSelected} type="checkbox" checked={!!(vis.menu?.teacher)} onChange={(e) => {
-                        const next = { ...(settings.pageVisibility || {}), [p.path]: { ...(settings.pageVisibility?.[p.path] || {}), menu: { ...(settings.pageVisibility?.[p.path]?.menu || {}), teacher: e.target.checked } } };
-                        setSettings({ ...settings, pageVisibility: next });
-                      }} />
-                    </td>
-                    <td style={{ padding: 8, textAlign: 'center' }}>
-                      <input disabled={!isSelected} type="checkbox" checked={!!(vis.menu?.user)} onChange={(e) => {
-                        const next = { ...(settings.pageVisibility || {}), [p.path]: { ...(settings.pageVisibility?.[p.path] || {}), menu: { ...(settings.pageVisibility?.[p.path]?.menu || {}), user: e.target.checked } } };
-                        setSettings({ ...settings, pageVisibility: next });
-                      }} />
-                    </td>
-                    <td style={{ padding: 8, borderLeft: '2px solid #ddd', textAlign: 'center' }}>
-                      {isSelected ? (
-                        <button style={{ color: 'crimson' }} onClick={() => {
-                          const current = { ...(settings.pageVisibility || {}) } as any;
-                          delete current[p.path];
-                          setSettings({ ...settings, pageVisibility: current });
-                          // clear selection in both tables for this path
-                          setSelectedMenuRows((s) => s.filter((x) => x !== p.path));
-                          setSelectedDropdownRows((s) => s.filter((x) => x !== p.path));
-                        }}>刪除</button>
-                      ) : (
-                        <span style={{ color: '#999' }}>鎖定</span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
       <section style={{ marginTop: 24 }}>
-        <h3>頁面存取權限（Dropdown Menu）</h3>
-        <p style={{ marginTop: 6 }}>設定下拉選單（avatar dropdown）中各頁面的可見性。</p>
-        <div style={{ marginTop: 8, overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, border: '2px solid #ddd' }}>
-            <thead>
-              <tr style={{ background: '#f8f9fa' }}>
-                <th style={{ padding: 10, borderRight: '2px solid #ddd', width: 56 }}>選取</th>
-                <th style={{ textAlign: 'left', padding: 10, borderRight: '2px solid #ddd' }}>頁面名稱</th>
-                <th style={{ textAlign: 'left', padding: 10, borderRight: '2px solid #ddd' }}>URL</th>
-                <th style={{ padding: 10, borderRight: '2px solid #ddd', textAlign: 'center' }}>Admin</th>
-                <th style={{ padding: 10, borderRight: '2px solid #ddd', textAlign: 'center' }}>Teacher</th>
-                <th style={{ padding: 10, textAlign: 'center' }}>Student</th>
-                <th style={{ padding: 10, borderLeft: '2px solid #ddd' }}>操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pages.map((p, idx) => {
-                const vis = settings.pageVisibility?.[p.path] || { label: p.label, menu: {}, dropdown: {} };
-                const displayLabel2 = (vis.label && vis.label.length > 0) ? vis.label : p.path;
-                const rowBg = idx % 2 === 0 ? '#ffffff' : '#f6f6f6';
-                const isSelected = selectedDropdownRows.includes(p.path);
-                return (
-                  <tr key={p.path} style={{ background: rowBg, borderTop: '2px solid #ddd' }}>
-                    <td style={{ padding: 8, borderRight: '2px solid #ddd', textAlign: 'center' }}>
-                      <input type="checkbox" checked={isSelected} onChange={(e) => {
-                        if (e.target.checked) setSelectedDropdownRows((s) => [...s, p.path]);
-                        else setSelectedDropdownRows((s) => s.filter((x) => x !== p.path));
-                      }} />
-                    </td>
-                    <td style={{ padding: 8, borderRight: '2px solid #ddd' }}>
-                      <input disabled={!isSelected} value={settings.pageVisibility?.[p.path]?.label ?? ''} placeholder={p.path} onChange={(e) => {
-                        const next = { ...(settings.pageVisibility || {}), [p.path]: { ...(settings.pageVisibility?.[p.path] || {}), label: e.target.value } } as any;
-                        setSettings({ ...settings, pageVisibility: next });
-                      }} style={{ width: '100%', padding: 6 }} />
-                    </td>
-                    <td style={{ padding: 8, borderRight: '2px solid #ddd' }}>
-                      <input disabled={!isSelected} value={p.path} onChange={(e) => {
-                        const newUrl = e.target.value || '';
-                        const current = settings.pageVisibility || {};
-                        const entry = current[p.path];
-                        if (!entry) return;
-                        const next = { ...current } as any;
-                        next[newUrl] = { ...(next[newUrl] || {}), ...entry };
-                        if (newUrl !== p.path) delete next[p.path];
-                        setSettings({ ...settings, pageVisibility: next });
-                        // update dropdown selection only
-                        setSelectedDropdownRows((s) => s.map((x) => x === p.path ? newUrl : x));
-                      }} style={{ width: '100%', padding: 6 }} />
-                    </td>
-                    <td style={{ padding: 8, borderRight: '2px solid #ddd', textAlign: 'center' }}>
-                      <input disabled={!isSelected} type="checkbox" checked={!!(vis.dropdown?.admin)} onChange={(e) => {
-                        const next = { ...(settings.pageVisibility || {}), [p.path]: { ...(settings.pageVisibility?.[p.path] || {}), dropdown: { ...(settings.pageVisibility?.[p.path]?.dropdown || {}), admin: e.target.checked } } };
-                        setSettings({ ...settings, pageVisibility: next });
-                      }} />
-                    </td>
-                    <td style={{ padding: 8, borderRight: '2px solid #ddd', textAlign: 'center' }}>
-                      <input disabled={!isSelected} type="checkbox" checked={!!(vis.dropdown?.teacher)} onChange={(e) => {
-                        const next = { ...(settings.pageVisibility || {}), [p.path]: { ...(settings.pageVisibility?.[p.path] || {}), dropdown: { ...(settings.pageVisibility?.[p.path]?.dropdown || {}), teacher: e.target.checked } } };
-                        setSettings({ ...settings, pageVisibility: next });
-                      }} />
-                    </td>
-                    <td style={{ padding: 8, textAlign: 'center' }}>
-                      <input disabled={!isSelected} type="checkbox" checked={!!(vis.dropdown?.user)} onChange={(e) => {
-                        const next = { ...(settings.pageVisibility || {}), [p.path]: { ...(settings.pageVisibility?.[p.path] || {}), dropdown: { ...(settings.pageVisibility?.[p.path]?.dropdown || {}), user: e.target.checked } } };
-                        setSettings({ ...settings, pageVisibility: next });
-                      }} />
-                    </td>
-                    <td style={{ padding: 8, borderLeft: '2px solid #ddd', textAlign: 'center' }}>
-                      {isSelected ? (
-                        <button style={{ color: 'crimson' }} onClick={() => {
-                          const current = { ...(settings.pageVisibility || {}) } as any;
-                          delete current[p.path];
-                          setSettings({ ...settings, pageVisibility: current });
-                          // clear selection in both tables for this path
-                          setSelectedMenuRows((s) => s.filter((x) => x !== p.path));
-                          setSelectedDropdownRows((s) => s.filter((x) => x !== p.path));
-                        }}>刪除</button>
-                      ) : (
-                        <span style={{ color: '#999' }}>鎖定</span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <h3>頁面存取權限管理</h3>
+        <p style={{ marginTop: 6 }}>已拆分為三個專頁：Menu、Page、Dropdown Menu。請從下方連結打開對應設定畫面進行編輯。</p>
+        <div style={{ marginTop: 12, display: 'flex', gap: 12 }}>
+          <a href="/admin/settings/menu"><button style={{ padding: '8px 14px' }}>Menu 設定</button></a>
+          <a href="/admin/settings/page-permissions"><button style={{ padding: '8px 14px' }}>Page 存取權限</button></a>
+          <a href="/admin/settings/dropdown"><button style={{ padding: '8px 14px' }}>Dropdown Menu 設定</button></a>
+          <a href="/admin/settings/roles-usage"><button style={{ padding: '8px 14px' }}>Role 使用設定</button></a>
         </div>
       </section>
       <section style={{ marginTop: 16 }}>

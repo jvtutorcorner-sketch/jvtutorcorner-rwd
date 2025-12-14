@@ -16,12 +16,20 @@
       "menu": {
         "admin": true,
         "teacher": true,
-        "user": true
+        "student": true,
+        "test": false
       },
       "dropdown": {
         "admin": false,
         "teacher": false,
-        "user": false
+        "student": false,
+        "test": false
+      },
+      "page": {
+        "admin": false,
+        "teacher": false,
+        "student": false,
+        "test": false
       }
     },
     "/teachers": {
@@ -29,12 +37,20 @@
       "menu": {
         "admin": true,
         "teacher": true,
-        "user": true
+        "student": true,
+        "test": false
       },
       "dropdown": {
         "admin": false,
         "teacher": false,
-        "user": false
+        "student": false,
+        "test": false
+      },
+      "page": {
+        "admin": false,
+        "teacher": false,
+        "student": false,
+        "test": false
       }
     },
     "/pricing": {
@@ -42,12 +58,20 @@
       "menu": {
         "admin": true,
         "teacher": true,
-        "user": true
+        "student": true,
+        "test": false
       },
       "dropdown": {
         "admin": false,
         "teacher": false,
-        "user": false
+        "student": false,
+        "test": false
+      },
+      "page": {
+        "admin": false,
+        "teacher": false,
+        "student": false,
+        "test": false
       }
     },
     "/courses": {
@@ -55,12 +79,20 @@
       "menu": {
         "admin": true,
         "teacher": true,
-        "user": true
+        "student": true,
+        "test": false
       },
       "dropdown": {
         "admin": false,
         "teacher": false,
-        "user": false
+        "student": false,
+        "test": false
+      },
+      "page": {
+        "admin": false,
+        "teacher": false,
+        "student": false,
+        "test": false
       }
     },
     "/testimony": {
@@ -68,12 +100,20 @@
       "menu": {
         "admin": false,
         "teacher": false,
-        "user": false
+        "student": false,
+        "test": false
       },
       "dropdown": {
         "admin": false,
         "teacher": false,
-        "user": false
+        "student": false,
+        "test": false
+      },
+      "page": {
+        "admin": false,
+        "teacher": false,
+        "student": false,
+        "test": false
       }
     },
     "/about": {
@@ -81,12 +121,20 @@
       "menu": {
         "admin": true,
         "teacher": true,
-        "user": true
+        "student": false,
+        "test": false
       },
       "dropdown": {
         "admin": false,
         "teacher": false,
-        "user": false
+        "student": false,
+        "test": false
+      },
+      "page": {
+        "admin": false,
+        "teacher": false,
+        "student": false,
+        "test": false
       }
     },
     "/orders": {
@@ -94,12 +142,20 @@
       "menu": {
         "admin": false,
         "teacher": false,
-        "user": true
+        "student": false,
+        "test": false
       },
       "dropdown": {
         "admin": true,
         "teacher": false,
-        "user": true
+        "student": false,
+        "test": false
+      },
+      "page": {
+        "admin": false,
+        "teacher": false,
+        "student": false,
+        "test": false
       }
     },
     "/admin/orders": {
@@ -107,12 +163,20 @@
       "menu": {
         "admin": false,
         "teacher": false,
-        "user": false
+        "student": false,
+        "test": false
       },
       "dropdown": {
         "admin": true,
         "teacher": false,
-        "user": false
+        "student": false,
+        "test": false
+      },
+      "page": {
+        "admin": false,
+        "teacher": false,
+        "student": false,
+        "test": false
       }
     },
     "/admin/settings": {
@@ -120,12 +184,20 @@
       "menu": {
         "admin": false,
         "teacher": false,
-        "user": false
+        "student": false,
+        "test": false
       },
       "dropdown": {
         "admin": true,
         "teacher": false,
-        "user": false
+        "student": false,
+        "test": false
+      },
+      "page": {
+        "admin": false,
+        "teacher": false,
+        "student": false,
+        "test": false
       }
     },
     "/my-courses": {
@@ -133,12 +205,20 @@
       "menu": {
         "admin": false,
         "teacher": true,
-        "user": false
+        "student": false,
+        "test": false
       },
       "dropdown": {
         "admin": true,
         "teacher": true,
-        "user": false
+        "student": false,
+        "test": false
+      },
+      "page": {
+        "admin": false,
+        "teacher": false,
+        "student": false,
+        "test": false
       }
     },
     "/settings": {
@@ -146,13 +226,614 @@
       "menu": {
         "admin": false,
         "teacher": false,
-        "user": false
+        "student": false,
+        "test": false
       },
       "dropdown": {
         "admin": true,
         "teacher": true,
-        "user": true
+        "student": false,
+        "test": false
+      },
+      "page": {
+        "admin": false,
+        "teacher": false,
+        "student": false,
+        "test": false
+      }
+    },
+    "/admin/settings/page-permissions": {
+      "label": "Page 存取權限",
+      "menu": {
+        "admin": false,
+        "teacher": false,
+        "student": false,
+        "test": false
+      },
+      "dropdown": {
+        "admin": true,
+        "teacher": false,
+        "student": false,
+        "test": false
+      },
+      "page": {
+        "admin": true,
+        "teacher": true,
+        "student": true,
+        "test": true
+      }
+    },
+    "/admin/settings/menu": {
+      "label": "Menu",
+      "menu": {
+        "admin": false,
+        "teacher": false,
+        "student": false,
+        "test": false
+      },
+      "dropdown": {
+        "admin": true,
+        "teacher": false,
+        "student": false,
+        "test": false
+      },
+      "page": {
+        "admin": true,
+        "teacher": true,
+        "student": true,
+        "test": true
+      }
+    },
+    "/admin/settings/dropdown": {
+      "label": "Dropdown_Menu",
+      "menu": {
+        "admin": false,
+        "teacher": false,
+        "student": false,
+        "test": false
+      },
+      "dropdown": {
+        "admin": true,
+        "teacher": false,
+        "student": false,
+        "test": false
+      },
+      "page": {
+        "admin": true,
+        "teacher": true,
+        "student": true,
+        "test": true
+      }
+    },
+    "/admin/settings/roles-usage": {
+      "label": "roles使用者",
+      "menu": {
+        "admin": false,
+        "teacher": false,
+        "student": false,
+        "test": false
+      },
+      "dropdown": {
+        "admin": true,
+        "teacher": false,
+        "student": false,
+        "test": false
+      },
+      "page": {
+        "admin": true,
+        "teacher": true,
+        "student": true,
+        "test": true
       }
     }
-  }
+  },
+  "roles": [
+    {
+      "id": "admin",
+      "name": "Admin",
+      "description": "管理员",
+      "isActive": true
+    },
+    {
+      "id": "teacher",
+      "name": "Teacher",
+      "description": "教师",
+      "isActive": true
+    },
+    {
+      "id": "student",
+      "name": "Student",
+      "description": "学生",
+      "isActive": true
+    },
+    {
+      "id": "test",
+      "name": "test",
+      "description": "測試",
+      "isActive": true
+    }
+  ],
+  "pageConfigs": [
+    {
+      "id": "/",
+      "path": "/",
+      "label": "首頁",
+      "permissions": [
+        {
+          "roleId": "admin",
+          "roleName": "Admin",
+          "menuVisible": true,
+          "dropdownVisible": false
+        },
+        {
+          "roleId": "teacher",
+          "roleName": "Teacher",
+          "menuVisible": true,
+          "dropdownVisible": false
+        },
+        {
+          "roleId": "student",
+          "roleName": "Student",
+          "menuVisible": true,
+          "dropdownVisible": false
+        },
+        {
+          "roleId": "test",
+          "roleName": "test",
+          "menuVisible": false,
+          "dropdownVisible": false
+        }
+      ]
+    },
+    {
+      "id": "/teachers",
+      "path": "/teachers",
+      "label": "師資",
+      "permissions": [
+        {
+          "roleId": "admin",
+          "roleName": "Admin",
+          "menuVisible": true,
+          "dropdownVisible": false
+        },
+        {
+          "roleId": "teacher",
+          "roleName": "Teacher",
+          "menuVisible": true,
+          "dropdownVisible": false
+        },
+        {
+          "roleId": "student",
+          "roleName": "Student",
+          "menuVisible": true,
+          "dropdownVisible": false
+        },
+        {
+          "roleId": "test",
+          "roleName": "test",
+          "menuVisible": false,
+          "dropdownVisible": false
+        }
+      ]
+    },
+    {
+      "id": "/pricing",
+      "path": "/pricing",
+      "label": "方案與價格",
+      "permissions": [
+        {
+          "roleId": "admin",
+          "roleName": "Admin",
+          "menuVisible": true,
+          "dropdownVisible": false
+        },
+        {
+          "roleId": "teacher",
+          "roleName": "Teacher",
+          "menuVisible": true,
+          "dropdownVisible": false
+        },
+        {
+          "roleId": "student",
+          "roleName": "Student",
+          "menuVisible": true,
+          "dropdownVisible": false
+        },
+        {
+          "roleId": "test",
+          "roleName": "test",
+          "menuVisible": false,
+          "dropdownVisible": false
+        }
+      ]
+    },
+    {
+      "id": "/courses",
+      "path": "/courses",
+      "label": "課程總覽",
+      "permissions": [
+        {
+          "roleId": "admin",
+          "roleName": "Admin",
+          "menuVisible": true,
+          "dropdownVisible": false
+        },
+        {
+          "roleId": "teacher",
+          "roleName": "Teacher",
+          "menuVisible": true,
+          "dropdownVisible": false
+        },
+        {
+          "roleId": "student",
+          "roleName": "Student",
+          "menuVisible": true,
+          "dropdownVisible": false
+        },
+        {
+          "roleId": "test",
+          "roleName": "test",
+          "menuVisible": false,
+          "dropdownVisible": false
+        }
+      ]
+    },
+    {
+      "id": "/testimony",
+      "path": "/testimony",
+      "label": "學員見證",
+      "permissions": [
+        {
+          "roleId": "admin",
+          "roleName": "Admin",
+          "menuVisible": false,
+          "dropdownVisible": false
+        },
+        {
+          "roleId": "teacher",
+          "roleName": "Teacher",
+          "menuVisible": false,
+          "dropdownVisible": false
+        },
+        {
+          "roleId": "student",
+          "roleName": "Student",
+          "menuVisible": false,
+          "dropdownVisible": false
+        },
+        {
+          "roleId": "test",
+          "roleName": "test",
+          "menuVisible": false,
+          "dropdownVisible": false
+        }
+      ]
+    },
+    {
+      "id": "/about",
+      "path": "/about",
+      "label": "關於我們",
+      "permissions": [
+        {
+          "roleId": "admin",
+          "roleName": "Admin",
+          "menuVisible": true,
+          "dropdownVisible": false
+        },
+        {
+          "roleId": "teacher",
+          "roleName": "Teacher",
+          "menuVisible": true,
+          "dropdownVisible": false
+        },
+        {
+          "roleId": "student",
+          "roleName": "Student",
+          "menuVisible": false,
+          "dropdownVisible": false
+        },
+        {
+          "roleId": "test",
+          "roleName": "test",
+          "menuVisible": false,
+          "dropdownVisible": false
+        }
+      ]
+    },
+    {
+      "id": "/orders",
+      "path": "/orders",
+      "label": "我的課程(學生用)",
+      "permissions": [
+        {
+          "roleId": "admin",
+          "roleName": "Admin",
+          "menuVisible": false,
+          "dropdownVisible": true
+        },
+        {
+          "roleId": "teacher",
+          "roleName": "Teacher",
+          "menuVisible": false,
+          "dropdownVisible": false
+        },
+        {
+          "roleId": "student",
+          "roleName": "Student",
+          "menuVisible": false,
+          "dropdownVisible": false
+        },
+        {
+          "roleId": "test",
+          "roleName": "test",
+          "menuVisible": false,
+          "dropdownVisible": false
+        }
+      ]
+    },
+    {
+      "id": "/admin/orders",
+      "path": "/admin/orders",
+      "label": "所有訂單管理",
+      "permissions": [
+        {
+          "roleId": "admin",
+          "roleName": "Admin",
+          "menuVisible": false,
+          "dropdownVisible": true
+        },
+        {
+          "roleId": "teacher",
+          "roleName": "Teacher",
+          "menuVisible": false,
+          "dropdownVisible": false
+        },
+        {
+          "roleId": "student",
+          "roleName": "Student",
+          "menuVisible": false,
+          "dropdownVisible": false
+        },
+        {
+          "roleId": "test",
+          "roleName": "test",
+          "menuVisible": false,
+          "dropdownVisible": false
+        }
+      ]
+    },
+    {
+      "id": "/admin/settings",
+      "path": "/admin/settings",
+      "label": "Admin 網頁設定",
+      "permissions": [
+        {
+          "roleId": "admin",
+          "roleName": "Admin",
+          "menuVisible": false,
+          "dropdownVisible": true
+        },
+        {
+          "roleId": "teacher",
+          "roleName": "Teacher",
+          "menuVisible": false,
+          "dropdownVisible": false
+        },
+        {
+          "roleId": "student",
+          "roleName": "Student",
+          "menuVisible": false,
+          "dropdownVisible": false
+        },
+        {
+          "roleId": "test",
+          "roleName": "test",
+          "menuVisible": false,
+          "dropdownVisible": false
+        }
+      ]
+    },
+    {
+      "id": "/my-courses",
+      "path": "/my-courses",
+      "label": "我的課程(老師用)",
+      "permissions": [
+        {
+          "roleId": "admin",
+          "roleName": "Admin",
+          "menuVisible": false,
+          "dropdownVisible": true
+        },
+        {
+          "roleId": "teacher",
+          "roleName": "Teacher",
+          "menuVisible": true,
+          "dropdownVisible": true
+        },
+        {
+          "roleId": "student",
+          "roleName": "Student",
+          "menuVisible": false,
+          "dropdownVisible": false
+        },
+        {
+          "roleId": "test",
+          "roleName": "test",
+          "menuVisible": false,
+          "dropdownVisible": false
+        }
+      ]
+    },
+    {
+      "id": "/settings",
+      "path": "/settings",
+      "label": "個人設定",
+      "permissions": [
+        {
+          "roleId": "admin",
+          "roleName": "Admin",
+          "menuVisible": false,
+          "dropdownVisible": true
+        },
+        {
+          "roleId": "teacher",
+          "roleName": "Teacher",
+          "menuVisible": false,
+          "dropdownVisible": true
+        },
+        {
+          "roleId": "student",
+          "roleName": "Student",
+          "menuVisible": false,
+          "dropdownVisible": false
+        },
+        {
+          "roleId": "test",
+          "roleName": "test",
+          "menuVisible": false,
+          "dropdownVisible": false
+        }
+      ]
+    },
+    {
+      "id": "/admin/settings/page-permissions",
+      "path": "/admin/settings/page-permissions",
+      "label": "Page 存取權限",
+      "permissions": [
+        {
+          "roleId": "admin",
+          "roleName": "Admin",
+          "menuVisible": false,
+          "dropdownVisible": true,
+          "pageVisible": true
+        },
+        {
+          "roleId": "teacher",
+          "roleName": "Teacher",
+          "menuVisible": false,
+          "dropdownVisible": false,
+          "pageVisible": true
+        },
+        {
+          "roleId": "student",
+          "roleName": "Student",
+          "menuVisible": false,
+          "dropdownVisible": false,
+          "pageVisible": true
+        },
+        {
+          "roleId": "test",
+          "roleName": "test",
+          "menuVisible": false,
+          "dropdownVisible": false,
+          "pageVisible": true
+        }
+      ]
+    },
+    {
+      "id": "/admin/settings/menu",
+      "path": "/admin/settings/menu",
+      "label": "Menu",
+      "permissions": [
+        {
+          "roleId": "admin",
+          "roleName": "Admin",
+          "menuVisible": false,
+          "dropdownVisible": true,
+          "pageVisible": true
+        },
+        {
+          "roleId": "teacher",
+          "roleName": "Teacher",
+          "menuVisible": false,
+          "dropdownVisible": false,
+          "pageVisible": true
+        },
+        {
+          "roleId": "student",
+          "roleName": "Student",
+          "menuVisible": false,
+          "dropdownVisible": false,
+          "pageVisible": true
+        },
+        {
+          "roleId": "test",
+          "roleName": "test",
+          "menuVisible": false,
+          "dropdownVisible": false,
+          "pageVisible": true
+        }
+      ]
+    },
+    {
+      "id": "/admin/settings/dropdown",
+      "path": "/admin/settings/dropdown",
+      "label": "Dropdown_Menu",
+      "permissions": [
+        {
+          "roleId": "admin",
+          "roleName": "Admin",
+          "menuVisible": false,
+          "dropdownVisible": true,
+          "pageVisible": true
+        },
+        {
+          "roleId": "teacher",
+          "roleName": "Teacher",
+          "menuVisible": false,
+          "dropdownVisible": false,
+          "pageVisible": true
+        },
+        {
+          "roleId": "student",
+          "roleName": "Student",
+          "menuVisible": false,
+          "dropdownVisible": false,
+          "pageVisible": true
+        },
+        {
+          "roleId": "test",
+          "roleName": "test",
+          "menuVisible": false,
+          "dropdownVisible": false,
+          "pageVisible": true
+        }
+      ]
+    },
+    {
+      "id": "/admin/settings/roles-usage",
+      "path": "/admin/settings/roles-usage",
+      "label": "roles使用者",
+      "permissions": [
+        {
+          "roleId": "admin",
+          "roleName": "Admin",
+          "menuVisible": false,
+          "dropdownVisible": true,
+          "pageVisible": true
+        },
+        {
+          "roleId": "teacher",
+          "roleName": "Teacher",
+          "menuVisible": false,
+          "dropdownVisible": false,
+          "pageVisible": true
+        },
+        {
+          "roleId": "student",
+          "roleName": "Student",
+          "menuVisible": false,
+          "dropdownVisible": false,
+          "pageVisible": true
+        },
+        {
+          "roleId": "test",
+          "roleName": "test",
+          "menuVisible": false,
+          "dropdownVisible": false,
+          "pageVisible": true
+        }
+      ]
+    }
+  ]
 }

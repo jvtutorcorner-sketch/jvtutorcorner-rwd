@@ -51,6 +51,27 @@ export default function Header() {
     })();
   }, []);
 
+  useEffect(() => {
+    // listen for external changes to admin settings (e.g. saved from admin UI)
+    async function onSettingsChanged() {
+      try {
+        const res = await fetch('/api/admin/settings');
+        const data = await res.json();
+        if (res.ok && data?.ok) setAdminSettings(data.settings || null);
+      } catch (e) {
+        // ignore
+      }
+    }
+    if (typeof window !== 'undefined') {
+      window.addEventListener('tutor:admin-settings-changed', onSettingsChanged);
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('tutor:admin-settings-changed', onSettingsChanged);
+      }
+    };
+  }, []);
+
   // Listen for auth changes triggered elsewhere in the app (same-tab dispatch)
   useEffect(() => {
     function onAuthChange() {
@@ -141,6 +162,14 @@ export default function Header() {
                       <div className="menu-user" style={{ display: 'inline-block', marginRight: 8 }}>
                         {user.lastName ? <div className="menu-user-last">{user.lastName}</div> : null}
                         <div className="menu-user-email">{user.email}</div>
+                        <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>
+                          {(() => {
+                            const r = user.role;
+                            if (r === 'admin') return '管理者';
+                            if (r === 'teacher') return '教師';
+                            return '使用者';
+                          })()}
+                        </div>
                       </div>
                       <div ref={menuRef} style={{ display: 'inline-block', position: 'relative' }}>
                         <button
