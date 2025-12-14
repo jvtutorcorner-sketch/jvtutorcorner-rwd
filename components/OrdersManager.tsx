@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from 'next/link';
+import { COURSES } from '../data/courses';
 
 type Order = {
   orderId?: string;
@@ -25,7 +26,7 @@ export default function OrdersManager() {
   const [lastKey, setLastKey] = useState<string | null>(null);
   const [history, setHistory] = useState<(string | null)[]>([]);
   const [filterStatus, setFilterStatus] = useState<string>('');
-  const [filterEnrollmentId, setFilterEnrollmentId] = useState<string>('');
+  
   const [filterUserId, setFilterUserId] = useState<string>('');
   const [filterCourseId, setFilterCourseId] = useState<string>('');
   const [filterOrderId, setFilterOrderId] = useState<string>('');
@@ -41,7 +42,7 @@ export default function OrdersManager() {
       if (key) q.set('lastKey', key);
       // add filters
       if (filterStatus) q.set('status', filterStatus);
-      if (filterEnrollmentId) q.set('enrollmentId', filterEnrollmentId);
+      
       if (filterUserId) q.set('userId', filterUserId);
       if (filterCourseId) q.set('courseId', filterCourseId);
       if (filterOrderId) q.set('orderId', filterOrderId);
@@ -59,12 +60,32 @@ export default function OrdersManager() {
     }
   }
 
+  // build course id -> title map
+  const courseTitleMap = new Map<string, string>(COURSES.map((c) => [c.id, c.title]));
+
   useEffect(() => {
     // initial load
     load();
     // clear history
     setHistory([]);
   }, [limit]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handler = (e: any) => {
+      const updated = e?.detail;
+      if (updated && updated.orderId) {
+        setOrders((prev) => prev.map((o) => (o.orderId === updated.orderId ? updated : o)));
+      }
+    };
+    const reloadHandler = () => load();
+    window.addEventListener('tutor:order-updated', handler as EventListener);
+    window.addEventListener('tutor:orders-changed', reloadHandler as EventListener);
+    return () => {
+      window.removeEventListener('tutor:order-updated', handler as EventListener);
+      window.removeEventListener('tutor:orders-changed', reloadHandler as EventListener);
+    };
+  }, []);
 
   function handleSearch() {
     // reset pagination and history
@@ -85,12 +106,12 @@ export default function OrdersManager() {
       return;
     }
 
-    const headers = ['orderNumber','orderId', 'enrollmentId', 'courseId', 'amount', 'currency', 'status', 'createdAt', 'updatedAt'];
+    const headers = ['orderNumber','orderId', 'userId', 'courseTitle', 'amount', 'currency', 'status', 'createdAt', 'updatedAt'];
     const rows = orders.map((o) => [
       o.orderNumber || o.orderId || o.id || '',
       o.orderId || o.id || '',
-      o.enrollmentId || '',
-      o.courseId || '',
+      o.userId || '',
+      (o.courseId && courseTitleMap.get(o.courseId)) || o.courseId || '',
       o.amount != null ? String(o.amount) : '',
       o.currency || '',
       o.status || '',
@@ -140,17 +161,64 @@ export default function OrdersManager() {
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || 'Failed to update order');
       alert('Order updated');
-      load();
+      // if API returned updated order, update local list immediately to reflect status
+      if (data && data.order) {
+        setOrders((prev) => prev.map((o) => (o.orderId === orderId ? data.order : o)));
+      } else {
+        load();
+      }
     } catch (err: any) {
       alert('Update order error: ' + (err?.message || err));
     }
   }
 
-  function confirmAndPatch(orderId: string | undefined, label: string, status: string) {
-    if (!orderId) return;
+  function mapStatusToAction(status: string) {
+    const s = (status || '').toUpperCase();
+    if (s === 'PAID') return 'payment_capture';
+    if (s === 'COMPLETED') return 'complete';
+    if (s === 'CANCELLED') return 'cancel';
+    if (s === 'REFUNDED') return 'refund';
+    return 'update';
+  }
+
+  function confirmAndPatch(order: Order | undefined, label: string, status: string) {
+    if (!order || !order.orderId) return;
     const ok = typeof window !== 'undefined' ? window.confirm(`確定要 ${label} 嗎？這個操作不可逆。`) : true;
     if (!ok) return;
-    patchOrder(orderId, status);
+
+    const payment = {
+      time: new Date().toISOString(),
+      action: mapStatusToAction(status),
+      amount: order.amount != null ? order.amount : 0,
+      currency: order.currency || 'TWD',
+      status,
+      note: `Admin action: ${label}`,
+    } as any;
+
+    // send payment together with status so backend will append it
+    patchOrderWithPayment(order.orderId, status, payment);
+  }
+
+  async function patchOrderWithPayment(orderId: string, status: string, payment?: any) {
+    try {
+      const body: any = { status };
+      if (payment) body.payment = payment;
+      const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Failed to update order');
+      alert('Order updated');
+      if (data && data.order) {
+        setOrders((prev) => prev.map((o) => (o.orderId === orderId ? data.order : o)));
+      } else {
+        load();
+      }
+    } catch (err: any) {
+      alert('Update order error: ' + (err?.message || err));
+    }
   }
 
   return (
@@ -177,9 +245,6 @@ export default function OrdersManager() {
           <option value="FAILED">FAILED</option>
         </select>
 
-        <label style={{ marginRight: 8 }}>EnrollmentId:</label>
-        <input value={filterEnrollmentId} onChange={(e) => setFilterEnrollmentId(e.target.value)} placeholder="enrollmentId" style={{ marginRight: 12 }} />
-
         <label style={{ marginRight: 8 }}>OrderId:</label>
         <input value={filterOrderId} onChange={(e) => setFilterOrderId(e.target.value)} placeholder="orderId" style={{ marginRight: 12 }} />
 
@@ -199,13 +264,15 @@ export default function OrdersManager() {
 
       <table className="orders-table" style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #ddd' }}>
             <thead>
-              <tr>
+                <tr>
                 <th style={{ border: '1px solid #ddd', padding: '8px 6px', textAlign: 'left' }}>OrderId</th>
-                <th style={{ border: '1px solid #ddd', padding: '8px 6px', textAlign: 'left' }}>EnrollmentId</th>
+                <th style={{ border: '1px solid #ddd', padding: '8px 6px', textAlign: 'left' }}>使用者</th>
                 <th style={{ border: '1px solid #ddd', padding: '8px 6px', textAlign: 'left' }}>CourseId</th>
                 <th style={{ border: '1px solid #ddd', padding: '8px 6px', textAlign: 'left' }}>Amount</th>
                 <th style={{ border: '1px solid #ddd', padding: '8px 6px', textAlign: 'left' }}>Currency</th>
                 <th style={{ border: '1px solid #ddd', padding: '8px 6px', textAlign: 'left' }}>Status</th>
+                <th style={{ border: '1px solid #ddd', padding: '8px 6px', textAlign: 'left' }}>Create Time</th>
+                <th style={{ border: '1px solid #ddd', padding: '8px 6px', textAlign: 'left' }}>Update Time</th>
                 <th style={{ border: '1px solid #ddd', padding: '8px 6px', textAlign: 'left' }}>Actions</th>
               </tr>
             </thead>
@@ -213,17 +280,44 @@ export default function OrdersManager() {
               {orders.map((o, idx) => (
                   <tr key={o.orderId || o.id || idx}>
                   <td style={{ padding: '8px 6px', border: '1px solid #ddd' }}>
-                    <Link href={`/admin/orders/${o.orderId}`}>{o.orderNumber || o.orderId || o.id}</Link>
+                      <Link
+                        href={`/admin/orders/${o.orderId}`}
+                        title={`檢視訂單 ${o.orderNumber || o.orderId || o.id}`}
+                        style={{ color: '#0366d6', textDecoration: 'underline', fontWeight: 700, cursor: 'pointer' }}
+                      >
+                        {o.orderId || o.id}
+                      </Link>
                   </td>
-                  <td style={{ padding: '8px 6px', border: '1px solid #ddd' }}>{o.enrollmentId}</td>
-                  <td style={{ padding: '8px 6px', border: '1px solid #ddd' }}>{o.courseId}</td>
+                  <td style={{ padding: '8px 6px', border: '1px solid #ddd' }}>{o.userId || '-'}</td>
+                  <td style={{ padding: '8px 6px', border: '1px solid #ddd' }}>{o.courseId ? (courseTitleMap.get(o.courseId) || o.courseId) : '-'}</td>
                   <td style={{ padding: '8px 6px', border: '1px solid #ddd' }}>{o.amount}</td>
                   <td style={{ padding: '8px 6px', border: '1px solid #ddd' }}>{o.currency}</td>
                   <td style={{ padding: '8px 6px', border: '1px solid #ddd' }}>{o.status}</td>
+                  <td style={{ padding: '8px 6px', border: '1px solid #ddd' }}>{o.createdAt ? new Date(o.createdAt).toLocaleString() : '-'}</td>
+                  <td style={{ padding: '8px 6px', border: '1px solid #ddd' }}>{o.updatedAt ? new Date(o.updatedAt).toLocaleString() : '-'}</td>
                   <td style={{ padding: '8px 6px', border: '1px solid #ddd' }}>
-                    <button onClick={() => confirmAndPatch(o.orderId, '標示為已付款', 'PAID')} style={{ marginRight: 8 }}>Set PAID</button>
-                    <button onClick={() => confirmAndPatch(o.orderId, '取消訂單', 'CANCELLED')} style={{ marginRight: 8 }}>Cancel</button>
-                    <button onClick={() => confirmAndPatch(o.orderId, '退款', 'REFUNDED')}>Refund</button>
+                    <button onClick={() => confirmAndPatch(o, '標示為已付款', 'PAID')} style={{ marginRight: 8 }}>Set PAID</button>
+                    <button onClick={() => confirmAndPatch(o, '取消訂單', 'CANCELLED')} style={{ marginRight: 8 }}>Cancel</button>
+                    {(() => {
+                      const canComplete = (o.status || '').toUpperCase() === 'PAID';
+                      return (
+                        <button
+                          onClick={() => {
+                            if (!canComplete) {
+                              alert('訂單只有在 PAID 狀態才能完成');
+                              return;
+                            }
+                            confirmAndPatch(o, '完成訂單', 'COMPLETED');
+                          }}
+                          disabled={!canComplete}
+                          title={canComplete ? '完成訂單' : '僅在 PAID 狀態可完成'}
+                          style={{ marginRight: 8, opacity: canComplete ? 1 : 0.6, cursor: canComplete ? 'pointer' : 'not-allowed' }}
+                        >
+                          完成
+                        </button>
+                      );
+                    })()}
+                    <button onClick={() => confirmAndPatch(o, '退款', 'REFUNDED')}>Refund</button>
                   </td>
                 </tr>
               ))}

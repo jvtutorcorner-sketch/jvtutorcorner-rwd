@@ -176,8 +176,19 @@ export async function GET(request: Request) {
       }
     }
 
-    // If not using Dynamo, return from LOCAL_ORDERS
+    // If not using Dynamo, reload local file each request to reflect persisted updates
     if (!useDynamo) {
+      try {
+        const ORDERS_FILE = await resolveDataFile('orders.json');
+        if (fs.existsSync(ORDERS_FILE)) {
+          const raw = fs.readFileSync(ORDERS_FILE, 'utf8');
+          LOCAL_ORDERS = JSON.parse(raw || '[]');
+        } else {
+          LOCAL_ORDERS = [];
+        }
+      } catch (e) {
+        LOCAL_ORDERS = LOCAL_ORDERS || [];
+      }
       const items = LOCAL_ORDERS.slice(0, limit);
       return NextResponse.json({ ok: true, total: LOCAL_ORDERS.length, data: items, lastKey: null }, { status: 200 });
     }

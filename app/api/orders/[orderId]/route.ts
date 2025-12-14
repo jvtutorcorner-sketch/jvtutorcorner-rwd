@@ -69,7 +69,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ or
   try {
     const { orderId } = await params as { orderId: string };
     const body = await request.json();
-    const { status } = body || {};
+    const { status, payments, payment } = body || {};
 
     if (!orderId || !status) {
       return NextResponse.json({ error: 'orderId and status required' }, { status: 400 });
@@ -85,22 +85,33 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ or
       const idx = LOCAL_ORDERS.findIndex((o) => o.orderId === orderId);
       if (idx === -1) return NextResponse.json({ error: 'Order not found' }, { status: 404 });
       const now = new Date().toISOString();
-      // update status, updatedAt and derived orderNumber (userId + updatedAt)
-      LOCAL_ORDERS[idx] = { ...LOCAL_ORDERS[idx], status, updatedAt: now, orderNumber: `${LOCAL_ORDERS[idx].userId || 'unknown'}-${now}` };
+      // merge payments: append any incoming payments/payment to existing payments array
+      const existing = LOCAL_ORDERS[idx] || {};
+      const existingPayments = Array.isArray(existing.payments) ? existing.payments.slice() : [];
+      if (Array.isArray(payments)) existingPayments.push(...payments);
+      if (payment) existingPayments.push(payment);
+
+      LOCAL_ORDERS[idx] = { ...existing, status, updatedAt: now, orderNumber: `${existing.userId || 'unknown'}-${now}`, payments: existingPayments };
       updated = LOCAL_ORDERS[idx];
       saveLocalOrders();
     } else {
       // get existing
-      const existing = await docClient.send(
+      const existingRes = await docClient.send(
         new GetCommand({ TableName, Key: { orderId } }),
       );
 
-      if (!existing.Item) {
+      if (!existingRes.Item) {
         return NextResponse.json({ error: 'Order not found' }, { status: 404 });
       }
 
       const now = new Date().toISOString();
-      updated = { ...existing.Item, status, updatedAt: now, orderNumber: `${existing.Item.userId || 'unknown'}-${now}` } as any;
+
+      // merge payments for Dynamo: append incoming payments/payment
+      const existingPayments = Array.isArray(existingRes.Item.payments) ? existingRes.Item.payments.slice() : [];
+      if (Array.isArray(payments)) existingPayments.push(...payments);
+      if (payment) existingPayments.push(payment);
+
+      updated = { ...existingRes.Item, status, updatedAt: now, orderNumber: `${existingRes.Item.userId || 'unknown'}-${now}`, payments: existingPayments } as any;
 
       await docClient.send(new PutCommand({ TableName, Item: updated }));
     }

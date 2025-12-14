@@ -13,15 +13,49 @@
   },
   {
     "orderId": "efcb5e09-42e0-4ef1-bd21-835c22752fda",
-    "orderNumber": "mock-user-123-2025-12-09T12:45:56.538Z",
+    "orderNumber": "mock-user-123-2025-12-14T16:44:49.055Z",
     "userId": "mock-user-123",
     "courseId": "c1",
     "enrollmentId": "enr_1765284356433_479e7a84",
     "amount": 0,
     "currency": "TWD",
-    "status": "PENDING",
+    "status": "PAID",
     "createdAt": "2025-12-09T12:45:56.538Z",
-    "updatedAt": "2025-12-09T12:45:56.538Z"
+    "updatedAt": "2025-12-14T16:44:49.055Z",
+    "payments": [
+      {
+        "time": "2025-12-14T16:40:37.844Z",
+        "action": "cancel",
+        "amount": 0,
+        "currency": "TWD",
+        "status": "CANCELLED",
+        "note": "Admin action: 取消訂單"
+      },
+      {
+        "time": "2025-12-14T16:42:10.408Z",
+        "action": "payment_capture",
+        "amount": 0,
+        "currency": "TWD",
+        "status": "PAID",
+        "note": "Admin action: 標示為已付款"
+      },
+      {
+        "time": "2025-12-14T16:42:40.181Z",
+        "action": "refund",
+        "amount": 0,
+        "currency": "TWD",
+        "status": "REFUNDED",
+        "note": "Admin action: 退款"
+      },
+      {
+        "time": "2025-12-14T16:44:49.030Z",
+        "action": "payment_capture",
+        "amount": 0,
+        "currency": "TWD",
+        "status": "PAID",
+        "note": "Admin action: 標示為已付款"
+      }
+    ]
   },
   {
     "orderId": "d740ac83-e13c-4177-9404-919308b88d0c",
@@ -41,9 +75,20 @@
     "enrollmentId": "enr_1765107052260_438f5266",
     "amount": 1000,
     "currency": "TWD",
-    "status": "PAID",
+    "status": "REFUNDED",
     "createdAt": "2025-12-07T11:30:52.276Z",
-    "updatedAt": "2025-12-07T11:30:53.127Z"
+    "updatedAt": "2025-12-14T16:40:31.777Z",
+    "orderNumber": "mock-user-123-2025-12-14T16:40:31.777Z",
+    "payments": [
+      {
+        "time": "2025-12-14T16:40:31.756Z",
+        "action": "refund",
+        "amount": 1000,
+        "currency": "TWD",
+        "status": "REFUNDED",
+        "note": "Admin action: 退款"
+      }
+    ]
   },
   {
     "orderId": "0f0f613e-20ba-44a9-99c5-77bc87f7ef37",

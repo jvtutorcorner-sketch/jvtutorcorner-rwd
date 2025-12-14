@@ -44,11 +44,21 @@ export default function OrdersPage() {
     fetch('/api/orders?limit=50')
       .then((r) => r.json())
       .then((data) => {
-        if (data && data.ok) {
-          setOrders(data.data || data);
-        } else if (data && data.data) {
-          setOrders(data.data || []);
-        } else {
+        let list: Order[] = [];
+        if (data && data.ok) list = data.data || data || [];
+        else if (data && data.data) list = data.data || [];
+
+        // filter by logged-in user: admin sees all, others only their own orders
+        try {
+          const current = getStoredUser();
+          if (current?.role === 'admin') {
+            setOrders(list);
+          } else if (current?.email) {
+            setOrders(list.filter(o => (o.userId || '').toLowerCase() === current.email.toLowerCase()));
+          } else {
+            setOrders([]);
+          }
+        } catch (e) {
           setOrders([]);
         }
       })
