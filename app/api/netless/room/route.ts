@@ -57,16 +57,20 @@ export async function POST(req: NextRequest) {
       isRecord?: boolean;
     } = body || {};
 
+    // helper to build HeadersInit with only string values
+    const buildHeaders = () => {
+      const h: Record<string, string> = { 'content-type': 'application/json' };
+      if (NETLESS_SDK_TOKEN) h['token'] = NETLESS_SDK_TOKEN;
+      if (NETLESS_REGION) h['region'] = NETLESS_REGION;
+      return h as HeadersInit;
+    };
+
     // 1. 若沒有 uuid，先建立房間
     if (!uuid) {
       // Try creating room including name; if server rejects "name" input, retry with minimal payload
       let createRoomRes = await fetch(`${NETLESS_API_BASE}/v5/rooms`, {
         method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          token: NETLESS_SDK_TOKEN,
-          region: NETLESS_REGION,
-        },
+        headers: buildHeaders(),
         body: JSON.stringify({ isRecord, limit, name }),
       });
 
@@ -88,11 +92,7 @@ export async function POST(req: NextRequest) {
         if (shouldRetry) {
           createRoomRes = await fetch(`${NETLESS_API_BASE}/v5/rooms`, {
             method: 'POST',
-            headers: {
-              'content-type': 'application/json',
-              token: NETLESS_SDK_TOKEN,
-              region: NETLESS_REGION,
-            },
+            headers: buildHeaders(),
             body: JSON.stringify({}),
           });
         }
@@ -166,21 +166,14 @@ export async function POST(req: NextRequest) {
 
     // 若 local generation 不可用或失敗，回退到 Netless admin API（需要 NETLESS_SDK_TOKEN）
     if (!roomToken) {
-      const createTokenRes = await fetch(
-        `${NETLESS_API_BASE}/v5/tokens/rooms/${uuid}`,
-        {
-          method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-            token: NETLESS_SDK_TOKEN,
-            region: NETLESS_REGION,
-          },
-          body: JSON.stringify({
-            lifespan: lifespanMs, // 0 = 永不過期
-            role, // "admin" | "writer" | "reader"
-          }),
-        },
-      );
+      const createTokenRes = await fetch(`${NETLESS_API_BASE}/v5/tokens/rooms/${uuid}`, {
+        method: 'POST',
+        headers: buildHeaders(),
+        body: JSON.stringify({
+          lifespan: lifespanMs, // 0 = 永不過期
+          role, // "admin" | "writer" | "reader"
+        }),
+      });
 
       if (!createTokenRes.ok) {
         const text = await createTokenRes.text();
