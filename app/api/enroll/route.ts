@@ -123,8 +123,13 @@ export async function POST(request: NextRequest) {
       );
       console.log('[enroll API] DynamoDB 已寫入報名資料:', item);
     } else {
-      // 🟡 dev：記憶體暫存
+      // 🟡 dev：記憶體暫存，並立即 persist 到本地檔案以供其他 API 能即時讀取
       LOCAL_ENROLLMENTS.push(item);
+      try {
+        await saveLocalEnrollments();
+      } catch (e) {
+        console.warn('[enroll API] failed to save local enrollments immediately', (e as any)?.message || e);
+      }
       console.log('[enroll API] LOCAL_ENROLLMENTS 暫存報名資料:', item);
     }
 

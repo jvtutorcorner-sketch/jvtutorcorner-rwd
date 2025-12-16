@@ -32,6 +32,7 @@ const hexToRgbArray = (value: string | number[]): [number, number, number] => {
 const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName = 'test' }) => {
   // determine courseId from query string (e.g. ?courseId=c1)
   const courseId = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('courseId') ?? 'c1' : 'c1';
+  const orderId = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('orderId') ?? null : null;
   const course = COURSES.find((c) => c.id === courseId) || null;
 
   const [mounted, setMounted] = useState(false);
@@ -41,6 +42,8 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName = 'te
 
   // determine role from stored user + course mapping
   const storedUser = typeof window !== 'undefined' ? getStoredUser() : null;
+  // allow overriding role via URL parameter `role=teacher|student` for testing
+  const urlRole = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('role') : null;
   const isAdmin = storedUser?.role === 'admin';
   let computedRole: Role = 'student';
   if (storedUser?.role === 'teacher' || isAdmin) {
@@ -73,7 +76,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName = 'te
     setLowLatencyMode,
   } = useAgoraClassroom({
     channelName,
-    role: computedRole,
+    role: (urlRole === 'teacher' || urlRole === 'student') ? (urlRole as Role) : computedRole,
     isOneOnOne: true, // 启用1对1优化
     defaultQuality: 'high' // 默认高质量
   });
@@ -84,6 +87,16 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName = 'te
   const [hasVideoInput, setHasVideoInput] = useState<boolean | null>(null);
   const [wantPublishAudio, setWantPublishAudio] = useState(true);
   const [wantPublishVideo, setWantPublishVideo] = useState(true);
+  // session countdown
+  const [sessionDurationMinutes, setSessionDurationMinutes] = useState<number>(() => {
+    try {
+      const raw = typeof window !== 'undefined' ? localStorage.getItem(`course_session_duration_${courseId}`) : null;
+      if (raw) return Number(raw);
+    } catch (e) {}
+    return (course as any)?.sessionDurationMinutes ?? 50;
+  });
+  const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
+  const timerRef = useRef<number | null>(null);
 
   // Device lists and selections (Google Meet-like UI)
   const [audioInputs, setAudioInputs] = useState<MediaDeviceInfo[]>([]);
@@ -91,6 +104,12 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName = 'te
   const [selectedAudioDeviceId, setSelectedAudioDeviceId] = useState<string | null>(null);
   const [selectedVideoDeviceId, setSelectedVideoDeviceId] = useState<string | null>(null);
   const [permissionGranted, setPermissionGranted] = useState(false);
+
+  // pre-join waiting / readiness state (require same course + order)
+  const [ready, setReady] = useState(false);
+  const [canJoin, setCanJoin] = useState(false);
+
+  const sessionReadyKey = `classroom_session_ready_${courseId}_${orderId ?? 'noorder'}`;
 
   // Camera preview and mic test
   const previewStreamRef = useRef<MediaStream | null>(null);
@@ -199,6 +218,53 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName = 'te
     }
   };
 
+  // readiness management using localStorage to coordinate between teacher/student tabs
+  useEffect(() => {
+    if (!orderId) {
+      setCanJoin(false);
+      return;
+    }
+
+    const readReady = () => {
+      try {
+        const raw = localStorage.getItem(sessionReadyKey);
+        const arr = raw ? JSON.parse(raw) as Array<{ role: string; email?: string }> : [];
+        const hasTeacher = arr.some((p) => p.role === 'teacher');
+        const hasStudent = arr.some((p) => p.role === 'student');
+        setCanJoin(hasTeacher && hasStudent);
+      } catch (e) {
+        setCanJoin(false);
+      }
+    };
+
+    readReady();
+
+    const onStorage = (ev: StorageEvent) => {
+      if (ev.key === sessionReadyKey) readReady();
+    };
+    window.addEventListener('storage', onStorage);
+    return () => {
+      window.removeEventListener('storage', onStorage);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderId, courseId]);
+
+  const endSession = async () => {
+    try {
+      await leave();
+      try { (window as any).__wbRoom = null; } catch (e) {}
+      if (whiteboardMeta?.uuid) {
+        try {
+          await fetch('/api/agora/whiteboard/close', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ uuid: whiteboardMeta.uuid }) });
+        } catch (e) { console.warn('whiteboard close request failed', e); }
+      }
+      alert('Session ended locally; server close requested.');
+    } catch (e) {
+      console.warn('end session failed', e);
+      alert('End session attempt failed; check console');
+    }
+  };
+
   const startCameraPreview = async () => {
     try {
       const constraints: any = { video: true };
@@ -217,6 +283,78 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName = 'te
       setPreviewingCamera(false);
     }
   };
+
+  const markReady = (flag: boolean) => {
+    setReady(flag);
+    try {
+      const raw = localStorage.getItem(sessionReadyKey);
+      const arr = raw ? JSON.parse(raw) as Array<{ role: string; email?: string }> : [];
+      const email = (getStoredUser && typeof getStoredUser === 'function') ? (getStoredUser()?.email ?? undefined) : undefined;
+      const roleName = (urlRole === 'teacher' || computedRole === 'teacher') ? 'teacher' : 'student';
+      // remove existing entry for this role/email
+      const filtered = arr.filter((p) => !(p.role === roleName && p.email === email));
+      if (flag) {
+        filtered.push({ role: roleName, email });
+      }
+      localStorage.setItem(sessionReadyKey, JSON.stringify(filtered));
+      try { window.dispatchEvent(new StorageEvent('storage', { key: sessionReadyKey, newValue: JSON.stringify(filtered) })); } catch (e) {}
+    } catch (e) {
+      console.warn('markReady failed', e);
+    }
+  };
+
+  useEffect(() => {
+    // cleanup own ready mark on unmount
+    return () => {
+      try {
+        const raw = localStorage.getItem(sessionReadyKey);
+        const arr = raw ? JSON.parse(raw) as Array<{ role: string; email?: string }> : [];
+        const email = (getStoredUser && typeof getStoredUser === 'function') ? (getStoredUser()?.email ?? undefined) : undefined;
+        const roleName = (urlRole === 'teacher' || computedRole === 'teacher') ? 'teacher' : 'student';
+        const filtered = arr.filter((p) => !(p.role === roleName && p.email === email));
+        localStorage.setItem(sessionReadyKey, JSON.stringify(filtered));
+      } catch (e) {}
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // start/stop countdown when `joined` changes
+  useEffect(() => {
+    // clear existing timer
+    if (timerRef.current) {
+      try { window.clearInterval(timerRef.current); } catch (e) {}
+      timerRef.current = null;
+    }
+
+    if (joined) {
+      // initialize remaining seconds
+      const secs = (sessionDurationMinutes || 50) * 60;
+      setRemainingSeconds(secs);
+      timerRef.current = window.setInterval(() => {
+        setRemainingSeconds((prev) => {
+          if (prev === null) return prev;
+          if (prev <= 1) {
+            // time's up
+            try { if (timerRef.current) { window.clearInterval(timerRef.current); timerRef.current = null; } } catch (e) {}
+            // trigger endSession
+            endSession();
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000) as unknown as number;
+    } else {
+      setRemainingSeconds(null);
+    }
+
+    return () => {
+      if (timerRef.current) {
+        try { window.clearInterval(timerRef.current); } catch (e) {}
+        timerRef.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [joined, sessionDurationMinutes]);
 
   const stopCameraPreview = () => {
     try {
@@ -509,311 +647,142 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName = 'te
   }, [whiteboardRoom]);
 
   return (
-    <div style={{ display: 'flex', gap: 12 }}>
-      <div style={{ flex: 1 }}>
-        <div style={{ marginBottom: 12 }}>
-          {/* Dev helper: mark current stored user as admin for testing Join button */}
-          {mounted && (
-            <button
-              onClick={() => {
-                try {
-                  const su = getStoredUser() || { email: 'dev@local', plan: 'pro' };
-                  const updated = { ...su, role: 'admin', displayName: su.displayName ?? 'Dev Admin' } as any;
-                  setStoredUser(updated);
-                  // reload so UI reflects role change
-                  window.location.reload();
-                } catch (e) {
-                  // fallback: directly set localStorage
-                  try {
-                    const raw = localStorage.getItem('tutor_mock_user');
-                    const parsed = raw ? JSON.parse(raw) : { email: 'dev@local', plan: 'pro' };
-                    parsed.role = 'admin';
-                    parsed.displayName = parsed.displayName || 'Dev Admin';
-                    localStorage.setItem('tutor_mock_user', JSON.stringify(parsed));
-                    window.location.reload();
-                  } catch {}
-                }
-              }}
-              style={{ marginLeft: 12 }}
-            >
-              Dev: Make admin
-            </button>
-          )}
-          {/* Open / copy classroom link for testing */}
-          {mounted && (
-            <>
-              <button
-                onClick={() => {
-                  try {
-                    const url = `${window.location.origin}/classroom?courseId=${encodeURIComponent(courseId)}`;
-                    window.open(url, '_blank', 'noopener');
-                  } catch (e) {
-                    console.warn('open classroom link failed', e);
-                  }
-                }}
-                style={{ marginLeft: 8 }}
-              >
-                Open Classroom Link
-              </button>
-              <button
-                onClick={async () => {
-                  try {
-                    const url = `${window.location.origin}/classroom?courseId=${encodeURIComponent(courseId)}`;
-                    await navigator.clipboard.writeText(url);
-                    alert('課堂連結已複製到剪貼簿');
-                  } catch (e) {
-                    try {
-                      const url = `${window.location.origin}/classroom?courseId=${encodeURIComponent(courseId)}`;
-                      (window as any).prompt('Copy this link', url);
-                    } catch {}
-                  }
-                }}
-                style={{ marginLeft: 8 }}
-              >
-                Copy Link
-              </button>
-            </>
-          )}
-
-          {/* Only show join/leave controls to teachers or admin users for testing (render only after mount to avoid hydration mismatch) */}
-          {mounted && (isAdmin || computedRole === 'teacher') && (
-            <>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <label style={{ fontSize: 12, color: '#666' }}>Microphone:</label>
-                  <select
-                    value={selectedAudioDeviceId ?? ''}
-                    onChange={(e) => setSelectedAudioDeviceId(e.target.value || null)}
-                    style={{ fontSize: 12 }}
-                  >
-                    {audioInputs.length === 0 && <option value="">(no microphones)</option>}
-                    {audioInputs.map((d) => (
-                      <option key={d.deviceId} value={d.deviceId}>{d.label || 'Microphone'}</option>
-                    ))}
-                  </select>
-                  <button onClick={() => { testingMic ? stopMicTest() : startMicTest(); }} style={{ marginLeft: 6 }}>
-                    {testingMic ? 'Stop Mic Test' : 'Test Mic'}
-                  </button>
-                  <div style={{ width: 80, height: 8, background: '#222', borderRadius: 4, overflow: 'hidden', marginLeft: 6 }}>
-                    <div style={{ width: `${Math.round(micLevel * 100)}%`, height: '100%', background: micLevel > 0.6 ? '#e44' : '#3c3', transition: 'width 100ms linear' }} />
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <label style={{ fontSize: 12, color: '#666' }}>Camera:</label>
-                  <select
-                    value={selectedVideoDeviceId ?? ''}
-                    onChange={(e) => setSelectedVideoDeviceId(e.target.value || null)}
-                    style={{ fontSize: 12 }}
-                  >
-                    {videoInputs.length === 0 && <option value="">(no cameras)</option>}
-                    {videoInputs.map((d) => (
-                      <option key={d.deviceId} value={d.deviceId}>{d.label || 'Camera'}</option>
-                    ))}
-                  </select>
-                  <button onClick={() => { previewingCamera ? stopCameraPreview() : startCameraPreview(); }} style={{ marginLeft: 6 }}>
-                    {previewingCamera ? 'Stop Preview' : 'Preview Camera'}
-                  </button>
-                </div>
-
-                <div style={{ marginLeft: 8 }}>
-                  <button 
-                    onClick={requestPermissions}
-                    style={{
-                      background: permissionGranted ? '#4caf50' : '#ff9800',
-                      color: 'white',
-                      border: 'none',
-                      padding: '6px 12px',
-                      borderRadius: 4,
-                      cursor: 'pointer'
-                    }}
-                  >
-                    {permissionGranted ? '✓ 權限已授予' : '⚠ 請求權限'}
-                  </button>
-                </div>
+    <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+      {/* Left: Whiteboard (flexible) */}
+      <div style={{ flex: 1, minWidth: 560, display: 'flex', justifyContent: 'center' }}>
+        <div style={{ width: '100%', maxWidth: 1000 }}>
+          <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div>Whiteboard</div>
+                {remainingSeconds !== null && (
+                  <div style={{ color: 'red', fontWeight: 600, marginLeft: 8 }}>{Math.floor((remainingSeconds || 0) / 60)}:{String((remainingSeconds || 0) % 60).padStart(2, '0')}</div>
+                )}
               </div>
-              <span style={{ marginLeft: 12, marginRight: 8 }}>
-                <label style={{ fontSize: 12, color: '#666' }}>Mic:</label>
-                <button
-                  onClick={() => setWantPublishAudio((s) => !s)}
-                  disabled={hasAudioInput === false}
-                  style={{ marginLeft: 6 }}
-                >
-                  {wantPublishAudio ? 'On' : 'Off'}
-                </button>
-              </span>
-
-              <span style={{ marginRight: 8 }}>
-                <label style={{ fontSize: 12, color: '#666' }}>Cam:</label>
-                <button
-                  onClick={() => setWantPublishVideo((s) => !s)}
-                  disabled={hasVideoInput === false}
-                  style={{ marginLeft: 6 }}
-                >
-                  {wantPublishVideo ? 'On' : 'Off'}
-                </button>
-              </span>
-
-              <button onClick={() => join({ publishAudio: wantPublishAudio, publishVideo: wantPublishVideo })} disabled={loading || joined} style={{ marginLeft: 8 }}>
-                Join
-              </button>
-              <button onClick={() => leave()} disabled={!joined} style={{ marginLeft: 8 }}>
-                Leave
-              </button>
-              <button
-                onClick={async () => {
-                  try {
-                    // attempt local cleanup
-                    await leave();
-                    // clear debug global
-                    try { (window as any).__wbRoom = null; } catch {}
-                    // ask server to close whiteboard room if known
-                    if (whiteboardMeta?.uuid) {
-                      await fetch('/api/agora/whiteboard/close', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ uuid: whiteboardMeta.uuid }),
-                      });
-                    }
-                    alert('Session ended locally; server close requested.');
-                  } catch (e) {
-                    console.warn('end session failed', e);
-                    alert('End session attempt failed; check console');
-                  }
-                }}
-                style={{ marginLeft: 8 }}
-              >
-                End Session
-              </button>
-            </>
-          )}
-          {loading && <span style={{ marginLeft: 12 }}>Joining...</span>}
-          {error && <span style={{ marginLeft: 12, color: 'red' }}>{error}</span>}
-        </div>
-
-        <div style={{ position: 'relative', height: 360, background: '#111', marginRight: 16 }}>
-          <div style={{ position: 'absolute', left: 12, top: 12 }}>
-            <div style={{ width: 320, height: 240, background: '#000' }}>
-              <video ref={localVideoRef} autoPlay muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-            </div>
-            <div style={{ color: '#fff', fontSize: 12, marginTop: 6 }}>Local</div>
           </div>
-
-          <div style={{ position: 'absolute', right: 12, top: 12 }}>
-            <div style={{ width: 320, height: 240, background: '#000' }}>
-              <video ref={remoteVideoRef} autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-            </div>
-            <div style={{ color: '#fff', fontSize: 12, marginTop: 6 }}>{firstRemote ? `Remote ${firstRemote.uid}` : 'Remote'}</div>
+          <div style={{ background: '#fff', borderRadius: 8, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}>
+            <EnhancedWhiteboard room={whiteboardRoom} width={900} height={640} className="flex-1" />
           </div>
         </div>
-
-        {/* 视频控制面板 */}
-        <VideoControls
-          currentQuality={currentQuality}
-          isLowLatencyMode={isLowLatencyMode}
-          onQualityChange={setVideoQuality}
-          onLowLatencyToggle={setLowLatencyMode}
-          hasVideo={hasVideoInput === true}
-        />
       </div>
 
-      <div style={{ width: 640 }}>
-        <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div>Whiteboard</div>
-          {/* Simple toolbar: always show Pencil/Eraser (queue if room missing) */}
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <button
-              onClick={() => {
-                setWhiteboardTool('pencil');
-              }}
-            >
-              Pencil
-            </button>
-
-            {/* color picker for pencil (default black) */}
-            <input
-              aria-label="Pen color"
-              type="color"
-              value={penColor}
-              onChange={(e) => {
-                const v = e.target.value;
-                setPenColor(v);
-                setWhiteboardColor(v);
-              }}
-              style={{ width: 40, height: 28, padding: 0, border: 'none', background: 'transparent' }}
-            />
-
-            <button
-              onClick={() => {
-                setWhiteboardTool('eraser');
-              }}
-            >
-              Eraser
-            </button>
-
-            {/* Additional controls shown when room exists */}
-            {whiteboardRoom && (
+      {/* Right: Video previews and controls (fixed width) */}
+      <div style={{ width: 360, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            {mounted && (
+              <button onClick={() => { try { const su = getStoredUser() || { email: 'dev@local', plan: 'pro' }; const updated = { ...su, role: 'admin', displayName: su.displayName ?? 'Dev Admin' } as any; setStoredUser(updated); window.location.reload(); } catch (e) { try { const raw = localStorage.getItem('tutor_mock_user'); const parsed = raw ? JSON.parse(raw) : { email: 'dev@local', plan: 'pro' }; parsed.role = 'admin'; parsed.displayName = parsed.displayName || 'Dev Admin'; localStorage.setItem('tutor_mock_user', JSON.stringify(parsed)); window.location.reload(); } catch {} } }} style={{ marginRight: 8 }}>Dev: Make admin</button>
+            )}
+            {mounted && (
               <>
-                <button
-                  onClick={() => {
-                    try {
-                      const r: any = whiteboardRoom;
-                      if (typeof r.undo === 'function') {
-                        r.undo();
-                        return;
-                      }
-                      if (typeof r.undoStep === 'function') { r.undoStep(); return; }
-                      if (typeof r.undoLocal === 'function') { r.undoLocal(); return; }
-                      console.warn('No undo API found on whiteboard room');
-                    } catch (e) {
-                      console.warn('undo failed', e);
-                    }
-                  }}
-                >
-                  Undo
-                </button>
-                <button
-                  onClick={() => {
-                    try {
-                      const r: any = whiteboardRoom;
-                      if (typeof r.redo === 'function') { r.redo(); return; }
-                      if (typeof r.redoStep === 'function') { r.redoStep(); return; }
-                      if (typeof r.redoLocal === 'function') { r.redoLocal(); return; }
-                      console.warn('No redo API found on whiteboard room');
-                    } catch (e) {
-                      console.warn('redo failed', e);
-                    }
-                  }}
-                >
-                  Redo
-                </button>
-                <button
-                  onClick={() => {
-                    try {
-                      const r: any = whiteboardRoom;
-                      if (typeof r.cleanCurrentAppliance === 'function') { r.cleanCurrentAppliance(); return; }
-                      if (typeof r.removeAllAttachments === 'function') { r.removeAllAttachments(); return; }
-                      if (typeof r.clear === 'function') { r.clear(); return; }
-                      if (typeof r.removeAll === 'function') { r.removeAll(); return; }
-                      console.warn('No clear API found on whiteboard room');
-                    } catch (e) {
-                      console.warn('clear failed', e);
-                    }
-                  }}
-                >
-                  Clear
-                </button>
-                <button onClick={() => listWhiteboardMethods()}>List Methods</button>
+                <button onClick={() => { try { const url = `${window.location.origin}/classroom?courseId=${encodeURIComponent(courseId)}`; window.open(url, '_blank', 'noopener'); } catch (e) { console.warn('open classroom link failed', e); } }} style={{ marginRight: 6 }}>Open Classroom Link</button>
+                <button onClick={async () => { try { const url = `${window.location.origin}/classroom?courseId=${encodeURIComponent(courseId)}`; await navigator.clipboard.writeText(url); alert('課堂連結已複製到剪貼簿'); } catch (e) { try { const url = `${window.location.origin}/classroom?courseId=${encodeURIComponent(courseId)}`; (window as any).prompt('Copy this link', url); } catch {} } }} >Copy Link</button>
               </>
             )}
           </div>
         </div>
-        <EnhancedWhiteboard
-          room={whiteboardRoom}
-          width={800}
-          height={680}
-          className="flex-1"
-        />
+
+        <div style={{ background: '#111', padding: 12, borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center' }}>
+            <div style={{ width: 320, height: 200, background: '#000', borderRadius: 6, overflow: 'hidden' }}>
+              <video ref={localVideoRef} autoPlay muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            </div>
+            <div style={{ color: '#fff', fontSize: 12 }}>{(urlRole === 'teacher' || computedRole === 'teacher') ? 'Teacher' : 'Student'}</div>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center' }}>
+            <div style={{ width: 320, height: 200, background: '#000', borderRadius: 6, overflow: 'hidden' }}>
+              <video ref={remoteVideoRef} autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            </div>
+            <div style={{ color: '#fff', fontSize: 12 }}>{firstRemote ? `${(urlRole === 'teacher' || computedRole === 'teacher') ? 'Student' : 'Teacher'} ${firstRemote.uid}` : ((urlRole === 'teacher' || computedRole === 'teacher') ? 'Student' : 'Teacher')}</div>
+          </div>
+
+          {/* Controls */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {mounted && (isAdmin || computedRole === 'teacher' || computedRole === 'student') && (
+              <>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <label style={{ fontSize: 12, color: '#ccc' }}>Mic:</label>
+                  <select value={selectedAudioDeviceId ?? ''} onChange={(e) => setSelectedAudioDeviceId(e.target.value || null)} style={{ fontSize: 12 }}>
+                    {audioInputs.length === 0 && <option value="">(no microphones)</option>}
+                    {audioInputs.map((d) => (<option key={d.deviceId} value={d.deviceId}>{d.label || 'Microphone'}</option>))}
+                  </select>
+                  <button onClick={() => { testingMic ? stopMicTest() : startMicTest(); }}>{testingMic ? 'Stop Mic Test' : 'Test Mic'}</button>
+                </div>
+
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <label style={{ fontSize: 12, color: '#ccc' }}>Cam:</label>
+                  <select value={selectedVideoDeviceId ?? ''} onChange={(e) => setSelectedVideoDeviceId(e.target.value || null)} style={{ fontSize: 12 }}>
+                    {videoInputs.length === 0 && <option value="">(no cameras)</option>}
+                    {videoInputs.map((d) => (<option key={d.deviceId} value={d.deviceId}>{d.label || 'Camera'}</option>))}
+                  </select>
+                  <button onClick={() => { previewingCamera ? stopCameraPreview() : startCameraPreview(); }}>{previewingCamera ? 'Stop Preview' : 'Preview Camera'}</button>
+                </div>
+
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <button onClick={requestPermissions} style={{ background: permissionGranted ? '#4caf50' : '#ff9800', color: 'white', border: 'none', padding: '6px 12px', borderRadius: 4 }}>{permissionGranted ? '✓ 權限已授予' : '⚠ 請求權限'}</button>
+                </div>
+
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <label style={{ fontSize: 12, color: '#ccc' }}>Mic</label>
+                  <button onClick={() => setWantPublishAudio((s) => !s)} disabled={hasAudioInput === false}>{wantPublishAudio ? 'On' : 'Off'}</button>
+                  <label style={{ fontSize: 12, color: '#ccc', marginLeft: 8 }}>Cam</label>
+                  <button onClick={() => setWantPublishVideo((s) => !s)} disabled={hasVideoInput === false}>{wantPublishVideo ? 'On' : 'Off'}</button>
+                </div>
+
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {(() => {
+                    const joinDisabled = loading || joined || !canJoin;
+                    return (
+                      <button
+                        onClick={() => join({ publishAudio: wantPublishAudio, publishVideo: wantPublishVideo })}
+                        disabled={joinDisabled}
+                        style={{
+                          background: joinDisabled ? '#9CA3AF' : undefined,
+                          color: joinDisabled ? 'white' : undefined,
+                          border: 'none',
+                          padding: '6px 12px',
+                          borderRadius: 4,
+                          cursor: joinDisabled ? 'not-allowed' : 'pointer'
+                        }}
+                      >
+                        Join
+                      </button>
+                    );
+                  })()}
+                  <button onClick={() => leave()} disabled={!joined}>Leave</button>
+                  <button
+                    onClick={endSession}
+                    disabled={!(isAdmin || computedRole === 'teacher')}
+                    style={{
+                      background: !(isAdmin || computedRole === 'teacher') ? '#9CA3AF' : undefined,
+                      color: !(isAdmin || computedRole === 'teacher') ? 'white' : undefined,
+                      border: 'none',
+                      padding: '6px 12px',
+                      borderRadius: 4,
+                      cursor: !(isAdmin || computedRole === 'teacher') ? 'not-allowed' : 'pointer'
+                    }}
+                  >
+                    End Session
+                  </button>
+                </div>
+                <div style={{ marginTop: 6, fontSize: 12, color: '#c7c7c7' }}>
+                  <div><strong>Leave</strong>: 只離開目前這個瀏覽器分頁或裝置；不會影響其他參與者。</div>
+                  <div><strong>End Session</strong>: 向伺服器請求正式結束課堂，可能會關閉白板並使所有參與者離開（只有授課者或管理員可執行）。</div>
+                  {remainingSeconds !== null && (
+                    <div style={{ marginTop: 6 }}>
+                      <strong>剩餘時間：</strong> {Math.floor((remainingSeconds || 0) / 60)}:{String((remainingSeconds || 0) % 60).padStart(2, '0')}
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+            {loading && <div style={{ color: '#ccc' }}>Joining...</div>}
+            {error && <div style={{ color: 'salmon' }}>{error}</div>}
+          </div>
+        </div>
+
+        {/* Video quality controls */}
+        <VideoControls currentQuality={currentQuality} isLowLatencyMode={isLowLatencyMode} onQualityChange={setVideoQuality} onLowLatencyToggle={setLowLatencyMode} hasVideo={hasVideoInput === true} />
       </div>
     </div>
   );

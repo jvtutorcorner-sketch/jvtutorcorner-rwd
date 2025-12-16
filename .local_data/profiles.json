@@ -57,14 +57,19 @@
     "updatedAtUtc": "2025-12-09T00:00:00.000Z",
     "updatedAtLocal": "2025-12-09T08:00:00",
     "backupEmail": "",
-    "card": { "number": "", "expiry": "", "cvc": "", "country": "TW" }
+    "card": {
+      "number": "",
+      "expiry": "",
+      "cvc": "",
+      "country": "TW"
+    }
   },
   {
     "roid_id": "basic-demo",
     "email": "basic@test.com",
     "password": "123456",
-    "firstName": "Basic",
-    "lastName": "User",
+    "firstName": "adc",
+    "lastName": "cc",
     "role": "user",
     "plan": "basic",
     "bio": "Basic 測試帳號",
@@ -73,10 +78,15 @@
     "termsAccepted": true,
     "createdAtUtc": "2025-12-09T00:00:00.000Z",
     "createdAtLocal": "2025-12-09T08:00:00",
-    "updatedAtUtc": "2025-12-09T00:00:00.000Z",
-    "updatedAtLocal": "2025-12-09T08:00:00",
+    "updatedAtUtc": "2025-12-16T14:34:53.790Z",
+    "updatedAtLocal": "2025-12-16T22:34:53",
     "backupEmail": "",
-    "card": { "number": "", "expiry": "", "cvc": "", "country": "TW" }
+    "card": {
+      "number": "",
+      "expiry": "",
+      "cvc": "",
+      "country": "TW"
+    }
   },
   {
     "roid_id": "pro-demo",
@@ -95,7 +105,12 @@
     "updatedAtUtc": "2025-12-09T00:00:00.000Z",
     "updatedAtLocal": "2025-12-09T08:00:00",
     "backupEmail": "",
-    "card": { "number": "", "expiry": "", "cvc": "", "country": "TW" }
+    "card": {
+      "number": "",
+      "expiry": "",
+      "cvc": "",
+      "country": "TW"
+    }
   },
   {
     "roid_id": "elite-demo",
@@ -114,6 +129,11 @@
     "updatedAtUtc": "2025-12-09T00:00:00.000Z",
     "updatedAtLocal": "2025-12-09T08:00:00",
     "backupEmail": "",
-    "card": { "number": "", "expiry": "", "cvc": "", "country": "TW" }
+    "card": {
+      "number": "",
+      "expiry": "",
+      "cvc": "",
+      "country": "TW"
+    }
   }
 ]

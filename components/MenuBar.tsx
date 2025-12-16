@@ -50,7 +50,8 @@ export default function MenuBar() {
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new Event('tutor:auth-changed'));
     }
-    router.refresh();
+    // navigate to homepage after logout
+    router.push('/');
     alert('已登出測試帳號。');
   }
 
@@ -151,23 +152,15 @@ export default function MenuBar() {
                               role="menuitem"
                               tabIndex={0}
                               className="menu-link"
-                              onClick={() => { setMenuOpen(false); router.push('/settings?tab=plan'); }}
-                              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { setMenuOpen(false); router.push('/settings?tab=plan'); } }}
+                              onClick={() => { setMenuOpen(false); router.push('/settings'); }}
+                              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { setMenuOpen(false); router.push('/settings'); } }}
                             >
-                              升級方案
+                              設定
                             </span>
                           </li>
                         )}
                         <li>
-                          <span
-                            role="menuitem"
-                            tabIndex={0}
-                            className="menu-link"
-                            onClick={() => { setMenuOpen(false); router.push('/settings?tab=personalize'); }}
-                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { setMenuOpen(false); router.push('/settings?tab=personalize'); } }}
-                          >
-                            個人化
-                          </span>
+                            {/* Personalize now accessed via /settings */}
                         </li>
                         <li>
                           <Link href="/settings" onClick={() => setMenuOpen(false)} className="menu-link">設定</Link>

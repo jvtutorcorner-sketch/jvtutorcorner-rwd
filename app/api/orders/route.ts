@@ -54,10 +54,29 @@ if (!useDynamo) {
 export async function POST(request: Request) {
   try {
     const { courseId, enrollmentId, amount, currency } = await request.json();
-    const userId = await getUserId();
+    let userId = await getUserId();
 
     if (!courseId) {
       return NextResponse.json({ error: 'Course ID is required' }, { status: 400 });
+    }
+
+    // If no authenticated userId (dev/demo), or if it's a placeholder mock user, try to derive user from enrollment record
+    if (!userId || String(userId).startsWith('mock-user')) {
+      try {
+        // attempt to read local enrollments file (same fallback used by /api/enroll)
+        const ENROLL_FILE = await resolveDataFile('enrollments.json');
+        if (fs.existsSync(ENROLL_FILE)) {
+          const raw = fs.readFileSync(ENROLL_FILE, 'utf8');
+          const localEnrolls = JSON.parse(raw || '[]');
+          const found = localEnrolls.find((e: any) => e.id === enrollmentId);
+          if (found && found.email) {
+            // use raw email as userId in dev mode so client-side filtering matches
+            userId = String(found.email);
+          }
+        }
+      } catch (e) {
+        // ignore and fall through to default behavior
+      }
     }
 
     if (!userId) {

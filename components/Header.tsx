@@ -107,7 +107,8 @@ export default function Header() {
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new Event('tutor:auth-changed'));
     }
-    router.refresh();
+    // navigate to homepage after logout
+    router.push('/');
     alert('已登出測試帳號。');
   }
 
@@ -124,7 +125,7 @@ export default function Header() {
           {
             // build menu items and apply adminSettings.pageVisibility.menu rules when available
             [
-              { href: '/', title: '首頁 - 回到網站首頁', defaultLabel: '首頁' },
+                { href: '/', title: '首頁 - 回到網站首頁', defaultLabel: '首頁' },
               { href: '/teachers', title: '專業師資 - 嚴選全球優質師資', defaultLabel: '專業師資' },
               { href: '/pricing', title: '方案與價格 - 定價與方案說明', defaultLabel: '方案與價格' },
               { href: '/courses', title: '課程總覽 - 多國語種課程總覽', defaultLabel: '課程總覽' },
@@ -132,11 +133,12 @@ export default function Header() {
               { href: '/about', title: '關於我們 - 認識 Tutor Corner 的教育使命', defaultLabel: '關於我們' },
             ].map((item) => {
               const visEntry = adminSettings?.pageVisibility?.[item.href];
-              // determine visibility based on menu flags: if any flags exist, require true for current role; otherwise visible
-              let visible = true;
-              if (visEntry?.menu && (visEntry.menu.admin !== undefined || visEntry.menu.teacher !== undefined || visEntry.menu.user !== undefined)) {
-                const roleKey = user?.role === 'admin' ? 'admin' : user?.role === 'teacher' ? 'teacher' : 'user';
-                visible = !!visEntry.menu?.[roleKey];
+              // determine visibility based on menu flags: if any flags exist, prefer explicit flag for role; undefined means visible
+                let visible = true;
+                if (visEntry?.menu && (visEntry.menu.admin !== undefined || visEntry.menu.teacher !== undefined || visEntry.menu.user !== undefined)) {
+                  const roleKey = user?.role === 'admin' ? 'admin' : user?.role === 'teacher' ? 'teacher' : 'user';
+                  const roleFlag = visEntry.menu?.[roleKey];
+                  visible = roleFlag === undefined ? true : !!roleFlag;
               }
               if (!visible) return null;
               const label = visEntry?.label || item.defaultLabel;
@@ -199,8 +201,6 @@ export default function Header() {
                                   { href: '/admin/orders', roleRequired: 'admin', label: '後台：訂單管理' },
                                   { href: '/admin/settings', roleRequired: 'admin', label: '網站設定' },
                                   { href: '/my-courses', roleRequired: 'teacher', label: '我的課程' },
-                                  { href: '/settings?tab=plan', roleRequired: 'user', label: '升級方案' },
-                                  { href: '/settings?tab=personalize', roleRequired: 'user', label: '個人化' },
                                   { href: '/settings', roleRequired: 'user', label: '設定' },
                                 ].map((item) => {
                                   // role gating
@@ -209,9 +209,10 @@ export default function Header() {
                                   // determine dropdown visibility from admin settings
                                   const visEntry = adminSettings?.pageVisibility?.[item.href];
                                   let visible = true;
-                                  if (visEntry?.dropdown && (visEntry.dropdown.admin !== undefined || visEntry.dropdown.teacher !== undefined || visEntry.dropdown.user !== undefined)) {
-                                    const roleKey = user?.role === 'admin' ? 'admin' : user?.role === 'teacher' ? 'teacher' : 'user';
-                                    visible = !!visEntry.dropdown?.[roleKey];
+                                    if (visEntry?.dropdown && (visEntry.dropdown.admin !== undefined || visEntry.dropdown.teacher !== undefined || visEntry.dropdown.user !== undefined)) {
+                                      const roleKey = user?.role === 'admin' ? 'admin' : user?.role === 'teacher' ? 'teacher' : 'user';
+                                      const roleFlag = visEntry.dropdown?.[roleKey];
+                                      visible = roleFlag === undefined ? true : !!roleFlag;
                                   }
                                   if (!visible) return null;
                                   const label = visEntry?.label || item.label;
@@ -245,7 +246,7 @@ export default function Header() {
               </li>
             </ul>
         </div>
-      </nav>
+        </nav>
 
       <div style={{ marginLeft: 12 }}>
         <LanguageSwitcher />

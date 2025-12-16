@@ -52,8 +52,24 @@ export default function RolesUsage() {
       const data = await res.json();
       if (!res.ok || !data?.ok) throw new Error(data?.error || 'save failed');
       setRoles(updated);
+      // dispatch change event
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new Event('tutor:roles-changed'));
+      }
+
+      // Attempt to also sync roles into admin_settings as a fallback persistence
+      try {
+        const sres = await fetch('/api/admin/settings');
+        const sdata = await sres.json().catch(() => null);
+        if (sres.ok && sdata && sdata.ok && sdata.settings) {
+          const merged = { ...sdata.settings, roles: updated };
+          await fetch('/api/admin/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(merged) });
+        }
+      } catch (syncErr) {
+        console.warn('Failed to sync roles into settings fallback:', syncErr);
+      }
+
+      if (typeof window !== 'undefined') {
         alert('儲存成功');
       }
     } catch (err) {

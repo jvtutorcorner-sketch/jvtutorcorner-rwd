@@ -17,19 +17,22 @@
         "admin": true,
         "teacher": true,
         "student": true,
-        "test": false
+        "test": false,
+        "ttt": false
       },
       "dropdown": {
         "admin": false,
         "teacher": false,
         "student": false,
-        "test": false
+        "test": false,
+        "ttt": false
       },
       "page": {
         "admin": false,
         "teacher": false,
         "student": false,
-        "test": false
+        "test": false,
+        "ttt": true
       }
     },
     "/teachers": {
@@ -38,19 +41,22 @@
         "admin": true,
         "teacher": true,
         "student": true,
-        "test": false
+        "test": false,
+        "ttt": false
       },
       "dropdown": {
         "admin": false,
         "teacher": false,
         "student": false,
-        "test": false
+        "test": false,
+        "ttt": false
       },
       "page": {
         "admin": false,
         "teacher": false,
         "student": false,
-        "test": false
+        "test": false,
+        "ttt": true
       }
     },
     "/pricing": {
@@ -59,19 +65,22 @@
         "admin": true,
         "teacher": true,
         "student": true,
-        "test": false
+        "test": false,
+        "ttt": false
       },
       "dropdown": {
         "admin": false,
         "teacher": false,
         "student": false,
-        "test": false
+        "test": false,
+        "ttt": false
       },
       "page": {
         "admin": false,
         "teacher": false,
         "student": false,
-        "test": false
+        "test": false,
+        "ttt": true
       }
     },
     "/courses": {
@@ -80,19 +89,22 @@
         "admin": true,
         "teacher": true,
         "student": true,
-        "test": false
+        "test": false,
+        "ttt": false
       },
       "dropdown": {
         "admin": false,
         "teacher": false,
         "student": false,
-        "test": false
+        "test": false,
+        "ttt": false
       },
       "page": {
         "admin": false,
         "teacher": false,
         "student": false,
-        "test": false
+        "test": false,
+        "ttt": true
       }
     },
     "/testimony": {
@@ -101,19 +113,22 @@
         "admin": false,
         "teacher": false,
         "student": false,
-        "test": false
+        "test": false,
+        "ttt": false
       },
       "dropdown": {
         "admin": false,
         "teacher": false,
         "student": false,
-        "test": false
+        "test": false,
+        "ttt": false
       },
       "page": {
         "admin": false,
         "teacher": false,
         "student": false,
-        "test": false
+        "test": false,
+        "ttt": true
       }
     },
     "/about": {
@@ -122,19 +137,22 @@
         "admin": true,
         "teacher": true,
         "student": false,
-        "test": false
+        "test": false,
+        "ttt": false
       },
       "dropdown": {
         "admin": false,
         "teacher": false,
         "student": false,
-        "test": false
+        "test": false,
+        "ttt": false
       },
       "page": {
         "admin": false,
         "teacher": false,
         "student": false,
-        "test": false
+        "test": false,
+        "ttt": true
       }
     },
     "/orders": {
@@ -143,19 +161,22 @@
         "admin": false,
         "teacher": false,
         "student": false,
-        "test": false
+        "test": false,
+        "ttt": false
       },
       "dropdown": {
         "admin": true,
         "teacher": false,
         "student": false,
-        "test": false
+        "test": false,
+        "ttt": false
       },
       "page": {
         "admin": false,
         "teacher": false,
         "student": false,
-        "test": false
+        "test": false,
+        "ttt": true
       }
     },
     "/admin/orders": {
@@ -164,19 +185,22 @@
         "admin": false,
         "teacher": false,
         "student": false,
-        "test": false
+        "test": false,
+        "ttt": false
       },
       "dropdown": {
         "admin": true,
         "teacher": false,
         "student": false,
-        "test": false
+        "test": false,
+        "ttt": false
       },
       "page": {
         "admin": false,
         "teacher": false,
         "student": false,
-        "test": false
+        "test": false,
+        "ttt": true
       }
     },
     "/admin/settings": {
@@ -185,19 +209,22 @@
         "admin": false,
         "teacher": false,
         "student": false,
-        "test": false
+        "test": false,
+        "ttt": false
       },
       "dropdown": {
         "admin": true,
         "teacher": false,
         "student": false,
-        "test": false
+        "test": false,
+        "ttt": false
       },
       "page": {
         "admin": false,
         "teacher": false,
         "student": false,
-        "test": false
+        "test": false,
+        "ttt": true
       }
     },
     "/my-courses": {
@@ -206,19 +233,22 @@
         "admin": false,
         "teacher": true,
         "student": false,
-        "test": false
+        "test": false,
+        "ttt": false
       },
       "dropdown": {
         "admin": true,
         "teacher": true,
         "student": false,
-        "test": false
+        "test": false,
+        "ttt": false
       },
       "page": {
         "admin": false,
         "teacher": false,
         "student": false,
-        "test": false
+        "test": false,
+        "ttt": true
       }
     },
     "/settings": {
@@ -227,19 +257,22 @@
         "admin": false,
         "teacher": false,
         "student": false,
-        "test": false
+        "test": false,
+        "ttt": false
       },
       "dropdown": {
         "admin": true,
         "teacher": true,
         "student": false,
-        "test": false
+        "test": false,
+        "ttt": false
       },
       "page": {
         "admin": false,
         "teacher": false,
         "student": false,
-        "test": false
+        "test": false,
+        "ttt": true
       }
     },
     "/admin/settings/page-permissions": {
@@ -248,19 +281,22 @@
         "admin": false,
         "teacher": false,
         "student": false,
-        "test": false
+        "test": false,
+        "ttt": false
       },
       "dropdown": {
         "admin": true,
         "teacher": false,
         "student": false,
-        "test": false
+        "test": false,
+        "ttt": false
       },
       "page": {
         "admin": true,
         "teacher": true,
         "student": true,
-        "test": true
+        "test": true,
+        "ttt": true
       }
     },
     "/admin/settings/menu": {
@@ -269,19 +305,22 @@
         "admin": false,
         "teacher": false,
         "student": false,
-        "test": false
+        "test": false,
+        "ttt": false
       },
       "dropdown": {
         "admin": true,
         "teacher": false,
         "student": false,
-        "test": false
+        "test": false,
+        "ttt": false
       },
       "page": {
         "admin": true,
         "teacher": true,
         "student": true,
-        "test": true
+        "test": true,
+        "ttt": true
       }
     },
     "/admin/settings/dropdown": {
@@ -290,19 +329,22 @@
         "admin": false,
         "teacher": false,
         "student": false,
-        "test": false
+        "test": false,
+        "ttt": false
       },
       "dropdown": {
         "admin": true,
         "teacher": false,
         "student": false,
-        "test": false
+        "test": false,
+        "ttt": false
       },
       "page": {
         "admin": true,
         "teacher": true,
         "student": true,
-        "test": true
+        "test": true,
+        "ttt": true
       }
     },
     "/admin/settings/roles-usage": {
@@ -311,19 +353,22 @@
         "admin": false,
         "teacher": false,
         "student": false,
-        "test": false
+        "test": false,
+        "ttt": false
       },
       "dropdown": {
         "admin": true,
         "teacher": false,
         "student": false,
-        "test": false
+        "test": false,
+        "ttt": false
       },
       "page": {
         "admin": true,
         "teacher": true,
         "student": true,
-        "test": true
+        "test": true,
+        "ttt": true
       }
     },
     "/classroom/test": {
@@ -332,19 +377,22 @@
         "admin": false,
         "teacher": false,
         "student": false,
-        "test": false
+        "test": false,
+        "ttt": false
       },
       "dropdown": {
         "admin": false,
         "teacher": false,
         "student": false,
-        "test": false
+        "test": false,
+        "ttt": false
       },
       "page": {
         "admin": true,
         "teacher": true,
         "student": true,
-        "test": true
+        "test": true,
+        "ttt": true
       }
     }
   },
@@ -371,6 +419,12 @@
       "id": "test",
       "name": "test",
       "description": "測試",
+      "isActive": false
+    },
+    {
+      "id": "ttt",
+      "name": "ttt",
+      "description": "ttt",
       "isActive": true
     }
   ],
@@ -403,6 +457,13 @@
           "roleName": "test",
           "menuVisible": false,
           "dropdownVisible": false
+        },
+        {
+          "roleId": "ttt",
+          "roleName": "ttt",
+          "menuVisible": false,
+          "dropdownVisible": false,
+          "pageVisible": true
         }
       ]
     },
@@ -434,6 +495,13 @@
           "roleName": "test",
           "menuVisible": false,
           "dropdownVisible": false
+        },
+        {
+          "roleId": "ttt",
+          "roleName": "ttt",
+          "menuVisible": false,
+          "dropdownVisible": false,
+          "pageVisible": true
         }
       ]
     },
@@ -465,6 +533,13 @@
           "roleName": "test",
           "menuVisible": false,
           "dropdownVisible": false
+        },
+        {
+          "roleId": "ttt",
+          "roleName": "ttt",
+          "menuVisible": false,
+          "dropdownVisible": false,
+          "pageVisible": true
         }
       ]
     },
@@ -496,6 +571,13 @@
           "roleName": "test",
           "menuVisible": false,
           "dropdownVisible": false
+        },
+        {
+          "roleId": "ttt",
+          "roleName": "ttt",
+          "menuVisible": false,
+          "dropdownVisible": false,
+          "pageVisible": true
         }
       ]
     },
@@ -527,6 +609,13 @@
           "roleName": "test",
           "menuVisible": false,
           "dropdownVisible": false
+        },
+        {
+          "roleId": "ttt",
+          "roleName": "ttt",
+          "menuVisible": false,
+          "dropdownVisible": false,
+          "pageVisible": true
         }
       ]
     },
@@ -558,6 +647,13 @@
           "roleName": "test",
           "menuVisible": false,
           "dropdownVisible": false
+        },
+        {
+          "roleId": "ttt",
+          "roleName": "ttt",
+          "menuVisible": false,
+          "dropdownVisible": false,
+          "pageVisible": true
         }
       ]
     },
@@ -589,6 +685,13 @@
           "roleName": "test",
           "menuVisible": false,
           "dropdownVisible": false
+        },
+        {
+          "roleId": "ttt",
+          "roleName": "ttt",
+          "menuVisible": false,
+          "dropdownVisible": false,
+          "pageVisible": true
         }
       ]
     },
@@ -620,6 +723,13 @@
           "roleName": "test",
           "menuVisible": false,
           "dropdownVisible": false
+        },
+        {
+          "roleId": "ttt",
+          "roleName": "ttt",
+          "menuVisible": false,
+          "dropdownVisible": false,
+          "pageVisible": true
         }
       ]
     },
@@ -651,6 +761,13 @@
           "roleName": "test",
           "menuVisible": false,
           "dropdownVisible": false
+        },
+        {
+          "roleId": "ttt",
+          "roleName": "ttt",
+          "menuVisible": false,
+          "dropdownVisible": false,
+          "pageVisible": true
         }
       ]
     },
@@ -682,6 +799,13 @@
           "roleName": "test",
           "menuVisible": false,
           "dropdownVisible": false
+        },
+        {
+          "roleId": "ttt",
+          "roleName": "ttt",
+          "menuVisible": false,
+          "dropdownVisible": false,
+          "pageVisible": true
         }
       ]
     },
@@ -713,6 +837,13 @@
           "roleName": "test",
           "menuVisible": false,
           "dropdownVisible": false
+        },
+        {
+          "roleId": "ttt",
+          "roleName": "ttt",
+          "menuVisible": false,
+          "dropdownVisible": false,
+          "pageVisible": true
         }
       ]
     },
@@ -745,6 +876,13 @@
         {
           "roleId": "test",
           "roleName": "test",
+          "menuVisible": false,
+          "dropdownVisible": false,
+          "pageVisible": true
+        },
+        {
+          "roleId": "ttt",
+          "roleName": "ttt",
           "menuVisible": false,
           "dropdownVisible": false,
           "pageVisible": true
@@ -783,6 +921,13 @@
           "menuVisible": false,
           "dropdownVisible": false,
           "pageVisible": true
+        },
+        {
+          "roleId": "ttt",
+          "roleName": "ttt",
+          "menuVisible": false,
+          "dropdownVisible": false,
+          "pageVisible": true
         }
       ]
     },
@@ -815,6 +960,13 @@
         {
           "roleId": "test",
           "roleName": "test",
+          "menuVisible": false,
+          "dropdownVisible": false,
+          "pageVisible": true
+        },
+        {
+          "roleId": "ttt",
+          "roleName": "ttt",
           "menuVisible": false,
           "dropdownVisible": false,
           "pageVisible": true
@@ -853,6 +1005,13 @@
           "menuVisible": false,
           "dropdownVisible": false,
           "pageVisible": true
+        },
+        {
+          "roleId": "ttt",
+          "roleName": "ttt",
+          "menuVisible": false,
+          "dropdownVisible": false,
+          "pageVisible": true
         }
       ]
     },
@@ -885,6 +1044,13 @@
         {
           "roleId": "test",
           "roleName": "test",
+          "menuVisible": false,
+          "dropdownVisible": false,
+          "pageVisible": true
+        },
+        {
+          "roleId": "ttt",
+          "roleName": "ttt",
           "menuVisible": false,
           "dropdownVisible": false,
           "pageVisible": true

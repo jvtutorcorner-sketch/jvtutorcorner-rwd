@@ -48,6 +48,7 @@ export default function HomePage() {
 
   return (
     <div className="home">
+      {/* Header renders the main menu; removed Homepage MenuBar to avoid duplication */}
       {/* Hero + Carousel */}
       <section className="hero">
         <div className="hero-text">

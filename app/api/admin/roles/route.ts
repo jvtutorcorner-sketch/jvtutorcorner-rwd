@@ -90,6 +90,36 @@ export async function POST(req: Request) {
 
     await writeRoles(roles);
 
+    // verify the roles file was actually persisted; if not, attempt a rewrite and fallback
+    try {
+      const ROLES_FILE = await resolveDataFile('admin_roles.json');
+      const checkRaw = await fs.readFile(ROLES_FILE, 'utf8');
+      const checkData = JSON.parse(checkRaw || '{}');
+      if (!Array.isArray(checkData.roles) || JSON.stringify(checkData.roles) !== JSON.stringify(roles)) {
+        // try rewriting once more
+        await fs.writeFile(ROLES_FILE, JSON.stringify({ roles }, null, 2), 'utf8');
+      }
+    } catch (verErr) {
+      console.error('[Roles API] persistence verification failed:', verErr);
+      // fallback: try to ensure admin_settings.json contains roles so GET endpoints that merge from settings can see them
+      try {
+        const settings = await readSettingsFile();
+        if (settings) {
+          settings.roles = roles;
+          await writeSettingsFile(settings);
+        }
+      } catch (fbErr) {
+        console.error('[Roles API] fallback write to settings failed:', fbErr);
+      }
+    }
+    // write an audit record so devs can see what was attempted to persist
+    try {
+      const AUDIT_FILE = await resolveDataFile('admin_roles.last_write.json');
+      await fs.writeFile(AUDIT_FILE, JSON.stringify({ timestamp: new Date().toISOString(), roles }, null, 2), 'utf8');
+    } catch (auditErr) {
+      console.error('[Roles API] failed to write audit file:', auditErr);
+    }
+
     // Also try to sync roles into admin_settings.json so other parts reading settings.roles stay in sync
     try {
       const settings = await readSettingsFile();

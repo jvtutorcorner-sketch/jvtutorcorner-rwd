@@ -8,7 +8,6 @@ import type { PlanId } from '@/lib/mockAuth';
 export default function SettingsPage() {
   const [user, setUser] = useState<any>(null);
   const [hydrated, setHydrated] = useState(false);
-  const [tab, setTab] = useState('');
   const [loading, setLoading] = useState(false);
   // payment fields moved to Pricing (upgrade) page
   const [firstName, setFirstName] = useState(user?.firstName || '');
@@ -30,9 +29,10 @@ export default function SettingsPage() {
   useEffect(() => {
     if (typeof window !== 'undefined') {
       setHydrated(true);
-      setUser(getStoredUser());
-      const sp = new URLSearchParams(window.location.search);
-      setTab((sp.get('tab') || '').toLowerCase());
+      const stored = getStoredUser();
+      setUser(stored);
+      setFirstName(stored?.firstName || '');
+      setLastName(stored?.lastName || '');
     }
   }, []);
 
@@ -47,6 +47,8 @@ export default function SettingsPage() {
           setBio(data.profile.bio || '');
           setRoleId(data.profile.roid_id || data.profile.role || null);
           setBackupEmail(data.profile.backupEmail || '');
+          setFirstName(data.profile.firstName || '');
+          setLastName(data.profile.lastName || '');
         }
       } catch (e) {
         // ignore
@@ -153,67 +155,7 @@ export default function SettingsPage() {
               <small className="muted">可提供一個備用聯絡 email（示範用途）。</small>
             </div>
 
-            {/* If URL has ?tab=plan show plan selection + card form here */}
-            {tab === 'plan' ? (
-              <div className="field" style={{ marginTop: 12 }}>
-                <label>方案選擇</label>
-                <select value={plan} onChange={(e) => setPlan(e.target.value as PlanId)}>
-                  <option value="">-- 選擇方案 --</option>
-                  {(Object.keys(PLAN_LABELS) as PlanId[]).map((k) => (
-                    <option key={k} value={k}>{PLAN_LABELS[k]} — {PLAN_PRICES[k]}</option>
-                  ))}
-                </select>
-
-                <div style={{ marginTop: 8 }}>
-                  <label>信用卡（示範）</label>
-                  <input placeholder="卡號（僅數字）" value={cardNumber} onChange={(e) => setCardNumber(e.target.value.replace(/[^0-9 ]/g, ''))} />
-                  <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                    <input placeholder="到期（MM/YY）" value={cardExpiry} onChange={(e) => setCardExpiry(e.target.value)} style={{ flex: 1 }} />
-                    <input placeholder="CVC" value={cardCvc} onChange={(e) => setCardCvc(e.target.value.replace(/[^0-9]/g, ''))} style={{ width: 120 }} />
-                  </div>
-                  <div style={{ marginTop: 8 }}>
-                    <label>發卡國家/地區</label>
-                    <select value={cardCountry} onChange={(e) => setCardCountry(e.target.value)}>
-                      <option value="TW">台灣 TW</option>
-                      <option value="US">美國 US</option>
-                      <option value="JP">日本 JP</option>
-                    </select>
-                  </div>
-                  <small className="muted">示範用途：請勿輸入真實卡號或敏感資料。</small>
-
-                  <div style={{ marginTop: 12 }}>
-                    <button
-                      type="button"
-                      className="modal-button primary"
-                      onClick={async () => {
-                        setPlanMessage(null);
-                        if (!plan) { setPlanMessage('請選擇方案'); return; }
-                        setLoadingPlan(true);
-                        try {
-                          const payload: any = { plan };
-                          payload.card = { number: cardNumber.replace(/\s+/g, ''), expiry: cardExpiry, cvc: cardCvc, country: cardCountry };
-                          const res = await fetch('/api/profile', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...payload, email: user.email }) });
-                          const data = await res.json();
-                          if (!res.ok) throw new Error(data?.message || '更新失敗');
-                          setPlanMessage('方案已更新（示範）');
-                          const stored = getStoredUser();
-                          if (stored) {
-                            const updated = { ...stored, plan } as any;
-                            setStoredUser(updated);
-                            setUser(updated);
-                          }
-                        } catch (e: any) {
-                          setPlanMessage(e?.message || '更新失敗');
-                        } finally { setLoadingPlan(false); }
-                      }}
-                      disabled={loadingPlan}
-                    >{loadingPlan ? '處理中…' : '儲存並升級'}</button>
-                    <button type="button" onClick={() => { setPlan(user?.plan || ''); setCardNumber(''); setCardExpiry(''); setCardCvc(''); setCardCountry('TW'); }} style={{ marginLeft: 12 }}>還原</button>
-                  </div>
-                  {planMessage ? <div style={{ marginTop: 8 }}>{planMessage}</div> : null}
-                </div>
-              </div>
-            ) : null}
+            {/* Plan / payment has been moved out — use Pricing page for upgrades. */}
 
             <div className="field-row">
               <div className="field">

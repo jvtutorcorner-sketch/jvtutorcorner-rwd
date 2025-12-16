@@ -250,4 +250,34 @@ type Appointment @model @auth(rules: [{ allow: owner }]) {
     createdAt: AWSDateTime
     updatedAt: AWSDateTime
   }
-    status: String
+
+  # Page configuration for admin settings
+  type Role @model @auth(rules: [{ allow: groups, groups: ["Admin"] }]) {
+    id: ID!
+    name: String! @index(name: "byName")  # 角色名称 (e.g., "Admin", "Teacher", "Student")
+    description: String        # 角色描述
+    isActive: Boolean          # 是否启用
+    createdAt: AWSDateTime
+    updatedAt: AWSDateTime
+  }
+
+  type PagePermission @model @auth(rules: [{ allow: groups, groups: ["Admin"] }]) {
+    id: ID!
+    pageConfigID: ID! @index(name: "byPage", sortKeyFields: ["roleID"])
+    pageConfig: PageConfig @belongsTo(fields: ["pageConfigID"])
+    roleID: ID! @index(name: "byRole", sortKeyFields: ["pageConfigID"])
+    role: Role @belongsTo(fields: ["roleID"])
+    menuVisible: Boolean       # 主选单可见
+    dropdownVisible: Boolean   # 下拉选单可见
+    createdAt: AWSDateTime
+    updatedAt: AWSDateTime
+  }
+
+  type PageConfig @model @auth(rules: [{ allow: groups, groups: ["Admin"] }]) {
+    id: ID!
+    path: String! @index(name: "byPath")  # URL 路径，建立索引以快速查询
+    label: String              # 页面显示名称
+    permissions: [PagePermission] @hasMany(indexName: "byPage", fields: ["id"])
+    createdAt: AWSDateTime
+    updatedAt: AWSDateTime
+  }

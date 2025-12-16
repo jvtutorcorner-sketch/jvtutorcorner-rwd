@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from 'react';
-import AgoraRTC, {
+import type {
   IAgoraRTCClient,
   ICameraVideoTrack,
   IMicrophoneAudioTrack,
@@ -77,6 +77,8 @@ export function useAgoraClassroom({
 }: UseAgoraClassroomOptions) {
   // create client lazily on join (dynamic import) to avoid server-side evaluation
   const clientRef = useRef<IAgoraRTCClient | null>(null);
+  // runtime-loaded Agora SDK module (avoid top-level import to prevent SSR errors)
+  let AgoraSDK: any = null;
 
   const [joined, setJoined] = useState(false);
   const [remoteUsers, setRemoteUsers] = useState<IAgoraRTCRemoteUser[]>([]);
@@ -194,6 +196,7 @@ export function useAgoraClassroom({
       if (!clientRef.current) {
         const AgoraModule = await import('agora-rtc-sdk-ng');
         const Agora = (AgoraModule as any).default ?? AgoraModule;
+        AgoraSDK = Agora;
         
         // 为1对1场景优化客户端配置
         const clientConfig = isOneOnOne ? {
@@ -462,14 +465,20 @@ export function useAgoraClassroom({
       let camTrack: ICameraVideoTrack | null = null;
 
       try {
+        if (!AgoraSDK) {
+          // ensure SDK is loaded (should have been loaded when creating client)
+          const mod = await import('agora-rtc-sdk-ng');
+          AgoraSDK = (mod as any).default ?? mod;
+        }
+
         if (publishAudio && publishVideo) {
-          const tracks = await AgoraRTC.createMicrophoneAndCameraTracks();
+          const tracks = await AgoraSDK.createMicrophoneAndCameraTracks();
           micTrack = tracks[0] ?? null;
           camTrack = tracks[1] ?? null;
         } else if (publishAudio && !publishVideo) {
-          micTrack = await AgoraRTC.createMicrophoneAudioTrack();
+          micTrack = await AgoraSDK.createMicrophoneAudioTrack();
         } else if (!publishAudio && publishVideo) {
-          camTrack = await AgoraRTC.createCameraVideoTrack();
+          camTrack = await AgoraSDK.createCameraVideoTrack();
         }
 
         // 应用视频质量设置
@@ -487,12 +496,25 @@ export function useAgoraClassroom({
         console.warn('create tracks failed, attempting fallbacks', err?.message ?? err);
         // individual fallbacks
         if (!micTrack && publishAudio) {
-          try { micTrack = await AgoraRTC.createMicrophoneAudioTrack(); } catch (mErr:any) { console.warn('createMicrophoneAudioTrack failed', mErr?.message ?? mErr); micTrack = null; }
+          try {
+            if (!AgoraSDK) {
+              const mod = await import('agora-rtc-sdk-ng');
+              AgoraSDK = (mod as any).default ?? mod;
+            }
+            micTrack = await AgoraSDK.createMicrophoneAudioTrack();
+          } catch (mErr: any) {
+            console.warn('createMicrophoneAudioTrack failed', mErr?.message ?? mErr);
+            micTrack = null;
+          }
         }
         if (!camTrack && publishVideo) {
-          try { 
-            camTrack = await AgoraRTC.createCameraVideoTrack();
-            // 即使是fallback也要应用质量设置
+          try {
+            if (!AgoraSDK) {
+              const mod = await import('agora-rtc-sdk-ng');
+              AgoraSDK = (mod as any).default ?? mod;
+            }
+            camTrack = await AgoraSDK.createCameraVideoTrack();
+            // 即使是fallback也要應用質量設置
             if (camTrack) {
               const qualityConfig = VIDEO_QUALITY_PRESETS[currentQuality];
               await camTrack.setEncoderConfiguration({
@@ -503,18 +525,24 @@ export function useAgoraClassroom({
                 bitrateMax: qualityConfig.bitrate * 1.2,
               });
             }
-          } catch (cErr:any) { console.warn('createCameraVideoTrack failed', cErr?.message ?? cErr); camTrack = null; }
+          } catch (cErr: any) {
+            console.warn('createCameraVideoTrack failed', cErr?.message ?? cErr);
+            camTrack = null;
+          }
         }
       }
 
       localMicTrackRef.current = micTrack;
       localCamTrackRef.current = camTrack;
 
-      if (camTrack && localVideoRef.current) {
-        try {
-          camTrack.play(localVideoRef.current);
-        } catch (playErr) {
-          console.warn('Failed to play local video track', playErr);
+      if (camTrack) {
+        const playEl = (role === 'teacher') ? localVideoRef.current : remoteVideoRef.current;
+        if (playEl) {
+          try {
+            camTrack.play(playEl);
+          } catch (playErr) {
+            console.warn('Failed to play local video track', playErr);
+          }
         }
       }
 
@@ -539,8 +567,11 @@ export function useAgoraClassroom({
         try {
           await client.subscribe(user, mediaType);
 
-          if (mediaType === 'video' && remoteVideoRef.current && user.videoTrack) {
-            user.videoTrack.play(remoteVideoRef.current);
+          if (mediaType === 'video' && user.videoTrack) {
+            const remoteEl = (role === 'teacher') ? remoteVideoRef.current : localVideoRef.current;
+            if (remoteEl) {
+              try { user.videoTrack.play(remoteEl); } catch (e) { console.warn('Failed to play remote video track', e); }
+            }
           }
 
           if (mediaType === 'audio' && user.audioTrack) {

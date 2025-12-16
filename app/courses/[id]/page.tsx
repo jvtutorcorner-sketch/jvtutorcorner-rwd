@@ -2,9 +2,10 @@
 "use client";
 
 import { useParams, useRouter } from 'next/navigation';
-import { useMemo } from 'react';
+import { useMemo, useEffect, useState } from 'react';
 import { COURSES } from '@/data/courses';
 import { EnrollButton } from '@/components/EnrollButton';
+import { getStoredUser } from '@/lib/mockAuth';
 
 export default function CourseDetailPage() {
   const params = useParams<{ id: string }>();
@@ -135,6 +136,12 @@ export default function CourseDetailPage() {
               <EnrollButton courseId={course.id} courseTitle={course.title} />
             </div>
 
+            {/* Session duration setting (teacher only) */}
+            <div style={{ marginTop: 12 }}>
+              <h4>課堂倒數時間（分鐘）</h4>
+              <CourseSessionDurationEditor courseId={course.id} teacherName={teacherName} defaultMinutes={(course as any).sessionDurationMinutes ?? 50} />
+            </div>
+
             <p className="course-side-note">
               目前為示範環境，報名資料只會暫存在前端並輸出到 console。
               之後可以在這裡串接 Stripe / 跨國金流或本地第三方支付，
@@ -143,6 +150,53 @@ export default function CourseDetailPage() {
           </div>
         </aside>
       </div>
+    </div>
+  );
+}
+
+function CourseSessionDurationEditor({ courseId, teacherName, defaultMinutes }: { courseId: string; teacherName: string; defaultMinutes: number }) {
+  const [minutes, setMinutes] = useState<number>(defaultMinutes);
+  const [editing, setEditing] = useState(false);
+  const [isTeacher, setIsTeacher] = useState(false);
+
+  useEffect(() => {
+    try {
+      const u = getStoredUser();
+      if (u) {
+        const admin = u.role === 'admin';
+        const teacher = Boolean(u.role === 'teacher' || (u.displayName && teacherName && u.displayName.includes(teacherName)));
+        setIsTeacher(admin || teacher);
+      }
+    } catch (e) {}
+
+    try {
+      const raw = localStorage.getItem(`course_session_duration_${courseId}`);
+      if (raw) setMinutes(Number(raw));
+    } catch (e) {}
+  }, [courseId, teacherName]);
+
+  const save = () => {
+    try {
+      localStorage.setItem(`course_session_duration_${courseId}`, String(minutes));
+      setEditing(false);
+      alert('已儲存課堂倒數時間設定');
+    } catch (e) {
+      console.warn('save duration failed', e);
+      alert('儲存失敗');
+    }
+  };
+
+  return (
+    <div>
+      <div style={{ marginBottom: 8 }}>{minutes} 分鐘</div>
+      {isTeacher ? (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <input type="number" value={minutes} min={1} max={240} onChange={(e) => setMinutes(Number(e.target.value || 0))} style={{ width: 80 }} />
+          <button onClick={save}>儲存</button>
+        </div>
+      ) : (
+        <div style={{ fontSize: 12, color: '#666' }}>僅授課者可編輯</div>
+      )}
     </div>
   );
 }

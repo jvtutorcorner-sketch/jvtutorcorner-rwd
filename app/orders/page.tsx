@@ -41,20 +41,24 @@ export default function OrdersPage() {
   useEffect(() => {
     if (!user) return;
     setLoading(true);
-    fetch('/api/orders?limit=50')
+    // Fetch server-side filtered orders: admin gets all, others get their own orders
+    const current = getStoredUser();
+    const isAdmin = current?.role === 'admin';
+    const baseUrl = '/api/orders?limit=50';
+    const url = isAdmin ? baseUrl : `${baseUrl}&userId=${encodeURIComponent(current?.email || '')}`;
+    fetch(url)
       .then((r) => r.json())
       .then((data) => {
         let list: Order[] = [];
         if (data && data.ok) list = data.data || data || [];
         else if (data && data.data) list = data.data || [];
-
-        // filter by logged-in user: admin sees all, others only their own orders
+        // server should already filter when not admin; still normalize just in case
         try {
-          const current = getStoredUser();
           if (current?.role === 'admin') {
             setOrders(list);
           } else if (current?.email) {
-            setOrders(list.filter(o => (o.userId || '').toLowerCase() === current.email.toLowerCase()));
+            const email = current.email.toLowerCase();
+            setOrders(list.filter(o => (o.userId || '').toLowerCase() === email));
           } else {
             setOrders([]);
           }

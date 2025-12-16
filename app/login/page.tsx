@@ -49,12 +49,12 @@ export default function LoginPage() {
           setCurrentUser(user);
           window.dispatchEvent(new Event('tutor:auth-changed'));
           if (role === 'admin') {
-            alert('Admin 登入成功，將導向管理後台。');
-            router.push('/admin/orders');
+            alert('Admin 登入成功，將導向首頁。');
+            router.push('/');
             return;
           }
-          alert(`登入成功！\n目前使用方案：${PLAN_LABELS[user.plan]}\n接下來會導向到價目頁 /pricing。`);
-          router.push('/pricing');
+          alert(`登入成功！\n目前使用方案：${PLAN_LABELS[user.plan]}\n接下來會導向到首頁。`);
+          router.push('/');
           return;
         }
 
@@ -73,8 +73,8 @@ export default function LoginPage() {
         setStoredUser(user);
         setCurrentUser(user);
         window.dispatchEvent(new Event('tutor:auth-changed'));
-        alert(`登入成功！\n目前使用方案：${PLAN_LABELS[user.plan]}（測試帳號）\n接下來會導向到價目頁 /pricing。`);
-        router.push('/pricing');
+        alert(`登入成功！\n目前使用方案：${PLAN_LABELS[user.plan]}（測試帳號）\n接下來會導向到首頁。`);
+        router.push('/');
       } catch (err) {
         console.error(err);
         setError('登入時發生錯誤，請稍後再試。');

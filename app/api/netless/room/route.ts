@@ -32,11 +32,11 @@ if (!NETLESS_SDK_TOKEN && !(NETLESS_APP_ID && NETLESS_APP_SECRET)) {
  */
 export async function POST(req: NextRequest) {
   try {
-    if (!NETLESS_SDK_TOKEN) {
-      return NextResponse.json(
-        { error: 'NETLESS_SDK_TOKEN is not configured on server' },
-        { status: 500 },
-      );
+    if (!NETLESS_SDK_TOKEN && !(NETLESS_APP_ID && NETLESS_APP_SECRET)) {
+      console.warn('[Netless] NETLESS_SDK_TOKEN / APP credentials not configured; returning local mock room for development');
+      const mockUuid = `local-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+      const mockToken = `LOCALNETLESS_${mockUuid}`;
+      return NextResponse.json({ uuid: mockUuid, roomToken: mockToken, region: NETLESS_REGION });
     }
 
     const body = await req.json().catch(() => ({} as any));
@@ -59,22 +59,47 @@ export async function POST(req: NextRequest) {
 
     // 1. 若沒有 uuid，先建立房間
     if (!uuid) {
-      const createRoomRes = await fetch(`${NETLESS_API_BASE}/v5/rooms`, {
+      // Try creating room including name; if server rejects "name" input, retry with minimal payload
+      let createRoomRes = await fetch(`${NETLESS_API_BASE}/v5/rooms`, {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
           token: NETLESS_SDK_TOKEN,
           region: NETLESS_REGION,
         },
-        body: JSON.stringify({
-          isRecord,
-          limit,
-          name,
-        }),
+        body: JSON.stringify({ isRecord, limit, name }),
       });
 
       if (!createRoomRes.ok) {
-        const text = await createRoomRes.text();
+        const text = await createRoomRes.text().catch(() => '');
+        console.warn('[Netless] Create room initial attempt failed:', createRoomRes.status, text);
+
+        // If error indicates `disable input "name"`, retry with minimal payload
+        let shouldRetry = false;
+        try {
+          const parsed = JSON.parse(text || '{}');
+          const title = parsed?.error?.title || '';
+          if (typeof title === 'string' && title.toLowerCase().includes('disable input') && title.toLowerCase().includes('name')) shouldRetry = true;
+        } catch (e) {
+          // not JSON, fallback to substring match
+          if ((text || '').toLowerCase().includes('disable input') && (text || '').toLowerCase().includes('name')) shouldRetry = true;
+        }
+
+        if (shouldRetry) {
+          createRoomRes = await fetch(`${NETLESS_API_BASE}/v5/rooms`, {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              token: NETLESS_SDK_TOKEN,
+              region: NETLESS_REGION,
+            },
+            body: JSON.stringify({}),
+          });
+        }
+      }
+
+      if (!createRoomRes.ok) {
+        const text = await createRoomRes.text().catch(() => '');
         console.error('[Netless] Create room failed:', createRoomRes.status, text);
         return NextResponse.json(
           {

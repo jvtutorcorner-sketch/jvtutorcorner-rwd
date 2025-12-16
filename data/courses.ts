@@ -8,6 +8,8 @@ export type Course = {
   teacherName: string;
   pricePerSession: number;
   durationMinutes: number;
+  // optional: classroom session countdown default (minutes)
+  sessionDurationMinutes?: number;
   tags: string[];
   mode: 'online' | 'onsite';
   description?: string;
@@ -27,6 +29,8 @@ export const COURSES: Course[] = [
     teacherName: '林老師',
     pricePerSession: 900,
     durationMinutes: 90,
+    // sessionDurationMinutes controls the classroom countdown default (minutes)
+    sessionDurationMinutes: 50,
     tags: ['英檢中級', '聽力閱讀', '寫作口說'],
     mode: 'online',
     description:
@@ -45,6 +49,7 @@ export const COURSES: Course[] = [
     teacherName: '陳老師',
     pricePerSession: 750,
     durationMinutes: 90,
+    sessionDurationMinutes: 50,
     tags: ['會考', '歷屆試題', '觀念統整'],
     mode: 'online',
     description:
@@ -63,6 +68,7 @@ export const COURSES: Course[] = [
     teacherName: '王老師',
     pricePerSession: 1200,
     durationMinutes: 60,
+    sessionDurationMinutes: 50,
     tags: ['商用英文', '簡報', '會議'],
     mode: 'online',
     description:
@@ -81,6 +87,7 @@ export const COURSES: Course[] = [
     teacherName: '佐藤先生',
     pricePerSession: 850,
     durationMinutes: 60,
+    sessionDurationMinutes: 50,
     tags: ['旅遊', '日常會話'],
     mode: 'online',
     description:
