@@ -204,7 +204,9 @@ export default function EnhancedWhiteboard({ room, width = 800, height = 600, cl
     const toolbarHeight = 48; // same as used when computing canvas height
 
     function resizeCanvasToDisplaySize() {
-      const parent = canvas.parentElement || canvas;
+      const c = canvasRef.current;
+      if (!c) return;
+      const parent = c.parentElement || c;
       const rect = parent.getBoundingClientRect();
       const displayW = rect.width;
       const displayH = Math.max(32, rect.height - toolbarHeight);
@@ -214,15 +216,15 @@ export default function EnhancedWhiteboard({ room, width = 800, height = 600, cl
       const pixelH = Math.max(1, Math.round(displayH * dpr));
 
       // set CSS size
-      canvas.style.width = `${displayW}px`;
-      canvas.style.height = `${displayH}px`;
+      c.style.width = `${displayW}px`;
+      c.style.height = `${displayH}px`;
 
       // set drawing buffer size
-      if (canvas.width !== pixelW || canvas.height !== pixelH) {
-        canvas.width = pixelW;
-        canvas.height = pixelH;
+      if (c.width !== pixelW || c.height !== pixelH) {
+        c.width = pixelW;
+        c.height = pixelH;
         // apply scaling for DPR before drawing
-        const ctx = canvas.getContext('2d');
+        const ctx = c.getContext('2d');
         if (ctx) {
           ctx.setTransform(1, 0, 0, 1, 0, 0);
           ctx.scale(dpr, dpr);
