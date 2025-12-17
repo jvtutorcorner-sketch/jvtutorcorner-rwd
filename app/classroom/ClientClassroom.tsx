@@ -653,9 +653,8 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName = 'te
         <div className="client-left-inner" style={{ width: '100%', maxWidth: 1000 }}>
           <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
               <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 12 }}>
-                <div>Whiteboard</div>
                 {remainingSeconds !== null && (
-                  <div style={{ color: 'red', fontWeight: 600, marginLeft: 8 }}>{Math.floor((remainingSeconds || 0) / 60)}:{String((remainingSeconds || 0) % 60).padStart(2, '0')}</div>
+                  <div style={{ color: 'red', fontWeight: 600 }}>{Math.floor((remainingSeconds || 0) / 60)}:{String((remainingSeconds || 0) % 60).padStart(2, '0')}</div>
                 )}
               </div>
           </div>

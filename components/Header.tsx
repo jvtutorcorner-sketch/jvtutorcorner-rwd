@@ -14,6 +14,7 @@ export default function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
+  const hideHeader = typeof pathname === 'string' && pathname.startsWith('/classroom');
 
   const MENU_ITEMS = [
     { href: '/teachers', title: '專業師資 - 嚴選全球優質師資', defaultLabel: '專業師資' },
@@ -128,7 +129,7 @@ export default function Header() {
   }
 
   return (
-    <header className="site-header">
+    <header className="site-header" style={hideHeader ? { display: 'none' } : undefined}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <button
           aria-label="開啟選單"

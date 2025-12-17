@@ -1,0 +1,35 @@
+{
+  "timestamp": "2025-12-16T15:02:22.294Z",
+  "roles": [
+    {
+      "id": "admin",
+      "name": "Admin",
+      "description": "管理员",
+      "isActive": true
+    },
+    {
+      "id": "teacher",
+      "name": "Teacher",
+      "description": "教师",
+      "isActive": true
+    },
+    {
+      "id": "student",
+      "name": "Student",
+      "description": "学生",
+      "isActive": true
+    },
+    {
+      "id": "test",
+      "name": "test",
+      "description": "測試",
+      "isActive": false
+    },
+    {
+      "id": "ttt",
+      "name": "ttt",
+      "description": "ttt",
+      "isActive": true
+    }
+  ]
+}

@@ -58,13 +58,23 @@ export default function EnhancedWhiteboard({ room, width = 800, height = 600, cl
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mounted]);
 
-  // redraw canvas whenever strokes change
-  useEffect(() => {
-    if (!canvasRef.current) return;
-    const ctx = canvasRef.current.getContext('2d');
+  // draw all strokes into the canvas (coordinates are CSS pixels)
+  const drawAll = useCallback(() => {
+    const el = canvasRef.current;
+    if (!el) return;
+    const ctx = el.getContext('2d');
     if (!ctx) return;
-    ctx.clearRect(0, 0, width, height);
-    
+
+    const dpr = window.devicePixelRatio || 1;
+
+    // Reset transform and clear full pixel buffer, then scale to CSS pixels
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, el.width, el.height);
+    ctx.scale(dpr, dpr);
+
+    const displayW = el.width / dpr;
+    const displayH = el.height / dpr;
+
     strokes.forEach((s) => {
       if (s.points.length < 2) return;
       ctx.strokeStyle = s.stroke;
@@ -72,7 +82,7 @@ export default function EnhancedWhiteboard({ room, width = 800, height = 600, cl
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
       ctx.globalCompositeOperation = s.mode === 'erase' ? 'destination-out' : 'source-over';
-      
+
       ctx.beginPath();
       ctx.moveTo(s.points[0], s.points[1]);
       for (let i = 2; i < s.points.length; i += 2) {
@@ -80,7 +90,7 @@ export default function EnhancedWhiteboard({ room, width = 800, height = 600, cl
       }
       ctx.stroke();
     });
-  }, [strokes, width, height]);
+  }, [strokes]);
 
   // Attach non-passive touch listeners to prevent page scroll while drawing on mobile
   
@@ -185,6 +195,66 @@ export default function EnhancedWhiteboard({ room, width = 800, height = 600, cl
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [handlePointerDown, handlePointerMove, handlePointerUp]);
+
+  // Keep canvas pixel size in sync with displayed size (handles rotation and DPR)
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const toolbarHeight = 48; // same as used when computing canvas height
+
+    function resizeCanvasToDisplaySize() {
+      const parent = canvas.parentElement || canvas;
+      const rect = parent.getBoundingClientRect();
+      const displayW = rect.width;
+      const displayH = Math.max(32, rect.height - toolbarHeight);
+
+      const dpr = window.devicePixelRatio || 1;
+      const pixelW = Math.max(1, Math.round(displayW * dpr));
+      const pixelH = Math.max(1, Math.round(displayH * dpr));
+
+      // set CSS size
+      canvas.style.width = `${displayW}px`;
+      canvas.style.height = `${displayH}px`;
+
+      // set drawing buffer size
+      if (canvas.width !== pixelW || canvas.height !== pixelH) {
+        canvas.width = pixelW;
+        canvas.height = pixelH;
+        // apply scaling for DPR before drawing
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          ctx.scale(dpr, dpr);
+        }
+        // redraw strokes at new size
+        drawAll();
+      }
+    }
+
+    resizeCanvasToDisplaySize();
+
+    const ro = new ResizeObserver(() => {
+      resizeCanvasToDisplaySize();
+    });
+    const parent = canvas.parentElement || canvas;
+    try { ro.observe(parent); } catch (e) {}
+
+    window.addEventListener('orientationchange', resizeCanvasToDisplaySize);
+    window.addEventListener('resize', resizeCanvasToDisplaySize);
+
+    return () => {
+      try { ro.disconnect(); } catch (e) {}
+      window.removeEventListener('orientationchange', resizeCanvasToDisplaySize);
+      window.removeEventListener('resize', resizeCanvasToDisplaySize);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drawAll]);
+
+  // redraw when strokes change
+  useEffect(() => {
+    drawAll();
+  }, [strokes, drawAll]);
 
   return (
     <div className={`canvas-whiteboard ${className}`} style={{ border: '1px solid #ddd', width: '100%', height: 'auto', maxWidth: width, aspectRatio: `${width}/${height}` }}>
