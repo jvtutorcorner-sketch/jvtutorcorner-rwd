@@ -82,6 +82,9 @@ export default function EnhancedWhiteboard({ room, width = 800, height = 600, cl
     });
   }, [strokes, width, height]);
 
+  // Attach non-passive touch listeners to prevent page scroll while drawing on mobile
+  
+
   const getPointerPos = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>): { x: number; y: number } => {
     if (!canvasRef.current) return { x: 0, y: 0 };
     const rect = canvasRef.current.getBoundingClientRect();
@@ -138,8 +141,53 @@ export default function EnhancedWhiteboard({ room, width = 800, height = 600, cl
     setUndone([]);
   }, []);
 
+  // Attach non-passive touch listeners to prevent page scroll while drawing on mobile
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el) return;
+
+    function onTouchStart(ev: TouchEvent) {
+      // only prevent default for single-finger drawing
+      if (ev.touches && ev.touches.length === 1) {
+        ev.preventDefault();
+        const touch = ev.touches[0];
+        const simulated: any = { touches: ev.touches, clientX: touch.clientX, clientY: touch.clientY };
+        handlePointerDown(simulated as any as React.TouchEvent<HTMLCanvasElement>);
+      }
+    }
+
+    function onTouchMove(ev: TouchEvent) {
+      if (isDrawingRef.current) {
+        ev.preventDefault();
+        const touch = ev.touches[0];
+        const simulated: any = { touches: ev.touches, clientX: touch.clientX, clientY: touch.clientY };
+        handlePointerMove(simulated as any as React.TouchEvent<HTMLCanvasElement>);
+      }
+    }
+
+    function onTouchEnd(ev: TouchEvent) {
+      if (isDrawingRef.current) {
+        ev.preventDefault();
+        handlePointerUp();
+      }
+    }
+
+    el.addEventListener('touchstart', onTouchStart, { passive: false });
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    el.addEventListener('touchend', onTouchEnd, { passive: false });
+
+    return () => {
+      try {
+        el.removeEventListener('touchstart', onTouchStart as any);
+        el.removeEventListener('touchmove', onTouchMove as any);
+        el.removeEventListener('touchend', onTouchEnd as any);
+      } catch (e) {}
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [handlePointerDown, handlePointerMove, handlePointerUp]);
+
   return (
-    <div className={`canvas-whiteboard ${className}`} style={{ border: '1px solid #ddd', width, height }}>
+    <div className={`canvas-whiteboard ${className}`} style={{ border: '1px solid #ddd', width: '100%', height: 'auto', maxWidth: width, aspectRatio: `${width}/${height}` }}>
       <div style={{ display: 'flex', gap: 8, padding: 8, background: '#f5f5f5', borderBottom: '1px solid #ddd', flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', gap: 4 }}>
           <button onClick={() => setTool('pencil')} style={{ padding: '6px 10px', background: tool === 'pencil' ? '#e3f2fd' : 'white', border: '1px solid #ddd', borderRadius: 4, cursor: 'pointer' }}>✏️</button>
@@ -168,10 +216,9 @@ export default function EnhancedWhiteboard({ room, width = 800, height = 600, cl
         onMouseMove={handlePointerMove}
         onMouseUp={handlePointerUp}
         onMouseLeave={handlePointerUp}
-        onTouchStart={handlePointerDown}
-        onTouchMove={handlePointerMove}
-        onTouchEnd={handlePointerUp}
-        style={{ display: 'block', cursor: 'crosshair', background: 'white' }}
+        // Touch handlers are attached natively with { passive: false } in an effect
+        // to allow calling preventDefault() and stop page scrolling while drawing.
+        style={{ display: 'block', cursor: 'crosshair', background: 'white', width: '100%', height: 'calc(100% - 48px)' }}
       />
     </div>
   );

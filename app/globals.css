@@ -497,6 +497,24 @@ nav.main-nav a.active {
   text-decoration: underline;
 }
 
+/* Classroom responsive rules */
+.client-classroom { display: flex; gap: 16px; align-items: flex-start; }
+.client-classroom .client-left { flex: 1; min-width: 0; display: flex; justify-content: center; }
+.client-classroom .client-left-inner { width: 100%; max-width: 1000px; }
+.client-classroom .client-right { width: 360px; display: flex; flex-direction: column; gap: 12px; }
+.canvas-whiteboard { width: 100%; height: auto; }
+.canvas-whiteboard canvas { width: 100% !important; height: auto !important; display: block; }
+.client-classroom video { width: 100%; height: 100%; object-fit: contain; }
+
+@media (max-width: 900px) {
+  .client-classroom { flex-direction: column; }
+  .client-classroom .client-right { width: 100%; }
+  .client-classroom .client-left { width: 100%; }
+  .client-classroom .client-left-inner { max-width: 100%; }
+  .client-classroom .client-right > div { width: 100%; }
+  .client-classroom .client-right video { height: auto; max-height: 40vh; }
+}
+
 .card-meta {
   display: flex;
   justify-content: space-between;

@@ -647,10 +647,10 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName = 'te
   }, [whiteboardRoom]);
 
   return (
-    <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+    <div className="client-classroom" style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
       {/* Left: Whiteboard (flexible) */}
-      <div style={{ flex: 1, minWidth: 560, display: 'flex', justifyContent: 'center' }}>
-        <div style={{ width: '100%', maxWidth: 1000 }}>
+      <div className="client-left" style={{ flex: 1, minWidth: 560, display: 'flex', justifyContent: 'center' }}>
+        <div className="client-left-inner" style={{ width: '100%', maxWidth: 1000 }}>
           <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
               <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 12 }}>
                 <div>Whiteboard</div>
@@ -666,32 +666,22 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName = 'te
       </div>
 
       {/* Right: Video previews and controls (fixed width) */}
-      <div style={{ width: 360, display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div className="client-right" style={{ width: 360, display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            {mounted && (
-              <button onClick={() => { try { const su = getStoredUser() || { email: 'dev@local', plan: 'pro' }; const updated = { ...su, role: 'admin', displayName: su.displayName ?? 'Dev Admin' } as any; setStoredUser(updated); window.location.reload(); } catch (e) { try { const raw = localStorage.getItem('tutor_mock_user'); const parsed = raw ? JSON.parse(raw) : { email: 'dev@local', plan: 'pro' }; parsed.role = 'admin'; parsed.displayName = parsed.displayName || 'Dev Admin'; localStorage.setItem('tutor_mock_user', JSON.stringify(parsed)); window.location.reload(); } catch {} } }} style={{ marginRight: 8 }}>Dev: Make admin</button>
-            )}
-            {mounted && (
-              <>
-                <button onClick={() => { try { const url = `${window.location.origin}/classroom?courseId=${encodeURIComponent(courseId)}`; window.open(url, '_blank', 'noopener'); } catch (e) { console.warn('open classroom link failed', e); } }} style={{ marginRight: 6 }}>Open Classroom Link</button>
-                <button onClick={async () => { try { const url = `${window.location.origin}/classroom?courseId=${encodeURIComponent(courseId)}`; await navigator.clipboard.writeText(url); alert('課堂連結已複製到剪貼簿'); } catch (e) { try { const url = `${window.location.origin}/classroom?courseId=${encodeURIComponent(courseId)}`; (window as any).prompt('Copy this link', url); } catch {} } }} >Copy Link</button>
-              </>
-            )}
-          </div>
+          <div />
         </div>
 
         <div style={{ background: '#111', padding: 12, borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center' }}>
             <div style={{ width: 320, height: 200, background: '#000', borderRadius: 6, overflow: 'hidden' }}>
-              <video ref={localVideoRef} autoPlay muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              <video ref={localVideoRef} autoPlay muted playsInline style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
             </div>
             <div style={{ color: '#fff', fontSize: 12 }}>{(urlRole === 'teacher' || computedRole === 'teacher') ? 'Teacher' : 'Student'}</div>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center' }}>
             <div style={{ width: 320, height: 200, background: '#000', borderRadius: 6, overflow: 'hidden' }}>
-              <video ref={remoteVideoRef} autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              <video ref={remoteVideoRef} autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
             </div>
             <div style={{ color: '#fff', fontSize: 12 }}>{firstRemote ? `${(urlRole === 'teacher' || computedRole === 'teacher') ? 'Student' : 'Teacher'} ${firstRemote.uid}` : ((urlRole === 'teacher' || computedRole === 'teacher') ? 'Student' : 'Teacher')}</div>
           </div>
