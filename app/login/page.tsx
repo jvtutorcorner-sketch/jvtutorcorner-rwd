@@ -95,11 +95,6 @@ export default function LoginPage() {
   return (
     <div className="page">
       <header className="page-header">
-        <h1>登入（測試用）</h1>
-        <p>
-          這裡是家教平台的「示範登入頁」，使用下方提供的三組測試帳號，
-          統一密碼為 <strong>123456</strong>。
-        </p>
       </header>
 
       {currentUser && (
@@ -136,31 +131,10 @@ export default function LoginPage() {
 
       <section className="section">
         <div className="card">
-          <h2>測試帳號一覽</h2>
-          <p>可使用以下任一帳號 + 密碼 123456 登入：</p>
-          <ul>
-            <li>
-              <strong>Basic：</strong> basic@test.com （Basic 普通會員）
-            </li>
-            <li>
-              <strong>Pro：</strong> pro@test.com （Pro 中級會員）
-            </li>
-            <li>
-              <strong>Elite：</strong> elite@test.com （Elite 高級會員）
-            </li>
-            <li>
-              <strong>Teacher：</strong> teacher@test.com （示範老師帳號）
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <section className="section">
-        <div className="card">
-          <h2>登入表單（Mock 驗證）</h2>
+          <h2>登入</h2>
           <form onSubmit={handleSubmit} className="modal-form">
             <div className="field">
-              <label htmlFor="email">Email（請輸入上述其中一個）</label>
+              <label htmlFor="email">Email</label>
               <input
                 id="email"
                 type="email"
@@ -179,23 +153,44 @@ export default function LoginPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete="current-password"
               />
-              <small>統一測試密碼：123456</small>
+              {/* moved to the test accounts card */}
             </div>
 
             {error && <p className="form-error">{error}</p>}
 
             <div className="modal-actions">
               <button type="submit" className="modal-button primary">
-                登入測試
+                登入
               </button>
-              <Link href="/pricing" className="modal-button secondary">
-                先看價目表
-              </Link>
               <Link href="/login/register" className="modal-button secondary">
                 建立帳戶
               </Link>
             </div>
           </form>
+        </div>
+      </section>
+
+      <section className="section">
+        <div className="card">
+          <h2>測試帳號一覽</h2>
+          <p>可使用以下任一帳號登入：</p>
+          <ul>
+            <li>
+              <strong>Basic：</strong> basic@test.com （Basic 普通會員）
+            </li>
+            <li>
+              <strong>Pro：</strong> pro@test.com （Pro 中級會員）
+            </li>
+            <li>
+              <strong>Elite：</strong> elite@test.com （Elite 高級會員）
+            </li>
+            <li>
+              <strong>Teacher：</strong> teacher@test.com （示範老師帳號）
+            </li>
+          </ul>
+          <div style={{ marginTop: 12 }}>
+            <small>統一測試密碼：123456</small>
+          </div>
         </div>
       </section>
     </div>
