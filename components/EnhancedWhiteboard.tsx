@@ -7,12 +7,15 @@ export interface WhiteboardProps {
   width?: number;
   height?: number;
   className?: string;
+  onPdfSelected?: (file: File | null) => void;
+  pdfFile?: File | null; // PDF file to display as background
 }
 
 type Stroke = { points: number[]; stroke: string; strokeWidth: number; mode: 'draw' | 'erase' };
 
-export default function EnhancedWhiteboard({ room, width = 800, height = 600, className = '' }: WhiteboardProps) {
+export default function EnhancedWhiteboard({ room, width = 800, height = 600, className = '', onPdfSelected, pdfFile }: WhiteboardProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const bgCanvasRef = useRef<HTMLCanvasElement>(null); // Background canvas for PDF
   const [tool, setTool] = useState<'pencil' | 'eraser'>('pencil');
   const [color, setColor] = useState('#000000');
   const [strokeWidth, setStrokeWidth] = useState(2);
@@ -20,8 +23,109 @@ export default function EnhancedWhiteboard({ room, width = 800, height = 600, cl
   const [undone, setUndone] = useState<Stroke[]>([]);
   const isDrawingRef = useRef(false);
   const [mounted, setMounted] = useState(false);
+  const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
+  
+  // PDF state
+  const [pdfLib, setPdfLib] = useState<any | null>(null);
+  const [pdf, setPdf] = useState<any | null>(null);
+  const [numPages, setNumPages] = useState<number>(0);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [whiteboardWidth, setWhiteboardWidth] = useState(width);
+  const [whiteboardHeight, setWhiteboardHeight] = useState(height);
+  const [canvasHeight, setCanvasHeight] = useState(height - 48);
 
   useEffect(() => { setMounted(true); }, []);
+
+  // Load pdfjs library
+  useEffect(() => {
+    if (!mounted) return;
+    (async () => {
+      try {
+        // @ts-ignore
+        const lib = await import('pdfjs-dist/build/pdf');
+        (lib as any).GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+        setPdfLib(lib);
+      } catch (e) {
+        console.warn('Failed to load pdfjs', e);
+      }
+    })();
+  }, [mounted]);
+
+  // Load PDF file
+  useEffect(() => {
+    if (!pdfLib || !pdfFile) {
+      setPdf(null);
+      setNumPages(0);
+      setCurrentPage(1);
+      setWhiteboardWidth(width);
+      setWhiteboardHeight(height);
+      setCanvasHeight(height - 48);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const data = new Uint8Array(reader.result as ArrayBuffer);
+        const loadingTask = (pdfLib as any).getDocument({ data });
+        const loadedPdf = await loadingTask.promise;
+        setPdf(loadedPdf);
+        setNumPages(loadedPdf.numPages);
+        setCurrentPage(1);
+        // Calculate whiteboard size based on PDF
+        const page = await loadedPdf.getPage(1);
+        const scale = 1.5;
+        const viewport = page.getViewport({ scale });
+        const logicalWidth = viewport.width;
+        const logicalHeight = viewport.height;
+        setWhiteboardWidth(logicalWidth);
+        setWhiteboardHeight(logicalHeight + 48);
+        setCanvasHeight(logicalHeight);
+      } catch (e) {
+        console.error('Failed to load PDF', e);
+      }
+    };
+    reader.readAsArrayBuffer(pdfFile);
+  }, [pdfLib, pdfFile]);
+
+  // Render current PDF page to background canvas
+  useEffect(() => {
+    if (!pdf || !bgCanvasRef.current || currentPage < 1 || currentPage > numPages) return;
+
+    (async () => {
+      try {
+        const page = await pdf.getPage(currentPage);
+        const bgCanvas = bgCanvasRef.current;
+        if (!bgCanvas) return;
+
+        const dpr = window.devicePixelRatio || 1;
+        const scale = 1.5;
+        const renderViewport = page.getViewport({ scale: scale * dpr });
+
+        // Set canvas dimensions (Physical pixels)
+        bgCanvas.width = renderViewport.width;
+        bgCanvas.height = renderViewport.height;
+        
+        // Set canvas CSS dimensions (Logical pixels)
+        const logicalWidth = renderViewport.width / dpr;
+        const logicalHeight = renderViewport.height / dpr;
+        
+        bgCanvas.style.width = `${logicalWidth}px`;
+        bgCanvas.style.height = `${logicalHeight}px`;
+        
+        // Position at top-left
+        bgCanvas.style.left = '0px';
+        bgCanvas.style.top = '0px';
+
+        const ctx = bgCanvas.getContext('2d');
+        if (!ctx) return;
+
+        await page.render({ canvasContext: ctx, viewport: renderViewport }).promise;
+      } catch (e) {
+        console.error('Failed to render PDF page', e);
+      }
+    })();
+  }, [pdf, currentPage, numPages]);
 
   // expose simple helpers for existing controls that call global __wb_setTool / __wb_setColor
   useEffect(() => {
@@ -204,6 +308,7 @@ export default function EnhancedWhiteboard({ room, width = 800, height = 600, cl
     const toolbarHeight = 48; // same as used when computing canvas height
 
     function resizeCanvasToDisplaySize() {
+      if (pdf) return; // When PDF is loaded, size is fixed by props
       const c = canvasRef.current;
       if (!c) return;
       const parent = c.parentElement || c;
@@ -259,9 +364,9 @@ export default function EnhancedWhiteboard({ room, width = 800, height = 600, cl
   }, [strokes, drawAll]);
 
   return (
-    <div className={`canvas-whiteboard ${className}`} style={{ border: '1px solid #ddd', width: '100%', height: 'auto', maxWidth: width, aspectRatio: `${width}/${height}` }}>
-      <div style={{ display: 'flex', gap: 8, padding: 8, background: '#f5f5f5', borderBottom: '1px solid #ddd', flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', gap: 4 }}>
+    <div className={`canvas-whiteboard ${className}`} style={{ border: '1px solid #ddd', width: whiteboardWidth, height: 'auto' }}>
+      <div style={{ display: 'flex', gap: 8, padding: 8, background: '#f5f5f5', borderBottom: '1px solid #ddd', flexWrap: 'wrap', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
           <button onClick={() => setTool('pencil')} style={{ padding: '6px 10px', background: tool === 'pencil' ? '#e3f2fd' : 'white', border: '1px solid #ddd', borderRadius: 4, cursor: 'pointer' }}>✏️</button>
           <button onClick={() => setTool('eraser')} style={{ padding: '6px 10px', background: tool === 'eraser' ? '#e3f2fd' : 'white', border: '1px solid #ddd', borderRadius: 4, cursor: 'pointer' }}>🧽</button>
         </div>
@@ -278,20 +383,74 @@ export default function EnhancedWhiteboard({ room, width = 800, height = 600, cl
           <button onClick={redo} style={{ padding: '6px 10px', border: '1px solid #ddd', background: 'white', borderRadius: 4, cursor: 'pointer' }} title="重做">↷</button>
           <button onClick={clearAll} style={{ padding: '6px 10px', border: '1px solid #ddd', background: '#ffebee', color: '#c62828', borderRadius: 4, cursor: 'pointer' }} title="清空">🗑️</button>
         </div>
+
+        {/* PDF selector and navigation */}
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button
+            type="button"
+            onClick={() => {
+              const el = document.getElementById('pdf-input-toolbar') as HTMLInputElement | null;
+              el?.click();
+            }}
+            style={{ padding: '6px 10px', border: '1px solid #ddd', borderRadius: 4, background: 'white', cursor: 'pointer' }}
+          >
+            Select PDF
+          </button>
+          <input
+            id="pdf-input-toolbar"
+            type="file"
+            accept="application/pdf"
+            style={{ display: 'none' }}
+            onChange={(e) => {
+              const f = e.target.files?.[0] ?? null;
+              if (f) setSelectedFileName(f.name);
+              else setSelectedFileName(null);
+              if (typeof onPdfSelected === 'function') onPdfSelected?.(f);
+            }}
+          />
+          <div style={{ fontSize: 12, color: '#444', maxWidth: 140, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{selectedFileName ?? ''}</div>
+          
+          {/* PDF page navigation */}
+          {numPages > 0 && (
+            <div style={{ display: 'flex', gap: 4, alignItems: 'center', borderLeft: '1px solid #ddd', paddingLeft: 8 }}>
+              <button
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage <= 1}
+                style={{ padding: '4px 8px', border: '1px solid #ddd', borderRadius: 4, background: 'white', cursor: currentPage <= 1 ? 'not-allowed' : 'pointer', opacity: currentPage <= 1 ? 0.5 : 1 }}
+              >
+                ◀
+              </button>
+              <span style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{currentPage} / {numPages}</span>
+              <button
+                onClick={() => setCurrentPage((p) => Math.min(numPages, p + 1))}
+                disabled={currentPage >= numPages}
+                style={{ padding: '4px 8px', border: '1px solid #ddd', borderRadius: 4, background: 'white', cursor: currentPage >= numPages ? 'not-allowed' : 'pointer', opacity: currentPage >= numPages ? 0.5 : 1 }}
+              >
+                ▶
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
-      <canvas
-        ref={canvasRef}
-        width={width}
-        height={height - 48}
-        onMouseDown={handlePointerDown}
-        onMouseMove={handlePointerMove}
-        onMouseUp={handlePointerUp}
-        onMouseLeave={handlePointerUp}
-        // Touch handlers are attached natively with { passive: false } in an effect
-        // to allow calling preventDefault() and stop page scrolling while drawing.
-        style={{ display: 'block', cursor: 'crosshair', background: 'white', width: '100%', height: 'calc(100% - 48px)' }}
-      />
+      <div style={{ position: 'relative', width: '100%', height: canvasHeight, background: 'white' }}>
+        {/* Background canvas for PDF */}
+        <canvas
+          ref={bgCanvasRef}
+          style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none' }}
+        />
+        {/* Drawing canvas on top */}
+        <canvas
+          ref={canvasRef}
+          width={whiteboardWidth}
+          height={canvasHeight}
+          onMouseDown={handlePointerDown}
+          onMouseMove={handlePointerMove}
+          onMouseUp={handlePointerUp}
+          onMouseLeave={handlePointerUp}
+          style={{ position: 'absolute', top: 0, left: 0, display: 'block', cursor: 'crosshair', width: '100%', height: '100%' }}
+        />
+      </div>
     </div>
   );
 }

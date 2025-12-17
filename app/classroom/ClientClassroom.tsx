@@ -5,7 +5,10 @@ import { useAgoraClassroom } from '@/lib/agora/useAgoraClassroom';
 import { getStoredUser, setStoredUser } from '@/lib/mockAuth';
 import { COURSES } from '@/data/courses';
 import EnhancedWhiteboard from '@/components/EnhancedWhiteboard';
+import dynamic from 'next/dynamic';
 import VideoControls from '@/components/VideoControls';
+
+const PdfViewer = dynamic(() => import('@/components/PdfViewer'), { ssr: false });
 
 type Role = 'teacher' | 'student';
 
@@ -87,6 +90,9 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName = 'te
   const [hasVideoInput, setHasVideoInput] = useState<boolean | null>(null);
   const [wantPublishAudio, setWantPublishAudio] = useState(true);
   const [wantPublishVideo, setWantPublishVideo] = useState(true);
+  // PDF viewer state
+  const [selectedPdf, setSelectedPdf] = useState<File | null>(null);
+  const [showPdf, setShowPdf] = useState(false);
   // session countdown
   const [sessionDurationMinutes, setSessionDurationMinutes] = useState<number>(() => {
     try {
@@ -659,16 +665,21 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName = 'te
               </div>
           </div>
           <div style={{ background: '#fff', borderRadius: 8, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}>
-            <EnhancedWhiteboard room={whiteboardRoom} width={900} height={640} className="flex-1" />
+            <EnhancedWhiteboard 
+              room={whiteboardRoom} 
+              width={900} 
+              height={640} 
+              className="flex-1" 
+              onPdfSelected={(f) => { setSelectedPdf(f); }}
+              pdfFile={selectedPdf}
+            />
           </div>
         </div>
       </div>
 
       {/* Right: Video previews and controls (fixed width) */}
       <div className="client-right" style={{ width: 360, display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div />
-        </div>
+        
 
         <div style={{ background: '#111', padding: 12, borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center' }}>
