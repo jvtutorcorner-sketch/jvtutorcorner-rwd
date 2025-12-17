@@ -472,6 +472,22 @@ nav.main-nav a.active {
   margin: 8px 0 12px;
 }
 
+/* Emphasize teacher name in course cards */
+.teacher-name {
+  color: #0b5fff;
+  font-weight: 700;
+  background: rgba(37,99,235,0.06);
+  padding: 2px 6px;
+  border-radius: 6px;
+  margin-left: 6px;
+  cursor: pointer;
+  display: inline-block;
+}
+.teacher-name:hover {
+  background: rgba(37,99,235,0.12);
+  text-decoration: underline;
+}
+
 .card-meta {
   display: flex;
   justify-content: space-between;

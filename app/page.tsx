@@ -11,6 +11,8 @@ import { TEACHERS } from '@/data/teachers';
 import { COURSES } from '@/data/courses';
 import { TeacherCard } from '@/components/TeacherCard';
 import { CourseCard } from '@/components/CourseCard';
+import Tabs from '@/components/Tabs';
+import Breadcrumb from '@/components/Breadcrumb';
 
 type Locale = 'zh-TW' | 'en';
 type Messages = typeof zhTW;
@@ -48,6 +50,7 @@ export default function HomePage() {
 
   return (
     <div className="home">
+      <Breadcrumb items={[{ label: '首頁', href: '/' }]} />
       {/* Header renders the main menu; removed Homepage MenuBar to avoid duplication */}
       {/* Hero + Carousel */}
       <section className="hero">
@@ -66,53 +69,68 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* 推薦老師 */}
       <section className="section">
-        <div className="section-header">
-          <h2 className="section-title">推薦老師</h2>
-          <Link href="/teachers" className="section-link">
-            看全部老師 →
-          </Link>
-        </div>
-        <div className="card-grid">
-          {recommendedTeachers.map((teacher) => (
-            <TeacherCard key={teacher.id} teacher={teacher} />
-          ))}
-        </div>
-      </section>
-
-      {/* 熱門課程 */}
-      <section className="section">
-        <div className="section-header">
-          <h2 className="section-title">熱門課程</h2>
-          <Link href="/courses" className="section-link">
-            看全部課程 →
-          </Link>
-        </div>
-        <div className="card-grid">
-          {hotCourses.map((course) => (
-            <CourseCard key={course.id} course={course} />
-          ))}
-        </div>
-      </section>
-
-      {/* 平台特色 */}
-      <section className="section">
-        <h2 className="section-title">平台特色</h2>
-        <div className="feature-grid">
-          <div className="feature-card">
-            <h3>線上白板與錄影</h3>
-            <p>內建小畫家式白板與課後錄影回放，方便複習重點。</p>
-          </div>
-          <div className="feature-card">
-            <h3>多國語系介面</h3>
-            <p>支援繁中 / 英文介面，未來可擴充更多語言，方便跨國教學。</p>
-          </div>
-          <div className="feature-card">
-            <h3>跨國金流收款</h3>
-            <p>規劃整合 Stripe + 在地金流，支援國內外學生安全付款。</p>
-          </div>
-        </div>
+        <Tabs
+          items={[
+            {
+              key: 'teachers',
+              title: '推薦老師',
+              content: (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <h2 className="section-title">推薦老師</h2>
+                    <Link href="/teachers" className="section-link">看全部老師 →</Link>
+                  </div>
+                  <div className="card-grid">
+                    {recommendedTeachers.map((teacher) => (
+                      <TeacherCard key={teacher.id} teacher={teacher} />
+                    ))}
+                  </div>
+                </>
+              )
+            },
+            {
+              key: 'courses',
+              title: '熱門課程',
+              content: (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <h2 className="section-title">熱門課程</h2>
+                    <Link href="/courses" className="section-link">看全部課程 →</Link>
+                  </div>
+                  <div className="card-grid">
+                    {hotCourses.map((course) => (
+                      <CourseCard key={course.id} course={course} />
+                    ))}
+                  </div>
+                </>
+              )
+            },
+            {
+              key: 'features',
+              title: '平台特色',
+              content: (
+                <>
+                  <h2 className="section-title">平台特色</h2>
+                  <div className="feature-grid">
+                    <div className="feature-card">
+                      <h3>線上白板與錄影</h3>
+                      <p>內建小畫家式白板與課後錄影回放，方便複習重點。</p>
+                    </div>
+                    <div className="feature-card">
+                      <h3>多國語系介面</h3>
+                      <p>支援繁中 / 英文介面，未來可擴充更多語言，方便跨國教學。</p>
+                    </div>
+                    <div className="feature-card">
+                      <h3>跨國金流收款</h3>
+                      <p>規劃整合 Stripe + 在地金流，支援國內外學生安全付款。</p>
+                    </div>
+                  </div>
+                </>
+              )
+            }
+          ]}
+        />
       </section>
     </div>
   );

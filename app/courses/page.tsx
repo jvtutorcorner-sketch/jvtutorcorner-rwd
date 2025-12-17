@@ -13,11 +13,26 @@ type CoursesPageProps = {
   };
 };
 
-export default function CoursesPage({ searchParams }: CoursesPageProps) {
-  const subject = searchParams?.subject ?? '';
-  const language = searchParams?.language ?? '';
-  const teacher = searchParams?.teacher ?? '';
-  const mode = searchParams?.mode ?? '';
+export default async function CoursesPage(props?: CoursesPageProps) {
+  const raw = await (props?.searchParams ?? {});
+  function getParam(key: string) {
+    if (!raw) return '';
+    // support URLSearchParams-like, plain object, or other shapes
+    if (typeof (raw as any).get === 'function') {
+      try {
+        return (raw as any).get(key) ?? '';
+      } catch {
+        return '';
+      }
+    }
+    if (typeof raw === 'object') return (raw as any)[key] ?? '';
+    return '';
+  }
+
+  const subject = String(getParam('subject') ?? '');
+  const language = String(getParam('language') ?? '');
+  const teacher = String(getParam('teacher') ?? '');
+  const mode = String(getParam('mode') ?? '');
   // region 目前課程資料沒有地區欄位，先忽略
   // const region = searchParams?.region ?? '';
 

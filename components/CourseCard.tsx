@@ -28,7 +28,7 @@ export const CourseCard: React.FC<CourseCardProps> = ({ course }) => {
         <span
           role="link"
           tabIndex={0}
-          className="inline-link"
+          className="inline-link teacher-name"
           onClick={(e) => {
             e.stopPropagation();
             e.preventDefault();
