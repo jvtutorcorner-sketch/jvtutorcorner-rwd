@@ -224,6 +224,15 @@ main {
   border-bottom: 2px solid var(--active-link-color, #0070f3);
 }
 
+/* Hide hamburger on desktop, show on small screens. Use CSS instead of JS to avoid layout/hydration flash. */
+.menu-icon-btn { display: none; }
+
+@media (max-width: 768px) {
+  .menu-icon-btn { display: inline-block; }
+  /* hide the desktop nav on small screens */
+  nav.main-nav { display: none !important; }
+}
+
 /* stronger selector to override other nav rules */
 .main-nav-left a.active,
 .main-nav-left li a.active,

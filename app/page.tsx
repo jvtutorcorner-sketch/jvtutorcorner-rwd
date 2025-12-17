@@ -12,7 +12,6 @@ import { COURSES } from '@/data/courses';
 import { TeacherCard } from '@/components/TeacherCard';
 import { CourseCard } from '@/components/CourseCard';
 import Tabs from '@/components/Tabs';
-import Breadcrumb from '@/components/Breadcrumb';
 
 type Locale = 'zh-TW' | 'en';
 type Messages = typeof zhTW;
@@ -50,7 +49,6 @@ export default function HomePage() {
 
   return (
     <div className="home">
-      <Breadcrumb items={[{ label: '首頁', href: '/' }]} />
       {/* Header renders the main menu; removed Homepage MenuBar to avoid duplication */}
       {/* Hero + Carousel */}
       <section className="hero">

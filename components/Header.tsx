@@ -11,7 +11,6 @@ export default function Header() {
   const [user, setUser] = useState<StoredUser | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [adminSettings, setAdminSettings] = useState<any | null>(null);
-  const [isMobile, setIsMobile] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
@@ -61,17 +60,7 @@ export default function Header() {
     })();
   }, []);
 
-  // detect mobile viewport for toggling compact menu
-  useEffect(() => {
-    function update() {
-      if (typeof window === 'undefined') return;
-      setIsMobile(window.innerWidth <= 768);
-      if (window.innerWidth > 768) setMobileMenuOpen(false);
-    }
-    update();
-    if (typeof window !== 'undefined') window.addEventListener('resize', update);
-    return () => { if (typeof window !== 'undefined') window.removeEventListener('resize', update); };
-  }, []);
+  // Note: viewport show/hide handled in CSS to avoid hydration flashes
 
   useEffect(() => {
     // listen for external changes to admin settings (e.g. saved from admin UI)
@@ -141,27 +130,20 @@ export default function Header() {
   return (
     <header className="site-header">
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        {isMobile ? (
-          <>
-            <button
-              aria-label="開啟選單"
-              onClick={() => setMobileMenuOpen((s) => !s)}
-              className="menu-icon-btn"
-              style={{ background: 'transparent', border: 0, padding: 8, cursor: 'pointer' }}
-            >
-              <span style={{ display: 'block', width: 20, height: 2, background: '#111', marginBottom: 4 }} />
-              <span style={{ display: 'block', width: 16, height: 2, background: '#111', marginBottom: 4 }} />
-              <span style={{ display: 'block', width: 12, height: 2, background: '#111' }} />
-            </button>
-            <Link href="/" className="logo">Tutor Corner</Link>
-          </>
-        ) : (
-          <Link href="/" className="logo">Tutor Corner</Link>
-        )}
+        <button
+          aria-label="開啟選單"
+          onClick={() => setMobileMenuOpen((s) => !s)}
+          className="menu-icon-btn"
+          style={{ background: 'transparent', border: 0, padding: 8, cursor: 'pointer' }}
+        >
+          <span style={{ display: 'block', width: 20, height: 2, background: '#111', marginBottom: 4 }} />
+          <span style={{ display: 'block', width: 16, height: 2, background: '#111', marginBottom: 4 }} />
+          <span style={{ display: 'block', width: 12, height: 2, background: '#111' }} />
+        </button>
+        <Link href="/" className="logo">Tutor Corner</Link>
       </div>
 
-        {!isMobile ? (
-          <nav id="menu" className="menu main-nav" style={{ boxShadow: 'none' }} aria-label="主選單">
+        <nav id="menu" className="menu main-nav" style={{ boxShadow: 'none' }} aria-label="主選單">
           <ul className="main-nav-left">
           {
             // build menu items and apply adminSettings.pageVisibility.menu rules when available
@@ -280,10 +262,9 @@ export default function Header() {
               </li>
             </ul>
             </div>
-              </nav>
-            ) : null}
+            </nav>
 
-        {isMobile && mobileMenuOpen ? (
+              {mobileMenuOpen ? (
           <div
             role="dialog"
             aria-modal="true"
