@@ -373,14 +373,15 @@ export function useAgoraClassroom({
               isTeacher,
               phase: room.phase,
               writable: room.writable || room.isWritable,
-              roomMembers: room.state?.roomMembers?.length || 0
+              roomMembers: room.state?.roomMembers?.length || 0,
+              hasWhiteboardRef: !!whiteboardRef.current
             });
 
             if (whiteboardRef.current) {
               room.bindHtmlElement(whiteboardRef.current);
-              console.log('Whiteboard bindHtmlElement called');
+              console.log('✓ Whiteboard bindHtmlElement called successfully');
             } else {
-              console.warn('whiteboardRef.current is null, cannot bind whiteboard');
+              console.error('✗ whiteboardRef.current is null, cannot bind whiteboard!');
             }
 
             try {

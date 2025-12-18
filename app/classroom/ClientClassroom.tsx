@@ -96,14 +96,8 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   // PDF viewer state
   const [selectedPdf, setSelectedPdf] = useState<File | null>(null);
   const [showPdf, setShowPdf] = useState(false);
-  // session countdown
-  const [sessionDurationMinutes, setSessionDurationMinutes] = useState<number>(() => {
-    try {
-      const raw = typeof window !== 'undefined' ? localStorage.getItem(`course_session_duration_${courseId}`) : null;
-      if (raw) return Number(raw);
-    } catch (e) {}
-    return (course as any)?.sessionDurationMinutes ?? 50;
-  });
+  // session countdown - 改为30秒测试
+  const [sessionDurationMinutes, setSessionDurationMinutes] = useState<number>(0.5); // 0.5分钟 = 30秒
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
   const timerRef = useRef<number | null>(null);
 
@@ -167,6 +161,30 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       joined
     });
   }, [whiteboardRoom, whiteboardRef, whiteboardMeta, joined]);
+
+  // 跨标签页同步：老师开始上课时通知学生
+  useEffect(() => {
+    const sessionKey = `classroom_session_${courseId}_${orderId ?? 'noorder'}`;
+    const bc = new BroadcastChannel(sessionKey);
+    
+    bc.onmessage = (event) => {
+      if (event.data?.type === 'class_started' && !joined && !loading) {
+        console.log('收到開始上課通知，自動加入...');
+        // 学生端自动加入
+        join({ publishAudio: wantPublishAudio, publishVideo: wantPublishVideo });
+      } else if (event.data?.type === 'class_ended') {
+        console.log('收到結束上課通知');
+        // 如果已经在课堂中，自动离开并返回等待页
+        if (joined) {
+          endSession();
+        }
+      }
+    };
+    
+    return () => {
+      bc.close();
+    };
+  }, [courseId, orderId, joined, loading, wantPublishAudio, wantPublishVideo, join]);
 
   useEffect(() => {
     let mountedFlag = true;
@@ -295,6 +313,13 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
 
   const endSession = async () => {
     try {
+      // 广播结束上课通知
+      const sessionKey = `classroom_session_${courseId}_${orderId ?? 'noorder'}`;
+      const bc = new BroadcastChannel(sessionKey);
+      bc.postMessage({ type: 'class_ended', timestamp: Date.now() });
+      console.log('已廣播結束上課通知');
+      setTimeout(() => bc.close(), 100);
+      
       await leave();
       try { (window as any).__wbRoom = null; } catch (e) {}
       if (whiteboardMeta?.uuid) {
@@ -302,7 +327,11 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           await fetch('/api/agora/whiteboard/close', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ uuid: whiteboardMeta.uuid }) });
         } catch (e) { console.warn('whiteboard close request failed', e); }
       }
-      alert('Session ended locally; server close requested.');
+      
+      // 返回到等待页面，保持相应的 role 参数
+      const currentRole = (urlRole === 'teacher' || urlRole === 'student') ? urlRole : computedRole;
+      const waitPageUrl = `/classroom/wait?courseId=${courseId}${orderId ? `&orderId=${orderId}` : ''}&role=${currentRole}`;
+      window.location.href = waitPageUrl;
     } catch (e) {
       console.warn('end session failed', e);
       alert('End session attempt failed; check console');
@@ -377,14 +406,27 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     }
 
     if (joined) {
-      // initialize remaining seconds
-      const secs = (sessionDurationMinutes || 50) * 60;
+      // 老师开始上课时，广播通知学生
+      const isTeacher = (urlRole === 'teacher' || urlRole === 'student') ? urlRole === 'teacher' : computedRole === 'teacher';
+      if (isTeacher) {
+        const sessionKey = `classroom_session_${courseId}_${orderId ?? 'noorder'}`;
+        const bc = new BroadcastChannel(sessionKey);
+        bc.postMessage({ type: 'class_started', timestamp: Date.now() });
+        console.log('已廣播開始上課通知');
+        setTimeout(() => bc.close(), 100);
+      }
+      
+      // initialize remaining seconds - 30秒倒计时
+      const secs = Math.floor((sessionDurationMinutes || 0.5) * 60);
       setRemainingSeconds(secs);
+      console.log(`開始 ${secs} 秒倒計時`);
+      
       timerRef.current = window.setInterval(() => {
         setRemainingSeconds((prev) => {
           if (prev === null) return prev;
           if (prev <= 1) {
             // time's up
+            console.log('時間到！自動結束課程並返回等待頁');
             try { if (timerRef.current) { window.clearInterval(timerRef.current); timerRef.current = null; } } catch (e) {}
             // trigger endSession
             endSession();

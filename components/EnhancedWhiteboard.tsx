@@ -55,6 +55,16 @@ export default function EnhancedWhiteboard({
   const useNetlessWhiteboard = Boolean(room && whiteboardRef);
 
   useEffect(() => { setMounted(true); }, []);
+  
+  // Debug: log whiteboard mode
+  useEffect(() => {
+    console.log('EnhancedWhiteboard mode:', {
+      useNetlessWhiteboard,
+      hasRoom: !!room,
+      hasWhiteboardRef: !!whiteboardRef,
+      whiteboardRefCurrent: !!whiteboardRef?.current
+    });
+  }, [useNetlessWhiteboard, room, whiteboardRef]);
 
   // Load pdfjs library
   useEffect(() => {
