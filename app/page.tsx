@@ -12,6 +12,7 @@ import { COURSES } from '@/data/courses';
 import { TeacherCard } from '@/components/TeacherCard';
 import { CourseCard } from '@/components/CourseCard';
 import Tabs from '@/components/Tabs';
+import { getStoredUser, type StoredUser } from '@/lib/mockAuth';
 
 type Locale = 'zh-TW' | 'en';
 type Messages = typeof zhTW;
@@ -43,6 +44,12 @@ type SearchTarget = 'teachers' | 'courses';
 export default function HomePage() {
   const { t } = useI18n();
   const router = useRouter();
+  const [user, setUser] = useState<StoredUser | null>(null);
+
+  useEffect(() => {
+    const u = getStoredUser();
+    setUser(u);
+  }, []);
 
   const recommendedTeachers = TEACHERS.slice(0, 3);
   const hotCourses = COURSES.slice(0, 3);
@@ -104,7 +111,7 @@ export default function HomePage() {
                 </>
               )
             },
-            {
+            ...(user?.role === 'admin' ? [{
               key: 'features',
               title: '平台特色',
               content: (
@@ -126,7 +133,7 @@ export default function HomePage() {
                   </div>
                 </>
               )
-            }
+            }] : [])
           ]}
         />
       </section>

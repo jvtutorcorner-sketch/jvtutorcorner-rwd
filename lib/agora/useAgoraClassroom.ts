@@ -145,13 +145,7 @@ export function useAgoraClassroom({
   // 1对1优化配置
   const applyOneOnOneOptimizations = async (client: IAgoraRTCClient) => {
     try {
-      // 设置为直播模式以获得更好的1对1性能
-      await client.setClientRole('host');
-      
-      // 启用低延迟模式
-      await setLowLatencyMode(true);
-      
-      // 设置网络质量优先级
+      // 设置网络质量优先级 - 在 RTC 模式下音频优先
       await client.setStreamFallbackOption(0, 1); // 音频优先
       
       console.log('Applied 1-on-1 optimizations');
@@ -198,13 +192,10 @@ export function useAgoraClassroom({
         const Agora = (AgoraModule as any).default ?? AgoraModule;
         AgoraSDK = Agora;
         
-        // 为1对1场景优化客户端配置
-        const clientConfig = isOneOnOne ? {
-          mode: 'live', // 使用直播模式获得更好的1对1性能
-          codec: 'vp8'
-        } : {
-          mode: 'rtc',
-          codec: 'vp8'
+        // 使用 RTC 模式，所有参与者都可以发布和订阅
+        const clientConfig = {
+          mode: 'rtc' as const,
+          codec: 'vp8' as const
         };
         
         clientRef.current = Agora.createClient(clientConfig);
@@ -212,24 +203,35 @@ export function useAgoraClassroom({
 
       const client = clientRef.current!;
 
-      // 应用1对1优化
+      await client.join(data.appId, data.channelName, data.token, data.uid);
+      clientChannelRef.current = data.channelName;
+
+      // 应用1对1优化 (AFTER join, when websocket is ready)
       if (isOneOnOne) {
         await applyOneOnOneOptimizations(client);
       }
 
-      await client.join(data.appId, data.channelName, data.token, data.uid);
-      clientChannelRef.current = data.channelName;
-
       // Request server to create/return Agora Whiteboard room + token
+      // Use localStorage to share the same whiteboard room UUID across participants
+      const whiteboardRoomKey = `whiteboard_room_${channelName}`;
       let wbAppId: string | null = null;
       let wbUuid: string | null = null;
       let wbRoomToken: string | null = null;
       let wbRegion: string | null = null;
+      
       try {
+        // Try to get existing room UUID from localStorage
+        const cachedUuid = typeof window !== 'undefined' ? localStorage.getItem(whiteboardRoomKey) : null;
+        
+        // Use channelName as whiteboard room name to ensure same room for all participants
         const wbResp = await fetch('/api/agora/whiteboard', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ name: 'Classroom Room' }),
+          body: JSON.stringify({ 
+            uuid: cachedUuid, // If we have cached UUID, request token for existing room
+            name: channelName,
+            role: 'admin' // Use admin role to ensure both teacher and student can write
+          }),
         });
         if (wbResp.ok) {
           const wbJson = await wbResp.json();
@@ -237,6 +239,25 @@ export function useAgoraClassroom({
           wbUuid = wbJson.uuid ?? null;
           wbRoomToken = wbJson.roomToken ?? null;
           wbRegion = wbJson.region ?? null;
+          
+          // Cache the UUID for other participants to use
+          if (wbUuid && typeof window !== 'undefined') {
+            const isNewRoom = !cachedUuid;
+            localStorage.setItem(whiteboardRoomKey, wbUuid);
+            
+            // Notify other tabs if this is a newly created room
+            if (isNewRoom) {
+              try {
+                const bc = new BroadcastChannel(`whiteboard_${channelName}`);
+                bc.postMessage({ type: 'whiteboard_room_created', uuid: wbUuid, timestamp: Date.now() });
+                setTimeout(() => bc.close(), 100); // Close after brief delay to ensure message sent
+              } catch (e) {
+                console.warn('BroadcastChannel not available:', e);
+              }
+            }
+          }
+          
+          console.log('Whiteboard room info:', { wbAppId, wbUuid, wbRegion, channelName, cached: !!cachedUuid });
           setWhiteboardMeta({ uuid: wbUuid ?? undefined, appId: wbAppId ?? undefined, region: wbRegion ?? undefined });
         } else {
           const txt = await wbResp.text();
@@ -290,16 +311,22 @@ export function useAgoraClassroom({
         if ((window as any).WhiteWebSdk) return;
 
         const cdns = [
-          'https://cdn.jsdelivr.net/npm/white-web-sdk@2.16.53/dist/index.js',
           'https://unpkg.com/white-web-sdk@2.16.53/dist/index.js',
+          'https://cdn.jsdelivr.net/npm/white-web-sdk@2.16.53/dist/index.js',
+          'https://cdn.skypack.dev/white-web-sdk@2.16.53',
+          'https://esm.sh/white-web-sdk@2.16.53',
         ];
 
         let lastErr: Error | null = null;
         for (const url of cdns) {
           try {
-            // try to load; small timeout
-            await loadScriptWithTimeout(url, 8000);
-            if ((window as any).WhiteWebSdk) return;
+            // try to load; increased timeout to 15 seconds
+            console.log(`Trying to load white-web-sdk from: ${url}`);
+            await loadScriptWithTimeout(url, 15000);
+            if ((window as any).WhiteWebSdk) {
+              console.log(`✓ Successfully loaded white-web-sdk from: ${url}`);
+              return;
+            }
           } catch (err: any) {
             console.warn('white-web-sdk load failed for', url, err?.message ?? err);
             lastErr = err;
@@ -307,7 +334,7 @@ export function useAgoraClassroom({
           }
         }
 
-        throw lastErr ?? new Error('Failed to load white-web-sdk from CDNs');
+        throw lastErr ?? new Error('Failed to load white-web-sdk from all CDNs');
       };
 
       try {
@@ -327,17 +354,33 @@ export function useAgoraClassroom({
               if (m) wbRoomToken = m[1];
             }
 
+            const isTeacher = role === 'teacher';
+            
             const room = await whiteWebSdk.joinRoom({
               uuid: wbUuid,
               roomToken: wbRoomToken,
               uid: String(uid),
               userPayload: {
-                cursorName: role === 'teacher' ? 'Teacher' : 'Student',
+                cursorName: isTeacher ? 'Teacher' : 'Student',
               },
+              isWritable: isTeacher, // Only teacher can write
+            });
+
+            console.log('Joined whiteboard room:', { 
+              uuid: wbUuid, 
+              role, 
+              uid, 
+              isTeacher,
+              phase: room.phase,
+              writable: room.writable || room.isWritable,
+              roomMembers: room.state?.roomMembers?.length || 0
             });
 
             if (whiteboardRef.current) {
               room.bindHtmlElement(whiteboardRef.current);
+              console.log('Whiteboard bindHtmlElement called');
+            } else {
+              console.warn('whiteboardRef.current is null, cannot bind whiteboard');
             }
 
             try {
@@ -362,17 +405,25 @@ export function useAgoraClassroom({
               if (typeof room.setViewMode === 'function') room.setViewMode('Freedom');
             } catch {}
 
-            // Enable writable mode first
+            // Enable writable mode only for teacher
             try {
-              if (typeof room.setWritable === 'function') {
-                // some versions provide setWritable
-                await room.setWritable(true);
-              } else if (typeof room.enableWrite === 'function') {
-                // fallback name
-                await room.enableWrite(true);
+              if (isTeacher) {
+                if (typeof room.setWritable === 'function') {
+                  await room.setWritable(true);
+                  console.log('Teacher: Whiteboard setWritable(true) called');
+                } else if (typeof room.enableWrite === 'function') {
+                  await room.enableWrite(true);
+                  console.log('Teacher: Whiteboard enableWrite(true) called');
+                }
+              } else {
+                // Student: set to read-only
+                if (typeof room.setWritable === 'function') {
+                  await room.setWritable(false);
+                  console.log('Student: Whiteboard setWritable(false) called (read-only)');
+                }
               }
             } catch (e) {
-              console.warn('Failed to enable whiteboard writable mode', e);
+              console.warn('Failed to set whiteboard writable mode', e);
             }
 
             // Wait for whiteboard to be ready before setting tools
@@ -387,19 +438,23 @@ export function useAgoraClassroom({
 
             await waitForReady();
 
-            // 設定預設工具為鉛筆
+            // 設定預設工具為鉛筆 (only for teacher)
             // set default tool after whiteboard is ready
-            const defaultStroke = [0, 0, 0] as [number, number, number];
-            try {
-              if (typeof room.setMemberState === 'function') {
-                room.setMemberState({ 
-                  currentApplianceName: 'pencil' as any, 
-                  strokeColor: defaultStroke,
-                  isWritable: true 
-                });
+            if (isTeacher) {
+              const defaultStroke = [0, 0, 0] as [number, number, number];
+              try {
+                if (typeof room.setMemberState === 'function') {
+                  room.setMemberState({ 
+                    currentApplianceName: 'pencil' as any, 
+                    strokeColor: defaultStroke
+                  });
+                  console.log('Teacher: Whiteboard default tool set to pencil');
+                }
+              } catch (e) {
+                console.warn('Teacher setMemberState failed', e);
               }
-            } catch (e) {
-              console.warn('setMemberState failed', e);
+            } else {
+              console.log('Student: Whiteboard in read-only mode');
             }
 
             // diagnostic: expose available methods
@@ -409,6 +464,26 @@ export function useAgoraClassroom({
 
             whiteboardRoomRef.current = room;
             setWhiteboardRoom(room);
+            
+            // Add state change listeners for debugging
+            if (room.callbacks) {
+              const originalOnPhaseChanged = room.callbacks.onPhaseChanged;
+              room.callbacks.onPhaseChanged = (phase: any) => {
+                console.log(`[${role}] Whiteboard phase changed:`, phase);
+                if (originalOnPhaseChanged) originalOnPhaseChanged(phase);
+              };
+              
+              const originalOnRoomStateChanged = room.callbacks.onRoomStateChanged;
+              room.callbacks.onRoomStateChanged = (state: any) => {
+                console.log(`[${role}] Whiteboard state changed:`, { 
+                  memberState: state?.memberState,
+                  roomMembers: state?.roomMembers?.length,
+                  sceneState: state?.sceneState?.scenePath
+                });
+                if (originalOnRoomStateChanged) originalOnRoomStateChanged(state);
+              };
+            }
+            
             try {
               // expose for debugging in dev only
               if (typeof window !== 'undefined') {
@@ -670,6 +745,29 @@ export function useAgoraClassroom({
       setRemoteUsers([]);
     }
   };
+
+  // Listen for whiteboard room UUID from other tabs
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
+    const bc = new BroadcastChannel(`whiteboard_${channelName}`);
+    
+    bc.onmessage = (event) => {
+      if (event.data?.type === 'whiteboard_room_created' && event.data.uuid) {
+        const whiteboardRoomKey = `whiteboard_room_${channelName}`;
+        const existingUuid = localStorage.getItem(whiteboardRoomKey);
+        
+        if (!existingUuid) {
+          console.log('Received whiteboard UUID from other tab:', event.data.uuid);
+          localStorage.setItem(whiteboardRoomKey, event.data.uuid);
+        }
+      }
+    };
+    
+    return () => {
+      bc.close();
+    };
+  }, [channelName]);
 
   // 元件卸載時自動離開
   useEffect(() => {

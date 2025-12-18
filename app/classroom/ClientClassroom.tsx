@@ -32,11 +32,14 @@ const hexToRgbArray = (value: string | number[]): [number, number, number] => {
   return [(num >> 16) & 255, (num >> 8) & 255, num & 255];
 };
 
-const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName = 'test' }) => {
+const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) => {
   // determine courseId from query string (e.g. ?courseId=c1)
   const courseId = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('courseId') ?? 'c1' : 'c1';
   const orderId = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('orderId') ?? null : null;
   const course = COURSES.find((c) => c.id === courseId) || null;
+  
+  // Use courseId + orderId as channel name to ensure same classroom
+  const effectiveChannelName = channelName || `course_${courseId}_${orderId || 'default'}`;
 
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
@@ -78,7 +81,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName = 'te
     setVideoQuality,
     setLowLatencyMode,
   } = useAgoraClassroom({
-    channelName,
+    channelName: effectiveChannelName,
     role: (urlRole === 'teacher' || urlRole === 'student') ? (urlRole as Role) : computedRole,
     isOneOnOne: true, // 启用1对1优化
     defaultQuality: 'high' // 默认高质量
@@ -111,6 +114,19 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName = 'te
   const [selectedVideoDeviceId, setSelectedVideoDeviceId] = useState<string | null>(null);
   const [permissionGranted, setPermissionGranted] = useState(false);
 
+  // Restore device selections saved from waiting page (if any)
+  useEffect(() => {
+    try {
+      if (typeof window === 'undefined') return;
+      const sa = window.localStorage.getItem('tutor_selected_audio');
+      const sv = window.localStorage.getItem('tutor_selected_video');
+      if (sa) setSelectedAudioDeviceId(sa);
+      if (sv) setSelectedVideoDeviceId(sv);
+    } catch (e) {}
+    // run once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // pre-join waiting / readiness state (require same course + order)
   const [ready, setReady] = useState(false);
   const [canJoin, setCanJoin] = useState(false);
@@ -129,6 +145,28 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName = 'te
   const pendingToolRef = useRef<string | null>(null);
   const [penColor, setPenColor] = useState<string>('#000000');
   const pendingColorRef = useRef<string | null>(null);
+
+  // Log initialization info once on mount
+  useEffect(() => {
+    console.log('ClientClassroom initialized:', { 
+      courseId, 
+      orderId, 
+      channelName, 
+      effectiveChannelName,
+      urlRole,
+      computedRole 
+    });
+  }, []); // Empty deps = run once on mount
+  
+  // Debug whiteboard state
+  useEffect(() => {
+    console.log('Whiteboard state:', {
+      hasWhiteboardRoom: !!whiteboardRoom,
+      hasWhiteboardRef: !!whiteboardRef,
+      whiteboardMeta,
+      joined
+    });
+  }, [whiteboardRoom, whiteboardRef, whiteboardMeta, joined]);
 
   useEffect(() => {
     let mountedFlag = true;
@@ -304,6 +342,12 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName = 'te
       }
       localStorage.setItem(sessionReadyKey, JSON.stringify(filtered));
       try { window.dispatchEvent(new StorageEvent('storage', { key: sessionReadyKey, newValue: JSON.stringify(filtered) })); } catch (e) {}
+      // notify other tabs via BroadcastChannel
+      try {
+        const bc = new BroadcastChannel(sessionReadyKey);
+        bc.postMessage({ type: 'ready-updated' });
+        bc.close();
+      } catch (e) {}
     } catch (e) {
       console.warn('markReady failed', e);
     }
@@ -631,27 +675,6 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName = 'te
     return () => clearInterval(iv);
   }, [whiteboardRoom]);
 
-  useEffect(() => {
-    if (!whiteboardRoom || !whiteboardRef.current) return;
-    try {
-      whiteboardRoom.bindHtmlElement(whiteboardRef.current);
-      if (typeof whiteboardRoom.refreshViewSize === 'function') {
-        whiteboardRoom.refreshViewSize();
-      }
-      if (typeof whiteboardRoom.setViewMode === 'function') {
-        try { whiteboardRoom.setViewMode('Freedom'); } catch {}
-      }
-      if (typeof whiteboardRoom.disableDeviceInputs === 'function') {
-        try { whiteboardRoom.disableDeviceInputs(false); } catch {}
-      }
-      if (typeof whiteboardRoom.disableOperations === 'function') {
-        try { whiteboardRoom.disableOperations(false); } catch {}
-      }
-    } catch (err) {
-      console.warn('Failed to bind whiteboard element', err);
-    }
-  }, [whiteboardRoom]);
-
   return (
     <div className="client-classroom" style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
       {/* Left: Whiteboard (flexible) */}
@@ -666,12 +689,17 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName = 'te
           </div>
           <div style={{ background: '#fff', borderRadius: 8, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}>
             <EnhancedWhiteboard 
-              room={whiteboardRoom} 
+              room={whiteboardRoom}
+              whiteboardRef={whiteboardRef}
               width={900} 
               height={640} 
               className="flex-1" 
               onPdfSelected={(f) => { setSelectedPdf(f); }}
               pdfFile={selectedPdf}
+              micEnabled={wantPublishAudio}
+              onToggleMic={() => setWantPublishAudio((s) => !s)}
+              hasMic={hasAudioInput !== false}
+              onLeave={() => leave()}
             />
           </div>
         </div>
@@ -686,14 +714,14 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName = 'te
             <div style={{ width: 320, height: 200, background: '#000', borderRadius: 6, overflow: 'hidden' }}>
               <video ref={localVideoRef} autoPlay muted playsInline style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
             </div>
-            <div style={{ color: '#fff', fontSize: 12 }}>{(urlRole === 'teacher' || computedRole === 'teacher') ? 'Teacher' : 'Student'}</div>
+            <div style={{ color: '#fff', fontSize: 12 }}>{mounted && (urlRole === 'teacher' || computedRole === 'teacher') ? 'Teacher' : 'Student'}</div>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center' }}>
             <div style={{ width: 320, height: 200, background: '#000', borderRadius: 6, overflow: 'hidden' }}>
               <video ref={remoteVideoRef} autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
             </div>
-            <div style={{ color: '#fff', fontSize: 12 }}>{firstRemote ? `${(urlRole === 'teacher' || computedRole === 'teacher') ? 'Student' : 'Teacher'} ${firstRemote.uid}` : ((urlRole === 'teacher' || computedRole === 'teacher') ? 'Student' : 'Teacher')}</div>
+            <div style={{ color: '#fff', fontSize: 12 }}>{firstRemote ? `${mounted && (urlRole === 'teacher' || computedRole === 'teacher') ? 'Student' : 'Teacher'} ${firstRemote.uid}` : (mounted && (urlRole === 'teacher' || computedRole === 'teacher') ? 'Student' : 'Teacher')}</div>
           </div>
 
           {/* Controls */}
@@ -707,6 +735,10 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName = 'te
                     {audioInputs.map((d) => (<option key={d.deviceId} value={d.deviceId}>{d.label || 'Microphone'}</option>))}
                   </select>
                   <button onClick={() => { testingMic ? stopMicTest() : startMicTest(); }}>{testingMic ? 'Stop Mic Test' : 'Test Mic'}</button>
+                  <div style={{ width: 80, height: 8, background: '#222', borderRadius: 4, overflow: 'hidden', marginLeft: 6 }} aria-hidden>
+                    <div style={{ width: `${Math.round((micLevel || 0) * 100)}%`, height: '100%', background: testingMic ? '#4caf50' : (wantPublishAudio ? '#81c784' : '#555'), transition: 'width 120ms linear' }} />
+                  </div>
+                  <div style={{ fontSize: 11, color: '#ccc', marginLeft: 6, minWidth: 28, textAlign: 'right' }}>{Math.round((micLevel || 0) * 100)}</div>
                 </div>
 
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -723,57 +755,63 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName = 'te
                 </div>
 
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <label style={{ fontSize: 12, color: '#ccc' }}>Mic</label>
-                  <button onClick={() => setWantPublishAudio((s) => !s)} disabled={hasAudioInput === false}>{wantPublishAudio ? 'On' : 'Off'}</button>
-                  <label style={{ fontSize: 12, color: '#ccc', marginLeft: 8 }}>Cam</label>
+                  <label style={{ fontSize: 12, color: '#ccc' }}>Cam</label>
                   <button onClick={() => setWantPublishVideo((s) => !s)} disabled={hasVideoInput === false}>{wantPublishVideo ? 'On' : 'Off'}</button>
                 </div>
 
                 <div style={{ display: 'flex', gap: 8 }}>
-                  {(() => {
-                    const joinDisabled = loading || joined || !canJoin;
-                    return (
-                      <button
-                        onClick={() => join({ publishAudio: wantPublishAudio, publishVideo: wantPublishVideo })}
-                        disabled={joinDisabled}
-                        style={{
-                          background: joinDisabled ? '#9CA3AF' : undefined,
-                          color: joinDisabled ? 'white' : undefined,
-                          border: 'none',
-                          padding: '6px 12px',
-                          borderRadius: 4,
-                          cursor: joinDisabled ? 'not-allowed' : 'pointer'
-                        }}
-                      >
-                        Join
-                      </button>
-                    );
-                  })()}
-                  <button onClick={() => leave()} disabled={!joined}>Leave</button>
-                  <button
-                    onClick={endSession}
-                    disabled={!(isAdmin || computedRole === 'teacher')}
-                    style={{
-                      background: !(isAdmin || computedRole === 'teacher') ? '#9CA3AF' : undefined,
-                      color: !(isAdmin || computedRole === 'teacher') ? 'white' : undefined,
-                      border: 'none',
-                      padding: '6px 12px',
-                      borderRadius: 4,
-                      cursor: !(isAdmin || computedRole === 'teacher') ? 'not-allowed' : 'pointer'
-                    }}
-                  >
-                    End Session
-                  </button>
-                </div>
-                <div style={{ marginTop: 6, fontSize: 12, color: '#c7c7c7' }}>
-                  <div><strong>Leave</strong>: 只離開目前這個瀏覽器分頁或裝置；不會影響其他參與者。</div>
-                  <div><strong>End Session</strong>: 向伺服器請求正式結束課堂，可能會關閉白板並使所有參與者離開（只有授課者或管理員可執行）。</div>
-                  {remainingSeconds !== null && (
-                    <div style={{ marginTop: 6 }}>
-                      <strong>剩餘時間：</strong> {Math.floor((remainingSeconds || 0) / 60)}:{String((remainingSeconds || 0) % 60).padStart(2, '0')}
-                    </div>
+                  {!joined ? (
+                    <button
+                      onClick={() => join({ publishAudio: wantPublishAudio, publishVideo: wantPublishVideo })}
+                      disabled={loading}
+                      style={{
+                        background: loading ? '#9CA3AF' : '#4CAF50',
+                        color: 'white',
+                        border: 'none',
+                        padding: '8px 16px',
+                        borderRadius: 4,
+                        cursor: loading ? 'not-allowed' : 'pointer',
+                        fontWeight: 600
+                      }}
+                    >
+                      {loading ? '加入中...' : '🚀 Join (開始上課)'}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={endSession}
+                      disabled={((urlRole === 'teacher' || urlRole === 'student') ? urlRole : computedRole) !== 'teacher'}
+                      style={{
+                        background: ((urlRole === 'teacher' || urlRole === 'student') ? urlRole : computedRole) !== 'teacher' ? '#9CA3AF' : '#f44336',
+                        color: 'white',
+                        border: 'none',
+                        padding: '8px 16px',
+                        borderRadius: 4,
+                        cursor: ((urlRole === 'teacher' || urlRole === 'student') ? urlRole : computedRole) !== 'teacher' ? 'not-allowed' : 'pointer',
+                        fontWeight: 600
+                      }}
+                    >
+                      End Session (結束上課)
+                    </button>
                   )}
                 </div>
+                
+                {joined && (
+                  <div style={{ marginTop: 6, fontSize: 11, color: '#ffeb3b', background: 'rgba(255,235,59,0.1)', padding: 4, borderRadius: 4 }}>
+                    ⏱ 已開始計費 | Agora 按分鐘收費
+                  </div>
+                )}
+                
+                <div style={{ marginTop: 6, fontSize: 12, color: '#c7c7c7' }}>
+                  <div><strong>Join</strong>: 開始視訊通話和白板協作（此時開始計費）</div>
+                  <div><strong>Leave</strong>: 只離開目前這個瀏覽器分頁或裝置；不會影響其他參與者。</div>
+                  <div><strong>End Session</strong>: 正式結束課堂，關閉白板並使所有參與者離開（只有老師可執行）。</div>
+                </div>
+                
+                {remainingSeconds !== null && (
+                  <div style={{ marginTop: 6 }}>
+                    <strong>剩餘時間：</strong> {Math.floor((remainingSeconds || 0) / 60)}:{String((remainingSeconds || 0) % 60).padStart(2, '0')}
+                  </div>
+                )}
               </>
             )}
             {loading && <div style={{ color: '#ccc' }}>Joining...</div>}

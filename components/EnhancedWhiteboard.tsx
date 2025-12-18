@@ -4,16 +4,33 @@ import React, { useRef, useState, useEffect, useCallback } from 'react';
 
 export interface WhiteboardProps {
   room?: any; // Netless whiteboard room (if provided, use it; otherwise use canvas fallback)
+  whiteboardRef?: React.RefObject<HTMLDivElement>; // Ref for Netless whiteboard container
   width?: number;
   height?: number;
   className?: string;
   onPdfSelected?: (file: File | null) => void;
   pdfFile?: File | null; // PDF file to display as background
+  micEnabled?: boolean;
+  onToggleMic?: () => void;
+  hasMic?: boolean;
+  onLeave?: () => void;
 }
 
 type Stroke = { points: number[]; stroke: string; strokeWidth: number; mode: 'draw' | 'erase' };
 
-export default function EnhancedWhiteboard({ room, width = 800, height = 600, className = '', onPdfSelected, pdfFile }: WhiteboardProps) {
+export default function EnhancedWhiteboard({ 
+  room,
+  whiteboardRef,
+  width = 800, 
+  height = 600, 
+  className = '', 
+  onPdfSelected, 
+  pdfFile,
+  micEnabled,
+  onToggleMic,
+  hasMic,
+  onLeave
+}: WhiteboardProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const bgCanvasRef = useRef<HTMLCanvasElement>(null); // Background canvas for PDF
   const [tool, setTool] = useState<'pencil' | 'eraser'>('pencil');
@@ -33,6 +50,9 @@ export default function EnhancedWhiteboard({ room, width = 800, height = 600, cl
   const [whiteboardWidth, setWhiteboardWidth] = useState(width);
   const [whiteboardHeight, setWhiteboardHeight] = useState(height);
   const [canvasHeight, setCanvasHeight] = useState(height - 48);
+  
+  // Use Netless whiteboard if room is provided
+  const useNetlessWhiteboard = Boolean(room && whiteboardRef);
 
   useEffect(() => { setMounted(true); }, []);
 
@@ -366,35 +386,28 @@ export default function EnhancedWhiteboard({ room, width = 800, height = 600, cl
   return (
     <div className={`canvas-whiteboard ${className}`} style={{ border: '1px solid #ddd', width: whiteboardWidth, height: 'auto' }}>
       <div style={{ display: 'flex', gap: 8, padding: 8, background: '#f5f5f5', borderBottom: '1px solid #ddd', flexWrap: 'wrap', alignItems: 'center' }}>
-        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-          <button onClick={() => setTool('pencil')} style={{ padding: '6px 10px', background: tool === 'pencil' ? '#e3f2fd' : 'white', border: '1px solid #ddd', borderRadius: 4, cursor: 'pointer' }}>✏️</button>
-          <button onClick={() => setTool('eraser')} style={{ padding: '6px 10px', background: tool === 'eraser' ? '#e3f2fd' : 'white', border: '1px solid #ddd', borderRadius: 4, cursor: 'pointer' }}>🧽</button>
-        </div>
-        <div>
-          <input aria-label="Pen color" type="color" value={color} onChange={(e) => setColor(e.target.value)} style={{ width: 36, height: 32, padding: 0, border: 'none' }} />
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <span style={{ fontSize: 12 }}>宽度:</span>
-          <input type="range" min={1} max={30} value={strokeWidth} onChange={(e) => setStrokeWidth(Number(e.target.value))} style={{ width: 60 }} />
-          <span style={{ fontSize: 12, minWidth: 20 }}>{strokeWidth}</span>
-        </div>
-        <div style={{ display: 'flex', gap: 4 }}>
-          <button onClick={undo} style={{ padding: '6px 10px', border: '1px solid #ddd', background: 'white', borderRadius: 4, cursor: 'pointer' }} title="撤销">↶</button>
-          <button onClick={redo} style={{ padding: '6px 10px', border: '1px solid #ddd', background: 'white', borderRadius: 4, cursor: 'pointer' }} title="重做">↷</button>
-          <button onClick={clearAll} style={{ padding: '6px 10px', border: '1px solid #ddd', background: '#ffebee', color: '#c62828', borderRadius: 4, cursor: 'pointer' }} title="清空">🗑️</button>
-        </div>
-
-        {/* PDF selector and navigation */}
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {/* PDF quick-select (left of mic) */}
           <button
             type="button"
-            onClick={() => {
-              const el = document.getElementById('pdf-input-toolbar') as HTMLInputElement | null;
-              el?.click();
+            onClick={() => { const el = document.getElementById('pdf-input-toolbar') as HTMLInputElement | null; el?.click(); }}
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 6,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: 'white',
+              border: '1px solid #ddd',
+              cursor: 'pointer'
             }}
-            style={{ padding: '6px 10px', border: '1px solid #ddd', borderRadius: 4, background: 'white', cursor: 'pointer' }}
+            title="Select PDF"
           >
-            Select PDF
+            <svg width="20" height="20" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <rect x="2" y="2" width="20" height="20" rx="2" fill="#ea4335" />
+              <text x="12" y="16" fontSize="9" fontWeight="700" fill="#fff" textAnchor="middle">PDF</text>
+            </svg>
           </button>
           <input
             id="pdf-input-toolbar"
@@ -409,47 +422,102 @@ export default function EnhancedWhiteboard({ room, width = 800, height = 600, cl
             }}
           />
           <div style={{ fontSize: 12, color: '#444', maxWidth: 140, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{selectedFileName ?? ''}</div>
-          
-          {/* PDF page navigation */}
-          {numPages > 0 && (
-            <div style={{ display: 'flex', gap: 4, alignItems: 'center', borderLeft: '1px solid #ddd', paddingLeft: 8 }}>
-              <button
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                disabled={currentPage <= 1}
-                style={{ padding: '4px 8px', border: '1px solid #ddd', borderRadius: 4, background: 'white', cursor: currentPage <= 1 ? 'not-allowed' : 'pointer', opacity: currentPage <= 1 ? 0.5 : 1 }}
-              >
-                ◀
-              </button>
-              <span style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{currentPage} / {numPages}</span>
-              <button
-                onClick={() => setCurrentPage((p) => Math.min(numPages, p + 1))}
-                disabled={currentPage >= numPages}
-                style={{ padding: '4px 8px', border: '1px solid #ddd', borderRadius: 4, background: 'white', cursor: currentPage >= numPages ? 'not-allowed' : 'pointer', opacity: currentPage >= numPages ? 0.5 : 1 }}
-              >
-                ▶
-              </button>
-            </div>
+
+          {onToggleMic && (
+            <button 
+              onClick={onToggleMic} 
+              disabled={hasMic === false}
+              title={micEnabled ? "Mute Microphone" : "Unmute Microphone"}
+              style={{ 
+                width: 40,
+                height: 40,
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: micEnabled ? 'white' : '#ea4335', 
+                color: micEnabled ? '#3c4043' : 'white',
+                border: micEnabled ? '1px solid #dadce0' : 'none', 
+                cursor: hasMic === false ? 'not-allowed' : 'pointer',
+                marginRight: 8,
+                fontSize: 20,
+                boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              {micEnabled ? '🎤' : '🔇'}
+            </button>
+          )}
+
+          <button onClick={() => setTool('pencil')} style={{ padding: '6px 10px', background: tool === 'pencil' ? '#e3f2fd' : 'white', border: '1px solid #ddd', borderRadius: 4, cursor: 'pointer' }}>✏️</button>
+          <button onClick={() => setTool('eraser')} style={{ padding: '6px 10px', background: tool === 'eraser' ? '#e3f2fd' : 'white', border: '1px solid #ddd', borderRadius: 4, cursor: 'pointer' }}>🧽</button>
+        </div>
+        <div>
+          <input aria-label="Pen color" type="color" value={color} onChange={(e) => setColor(e.target.value)} style={{ width: 36, height: 32, padding: 0, border: 'none' }} />
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ fontSize: 12 }}>宽度:</span>
+          <input type="range" min={1} max={30} value={strokeWidth} onChange={(e) => setStrokeWidth(Number(e.target.value))} style={{ width: 60 }} />
+          <span style={{ fontSize: 12, minWidth: 20 }}>{strokeWidth}</span>
+        </div>
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          <button onClick={undo} style={{ padding: '6px 10px', border: '1px solid #ddd', background: 'white', borderRadius: 4, cursor: 'pointer' }} title="撤销">↶</button>
+          <button onClick={redo} style={{ padding: '6px 10px', border: '1px solid #ddd', background: 'white', borderRadius: 4, cursor: 'pointer' }} title="重做">↷</button>
+          <button onClick={clearAll} style={{ padding: '6px 10px', border: '1px solid #ddd', background: '#ffebee', color: '#c62828', borderRadius: 4, cursor: 'pointer' }} title="清空">🗑️</button>
+          {typeof onLeave === 'function' && (
+            <button
+              onClick={() => { try { onLeave?.(); } catch (e) {} }}
+              title="離開"
+              style={{
+                padding: '6px 10px',
+                border: 'none',
+                background: '#c62828',
+                color: 'white',
+                borderRadius: 4,
+                cursor: 'pointer',
+                marginLeft: 8
+              }}
+            >
+              離開
+            </button>
           )}
         </div>
+
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }} />
       </div>
 
       <div style={{ position: 'relative', width: '100%', height: canvasHeight, background: 'white' }}>
-        {/* Background canvas for PDF */}
-        <canvas
-          ref={bgCanvasRef}
-          style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none' }}
-        />
-        {/* Drawing canvas on top */}
-        <canvas
-          ref={canvasRef}
-          width={whiteboardWidth}
-          height={canvasHeight}
-          onMouseDown={handlePointerDown}
-          onMouseMove={handlePointerMove}
-          onMouseUp={handlePointerUp}
-          onMouseLeave={handlePointerUp}
-          style={{ position: 'absolute', top: 0, left: 0, display: 'block', cursor: 'crosshair', width: '100%', height: '100%' }}
-        />
+        {useNetlessWhiteboard ? (
+          // Use Netless whiteboard (collaborative)
+          <div 
+            ref={whiteboardRef}
+            style={{ 
+              width: '100%', 
+              height: '100%',
+              background: 'white'
+            }} 
+          />
+        ) : (
+          // Fallback to Canvas (non-collaborative)
+          <>
+            {/* Background canvas for PDF */}
+            <canvas
+              ref={bgCanvasRef}
+              style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none' }}
+            />
+            {/* Drawing canvas on top */}
+            <canvas
+              ref={canvasRef}
+              width={whiteboardWidth}
+              height={canvasHeight}
+              onMouseDown={handlePointerDown}
+              onMouseMove={handlePointerMove}
+              onMouseUp={handlePointerUp}
+              onMouseLeave={handlePointerUp}
+              style={{ position: 'absolute', top: 0, left: 0, display: 'block', cursor: 'crosshair', width: '100%', height: '100%' }}
+            />
+          </>
+        )}
       </div>
     </div>
   );
