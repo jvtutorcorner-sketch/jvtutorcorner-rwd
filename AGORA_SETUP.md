@@ -117,8 +117,12 @@ If you encounter this error:
 ### Current Status
 
 - ✅ Local development: Working (uses `.env.local`)
-- ✅ Production: Working (temporary direct env vars in `amplify.yml`)
+- ✅ Production: Working (emergency hardcoded fallback in code)
 - 🔄 Future: Will migrate to secure SSM Parameter Store
+
+### Emergency Fix Applied
+
+**⚠️ TEMPORARY EMERGENCY FIX**: As of December 19, 2025, credentials are hardcoded in the token route as a fallback when environment variables are not available. This ensures immediate functionality while the proper environment variable configuration is resolved.
 
 ### Legacy Issues
 

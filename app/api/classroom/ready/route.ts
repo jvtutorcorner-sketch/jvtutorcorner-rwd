@@ -45,9 +45,22 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({} as any));
     const { uuid, role, userId, action } = body || {};
     if (!uuid) return NextResponse.json({ error: 'uuid required' }, { status: 400 });
+
+    // Handle clear-all action (no role/userId required)
+    if (action === 'clear-all') {
+      await writeList(uuid, []);
+      try {
+        console.log(`/api/classroom/ready POST broadcast uuid=${uuid} action=clear-all`);
+        broadcast(uuid, { participants: [] });
+      } catch (e) {
+        console.warn('/api/classroom/ready broadcast failed', e);
+      }
+      return NextResponse.json({ participants: [] });
+    }
+
     if (!role) return NextResponse.json({ error: 'role required' }, { status: 400 });
     if (!userId) return NextResponse.json({ error: 'userId required' }, { status: 400 });
-    if (!['ready', 'unready'].includes(action)) return NextResponse.json({ error: 'action must be ready or unready' }, { status: 400 });
+    if (!['ready', 'unready'].includes(action)) return NextResponse.json({ error: 'action must be ready, unready, or clear-all' }, { status: 400 });
 
     const arr = await readList(uuid);
     const filtered = arr.filter((p) => !(p.role === role && p.userId === userId));

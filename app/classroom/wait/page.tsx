@@ -76,6 +76,12 @@ export default function ClassroomWaitPage() {
       
       channel.onmessage = (ev) => {
         console.log('BroadcastChannel message received:', ev.data, 'key:', sessionReadyKey, new Date().toISOString());
+        if (ev.data.type === 'ready-cleared') {
+          // Ready state was cleared, reset local state
+          setParticipants([]);
+          setReady(false);
+          return;
+        }
         // Force immediate re-read from localStorage
         setTimeout(() => {
           const raw = localStorage.getItem(sessionReadyKey);
@@ -336,6 +342,39 @@ export default function ClassroomWaitPage() {
   const canEnter = hasTeacher && hasStudent;
 
   const enterClassroom = () => {
+    // Clear ready state when entering classroom so users start fresh next time
+    try {
+      // Clear localStorage
+      localStorage.removeItem(sessionReadyKey);
+
+      // Clear server-side ready state
+      const syncUuid = sessionReadyKey;
+      if (syncUuid) {
+        fetch('/api/classroom/ready', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ uuid: syncUuid, action: 'clear-all' }),
+        }).catch((e) => {
+          console.warn('Failed to clear server ready state:', e);
+        });
+      }
+
+      // Notify other tabs/windows via BroadcastChannel
+      try {
+        if (bcRef.current) {
+          bcRef.current.postMessage({ type: 'ready-cleared', timestamp: Date.now() });
+        }
+      } catch (e) {
+        console.warn('Failed to send ready-cleared message:', e);
+      }
+
+      // Reset local state
+      setParticipants([]);
+      setReady(false);
+    } catch (e) {
+      console.warn('Failed to clear ready state:', e);
+    }
+
     const target = `/classroom/test?courseId=${encodeURIComponent(courseId)}${orderId ? `&orderId=${encodeURIComponent(orderId)}` : ''}${role ? `&role=${encodeURIComponent(role)}` : ''}`;
     router.push(target);
   };
