@@ -220,47 +220,53 @@ export function useAgoraClassroom({
       try {
         // Try to get existing room UUID from localStorage
         const cachedUuid = typeof window !== 'undefined' ? localStorage.getItem(whiteboardRoomKey) : null;
-        
-        // Use channelName as whiteboard room name to ensure same room for all participants
-        const wbResp = await fetch('/api/agora/whiteboard', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ 
-            uuid: cachedUuid, // If we have cached UUID, request token for existing room
-            name: channelName,
-            role: 'admin' // Use admin role to ensure both teacher and student can write
-          }),
-        });
-        if (wbResp.ok) {
-          const wbJson = await wbResp.json();
-          wbAppId = wbJson.whiteboardAppId ?? null;
-          wbUuid = wbJson.uuid ?? null;
-          wbRoomToken = wbJson.roomToken ?? null;
-          wbRegion = wbJson.region ?? null;
-          
-          // Cache the UUID for other participants to use
-            if (wbUuid && typeof window !== 'undefined') {
-            const isNewRoom = !cachedUuid;
-            localStorage.setItem(whiteboardRoomKey, wbUuid);
 
-            // Notify other tabs if this is a newly created room
-            if (isNewRoom) {
-              try {
-                const courseIdFromChannel = channelName.replace(/^course_/, '').split('_')[0];
-                const bc = new BroadcastChannel(`whiteboard_course_${courseIdFromChannel}`);
-                bc.postMessage({ type: 'whiteboard_room_created', uuid: wbUuid, timestamp: Date.now() });
-                setTimeout(() => bc.close(), 100); // Close after brief delay to ensure message sent
-              } catch (e) {
-                console.warn('BroadcastChannel not available:', e);
+        // If cachedUuid exists and is NOT a local course-scoped fallback, request token from server.
+        if (cachedUuid && !cachedUuid.startsWith('course_')) {
+          const wbResp = await fetch('/api/agora/whiteboard', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ 
+              uuid: cachedUuid, // If we have cached UUID, request token for existing room
+              name: channelName,
+              role: 'admin' // Use admin role to ensure both teacher and student can write
+            }),
+          });
+          if (wbResp.ok) {
+            const wbJson = await wbResp.json();
+            wbAppId = wbJson.whiteboardAppId ?? null;
+            wbUuid = wbJson.uuid ?? null;
+            wbRoomToken = wbJson.roomToken ?? null;
+            wbRegion = wbJson.region ?? null;
+
+            // Cache the UUID for other participants to use
+            if (wbUuid && typeof window !== 'undefined') {
+              const isNewRoom = !cachedUuid;
+              localStorage.setItem(whiteboardRoomKey, wbUuid);
+
+              // Notify other tabs if this is a newly created room
+              if (isNewRoom) {
+                try {
+                  const courseIdFromChannel = channelName.replace(/^course_/, '').split('_')[0];
+                  const bc = new BroadcastChannel(`whiteboard_course_${courseIdFromChannel}`);
+                  bc.postMessage({ type: 'whiteboard_room_created', uuid: wbUuid, timestamp: Date.now() });
+                  setTimeout(() => bc.close(), 100); // Close after brief delay to ensure message sent
+                } catch (e) {
+                  console.warn('BroadcastChannel not available:', e);
+                }
               }
             }
+
+            console.log('Whiteboard: Using canvas-based fallback instead of Netless SDK');
+            setWhiteboardMeta({ uuid: wbUuid ?? undefined, appId: wbAppId ?? undefined, region: wbRegion ?? undefined });
+          } else {
+            const txt = await wbResp.text();
+            console.warn('whiteboard API returned non-OK:', wbResp.status, txt);
           }
-          
-          console.log('Whiteboard: Using canvas-based fallback instead of Netless SDK');
-          setWhiteboardMeta({ uuid: wbUuid ?? undefined, appId: wbAppId ?? undefined, region: wbRegion ?? undefined });
-        } else {
-          const txt = await wbResp.text();
-          console.warn('whiteboard API returned non-OK:', wbResp.status, txt);
+        } else if (cachedUuid && cachedUuid.startsWith('course_')) {
+          // Use the cached course-scoped uuid without contacting server
+          setWhiteboardMeta({ uuid: cachedUuid, appId: undefined, region: undefined });
+          console.log('Whiteboard: Using cached course-scoped fallback uuid');
         }
       } catch (err) {
         console.warn('Failed to call /api/agora/whiteboard', err);

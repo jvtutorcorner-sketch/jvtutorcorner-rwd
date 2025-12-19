@@ -117,8 +117,10 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
         const whiteboardRoomKey = `whiteboard_room_${effectiveChannelName}`;
         const cachedUuid = localStorage.getItem(whiteboardRoomKey);
 
-        // If we already have a cached UUID, attempt to request a token for it from the server.
-        if (cachedUuid) {
+        // If we already have a cached UUID that is NOT a course-scoped fallback,
+        // attempt to request a token for it from the server. If the cached UUID
+        // is a local `course_` fallback we should not call the server.
+        if (cachedUuid && !cachedUuid.startsWith('course_')) {
           try {
             const wbResp = await fetch('/api/agora/whiteboard', {
               method: 'POST',
@@ -140,6 +142,10 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           } catch (err) {
             console.warn('[Pre-join] Failed to request whiteboard token for cached uuid:', err);
           }
+        } else if (cachedUuid && cachedUuid.startsWith('course_')) {
+          // Cached course-scoped uuid — use as fallback without contacting server
+          setWhiteboardMetaBeforeJoin({ uuid: cachedUuid, appId: undefined, region: undefined });
+          console.log('[Pre-join] Using cached course-scoped whiteboard UUID, skipping server call');
         }
 
         // If no cached UUID or server token not available, use a course-scoped UUID so

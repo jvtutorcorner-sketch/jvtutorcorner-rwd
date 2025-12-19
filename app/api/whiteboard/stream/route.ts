@@ -20,46 +20,58 @@ function normalizeUuid(raw?: string | null) {
 }
 
 export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-  const rawUuid = searchParams.get('uuid') || 'default';
-  const uuid = normalizeUuid(rawUuid);
-  console.log('[WB SSE Server] New client connecting, raw:', rawUuid, 'normalized:', uuid);
+  try {
+    const { searchParams } = new URL(req.url);
+    const rawUuid = searchParams.get('uuid') || 'default';
+    const uuid = normalizeUuid(rawUuid);
+    console.log('[WB SSE Server] New client connecting, raw:', rawUuid, 'normalized:', uuid);
 
-  const headers = new Headers({
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    Connection: 'keep-alive',
-  });
+    const headers = new Headers({
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+    });
 
-  const stream = new ReadableStream({
-    start(controller) {
-      // send connected ping
-      controller.enqueue(encodeSSE({ type: 'connected', timestamp: Date.now() }));
+    const stream = new ReadableStream({
+      start(controller) {
+        // send connected ping
+        controller.enqueue(encodeSSE({ type: 'connected', timestamp: Date.now() }));
 
-      // Register client controller to clients map
-      let set = clients.get(uuid);
-      if (!set) { set = new Set(); clients.set(uuid, set); }
-      const client = { controller };
-      set.add(client);
-      console.log(`[WB SSE Server] Client registered. UUID: ${uuid}, Total clients: ${set.size}`);
+        // Register client controller to clients map
+        let set = clients.get(uuid);
+        if (!set) { set = new Set(); clients.set(uuid, set); }
+        const client = { controller };
+        set.add(client);
+        console.log(`[WB SSE Server] Client registered. UUID: ${uuid}, Total clients: ${set.size}`);
 
-      // If we have a last payload for this uuid, send it so new clients can catch up
-      try {
-        const last = lastPayload.get(uuid);
-        if (last) controller.enqueue(encodeSSE(last));
-      } catch (e) {}
-
-      // On cancel/close remove
-      req.signal.addEventListener('abort', () => {
-        try { 
-          set!.delete(client); 
-          console.log(`[WB SSE Server] Client disconnected. UUID: ${uuid}, Remaining: ${set!.size}`);
+        // If we have a last payload for this uuid, send it so new clients can catch up
+        try {
+          const last = lastPayload.get(uuid);
+          if (last) {
+            // avoid sending extremely large payloads (e.g. PDF data URLs) inline
+            if (last.type === 'pdf-set' && typeof last.dataUrl === 'string' && last.dataUrl.length > 20000) {
+              try { controller.enqueue(encodeSSE({ type: 'state-available', stateType: 'pdf-set' })); } catch (e) {}
+            } else {
+              try { controller.enqueue(encodeSSE(last)); } catch (e) {}
+            }
+          }
         } catch (e) {}
-      });
-    }
-  });
 
-  return new Response(stream, { headers });
+        // On cancel/close remove
+        req.signal.addEventListener('abort', () => {
+          try { 
+            set!.delete(client); 
+            console.log(`[WB SSE Server] Client disconnected. UUID: ${uuid}, Remaining: ${set!.size}`);
+          } catch (e) {}
+        });
+      }
+    });
+
+    return new Response(stream, { headers });
+  } catch (err) {
+    console.error('[WB SSE Server] GET handler error:', err);
+    return new Response('Internal server error', { status: 500 });
+  }
 
   function encodeSSE(obj: any) {
     try { return new TextEncoder().encode(`data: ${JSON.stringify(obj)}\n\n`); } catch (e) { return new TextEncoder().encode(`data: {}\n\n`); }
@@ -90,5 +102,12 @@ export function broadcastToUuid(uuid: string, payload: any) {
   }
   console.log(`[WB SSE Server] Broadcast complete. Sent to ${successCount}/${set.size} clients`);
 
-  try { lastPayload.set(normalized, payload); } catch (e) {}
+  try {
+    // avoid storing massive data URLs in-memory; keep a lightweight manifest instead
+    let toStore = payload;
+    if (payload && payload.type === 'pdf-set' && typeof payload.dataUrl === 'string' && payload.dataUrl.length > 20000) {
+      toStore = { type: 'pdf-set', name: payload.name, size: payload.dataUrl.length, large: true };
+    }
+    lastPayload.set(normalized, toStore);
+  } catch (e) {}
 }
