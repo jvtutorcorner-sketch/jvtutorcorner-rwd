@@ -150,24 +150,51 @@ export default function ClassroomWaitPage() {
       try { esRef.current?.close(); } catch (e) {}
       try {
         const es = new EventSource(`/api/classroom/stream?uuid=${encodeURIComponent(syncUuid)}`);
+        es.onopen = () => {
+          console.log('SSE connection opened successfully');
+          // Clear any polling fallback when SSE reconnects
+          if (pollRef.current) {
+            window.clearInterval(pollRef.current);
+            pollRef.current = null;
+          }
+        };
+        
         es.onmessage = (ev) => {
           try {
             const data = JSON.parse(ev.data);
             console.log('SSE message received:', data);
-            setParticipants(data.participants || []);
+            
+            // Handle different message types
+            if (data.type === 'connected') {
+              console.log('SSE connected successfully for uuid:', data.uuid);
+            } else if (data.type === 'ping') {
+              // Keep-alive ping, ignore
+              console.log('SSE ping received');
+            } else {
+              // Regular data message
+              setParticipants(data.participants || []);
+            }
           } catch (e) {
             console.warn('SSE message parse error:', e);
           }
         };
         es.onerror = (err) => {
           console.warn('SSE error:', err);
-          // Fallback to polling if SSE fails
-          if (pollRef.current) window.clearInterval(pollRef.current);
-          pollRef.current = window.setInterval(() => {
-            fetch(`/api/classroom/ready?uuid=${encodeURIComponent(syncUuid)}`).then((r) => r.json()).then((j) => {
-              setParticipants(j.participants || []);
-            }).catch(() => {});
-          }, 2000) as unknown as number;
+          console.log('SSE readyState:', es.readyState, 'url:', es.url);
+          
+          // Don't fallback to polling immediately, try to reconnect
+          if (es.readyState === EventSource.CLOSED) {
+            console.log('SSE connection closed, attempting to reconnect...');
+            setTimeout(() => {
+              // The EventSource will automatically reconnect, but we can help by re-initializing
+              if (pollRef.current) window.clearInterval(pollRef.current);
+              pollRef.current = window.setInterval(() => {
+                fetch(`/api/classroom/ready?uuid=${encodeURIComponent(syncUuid)}`).then((r) => r.json()).then((j) => {
+                  setParticipants(j.participants || []);
+                }).catch((e) => console.warn('Polling fallback failed:', e));
+              }, 5000) as unknown as number; // Increased to 5 seconds for less frequent polling
+            }, 1000);
+          }
         };
         esRef.current = es;
       } catch (e) {

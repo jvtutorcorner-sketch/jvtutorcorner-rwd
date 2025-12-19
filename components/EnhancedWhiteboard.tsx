@@ -65,6 +65,32 @@ export default function EnhancedWhiteboard({
       whiteboardRefCurrent: !!whiteboardRef?.current
     });
   }, [useNetlessWhiteboard, room, whiteboardRef]);
+  
+  // Ensure room is bound when whiteboardRef becomes available
+  useEffect(() => {
+    if (room && whiteboardRef?.current) {
+      console.log('EnhancedWhiteboard: Attempting to bind room to ref');
+      try {
+        // Check if already bound
+        if (room._displayer?.div === whiteboardRef.current) {
+          console.log('EnhancedWhiteboard: Room already bound to this div');
+          return;
+        }
+        
+        // Bind the room
+        room.bindHtmlElement(whiteboardRef.current);
+        console.log('EnhancedWhiteboard: Successfully bound room to whiteboardRef');
+        
+        // Force refresh
+        if (typeof room.refreshViewSize === 'function') {
+          room.refreshViewSize();
+          console.log('EnhancedWhiteboard: Called refreshViewSize');
+        }
+      } catch (e) {
+        console.error('EnhancedWhiteboard: Failed to bind room:', e);
+      }
+    }
+  }, [room, whiteboardRef]);
 
   // Load pdfjs library
   useEffect(() => {
