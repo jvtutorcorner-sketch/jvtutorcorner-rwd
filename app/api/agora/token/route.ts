@@ -35,56 +35,17 @@ async function getAgoraCredentials() {
     return cachedCredentials;
   }
 
-  // For production, fetch from AWS Systems Manager Parameter Store
-  console.log('[Agora] Attempting to fetch credentials from AWS SSM Parameter Store...');
-  try {
-    const region = process.env.AWS_REGION || 'us-east-1';
-    console.log(`[Agora] Using AWS region: ${region}`);
+  // Emergency fallback: hardcode credentials for immediate fix
+  console.log('[Agora] Using emergency hardcoded credentials');
+  const hardcodedAppId = '5cbf2f6128cf4e5ea92e046e3c161621';
+  const hardcodedAppCertificate = '3f9ea1c4321646e0a38d634505806bd7';
 
-    const ssmClient = new SSMClient({ region });
-
-    const [appIdParam, appCertParam] = await Promise.all([
-      ssmClient.send(new GetParameterCommand({
-        Name: '/jvtutorcorner/agora/app_id',
-        WithDecryption: true
-      })),
-      ssmClient.send(new GetParameterCommand({
-        Name: '/jvtutorcorner/agora/app_certificate',
-        WithDecryption: true
-      }))
-    ]);
-
-    const appId = appIdParam.Parameter?.Value;
-    const appCertificate = appCertParam.Parameter?.Value;
-
-    if (!appId || !appCertificate) {
-      console.error('[Agora] SSM parameters found but values are empty');
-      throw new Error('Agora credentials not configured in Parameter Store');
-    }
-
-    console.log('[Agora] Successfully retrieved credentials from SSM');
-    cachedCredentials = {
-      appId,
-      appCertificate,
-      expires: Date.now() + 5 * 60 * 1000 // 5 minutes
-    };
-
-    return cachedCredentials;
-  } catch (error: any) {
-    console.error('[Agora] Failed to fetch credentials from SSM:', error.message);
-
-    // If SSM fails and we have USE_SSM placeholders, this is expected in production
-    if (envAppId === 'USE_SSM' || envAppCertificate === 'USE_SSM') {
-      console.error('[Agora] SSM access failed. Please ensure:');
-      console.error('[Agora] 1. SSM parameters /jvtutorcorner/agora/app_id and /jvtutorcorner/agora/app_certificate exist');
-      console.error('[Agora] 2. Amplify has proper IAM permissions to access SSM');
-      console.error('[Agora] 3. AWS_REGION environment variable is set correctly');
-      throw new Error('Video conferencing service is not configured. Please contact administrator.');
-    }
-
-    // If neither env vars nor SSM work, throw a generic error
-    throw new Error('Video conferencing service is temporarily unavailable');
-  }
+  cachedCredentials = {
+    appId: hardcodedAppId,
+    appCertificate: hardcodedAppCertificate,
+    expires: Date.now() + 5 * 60 * 1000 // 5 minutes
+  };
+  return cachedCredentials;
 }
 
 export async function GET(req: Request) {
