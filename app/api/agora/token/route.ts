@@ -82,19 +82,6 @@ async function getAgoraCredentials() {
   }
 }
 
-    cachedCredentials = {
-      appId,
-      appCertificate,
-      expires: Date.now() + 5 * 60 * 1000 // 5 minutes
-    };
-
-    return cachedCredentials;
-  } catch (error) {
-    console.error('Failed to fetch Agora credentials:', error);
-    throw new Error('Video conferencing service is temporarily unavailable');
-  }
-}
-
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
