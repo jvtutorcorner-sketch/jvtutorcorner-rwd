@@ -135,9 +135,13 @@ export default function ClassroomWaitPage() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     
+    console.log('Setting up server synchronization...');
     // Re-enable server-backed SSE for cross-device synchronization
     const syncUuid = sessionReadyKey; // Use sessionReadyKey as UUID for synchronization
+    console.log('syncUuid:', syncUuid);
+    
     if (syncUuid) {
+      console.log('Starting initial server sync...');
       // initial fetch to populate state
       fetch(`/api/classroom/ready?uuid=${encodeURIComponent(syncUuid)}`).then((r) => r.json()).then((j) => {
         console.log('Initial server sync:', j);
@@ -220,7 +224,9 @@ export default function ClassroomWaitPage() {
   const toggleReady = () => {
     try {
       const email = storedUserState?.email;
-      console.log('toggleReady called:', { sessionReadyKey, role, email, ready });
+      // For demo purposes, use role as identifier if email is not available
+      const userId = email || role || 'anonymous';
+      console.log('toggleReady called:', { sessionReadyKey, role, email, userId, ready });
 
       // Re-enable server API for cross-device synchronization
       const syncUuid = sessionReadyKey;
@@ -229,7 +235,7 @@ export default function ClassroomWaitPage() {
         fetch('/api/classroom/ready', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ uuid: syncUuid, role, email, ready: !ready }),
+          body: JSON.stringify({ uuid: syncUuid, role, email: userId, ready: !ready }),
         }).then((r) => r.json()).then((j) => {
           console.log('Server ready update response:', j);
           setParticipants(j.participants || []);
@@ -252,9 +258,11 @@ export default function ClassroomWaitPage() {
     const raw = localStorage.getItem(sessionReadyKey);
     const arr = raw ? JSON.parse(raw) as Array<{ role: string; email?: string }> : [];
     const email = storedUserState?.email;
+    // For demo purposes, use role as identifier if email is not available
+    const userId = email || role || 'anonymous';
 
     // Check if current user is already in the array
-    const existingIndex = role ? arr.findIndex((p) => p.role === role && p.email === email) : -1;
+    const existingIndex = role ? arr.findIndex((p) => p.role === role && p.email === userId) : -1;
 
     let filtered: Array<{ role: string; email?: string }>;
     let newReadyState: boolean;
@@ -265,13 +273,13 @@ export default function ClassroomWaitPage() {
       newReadyState = false;
     } else {
       // User is not ready, add them (toggle on)
-      filtered = [...arr, { role: role!, email }];
+      filtered = [...arr, { role: role!, email: userId }];
       newReadyState = true;
     }
 
     console.log('toggleReady localStorage:', {
       role,
-      email,
+      email: userId,
       currentReady: ready,
       existingIndex,
       arr,
@@ -318,7 +326,9 @@ export default function ClassroomWaitPage() {
         const raw = localStorage.getItem(sessionReadyKey);
         const arr = raw ? JSON.parse(raw) as Array<{ role: string; email?: string }> : [];
         const email = storedUserState?.email;
-        const filtered = role ? arr.filter((p) => !(p.role === role && p.email === email)) : arr;
+        // For demo purposes, use role as identifier if email is not available
+        const userId = email || role || 'anonymous';
+        const filtered = role ? arr.filter((p) => !(p.role === role && p.email === userId)) : arr;
         localStorage.setItem(sessionReadyKey, JSON.stringify(filtered));
       } catch (e) {}
     };

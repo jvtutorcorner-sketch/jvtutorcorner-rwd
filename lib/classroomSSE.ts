@@ -3,15 +3,21 @@ type SendFn = (payload: any) => void;
 const clients = new Map<string, Set<SendFn>>();
 
 export function registerClient(uuid: string, send: SendFn) {
+  console.log(`[SSE] registerClient uuid=${uuid}`);
   let set = clients.get(uuid);
   if (!set) {
     set = new Set();
     clients.set(uuid, set);
   }
   set.add(send);
+  console.log(`[SSE] registered client, total clients for uuid=${uuid}: ${set.size}`);
   return () => {
+    console.log(`[SSE] unregistering client for uuid=${uuid}`);
     set!.delete(send);
-    if (set!.size === 0) clients.delete(uuid);
+    if (set!.size === 0) {
+      clients.delete(uuid);
+      console.log(`[SSE] no more clients for uuid=${uuid}, removed from map`);
+    }
   };
 }
 
