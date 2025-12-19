@@ -172,28 +172,42 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
 
             const WhiteWebSdk = (window as any).WhiteWebSdk;
             if (WhiteWebSdk) {
-              const room = await WhiteWebSdk.joinRoom({
+              const whiteWebSdk = new WhiteWebSdk({
+                appIdentifier: wbAppId,
+                deviceType: 'Surface',
+                region: wbRegion || 'sg',
+              });
+
+              const room = await whiteWebSdk.joinRoom({
                 uuid: wbUuid,
                 roomToken: wbRoomToken,
-                whiteboardAppId: wbAppId,
-                region: wbRegion || 'sg',
+                uid: 'preview-user', // Use a fixed UID for preview mode
+                userPayload: {
+                  cursorName: 'Preview',
+                },
                 isWritable: true,
                 disableDeviceInputs: false,
                 disableOperations: false,
               });
 
+              // Store the room for the EnhancedWhiteboard component to use
+              setWhiteboardRoomBeforeJoin(room);
+              console.log('[Pre-join] ✓ Whiteboard room initialized for preview mode');
+
               // Configure room for collaborative use
               try {
-                if (typeof room.setViewMode === 'function') room.setViewMode('Freedom');
-                if (typeof room.setWritable === 'function') {
-                  await room.setWritable(true);
-                }
                 // Set default tool to pencil
                 if (typeof room.setMemberState === 'function') {
                   room.setMemberState({
                     currentApplianceName: 'pencil',
                     strokeColor: [0, 0, 0]
                   });
+                }
+                if (typeof room.disableDeviceInputs === 'function') {
+                  room.disableDeviceInputs(false);
+                }
+                if (typeof room.disableOperations === 'function') {
+                  room.disableOperations(false);
                 }
               } catch (e) {
                 console.warn('[Pre-join] Failed to configure whiteboard room:', e);
