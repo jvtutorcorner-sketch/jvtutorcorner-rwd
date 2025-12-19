@@ -467,6 +467,16 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [joined, sessionDurationMinutes]);
 
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      // Stop camera preview if running
+      stopCameraPreview();
+      // Stop mic test if running
+      stopMicTest();
+    };
+  }, []);
+
   const stopCameraPreview = () => {
     try {
       const s = previewStreamRef.current;
@@ -798,9 +808,45 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                     console.log('Rendering button section, joined:', joined, 'loading:', loading);
                     return null;
                   })()}
+                  {!joined && permissionGranted && (
+                    <button
+                      onClick={previewingCamera ? () => {
+                        if (previewStreamRef.current) {
+                          previewStreamRef.current.getTracks().forEach(t => t.stop());
+                          previewStreamRef.current = null;
+                        }
+                        if (localVideoRef.current) {
+                          localVideoRef.current.srcObject = null;
+                        }
+                        setPreviewingCamera(false);
+                      } : startCameraPreview}
+                      style={{
+                        background: previewingCamera ? '#ff9800' : '#2196f3',
+                        color: 'white',
+                        border: 'none',
+                        padding: '8px 16px',
+                        borderRadius: 4,
+                        cursor: 'pointer',
+                        fontWeight: 600
+                      }}
+                    >
+                      {previewingCamera ? '停止預覽' : '📹 預覽相機'}
+                    </button>
+                  )}
                   {!joined ? (
                     <button
-                      onClick={() => join({ publishAudio: wantPublishAudio, publishVideo: wantPublishVideo })}
+                      onClick={() => {
+                        // Stop camera preview if running before joining
+                        if (previewingCamera && previewStreamRef.current) {
+                          previewStreamRef.current.getTracks().forEach(t => t.stop());
+                          previewStreamRef.current = null;
+                          if (localVideoRef.current) {
+                            localVideoRef.current.srcObject = null;
+                          }
+                          setPreviewingCamera(false);
+                        }
+                        join({ publishAudio: wantPublishAudio, publishVideo: wantPublishVideo });
+                      }}
                       disabled={loading}
                       style={{
                         background: loading ? '#9CA3AF' : '#4CAF50',

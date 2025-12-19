@@ -23,6 +23,6 @@ applications:
         paths:
           - node_modules/**/*
     environmentVariables:
-      - AGORA_APP_ID
-      - AGORA_APP_CERTIFICATE
-      - AWS_REGION
+      - AGORA_APP_ID: 5cbf2f6128cf4e5ea92e046e3c161621
+      - AGORA_APP_CERTIFICATE: 3f9ea1c4321646e0a38d634505806bd7
+      - AWS_REGION: us-east-1
