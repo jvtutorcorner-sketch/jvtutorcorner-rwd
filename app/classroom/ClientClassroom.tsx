@@ -90,8 +90,11 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
 
   const [hasAudioInput, setHasAudioInput] = useState<boolean | null>(null);
   const [hasVideoInput, setHasVideoInput] = useState<boolean | null>(null);
-  const [wantPublishAudio, setWantPublishAudio] = useState(true);
   const [wantPublishVideo, setWantPublishVideo] = useState(true);
+  // Independent microphone control (works before joining)
+  const [micEnabled, setMicEnabled] = useState(true);
+  const micStreamRef = useRef<MediaStream | null>(null);
+
   // PDF viewer state
   const [selectedPdf, setSelectedPdf] = useState<File | null>(null);
   const [showPdf, setShowPdf] = useState(false);
@@ -99,6 +102,118 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   const [sessionDurationMinutes, setSessionDurationMinutes] = useState<number>(0.5); // 0.5分钟 = 30秒
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
   const timerRef = useRef<number | null>(null);
+
+  // Initialize whiteboard room BEFORE joining Agora session
+  const [whiteboardRoomBeforeJoin, setWhiteboardRoomBeforeJoin] = useState<any>(null);
+  const [whiteboardMetaBeforeJoin, setWhiteboardMetaBeforeJoin] = useState<any>(null);
+
+  // Initialize whiteboard independently of Agora join
+  useEffect(() => {
+    if (typeof window === 'undefined' || whiteboardRoomBeforeJoin) return;
+
+    const initializeWhiteboard = async () => {
+      try {
+        console.log('[Pre-join] Initializing whiteboard room...');
+
+        // Use localStorage to share the same whiteboard room UUID across participants
+        const whiteboardRoomKey = `whiteboard_room_${effectiveChannelName}`;
+        const cachedUuid = localStorage.getItem(whiteboardRoomKey);
+
+        // Request whiteboard room creation/token
+        const wbResp = await fetch('/api/agora/whiteboard', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            uuid: cachedUuid, // If we have cached UUID, request token for existing room
+            name: effectiveChannelName,
+            role: 'admin' // Use admin role to ensure both teacher and student can write
+          }),
+        });
+
+        if (wbResp.ok) {
+          const wbJson = await wbResp.json();
+          const wbAppId = wbJson.whiteboardAppId ?? null;
+          const wbUuid = wbJson.uuid ?? null;
+          const wbRoomToken = wbJson.roomToken ?? null;
+          const wbRegion = wbJson.region ?? null;
+
+          // Cache the UUID for other participants to use
+          if (wbUuid) {
+            const isNewRoom = !cachedUuid;
+            localStorage.setItem(whiteboardRoomKey, wbUuid);
+
+            // Notify other tabs if this is a newly created room
+            if (isNewRoom) {
+              try {
+                const bc = new BroadcastChannel(`whiteboard_${effectiveChannelName}`);
+                bc.postMessage({ type: 'whiteboard_room_created', uuid: wbUuid, timestamp: Date.now() });
+                setTimeout(() => bc.close(), 100);
+              } catch (e) {
+                console.warn('BroadcastChannel not available:', e);
+              }
+            }
+          }
+
+          console.log('[Pre-join] Whiteboard room info:', { wbAppId, wbUuid, wbRegion, channelName: effectiveChannelName, cached: !!cachedUuid });
+          setWhiteboardMetaBeforeJoin({ uuid: wbUuid ?? undefined, appId: wbAppId ?? undefined, region: wbRegion ?? undefined });
+
+          // Initialize whiteboard room if we have all required data
+          if (wbUuid && wbRoomToken && wbAppId && typeof window !== 'undefined') {
+            // Load white-web-sdk if not already loaded
+            if (!(window as any).WhiteWebSdk) {
+              await new Promise<void>((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = 'https://sdk.netless.link/white-web-sdk/2.16.50.js';
+                script.onload = () => resolve();
+                script.onerror = () => reject(new Error('Failed to load white-web-sdk'));
+                document.head.appendChild(script);
+              });
+            }
+
+            const WhiteWebSdk = (window as any).WhiteWebSdk;
+            if (WhiteWebSdk) {
+              const room = await WhiteWebSdk.joinRoom({
+                uuid: wbUuid,
+                roomToken: wbRoomToken,
+                whiteboardAppId: wbAppId,
+                region: wbRegion || 'sg',
+                isWritable: true,
+                disableDeviceInputs: false,
+                disableOperations: false,
+              });
+
+              // Configure room for collaborative use
+              try {
+                if (typeof room.setViewMode === 'function') room.setViewMode('Freedom');
+                if (typeof room.setWritable === 'function') {
+                  await room.setWritable(true);
+                }
+                // Set default tool to pencil
+                if (typeof room.setMemberState === 'function') {
+                  room.setMemberState({
+                    currentApplianceName: 'pencil',
+                    strokeColor: [0, 0, 0]
+                  });
+                }
+              } catch (e) {
+                console.warn('[Pre-join] Failed to configure whiteboard room:', e);
+              }
+
+              console.log('[Pre-join] Whiteboard room initialized successfully');
+              setWhiteboardRoomBeforeJoin(room);
+            }
+          }
+        } else {
+          const txt = await wbResp.text();
+          console.warn('[Pre-join] Whiteboard API returned non-OK:', wbResp.status, txt);
+        }
+      } catch (err) {
+        console.warn('[Pre-join] Failed to initialize whiteboard:', err);
+      }
+    };
+
+    initializeWhiteboard();
+  }, [effectiveChannelName, whiteboardRoomBeforeJoin]);
 
   // Device lists and selections (Google Meet-like UI)
   const [audioInputs, setAudioInputs] = useState<MediaDeviceInfo[]>([]);
@@ -170,7 +285,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       if (event.data?.type === 'class_started' && !joined && !loading) {
         console.log('收到開始上課通知，自動加入...');
         // 学生端自动加入
-        join({ publishAudio: wantPublishAudio, publishVideo: wantPublishVideo });
+        join({ publishAudio: micEnabled, publishVideo: wantPublishVideo });
       } else if (event.data?.type === 'class_ended') {
         console.log('收到結束上課通知');
         // 如果已经在课堂中，自动离开并返回等待页
@@ -183,7 +298,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     return () => {
       bc.close();
     };
-  }, [courseId, orderId, joined, loading, wantPublishAudio, wantPublishVideo, join]);
+  }, [courseId, orderId, joined, loading, micEnabled, wantPublishVideo, join]);
 
   useEffect(() => {
     let mountedFlag = true;
@@ -194,7 +309,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
         setHasAudioInput(Boolean(d.hasAudioInput));
         setHasVideoInput(Boolean(d.hasVideoInput));
         // default wants
-        setWantPublishAudio(Boolean(d.hasAudioInput));
+        setMicEnabled(Boolean(d.hasAudioInput));
         setWantPublishVideo(Boolean(d.hasVideoInput));
       } else {
         setHasAudioInput(false);
@@ -547,11 +662,70 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     setMicLevel(0);
   };
 
+  // Independent microphone control (works before joining Agora session)
+  const toggleMic = async () => {
+    if (micEnabled) {
+      // Mute microphone
+      try {
+        if (micStreamRef.current) {
+          micStreamRef.current.getAudioTracks().forEach(track => {
+            track.enabled = false;
+          });
+        }
+        setMicEnabled(false);
+        console.log('Microphone muted');
+      } catch (e) {
+        console.warn('Failed to mute microphone:', e);
+      }
+    } else {
+      // Unmute microphone
+      try {
+        if (!micStreamRef.current) {
+          // Get microphone access if not already have it
+          const constraints: any = { audio: true };
+          if (selectedAudioDeviceId && selectedAudioDeviceId !== '') {
+            constraints.audio = { deviceId: { ideal: selectedAudioDeviceId } };
+          }
+          const stream = await navigator.mediaDevices.getUserMedia(constraints);
+          micStreamRef.current = stream;
+
+          // Set up audio context for level monitoring
+          audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+          const ctx = audioContextRef.current;
+          const src = ctx.createMediaStreamSource(stream);
+          const analyser = ctx.createAnalyser();
+          analyser.fftSize = 256;
+          src.connect(analyser);
+          analyserRef.current = analyser;
+          micSourceRef.current = src;
+        }
+
+        // Enable microphone tracks
+        micStreamRef.current.getAudioTracks().forEach(track => {
+          track.enabled = true;
+        });
+
+        setMicEnabled(true);
+        console.log('Microphone unmuted');
+      } catch (e) {
+        console.warn('Failed to unmute microphone:', e);
+        alert('無法啟動麥克風，請確認已授予權限。');
+      }
+    }
+  };
+
   useEffect(() => {
     return () => {
       // cleanup on unmount
       try { stopCameraPreview(); } catch (e) {}
       try { stopMicTest(); } catch (e) {}
+      // Stop independent microphone stream
+      try {
+        if (micStreamRef.current) {
+          micStreamRef.current.getTracks().forEach(track => track.stop());
+          micStreamRef.current = null;
+        }
+      } catch (e) {}
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -760,18 +934,32 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           </div>
           <div style={{ background: '#fff', borderRadius: 8, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}>
             <EnhancedWhiteboard 
-              room={whiteboardRoom}
+              room={whiteboardRoom || whiteboardRoomBeforeJoin}
               whiteboardRef={whiteboardRef}
               width={900} 
               height={640} 
               className="flex-1" 
               onPdfSelected={(f) => { setSelectedPdf(f); }}
               pdfFile={selectedPdf}
-              micEnabled={wantPublishAudio}
-              onToggleMic={() => setWantPublishAudio((s) => !s)}
+              micEnabled={micEnabled}
+              onToggleMic={toggleMic}
               hasMic={hasAudioInput !== false}
               onLeave={() => leave()}
             />
+            {!joined && whiteboardRoomBeforeJoin && (
+              <div style={{
+                position: 'absolute',
+                top: 10,
+                right: 10,
+                background: 'rgba(0,0,0,0.7)',
+                color: 'white',
+                padding: '4px 8px',
+                borderRadius: 4,
+                fontSize: '12px'
+              }}>
+                預覽模式 - 尚未加入會議
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -845,7 +1033,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                           }
                           setPreviewingCamera(false);
                         }
-                        join({ publishAudio: wantPublishAudio, publishVideo: wantPublishVideo });
+                        join({ publishAudio: micEnabled, publishVideo: wantPublishVideo });
                       }}
                       disabled={loading}
                       style={{
