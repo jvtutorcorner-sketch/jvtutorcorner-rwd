@@ -22,3 +22,7 @@ applications:
       cache:
         paths:
           - node_modules/**/*
+    environmentVariables:
+      - AGORA_APP_ID
+      - AGORA_APP_CERTIFICATE
+      - AWS_REGION
