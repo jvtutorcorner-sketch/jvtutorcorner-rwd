@@ -20,7 +20,15 @@ AGORA_APP_CERTIFICATE=your_32_character_app_certificate
 
 For production deployment on Amplify, follow these steps:
 
-### 1. Store Credentials in AWS Systems Manager
+### Current Setup (Temporary - Direct Environment Variables)
+
+**⚠️ TEMPORARY FIX**: Credentials are currently set directly in `amplify.yml` for immediate functionality. This is less secure than using SSM Parameter Store.
+
+### Recommended Secure Setup (Future Implementation)
+
+To implement secure credential management:
+
+#### 1. Store Credentials in AWS Systems Manager
 
 Run the setup script to securely store your Agora credentials:
 
@@ -35,18 +43,37 @@ This script will:
   - `/jvtutorcorner/agora/app_id`
   - `/jvtutorcorner/agora/app_certificate`
 
-### 2. Configure Amplify Environment Variables
+#### 2. Configure Amplify Environment Variables
 
 In the AWS Amplify Console:
 
 1. Go to your app
 2. Navigate to **App settings** > **Environment variables**
-3. Add the following variables:
+3. Update the following variables:
    - `AWS_REGION` = `us-east-1` (or your preferred region)
-   - `AGORA_APP_ID` = `USE_SSM` (placeholder - actual value fetched from SSM)
-   - `AGORA_APP_CERTIFICATE` = `USE_SSM` (placeholder - actual value fetched from SSM)
+   - `AGORA_APP_ID` = `USE_SSM` (triggers SSM fetch)
+   - `AGORA_APP_CERTIFICATE` = `USE_SSM` (triggers SSM fetch)
 
-**Note**: The actual credential values are not stored in Amplify environment variables. The API routes will automatically fetch them from AWS Systems Manager Parameter Store.
+#### 3. Configure IAM Permissions
+
+Ensure your Amplify service role has permissions to read SSM parameters:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ssm:GetParameter"
+      ],
+      "Resource": [
+        "arn:aws:ssm:us-east-1:YOUR_ACCOUNT_ID:parameter/jvtutorcorner/agora/*"
+      ]
+    }
+  ]
+}
+```
 
 ### 3. IAM Permissions
 
@@ -77,6 +104,23 @@ Ensure your Amplify service role has permissions to read from Systems Manager:
 4. **Security**: Credentials are never logged or exposed in error messages
 
 ## Troubleshooting
+
+### "Video conferencing service is temporarily unavailable" Error
+
+If you encounter this error:
+
+1. **Check Environment Variables**: Ensure `AGORA_APP_ID` and `AGORA_APP_CERTIFICATE` are set in Amplify
+2. **Verify Credentials**: Credentials should be exactly 32 characters each
+3. **Check AWS Permissions**: For SSM setup, ensure Amplify has SSM read permissions
+4. **Monitor Logs**: Check Amplify build logs for detailed error messages
+
+### Current Status
+
+- ✅ Local development: Working (uses `.env.local`)
+- ✅ Production: Working (temporary direct env vars in `amplify.yml`)
+- 🔄 Future: Will migrate to secure SSM Parameter Store
+
+### Legacy Issues
 
 - **"AGORA_APP_ID or AGORA_APP_CERTIFICATE not set"**: Check that SSM parameters exist and IAM permissions are correct
 - **"Video conferencing service is temporarily unavailable"**: SSM service may be unavailable or credentials malformed
