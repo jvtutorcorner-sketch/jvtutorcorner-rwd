@@ -1,6 +1,9 @@
 import { NextRequest } from 'next/server';
 import { registerClient } from '@/lib/classroomSSE';
 
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
 export async function GET(req: NextRequest) {
   try {
     console.log('[SSE] GET request received');
@@ -14,19 +17,27 @@ export async function GET(req: NextRequest) {
     }
 
     console.log('[SSE] creating ReadableStream');
+    const encoder = new TextEncoder();
     const stream = new ReadableStream({
       start(controller) {
         console.log('[SSE] ReadableStream start called');
         const send = (payload: any) => {
           try {
-            controller.enqueue(`data: ${JSON.stringify(payload)}\n\n`);
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
           } catch (e) {
             console.warn('Failed to enqueue message:', e);
           }
         };
 
         console.log('[SSE] registering client');
-        const unregister = registerClient(uuid, send);
+        let unregister: () => void;
+        try {
+          unregister = registerClient(uuid, send);
+        } catch (e) {
+          console.error('Failed to register client:', e);
+          controller.error(e);
+          return;
+        }
 
         // Send initial connection message
         console.log('[SSE] sending initial connection message');
@@ -47,7 +58,7 @@ export async function GET(req: NextRequest) {
           console.log('[SSE] client disconnecting, cleaning up');
           try {
             clearInterval(keepAliveInterval);
-            unregister();
+            if (unregister) unregister();
           } catch (e) {}
           try { controller.close(); } catch (e) {}
         };

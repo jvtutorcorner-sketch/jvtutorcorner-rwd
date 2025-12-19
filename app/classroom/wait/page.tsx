@@ -397,16 +397,20 @@ export default function ClassroomWaitPage() {
         <div style={{ marginTop: 8, color: '#666' }}>此頁可在沒有 `orderId` 的情況下使用；系統仍會以 Teacher/Student 雙方都已準備為準。</div>
       </div>
       
-      {/* Video / Audio setup: moved from classroom page */}
-      <div style={{ marginTop: 20, padding: 12, border: '1px solid #eee', borderRadius: 8, maxWidth: 720 }}>
-        <div style={{ fontWeight: 700, marginBottom: 8 }}>視訊設定 (可在進入教室前預覽與選擇裝置)</div>
-        <VideoSetup />
-      </div>
+      {/* Video / Audio setup: moved from classroom page - only visible to admin */}
+      {storedUserState?.role === 'admin' && (
+        <div style={{ marginTop: 20, padding: 12, border: '1px solid #eee', borderRadius: 8, maxWidth: 720 }}>
+          <div style={{ fontWeight: 700, marginBottom: 8 }}>視訊設定 (可在進入教室前預覽與選擇裝置)</div>
+          <VideoSetup />
+        </div>
+      )}
 
-      {/* Video quality controls */}
-      <div style={{ marginTop: 20, maxWidth: 720 }}>
-        <VideoControls currentQuality={currentQuality} isLowLatencyMode={isLowLatencyMode} onQualityChange={setCurrentQuality} onLowLatencyToggle={setIsLowLatencyMode} hasVideo={true} />
-      </div>
+      {/* Video quality controls - only visible to admin */}
+      {storedUserState?.role === 'admin' && (
+        <div style={{ marginTop: 20, maxWidth: 720 }}>
+          <VideoControls currentQuality={currentQuality} isLowLatencyMode={isLowLatencyMode} onQualityChange={setCurrentQuality} onLowLatencyToggle={setIsLowLatencyMode} hasVideo={true} />
+        </div>
+      )}
     </div>
   );
 }
