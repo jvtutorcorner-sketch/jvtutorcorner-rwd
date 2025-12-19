@@ -239,14 +239,15 @@ export function useAgoraClassroom({
           wbRegion = wbJson.region ?? null;
           
           // Cache the UUID for other participants to use
-          if (wbUuid && typeof window !== 'undefined') {
+            if (wbUuid && typeof window !== 'undefined') {
             const isNewRoom = !cachedUuid;
             localStorage.setItem(whiteboardRoomKey, wbUuid);
-            
+
             // Notify other tabs if this is a newly created room
             if (isNewRoom) {
               try {
-                const bc = new BroadcastChannel(`whiteboard_${channelName}`);
+                const courseIdFromChannel = channelName.replace(/^course_/, '').split('_')[0];
+                const bc = new BroadcastChannel(`whiteboard_course_${courseIdFromChannel}`);
                 bc.postMessage({ type: 'whiteboard_room_created', uuid: wbUuid, timestamp: Date.now() });
                 setTimeout(() => bc.close(), 100); // Close after brief delay to ensure message sent
               } catch (e) {
@@ -459,7 +460,8 @@ export function useAgoraClassroom({
   useEffect(() => {
     if (typeof window === 'undefined') return;
     
-    const bc = new BroadcastChannel(`whiteboard_${channelName}`);
+    const courseIdFromChannel = channelName.replace(/^course_/, '').split('_')[0];
+    const bc = new BroadcastChannel(`whiteboard_course_${courseIdFromChannel}`);
     
     bc.onmessage = (event) => {
       if (event.data?.type === 'whiteboard_room_created' && event.data.uuid) {

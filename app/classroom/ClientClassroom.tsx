@@ -117,53 +117,46 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
         const whiteboardRoomKey = `whiteboard_room_${effectiveChannelName}`;
         const cachedUuid = localStorage.getItem(whiteboardRoomKey);
 
-        // Request whiteboard room creation/token
-        const wbResp = await fetch('/api/agora/whiteboard', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            uuid: cachedUuid, // If we have cached UUID, request token for existing room
-            name: effectiveChannelName,
-            role: 'admin' // Use admin role to ensure both teacher and student can write
-          }),
-        });
-
-        if (wbResp.ok) {
-          const wbJson = await wbResp.json();
-          const wbAppId = wbJson.whiteboardAppId ?? null;
-          const wbUuid = wbJson.uuid ?? null;
-          const wbRoomToken = wbJson.roomToken ?? null;
-          const wbRegion = wbJson.region ?? null;
-
-          // Cache the UUID for other participants to use
-          if (wbUuid) {
-            const isNewRoom = !cachedUuid;
-            localStorage.setItem(whiteboardRoomKey, wbUuid);
-
-            // Notify other tabs if this is a newly created room
-            if (isNewRoom) {
-              try {
-                const bc = new BroadcastChannel(`whiteboard_${effectiveChannelName}`);
-                bc.postMessage({ type: 'whiteboard_room_created', uuid: wbUuid, timestamp: Date.now() });
-                setTimeout(() => bc.close(), 100);
-              } catch (e) {
-                console.warn('BroadcastChannel not available:', e);
-              }
+        // If we already have a cached UUID, attempt to request a token for it from the server.
+        if (cachedUuid) {
+          try {
+            const wbResp = await fetch('/api/agora/whiteboard', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ uuid: cachedUuid, name: effectiveChannelName, role: 'admin' }),
+            });
+            if (wbResp.ok) {
+              const wbJson = await wbResp.json();
+              const wbAppId = wbJson.whiteboardAppId ?? null;
+              const wbUuid = wbJson.uuid ?? null;
+              const wbRegion = wbJson.region ?? null;
+              localStorage.setItem(whiteboardRoomKey, wbUuid ?? cachedUuid);
+              setWhiteboardMetaBeforeJoin({ uuid: wbUuid ?? cachedUuid, appId: wbAppId ?? undefined, region: wbRegion ?? undefined });
+              console.log('[Pre-join] Obtained whiteboard token for cached uuid');
+            } else {
+              const txt = await wbResp.text();
+              console.warn('[Pre-join] Whiteboard API returned non-OK for cached uuid:', wbResp.status, txt);
             }
+          } catch (err) {
+            console.warn('[Pre-join] Failed to request whiteboard token for cached uuid:', err);
           }
+        }
 
-          console.log('[Pre-join] Whiteboard room info available, using canvas fallback');
-          setWhiteboardMetaBeforeJoin({ uuid: wbUuid ?? undefined, appId: wbAppId ?? undefined, region: wbRegion ?? undefined });
-
-          // Initialize whiteboard room if we have all required data
-          if (wbUuid && wbRoomToken && wbAppId && typeof window !== 'undefined') {
-            // Note: Using canvas-based whiteboard fallback instead of Netless SDK
-            console.log('[Pre-join] Whiteboard room info available, using canvas fallback');
-            setWhiteboardMetaBeforeJoin({ uuid: wbUuid ?? undefined, appId: wbAppId ?? undefined, region: wbRegion ?? undefined });
+        // If no cached UUID or server token not available, use a course-scoped UUID so
+        // participants in the same course share the same canvas fallback without needing
+        // Netless/whiteboard server configuration.
+        if (!localStorage.getItem(whiteboardRoomKey)) {
+          const courseScoped = `course_${courseId}`;
+          localStorage.setItem(whiteboardRoomKey, courseScoped);
+          try {
+            const bc = new BroadcastChannel(`whiteboard_course_${courseId}`);
+            bc.postMessage({ type: 'whiteboard_room_created', uuid: courseScoped, timestamp: Date.now() });
+            setTimeout(() => bc.close(), 100);
+          } catch (e) {
+            console.warn('BroadcastChannel not available:', e);
           }
-        } else {
-          const txt = await wbResp.text();
-          console.warn('[Pre-join] Whiteboard API returned non-OK:', wbResp.status, txt);
+          setWhiteboardMetaBeforeJoin({ uuid: courseScoped, appId: undefined, region: undefined });
+          console.log('[Pre-join] Using course-scoped whiteboard UUID (canvas fallback)');
         }
       } catch (err) {
         console.warn('[Pre-join] Failed to initialize whiteboard:', err);

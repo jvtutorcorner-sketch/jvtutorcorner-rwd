@@ -38,9 +38,17 @@ export default function EnhancedWhiteboard({
   // helper to POST events to server relay
   const postEventToServer = useCallback(async (event: any) => {
     try {
-      const uuid = encodeURIComponent(window.location.pathname + window.location.search || 'default');
-      await fetch('/api/whiteboard/event', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ uuid, event }) });
-    } catch (e) {}
+      // Use courseId as UUID so all participants in same course share the channel
+      const params = new URLSearchParams(window.location.search);
+      const courseId = params.get('courseId') || 'default';
+      const uuid = `course_${courseId}`;
+      console.log('[WB POST] Sending event to server:', event.type, 'uuid:', uuid);
+      const response = await fetch('/api/whiteboard/event', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ uuid, event }) });
+      const result = await response.json();
+      console.log('[WB POST] Server response:', result);
+    } catch (e) {
+      console.error('[WB POST] Error posting event:', e);
+    }
   }, []);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -59,6 +67,13 @@ export default function EnhancedWhiteboard({
   const [pdf, setPdf] = useState<any | null>(null);
   const [numPages, setNumPages] = useState<number>(0);
   const [currentPage, setCurrentPage] = useState<number>(1);
+  // local copy of selected PDF file so remote events can update it
+  const [localPdfFile, setLocalPdfFile] = useState<File | null>(pdfFile ?? null);
+
+  useEffect(() => {
+    // if parent passes a pdfFile prop update local copy
+    if (pdfFile) setLocalPdfFile(pdfFile);
+  }, [pdfFile]);
   const [whiteboardWidth, setWhiteboardWidth] = useState(width);
   const [whiteboardHeight, setWhiteboardHeight] = useState(height);
   const [canvasHeight, setCanvasHeight] = useState(height - 48);
@@ -121,7 +136,8 @@ export default function EnhancedWhiteboard({
 
   // Load PDF file
   useEffect(() => {
-    if (!pdfLib || !pdfFile) {
+    const activePdfFile = localPdfFile ?? pdfFile;
+    if (!pdfLib || !activePdfFile) {
       setPdf(null);
       setNumPages(0);
       setCurrentPage(1);
@@ -130,7 +146,6 @@ export default function EnhancedWhiteboard({
       setCanvasHeight(height - 48);
       return;
     }
-
     const reader = new FileReader();
     reader.onload = async () => {
       try {
@@ -153,8 +168,8 @@ export default function EnhancedWhiteboard({
         console.error('Failed to load PDF', e);
       }
     };
-    reader.readAsArrayBuffer(pdfFile);
-  }, [pdfLib, pdfFile]);
+    reader.readAsArrayBuffer(activePdfFile as File);
+  }, [pdfLib, pdfFile, localPdfFile]);
 
   // Render current PDF page to background canvas
   useEffect(() => {
@@ -288,8 +303,11 @@ export default function EnhancedWhiteboard({
         bcRef.current.postMessage({ type: 'stroke-start', stroke: newStroke, clientId: clientIdRef.current });
       }
       // also relay to server for cross-device
-      (postEventToServer as any)?.({ type: 'stroke-start', stroke: newStroke });
-    } catch (e) {}
+      if (!useNetlessWhiteboard) {
+        console.log('[WB] Posting stroke-start to server');
+        postEventToServer({ type: 'stroke-start', stroke: newStroke });
+      }
+    } catch (e) { console.error('[WB] Error in handlePointerDown:', e); }
   }, [tool, color, strokeWidth, postEventToServer]);
 
   const handlePointerMove = useCallback((e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
@@ -307,7 +325,9 @@ export default function EnhancedWhiteboard({
           bcRef.current.postMessage({ type: 'stroke-update', strokeId: (updated as any).id, points: updated.points, clientId: clientIdRef.current });
         }
         // also post to server
-        (postEventToServer as any)?.({ type: 'stroke-update', strokeId: (updated as any).id, points: updated.points });
+        if (!useNetlessWhiteboard && (last as any).origin === clientIdRef.current) {
+          postEventToServer({ type: 'stroke-update', strokeId: (updated as any).id, points: updated.points });
+        }
       } catch (e) {}
       return out;
     });
@@ -324,7 +344,7 @@ export default function EnhancedWhiteboard({
       setUndone((u) => [...u, last]);
       const next = s.slice(0, -1);
       try { if (!useNetlessWhiteboard && bcRef.current) bcRef.current.postMessage({ type: 'undo', strokeId: (last as any).id, clientId: clientIdRef.current }); } catch (e) {}
-      try { (postEventToServer as any)?.({ type: 'undo', strokeId: (last as any).id }); } catch (e) {}
+      try { if (!useNetlessWhiteboard) postEventToServer({ type: 'undo', strokeId: (last as any).id }); } catch (e) {}
       return next;
     });
   }, []);
@@ -335,7 +355,7 @@ export default function EnhancedWhiteboard({
       const last = u[u.length - 1];
       setStrokes((s) => [...s, last]);
       try { if (!useNetlessWhiteboard && bcRef.current) bcRef.current.postMessage({ type: 'redo', stroke: last, clientId: clientIdRef.current }); } catch (e) {}
-      try { (postEventToServer as any)?.({ type: 'redo', stroke: last }); } catch (e) {}
+      try { if (!useNetlessWhiteboard) postEventToServer({ type: 'redo', stroke: last }); } catch (e) {}
       return u.slice(0, -1);
     });
   }, []);
@@ -344,21 +364,38 @@ export default function EnhancedWhiteboard({
     setStrokes([]);
     setUndone([]);
     try { if (!useNetlessWhiteboard && bcRef.current) bcRef.current.postMessage({ type: 'clear', clientId: clientIdRef.current }); } catch (e) {}
-    try { (postEventToServer as any)?.({ type: 'clear' }); } catch (e) {}
-  }, []);
+    try { if (!useNetlessWhiteboard) postEventToServer({ type: 'clear' }); } catch (e) {}
+  }, [useNetlessWhiteboard, postEventToServer]);
 
   // BroadcastChannel setup for canvas sync (per-page channel)
   useEffect(() => {
     if (useNetlessWhiteboard) return;
     if (typeof window === 'undefined') return;
     try {
-      const name = `whiteboard_${encodeURIComponent(window.location.pathname + window.location.search)}`;
+      const params = new URLSearchParams(window.location.search);
+      const courseId = params.get('courseId') || 'default';
+      const name = `whiteboard_course_${courseId}`;
       const ch = new BroadcastChannel(name);
       bcRef.current = ch;
       ch.onmessage = (ev: MessageEvent) => {
         const data = ev.data as any;
         if (!data || data.clientId === clientIdRef.current) return; // ignore our own
         try {
+          if (data.type === 'pdf-set') {
+            // data: { type: 'pdf-set', name, dataUrl, clientId }
+            (async () => {
+              try {
+                const resp = await fetch(data.dataUrl);
+                const blob = await resp.blob();
+                const file = new File([blob], data.name || 'remote.pdf', { type: blob.type });
+                setSelectedFileName(file.name);
+                setLocalPdfFile(file);
+              } catch (e) {
+                console.error('[WB] Failed to apply remote PDF', e);
+              }
+            })();
+            return;
+          }
           if (data.type === 'stroke-start') {
             applyingRemoteRef.current = true;
             setStrokes((s) => [...s, data.stroke]);
@@ -523,22 +560,42 @@ export default function EnhancedWhiteboard({
 
   // Server-side SSE subscription for cross-device sync
   useEffect(() => {
-    if (useNetlessWhiteboard) return;
+    if (useNetlessWhiteboard) {
+      console.log('[WB SSE] Skipping SSE (using Netless whiteboard)');
+      return;
+    }
     if (typeof window === 'undefined') return;
     try {
-      const uuid = encodeURIComponent(window.location.pathname + window.location.search || 'default');
+      // Use courseId as UUID so all participants in same course share the channel
+      const params = new URLSearchParams(window.location.search);
+      const courseId = params.get('courseId') || 'default';
+      const uuid = `course_${courseId}`;
+      console.log('[WB SSE] Connecting to SSE stream:', `/api/whiteboard/stream?uuid=${uuid}`);
       const es = new EventSource(`/api/whiteboard/stream?uuid=${uuid}`);
+      
+      es.onopen = () => {
+        console.log('[WB SSE] Connection opened successfully');
+      };
+      
       es.onmessage = (ev) => {
         try {
           const data = JSON.parse(ev.data);
           if (!data) return;
           // ignore connected pings
-          if (data.type === 'connected' || data.type === 'ping') return;
+          if (data.type === 'connected') {
+            console.log('[WB SSE] Received connected message');
+            return;
+          }
+          if (data.type === 'ping') return;
+
+          console.log('[WB SSE] Received event:', data.type, data);
 
           // apply same handlers as BroadcastChannel messages
           if (data.type === 'stroke-start') {
+            console.log('[WB SSE] Applying stroke-start:', data);
             setStrokes((s) => [...s, data.stroke]);
           } else if (data.type === 'stroke-update') {
+            console.log('[WB SSE] Applying stroke-update:', data.strokeId);
             setStrokes((s) => {
               const idx = s.findIndex((st) => (st as any).id === data.strokeId);
               if (idx >= 0) {
@@ -554,10 +611,28 @@ export default function EnhancedWhiteboard({
           } else if (data.type === 'clear') {
             setStrokes([]);
             setUndone([]);
+          } else if (data.type === 'pdf-set') {
+            (async () => {
+              try {
+                const name = data.name || 'remote.pdf';
+                const resp = await fetch(data.dataUrl);
+                const blob = await resp.blob();
+                const file = new File([blob], name, { type: blob.type });
+                setSelectedFileName(file.name);
+                setLocalPdfFile(file);
+              } catch (e) {
+                console.error('[WB SSE] Failed to apply remote pdf-set', e);
+              }
+            })();
           }
-        } catch (e) {}
+        } catch (e) {
+          console.error('[WB SSE] Error parsing message:', e);
+        }
       };
-      es.onerror = () => { try { es.close(); } catch (e) {} };
+      es.onerror = (err) => { 
+        console.error('[WB SSE] Connection error:', err);
+        try { es.close(); } catch (e) {} 
+      };
       return () => { try { es.close(); } catch (e) {} };
     } catch (e) {
       // ignore
@@ -597,11 +672,34 @@ export default function EnhancedWhiteboard({
             accept="application/pdf"
             style={{ display: 'none' }}
             onChange={(e) => {
-              const f = e.target.files?.[0] ?? null;
-              if (f) setSelectedFileName(f.name);
-              else setSelectedFileName(null);
-              if (typeof onPdfSelected === 'function') onPdfSelected?.(f);
-            }}
+                const f = e.target.files?.[0] ?? null;
+                if (f) setSelectedFileName(f.name);
+                else setSelectedFileName(null);
+                // update local state so remote handlers will prefer this file
+                if (f) setLocalPdfFile(f);
+                if (typeof onPdfSelected === 'function') onPdfSelected?.(f);
+
+                    // read as data URL and broadcast to other tabs/devices (only when a file exists)
+                    if (f) {
+                      try {
+                        const reader = new FileReader();
+                        reader.onload = async () => {
+                          try {
+                            const dataUrl = String(reader.result || '');
+                            if (bcRef.current) {
+                              try { bcRef.current.postMessage({ type: 'pdf-set', name: f.name, dataUrl, clientId: clientIdRef.current }); } catch (e) {}
+                            }
+                            try { await postEventToServer({ type: 'pdf-set', name: f.name, dataUrl }); } catch (e) {}
+                          } catch (e) {
+                            console.error('[WB] Failed to broadcast selected PDF', e);
+                          }
+                        };
+                        reader.readAsDataURL(f);
+                      } catch (e) {
+                        console.error('[WB] Failed to read selected PDF', e);
+                      }
+                    }
+              }}
           />
           <div style={{ fontSize: 12, color: '#444', maxWidth: 140, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{selectedFileName ?? ''}</div>
 
