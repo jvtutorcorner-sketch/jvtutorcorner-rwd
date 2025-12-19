@@ -9,7 +9,6 @@ export async function GET(req: NextRequest) {
     console.log('[SSE] GET request received');
     const url = new URL(req.url);
     const uuid = url.searchParams.get('uuid') || 'default';
-    console.log(`[SSE] uuid=${uuid}`);
 
     // Polyfill for Node.js 16 or environments without global ReadableStream
     if (typeof ReadableStream === 'undefined') {

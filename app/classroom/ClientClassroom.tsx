@@ -69,7 +69,6 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     localVideoRef,
     remoteVideoRef,
     whiteboardRef,
-    whiteboardRoom,
     whiteboardMeta,
     join,
     leave,
@@ -104,12 +103,11 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   const timerRef = useRef<number | null>(null);
 
   // Initialize whiteboard room BEFORE joining Agora session
-  const [whiteboardRoomBeforeJoin, setWhiteboardRoomBeforeJoin] = useState<any>(null);
   const [whiteboardMetaBeforeJoin, setWhiteboardMetaBeforeJoin] = useState<any>(null);
 
   // Initialize whiteboard independently of Agora join
   useEffect(() => {
-    if (typeof window === 'undefined' || whiteboardRoomBeforeJoin) return;
+    if (typeof window === 'undefined') return;
 
     const initializeWhiteboard = async () => {
       try {
@@ -154,97 +152,14 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
             }
           }
 
-          console.log('[Pre-join] Whiteboard room info:', { wbAppId, wbUuid, wbRegion, channelName: effectiveChannelName, cached: !!cachedUuid });
+          console.log('[Pre-join] Whiteboard room info available, using canvas fallback');
           setWhiteboardMetaBeforeJoin({ uuid: wbUuid ?? undefined, appId: wbAppId ?? undefined, region: wbRegion ?? undefined });
 
           // Initialize whiteboard room if we have all required data
           if (wbUuid && wbRoomToken && wbAppId && typeof window !== 'undefined') {
-            // Load white-web-sdk if not already loaded
-            if (!(window as any).WhiteWebSdk) {
-              // Try multiple CDNs like useAgoraClassroom.ts does
-              const cdns = [
-                'https://unpkg.com/white-web-sdk@2.16.53/dist/index.js',
-                'https://cdn.jsdelivr.net/npm/white-web-sdk@2.16.53/dist/index.js',
-                'https://cdn.skypack.dev/white-web-sdk@2.16.53',
-                'https://esm.sh/white-web-sdk@2.16.53',
-              ];
-
-              let loaded = false;
-              for (const url of cdns) {
-                try {
-                  console.log(`[Pre-join] Trying to load white-web-sdk from: ${url}`);
-                  await new Promise<void>((resolve, reject) => {
-                    const script = document.createElement('script');
-                    script.src = url;
-                    script.onload = () => {
-                      console.log(`[Pre-join] ✓ Successfully loaded white-web-sdk from: ${url}`);
-                      resolve();
-                    };
-                    script.onerror = () => reject(new Error(`Failed to load from ${url}`));
-                    document.head.appendChild(script);
-                  });
-                  loaded = true;
-                  break;
-                } catch (err) {
-                  console.warn(`[Pre-join] white-web-sdk load failed for ${url}:`, err);
-                }
-              }
-
-              if (!loaded) {
-                throw new Error('Failed to load white-web-sdk from all CDNs');
-              }
-            }
-
-            const WhiteWebSdk = (window as any).WhiteWebSdk;
-            if (WhiteWebSdk) {
-              // Use the app identifier from the API response, or fallback to a default
-              const appIdentifier = wbAppId || '7b1e4f40-d807-11f0-9780-fd0783967389';
-              console.log('[Pre-join] Using appIdentifier:', appIdentifier);
-
-              const whiteWebSdk = new WhiteWebSdk({
-                appIdentifier,
-                deviceType: 'Surface',
-                region: wbRegion || 'sg',
-              });
-
-              const room = await whiteWebSdk.joinRoom({
-                uuid: wbUuid,
-                roomToken: wbRoomToken,
-                uid: 'preview-user', // Use a fixed UID for preview mode
-                userPayload: {
-                  cursorName: 'Preview',
-                },
-                isWritable: true,
-                disableDeviceInputs: false,
-                disableOperations: false,
-              });
-
-              // Store the room for the EnhancedWhiteboard component to use
-              setWhiteboardRoomBeforeJoin(room);
-              console.log('[Pre-join] ✓ Whiteboard room initialized for preview mode');
-
-              // Configure room for collaborative use
-              try {
-                // Set default tool to pencil
-                if (typeof room.setMemberState === 'function') {
-                  room.setMemberState({
-                    currentApplianceName: 'pencil',
-                    strokeColor: [0, 0, 0]
-                  });
-                }
-                if (typeof room.disableDeviceInputs === 'function') {
-                  room.disableDeviceInputs(false);
-                }
-                if (typeof room.disableOperations === 'function') {
-                  room.disableOperations(false);
-                }
-              } catch (e) {
-                console.warn('[Pre-join] Failed to configure whiteboard room:', e);
-              }
-
-              console.log('[Pre-join] Whiteboard room initialized successfully');
-              setWhiteboardRoomBeforeJoin(room);
-            }
+            // Note: Using canvas-based whiteboard fallback instead of Netless SDK
+            console.log('[Pre-join] Whiteboard room info available, using canvas fallback');
+            setWhiteboardMetaBeforeJoin({ uuid: wbUuid ?? undefined, appId: wbAppId ?? undefined, region: wbRegion ?? undefined });
           }
         } else {
           const txt = await wbResp.text();
@@ -256,7 +171,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     };
 
     initializeWhiteboard();
-  }, [effectiveChannelName, whiteboardRoomBeforeJoin]);
+  }, [effectiveChannelName]);
 
   // Device lists and selections (Google Meet-like UI)
   const [audioInputs, setAudioInputs] = useState<MediaDeviceInfo[]>([]);
@@ -293,9 +208,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   const analyserRef = useRef<AnalyserNode | null>(null);
   const micSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
 
-  const pendingToolRef = useRef<string | null>(null);
   const [penColor, setPenColor] = useState<string>('#000000');
-  const pendingColorRef = useRef<string | null>(null);
 
   // Log initialization info once on mount
   useEffect(() => {
@@ -312,12 +225,11 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   // Debug whiteboard state
   useEffect(() => {
     console.log('Whiteboard state:', {
-      hasWhiteboardRoom: !!whiteboardRoom,
       hasWhiteboardRef: !!whiteboardRef,
       whiteboardMeta,
       joined
     });
-  }, [whiteboardRoom, whiteboardRef, whiteboardMeta, joined]);
+  }, [whiteboardRef, whiteboardMeta, joined]);
 
   // 跨标签页同步：老师开始上课时通知学生
   useEffect(() => {
@@ -773,196 +685,6 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // helper to robustly set whiteboard tool across SDK versions
-  const setWhiteboardTool = (tool: string): boolean => {
-    const room: any = whiteboardRoom;
-    // if no room yet, try to call global helper if present and queue the tool
-    if (!room) {
-      try {
-        const g = (window as any).__wb_setTool;
-        if (typeof g === 'function') {
-          try { g(tool); } catch (e) { console.warn('global __wb_setTool failed', e); }
-        }
-      } catch {}
-      pendingToolRef.current = tool;
-      console.info('Whiteboard not ready; queued tool:', tool);
-      return false;
-    }
-    try {
-      const strokeColor = hexToRgbArray(penColor);
-      const methods = Object.keys(room).filter((k) => typeof room[k] === 'function');
-      console.debug('Attempting setWhiteboardTool, room methods count:', methods.length);
-
-      // Map generic tool names to Netless/SDK appliance names when known
-      const toolMapping: Record<string, string> = {
-        pencil: 'pencil',
-        eraser: 'eraser',
-        rectangle: 'rectangle',
-        circle: 'ellipse',
-        line: 'straight',
-        text: 'text',
-        select: 'selector'
-      };
-      const mapped = toolMapping[tool] || tool;
-
-      let applied = false;
-
-      // Preferred canonical call: setMemberState with appliance name, attributes and writable flag
-      if (typeof room.setMemberState === 'function') {
-        try {
-          room.setMemberState({
-            currentApplianceName: mapped,
-            currentApplianceAttributes: { strokeColor },
-            isWritable: true
-          });
-          applied = true;
-        } catch (e) {
-          // try variants
-          try { room.setMemberState({ applianceName: mapped, strokeColor, isWritable: true }); applied = true; } catch (e) {}
-          try { room.setMemberState({ currentApplianceName: mapped }); applied = true; } catch (e) {}
-        }
-      }
-
-      // fallback methods
-      const fallbacks: Array<() => any> = [
-        () => room.setAppliance && room.setAppliance(mapped),
-        () => room.setTool && room.setTool(mapped),
-        () => room.changeAppliance && room.changeAppliance(mapped),
-        () => (window as any).__wb_setTool && (window as any).__wb_setTool(mapped),
-      ];
-      for (const fn of fallbacks) {
-        try {
-          const r = fn();
-          if (r !== undefined) applied = true;
-        } catch (e) {}
-      }
-
-      // ensure writable if available
-      try {
-        if (typeof room.setWritable === 'function') { room.setWritable(true); applied = true; }
-        if (typeof room.enableWrite === 'function') { room.enableWrite(true); applied = true; }
-        if (typeof room.setMemberState === 'function') {
-          try { room.setMemberState({ isWritable: true }); applied = true; } catch (e) {}
-        }
-      } catch (e) {}
-
-      if (!applied) {
-        console.warn('setWhiteboardTool: no known API applied for tool', tool, 'mapped->', mapped, 'available methods:', methods.slice(0,50));
-      } else {
-        console.info('setWhiteboardTool applied:', tool, 'mapped->', mapped);
-      }
-
-      if (applied) return true;
-
-      // if tool is pencil, also ensure current pen color is applied
-      if (tool === 'pencil' && penColor) {
-        try { setWhiteboardColor(penColor); } catch (e) {}
-      }
-    } catch (e) {
-      console.warn('setWhiteboardTool overall failure', e);
-    }
-    return false;
-  };
-
-  const setWhiteboardColor = (color: string) => {
-    const room: any = whiteboardRoom;
-    const strokeColor = hexToRgbArray(color);
-    // if no room yet, try global helper and queue
-    if (!room) {
-      try {
-        const g = (window as any).__wb_setColor;
-        if (typeof g === 'function') {
-          try { g(color); } catch (e) { console.warn('global __wb_setColor failed', e); }
-        }
-      } catch {}
-      pendingColorRef.current = color;
-      console.info('Whiteboard not ready; queued color:', color);
-      return;
-    }
-
-    try {
-      const attempts: Array<() => any> = [
-        () => room.setMemberState && room.setMemberState({ strokeColor }),
-        () => room.setMemberState && room.setMemberState({ strokeColor, isWritable: true }),
-        () => room.setMemberState && room.setMemberState({ currentApplianceAttributes: { strokeColor } }),
-        () => room.setStrokeColor && room.setStrokeColor(strokeColor),
-        () => room.setAttribute && room.setAttribute('strokeColor', strokeColor),
-        () => (window as any).__wb_setColor && (window as any).__wb_setColor(strokeColor),
-      ];
-
-      for (const fn of attempts) {
-        try { fn(); } catch (e) { /* ignore */ }
-      }
-      console.info('setWhiteboardColor attempted:', color, strokeColor);
-    } catch (e) {
-      console.warn('setWhiteboardColor overall failure', e);
-    }
-  };
-
-  const listWhiteboardMethods = () => {
-    try {
-      if (!whiteboardRoom) {
-        console.info('No whiteboard room');
-        return;
-      }
-      const methods = Object.keys(whiteboardRoom).filter((k) => typeof (whiteboardRoom as any)[k] === 'function');
-      console.info('Whiteboard room methods:', methods);
-      // also expose to window for manual inspection
-      try { (window as any).__wb_methods = methods; } catch {}
-    } catch (e) {
-      console.warn('listWhiteboardMethods failed', e);
-    }
-  };
-
-  // if a tool or color was queued before the whiteboard was ready, apply them once room becomes available
-  useEffect(() => {
-    const t = pendingToolRef.current;
-    const c = pendingColorRef.current;
-    if (whiteboardRoom && (t || c)) {
-      // small delay to allow any post-init plumbing
-      setTimeout(() => {
-        try {
-          if (t) {
-            try {
-              const ok = setWhiteboardTool(t);
-              if (ok) pendingToolRef.current = null;
-            } catch (e) { console.warn('applying pending tool failed', e); }
-          }
-        } catch (e) {
-          console.warn('applying pending tool failed', e);
-        }
-        try {
-          if (c) setWhiteboardColor(c);
-        } catch (e) {
-          console.warn('applying pending color failed', e);
-        }
-        pendingToolRef.current = null;
-        pendingColorRef.current = null;
-      }, 50);
-    }
-  }, [whiteboardRoom]);
-
-  // Retry applying queued tool after bind — poll briefly until element bound
-  useEffect(() => {
-    if (!whiteboardRoom || !pendingToolRef.current) return;
-    let attempts = 0;
-    const iv = setInterval(() => {
-      attempts += 1;
-      try {
-        if (!pendingToolRef.current) return;
-        const ok = setWhiteboardTool(pendingToolRef.current as string);
-        if (ok || attempts > 20) {
-          pendingToolRef.current = null;
-          clearInterval(iv);
-        }
-      } catch (e) {
-        console.warn('retry setWhiteboardTool failed', e);
-      }
-      if (attempts > 20) clearInterval(iv);
-    }, 100);
-    return () => clearInterval(iv);
-  }, [whiteboardRoom]);
-
   return (
     <div className="client-classroom" style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
       {/* Left: Whiteboard (flexible) */}
@@ -977,7 +699,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           </div>
           <div style={{ background: '#fff', borderRadius: 8, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}>
             <EnhancedWhiteboard 
-              room={whiteboardRoom || whiteboardRoomBeforeJoin}
+              room={undefined} // Using canvas fallback instead of Netless SDK
               whiteboardRef={whiteboardRef}
               width={900} 
               height={640} 
@@ -989,20 +711,6 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
               hasMic={hasAudioInput !== false}
               onLeave={() => leave()}
             />
-            {!joined && whiteboardRoomBeforeJoin && (
-              <div style={{
-                position: 'absolute',
-                top: 10,
-                right: 10,
-                background: 'rgba(0,0,0,0.7)',
-                color: 'white',
-                padding: '4px 8px',
-                borderRadius: 4,
-                fontSize: '12px'
-              }}>
-                預覽模式 - 尚未加入會議
-              </div>
-            )}
           </div>
         </div>
       </div>

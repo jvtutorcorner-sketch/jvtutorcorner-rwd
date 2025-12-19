@@ -18,16 +18,6 @@ export async function POST(req: NextRequest) {
 
     let uuid = incomingUuid;
 
-    // Debug: Log environment variables (remove after debugging)
-    console.log('[Whiteboard API] Environment check:', {
-      hasSdkToken: !!NETLESS_SDK_TOKEN,
-      sdkTokenLength: NETLESS_SDK_TOKEN?.length,
-      hasWbAk: !!AGORA_WB_AK,
-      hasWbSk: !!AGORA_WB_SK,
-      region: NETLESS_REGION,
-      apiBase: NETLESS_API_BASE
-    });
-
     // 1) create room if uuid not provided and SDK token available
     if (!uuid) {
       if (!NETLESS_SDK_TOKEN) {

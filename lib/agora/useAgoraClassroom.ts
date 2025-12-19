@@ -84,7 +84,6 @@ export function useAgoraClassroom({
   const [remoteUsers, setRemoteUsers] = useState<IAgoraRTCRemoteUser[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [whiteboardRoom, setWhiteboardRoom] = useState<Room | null>(null);
   const [whiteboardMeta, setWhiteboardMeta] = useState<{ uuid?: string; appId?: string; region?: string } | null>(null);
 
   // 新增：视频质量控制状态
@@ -94,7 +93,6 @@ export function useAgoraClassroom({
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
   const whiteboardRef = useRef<HTMLDivElement | null>(null);
-  const whiteboardRoomRef = useRef<Room | null>(null);
   const clientChannelRef = useRef<string | null>(null);
 
   const localMicTrackRef = useRef<IMicrophoneAudioTrack | null>(null);
@@ -257,7 +255,7 @@ export function useAgoraClassroom({
             }
           }
           
-          console.log('Whiteboard room info:', { wbAppId, wbUuid, wbRegion, channelName, cached: !!cachedUuid });
+          console.log('Whiteboard: Using canvas-based fallback instead of Netless SDK');
           setWhiteboardMeta({ uuid: wbUuid ?? undefined, appId: wbAppId ?? undefined, region: wbRegion ?? undefined });
         } else {
           const txt = await wbResp.text();
@@ -267,262 +265,8 @@ export function useAgoraClassroom({
         console.warn('Failed to call /api/agora/whiteboard', err);
       }
 
-      // 初始化白板 — try multiple CDNs and make whiteboard init non-fatal
-      const loadScriptWithTimeout = (src: string, timeoutMs = 8000) =>
-        new Promise<void>((resolve, reject) => {
-          if (typeof window === 'undefined') return reject(new Error('window is undefined'));
-          // avoid inserting duplicate scripts
-          const existing = Array.from(document.querySelectorAll(`script[data-white-sdk]`)).find(
-            (s) => (s as HTMLScriptElement).getAttribute('data-white-sdk-src') === src,
-          );
-          if (existing) {
-            if ((window as any).WhiteWebSdk) return resolve();
-            existing.addEventListener('load', () => resolve());
-            existing.addEventListener('error', () => reject(new Error('Failed to load script')));
-            return;
-          }
-
-          const script = document.createElement('script');
-          script.setAttribute('data-white-sdk', 'runtime');
-          script.setAttribute('data-white-sdk-src', src);
-          script.src = src;
-          script.async = true;
-
-          const to = window.setTimeout(() => {
-            script.onerror = null;
-            script.onload = null;
-            reject(new Error(`Loading ${src} timed out after ${timeoutMs}ms`));
-          }, timeoutMs);
-
-          script.onload = () => {
-            window.clearTimeout(to);
-            ((window as any).WhiteWebSdk ? resolve() : reject(new Error('white-web-sdk loaded but global not available')));
-          };
-          script.onerror = () => {
-            window.clearTimeout(to);
-            reject(new Error(`Failed to load ${src}`));
-          };
-
-          document.head.appendChild(script);
-        });
-
-      const ensureWhiteSdk = async () => {
-        if (typeof window === 'undefined') throw new Error('window is undefined');
-        if ((window as any).WhiteWebSdk) return;
-
-        const cdns = [
-          'https://unpkg.com/white-web-sdk@2.16.53/dist/index.js',
-          'https://cdn.jsdelivr.net/npm/white-web-sdk@2.16.53/dist/index.js',
-          'https://cdn.skypack.dev/white-web-sdk@2.16.53',
-          'https://esm.sh/white-web-sdk@2.16.53',
-        ];
-
-        let lastErr: Error | null = null;
-        for (const url of cdns) {
-          try {
-            // try to load; increased timeout to 15 seconds
-            console.log(`Trying to load white-web-sdk from: ${url}`);
-            await loadScriptWithTimeout(url, 15000);
-            if ((window as any).WhiteWebSdk) {
-              console.log(`✓ Successfully loaded white-web-sdk from: ${url}`);
-              return;
-            }
-          } catch (err: any) {
-            console.warn('white-web-sdk load failed for', url, err?.message ?? err);
-            lastErr = err;
-            // try next
-          }
-        }
-
-        throw lastErr ?? new Error('Failed to load white-web-sdk from all CDNs');
-      };
-
-      try {
-        await ensureWhiteSdk();
-        const WhiteWebSdk = (window as any).WhiteWebSdk;
-        if (WhiteWebSdk && wbAppId && wbUuid && wbRoomToken) {
-          try {
-            const whiteWebSdk = new WhiteWebSdk({
-              appIdentifier: wbAppId,
-              deviceType: 'Surface',
-              region: wbRegion || undefined,
-            });
-            // sanitize token if quoted
-            if (typeof wbRoomToken === 'string') {
-              wbRoomToken = wbRoomToken.trim();
-              const m = wbRoomToken.match(/^"([\s\S]*)"$/);
-              if (m) wbRoomToken = m[1];
-            }
-
-            const isTeacher = role === 'teacher';
-            
-            const room = await whiteWebSdk.joinRoom({
-              uuid: wbUuid,
-              roomToken: wbRoomToken,
-              uid: String(uid),
-              userPayload: {
-                cursorName: isTeacher ? 'Teacher' : 'Student',
-              },
-              isWritable: true, // Allow both teacher and student to write for collaborative whiteboard
-            });
-
-            console.log('Joined whiteboard room:', { 
-              uuid: wbUuid, 
-              role, 
-              uid, 
-              isTeacher,
-              phase: room.phase,
-              writable: room.writable || room.isWritable,
-              roomMembers: room.state?.roomMembers?.length || 0,
-              hasWhiteboardRef: !!whiteboardRef.current
-            });
-
-            if (whiteboardRef.current) {
-              room.bindHtmlElement(whiteboardRef.current);
-              console.log('✓ Whiteboard bindHtmlElement called successfully');
-            } else {
-              console.error('✗ whiteboardRef.current is null, cannot bind whiteboard!');
-            }
-
-            try {
-              const scenes = typeof room.getScenes === 'function' ? room.getScenes() : null;
-              const hasScenes = Array.isArray(scenes) ? scenes.length > 0 : !!room.state?.sceneState?.scenes?.length;
-              if (!hasScenes && typeof room.putScenes === 'function' && typeof room.setScenePath === 'function') {
-                const defaultSceneName = 'board';
-                room.putScenes('/', [{ name: defaultSceneName }], 0);
-                room.setScenePath(`/${defaultSceneName}`);
-              }
-            } catch (sceneErr) {
-              console.warn('Failed to ensure default whiteboard scene', sceneErr);
-            }
-
-            try {
-              if (typeof room.disableDeviceInputs === 'function') room.disableDeviceInputs(false);
-            } catch {}
-            try {
-              if (typeof room.disableOperations === 'function') room.disableOperations(false);
-            } catch {}
-            try {
-              if (typeof room.setViewMode === 'function') room.setViewMode('Freedom');
-            } catch {}
-
-            // Enable writable mode for both teacher and student (collaborative whiteboard)
-            try {
-              if (typeof room.setWritable === 'function') {
-                await room.setWritable(true);
-                console.log(`${isTeacher ? 'Teacher' : 'Student'}: Whiteboard setWritable(true) called (collaborative mode)`);
-              } else if (typeof room.enableWrite === 'function') {
-                await room.enableWrite(true);
-                console.log(`${isTeacher ? 'Teacher' : 'Student'}: Whiteboard enableWrite(true) called (collaborative mode)`);
-              }
-            } catch (e) {
-              console.warn('Failed to set whiteboard writable mode', e);
-            }
-
-            // Wait for whiteboard to be ready before setting tools
-            const waitForReady = () => new Promise<void>((resolve) => {
-              if (room.phase === 'connected' || room.state?.roomPhase === 'connected') {
-                resolve();
-              } else {
-                // Wait a bit for initialization
-                setTimeout(resolve, 300);
-              }
-            });
-
-            await waitForReady();
-
-            // 設定預設工具為鉛筆 (for both teacher and student in collaborative mode)
-            // set default tool after whiteboard is ready
-            const defaultStroke = [0, 0, 0] as [number, number, number];
-            try {
-              if (typeof room.setMemberState === 'function') {
-                room.setMemberState({ 
-                  currentApplianceName: 'pencil' as any, 
-                  strokeColor: defaultStroke
-                });
-                console.log(`${isTeacher ? 'Teacher' : 'Student'}: Whiteboard default tool set to pencil`);
-              }
-            } catch (e) {
-              console.warn(`${isTeacher ? 'Teacher' : 'Student'} setMemberState failed`, e);
-            }
-
-            // diagnostic: expose available methods
-            try {
-              console.debug('whiteboard room methods:', Object.keys(room).filter((k: string) => typeof (room as any)[k] === 'function'));
-            } catch {}
-
-            whiteboardRoomRef.current = room;
-            setWhiteboardRoom(room);
-            
-            // Add state change listeners for debugging
-            if (room.callbacks) {
-              const originalOnPhaseChanged = room.callbacks.onPhaseChanged;
-              room.callbacks.onPhaseChanged = (phase: any) => {
-                console.log(`[${role}] Whiteboard phase changed:`, phase);
-                if (originalOnPhaseChanged) originalOnPhaseChanged(phase);
-              };
-              
-              const originalOnRoomStateChanged = room.callbacks.onRoomStateChanged;
-              room.callbacks.onRoomStateChanged = (state: any) => {
-                console.log(`[${role}] Whiteboard state changed:`, { 
-                  memberState: state?.memberState,
-                  roomMembers: state?.roomMembers?.length,
-                  sceneState: state?.sceneState?.scenePath
-                });
-                if (originalOnRoomStateChanged) originalOnRoomStateChanged(state);
-              };
-            }
-            
-            try {
-              // expose for debugging in dev only
-              if (typeof window !== 'undefined') {
-                try {
-                  (window as any).__wbRoom = room;
-                  (window as any).__wb_setTool = (tool: string) => {
-                    try {
-                      if (room.setMemberState) {
-                        room.setMemberState({ currentApplianceName: tool as any });
-                      }
-                      if (room.setWritable) {
-                        room.setWritable(true);
-                      }
-                    } catch (e) {
-                      console.warn('wb_setTool failed', e);
-                    }
-                  };
-                  (window as any).__wb_setColor = (color: string | number[]) => {
-                    try {
-                      const strokeColor = hexToRgbArray(color);
-                      if (room.setMemberState) {
-                        room.setMemberState({ strokeColor: strokeColor as any });
-                      } else if (room.setStrokeColor) {
-                        room.setStrokeColor(strokeColor as any);
-                      }
-                    } catch (e) {
-                      console.warn('wb_setColor failed', e);
-                    }
-                  };
-                  console.info('Whiteboard room exposed as window.__wbRoom with helpers __wb_setTool(tool) and __wb_setColor(color)');
-                } catch (e) {
-                  // ignore exposure errors
-                }
-              }
-            } catch {}
-          } catch (wbErr: any) {
-            console.warn('whiteboard initialization failed', wbErr);
-            // non-fatal: show a friendly message but continue with Agora
-            setError((prev) => prev ? prev + ' | Whiteboard init failed' : 'Whiteboard init failed');
-          }
-        } else {
-          if (!wbAppId || !wbUuid || !wbRoomToken) {
-            console.warn('Whiteboard data missing; skipping whiteboard initialization');
-          }
-        }
-      } catch (wbLoadErr: any) {
-        console.warn('whiteboard SDK load failed', wbLoadErr);
-        setError((prev) => prev ? prev + ' | Whiteboard SDK load failed' : 'Whiteboard SDK load failed');
-        // continue without whiteboard
-      }
+      // Note: Whiteboard initialization removed - using canvas fallback instead
+      console.log('Whiteboard: Using canvas-based fallback instead of Netless SDK');
 
       // Create tracks according to requested publish options
       let micTrack: IMicrophoneAudioTrack | null = null;
@@ -681,30 +425,6 @@ export function useAgoraClassroom({
       localMicTrackRef.current?.stop();
       localMicTrackRef.current?.close();
 
-      if (whiteboardRoomRef.current) {
-        try {
-          // try multiple teardown methods depending on SDK version
-          if (typeof whiteboardRoomRef.current.disconnect === 'function') {
-            await whiteboardRoomRef.current.disconnect();
-          }
-        } catch (e) {
-          console.warn('whiteboard disconnect failed', e);
-        }
-        try {
-          if (typeof whiteboardRoomRef.current.destroy === 'function') {
-            // some SDKs offer destroy/dispose
-            await whiteboardRoomRef.current.destroy();
-          } else if (typeof whiteboardRoomRef.current.dispose === 'function') {
-            await whiteboardRoomRef.current.dispose();
-          }
-        } catch (e) {
-          // ignore
-        }
-
-        whiteboardRoomRef.current = null;
-        setWhiteboardRoom(null);
-      }
-
       const client = clientRef.current;
       if (client) {
         try {
@@ -747,7 +467,7 @@ export function useAgoraClassroom({
         const existingUuid = localStorage.getItem(whiteboardRoomKey);
         
         if (!existingUuid) {
-          console.log('Received whiteboard UUID from other tab:', event.data.uuid);
+          console.log('Received whiteboard UUID from other tab');
           localStorage.setItem(whiteboardRoomKey, event.data.uuid);
         }
       }
@@ -820,7 +540,6 @@ export function useAgoraClassroom({
     // 控制
     join,
     leave,
-    whiteboardRoom,
     // 新增：视频质量控制函数
     setVideoQuality,
     setLowLatencyMode,

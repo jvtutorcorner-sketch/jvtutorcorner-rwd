@@ -56,12 +56,8 @@ export async function GET(req: Request) {
     const uidParam = url.searchParams.get('uid') || '0';
     const uid = Number(uidParam) || 0;
 
-    console.log(`[Agora] Request params: channelName=${channelName}, uid=${uid}`);
-
     // Get Agora credentials securely
     const { appId, appCertificate } = await getAgoraCredentials();
-
-    console.log(`[Agora] Retrieved credentials: appId length=${appId.length}, appCertificate length=${appCertificate.length}`);
 
     // Validate credential format (basic check)
     if (appId.length !== 32 || appCertificate.length !== 32) {
@@ -78,8 +74,6 @@ export async function GET(req: Request) {
     const expireSeconds = 60 * 60; // 1 hour
     const currentTimestamp = Math.floor(Date.now() / 1000);
     const privilegeTs = currentTimestamp + expireSeconds;
-
-    console.log(`Generating Agora token for channel: ${channelName}, uid: ${uid}`);
 
     const token = RtcTokenBuilder.buildTokenWithUid(
       appId,

@@ -17,7 +17,7 @@ export default function ClassroomWaitPage() {
 
   const course = COURSES.find((c) => c.id === courseId) || null;
 
-  const sessionReadyKey = `classroom_session_ready_${courseId}_${orderId ?? 'noorder'}`;
+  const sessionReadyKey = React.useMemo(() => `classroom_session_ready_${courseId}_${orderId ?? 'noorder'}`, [courseId, orderId]);
   const [participants, setParticipants] = useState<Array<{ role: string; userId: string }>>([]);
   const [ready, setReady] = useState(false);
   const [roomUuid, setRoomUuid] = useState<string | null>(null);
@@ -86,17 +86,16 @@ export default function ClassroomWaitPage() {
         setTimeout(() => {
           const raw = localStorage.getItem(sessionReadyKey);
           console.log('After BC message, localStorage value:', raw);
-          // Re-read and parse the ready state
+          // Re-read and parse the ready state using the same logic as readReady
           try {
             const arr = raw ? JSON.parse(raw) as Array<{ role: string; userId: string }> : [];
             setParticipants(arr);
-            // Re-check if current user is marked ready
-            const currentRole = new URLSearchParams(window.location.search).get('role') as 'teacher' | 'student' | null;
-            const email = getStoredUser()?.email;
-            const userId = email || currentRole || 'anonymous';
-            const selfMarked = currentRole ? arr.some((p) => p.role === currentRole && p.userId === userId) : false;
+            // Use the same logic as readReady for consistency
+            const email = storedUserState?.email;
+            const userId = email || role || 'anonymous';
+            const selfMarked = role ? arr.some((p) => p.role === role && p.userId === userId) : false;
             setReady(selfMarked);
-            console.log('After BC, updated state:', { arr, selfMarked, currentRole, userId });
+            console.log('After BC, updated state:', { arr, selfMarked, role, userId });
           } catch (e) {
             console.error('Failed to parse after BC message:', e);
           }
@@ -142,18 +141,23 @@ export default function ClassroomWaitPage() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    
+
     console.log('Setting up server synchronization...');
-    // Re-enable server-backed SSE for cross-device synchronization
-    const syncUuid = sessionReadyKey; // Use sessionReadyKey as UUID for synchronization
-    console.log('syncUuid:', syncUuid);
-    
+    // Use sessionReadyKey as the synchronization UUID
+    const syncUuid = sessionReadyKey;
+
     if (syncUuid) {
       console.log('Starting initial server sync...');
       // initial fetch to populate state
       fetch(`/api/classroom/ready?uuid=${encodeURIComponent(syncUuid)}`).then((r) => r.json()).then((j) => {
         console.log('Initial server sync:', j);
-        setParticipants(j.participants || []);
+        const participants = j.participants || [];
+        setParticipants(participants);
+        // Also update ready state for current user
+        const email = storedUserState?.email;
+        const userId = email || role || 'anonymous';
+        const selfMarked = role ? participants.some((p: { role: string; userId: string }) => p.role === role && p.userId === userId) : false;
+        setReady(selfMarked);
       }).catch((e) => console.warn('Initial server sync failed:', e));
       
       // clear any existing poll
@@ -178,13 +182,20 @@ export default function ClassroomWaitPage() {
             
             // Handle different message types
             if (data.type === 'connected') {
-              console.log('SSE connected successfully for uuid:', data.uuid);
+              console.log('SSE connected successfully');
             } else if (data.type === 'ping') {
               // Keep-alive ping, ignore
               console.log('SSE ping received');
             } else {
               // Regular data message
-              setParticipants(data.participants || []);
+              const participants = data.participants || [];
+              setParticipants(participants);
+              // Also update ready state for current user using same logic as readReady
+              const email = storedUserState?.email;
+              const userId = email || role || 'anonymous';
+              const selfMarked = role ? participants.some((p: { role: string; userId: string }) => p.role === role && p.userId === userId) : false;
+              setReady(selfMarked);
+              console.log('SSE updated state:', { participants: participants.length, selfMarked, role, userId });
             }
           } catch (e) {
             console.warn('SSE message parse error:', e);
@@ -202,7 +213,13 @@ export default function ClassroomWaitPage() {
               if (pollRef.current) window.clearInterval(pollRef.current);
               pollRef.current = window.setInterval(() => {
                 fetch(`/api/classroom/ready?uuid=${encodeURIComponent(syncUuid)}`).then((r) => r.json()).then((j) => {
-                  setParticipants(j.participants || []);
+                  const participants = j.participants || [];
+                  setParticipants(participants);
+                  // Also update ready state for current user
+                  const email = storedUserState?.email;
+                  const userId = email || role || 'anonymous';
+                  const selfMarked = role ? participants.some((p: { role: string; userId: string }) => p.role === role && p.userId === userId) : false;
+                  setReady(selfMarked);
                 }).catch((e) => console.warn('Polling fallback failed:', e));
               }, 5000) as unknown as number; // Increased to 5 seconds for less frequent polling
             }, 1000);
@@ -215,7 +232,13 @@ export default function ClassroomWaitPage() {
         if (pollRef.current) window.clearInterval(pollRef.current);
         pollRef.current = window.setInterval(() => {
           fetch(`/api/classroom/ready?uuid=${encodeURIComponent(syncUuid)}`).then((r) => r.json()).then((j) => {
-            setParticipants(j.participants || []);
+            const participants = j.participants || [];
+            setParticipants(participants);
+            // Also update ready state for current user
+            const email = storedUserState?.email;
+            const userId = email || role || 'anonymous';
+            const selfMarked = role ? participants.some((p: { role: string; userId: string }) => p.role === role && p.userId === userId) : false;
+            setReady(selfMarked);
           }).catch(() => {});
         }, 2000) as unknown as number;
       }
@@ -226,7 +249,7 @@ export default function ClassroomWaitPage() {
       try { esRef.current?.close(); } catch (e) {}
       esRef.current = null;
     };
-  }, [sessionReadyKey]);
+  }, [sessionReadyKey, role, storedUserState]);
 
 
   const toggleReady = () => {
@@ -337,8 +360,8 @@ export default function ClassroomWaitPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionReadyKey, role, storedUserState]);
 
-  const hasTeacher = participants.some((p) => p.role === 'teacher');
-  const hasStudent = participants.some((p) => p.role === 'student');
+  const hasTeacher = participants.some((p: { role: string; userId: string }) => p.role === 'teacher');
+  const hasStudent = participants.some((p: { role: string; userId: string }) => p.role === 'student');
   const canEnter = hasTeacher && hasStudent;
 
   const enterClassroom = () => {

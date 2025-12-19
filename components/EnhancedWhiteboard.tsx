@@ -31,6 +31,18 @@ export default function EnhancedWhiteboard({
   hasMic,
   onLeave
 }: WhiteboardProps) {
+  const bcRef = useRef<BroadcastChannel | null>(null);
+  const clientIdRef = useRef<string>(`c_${Math.random().toString(36).slice(2)}`);
+  const applyingRemoteRef = useRef(false);
+
+  // helper to POST events to server relay
+  const postEventToServer = useCallback(async (event: any) => {
+    try {
+      const uuid = encodeURIComponent(window.location.pathname + window.location.search || 'default');
+      await fetch('/api/whiteboard/event', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ uuid, event }) });
+    } catch (e) {}
+  }, []);
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const bgCanvasRef = useRef<HTMLCanvasElement>(null); // Background canvas for PDF
   const [tool, setTool] = useState<'pencil' | 'eraser'>('pencil');
@@ -268,10 +280,17 @@ export default function EnhancedWhiteboard({
   const handlePointerDown = useCallback((e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
     isDrawingRef.current = true;
     const pos = getPointerPos(e);
-    const newStroke: Stroke = { points: [pos.x, pos.y], stroke: color, strokeWidth, mode: tool === 'eraser' ? 'erase' : 'draw' };
+    const newStroke: Stroke & { id?: string; origin?: string } = { points: [pos.x, pos.y], stroke: color, strokeWidth, mode: tool === 'eraser' ? 'erase' : 'draw', id: `${clientIdRef.current}_${Date.now()}` , origin: clientIdRef.current };
     setStrokes((s) => [...s, newStroke]);
     setUndone([]);
-  }, [tool, color, strokeWidth]);
+    try {
+      if (!useNetlessWhiteboard && bcRef.current) {
+        bcRef.current.postMessage({ type: 'stroke-start', stroke: newStroke, clientId: clientIdRef.current });
+      }
+      // also relay to server for cross-device
+      (postEventToServer as any)?.({ type: 'stroke-start', stroke: newStroke });
+    } catch (e) {}
+  }, [tool, color, strokeWidth, postEventToServer]);
 
   const handlePointerMove = useCallback((e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
     if (!isDrawingRef.current) return;
@@ -280,9 +299,19 @@ export default function EnhancedWhiteboard({
       const last = prev[prev.length - 1];
       if (!last) return prev;
       const updated = { ...last, points: last.points.concat([pos.x, pos.y]) };
-      return [...prev.slice(0, -1), updated];
+      const out = [...prev.slice(0, -1), updated];
+      try {
+        if (!useNetlessWhiteboard && bcRef.current && (last as any).origin !== clientIdRef.current) {
+          // don't re-broadcast remote-applied strokes
+        } else if (!useNetlessWhiteboard && bcRef.current) {
+          bcRef.current.postMessage({ type: 'stroke-update', strokeId: (updated as any).id, points: updated.points, clientId: clientIdRef.current });
+        }
+        // also post to server
+        (postEventToServer as any)?.({ type: 'stroke-update', strokeId: (updated as any).id, points: updated.points });
+      } catch (e) {}
+      return out;
     });
-  }, []);
+  }, [postEventToServer]);
 
   const handlePointerUp = useCallback(() => {
     isDrawingRef.current = false;
@@ -293,7 +322,10 @@ export default function EnhancedWhiteboard({
       if (s.length === 0) return s;
       const last = s[s.length - 1];
       setUndone((u) => [...u, last]);
-      return s.slice(0, -1);
+      const next = s.slice(0, -1);
+      try { if (!useNetlessWhiteboard && bcRef.current) bcRef.current.postMessage({ type: 'undo', strokeId: (last as any).id, clientId: clientIdRef.current }); } catch (e) {}
+      try { (postEventToServer as any)?.({ type: 'undo', strokeId: (last as any).id }); } catch (e) {}
+      return next;
     });
   }, []);
 
@@ -302,6 +334,8 @@ export default function EnhancedWhiteboard({
       if (u.length === 0) return u;
       const last = u[u.length - 1];
       setStrokes((s) => [...s, last]);
+      try { if (!useNetlessWhiteboard && bcRef.current) bcRef.current.postMessage({ type: 'redo', stroke: last, clientId: clientIdRef.current }); } catch (e) {}
+      try { (postEventToServer as any)?.({ type: 'redo', stroke: last }); } catch (e) {}
       return u.slice(0, -1);
     });
   }, []);
@@ -309,7 +343,75 @@ export default function EnhancedWhiteboard({
   const clearAll = useCallback(() => {
     setStrokes([]);
     setUndone([]);
+    try { if (!useNetlessWhiteboard && bcRef.current) bcRef.current.postMessage({ type: 'clear', clientId: clientIdRef.current }); } catch (e) {}
+    try { (postEventToServer as any)?.({ type: 'clear' }); } catch (e) {}
   }, []);
+
+  // BroadcastChannel setup for canvas sync (per-page channel)
+  useEffect(() => {
+    if (useNetlessWhiteboard) return;
+    if (typeof window === 'undefined') return;
+    try {
+      const name = `whiteboard_${encodeURIComponent(window.location.pathname + window.location.search)}`;
+      const ch = new BroadcastChannel(name);
+      bcRef.current = ch;
+      ch.onmessage = (ev: MessageEvent) => {
+        const data = ev.data as any;
+        if (!data || data.clientId === clientIdRef.current) return; // ignore our own
+        try {
+          if (data.type === 'stroke-start') {
+            applyingRemoteRef.current = true;
+            setStrokes((s) => [...s, data.stroke]);
+            applyingRemoteRef.current = false;
+          } else if (data.type === 'stroke-update') {
+            applyingRemoteRef.current = true;
+            setStrokes((s) => {
+              const idx = s.findIndex((st) => (st as any).id === data.strokeId);
+              if (idx >= 0) {
+                const updated = { ...(s[idx] as any), points: data.points };
+                return [...s.slice(0, idx), updated, ...s.slice(idx + 1)];
+              }
+              // if not found, append
+              return [...s, { points: data.points, stroke: '#000', strokeWidth: 2, mode: 'draw', id: data.strokeId } as any];
+            });
+            applyingRemoteRef.current = false;
+          } else if (data.type === 'undo') {
+            applyingRemoteRef.current = true;
+            setStrokes((s) => s.filter((st) => (st as any).id !== data.strokeId));
+            applyingRemoteRef.current = false;
+          } else if (data.type === 'redo') {
+            applyingRemoteRef.current = true;
+            setStrokes((s) => [...s, data.stroke]);
+            applyingRemoteRef.current = false;
+          } else if (data.type === 'clear') {
+            applyingRemoteRef.current = true;
+            setStrokes([]);
+            setUndone([]);
+            applyingRemoteRef.current = false;
+          } else if (data.type === 'request-state') {
+            // reply with full state
+            try { ch.postMessage({ type: 'state', strokes, clientId: clientIdRef.current }); } catch (e) {}
+          } else if (data.type === 'state') {
+            // only apply if local empty to avoid overwriting
+            setStrokes((local) => {
+              if (local.length === 0 && Array.isArray(data.strokes)) return data.strokes;
+              return local;
+            });
+          }
+        } catch (e) {
+          // ignore
+        }
+      };
+
+      // ask for state from others
+      setTimeout(() => { try { ch.postMessage({ type: 'request-state', clientId: clientIdRef.current }); } catch (e) {} }, 200);
+
+      return () => { try { ch.close(); } catch (e) {} };
+    } catch (e) {
+      // BroadcastChannel not available
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [useNetlessWhiteboard, setStrokes, setUndone, strokes]);
 
   // Attach non-passive touch listeners to prevent page scroll while drawing on mobile
   useEffect(() => {
@@ -418,6 +520,50 @@ export default function EnhancedWhiteboard({
   useEffect(() => {
     drawAll();
   }, [strokes, drawAll]);
+
+  // Server-side SSE subscription for cross-device sync
+  useEffect(() => {
+    if (useNetlessWhiteboard) return;
+    if (typeof window === 'undefined') return;
+    try {
+      const uuid = encodeURIComponent(window.location.pathname + window.location.search || 'default');
+      const es = new EventSource(`/api/whiteboard/stream?uuid=${uuid}`);
+      es.onmessage = (ev) => {
+        try {
+          const data = JSON.parse(ev.data);
+          if (!data) return;
+          // ignore connected pings
+          if (data.type === 'connected' || data.type === 'ping') return;
+
+          // apply same handlers as BroadcastChannel messages
+          if (data.type === 'stroke-start') {
+            setStrokes((s) => [...s, data.stroke]);
+          } else if (data.type === 'stroke-update') {
+            setStrokes((s) => {
+              const idx = s.findIndex((st) => (st as any).id === data.strokeId);
+              if (idx >= 0) {
+                const updated = { ...(s[idx] as any), points: data.points };
+                return [...s.slice(0, idx), updated, ...s.slice(idx + 1)];
+              }
+              return [...s, { points: data.points, stroke: '#000', strokeWidth: 2, mode: 'draw', id: data.strokeId } as any];
+            });
+          } else if (data.type === 'undo') {
+            setStrokes((s) => s.filter((st) => (st as any).id !== data.strokeId));
+          } else if (data.type === 'redo') {
+            setStrokes((s) => [...s, data.stroke]);
+          } else if (data.type === 'clear') {
+            setStrokes([]);
+            setUndone([]);
+          }
+        } catch (e) {}
+      };
+      es.onerror = () => { try { es.close(); } catch (e) {} };
+      return () => { try { es.close(); } catch (e) {} };
+    } catch (e) {
+      // ignore
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [useNetlessWhiteboard]);
 
   return (
     <div className={`canvas-whiteboard ${className}`} style={{ border: '1px solid #ddd', width: whiteboardWidth, height: 'auto' }}>
