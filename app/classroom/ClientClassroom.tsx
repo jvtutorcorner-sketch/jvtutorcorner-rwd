@@ -6,7 +6,6 @@ import { getStoredUser, setStoredUser } from '@/lib/mockAuth';
 import { COURSES } from '@/data/courses';
 import EnhancedWhiteboard from '@/components/EnhancedWhiteboard';
 import dynamic from 'next/dynamic';
-import VideoControls from '@/components/VideoControls';
 
 const PdfViewer = dynamic(() => import('@/components/PdfViewer'), { ssr: false });
 
@@ -335,6 +334,26 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     } catch (e) {
       console.warn('end session failed', e);
       alert('End session attempt failed; check console');
+    }
+  };
+
+  const handleLeave = async () => {
+    try {
+      console.log('handleLeave called');
+      await leave();
+      console.log('leave() completed');
+      // Return to wait page based on role
+      const currentRole = (urlRole === 'teacher' || urlRole === 'student') ? urlRole : computedRole;
+      const waitPageUrl = `/classroom/wait?courseId=${courseId}${orderId ? `&orderId=${orderId}` : ''}&role=${currentRole}`;
+      console.log('navigating to:', waitPageUrl);
+      window.location.href = waitPageUrl;
+    } catch (e) {
+      console.warn('leave failed', e);
+      // Don't show alert for extension errors
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      if (!errorMessage.includes('Receiving end does not exist')) {
+        alert('Leave failed; check console');
+      }
     }
   };
 
@@ -756,7 +775,10 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
             <div style={{ width: 320, height: 200, background: '#000', borderRadius: 6, overflow: 'hidden' }}>
               <video ref={localVideoRef} autoPlay muted playsInline style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
             </div>
-            <div style={{ color: '#fff', fontSize: 12 }}>{mounted && (urlRole === 'teacher' || computedRole === 'teacher') ? 'Teacher' : 'Student'}</div>
+            <div style={{ color: '#fff', fontSize: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
+              <span>{mounted && (urlRole === 'teacher' || computedRole === 'teacher') ? 'Teacher' : 'Student'}</span>
+              <span style={{ background: permissionGranted ? '#4caf50' : '#ff9800', color: 'white', padding: '2px 8px', borderRadius: 3, fontSize: 11 }}>{permissionGranted ? '✓ 權限已授予' : '⚠ 請求權限'}</span>
+            </div>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center' }}>
@@ -770,38 +792,12 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {mounted && (isAdmin || computedRole === 'teacher' || computedRole === 'student') && (
               <>
-                <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                  <label style={{ fontSize: 12, color: '#ccc' }}>Mic:</label>
-                  <select value={selectedAudioDeviceId ?? ''} onChange={(e) => setSelectedAudioDeviceId(e.target.value || null)} style={{ fontSize: 12 }}>
-                    {audioInputs.length === 0 && <option value="">(no microphones)</option>}
-                    {audioInputs.map((d) => (<option key={d.deviceId} value={d.deviceId}>{d.label || 'Microphone'}</option>))}
-                  </select>
-                  <button onClick={() => { testingMic ? stopMicTest() : startMicTest(); }}>{testingMic ? 'Stop Mic Test' : 'Test Mic'}</button>
-                  <div style={{ width: 80, height: 8, background: '#222', borderRadius: 4, overflow: 'hidden', marginLeft: 6 }} aria-hidden>
-                    <div style={{ width: `${Math.round((micLevel || 0) * 100)}%`, height: '100%', background: testingMic ? '#4caf50' : (wantPublishAudio ? '#81c784' : '#555'), transition: 'width 120ms linear' }} />
-                  </div>
-                  <div style={{ fontSize: 11, color: '#ccc', marginLeft: 6, minWidth: 28, textAlign: 'right' }}>{Math.round((micLevel || 0) * 100)}</div>
-                </div>
-
-                <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                  <label style={{ fontSize: 12, color: '#ccc' }}>Cam:</label>
-                  <select value={selectedVideoDeviceId ?? ''} onChange={(e) => setSelectedVideoDeviceId(e.target.value || null)} style={{ fontSize: 12 }}>
-                    {videoInputs.length === 0 && <option value="">(no cameras)</option>}
-                    {videoInputs.map((d) => (<option key={d.deviceId} value={d.deviceId}>{d.label || 'Camera'}</option>))}
-                  </select>
-                  <button onClick={() => { previewingCamera ? stopCameraPreview() : startCameraPreview(); }}>{previewingCamera ? 'Stop Preview' : 'Preview Camera'}</button>
-                </div>
-
-                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <button onClick={requestPermissions} style={{ background: permissionGranted ? '#4caf50' : '#ff9800', color: 'white', border: 'none', padding: '6px 12px', borderRadius: 4 }}>{permissionGranted ? '✓ 權限已授予' : '⚠ 請求權限'}</button>
-                </div>
-
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <label style={{ fontSize: 12, color: '#ccc' }}>Cam</label>
-                  <button onClick={() => setWantPublishVideo((s) => !s)} disabled={hasVideoInput === false}>{wantPublishVideo ? 'On' : 'Off'}</button>
-                </div>
 
                 <div style={{ display: 'flex', gap: 8 }}>
+                  {(() => {
+                    console.log('Rendering button section, joined:', joined, 'loading:', loading);
+                    return null;
+                  })()}
                   {!joined ? (
                     <button
                       onClick={() => join({ publishAudio: wantPublishAudio, publishVideo: wantPublishVideo })}
@@ -819,21 +815,33 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                       {loading ? '加入中...' : '🚀 Join (開始上課)'}
                     </button>
                   ) : (
-                    <button
-                      onClick={endSession}
-                      disabled={((urlRole === 'teacher' || urlRole === 'student') ? urlRole : computedRole) !== 'teacher'}
-                      style={{
-                        background: ((urlRole === 'teacher' || urlRole === 'student') ? urlRole : computedRole) !== 'teacher' ? '#9CA3AF' : '#f44336',
-                        color: 'white',
-                        border: 'none',
-                        padding: '8px 16px',
-                        borderRadius: 4,
-                        cursor: ((urlRole === 'teacher' || urlRole === 'student') ? urlRole : computedRole) !== 'teacher' ? 'not-allowed' : 'pointer',
-                        fontWeight: 600
-                      }}
-                    >
-                      End Session (結束上課)
-                    </button>
+                    <>
+                      {(() => {
+                        console.log('Rendering Leave button, joined:', joined);
+                        return null;
+                      })()}
+                      <button
+                        onClick={() => {
+                          console.log('Leave button clicked, joined:', joined);
+                          try {
+                            handleLeave();
+                          } catch (e) {
+                            console.error('Button click error:', e);
+                          }
+                        }}
+                        style={{
+                          background: '#f44336',
+                          color: 'white',
+                          border: 'none',
+                          padding: '8px 16px',
+                          borderRadius: 4,
+                          cursor: 'pointer',
+                          fontWeight: 600
+                        }}
+                      >
+                        Leave (離開)
+                      </button>
+                    </>
                   )}
                 </div>
                 
@@ -861,8 +869,6 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           </div>
         </div>
 
-        {/* Video quality controls */}
-        <VideoControls currentQuality={currentQuality} isLowLatencyMode={isLowLatencyMode} onQualityChange={setVideoQuality} onLowLatencyToggle={setLowLatencyMode} hasVideo={hasVideoInput === true} />
       </div>
     </div>
   );

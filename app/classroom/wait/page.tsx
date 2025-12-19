@@ -4,6 +4,8 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { COURSES } from '@/data/courses';
 import { getStoredUser } from '@/lib/mockAuth';
+import VideoControls from '@/components/VideoControls';
+import { VideoQuality } from '@/lib/agora/useAgoraClassroom';
 
 export default function ClassroomWaitPage() {
   const router = useRouter();
@@ -19,6 +21,8 @@ export default function ClassroomWaitPage() {
   const [participants, setParticipants] = useState<Array<{ role: string; email?: string }>>([]);
   const [ready, setReady] = useState(false);
   const [roomUuid, setRoomUuid] = useState<string | null>(null);
+  const [currentQuality, setCurrentQuality] = useState<VideoQuality>('high');
+  const [isLowLatencyMode, setIsLowLatencyMode] = useState(false);
   const pollRef = useRef<number | null>(null);
   const esRef = useRef<EventSource | null>(null);
   const bcRef = useRef<BroadcastChannel | null>(null);
@@ -131,34 +135,50 @@ export default function ClassroomWaitPage() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     
-    // For now, force localStorage + BroadcastChannel for testing synchronization
-    // TODO: re-enable server-backed SSE when backend is ready
-    if (false && roomUuid) {
+    // Re-enable server-backed SSE for cross-device synchronization
+    const syncUuid = sessionReadyKey; // Use sessionReadyKey as UUID for synchronization
+    if (syncUuid) {
       // initial fetch to populate state
-      fetch(`/api/classroom/ready?uuid=${encodeURIComponent(roomUuid!)}`).then((r) => r.json()).then((j) => setParticipants(j.participants || [])).catch(() => {});
+      fetch(`/api/classroom/ready?uuid=${encodeURIComponent(syncUuid)}`).then((r) => r.json()).then((j) => {
+        console.log('Initial server sync:', j);
+        setParticipants(j.participants || []);
+      }).catch((e) => console.warn('Initial server sync failed:', e));
+      
       // clear any existing poll
       if (pollRef.current) { window.clearInterval(pollRef.current!); pollRef.current = null; }
       // close any existing EventSource
       try { esRef.current?.close(); } catch (e) {}
       try {
-        const es = new EventSource(`/api/classroom/stream?uuid=${encodeURIComponent(roomUuid!)}`);
+        const es = new EventSource(`/api/classroom/stream?uuid=${encodeURIComponent(syncUuid)}`);
         es.onmessage = (ev) => {
           try {
             const data = JSON.parse(ev.data);
+            console.log('SSE message received:', data);
             setParticipants(data.participants || []);
-          } catch (e) {}
+          } catch (e) {
+            console.warn('SSE message parse error:', e);
+          }
         };
         es.onerror = (err) => {
-          // allow automatic EventSource reconnection; log for debug
-          // console.warn('classroom SSE error', err);
+          console.warn('SSE error:', err);
+          // Fallback to polling if SSE fails
+          if (pollRef.current) window.clearInterval(pollRef.current);
+          pollRef.current = window.setInterval(() => {
+            fetch(`/api/classroom/ready?uuid=${encodeURIComponent(syncUuid)}`).then((r) => r.json()).then((j) => {
+              setParticipants(j.participants || []);
+            }).catch(() => {});
+          }, 2000) as unknown as number;
         };
         esRef.current = es;
       } catch (e) {
-        // fallback: short-polling if EventSource cannot be created
-        if (pollRef.current) window.clearInterval(pollRef.current!);
+        console.warn('EventSource creation failed, falling back to polling:', e);
+        // fallback: polling
+        if (pollRef.current) window.clearInterval(pollRef.current);
         pollRef.current = window.setInterval(() => {
-          fetch(`/api/classroom/ready?uuid=${encodeURIComponent(roomUuid!)}`).then((r) => r.json()).then((j) => setParticipants(j.participants || [])).catch(() => {});
-        }, 1000) as unknown as number;
+          fetch(`/api/classroom/ready?uuid=${encodeURIComponent(syncUuid)}`).then((r) => r.json()).then((j) => {
+            setParticipants(j.participants || []);
+          }).catch(() => {});
+        }, 2000) as unknown as number;
       }
     }
 
@@ -167,78 +187,90 @@ export default function ClassroomWaitPage() {
       try { esRef.current?.close(); } catch (e) {}
       esRef.current = null;
     };
-  }, [roomUuid]);
+  }, [sessionReadyKey]);
 
 
   const toggleReady = () => {
     try {
       const email = storedUserState?.email;
-      console.log('toggleReady called:', { roomUuid, role, email, ready });
-      
-      // For now, always use localStorage for testing synchronization
-      // TODO: re-enable server API when backend is ready
-      if (false && roomUuid) {
+      console.log('toggleReady called:', { sessionReadyKey, role, email, ready });
+
+      // Re-enable server API for cross-device synchronization
+      const syncUuid = sessionReadyKey;
+      if (syncUuid) {
         // server-backed: POST ready state to server
         fetch('/api/classroom/ready', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ uuid: roomUuid, role, email, ready: !ready }),
-        }).then((r) => r.json()).then((j) => setParticipants(j.participants || [])).catch((e) => console.warn(e));
-        setReady((r) => !r);
-      } else {
-        const raw = localStorage.getItem(sessionReadyKey);
-        const arr = raw ? JSON.parse(raw) as Array<{ role: string; email?: string }> : [];
-        const email = storedUserState?.email;
-        
-        // Check if current user is already in the array
-        const existingIndex = role ? arr.findIndex((p) => p.role === role && p.email === email) : -1;
-        
-        let filtered: Array<{ role: string; email?: string }>;
-        let newReadyState: boolean;
-        
-        if (existingIndex >= 0) {
-          // User is ready, remove them (toggle off)
-          filtered = arr.filter((_, i) => i !== existingIndex);
-          newReadyState = false;
-        } else {
-          // User is not ready, add them (toggle on)
-          filtered = [...arr, { role: role!, email }];
-          newReadyState = true;
-        }
-        
-        console.log('toggleReady localStorage:', { 
-          role, 
-          email, 
-          currentReady: ready, 
-          existingIndex,
-          arr, 
-          filtered, 
-          newReadyState,
-          sessionReadyKey 
+          body: JSON.stringify({ uuid: syncUuid, role, email, ready: !ready }),
+        }).then((r) => r.json()).then((j) => {
+          console.log('Server ready update response:', j);
+          setParticipants(j.participants || []);
+          setReady(!ready);
+        }).catch((e) => {
+          console.warn('Server ready update failed, falling back to localStorage:', e);
+          // Fallback to localStorage if server fails
+          fallbackToLocalStorage();
         });
-        
-        localStorage.setItem(sessionReadyKey, JSON.stringify(filtered));
-        try { window.dispatchEvent(new StorageEvent('storage', { key: sessionReadyKey, newValue: JSON.stringify(filtered) })); } catch (e) {}
-        // also notify other tabs via BroadcastChannel when available
-        try {
-          console.log('Attempting to send BC message, bcRef.current:', bcRef.current);
-          if (bcRef.current) {
-            bcRef.current.postMessage({ type: 'ready-updated', timestamp: Date.now() });
-            console.log('BroadcastChannel message sent from toggleReady:', sessionReadyKey, Date.now());
-          } else {
-            console.warn('BroadcastChannel not available - bcRef.current is null');
-          }
-        } catch (e) {
-          console.warn('BroadcastChannel send failed:', e);
-        }
-        
-        // Update local state
-        setReady(newReadyState);
-        setParticipants(filtered);
+      } else {
+        // Fallback to localStorage
+        fallbackToLocalStorage();
       }
     } catch (e) {
       console.warn('toggleReady failed', e);
     }
+  };
+
+  const fallbackToLocalStorage = () => {
+    const raw = localStorage.getItem(sessionReadyKey);
+    const arr = raw ? JSON.parse(raw) as Array<{ role: string; email?: string }> : [];
+    const email = storedUserState?.email;
+
+    // Check if current user is already in the array
+    const existingIndex = role ? arr.findIndex((p) => p.role === role && p.email === email) : -1;
+
+    let filtered: Array<{ role: string; email?: string }>;
+    let newReadyState: boolean;
+
+    if (existingIndex >= 0) {
+      // User is ready, remove them (toggle off)
+      filtered = arr.filter((_, i) => i !== existingIndex);
+      newReadyState = false;
+    } else {
+      // User is not ready, add them (toggle on)
+      filtered = [...arr, { role: role!, email }];
+      newReadyState = true;
+    }
+
+    console.log('toggleReady localStorage:', {
+      role,
+      email,
+      currentReady: ready,
+      existingIndex,
+      arr,
+      filtered,
+      newReadyState,
+      sessionReadyKey
+    });
+
+    localStorage.setItem(sessionReadyKey, JSON.stringify(filtered));
+    try { window.dispatchEvent(new StorageEvent('storage', { key: sessionReadyKey, newValue: JSON.stringify(filtered) })); } catch (e) {}
+    // also notify other tabs via BroadcastChannel when available
+    try {
+      console.log('Attempting to send BC message, bcRef.current:', bcRef.current);
+      if (bcRef.current) {
+        bcRef.current.postMessage({ type: 'ready-updated', timestamp: Date.now() });
+        console.log('BroadcastChannel message sent from toggleReady:', sessionReadyKey, Date.now());
+      } else {
+        console.warn('BroadcastChannel not available - bcRef.current is null');
+      }
+    } catch (e) {
+      console.warn('BroadcastChannel send failed:', e);
+    }
+
+    // Update local state
+    setReady(newReadyState);
+    setParticipants(filtered);
   };
 
   // ensure we have a whiteboard room UUID to key server readiness (create if needed)
@@ -332,6 +364,11 @@ export default function ClassroomWaitPage() {
       <div style={{ marginTop: 20, padding: 12, border: '1px solid #eee', borderRadius: 8, maxWidth: 720 }}>
         <div style={{ fontWeight: 700, marginBottom: 8 }}>視訊設定 (可在進入教室前預覽與選擇裝置)</div>
         <VideoSetup />
+      </div>
+
+      {/* Video quality controls */}
+      <div style={{ marginTop: 20, maxWidth: 720 }}>
+        <VideoControls currentQuality={currentQuality} isLowLatencyMode={isLowLatencyMode} onQualityChange={setCurrentQuality} onLowLatencyToggle={setIsLowLatencyMode} hasVideo={true} />
       </div>
     </div>
   );
