@@ -11,9 +11,17 @@ export async function GET(req: NextRequest) {
     const uuid = url.searchParams.get('uuid') || 'default';
     console.log(`[SSE] uuid=${uuid}`);
 
+    // Polyfill for Node.js 16 or environments without global ReadableStream
     if (typeof ReadableStream === 'undefined') {
-      console.error('ReadableStream not available in this environment');
-      return new Response('Server Error: ReadableStream not supported', { status: 500 });
+      try {
+        // Try to use web-streams-polyfill if installed
+        // @ts-ignore
+        global.ReadableStream = require('web-streams-polyfill/ponyfill').ReadableStream;
+        console.log('[SSE] Polyfilled ReadableStream using web-streams-polyfill');
+      } catch (e) {
+        console.error('ReadableStream not available and polyfill failed:', e);
+        return new Response('Server Error: ReadableStream not supported. Please upgrade Node.js to v18+ or install web-streams-polyfill.', { status: 500 });
+      }
     }
 
     console.log('[SSE] creating ReadableStream');
