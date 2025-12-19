@@ -161,19 +161,48 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           if (wbUuid && wbRoomToken && wbAppId && typeof window !== 'undefined') {
             // Load white-web-sdk if not already loaded
             if (!(window as any).WhiteWebSdk) {
-              await new Promise<void>((resolve, reject) => {
-                const script = document.createElement('script');
-                script.src = 'https://sdk.netless.link/white-web-sdk/2.16.50.js';
-                script.onload = () => resolve();
-                script.onerror = () => reject(new Error('Failed to load white-web-sdk'));
-                document.head.appendChild(script);
-              });
+              // Try multiple CDNs like useAgoraClassroom.ts does
+              const cdns = [
+                'https://unpkg.com/white-web-sdk@2.16.53/dist/index.js',
+                'https://cdn.jsdelivr.net/npm/white-web-sdk@2.16.53/dist/index.js',
+                'https://cdn.skypack.dev/white-web-sdk@2.16.53',
+                'https://esm.sh/white-web-sdk@2.16.53',
+              ];
+
+              let loaded = false;
+              for (const url of cdns) {
+                try {
+                  console.log(`[Pre-join] Trying to load white-web-sdk from: ${url}`);
+                  await new Promise<void>((resolve, reject) => {
+                    const script = document.createElement('script');
+                    script.src = url;
+                    script.onload = () => {
+                      console.log(`[Pre-join] ✓ Successfully loaded white-web-sdk from: ${url}`);
+                      resolve();
+                    };
+                    script.onerror = () => reject(new Error(`Failed to load from ${url}`));
+                    document.head.appendChild(script);
+                  });
+                  loaded = true;
+                  break;
+                } catch (err) {
+                  console.warn(`[Pre-join] white-web-sdk load failed for ${url}:`, err);
+                }
+              }
+
+              if (!loaded) {
+                throw new Error('Failed to load white-web-sdk from all CDNs');
+              }
             }
 
             const WhiteWebSdk = (window as any).WhiteWebSdk;
             if (WhiteWebSdk) {
+              // Use the app identifier from the API response, or fallback to a default
+              const appIdentifier = wbAppId || '7b1e4f40-d807-11f0-9780-fd0783967389';
+              console.log('[Pre-join] Using appIdentifier:', appIdentifier);
+
               const whiteWebSdk = new WhiteWebSdk({
-                appIdentifier: wbAppId,
+                appIdentifier,
                 deviceType: 'Surface',
                 region: wbRegion || 'sg',
               });

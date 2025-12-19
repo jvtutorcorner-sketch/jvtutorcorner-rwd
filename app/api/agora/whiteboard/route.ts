@@ -18,9 +18,20 @@ export async function POST(req: NextRequest) {
 
     let uuid = incomingUuid;
 
+    // Debug: Log environment variables (remove after debugging)
+    console.log('[Whiteboard API] Environment check:', {
+      hasSdkToken: !!NETLESS_SDK_TOKEN,
+      sdkTokenLength: NETLESS_SDK_TOKEN?.length,
+      hasWbAk: !!AGORA_WB_AK,
+      hasWbSk: !!AGORA_WB_SK,
+      region: NETLESS_REGION,
+      apiBase: NETLESS_API_BASE
+    });
+
     // 1) create room if uuid not provided and SDK token available
     if (!uuid) {
       if (!NETLESS_SDK_TOKEN) {
+        console.error('[Whiteboard API] NETLESS_SDK_TOKEN not found in environment');
         return NextResponse.json({ error: 'No uuid provided and NETLESS_SDK_TOKEN not configured to create a room' }, { status: 400 });
       }
 
@@ -134,8 +145,10 @@ export async function POST(req: NextRequest) {
       if (m) roomToken = m[1];
     }
 
-    // use AGORA_WB_AK as whiteboard app identifier when available, else fallback to NETLESS_APP_ID env if present
-    const whiteboardAppId = AGORA_WB_AK || process.env.NETLESS_APP_ID || null;
+    // use NETLESS_APP_ID as whiteboard app identifier, fallback to AGORA_WB_AK if not set
+    const whiteboardAppId = process.env.NETLESS_APP_ID || AGORA_WB_AK || null;
+
+    console.log('[Whiteboard API] Returning:', { whiteboardAppId, uuid, hasRoomToken: !!roomToken, region: NETLESS_REGION });
 
     return NextResponse.json({ whiteboardAppId, uuid, roomToken, region: NETLESS_REGION });
   } catch (err: any) {
