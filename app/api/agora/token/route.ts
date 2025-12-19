@@ -10,12 +10,17 @@ let cachedCredentials: { appId: string; appCertificate: string; expires: number 
 async function getAgoraCredentials() {
   // Return cached credentials if still valid (cache for 5 minutes)
   if (cachedCredentials && Date.now() < cachedCredentials.expires) {
+    console.log('[Agora] Using cached credentials');
     return cachedCredentials;
   }
 
   // First try environment variables (for local development and emergency fallback)
   const envAppId = process.env.AGORA_APP_ID;
   const envAppCertificate = process.env.AGORA_APP_CERTIFICATE;
+
+  console.log('[Agora] Environment check:');
+  console.log(`[Agora] AGORA_APP_ID: ${envAppId ? 'SET (' + envAppId.length + ' chars)' : 'NOT SET'}`);
+  console.log(`[Agora] AGORA_APP_CERTIFICATE: ${envAppCertificate ? 'SET (' + envAppCertificate.length + ' chars)' : 'NOT SET'}`);
 
   // Allow direct environment variables for emergency cases
   if (envAppId && envAppCertificate &&
@@ -84,17 +89,22 @@ async function getAgoraCredentials() {
 
 export async function GET(req: Request) {
   try {
+    console.log('[Agora] Token request received');
     const url = new URL(req.url);
     const channelName = url.searchParams.get('channelName') || 'default-channel';
     const uidParam = url.searchParams.get('uid') || '0';
     const uid = Number(uidParam) || 0;
 
+    console.log(`[Agora] Request params: channelName=${channelName}, uid=${uid}`);
+
     // Get Agora credentials securely
     const { appId, appCertificate } = await getAgoraCredentials();
 
+    console.log(`[Agora] Retrieved credentials: appId length=${appId.length}, appCertificate length=${appCertificate.length}`);
+
     // Validate credential format (basic check)
     if (appId.length !== 32 || appCertificate.length !== 32) {
-      console.error('Invalid Agora credential format');
+      console.error('[Agora] Invalid credential format detected');
       return NextResponse.json({
         error: 'Video conferencing service configuration error'
       }, { status: 503 });

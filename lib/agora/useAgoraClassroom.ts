@@ -363,7 +363,7 @@ export function useAgoraClassroom({
               userPayload: {
                 cursorName: isTeacher ? 'Teacher' : 'Student',
               },
-              isWritable: isTeacher, // Only teacher can write
+              isWritable: true, // Allow both teacher and student to write for collaborative whiteboard
             });
 
             console.log('Joined whiteboard room:', { 
@@ -406,22 +406,14 @@ export function useAgoraClassroom({
               if (typeof room.setViewMode === 'function') room.setViewMode('Freedom');
             } catch {}
 
-            // Enable writable mode only for teacher
+            // Enable writable mode for both teacher and student (collaborative whiteboard)
             try {
-              if (isTeacher) {
-                if (typeof room.setWritable === 'function') {
-                  await room.setWritable(true);
-                  console.log('Teacher: Whiteboard setWritable(true) called');
-                } else if (typeof room.enableWrite === 'function') {
-                  await room.enableWrite(true);
-                  console.log('Teacher: Whiteboard enableWrite(true) called');
-                }
-              } else {
-                // Student: set to read-only
-                if (typeof room.setWritable === 'function') {
-                  await room.setWritable(false);
-                  console.log('Student: Whiteboard setWritable(false) called (read-only)');
-                }
+              if (typeof room.setWritable === 'function') {
+                await room.setWritable(true);
+                console.log(`${isTeacher ? 'Teacher' : 'Student'}: Whiteboard setWritable(true) called (collaborative mode)`);
+              } else if (typeof room.enableWrite === 'function') {
+                await room.enableWrite(true);
+                console.log(`${isTeacher ? 'Teacher' : 'Student'}: Whiteboard enableWrite(true) called (collaborative mode)`);
               }
             } catch (e) {
               console.warn('Failed to set whiteboard writable mode', e);
@@ -439,23 +431,19 @@ export function useAgoraClassroom({
 
             await waitForReady();
 
-            // 設定預設工具為鉛筆 (only for teacher)
+            // 設定預設工具為鉛筆 (for both teacher and student in collaborative mode)
             // set default tool after whiteboard is ready
-            if (isTeacher) {
-              const defaultStroke = [0, 0, 0] as [number, number, number];
-              try {
-                if (typeof room.setMemberState === 'function') {
-                  room.setMemberState({ 
-                    currentApplianceName: 'pencil' as any, 
-                    strokeColor: defaultStroke
-                  });
-                  console.log('Teacher: Whiteboard default tool set to pencil');
-                }
-              } catch (e) {
-                console.warn('Teacher setMemberState failed', e);
+            const defaultStroke = [0, 0, 0] as [number, number, number];
+            try {
+              if (typeof room.setMemberState === 'function') {
+                room.setMemberState({ 
+                  currentApplianceName: 'pencil' as any, 
+                  strokeColor: defaultStroke
+                });
+                console.log(`${isTeacher ? 'Teacher' : 'Student'}: Whiteboard default tool set to pencil`);
               }
-            } else {
-              console.log('Student: Whiteboard in read-only mode');
+            } catch (e) {
+              console.warn(`${isTeacher ? 'Teacher' : 'Student'} setMemberState failed`, e);
             }
 
             // diagnostic: expose available methods
