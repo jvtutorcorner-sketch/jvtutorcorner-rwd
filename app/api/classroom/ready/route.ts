@@ -12,13 +12,13 @@ async function readList(uuid: string) {
   const p = await dataPathFor(uuid);
   try {
     const txt = await fs.promises.readFile(p, 'utf8');
-    return JSON.parse(txt) as Array<{ role: string; email?: string }>;
+    return JSON.parse(txt) as Array<{ role: string; userId: string }>;
   } catch (e) {
     return [];
   }
 }
 
-async function writeList(uuid: string, arr: Array<{ role: string; email?: string }>) {
+async function writeList(uuid: string, arr: Array<{ role: string; userId: string }>) {
   const p = await dataPathFor(uuid);
   try {
     await fs.promises.mkdir(path.dirname(p), { recursive: true });
@@ -43,16 +43,21 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({} as any));
-    const { uuid, role, email, ready } = body || {};
+    const { uuid, role, userId, action } = body || {};
     if (!uuid) return NextResponse.json({ error: 'uuid required' }, { status: 400 });
+    if (!role) return NextResponse.json({ error: 'role required' }, { status: 400 });
+    if (!userId) return NextResponse.json({ error: 'userId required' }, { status: 400 });
+    if (!['ready', 'unready'].includes(action)) return NextResponse.json({ error: 'action must be ready or unready' }, { status: 400 });
 
     const arr = await readList(uuid);
-    const filtered = arr.filter((p) => !(p.role === role && p.email === email));
-    if (ready) filtered.push({ role, email });
+    const filtered = arr.filter((p) => !(p.role === role && p.userId === userId));
+    if (action === 'ready') {
+      filtered.push({ role, userId });
+    }
     await writeList(uuid, filtered);
     // notify SSE subscribers (log for debugging)
     try {
-      console.log(`/api/classroom/ready POST broadcast uuid=${uuid} role=${role} email=${email} ready=${!!ready} participants=${filtered.length}`);
+      console.log(`/api/classroom/ready POST broadcast uuid=${uuid} role=${role} userId=${userId} action=${action} participants=${filtered.length}`);
       broadcast(uuid, { participants: filtered });
     } catch (e) {
       console.warn('/api/classroom/ready broadcast failed', e);

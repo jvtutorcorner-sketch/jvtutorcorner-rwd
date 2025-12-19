@@ -18,7 +18,7 @@ export default function ClassroomWaitPage() {
   const course = COURSES.find((c) => c.id === courseId) || null;
 
   const sessionReadyKey = `classroom_session_ready_${courseId}_${orderId ?? 'noorder'}`;
-  const [participants, setParticipants] = useState<Array<{ role: string; email?: string }>>([]);
+  const [participants, setParticipants] = useState<Array<{ role: string; userId: string }>>([]);
   const [ready, setReady] = useState(false);
   const [roomUuid, setRoomUuid] = useState<string | null>(null);
   const [currentQuality, setCurrentQuality] = useState<VideoQuality>('high');
@@ -52,11 +52,12 @@ export default function ClassroomWaitPage() {
     try {
       const raw = localStorage.getItem(sessionReadyKey);
       console.log('readReady called:', { sessionReadyKey, raw, role, email: storedUserState?.email, time: new Date().toISOString() });
-      const arr = raw ? JSON.parse(raw) as Array<{ role: string; email?: string }> : [];
+      const arr = raw ? JSON.parse(raw) as Array<{ role: string; userId: string }> : [];
       setParticipants(arr);
       const email = storedUserState?.email;
-      const selfMarked = role ? arr.some((p) => p.role === role && p.email === email) : false;
-      console.log('readReady parsed:', { arr, email, selfMarked });
+      const userId = email || role || 'anonymous';
+      const selfMarked = role ? arr.some((p) => p.role === role && p.userId === userId) : false;
+      console.log('readReady parsed:', { arr, userId, selfMarked });
       setReady(selfMarked);
     } catch (e) {
       console.error('readReady error:', e);
@@ -81,14 +82,15 @@ export default function ClassroomWaitPage() {
           console.log('After BC message, localStorage value:', raw);
           // Re-read and parse the ready state
           try {
-            const arr = raw ? JSON.parse(raw) as Array<{ role: string; email?: string }> : [];
+            const arr = raw ? JSON.parse(raw) as Array<{ role: string; userId: string }> : [];
             setParticipants(arr);
             // Re-check if current user is marked ready
             const currentRole = new URLSearchParams(window.location.search).get('role') as 'teacher' | 'student' | null;
             const email = getStoredUser()?.email;
-            const selfMarked = currentRole ? arr.some((p) => p.role === currentRole && p.email === email) : false;
+            const userId = email || currentRole || 'anonymous';
+            const selfMarked = currentRole ? arr.some((p) => p.role === currentRole && p.userId === userId) : false;
             setReady(selfMarked);
-            console.log('After BC, updated state:', { arr, selfMarked, currentRole, email });
+            console.log('After BC, updated state:', { arr, selfMarked, currentRole, userId });
           } catch (e) {
             console.error('Failed to parse after BC message:', e);
           }
@@ -235,7 +237,7 @@ export default function ClassroomWaitPage() {
         fetch('/api/classroom/ready', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ uuid: syncUuid, role, email: userId, ready: !ready }),
+          body: JSON.stringify({ uuid: syncUuid, role, userId, action: ready ? 'unready' : 'ready' }),
         }).then((r) => r.json()).then((j) => {
           console.log('Server ready update response:', j);
           setParticipants(j.participants || []);
@@ -256,15 +258,15 @@ export default function ClassroomWaitPage() {
 
   const fallbackToLocalStorage = () => {
     const raw = localStorage.getItem(sessionReadyKey);
-    const arr = raw ? JSON.parse(raw) as Array<{ role: string; email?: string }> : [];
+    const arr = raw ? JSON.parse(raw) as Array<{ role: string; userId: string }> : [];
     const email = storedUserState?.email;
     // For demo purposes, use role as identifier if email is not available
     const userId = email || role || 'anonymous';
 
     // Check if current user is already in the array
-    const existingIndex = role ? arr.findIndex((p) => p.role === role && p.email === userId) : -1;
+    const existingIndex = role ? arr.findIndex((p) => p.role === role && p.userId === userId) : -1;
 
-    let filtered: Array<{ role: string; email?: string }>;
+    let filtered: Array<{ role: string; userId: string }>;
     let newReadyState: boolean;
 
     if (existingIndex >= 0) {
@@ -273,13 +275,13 @@ export default function ClassroomWaitPage() {
       newReadyState = false;
     } else {
       // User is not ready, add them (toggle on)
-      filtered = [...arr, { role: role!, email: userId }];
+      filtered = [...arr, { role: role!, userId }];
       newReadyState = true;
     }
 
     console.log('toggleReady localStorage:', {
       role,
-      email: userId,
+      userId,
       currentReady: ready,
       existingIndex,
       arr,
@@ -320,17 +322,11 @@ export default function ClassroomWaitPage() {
   }, [roomUuid]);
 
   useEffect(() => {
-    // cleanup on unmount
+    // cleanup on unmount - DON'T remove ready state when entering classroom
+    // Users should remain ready until they explicitly unready
     return () => {
-      try {
-        const raw = localStorage.getItem(sessionReadyKey);
-        const arr = raw ? JSON.parse(raw) as Array<{ role: string; email?: string }> : [];
-        const email = storedUserState?.email;
-        // For demo purposes, use role as identifier if email is not available
-        const userId = email || role || 'anonymous';
-        const filtered = role ? arr.filter((p) => !(p.role === role && p.email === userId)) : arr;
-        localStorage.setItem(sessionReadyKey, JSON.stringify(filtered));
-      } catch (e) {}
+      // Keep ready state intact when navigating to classroom
+      // The ready state will be cleared when the user explicitly unready's
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionReadyKey, role, storedUserState]);
