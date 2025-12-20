@@ -957,3 +957,36 @@ a{ color: var(--primary) }
 @media (max-width:768px){ .hero{ padding:12px } .carousel{ padding:10px } }
 
 /* end lavender overrides */
+
+/* Testimony page avatar sizing */
+.testimony-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 9999px;
+  object-fit: cover;
+  margin-right: 16px;
+  background: #f3e9ff;
+  flex-shrink: 0;
+}
+
+@media (max-width: 768px) {
+  .testimony-avatar { width: 48px; height: 48px; margin-right: 12px; }
+}
+
+/* make rating SVGs and any inline SVGs in testimony cards smaller */
+.testimony-card svg {
+  width: 16px !important;
+  height: 16px !important;
+}
+
+/* ensure the rating row aligns nicely */
+.testimony-card .rating-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 12px;
+  align-items: center;
+}
+
+@media (max-width: 768px) {
+  .testimony-card svg { width: 14px !important; height: 14px !important; }
+}

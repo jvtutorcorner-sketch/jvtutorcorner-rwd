@@ -162,14 +162,14 @@ export default function PricingPage() {
                 <div className="card-actions">
                   {isCurrent ? (
                     <button className="card-button" disabled>
-                      ✓ 目前登入的測試帳號就是此方案
+                      ✓ 您目前已啟用此方案
                     </button>
                   ) : (
                     <Link
                       href="/login"
                       className="card-button primary"
                     >
-                      使用對應測試帳號登入試用此方案
+                      登入以使用此方案
                     </Link>
                   )}
                 </div>
@@ -178,29 +178,7 @@ export default function PricingPage() {
           })}
         </div>
       </section>
-
       {/* 升級方案 / 付款 已移除 */}
-
-      <section className="section">
-        <div className="card">
-          <h2>測試流程建議</h2>
-          <ol>
-            <li>
-              先到 <Link href="/login">/login</Link> 使用{' '}
-              <code>basic@test.com</code> + <code>123456</code> 登入，
-              觀察 Basic 方案在價目頁的呈現方式。
-            </li>
-            <li>
-              再登出後改用 <code>pro@test.com</code>、最後是{' '}
-              <code>elite@test.com</code>，確認三種方案的差異文案是否清楚。
-            </li>
-            <li>
-              之後若要接金流，只要在資料庫裡建立實際的訂閱紀錄，
-              把目前的測試登入邏輯改成真正的會員身份，就可以無縫升級。
-            </li>
-          </ol>
-        </div>
-      </section>
     </div>
   );
 }
