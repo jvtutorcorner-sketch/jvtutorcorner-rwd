@@ -129,36 +129,49 @@ export default function AdminCarouselPage() {
     setMessage(null);
 
     try {
-      // 將圖片轉換為 base64 (簡單實現，生產環境建議使用 S3)
-      const reader = new FileReader();
-      reader.onload = async (e) => {
-        const base64 = e.target?.result as string;
+      // 使用 FormData 上傳到 S3
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('alt', file.name);
 
-        const response = await fetch('/api/carousel', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            url: base64,
-            alt: file.name,
-            order: images.length,
-          }),
-        });
+      const uploadResponse = await fetch('/api/carousel/upload', {
+        method: 'POST',
+        body: formData,
+      });
 
-        if (response.ok) {
-          const newImage = await response.json();
-          setImages([...images, newImage]);
-          setMessage('圖片上傳成功');
-        } else {
-          setMessage('上傳失敗，請重試');
-        }
-        setUploading(false);
-      };
-      reader.readAsDataURL(file);
+      if (!uploadResponse.ok) {
+        const error = await uploadResponse.json();
+        throw new Error(error.error || '上傳失敗');
+      }
+
+      const uploadResult = await uploadResponse.json();
+
+      // 將上傳結果保存到 carousel
+      const response = await fetch('/api/carousel', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          url: uploadResult.url,
+          alt: uploadResult.alt,
+          order: images.length,
+        }),
+      });
+
+      if (response.ok) {
+        const newImage = await response.json();
+        setImages(prev => [...prev, newImage]);
+        setMessage('圖片上傳成功！');
+        // 清空文件輸入
+        event.target.value = '';
+      } else {
+        throw new Error('保存圖片信息失敗');
+      }
     } catch (error) {
       console.error('Upload error:', error);
-      setMessage('上傳失敗，請重試');
+      setMessage(`上傳失敗: ${error instanceof Error ? error.message : '未知錯誤'}`);
+    } finally {
       setUploading(false);
     }
   };

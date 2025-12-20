@@ -16,6 +16,7 @@ export const Carousel: React.FC<CarouselProps> = ({
   isImage = false,
 }) => {
   const [index, setIndex] = useState(0);
+  const [loadedImages, setLoadedImages] = useState<Record<number, boolean>>({});
 
   useEffect(() => {
     if (slides.length <= 1) return;
@@ -31,15 +32,28 @@ export const Carousel: React.FC<CarouselProps> = ({
 
   return (
     <div className="carousel">
-      <div className="carousel-slide">
+      <div className="carousel-slide" style={{ background: '#f3f4f6' }}>
         {isImage ? (
-          <Image
-            src={slides[index]}
-            alt={`Carousel slide ${index + 1}`}
-            fill
-            style={{ objectFit: 'cover' }}
-            priority={index === 0}
-          />
+          <>
+            {!loadedImages[index] && (
+              <div className="carousel-loading">
+                <div className="spinner"></div>
+              </div>
+            )}
+            <Image
+              src={slides[index]}
+              alt={`Carousel slide ${index + 1}`}
+              fill
+              style={{ 
+                objectFit: 'cover',
+                opacity: loadedImages[index] ? 1 : 0,
+                transition: 'opacity 0.5s ease-in-out'
+              }}
+              priority={index === 0}
+              unoptimized={slides[index].includes('googleusercontent.com') || slides[index].includes('drive.google.com')}
+              onLoad={() => setLoadedImages(prev => ({ ...prev, [index]: true }))}
+            />
+          </>
         ) : (
           <p>{slides[index]}</p>
         )}

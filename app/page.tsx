@@ -45,7 +45,11 @@ export default function HomePage() {
   const { t } = useI18n();
   const router = useRouter();
   const [user, setUser] = useState<StoredUser | null>(null);
-  const [carouselImages, setCarouselImages] = useState<string[]>([]);
+  const [carouselImages, setCarouselImages] = useState<string[]>([
+    '一對一視訊家教',
+    '小班制團體課程',
+    '即時白板 + 錄影回放',
+  ]);
 
   useEffect(() => {
     const u = getStoredUser();
@@ -55,22 +59,13 @@ export default function HomePage() {
     fetch('/api/carousel')
       .then(res => res.json())
       .then(data => {
-        if (Array.isArray(data)) {
+        if (Array.isArray(data) && data.length > 0) {
           const urls = data.map((img: any) => img.url);
-          setCarouselImages(urls.length > 0 ? urls : [
-            '一對一視訊家教',
-            '小班制團體課程',
-            '即時白板 + 錄影回放',
-          ]);
+          setCarouselImages(urls);
         }
       })
       .catch(err => {
         console.error('Error loading carousel:', err);
-        setCarouselImages([
-          '一對一視訊家教',
-          '小班制團體課程',
-          '即時白板 + 錄影回放',
-        ]);
       });
   }, []);
 

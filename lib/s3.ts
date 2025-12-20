@@ -1,0 +1,78 @@
+// lib/s3.ts
+import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { Upload } from '@aws-sdk/lib-storage';
+
+const s3Client = new S3Client({
+  region: process.env.AWS_REGION || 'ap-northeast-1',
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || '',
+  },
+});
+
+const BUCKET_NAME = process.env.AWS_S3_BUCKET_NAME || 'jvtutorcorner-images';
+
+export interface UploadResult {
+  url: string;
+  key: string;
+}
+
+/**
+ * Upload a file to S3
+ */
+export async function uploadToS3(file: File | Buffer, fileName: string, mimeType?: string): Promise<UploadResult> {
+  try {
+    const key = `carousel/${Date.now()}-${fileName}`;
+
+    const upload = new Upload({
+      client: s3Client,
+      params: {
+        Bucket: BUCKET_NAME,
+        Key: key,
+        Body: file,
+        ContentType: mimeType || 'image/jpeg',
+        ACL: 'public-read', // Make images publicly accessible
+      },
+    });
+
+    await upload.done();
+
+    const url = `https://${BUCKET_NAME}.s3.${process.env.AWS_REGION || 'ap-northeast-1'}.amazonaws.com/${key}`;
+
+    return { url, key };
+  } catch (error) {
+    console.error('S3 upload error:', error);
+    throw new Error('Failed to upload image to S3');
+  }
+}
+
+/**
+ * Delete a file from S3
+ */
+export async function deleteFromS3(key: string): Promise<void> {
+  try {
+    const command = new DeleteObjectCommand({
+      Bucket: BUCKET_NAME,
+      Key: key,
+    });
+
+    await s3Client.send(command);
+  } catch (error) {
+    console.error('S3 delete error:', error);
+    throw new Error('Failed to delete image from S3');
+  }
+}
+
+/**
+ * Extract S3 key from URL
+ */
+export function getS3KeyFromUrl(url: string): string | null {
+  try {
+    const urlObj = new URL(url);
+    const pathParts = urlObj.pathname.split('/');
+    // Remove empty first part and 'carousel' folder
+    return pathParts.slice(2).join('/');
+  } catch {
+    return null;
+  }
+}

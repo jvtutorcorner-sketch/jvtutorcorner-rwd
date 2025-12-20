@@ -1,6 +1,7 @@
 // app/api/carousel/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { getCarouselImages, addCarouselImage, deleteCarouselImage, CarouselImage } from '@/lib/carousel';
+import { deleteFromS3, getS3KeyFromUrl } from '@/lib/s3';
 import fs from 'fs';
 import resolveDataFile from '@/lib/localData';
 
@@ -132,20 +133,43 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Missing image ID' }, { status: 400 });
     }
 
+    let imageToDelete: CarouselImage | undefined;
+
     if (!useDynamo) {
       // Use local storage in development
       const imageIndex = LOCAL_CAROUSEL_IMAGES.findIndex(img => img.id === id);
       if (imageIndex >= 0) {
+        imageToDelete = LOCAL_CAROUSEL_IMAGES[imageIndex];
         LOCAL_CAROUSEL_IMAGES.splice(imageIndex, 1);
         saveLocalCarouselImages().catch(() => {});
-        return NextResponse.json({ success: true });
+      } else {
+        return NextResponse.json({ error: 'Image not found' }, { status: 404 });
       }
-      return NextResponse.json({ error: 'Image not found' }, { status: 404 });
+    } else {
+      // For DynamoDB, we need to get the image first to get the URL for S3 deletion
+      const images = await getCarouselImages();
+      imageToDelete = images.find(img => img.id === id);
+      if (!imageToDelete) {
+        return NextResponse.json({ error: 'Image not found' }, { status: 404 });
+      }
+
+      const success = await deleteCarouselImage(id);
+      if (!success) {
+        return NextResponse.json({ error: 'Failed to delete image from database' }, { status: 500 });
+      }
     }
 
-    const success = await deleteCarouselImage(id);
-    if (!success) {
-      return NextResponse.json({ error: 'Failed to delete image' }, { status: 500 });
+    // Delete from S3 if it's an S3 URL (not base64)
+    if (imageToDelete.url && !imageToDelete.url.startsWith('data:')) {
+      try {
+        const s3Key = getS3KeyFromUrl(imageToDelete.url);
+        if (s3Key) {
+          await deleteFromS3(s3Key);
+        }
+      } catch (s3Error) {
+        console.warn('Failed to delete image from S3:', s3Error);
+        // Don't fail the whole operation if S3 deletion fails
+      }
     }
 
     return NextResponse.json({ success: true });

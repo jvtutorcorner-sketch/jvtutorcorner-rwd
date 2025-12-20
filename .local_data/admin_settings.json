@@ -440,9 +440,9 @@
     "/terms": {
       "label": "服務條款",
       "menu": {
-        "admin": false,
-        "teacher": false,
-        "student": false,
+        "admin": true,
+        "teacher": true,
+        "student": true,
         "ttt": false
       },
       "dropdown": {
@@ -1198,21 +1198,21 @@
         {
           "roleId": "admin",
           "roleName": "Admin",
-          "menuVisible": false,
+          "menuVisible": true,
           "dropdownVisible": false,
           "pageVisible": true
         },
         {
           "roleId": "teacher",
           "roleName": "Teacher",
-          "menuVisible": false,
+          "menuVisible": true,
           "dropdownVisible": false,
           "pageVisible": true
         },
         {
           "roleId": "student",
           "roleName": "Student",
-          "menuVisible": false,
+          "menuVisible": true,
           "dropdownVisible": false,
           "pageVisible": true
         },

@@ -10,19 +10,6 @@ export async function GET(req: NextRequest) {
     const url = new URL(req.url);
     const uuid = url.searchParams.get('uuid') || 'default';
 
-    // Polyfill for Node.js 16 or environments without global ReadableStream
-    if (typeof ReadableStream === 'undefined') {
-      try {
-        // Try to use web-streams-polyfill if installed
-        // @ts-ignore
-        global.ReadableStream = require('web-streams-polyfill/ponyfill').ReadableStream;
-        console.log('[SSE] Polyfilled ReadableStream using web-streams-polyfill');
-      } catch (e) {
-        console.error('ReadableStream not available and polyfill failed:', e);
-        return new Response('Server Error: ReadableStream not supported. Please upgrade Node.js to v18+ or install web-streams-polyfill.', { status: 500 });
-      }
-    }
-
     console.log('[SSE] creating ReadableStream');
     const encoder = new TextEncoder();
     const stream = new ReadableStream({

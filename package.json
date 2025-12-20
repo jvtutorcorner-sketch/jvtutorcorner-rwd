@@ -7,13 +7,16 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "setup-agora": "node scripts/setup-agora-credentials.js"
+    "setup-agora": "node scripts/setup-agora-credentials.js",
+    "setup-s3": "node scripts/setup-s3-storage.js"
   },
   "dependencies": {
     "@aws-amplify/ui-react": "^6.13.1",
     "@aws-sdk/client-dynamodb": "^3.940.0",
+    "@aws-sdk/client-s3": "^3.956.0",
     "@aws-sdk/client-ssm": "^3.955.0",
     "@aws-sdk/lib-dynamodb": "^3.940.0",
+    "@aws-sdk/lib-storage": "^3.956.0",
     "@paypal/react-paypal-js": "^8.9.2",
     "agora-access-token": "^2.0.4",
     "agora-rtc-sdk-ng": "^4.24.2",
@@ -25,7 +28,6 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-konva": "^18.1.6",
-    "web-streams-polyfill": "^4.2.0",
     "white-web-sdk": "^2.16.53"
   },
   "devDependencies": {
