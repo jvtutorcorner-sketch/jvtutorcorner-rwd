@@ -68,5 +68,15 @@
     "status": "ACTIVE",
     "createdAt": "2025-12-16T14:27:08.580Z",
     "updatedAt": "2025-12-16T14:27:08.769Z"
+  },
+  {
+    "id": "enr_1766210663807_e652e4e8",
+    "name": "pro",
+    "email": "pro@test.com",
+    "courseId": "aaa775a1-73b4-4139-85bc-73f90dd8b6dc",
+    "courseTitle": "中文GO",
+    "status": "ACTIVE",
+    "createdAt": "2025-12-20T06:04:23.807Z",
+    "updatedAt": "2025-12-20T06:04:24.908Z"
   }
 ]

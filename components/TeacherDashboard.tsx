@@ -9,7 +9,6 @@ export default function TeacherDashboard({ teacherId, teacherName }: Props) {
   const [canEdit, setCanEdit] = useState(false);
   const [profile, setProfile] = useState<any>(null);
   const [courses, setCourses] = useState<any[]>([]);
-  const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [newCourseTitle, setNewCourseTitle] = useState('');
   const [newCoursePrice, setNewCoursePrice] = useState('');
@@ -40,15 +39,13 @@ export default function TeacherDashboard({ teacherId, teacherName }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [teacherId, teacherName, profile?.email]);
 
-  // After courses are loaded, fetch related orders
-  useEffect(() => {
-    if (courses && courses.length > 0) {
-      loadOrders();
-    }
-    // if no courses, clear orders
-    if (!courses || courses.length === 0) setOrders([]);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [courses]);
+  // After courses are loaded, no need to load orders anymore since they're shown on /orders page
+  // useEffect(() => {
+  //   if (courses && courses.length > 0) {
+  //     loadOrders();
+  //   }
+  //   if (!courses || courses.length === 0) setOrders([]);
+  // }, [courses]);
 
   async function loadCourses() {
     setLoading(true);
@@ -61,16 +58,6 @@ export default function TeacherDashboard({ teacherId, teacherName }: Props) {
     } finally {
       setLoading(false);
     }
-  }
-
-  async function loadOrders() {
-    try {
-      const res = await fetch('/api/orders');
-      const data = await res.json();
-      if (res.ok && data?.data) {
-        setOrders(data.data.filter((o: any) => courses.some((c) => c.id === o.courseId)));
-      }
-    } catch (e) {}
   }
 
   async function handleAddCourse(e: React.FormEvent) {
@@ -165,31 +152,6 @@ export default function TeacherDashboard({ teacherId, teacherName }: Props) {
         )}
       </div>
 
-      <div style={{ marginTop: 12 }}>
-        <h4>相關訂單</h4>
-        {orders.length === 0 ? <p className="muted">沒有相關訂單。</p> : (
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>
-                <th>Order</th>
-                <th>CourseId</th>
-                <th>Amount</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {orders.map((o) => (
-                <tr key={o.orderId}>
-                  <td>{o.orderNumber || o.orderId}</td>
-                  <td>{o.courseId}</td>
-                  <td>{o.amount}</td>
-                  <td>{o.status}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
     </div>
   );
 }

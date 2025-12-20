@@ -167,7 +167,7 @@
       "dropdown": {
         "admin": true,
         "teacher": false,
-        "student": false,
+        "student": true,
         "test": false,
         "ttt": false
       },
@@ -678,7 +678,7 @@
           "roleId": "student",
           "roleName": "Student",
           "menuVisible": false,
-          "dropdownVisible": false
+          "dropdownVisible": true
         },
         {
           "roleId": "test",

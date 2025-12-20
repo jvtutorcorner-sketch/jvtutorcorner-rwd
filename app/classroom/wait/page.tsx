@@ -104,8 +104,14 @@ export default function ClassroomWaitPage() {
       
       // Test that BroadcastChannel is working by sending a test message
       setTimeout(() => {
-        console.log('BroadcastChannel test: sending test message');
-        channel.postMessage({ type: 'test', timestamp: Date.now() });
+        try {
+          if (bcRef.current) {
+            console.log('BroadcastChannel test: sending test message');
+            bcRef.current.postMessage({ type: 'test', timestamp: Date.now() });
+          }
+        } catch (e) {
+          console.warn('BroadcastChannel test failed:', e);
+        }
       }, 100);
       
       console.log('Persistent BroadcastChannel created with listener:', sessionReadyKey, 'instance:', channel);
