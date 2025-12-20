@@ -533,22 +533,177 @@ nav.main-nav a.active {
   text-decoration: underline;
 }
 
-/* Classroom responsive rules */
-.client-classroom { display: flex; gap: 16px; align-items: flex-start; }
-.client-classroom .client-left { flex: 1; min-width: 0; display: flex; justify-content: center; }
-.client-classroom .client-left-inner { width: 100%; max-width: 1000px; }
-.client-classroom .client-right { width: 360px; display: flex; flex-direction: column; gap: 12px; }
-.canvas-whiteboard { width: 100%; height: auto; }
-.canvas-whiteboard canvas { width: 100% !important; height: auto !important; display: block; }
-.client-classroom video { width: 100%; height: 100%; object-fit: contain; }
+/* Classroom Layout - Google Meet Style */
+.client-classroom {
+  display: flex;
+  gap: 20px;
+  align-items: stretch;
+  height: calc(100vh - 120px);
+  min-height: 500px;
+  padding: 20px;
+  background-color: #f8f9fa;
+}
 
-@media (max-width: 900px) {
-  .client-classroom { flex-direction: column; }
-  .client-classroom .client-right { width: 100%; }
-  .client-classroom .client-left { width: 100%; }
-  .client-classroom .client-left-inner { max-width: 100%; }
-  .client-classroom .client-right > div { width: 100%; }
-  .client-classroom .client-right video { height: auto; max-height: 40vh; }
+.client-classroom .client-left {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.client-classroom .client-left-inner {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  display: flex;
+  flex-direction: column;
+}
+
+.client-classroom .whiteboard-container {
+  background: #fff;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.canvas-whiteboard {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.canvas-whiteboard canvas {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+}
+
+.client-classroom .client-right {
+  width: 300px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.client-classroom .client-right-inner {
+  background: #fff;
+  padding: 16px;
+  borderRadius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+
+.client-classroom .client-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.client-classroom .video-container {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #000;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  position: relative;
+  flex-shrink: 0;
+}
+
+.client-classroom video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.client-classroom .video-label {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  background: rgba(0, 0, 0, 0.5);
+  color: white;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  z-index: 10;
+}
+
+/* Mobile & Tablet Portrait */
+@media (max-width: 1024px) and (orientation: portrait) {
+  .client-classroom {
+    flex-direction: column;
+    height: auto;
+    min-height: 100vh;
+    padding: 10px;
+    gap: 10px;
+    overflow-y: auto;
+  }
+  .client-classroom .client-left {
+    width: 100%;
+    height: 60vh;
+    flex: none;
+  }
+  .client-classroom .client-left-inner {
+    height: 100%;
+  }
+  .client-classroom .whiteboard-container {
+    flex: 1;
+    min-height: 0;
+  }
+  .client-classroom .client-right {
+    width: 100%;
+    height: auto;
+    overflow-y: visible;
+  }
+  .client-classroom .client-right-inner {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 10px;
+  }
+  .client-classroom .video-container {
+    width: calc(50% - 5px);
+    max-width: none;
+  }
+  .client-classroom .client-controls {
+    width: 100%;
+  }
+}
+
+/* Mobile Landscape */
+@media (max-height: 600px) and (orientation: landscape) {
+  .client-classroom {
+    height: 100vh;
+    padding: 5px;
+    gap: 10px;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 9999;
+  }
+  .client-classroom .client-right {
+    width: 180px;
+    gap: 8px;
+    padding-right: 2px;
+  }
+  .client-classroom .video-container {
+    border-radius: 8px;
+  }
+  .client-classroom .video-label {
+    font-size: 10px;
+    padding: 1px 4px;
+  }
 }
 
 .card-meta {

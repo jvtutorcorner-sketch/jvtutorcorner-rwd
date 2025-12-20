@@ -174,6 +174,47 @@ export default function MyCoursesPage() {
     }
   }
 
+  // PDF uploader: read file and POST to /api/whiteboard/event
+  useEffect(() => {
+    try {
+      const input = document.getElementById('wb-pdf-input') as HTMLInputElement | null;
+      if (!input) return;
+      const handler = async (e: Event) => {
+        const el = e.target as HTMLInputElement;
+        const f = el.files?.[0] ?? null;
+        if (!f) return;
+        try {
+          const reader = new FileReader();
+          reader.onload = async () => {
+            const dataUrl = String(reader.result || '');
+            // choose a sensible default course id when none is explicitly selected
+            const courseId = (courses && courses.length > 0) ? String(courses[0].id) : 'default';
+            const uuid = `course_${courseId}`;
+            try {
+              await fetch('/api/whiteboard/event', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ uuid, event: { type: 'pdf-set', name: f.name, dataUrl } }),
+              });
+              alert('PDF 已上傳並廣播到白板。');
+              // clear input
+              if (input) input.value = '';
+            } catch (err) {
+              console.error('PDF upload failed', err);
+              alert('PDF 上傳失敗，請查看控制台。');
+            }
+          };
+          reader.readAsDataURL(f);
+        } catch (err) {
+          console.error('Failed to read PDF', err);
+          alert('無法讀取檔案。');
+        }
+      };
+      input.addEventListener('change', handler);
+      return () => { input.removeEventListener('change', handler); };
+    } catch (e) {}
+  }, [courses]);
+
   async function handleEdit(course: Course) {
     // ask for confirmation first
     if (!confirm(`確定要編輯課程「${course.title}」嗎？`)) return;
@@ -229,6 +270,7 @@ export default function MyCoursesPage() {
     <div style={{ padding: 16 }}>
       <h1>我的課程</h1>
       <p>教師：{firstName} {lastName}</p>
+      {/* PDF uploader moved into the create form (above submit button) */}
       {/* count moved below course table per request */}
 
       <section style={{ marginTop: 16, marginBottom: 24 }}>
@@ -287,6 +329,16 @@ export default function MyCoursesPage() {
 
           {errors.form ? <div style={{ color: '#b91c1c', fontWeight: 600 }}>{errors.form}</div> : null}
           {successMsg ? <div style={{ color: '#16a34a', fontWeight: 600 }}>{successMsg}</div> : null}
+
+          {/* PDF uploader (no course select) - placed above submit button */}
+          <div style={{ marginTop: 8, marginBottom: 8 }}>
+            <input id="wb-pdf-input" type="file" accept="application/pdf" style={{ display: 'none' }} />
+            <button
+              type="button"
+              onClick={() => { const el = document.getElementById('wb-pdf-input') as HTMLInputElement | null; el?.click(); }}
+              style={{ padding: '8px 12px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}
+            >選擇並上傳 PDF 到白板</button>
+          </div>
 
           <div>
             <button type="submit" disabled={submitting} style={{ background: submitting ? '#9ca3af' : '#2563eb', color: '#fff', padding: '8px 14px', borderRadius: 6, border: 'none', cursor: submitting ? 'default' : 'pointer' }}>{submitting ? '提交中...' : '新增課程'}</button>
@@ -349,7 +401,7 @@ export default function MyCoursesPage() {
                         <td style={{ border: '2px solid #e5e7eb', padding: 8 }}>{c.createdAt ? (new Date(c.createdAt)).toISOString() : '-'}</td>
                         <td style={{ border: '2px solid #e5e7eb', padding: 8 }}>{c.updatedAt ? (new Date(c.updatedAt)).toISOString() : '-'}</td>
                         <td style={{ border: '2px solid #e5e7eb', padding: 8, textAlign: 'center' }}>
-                          <a href={`/my-courses/${encodeURIComponent(c.id)}/edit`} style={{ marginRight: 8, padding: '6px 10px', display: 'inline-block', textDecoration: 'none', border: '1px solid #ccc', borderRadius: 4 }}>編輯</a>
+                          <a href={`/my-courses/${encodeURIComponent(c.id)}/edit`} style={{ marginRight: 8, padding: '6px 10px', display: 'inline-block', textDecoration: 'none', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 4 }}>編輯</a>
                           <button onClick={() => handleDelete(c.id)} style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '6px 10px', borderRadius: 4 }}>刪除</button>
                         </td>
                       </tr>

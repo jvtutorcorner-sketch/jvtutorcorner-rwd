@@ -78,12 +78,14 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     isLowLatencyMode,
     setVideoQuality,
     setLowLatencyMode,
+    setLocalAudioEnabled,
   } = useAgoraClassroom({
     channelName: effectiveChannelName,
     role: (urlRole === 'teacher' || urlRole === 'student') ? (urlRole as Role) : computedRole,
     isOneOnOne: true, // 启用1对1优化
     defaultQuality: 'high' // 默认高质量
   });
+  
 
   const firstRemote = useMemo(() => remoteUsers?.[0] ?? null, [remoteUsers]);
 
@@ -93,6 +95,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   // Independent microphone control (works before joining)
   const [micEnabled, setMicEnabled] = useState(true);
   const micStreamRef = useRef<MediaStream | null>(null);
+  const micTogglePendingRef = useRef(false);
 
   // PDF viewer state
   const [selectedPdf, setSelectedPdf] = useState<File | null>(null);
@@ -232,7 +235,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
 
   // 跨标签页同步：老师开始上课时通知学生
   useEffect(() => {
-    const sessionKey = `classroom_session_${courseId}_${orderId ?? 'noorder'}`;
+    const sessionKey = `classroom_session_${effectiveChannelName}`;
     const bc = new BroadcastChannel(sessionKey);
     
     bc.onmessage = (event) => {
@@ -382,7 +385,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   const endSession = async () => {
     try {
       // 广播结束上课通知
-      const sessionKey = `classroom_session_${courseId}_${orderId ?? 'noorder'}`;
+      const sessionKey = `classroom_session_${effectiveChannelName}`;
       const bc = new BroadcastChannel(sessionKey);
       bc.postMessage({ type: 'class_ended', timestamp: Date.now() });
       console.log('已廣播結束上課通知');
@@ -497,7 +500,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       // 老师开始上课时，广播通知学生
       const isTeacher = (urlRole === 'teacher' || urlRole === 'student') ? urlRole === 'teacher' : computedRole === 'teacher';
       if (isTeacher) {
-        const sessionKey = `classroom_session_${courseId}_${orderId ?? 'noorder'}`;
+        const sessionKey = `classroom_session_${effectiveChannelName}`;
         const bc = new BroadcastChannel(sessionKey);
         bc.postMessage({ type: 'class_started', timestamp: Date.now() });
         console.log('已廣播開始上課通知');
@@ -618,6 +621,8 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
 
   // Independent microphone control (works before joining Agora session)
   const toggleMic = async () => {
+    if (micTogglePendingRef.current) return;
+    micTogglePendingRef.current = true;
     if (micEnabled) {
       // Mute microphone
       try {
@@ -628,6 +633,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
         }
         setMicEnabled(false);
         console.log('Microphone muted');
+        try { if (joined && typeof setLocalAudioEnabled === 'function') await setLocalAudioEnabled(false); } catch (e) { console.warn('Failed to mute Agora audio', e); }
       } catch (e) {
         console.warn('Failed to mute microphone:', e);
       }
@@ -661,11 +667,13 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
 
         setMicEnabled(true);
         console.log('Microphone unmuted');
+        try { if (joined && typeof setLocalAudioEnabled === 'function') await setLocalAudioEnabled(true); } catch (e) { console.warn('Failed to unmute Agora audio', e); }
       } catch (e) {
         console.warn('Failed to unmute microphone:', e);
         alert('無法啟動麥克風，請確認已授予權限。');
       }
     }
+    micTogglePendingRef.current = false;
   };
 
   useEffect(() => {
@@ -685,10 +693,10 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   }, []);
 
   return (
-    <div className="client-classroom" style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+    <div className="client-classroom">
       {/* Left: Whiteboard (flexible) */}
-      <div className="client-left" style={{ flex: 1, minWidth: 560, display: 'flex', justifyContent: 'center' }}>
-        <div className="client-left-inner" style={{ width: '100%', maxWidth: 1000 }}>
+      <div className="client-left">
+        <div className="client-left-inner">
           <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
               <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 12 }}>
                 {remainingSeconds !== null && (
@@ -696,12 +704,12 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                 )}
               </div>
           </div>
-          <div style={{ background: '#fff', borderRadius: 8, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.15)' }}>
+          <div className="whiteboard-container">
             <EnhancedWhiteboard 
               room={undefined} // Using canvas fallback instead of Netless SDK
               whiteboardRef={whiteboardRef}
-              width={900} 
-              height={640} 
+              width={1600} 
+              height={1200} 
               className="flex-1" 
               onPdfSelected={(f) => { setSelectedPdf(f); }}
               pdfFile={selectedPdf}
@@ -715,38 +723,30 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       </div>
 
       {/* Right: Video previews and controls (fixed width) */}
-      <div className="client-right" style={{ width: 360, display: 'flex', flexDirection: 'column', gap: 12 }}>
-        
-
-        <div style={{ background: '#111', padding: 12, borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center' }}>
-            <div style={{ width: 320, height: 200, background: '#000', borderRadius: 6, overflow: 'hidden' }}>
-              <video ref={localVideoRef} autoPlay muted playsInline style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-            </div>
-            <div style={{ color: '#fff', fontSize: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
-              <span>{mounted && (urlRole === 'teacher' || computedRole === 'teacher') ? 'Teacher' : 'Student'}</span>
-              <span style={{ background: permissionGranted ? '#4caf50' : '#ff9800', color: 'white', padding: '2px 8px', borderRadius: 3, fontSize: 11 }}>{permissionGranted ? '✓ 權限已授予' : '⚠ 請求權限'}</span>
+      <div className="client-right">
+        <div className="client-right-inner">
+          <div className="video-container">
+            <video ref={localVideoRef} autoPlay muted playsInline />
+            <div className="video-label">
+              {mounted && (urlRole === 'teacher' || computedRole === 'teacher') ? 'Teacher (You)' : 'Student (You)'}
             </div>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center' }}>
-            <div style={{ width: 320, height: 200, background: '#000', borderRadius: 6, overflow: 'hidden' }}>
-              <video ref={remoteVideoRef} autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+          <div className="video-container">
+            <video ref={remoteVideoRef} autoPlay playsInline />
+            <div className="video-label">
+              {firstRemote ? `${mounted && (urlRole === 'teacher' || computedRole === 'teacher') ? 'Student' : 'Teacher'}` : (mounted && (urlRole === 'teacher' || computedRole === 'teacher') ? 'Student' : 'Teacher')}
             </div>
-            <div style={{ color: '#fff', fontSize: 12 }}>{firstRemote ? `${mounted && (urlRole === 'teacher' || computedRole === 'teacher') ? 'Student' : 'Teacher'} ${firstRemote.uid}` : (mounted && (urlRole === 'teacher' || computedRole === 'teacher') ? 'Student' : 'Teacher')}</div>
+            {/* Controls moved: mic and leave are shown under the Join button in the controls area. */}
           </div>
 
           {/* Controls */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div className="client-controls">
             {mounted && (isAdmin || computedRole === 'teacher' || computedRole === 'student') && (
               <>
 
-                <div style={{ display: 'flex', gap: 8 }}>
-                  {(() => {
-                    console.log('Rendering button section, joined:', joined, 'loading:', loading);
-                    return null;
-                  })()}
-                  {!joined && permissionGranted && (
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  {permissionGranted && (
                     <button
                       onClick={previewingCamera ? () => {
                         if (previewStreamRef.current) {
@@ -759,18 +759,64 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                         setPreviewingCamera(false);
                       } : startCameraPreview}
                       style={{
-                        background: previewingCamera ? '#ff9800' : '#2196f3',
-                        color: 'white',
-                        border: 'none',
-                        padding: '8px 16px',
-                        borderRadius: 4,
-                        cursor: 'pointer',
-                        fontWeight: 600
-                      }}
+                          flex: 1,
+                          minWidth: 0,
+                          background: previewingCamera ? '#ff9800' : '#2196f3',
+                          color: 'white',
+                          border: 'none',
+                          padding: '8px 12px',
+                          borderRadius: 4,
+                          cursor: 'pointer',
+                          fontWeight: 600,
+                          textAlign: 'center'
+                        }}
                     >
                       {previewingCamera ? '停止預覽' : '📹 預覽相機'}
                     </button>
                   )}
+
+                  {/* Microphone placed here (swapped with Join) */}
+                  <button
+                    type="button"
+                    onClick={async () => { await toggleMic(); }}
+                    disabled={hasAudioInput === false}
+                    style={{
+                      flex: 1,
+                      minWidth: 0,
+                      background: micEnabled ? '#10b981' : '#6b7280',
+                      color: 'white',
+                      border: 'none',
+                      padding: '8px 12px',
+                      borderRadius: 4,
+                      cursor: hasAudioInput === false ? 'not-allowed' : 'pointer',
+                      fontWeight: 600,
+                      textAlign: 'center'
+                    }}
+                  >
+                    {micEnabled ? '🎤 麥克風開' : '🔇 麥克風關'}
+                  </button>
+
+                  {/* New Leave button in the controls row (same as handleLeave) */}
+                  <button
+                    onClick={() => { try { handleLeave(); } catch (e) { console.error('Leave click error', e); } }}
+                    disabled={!joined}
+                    style={{
+                      background: joined ? '#f44336' : '#ef9a9a',
+                      color: 'white',
+                      border: 'none',
+                      padding: '8px 12px',
+                      borderRadius: 4,
+                      cursor: joined ? 'pointer' : 'not-allowed',
+                      fontWeight: 600
+                    }}
+                  >
+                    Leave (離開)
+                  </button>
+
+                  {/* Mic toggle and Leave placed below the Join button */}
+                </div>
+
+                <div style={{ marginTop: 8, display: 'flex', gap: 8, flexDirection: 'column', alignItems: 'stretch' }}>
                   {!joined ? (
                     <button
                       onClick={() => {
@@ -791,51 +837,43 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                         color: 'white',
                         border: 'none',
                         padding: '8px 16px',
-                        borderRadius: 4,
+                        borderRadius: 6,
                         cursor: loading ? 'not-allowed' : 'pointer',
-                        fontWeight: 600
+                        fontWeight: 600,
+                        width: '100%'
                       }}
                     >
                       {loading ? '加入中...' : '🚀 Join (開始上課)'}
                     </button>
                   ) : (
-                    <>
-                      {(() => {
-                        console.log('Rendering Leave button, joined:', joined);
-                        return null;
-                      })()}
-                      <button
-                        onClick={() => {
-                          console.log('Leave button clicked, joined:', joined);
-                          try {
-                            handleLeave();
-                          } catch (e) {
-                            console.error('Button click error:', e);
-                          }
-                        }}
-                        style={{
-                          background: '#f44336',
-                          color: 'white',
-                          border: 'none',
-                          padding: '8px 16px',
-                          borderRadius: 4,
-                          cursor: 'pointer',
-                          fontWeight: 600
-                        }}
-                      >
-                        Leave (離開)
-                      </button>
-                    </>
+                    <div style={{ height: 0 }} />
                   )}
+
+                  <button
+                    onClick={() => { try { handleLeave(); } catch (e) { console.error('Leave click error', e); } }}
+                    disabled={!joined}
+                    style={{
+                      background: joined ? '#f44336' : '#ef9a9a',
+                      color: 'white',
+                      border: 'none',
+                      padding: '8px 12px',
+                      borderRadius: 6,
+                      cursor: joined ? 'pointer' : 'not-allowed',
+                      fontWeight: 600,
+                      width: '100%'
+                    }}
+                  >
+                    Leave (離開)
+                  </button>
                 </div>
-                
+
                 {joined && (
                   <div style={{ marginTop: 6, fontSize: 11, color: '#ffeb3b', background: 'rgba(255,235,59,0.1)', padding: 4, borderRadius: 4 }}>
                     ⏱ 已開始計費 | Agora 按分鐘收費
                   </div>
                 )}
                 
-                <div style={{ marginTop: 6, fontSize: 12, color: '#c7c7c7' }}>
+                <div style={{ marginTop: 6, fontSize: 12, color: '#666' }}>
                   <div><strong>Join</strong>: 開始視訊通話和白板協作（此時開始計費）</div>
                   <div><strong>Leave</strong>: 只離開目前這個瀏覽器分頁或裝置；不會影響其他參與者。</div>
                   <div><strong>End Session</strong>: 正式結束課堂，關閉白板並使所有參與者離開（只有老師可執行）。</div>

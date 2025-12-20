@@ -548,6 +548,51 @@ export function useAgoraClassroom({
     // 控制
     join,
     leave,
+    // control local audio track (mute/unmute or create+publish)
+    setLocalAudioEnabled: async (enabled: boolean) => {
+      try {
+        // If not joined, nothing to do
+        if (!clientRef.current) return;
+        if (!AgoraSDK) {
+          const mod = await import('agora-rtc-sdk-ng');
+          AgoraSDK = (mod as any).default ?? mod;
+        }
+
+        if (enabled) {
+          // create & publish if missing
+          if (!localMicTrackRef.current) {
+            try {
+              localMicTrackRef.current = await AgoraSDK.createMicrophoneAudioTrack();
+              if (localMicTrackRef.current && clientRef.current) {
+                await clientRef.current.publish([localMicTrackRef.current]);
+              }
+            } catch (e) {
+              console.warn('Failed to create/publish local mic track', e);
+            }
+          } else {
+            try {
+              if (typeof localMicTrackRef.current.setEnabled === 'function') {
+                localMicTrackRef.current.setEnabled(true);
+              } else if (typeof (localMicTrackRef.current as any).setMuted === 'function') {
+                (localMicTrackRef.current as any).setMuted(false);
+              }
+            } catch (e) { console.warn('Failed to enable local mic track', e); }
+          }
+        } else {
+          if (localMicTrackRef.current) {
+            try {
+              if (typeof localMicTrackRef.current.setEnabled === 'function') {
+                localMicTrackRef.current.setEnabled(false);
+              } else if (typeof (localMicTrackRef.current as any).setMuted === 'function') {
+                (localMicTrackRef.current as any).setMuted(true);
+              }
+            } catch (e) { console.warn('Failed to disable local mic track', e); }
+          }
+        }
+      } catch (e) {
+        console.warn('setLocalAudioEnabled error', e);
+      }
+    },
     // 新增：视频质量控制函数
     setVideoQuality,
     setLowLatencyMode,

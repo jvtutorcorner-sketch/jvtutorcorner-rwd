@@ -457,6 +457,27 @@
         "student": true,
         "ttt": true
       }
+    },
+    "/admin/whiteboard": {
+      "label": "白板功能控制",
+      "menu": {
+        "admin": false,
+        "teacher": false,
+        "student": false,
+        "ttt": false
+      },
+      "dropdown": {
+        "admin": false,
+        "teacher": false,
+        "student": false,
+        "ttt": false
+      },
+      "page": {
+        "admin": true,
+        "teacher": true,
+        "student": true,
+        "ttt": true
+      }
     }
   },
   "roles": [
@@ -1224,6 +1245,73 @@
           "pageVisible": true
         }
       ]
+    },
+    {
+      "id": "/admin/whiteboard",
+      "path": "/admin/whiteboard",
+      "label": "白板功能控制",
+      "permissions": [
+        {
+          "roleId": "admin",
+          "roleName": "Admin",
+          "menuVisible": false,
+          "dropdownVisible": false,
+          "pageVisible": true
+        },
+        {
+          "roleId": "teacher",
+          "roleName": "Teacher",
+          "menuVisible": false,
+          "dropdownVisible": false,
+          "pageVisible": true
+        },
+        {
+          "roleId": "student",
+          "roleName": "Student",
+          "menuVisible": false,
+          "dropdownVisible": false,
+          "pageVisible": true
+        },
+        {
+          "roleId": "ttt",
+          "roleName": "ttt",
+          "menuVisible": false,
+          "dropdownVisible": false,
+          "pageVisible": true
+        }
+      ]
     }
-  ]
+  ],
+  "whiteboardPermissions": {
+    "clear": [
+      "admin",
+      "teacher"
+    ],
+    "undo": [
+      "teacher",
+      "admin"
+    ],
+    "redo": [
+      "teacher",
+      "admin"
+    ],
+    "setTool:pencil": [
+      "teacher",
+      "admin"
+    ],
+    "setTool:eraser": [
+      "teacher",
+      "admin"
+    ],
+    "setColor": [
+      "teacher",
+      "admin"
+    ],
+    "pdf-set": [],
+    "setWidth": [
+      "admin",
+      "teacher"
+    ]
+  },
+  "whiteboardDefaultUuid": "course_default"
 }

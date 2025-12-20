@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useRef, useState, useEffect, useCallback } from 'react';
+import { getStoredUser } from '@/lib/mockAuth';
 
 export interface WhiteboardProps {
   room?: any; // Netless whiteboard room (if provided, use it; otherwise use canvas fallback)
@@ -62,6 +63,8 @@ export default function EnhancedWhiteboard({
   const isDrawingRef = useRef(false);
   const [mounted, setMounted] = useState(false);
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
+  const [whiteboardPermissions, setWhiteboardPermissions] = useState<Record<string, string[] | undefined> | null>(null);
+  const [currentUserRoleId, setCurrentUserRoleId] = useState<string | null>(null);
   
   // PDF state
   const [pdfLib, setPdfLib] = useState<any | null>(null);
@@ -83,6 +86,41 @@ export default function EnhancedWhiteboard({
   const useNetlessWhiteboard = Boolean(room && whiteboardRef);
 
   useEffect(() => { setMounted(true); }, []);
+
+  // load current user role and admin settings (permissions)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    // role can be supplied via URL param for testing (e.g. ?role=student)
+    const params = new URLSearchParams(window.location.search);
+    const urlRole = params.get('role');
+    if (urlRole) {
+      const mapped = urlRole === 'user' ? 'student' : urlRole;
+      setCurrentUserRoleId(mapped);
+    } else {
+      const u = getStoredUser();
+      const roleId = u?.role === 'user' ? 'student' : (u?.role || null);
+      if (roleId) setCurrentUserRoleId(roleId);
+    }
+
+    const loadSettings = async () => {
+      try {
+        const res = await fetch('/api/admin/settings');
+        const j = await res.json();
+        const s = j?.settings || j;
+        // settings may contain whiteboardPermissions map at top-level
+        const perms = s?.whiteboardPermissions || null;
+        setWhiteboardPermissions(perms);
+      } catch (e) {
+        console.warn('Failed to load admin settings', e);
+        setWhiteboardPermissions(null);
+      }
+    };
+    loadSettings();
+
+    const handler = () => { loadSettings(); };
+    window.addEventListener('tutor:admin-settings-changed', handler as EventListener);
+    return () => { window.removeEventListener('tutor:admin-settings-changed', handler as EventListener); };
+  }, []);
   
   // Cleanup render task on unmount
   useEffect(() => {
@@ -139,15 +177,17 @@ export default function EnhancedWhiteboard({
     if (!mounted) return;
     (async () => {
       try {
-        const { getPdfLib, isPdfSupported } = await import('@/lib/pdfUtils');
-        if (!isPdfSupported()) {
-          console.warn('PDF support not available');
-          return;
+        const { getPdfLib } = await import('@/lib/pdfUtils');
+        try {
+          const lib = await getPdfLib();
+          setPdfLib(lib);
+        } catch (innerErr) {
+          console.warn('PDF support not available or failed to initialize', innerErr);
+          setPdfLib(null);
         }
-        const lib = await getPdfLib();
-        setPdfLib(lib);
       } catch (e) {
-        console.warn('Failed to load pdfjs', e);
+        console.warn('Failed to load pdfUtils helper', e);
+        setPdfLib(null);
       }
     })();
   }, [mounted]);
@@ -275,6 +315,16 @@ export default function EnhancedWhiteboard({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mounted]);
+
+  const isActionAllowed = (actionKey: string) => {
+    // If admin settings are not configured, allow by default
+    if (!whiteboardPermissions) return true;
+    // If settings exist but we couldn't determine role, deny to be safe
+    if (!currentUserRoleId) return false;
+    const allowed = whiteboardPermissions[actionKey];
+    if (!Array.isArray(allowed)) return true;
+    return allowed.includes(currentUserRoleId);
+  };
 
   // draw all strokes into the canvas (coordinates are CSS pixels)
   const drawAll = useCallback(() => {
@@ -412,6 +462,28 @@ export default function EnhancedWhiteboard({
         const data = ev.data as any;
         if (!data || data.clientId === clientIdRef.current) return; // ignore our own
         try {
+          // support admin-driven tool/color/width events
+          if (data.type === 'setColor') {
+            try {
+              if (data.color) {
+                if (Array.isArray(data.color)) {
+                  const c = data.color as number[];
+                  setColor(`#${((1 << 24) + (c[0] << 16) + (c[1] << 8) + c[2]).toString(16).slice(1)}`);
+                } else {
+                  setColor(String(data.color));
+                }
+              }
+            } catch (e) {}
+            return;
+          }
+          if (data.type === 'setTool') {
+            try { if (data.tool === 'eraser') setTool('eraser'); else setTool('pencil'); } catch (e) {}
+            return;
+          }
+          if (data.type === 'setWidth') {
+            try { if (typeof data.width === 'number') setStrokeWidth(Number(data.width)); } catch (e) {}
+            return;
+          }
           if (data.type === 'pdf-set') {
             // data: { type: 'pdf-set', name, dataUrl, clientId }
             (async () => {
@@ -622,6 +694,27 @@ export default function EnhancedWhiteboard({
           console.log('[WB SSE] Received event:', data.type, data);
 
           // apply same handlers as BroadcastChannel messages
+          if (data.type === 'setColor') {
+            try {
+              if (data.color) {
+                if (Array.isArray(data.color)) {
+                  const c = data.color as number[];
+                  setColor(`#${((1 << 24) + (c[0] << 16) + (c[1] << 8) + c[2]).toString(16).slice(1)}`);
+                } else {
+                  setColor(String(data.color));
+                }
+              }
+            } catch (e) {}
+            return;
+          }
+          if (data.type === 'setTool') {
+            try { if (data.tool === 'eraser') setTool('eraser'); else setTool('pencil'); } catch (e) {}
+            return;
+          }
+          if (data.type === 'setWidth') {
+            try { if (typeof data.width === 'number') setStrokeWidth(Number(data.width)); } catch (e) {}
+            return;
+          }
           if (data.type === 'stroke-start') {
             console.log('[WB SSE] Applying stroke-start:', data);
             setStrokes((s) => [...s, data.stroke]);
@@ -672,132 +765,66 @@ export default function EnhancedWhiteboard({
   }, [useNetlessWhiteboard]);
 
   return (
-    <div className={`canvas-whiteboard ${className}`} style={{ border: '1px solid #ddd', width: whiteboardWidth, height: 'auto' }}>
-      <div style={{ display: 'flex', gap: 8, padding: 8, background: '#f5f5f5', borderBottom: '1px solid #ddd', flexWrap: 'wrap', alignItems: 'center' }}>
+    <div className={`canvas-whiteboard ${className}`} style={{ border: '1px solid #ddd', width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ display: 'flex', gap: 8, padding: '4px 8px', background: '#f5f5f5', borderBottom: '1px solid #ddd', flexWrap: 'wrap', alignItems: 'center', flexShrink: 0 }}>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          {/* PDF quick-select (left of mic) */}
-          <button
-            type="button"
-            onClick={() => { const el = document.getElementById('pdf-input-toolbar') as HTMLInputElement | null; el?.click(); }}
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: 6,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              background: 'white',
-              border: '1px solid #ddd',
-              cursor: 'pointer'
-            }}
-            title="Select PDF"
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-              <rect x="2" y="2" width="20" height="20" rx="2" fill="#ea4335" />
-              <text x="12" y="16" fontSize="9" fontWeight="700" fill="#fff" textAnchor="middle">PDF</text>
-            </svg>
-          </button>
-          <input
-            id="pdf-input-toolbar"
-            type="file"
-            accept="application/pdf"
-            style={{ display: 'none' }}
-            onChange={(e) => {
-                const f = e.target.files?.[0] ?? null;
-                if (f) setSelectedFileName(f.name);
-                else setSelectedFileName(null);
-                // update local state so remote handlers will prefer this file
-                if (f) setLocalPdfFile(f);
-                if (typeof onPdfSelected === 'function') onPdfSelected?.(f);
+          {/* PDF selector moved to /my-courses page (server-side whiteboard events). */}
 
-                    // read as data URL and broadcast to other tabs/devices (only when a file exists)
-                    if (f) {
-                      try {
-                        const reader = new FileReader();
-                        reader.onload = async () => {
-                          try {
-                            const dataUrl = String(reader.result || '');
-                            if (bcRef.current) {
-                              try { bcRef.current.postMessage({ type: 'pdf-set', name: f.name, dataUrl, clientId: clientIdRef.current }); } catch (e) {}
-                            }
-                            try { await postEventToServer({ type: 'pdf-set', name: f.name, dataUrl }); } catch (e) {}
-                          } catch (e) {
-                            console.error('[WB] Failed to broadcast selected PDF', e);
-                          }
-                        };
-                        reader.readAsDataURL(f);
-                      } catch (e) {
-                        console.error('[WB] Failed to read selected PDF', e);
-                      }
-                    }
-              }}
-          />
-          <div style={{ fontSize: 12, color: '#444', maxWidth: 140, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{selectedFileName ?? ''}</div>
+          {/* Microphone and leave controls moved to the classroom sidebar; toolbar keeps drawing tools only. */}
 
-          {onToggleMic && (
-            <button 
-              onClick={onToggleMic} 
-              disabled={hasMic === false}
-              title={micEnabled ? "Mute Microphone" : "Unmute Microphone"}
-              style={{ 
-                width: 40,
-                height: 40,
-                borderRadius: '50%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                background: micEnabled ? 'white' : '#ea4335', 
-                color: micEnabled ? '#3c4043' : 'white',
-                border: micEnabled ? '1px solid #dadce0' : 'none', 
-                cursor: hasMic === false ? 'not-allowed' : 'pointer',
-                marginRight: 8,
-                fontSize: 20,
-                boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-                transition: 'all 0.2s ease'
-              }}
-            >
-              {micEnabled ? '🎤' : '🔇'}
-            </button>
+          {isActionAllowed('setTool:pencil') && (
+            <button onClick={() => setTool('pencil')} style={{ padding: '6px 10px', background: tool === 'pencil' ? '#e3f2fd' : 'white', border: '1px solid #ddd', borderRadius: 4, cursor: 'pointer' }}>✏️</button>
           )}
-
-          <button onClick={() => setTool('pencil')} style={{ padding: '6px 10px', background: tool === 'pencil' ? '#e3f2fd' : 'white', border: '1px solid #ddd', borderRadius: 4, cursor: 'pointer' }}>✏️</button>
-          <button onClick={() => setTool('eraser')} style={{ padding: '6px 10px', background: tool === 'eraser' ? '#e3f2fd' : 'white', border: '1px solid #ddd', borderRadius: 4, cursor: 'pointer' }}>🧽</button>
+          {isActionAllowed('setTool:eraser') && (
+            <button onClick={() => setTool('eraser')} style={{ padding: '6px 10px', background: tool === 'eraser' ? '#e3f2fd' : 'white', border: '1px solid #ddd', borderRadius: 4, cursor: 'pointer' }}>🧽</button>
+          )}
         </div>
         <div>
-          <input aria-label="Pen color" type="color" value={color} onChange={(e) => setColor(e.target.value)} style={{ width: 36, height: 32, padding: 0, border: 'none' }} />
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <span style={{ fontSize: 12 }}>宽度:</span>
-          <input type="range" min={1} max={30} value={strokeWidth} onChange={(e) => setStrokeWidth(Number(e.target.value))} style={{ width: 60 }} />
-          <span style={{ fontSize: 12, minWidth: 20 }}>{strokeWidth}</span>
-        </div>
-        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-          <button onClick={undo} style={{ padding: '6px 10px', border: '1px solid #ddd', background: 'white', borderRadius: 4, cursor: 'pointer' }} title="撤销">↶</button>
-          <button onClick={redo} style={{ padding: '6px 10px', border: '1px solid #ddd', background: 'white', borderRadius: 4, cursor: 'pointer' }} title="重做">↷</button>
-          <button onClick={clearAll} style={{ padding: '6px 10px', border: '1px solid #ddd', background: '#ffebee', color: '#c62828', borderRadius: 4, cursor: 'pointer' }} title="清空">🗑️</button>
-          {typeof onLeave === 'function' && (
-            <button
-              onClick={() => { try { onLeave?.(); } catch (e) {} }}
-              title="離開"
-              style={{
-                padding: '6px 10px',
-                border: 'none',
-                background: '#c62828',
-                color: 'white',
-                borderRadius: 4,
-                cursor: 'pointer',
-                marginLeft: 8
-              }}
-            >
-              離開
-            </button>
+          {isActionAllowed('setColor') && (
+            <input aria-label="Pen color" type="color" value={color} onChange={(e) => setColor(e.target.value)} style={{ width: 36, height: 32, padding: 0, border: 'none' }} />
           )}
+        </div>
+        {isActionAllowed('setWidth') && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ fontSize: 12 }}>宽度:</span>
+            <input
+              type="range"
+              min={1}
+              max={30}
+              value={strokeWidth}
+              onChange={(e) => {
+                const w = Number(e.target.value);
+                setStrokeWidth(w);
+                try {
+                  if (bcRef.current) bcRef.current.postMessage({ type: 'setWidth', width: w, clientId: clientIdRef.current });
+                  // post to server for cross-device sync
+                  postEventToServer({ type: 'setWidth', width: w });
+                } catch (err) {
+                  // ignore
+                }
+              }}
+              style={{ width: 60 }}
+            />
+            <span style={{ fontSize: 12, minWidth: 20 }}>{strokeWidth}</span>
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          {isActionAllowed('undo') && (
+            <button onClick={undo} style={{ padding: '6px 10px', border: '1px solid #ddd', background: 'white', borderRadius: 4, cursor: 'pointer' }} title="撤销">↶</button>
+          )}
+          {isActionAllowed('redo') && (
+            <button onClick={redo} style={{ padding: '6px 10px', border: '1px solid #ddd', background: 'white', borderRadius: 4, cursor: 'pointer' }} title="重做">↷</button>
+          )}
+          {isActionAllowed('clear') && (
+            <button onClick={clearAll} style={{ padding: '6px 10px', border: '1px solid #ddd', background: '#ffebee', color: '#c62828', borderRadius: 4, cursor: 'pointer' }} title="清空">🗑️</button>
+          )}
+          {/* onLeave is handled by the classroom controls; no leave button in the whiteboard toolbar. */}
         </div>
 
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }} />
       </div>
 
-      <div style={{ position: 'relative', width: '100%', height: canvasHeight, background: 'white' }}>
+      <div style={{ position: 'relative', width: '100%', flex: 1, background: 'white', minHeight: 0 }}>
         {useNetlessWhiteboard ? (
           // Use Netless whiteboard (collaborative)
           <div 
@@ -820,7 +847,7 @@ export default function EnhancedWhiteboard({
             <canvas
               ref={canvasRef}
               width={whiteboardWidth}
-              height={canvasHeight}
+              height={whiteboardHeight - 48}
               onMouseDown={handlePointerDown}
               onMouseMove={handlePointerMove}
               onMouseUp={handlePointerUp}
