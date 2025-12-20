@@ -900,3 +900,60 @@ nav.main-nav a.active {
 .orders-table tbody tr:hover {
   background: #eef2ff;
 }
+
+/* --- Lavender theme overrides (appended) --- */
+:root{
+  --bg: #F6F0FB; /* light lavender */
+  --surface: #FFFFFF;
+  --muted: #6b7280;
+  --text: #111827;
+  --primary: #8B5CF6;
+  --primary-600: #7C3AED;
+  --accent: #EBDCFD;
+  --card-shadow: 0 10px 25px rgba(124,58,237,0.08);
+}
+
+body{
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* header / footer */
+.site-header, .site-footer{
+  background: linear-gradient(180deg, rgba(255,255,255,0.6), var(--accent));
+  border-bottom: 1px solid rgba(124,58,237,0.06);
+}
+
+/* menu buttons */
+.menu-login{
+  background: linear-gradient(90deg,var(--primary),var(--primary-600));
+  color: white;
+  border-radius: 8px;
+  padding: 6px 12px;
+  box-shadow: 0 8px 20px rgba(124,58,237,0.12);
+}
+.menu-logout{ background: #fb7185; color: white; border-radius:8px; padding:6px 10px }
+
+/* hero */
+.hero{ background: linear-gradient(180deg, rgba(139,92,246,0.04), rgba(235,220,253,0.12)); padding:24px; border-radius:12px }
+.hero-text h1, .hero-text p { color: var(--text) }
+.hero-cta button:first-child{ background: linear-gradient(90deg,var(--primary),var(--primary-600)); color:white }
+
+/* carousel surface */
+.carousel{ background: linear-gradient(180deg,var(--surface),var(--accent)); border-radius:12px; padding:18px; box-shadow:var(--card-shadow) }
+.carousel-slide{ background: transparent }
+.carousel-loading .spinner{ border-top-color: var(--primary) }
+.carousel-dots button{ background: rgba(17,24,39,0.08) }
+.carousel-dots button.active{ background: var(--primary) }
+
+/* cards */
+.card, .card-grid .card, .card.card-link{ background: var(--surface); border-radius:12px; box-shadow:var(--card-shadow); border:1px solid rgba(124,58,237,0.04) }
+.muted{ color: var(--muted) }
+
+/* links & buttons */
+a{ color: var(--primary) }
+.card-button.primary, .btn-primary{ background: linear-gradient(90deg,var(--primary),var(--primary-600)); color: white; border-radius:8px }
+
+@media (max-width:768px){ .hero{ padding:12px } .carousel{ padding:10px } }
+
+/* end lavender overrides */

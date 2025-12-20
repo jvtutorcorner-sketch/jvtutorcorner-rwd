@@ -3,6 +3,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { randomUUID } from 'crypto';
 import resolveDataFile from '@/lib/localData';
+import { COURSES as BUNDLED_COURSES } from '@/data/courses';
 
 async function readCourses(): Promise<any[]> {
   try {
@@ -29,7 +30,12 @@ export async function GET(req: Request) {
     const teacher = url.searchParams.get('teacher');
     const teacherId = url.searchParams.get('teacherId');
     const id = url.searchParams.get('id');
-    const courses = await readCourses();
+    let courses = await readCourses();
+    // If there are no persisted courses available (e.g. in Amplify deployments
+    // where `.local_data` is ignored), fall back to bundled sample data.
+    if ((!courses || courses.length === 0) && Array.isArray(BUNDLED_COURSES) && BUNDLED_COURSES.length > 0) {
+      courses = BUNDLED_COURSES as any[];
+    }
     if (id) {
       const c = courses.find((x) => String(x.id) === id);
       if (!c) return NextResponse.json({ ok: false, message: 'Course not found' }, { status: 404 });
