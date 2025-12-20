@@ -292,6 +292,17 @@ nav.main-nav a.active {
   box-shadow: 0 10px 25px rgba(15, 23, 42, 0.08);
 }
 
+.carousel-slide {
+  width: 100%;
+  max-width: 1200px;
+  aspect-ratio: 1200 / 628;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
+}
+
 .carousel-slide p {
   margin: 0;
   font-size: 1.1rem;

@@ -216,6 +216,7 @@ export default function Header() {
                                 // build dropdown items and apply adminSettings.pageVisibility.dropdown rules
                                 [
                                   { href: '/admin/orders', roleRequired: 'admin', label: '後台：訂單管理' },
+                                  { href: '/admin/carousel', roleRequired: 'admin', label: '後台：輪播圖管理' },
                                   { href: '/admin/settings', roleRequired: 'admin', label: '網站設定' },
                                   { href: '/my-courses', roleRequired: 'teacher', label: '我的課程' },
                                   { href: '/settings', roleRequired: 'user', label: '設定' },
@@ -224,15 +225,11 @@ export default function Header() {
                                   if (item.roleRequired === 'admin' && user?.role !== 'admin') return null;
                                   if (item.roleRequired === 'teacher' && user?.role !== 'teacher') return null;
                                   // determine dropdown visibility from admin settings
-                                  const visEntry = adminSettings?.pageVisibility?.[item.href];
-                                  let visible = true;
-                                    if (visEntry?.dropdown && (visEntry.dropdown.admin !== undefined || visEntry.dropdown.teacher !== undefined || visEntry.dropdown.user !== undefined)) {
-                                      const roleKey = user?.role === 'admin' ? 'admin' : user?.role === 'teacher' ? 'teacher' : 'user';
-                                      const roleFlag = visEntry.dropdown?.[roleKey];
-                                      visible = roleFlag === undefined ? true : !!roleFlag;
-                                  }
+                                  const pageConfig = adminSettings?.pageConfigs?.find((pc: any) => pc.path === item.href);
+                                  const permission = pageConfig?.permissions?.find((p: any) => p.roleId === user?.role);
+                                  const visible = permission?.dropdownVisible !== false; // default to true if not set
                                   if (!visible) return null;
-                                  const label = visEntry?.label || item.label;
+                                  const label = pageConfig?.label || item.label;
                                   return (
                                     <li key={item.href}>
                                       <span role="menuitem" tabIndex={0} className="menu-link" onClick={() => { setMenuOpen(false); router.push(item.href); }}>{label}</span>

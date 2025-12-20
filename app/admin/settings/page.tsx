@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { PLAN_LABELS } from '@/lib/mockAuth';
 
 // 页面权限类型
@@ -37,6 +37,21 @@ type Settings = {
   pageConfigs: PageConfig[];
 };
 
+// DynamoDB Schema 预览相关类型
+type DynamoPreviewData = {
+  firstName?: string;
+  lastName?: string;
+  email: string;
+  password?: string;
+  role: 'student' | 'teacher' | 'admin';
+  plan: string | null;
+  birthdate?: string;
+  gender?: string;
+  country?: string;
+  bio?: string;
+  termsAccepted: boolean;
+};
+
 export default function AdminSettingsPage() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [saving, setSaving] = useState(false);
@@ -51,6 +66,99 @@ export default function AdminSettingsPage() {
   const [newPageLabel, setNewPageLabel] = useState('');
   const [roles, setRoles] = useState<Role[]>([]);
   const [rolesLoading, setRolesLoading] = useState(true);
+
+  // DynamoDB Schema 预览状态
+  const [previewData, setPreviewData] = useState<DynamoPreviewData>({
+    firstName: '張',
+    lastName: '小明',
+    email: 'admin@jvtutorcorner.com',
+    password: 'hashed_password_here',
+    role: 'admin',
+    plan: 'premium',
+    birthdate: '1990-01-01',
+    gender: 'male',
+    country: 'TW',
+    bio: '熱愛教育的專業教師，擁有豐富的教學經驗。',
+    termsAccepted: true,
+  });
+
+  // 国家时区映射
+  const countryTimezones: Record<string, string> = {
+    TW: 'Asia/Taipei',
+    JP: 'Asia/Tokyo',
+    US: 'America/New_York',
+    GB: 'Europe/London',
+    HK: 'Asia/Hong_Kong',
+    MO: 'Asia/Macau',
+    CN: 'Asia/Shanghai',
+    KR: 'Asia/Seoul',
+    SG: 'Asia/Singapore',
+    MY: 'Asia/Kuala_Lumpur',
+    AU: 'Australia/Sydney',
+    NZ: 'Pacific/Auckland',
+    CA: 'America/Toronto',
+    DE: 'Europe/Berlin',
+    FR: 'Europe/Paris',
+    ES: 'Europe/Madrid',
+    IT: 'Europe/Rome',
+    IN: 'Asia/Kolkata',
+    BR: 'America/Sao_Paulo',
+    MX: 'America/Mexico_City',
+    ZA: 'Africa/Johannesburg',
+  };
+
+  // 格式化本地时间为 ISO 格式
+  function formatLocalIso(timezone?: string) {
+    const now = new Date();
+    const utcIso = now.toISOString();
+    if (!timezone) return { utc: utcIso, local: utcIso, timezone: 'UTC' };
+    try {
+      const fmt = new Intl.DateTimeFormat('sv-SE', {
+        timeZone: timezone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+      });
+      // 'sv-SE' style yields YYYY-MM-DD HH:MM:SS which we convert to ISO-like
+      const parts = fmt.formatToParts(now).reduce((acc: any, part) => {
+        acc[part.type] = (acc[part.type] || '') + part.value;
+        return acc;
+      }, {});
+      const localIsoLike = `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}`;
+      return { utc: utcIso, local: localIsoLike, timezone };
+    } catch (e) {
+      return { utc: utcIso, local: utcIso, timezone: 'UTC' };
+    }
+  }
+
+  // 生成 DynamoDB Schema 预览
+  const dynamoPreview = useMemo(() => {
+    const tz = countryTimezones[previewData.country || 'TW'] || 'UTC';
+    const t = formatLocalIso(tz);
+    const combinedName = `${previewData.firstName || ''} ${previewData.lastName || ''}`.trim();
+    return {
+      roid_id: `user_preview_${previewData.email}`, // 使用 email 作為穩定 ID
+      email: previewData.email.trim().toLowerCase(),
+      password: previewData.password || undefined,
+      firstName: previewData.firstName || undefined,
+      lastName: previewData.lastName || undefined,
+      nickname: combinedName || undefined,
+      role: previewData.role,
+      plan: previewData.plan ?? null,
+      birthdate: previewData.birthdate || undefined,
+      gender: previewData.gender || undefined,
+      country: previewData.country || undefined,
+      timezone: t.timezone,
+      termsAccepted: !!previewData.termsAccepted,
+      createdAtUtc: t.utc,
+      updatedAtUtc: t.utc,
+      bio: previewData.bio || undefined,
+    } as const;
+  }, [previewData]);
 
   useEffect(() => {
     loadSettings();
@@ -303,6 +411,133 @@ export default function AdminSettingsPage() {
           <button onClick={createUser}>建立帳號</button>
         </div>
         {createMsg && <p>{createMsg}</p>}
+      </section>
+
+      <section style={{ marginTop: 24 }}>
+        <h3>DynamoDB Schema 預覽</h3>
+        <p style={{ marginTop: 6 }}>用於開發者查看用戶資料在 DynamoDB 中的存儲格式。</p>
+
+        <div style={{ marginTop: 12 }}>
+          <h4>輸入測試資料：</h4>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: 8 }}>
+            <div>
+              <label style={{ display: 'block', marginBottom: 4 }}>First Name:</label>
+              <input
+                type="text"
+                value={previewData.firstName || ''}
+                onChange={(e) => setPreviewData({ ...previewData, firstName: e.target.value })}
+                style={{ width: '100%', padding: '4px 8px' }}
+              />
+            </div>
+            <div>
+              <label style={{ display: 'block', marginBottom: 4 }}>Last Name:</label>
+              <input
+                type="text"
+                value={previewData.lastName || ''}
+                onChange={(e) => setPreviewData({ ...previewData, lastName: e.target.value })}
+                style={{ width: '100%', padding: '4px 8px' }}
+              />
+            </div>
+            <div>
+              <label style={{ display: 'block', marginBottom: 4 }}>Email:</label>
+              <input
+                type="email"
+                value={previewData.email}
+                onChange={(e) => setPreviewData({ ...previewData, email: e.target.value })}
+                style={{ width: '100%', padding: '4px 8px' }}
+              />
+            </div>
+            <div>
+              <label style={{ display: 'block', marginBottom: 4 }}>Role:</label>
+              <select
+                value={previewData.role}
+                onChange={(e) => setPreviewData({ ...previewData, role: e.target.value as 'student' | 'teacher' | 'admin' })}
+                style={{ width: '100%', padding: '4px 8px' }}
+              >
+                <option value="student">Student</option>
+                <option value="teacher">Teacher</option>
+                <option value="admin">Admin</option>
+              </select>
+            </div>
+            <div>
+              <label style={{ display: 'block', marginBottom: 4 }}>Birthdate:</label>
+              <input
+                type="date"
+                value={previewData.birthdate || ''}
+                onChange={(e) => setPreviewData({ ...previewData, birthdate: e.target.value })}
+                style={{ width: '100%', padding: '4px 8px' }}
+              />
+            </div>
+            <div>
+              <label style={{ display: 'block', marginBottom: 4 }}>Gender:</label>
+              <select
+                value={previewData.gender || ''}
+                onChange={(e) => setPreviewData({ ...previewData, gender: e.target.value })}
+                style={{ width: '100%', padding: '4px 8px' }}
+              >
+                <option value="">Not specified</option>
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+              </select>
+            </div>
+            <div>
+              <label style={{ display: 'block', marginBottom: 4 }}>Plan:</label>
+              <select
+                value={previewData.plan || ''}
+                onChange={(e) => setPreviewData({ ...previewData, plan: e.target.value || null })}
+                style={{ width: '100%', padding: '4px 8px' }}
+              >
+                <option value="">None</option>
+                {Object.entries(PLAN_LABELS).map(([k, v]) => (
+                  <option key={k} value={k}>{v}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label style={{ display: 'block', marginBottom: 4 }}>Country:</label>
+              <select
+                value={previewData.country || 'TW'}
+                onChange={(e) => setPreviewData({ ...previewData, country: e.target.value })}
+                style={{ width: '100%', padding: '4px 8px' }}
+              >
+                {Object.entries(countryTimezones).map(([code, tz]) => (
+                  <option key={code} value={code}>{code} ({tz})</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <label style={{ display: 'block', marginBottom: 4 }}>Bio:</label>
+            <textarea
+              value={previewData.bio || ''}
+              onChange={(e) => setPreviewData({ ...previewData, bio: e.target.value })}
+              style={{ width: '100%', padding: '4px 8px', minHeight: '60px' }}
+            />
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <label>
+              <input
+                type="checkbox"
+                checked={previewData.termsAccepted}
+                onChange={(e) => setPreviewData({ ...previewData, termsAccepted: e.target.checked })}
+              /> Terms Accepted
+            </label>
+          </div>
+        </div>
+
+        <div style={{ marginTop: 16 }}>
+          <h4>DynamoDB Item 預覽：</h4>
+          <pre style={{
+            backgroundColor: '#f5f5f5',
+            padding: '12px',
+            borderRadius: '4px',
+            fontSize: '12px',
+            overflow: 'auto',
+            maxHeight: '400px'
+          }}>
+            {JSON.stringify(dynamoPreview, null, 2)}
+          </pre>
+        </div>
       </section>
     </main>
   );

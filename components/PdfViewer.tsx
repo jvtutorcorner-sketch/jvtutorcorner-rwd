@@ -16,21 +16,38 @@ export default function PdfViewer({ file, onClose }: { file: File | null; onClos
   const [color, setColor] = useState('#ff0000');
   const [width, setWidth] = useState(3);
   const fileId = file ? `${file.name}:${file.size}:${file.lastModified}` : 'no-file';
+  const currentRenderTask = useRef<any>(null);
+  const pdfDocumentRef = useRef<any>(null);
+
+  useEffect(() => {
+    return () => {
+      // Cancel any ongoing render task when component unmounts
+      if (currentRenderTask.current) {
+        try {
+          currentRenderTask.current.cancel();
+        } catch (e) {
+          // Ignore cancellation errors
+        }
+        currentRenderTask.current = null;
+      }
+      pdfDocumentRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     let mounted = true;
     (async () => {
       try {
-        // dynamically import pdfjs; if not installed, we'll show an error message
-        // @ts-ignore
-        const lib = await import('pdfjs-dist/build/pdf');
-        // Always use the local worker from public/pdf.worker.min.mjs
-        // Make sure you've copied node_modules/pdfjs-dist/build/pdf.worker.min.mjs -> public/pdf.worker.min.mjs
-        (lib as any).GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+        const { getPdfLib, isPdfSupported } = await import('@/lib/pdfUtils');
+        if (!isPdfSupported()) {
+          if (mounted) setError('PDF rendering is not supported in this environment');
+          return;
+        }
+        const lib = await getPdfLib();
         if (mounted) setPdfLib(lib);
       } catch (e) {
         console.error('pdfjs import failed', e);
-        setError('PDF rendering requires the "pdfjs-dist" package. Please run: npm install pdfjs-dist');
+        if (mounted) setError('PDF rendering requires the "pdfjs-dist" package. Please run: npm install pdfjs-dist');
       }
     })();
     return () => { mounted = false; };
@@ -44,6 +61,7 @@ export default function PdfViewer({ file, onClose }: { file: File | null; onClos
         const data = new Uint8Array(reader.result as ArrayBuffer);
         const loadingTask = (pdfLib as any).getDocument({ data });
         const pdf = await loadingTask.promise;
+        pdfDocumentRef.current = pdf;
         setNumPages(pdf.numPages);
         setCurrentPage(1);
         // render first page
@@ -58,6 +76,15 @@ export default function PdfViewer({ file, onClose }: { file: File | null; onClos
 
   const renderPage = useCallback(async (pdf: any, pageNum: number) => {
     try {
+      // Cancel any ongoing render task
+      if (currentRenderTask.current) {
+        try {
+          currentRenderTask.current.cancel();
+        } catch (e) {
+          // Ignore cancellation errors
+        }
+      }
+
       const page = await pdf.getPage(pageNum);
       const viewport = page.getViewport({ scale: 2 });
       const canvas = document.createElement('canvas');
@@ -65,7 +92,12 @@ export default function PdfViewer({ file, onClose }: { file: File | null; onClos
       canvas.width = Math.round(viewport.width);
       canvas.height = Math.round(viewport.height);
       const renderContext = { canvasContext: ctx, viewport };
-      await page.render(renderContext).promise;
+      const renderTask = page.render(renderContext);
+      currentRenderTask.current = renderTask;
+      
+      await renderTask.promise;
+      currentRenderTask.current = null;
+      
       const dataUrl = canvas.toDataURL('image/png');
       if (imgRef.current) imgRef.current.src = dataUrl;
       // ensure annotation canvas same size
@@ -79,16 +111,14 @@ export default function PdfViewer({ file, onClose }: { file: File | null; onClos
       loadAnnotations(pageNum);
     } catch (e) {
       console.error('renderPage failed', e);
+      currentRenderTask.current = null;
     }
   }, []);
 
   const handlePageChange = async (pageNum: number) => {
-    if (!pdfLib || !file) return;
-    const data = await file.arrayBuffer();
-    const loadingTask = (pdfLib as any).getDocument({ data: new Uint8Array(data) });
-    const pdf = await loadingTask.promise;
+    if (!pdfDocumentRef.current) return;
     setCurrentPage(pageNum);
-    await renderPage(pdf, pageNum);
+    await renderPage(pdfDocumentRef.current, pageNum);
   };
 
   // annotation helpers

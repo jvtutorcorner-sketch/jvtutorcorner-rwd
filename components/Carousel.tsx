@@ -2,15 +2,18 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Image from 'next/image';
 
 interface CarouselProps {
   slides: string[];
   intervalMs?: number;
+  isImage?: boolean;
 }
 
 export const Carousel: React.FC<CarouselProps> = ({
   slides,
   intervalMs = 4000,
+  isImage = false,
 }) => {
   const [index, setIndex] = useState(0);
 
@@ -29,7 +32,17 @@ export const Carousel: React.FC<CarouselProps> = ({
   return (
     <div className="carousel">
       <div className="carousel-slide">
-        <p>{slides[index]}</p>
+        {isImage ? (
+          <Image
+            src={slides[index]}
+            alt={`Carousel slide ${index + 1}`}
+            fill
+            style={{ objectFit: 'cover' }}
+            priority={index === 0}
+          />
+        ) : (
+          <p>{slides[index]}</p>
+        )}
       </div>
       <div className="carousel-dots">
         {slides.map((_, i) => (

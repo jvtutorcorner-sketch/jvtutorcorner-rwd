@@ -53,6 +53,7 @@ export default function EnhancedWhiteboard({
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const bgCanvasRef = useRef<HTMLCanvasElement>(null); // Background canvas for PDF
+  const currentRenderTask = useRef<any>(null); // Track PDF render task
   const [tool, setTool] = useState<'pencil' | 'eraser'>('pencil');
   const [color, setColor] = useState('#000000');
   const [strokeWidth, setStrokeWidth] = useState(2);
@@ -82,6 +83,20 @@ export default function EnhancedWhiteboard({
   const useNetlessWhiteboard = Boolean(room && whiteboardRef);
 
   useEffect(() => { setMounted(true); }, []);
+  
+  // Cleanup render task on unmount
+  useEffect(() => {
+    return () => {
+      if (currentRenderTask.current) {
+        try {
+          currentRenderTask.current.cancel();
+        } catch (e) {
+          // Ignore cancellation errors
+        }
+        currentRenderTask.current = null;
+      }
+    };
+  }, []);
   
   // Debug: log whiteboard mode
   useEffect(() => {
@@ -124,9 +139,12 @@ export default function EnhancedWhiteboard({
     if (!mounted) return;
     (async () => {
       try {
-        // @ts-ignore
-        const lib = await import('pdfjs-dist/build/pdf');
-        (lib as any).GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+        const { getPdfLib, isPdfSupported } = await import('@/lib/pdfUtils');
+        if (!isPdfSupported()) {
+          console.warn('PDF support not available');
+          return;
+        }
+        const lib = await getPdfLib();
         setPdfLib(lib);
       } catch (e) {
         console.warn('Failed to load pdfjs', e);
@@ -177,6 +195,15 @@ export default function EnhancedWhiteboard({
 
     (async () => {
       try {
+        // Cancel any ongoing render task
+        if (currentRenderTask.current) {
+          try {
+            currentRenderTask.current.cancel();
+          } catch (e) {
+            // Ignore cancellation errors
+          }
+        }
+
         const page = await pdf.getPage(currentPage);
         const bgCanvas = bgCanvasRef.current;
         if (!bgCanvas) return;
@@ -203,9 +230,13 @@ export default function EnhancedWhiteboard({
         const ctx = bgCanvas.getContext('2d');
         if (!ctx) return;
 
-        await page.render({ canvasContext: ctx, viewport: renderViewport }).promise;
+        const renderTask = page.render({ canvasContext: ctx, viewport: renderViewport });
+        currentRenderTask.current = renderTask;
+        await renderTask.promise;
+        currentRenderTask.current = null;
       } catch (e) {
         console.error('Failed to render PDF page', e);
+        currentRenderTask.current = null;
       }
     })();
   }, [pdf, currentPage, numPages]);

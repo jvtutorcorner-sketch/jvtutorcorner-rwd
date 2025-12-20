@@ -69,6 +69,9 @@ export async function PATCH(req: Request) {
     if (body.lastName !== undefined) updates.lastName = body.lastName;
     if (body.bio !== undefined) updates.bio = body.bio;
     if (body.backupEmail !== undefined) updates.backupEmail = body.backupEmail;
+    if (body.birthdate !== undefined) updates.birthdate = body.birthdate;
+    if (body.gender !== undefined) updates.gender = body.gender;
+    if (body.country !== undefined) updates.country = body.country;
     if (body.timezone !== undefined) updates.timezone = body.timezone;
     if (body.card) updates.card = body.card; // caution: demo only
 

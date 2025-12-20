@@ -45,10 +45,33 @@ export default function HomePage() {
   const { t } = useI18n();
   const router = useRouter();
   const [user, setUser] = useState<StoredUser | null>(null);
+  const [carouselImages, setCarouselImages] = useState<string[]>([]);
 
   useEffect(() => {
     const u = getStoredUser();
     setUser(u);
+
+    // 獲取輪播圖
+    fetch('/api/carousel')
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) {
+          const urls = data.map((img: any) => img.url);
+          setCarouselImages(urls.length > 0 ? urls : [
+            '一對一視訊家教',
+            '小班制團體課程',
+            '即時白板 + 錄影回放',
+          ]);
+        }
+      })
+      .catch(err => {
+        console.error('Error loading carousel:', err);
+        setCarouselImages([
+          '一對一視訊家教',
+          '小班制團體課程',
+          '即時白板 + 錄影回放',
+        ]);
+      });
   }, []);
 
   const recommendedTeachers = TEACHERS.slice(0, 3);
@@ -65,11 +88,8 @@ export default function HomePage() {
         </div>
         <div className="hero-carousel">
           <Carousel
-            slides={[
-              '一對一視訊家教',
-              '小班制團體課程',
-              '即時白板 + 錄影回放',
-            ]}
+            slides={carouselImages}
+            isImage={carouselImages[0]?.startsWith('data:') || carouselImages[0]?.startsWith('http')}
           />
         </div>
       </section>

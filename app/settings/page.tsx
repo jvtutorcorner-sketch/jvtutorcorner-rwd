@@ -13,6 +13,9 @@ export default function SettingsPage() {
   const [firstName, setFirstName] = useState(user?.firstName || '');
   const [lastName, setLastName] = useState(user?.lastName || '');
   const [bio, setBio] = useState('');
+  const [birthdate, setBirthdate] = useState('');
+  const [gender, setGender] = useState('');
+  const [country, setCountry] = useState('');
   const [roleId, setRoleId] = useState<string | null>(null);
   const [backupEmail, setBackupEmail] = useState('');
   const [message, setMessage] = useState<string | null>(null);
@@ -45,6 +48,9 @@ export default function SettingsPage() {
         const data = await res.json();
         if (data?.ok && data.profile) {
           setBio(data.profile.bio || '');
+          setBirthdate(data.profile.birthdate || '');
+          setGender(data.profile.gender || '');
+          setCountry(data.profile.country || '');
           setRoleId(data.profile.roid_id || data.profile.role || null);
           setBackupEmail(data.profile.backupEmail || '');
           setFirstName(data.profile.firstName || '');
@@ -101,9 +107,12 @@ export default function SettingsPage() {
     try {
       const payload: any = { email: user.email };
       // plan is updated on the Pricing (upgrade) page
-      if (firstName) payload.firstName = firstName;
-      if (lastName) payload.lastName = lastName;
-      if (bio) payload.bio = bio;
+      if (firstName !== undefined) payload.firstName = firstName;
+      if (lastName !== undefined) payload.lastName = lastName;
+      if (bio !== undefined) payload.bio = bio;
+      if (birthdate !== undefined) payload.birthdate = birthdate;
+      if (gender !== undefined) payload.gender = gender;
+      if (country !== undefined) payload.country = country;
       if (backupEmail !== undefined) payload.backupEmail = backupEmail;
       // payment handled on Pricing page; no card data here
 
@@ -166,6 +175,59 @@ export default function SettingsPage() {
                 <label>Last Name</label>
                 <input value={lastName} onChange={(e) => setLastName(e.target.value)} />
               </div>
+            </div>
+
+            <div className="field">
+              <label>出生日期</label>
+              <input type="date" value={birthdate} onChange={(e) => setBirthdate(e.target.value)} />
+            </div>
+
+            <div className="field">
+              <label>性別</label>
+              <select value={gender} onChange={(e) => setGender(e.target.value)}>
+                <option value="">請選擇</option>
+                <option value="male">男</option>
+                <option value="female">女</option>
+              </select>
+            </div>
+
+            <div className="field">
+              <label>國家</label>
+              <select value={country} onChange={(e) => setCountry(e.target.value)}>
+                <option value="">請選擇</option>
+                <option value="TW">台灣</option>
+                <option value="JP">日本</option>
+                <option value="US">美國</option>
+                <option value="GB">英國</option>
+                <option value="HK">香港</option>
+                <option value="MO">澳門</option>
+                <option value="CN">中國</option>
+                <option value="KR">南韓</option>
+                <option value="SG">新加坡</option>
+                <option value="MY">馬來西亞</option>
+                <option value="AU">澳洲</option>
+                <option value="NZ">紐西蘭</option>
+                <option value="CA">加拿大</option>
+                <option value="DE">德國</option>
+                <option value="FR">法國</option>
+                <option value="ES">西班牙</option>
+                <option value="IT">義大利</option>
+                <option value="IN">印度</option>
+                <option value="BR">巴西</option>
+                <option value="MX">墨西哥</option>
+                <option value="ZA">南非</option>
+              </select>
+            </div>
+
+            <div className="field">
+              <label>自我介紹（Markdown 支援）</label>
+              <textarea
+                rows={4}
+                value={bio}
+                onChange={(e) => setBio(e.target.value)}
+                placeholder="請輸入個人簡介（最多500字）"
+              />
+              <small className="muted">支援 Markdown 格式，最多 500 字。</small>
             </div>
 
             {/* Payment moved to Pricing page */}

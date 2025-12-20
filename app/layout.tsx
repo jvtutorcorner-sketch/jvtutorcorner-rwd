@@ -48,9 +48,11 @@ export default function RootLayout({
         )}
 
         <Header />
-        <PageBreadcrumb />
 
-        <main>{children}</main>
+        <main>
+          <PageBreadcrumb />
+          {children}
+        </main>
 
         <footer className="site-footer">
           © {new Date().getFullYear()} Tutor Corner

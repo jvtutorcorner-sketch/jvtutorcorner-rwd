@@ -394,6 +394,69 @@
         "test": true,
         "ttt": true
       }
+    },
+    "/admin/dashboard": {
+      "label": "dashboard",
+      "menu": {
+        "admin": false,
+        "teacher": false,
+        "student": false,
+        "ttt": false
+      },
+      "dropdown": {
+        "admin": true,
+        "teacher": false,
+        "student": false,
+        "ttt": false
+      },
+      "page": {
+        "admin": true,
+        "teacher": true,
+        "student": true,
+        "ttt": true
+      }
+    },
+    "/admin/carousel": {
+      "label": "輪播圖管理",
+      "menu": {
+        "admin": false,
+        "teacher": false,
+        "student": false,
+        "ttt": false
+      },
+      "dropdown": {
+        "admin": true,
+        "teacher": false,
+        "student": false,
+        "ttt": false
+      },
+      "page": {
+        "admin": true,
+        "teacher": true,
+        "student": true,
+        "ttt": true
+      }
+    },
+    "/terms": {
+      "label": "服務條款",
+      "menu": {
+        "admin": false,
+        "teacher": false,
+        "student": false,
+        "ttt": false
+      },
+      "dropdown": {
+        "admin": false,
+        "teacher": false,
+        "student": false,
+        "ttt": false
+      },
+      "page": {
+        "admin": true,
+        "teacher": true,
+        "student": true,
+        "ttt": true
+      }
     }
   },
   "roles": [
@@ -1044,6 +1107,111 @@
         {
           "roleId": "test",
           "roleName": "test",
+          "menuVisible": false,
+          "dropdownVisible": false,
+          "pageVisible": true
+        },
+        {
+          "roleId": "ttt",
+          "roleName": "ttt",
+          "menuVisible": false,
+          "dropdownVisible": false,
+          "pageVisible": true
+        }
+      ]
+    },
+    {
+      "id": "/admin/dashboard",
+      "path": "/admin/dashboard",
+      "label": "dashboard",
+      "permissions": [
+        {
+          "roleId": "admin",
+          "roleName": "Admin",
+          "menuVisible": false,
+          "dropdownVisible": true,
+          "pageVisible": true
+        },
+        {
+          "roleId": "teacher",
+          "roleName": "Teacher",
+          "menuVisible": false,
+          "dropdownVisible": false,
+          "pageVisible": true
+        },
+        {
+          "roleId": "student",
+          "roleName": "Student",
+          "menuVisible": false,
+          "dropdownVisible": false,
+          "pageVisible": true
+        },
+        {
+          "roleId": "ttt",
+          "roleName": "ttt",
+          "menuVisible": false,
+          "dropdownVisible": false,
+          "pageVisible": true
+        }
+      ]
+    },
+    {
+      "id": "/admin/carousel",
+      "path": "/admin/carousel",
+      "label": "輪播圖管理",
+      "permissions": [
+        {
+          "roleId": "admin",
+          "roleName": "Admin",
+          "menuVisible": false,
+          "dropdownVisible": true,
+          "pageVisible": true
+        },
+        {
+          "roleId": "teacher",
+          "roleName": "Teacher",
+          "menuVisible": false,
+          "dropdownVisible": false,
+          "pageVisible": true
+        },
+        {
+          "roleId": "student",
+          "roleName": "Student",
+          "menuVisible": false,
+          "dropdownVisible": false,
+          "pageVisible": true
+        },
+        {
+          "roleId": "ttt",
+          "roleName": "ttt",
+          "menuVisible": false,
+          "dropdownVisible": false,
+          "pageVisible": true
+        }
+      ]
+    },
+    {
+      "id": "/terms",
+      "path": "/terms",
+      "label": "服務條款",
+      "permissions": [
+        {
+          "roleId": "admin",
+          "roleName": "Admin",
+          "menuVisible": false,
+          "dropdownVisible": false,
+          "pageVisible": true
+        },
+        {
+          "roleId": "teacher",
+          "roleName": "Teacher",
+          "menuVisible": false,
+          "dropdownVisible": false,
+          "pageVisible": true
+        },
+        {
+          "roleId": "student",
+          "roleName": "Student",
           "menuVisible": false,
           "dropdownVisible": false,
           "pageVisible": true

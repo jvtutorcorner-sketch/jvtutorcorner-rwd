@@ -7,6 +7,7 @@ const ordersTable = process.env.DYNAMODB_TABLE_ORDERS || "jvtutorcorner-orders";
 const enrollTable = process.env.ENROLLMENTS_TABLE || "jvtutorcorner-enrollments";
 const teachersTable = process.env.DYNAMODB_TABLE_TEACHERS || "jvtutorcorner-teachers";
 const coursesTable = process.env.DYNAMODB_TABLE_COURSES || "jvtutorcorner-courses";
+const carouselTable = process.env.DYNAMODB_TABLE_CAROUSEL || "jvtutorcorner-carousel";
 
 const client = new DynamoDBClient(endpoint ? { region, endpoint } : { region });
 
@@ -48,11 +49,13 @@ async function createTableIfNotExists(tableName, pkName = "id") {
     console.log(`Enrollments table: ${enrollTable}`);
     console.log(`Teachers table: ${teachersTable}`);
     console.log(`Courses table: ${coursesTable}`);
+    console.log(`Carousel table: ${carouselTable}`);
 
     await createTableIfNotExists(ordersTable, "orderId");
     await createTableIfNotExists(enrollTable, "id");
     await createTableIfNotExists(teachersTable, "id");
     await createTableIfNotExists(coursesTable, "id");
+    await createTableIfNotExists(carouselTable, "id");
 
     console.log("Done. Tables creation requested.");
     console.log("You can verify via AWS Console or with AWS CLI: aws dynamodb describe-table --table-name <name>");

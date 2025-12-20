@@ -14,6 +14,12 @@ export default function AdminDashboard() {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16, marginTop: 16 }}>
         <div style={{ padding: 12, border: '1px solid #ddd', borderRadius: 8 }}>
+          <h3>輪播圖管理</h3>
+          <p>上傳和管理首頁輪播圖片</p>
+          <Link href="/admin/carousel">前往輪播圖管理</Link>
+        </div>
+
+        <div style={{ padding: 12, border: '1px solid #ddd', borderRadius: 8 }}>
           <h3>老師</h3>
           <p>目前資料：{TEACHERS.length} 位老師</p>
           <Link href="/teachers">查看老師列表</Link>

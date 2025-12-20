@@ -45,8 +45,8 @@
     "roid_id": "admin-demo",
     "email": "admin@jvtutorcorner.com",
     "password": "123456",
-    "firstName": "Admin",
-    "lastName": "User",
+    "firstName": "test",
+    "lastName": "admin",
     "role": "admin",
     "plan": "elite",
     "bio": "管理者示範帳號，具有管理權限（示範用）。",
@@ -55,15 +55,17 @@
     "termsAccepted": true,
     "createdAtUtc": "2025-12-09T00:00:00.000Z",
     "createdAtLocal": "2025-12-09T08:00:00",
-    "updatedAtUtc": "2025-12-09T00:00:00.000Z",
-    "updatedAtLocal": "2025-12-09T08:00:00",
+    "updatedAtUtc": "2025-12-20T13:32:22.307Z",
+    "updatedAtLocal": "2025-12-20T21:32:22",
     "backupEmail": "",
     "card": {
       "number": "",
       "expiry": "",
       "cvc": "",
       "country": "TW"
-    }
+    },
+    "birthdate": "1997-08-16",
+    "gender": "male"
   },
   {
     "roid_id": "basic-demo",
@@ -136,5 +138,24 @@
       "cvc": "",
       "country": "TW"
     }
+  },
+  {
+    "roid_id": "1c362594-0d9a-417d-be50-e6a7a74a761e",
+    "email": "aa@test.com",
+    "password": "123456",
+    "firstName": "aa",
+    "lastName": "a",
+    "role": "student",
+    "plan": "viewer",
+    "birthdate": "2025-12-20",
+    "gender": "male",
+    "bio": "iiiiiiiiiiiiiiiiiiiiiiiiooo",
+    "country": "TW",
+    "timezone": "Asia/Taipei",
+    "termsAccepted": true,
+    "createdAtUtc": "2025-12-20T14:04:26.684Z",
+    "createdAtLocal": "2025-12-20T22:04:26",
+    "updatedAtUtc": "2025-12-20T14:04:26.684Z",
+    "updatedAtLocal": "2025-12-20T22:04:26"
   }
 ]

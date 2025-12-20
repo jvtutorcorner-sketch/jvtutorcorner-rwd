@@ -32,6 +32,8 @@ export default function RegisterPage() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
+  const [confirmPasswordError, setConfirmPasswordError] = useState<string | null>(null);
+  const [bioError, setBioError] = useState<string | null>(null);
   const [showPasswords, setShowPasswords] = useState(false);
   const [uuid, setUuid] = useState("");
   const [birthdate, setBirthdate] = useState("");
@@ -41,10 +43,19 @@ export default function RegisterPage() {
   const [plan, setPlan] = useState<PlanId | null>("viewer");
   // credit card fields moved to post-login settings; do not collect on registration
   const [saved, setSaved] = useState(false);
-  const [termsHtml, setTermsHtml] = useState<string | null>(null);
-  const [termsScrolledToBottom, setTermsScrolledToBottom] = useState(false);
-  const termsRef = useRef<HTMLDivElement | null>(null);
   const [termsAccepted, setTermsAccepted] = useState(false);
+
+  // Refs for form fields
+  const roleRef = useRef<HTMLInputElement>(null);
+  const firstNameRef = useRef<HTMLInputElement>(null);
+  const lastNameRef = useRef<HTMLInputElement>(null);
+  const emailRef = useRef<HTMLInputElement>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
+  const confirmPasswordRef = useRef<HTMLInputElement>(null);
+  const birthdateRef = useRef<HTMLInputElement>(null);
+  const genderRef = useRef<HTMLSelectElement>(null);
+  const countryRef = useRef<HTMLSelectElement>(null);
+  const bioRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     // generate UUID once on mount
@@ -55,18 +66,6 @@ export default function RegisterPage() {
       setUuid(id);
     }
   }, [uuid]);
-
-  useEffect(() => {
-    // load the terms HTML (same-origin) into the page for scroll detection
-    let mounted = true;
-    fetch('/terms.html')
-      .then((r) => r.text())
-      .then((t) => {
-        if (mounted) setTermsHtml(t);
-      })
-      .catch(() => setTermsHtml(null));
-    return () => { mounted = false; };
-  }, []);
 
   // plan selection moved to user settings; registration defaults to 'viewer'
 
@@ -97,84 +96,169 @@ export default function RegisterPage() {
     [],
   );
 
-    // map country code -> IANA time zone name (used for local formatting)
-    const countryTimezones: Record<string, string> = {
-      TW: 'Asia/Taipei',
-      JP: 'Asia/Tokyo',
-      US: 'America/New_York',
-      GB: 'Europe/London',
-      HK: 'Asia/Hong_Kong',
-      MO: 'Asia/Macau',
-      CN: 'Asia/Shanghai',
-      KR: 'Asia/Seoul',
-      SG: 'Asia/Singapore',
-      MY: 'Asia/Kuala_Lumpur',
-      AU: 'Australia/Sydney',
-      NZ: 'Pacific/Auckland',
-      CA: 'America/Toronto',
-      DE: 'Europe/Berlin',
-      FR: 'Europe/Paris',
-      ES: 'Europe/Madrid',
-      IT: 'Europe/Rome',
-      IN: 'Asia/Kolkata',
-      BR: 'America/Sao_Paulo',
-      MX: 'America/Mexico_City',
-      ZA: 'Africa/Johannesburg',
-    };
+  // 國家時區映射
+  const countryTimezones: Record<string, string> = {
+    TW: 'Asia/Taipei',
+    JP: 'Asia/Tokyo',
+    US: 'America/New_York',
+    GB: 'Europe/London',
+    HK: 'Asia/Hong_Kong',
+    MO: 'Asia/Macau',
+    CN: 'Asia/Shanghai',
+    KR: 'Asia/Seoul',
+    SG: 'Asia/Singapore',
+    MY: 'Asia/Kuala_Lumpur',
+    AU: 'Australia/Sydney',
+    NZ: 'Pacific/Auckland',
+    CA: 'America/Toronto',
+    DE: 'Europe/Berlin',
+    FR: 'Europe/Paris',
+    ES: 'Europe/Madrid',
+    IT: 'Europe/Rome',
+    IN: 'Asia/Kolkata',
+    BR: 'America/Sao_Paulo',
+    MX: 'America/Mexico_City',
+    ZA: 'Africa/Johannesburg',
+  };
 
-    function formatLocalIso(timezone?: string) {
-      const now = new Date();
-      const utcIso = now.toISOString();
-      if (!timezone) return { utc: utcIso, local: utcIso, timezone: 'UTC' };
-      try {
-        const fmt = new Intl.DateTimeFormat('sv-SE', {
-          timeZone: timezone,
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit',
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit',
-          hour12: false,
-        });
-        // 'sv-SE' style yields YYYY-MM-DD HH:MM:SS which we convert to ISO-like
-        const parts = fmt.formatToParts(now).reduce((acc: any, part) => {
-          acc[part.type] = (acc[part.type] || '') + part.value;
-          return acc;
-        }, {});
-        const localIsoLike = `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}`;
-        return { utc: utcIso, local: localIsoLike, timezone };
-      } catch (e) {
-        return { utc: utcIso, local: utcIso, timezone: 'UTC' };
-      }
+  // 格式化本地時間為 ISO 格式
+  function formatLocalIso(timezone?: string) {
+    const now = new Date();
+    const utcIso = now.toISOString();
+    if (!timezone) return { utc: utcIso, local: utcIso, timezone: 'UTC' };
+    try {
+      const fmt = new Intl.DateTimeFormat('sv-SE', {
+        timeZone: timezone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+      });
+      // 'sv-SE' style yields YYYY-MM-DD HH:MM:SS which we convert to ISO-like
+      const parts = fmt.formatToParts(now).reduce((acc: any, part) => {
+        acc[part.type] = (acc[part.type] || '') + part.value;
+        return acc;
+      }, {});
+      const localIsoLike = `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}`;
+      return { utc: utcIso, local: localIsoLike, timezone };
+    } catch (e) {
+      return { utc: utcIso, local: utcIso, timezone: 'UTC' };
     }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     setFormError(null);
-    if (!email || !password) {
-      setFormError('請填寫 Email 與密碼');
+
+    // 如果確認密碼有錯誤，不允許提交
+    if (confirmPasswordError) {
+      setTimeout(() => {
+        confirmPasswordRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        confirmPasswordRef.current?.focus();
+      }, 100);
       return;
     }
 
-    if (password !== confirmPassword) {
-      setFormError('密碼與確認密碼不相符');
+    // 如果自我介紹有錯誤，不允許提交
+    if (bioError) {
+      setTimeout(() => {
+        bioRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        bioRef.current?.focus();
+      }, 100);
       return;
     }
 
-    // Payment/card capture is done after login in user settings; registration does not store card data.
-
-    const combinedName = `${firstName || ''} ${lastName || ''}`.trim();
-
+    // 優先檢查服務條款同意
     if (!termsAccepted) {
-      setFormError('請先閱讀並同意服務條款與隱私權政策。');
+      setFormError('請先勾選同意服務條款與隱私權政策');
+      setTimeout(() => {
+        // 滾動到服務條款區域
+        const termsSection = document.querySelector('input[name="terms"]') as HTMLInputElement | null;
+        if (termsSection) {
+          termsSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          termsSection.focus();
+        }
+      }, 100);
       return;
     }
 
-    // validate bio length
-    if (bio && bio.length > 500) {
-      setFormError('自我介紹請勿超過 500 字');
+    // 收集其他驗證錯誤
+    const errors: string[] = [];
+    const fieldRefs: { [key: string]: React.RefObject<any> } = {};
+
+    if (!role) {
+      errors.push('身份（學生或教師）');
+      fieldRefs['role'] = roleRef;
+    }
+
+    if (!firstName.trim()) {
+      errors.push('First Name');
+      fieldRefs['firstName'] = firstNameRef;
+    }
+
+    if (!lastName.trim()) {
+      errors.push('Last Name');
+      fieldRefs['lastName'] = lastNameRef;
+    }
+
+    if (!email.trim()) {
+      errors.push('Email');
+      fieldRefs['email'] = emailRef;
+    }
+
+    if (!password) {
+      errors.push('密碼');
+      fieldRefs['password'] = passwordRef;
+    }
+
+    if (!confirmPassword) {
+      errors.push('確認密碼');
+      fieldRefs['confirmPassword'] = confirmPasswordRef;
+    } else if (password !== confirmPassword) {
+      errors.push('密碼確認（密碼不相符）');
+      fieldRefs['confirmPassword'] = confirmPasswordRef;
+    }
+
+    if (!birthdate) {
+      errors.push('出生日期');
+      fieldRefs['birthdate'] = birthdateRef;
+    }
+
+    if (!gender) {
+      errors.push('性別');
+      fieldRefs['gender'] = genderRef;
+    }
+
+    if (!country) {
+      errors.push('國家');
+      fieldRefs['country'] = countryRef;
+    }
+
+    if (!bio.trim()) {
+      errors.push('自我介紹');
+      fieldRefs['bio'] = bioRef;
+    }
+
+    if (errors.length > 0) {
+      const errorMessage = `請填寫以下必填欄位：\n• ${errors.join('\n• ')}`;
+      setFormError(errorMessage);
+      
+      // Scroll to first error field or error message
+      setTimeout(() => {
+        const firstErrorField = Object.keys(fieldRefs)[0];
+        if (firstErrorField && fieldRefs[firstErrorField]?.current) {
+          fieldRefs[firstErrorField].current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          fieldRefs[firstErrorField].current.focus();
+        } else {
+          // Fallback to error message
+          const errorElement = document.querySelector('.form-error');
+          if (errorElement) errorElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 100);
       return;
     }
 
@@ -189,6 +273,8 @@ export default function RegisterPage() {
       lastName: lastName || undefined,
       role,
       plan: plan ?? null,
+      birthdate: birthdate || undefined,
+      gender: gender || undefined,
       bio: bio || undefined,
       country: country || undefined,
       timezone: times.timezone,
@@ -227,34 +313,11 @@ export default function RegisterPage() {
     }
   };
 
-  // Preview the exact DynamoDB-like item that will be written (for developer visibility)
-  const getDynamoPreview = () => {
-    const tz = countryTimezones[country || 'TW'] || 'UTC';
-    const t = formatLocalIso(tz);
-    const combinedName = `${firstName || ''} ${lastName || ''}`.trim();
-    return {
-      roid_id: uuid,
-      email: email.trim().toLowerCase(),
-      password: password || undefined,
-      firstName: firstName || undefined,
-      lastName: lastName || undefined,
-      nickname: combinedName || undefined,
-      role,
-      plan: plan ?? null,
-      country: country || undefined,
-      timezone: t.timezone,
-      termsAccepted: !!termsAccepted,
-      createdAtUtc: t.utc,
-      updatedAtUtc: t.utc,
-      bio: bio || undefined,
-    } as const;
-  };
-
   return (
     <div className="page">
       <header className="page-header">
         <h1>建立帳戶</h1>
-        <p>請選擇身份並填寫下列完整資料。</p>
+        <p>請選擇身份並填寫下列<strong>所有必填</strong>資料（標記 <span style={{ color: 'red' }}>*</span> 的欄位為必填）。</p>
       </header>
 
       <section className="section">
@@ -262,10 +325,11 @@ export default function RegisterPage() {
           <h2>基本資料</h2>
           <form onSubmit={handleSubmit} className="modal-form">
             <div className="field">
-              <label>身份</label>
+              <label>身份 <span style={{ color: 'red' }}>*</span></label>
               <div style={{ display: "flex", gap: 8 }}>
                 <label>
                   <input
+                    ref={roleRef}
                     type="radio"
                     name="role"
                     checked={role === "student"}
@@ -291,38 +355,66 @@ export default function RegisterPage() {
 
             <div className="field-row">
               <div className="field">
-                <label>First Name</label>
-                <input value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+                <label>First Name <span style={{ color: 'red' }}>*</span></label>
+                <input ref={firstNameRef} value={firstName} onChange={(e) => setFirstName(e.target.value)} />
               </div>
               <div className="field">
-                <label>Last Name</label>
-                <input value={lastName} onChange={(e) => setLastName(e.target.value)} />
+                <label>Last Name <span style={{ color: 'red' }}>*</span></label>
+                <input ref={lastNameRef} value={lastName} onChange={(e) => setLastName(e.target.value)} />
               </div>
             </div>
 
             <div className="field">
-              <label>Email</label>
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="example@domain.com" />
+              <label>Email <span style={{ color: 'red' }}>*</span></label>
+              <input ref={emailRef} type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="example@domain.com" />
             </div>
 
             <div className="field">
-              <label>密碼</label>
+              <label>密碼 <span style={{ color: 'red' }}>*</span></label>
               <input
+                ref={passwordRef}
                 type={showPasswords ? 'text' : 'password'}
                 value={password}
                 style={{ textAlign: 'left' }}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  // 當密碼改變時，重新驗證確認密碼
+                  if (confirmPassword && e.target.value !== confirmPassword) {
+                    setConfirmPasswordError('密碼確認不相符');
+                  } else if (confirmPassword && e.target.value === confirmPassword) {
+                    setConfirmPasswordError(null);
+                  }
+                }}
               />
             </div>
 
             <div className="field">
-              <label>再次輸入密碼</label>
+              <label>再次輸入密碼 <span style={{ color: 'red' }}>*</span></label>
               <input
+                ref={confirmPasswordRef}
                 type={showPasswords ? 'text' : 'password'}
                 value={confirmPassword}
                 style={{ textAlign: 'left' }}
-                onChange={(e) => setConfirmPassword(e.target.value)}
+                onChange={(e) => {
+                  setConfirmPassword(e.target.value);
+                  // 即時驗證密碼匹配
+                  if (e.target.value && password && e.target.value !== password) {
+                    setConfirmPasswordError('密碼確認不相符');
+                  } else {
+                    setConfirmPasswordError(null);
+                  }
+                }}
               />
+              {confirmPasswordError && (
+                <div style={{
+                  color: '#c33',
+                  fontSize: '14px',
+                  marginTop: '4px',
+                  fontWeight: 'bold'
+                }}>
+                  ⚠️ {confirmPasswordError}
+                </div>
+              )}
             </div>
 
             <div className="field" style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: 8 }}>
@@ -347,13 +439,13 @@ export default function RegisterPage() {
             </div>
 
             <div className="field">
-              <label>出生日期</label>
-              <input type="date" value={birthdate} onChange={(e) => setBirthdate(e.target.value)} />
+              <label>出生日期 <span style={{ color: 'red' }}>*</span></label>
+              <input ref={birthdateRef} type="date" value={birthdate} onChange={(e) => setBirthdate(e.target.value)} />
             </div>
 
             <div className="field">
-              <label>性別</label>
-              <select value={gender} onChange={(e) => setGender(e.target.value)}>
+              <label>性別 <span style={{ color: 'red' }}>*</span></label>
+              <select ref={genderRef} value={gender} onChange={(e) => setGender(e.target.value)}>
                 <option value="">請選擇</option>
                 <option value="male">男</option>
                 <option value="female">女</option>
@@ -361,8 +453,8 @@ export default function RegisterPage() {
             </div>
 
             <div className="field">
-              <label>國家</label>
-              <select value={country} onChange={(e) => setCountry(e.target.value)}>
+              <label>國家 <span style={{ color: 'red' }}>*</span></label>
+              <select ref={countryRef} value={country} onChange={(e) => setCountry(e.target.value)}>
                 <option value="">請選擇</option>
                 {countries.map((c) => (
                   <option key={c.code} value={c.code}>{`${c.label} ${c.code}`}</option>
@@ -371,64 +463,76 @@ export default function RegisterPage() {
             </div>
 
             <div className="field">
-              <label>自我介紹（Markdown 支援）</label>
+              <label>自我介紹（Markdown 支援） <span style={{ color: 'red' }}>*</span></label>
               <textarea
+                ref={bioRef}
                 rows={6}
                 value={bio}
-                onChange={(e) => setBio(e.target.value)}
+                onChange={(e) => {
+                  setBio(e.target.value);
+                  // 即時驗證字數限制
+                  if (e.target.value.length > 50) {
+                    setBioError('自我介紹不能超過50字');
+                  } else {
+                    setBioError(null);
+                  }
+                }}
                 placeholder={
-                  `例如：我愛教育（限制500字）\n` +
-                  `e.g.: I love education (max 500 characters)`
+                  `例如：我愛教育（限制50字）\n` +
+                  `e.g.: I love education (max 50 characters)`
                 }
               />
+              {bioError && (
+                <div style={{
+                  color: '#c33',
+                  fontSize: '14px',
+                  marginTop: '4px',
+                  fontWeight: 'bold'
+                }}>
+                  ⚠️ {bioError}
+                </div>
+              )}
               <small>預覽：</small>
               <div className="card" style={{ padding: 12 }} dangerouslySetInnerHTML={{ __html: simpleMarkdownToHtml(bio) }} />
             </div>
 
             {/* Plan selection moved to user settings — registration defaults to viewer */}
 
-            <div className="field">
-              <label>將寫入的 DynamoDB schema（預覽）</label>
-              <pre style={{ background: '#111827', color: '#f8fafc', padding: 12, borderRadius: 8, maxHeight: 240, overflow: 'auto' }}>{JSON.stringify(getDynamoPreview(), null, 2)}</pre>
-            </div>
-
             {/* Payment details moved to user settings after login; registration does not collect card info. */}
 
             <div className="field">
-              <label>服務條款（請閱讀下方內容至最底後方可勾選同意）</label>
-              <div style={{ border: '1px solid #ddd', height: 240, overflow: 'auto' }}
-                ref={(el) => {
-                  termsRef.current = el;
-                  if (el) {
-                    const onScroll = () => {
-                      if (!el) return;
-                      const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 20;
-                      setTermsScrolledToBottom(nearBottom);
-                    };
-                    el.addEventListener('scroll', onScroll);
-                    // check initial
-                    onScroll();
-                  }
-                }}
-                dangerouslySetInnerHTML={{ __html: termsHtml || '<p>載入條款中... 或放置一份 PDF 到 public/terms.pdf 並提供下載。</p>' }}
-              />
-              <div style={{ marginTop: 8, display: 'flex', gap: 12, alignItems: 'center' }}>
+              <label>服務條款與隱私權政策 <span style={{ color: 'red' }}>*</span></label>
+              <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <p>請先閱讀我們的 <Link href="/terms" target="_blank" style={{ color: '#0066cc', textDecoration: 'underline' }}>服務條款與隱私權政策</Link></p>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <input
+                    name="terms"
                     type="checkbox"
                     checked={termsAccepted}
                     onChange={(e) => setTermsAccepted(e.target.checked)}
-                    disabled={!termsScrolledToBottom}
                     style={{ marginRight: 8 }}
                   />
                   我已閱讀並同意服務條款與隱私權政策
                 </label>
-                {!termsScrolledToBottom && <small className="muted">請捲動到最底部以啟用勾選</small>}
               </div>
             </div>
-            {formError && <p className="form-error">{formError}</p>}
+            {formError && (
+              <div className="form-error" style={{
+                backgroundColor: '#fee',
+                border: '1px solid #fcc',
+                color: '#c33',
+                padding: '12px',
+                borderRadius: '4px',
+                marginTop: '12px',
+                fontWeight: 'bold',
+                fontSize: '16px',
+                whiteSpace: 'pre-line'
+              }}>
+                ⚠️ {formError}
+              </div>
+            )}
             <div className="modal-actions" style={{ marginTop: 12 }}>
-              <button type="submit" className="modal-button primary" disabled={!termsAccepted}>
+              <button type="submit" className="modal-button primary">
                 建立帳戶
               </button>
               <Link href="/login" className="modal-button secondary">返回登入</Link>
