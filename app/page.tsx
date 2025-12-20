@@ -62,6 +62,9 @@ export default function HomePage() {
         if (Array.isArray(data) && data.length > 0) {
           const urls = data.map((img: any) => img.url);
           setCarouselImages(urls);
+        } else {
+          // If API returns empty, keep the default text slides
+          console.log('Carousel API returned no images, using defaults');
         }
       })
       .catch(err => {

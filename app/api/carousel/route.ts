@@ -17,6 +17,8 @@ async function loadLocalCarouselImages() {
     if (fs.existsSync(CAROUSEL_FILE)) {
       const raw = fs.readFileSync(CAROUSEL_FILE, 'utf8');
       LOCAL_CAROUSEL_IMAGES = JSON.parse(raw || '[]');
+    } else {
+      console.log('[carousel API] local file not found, will use hardcoded defaults');
     }
   } catch (e) {
     console.warn('[carousel API] failed to load local carousel images', (e as any)?.message || e);
@@ -43,7 +45,39 @@ export async function GET() {
   try {
     if (!useDynamo) {
       // Use local storage in development
-      return NextResponse.json([...LOCAL_CAROUSEL_IMAGES].sort((a, b) => a.order - b.order));
+      let images = [...LOCAL_CAROUSEL_IMAGES];
+      
+      // Fallback for production/Amplify if local file is missing or empty
+      if (images.length === 0) {
+        images = [
+          {
+            id: 'default-1',
+            url: 'https://lh3.googleusercontent.com/d/1ITTpGZ3vq2d9uoMR7ba9lMXX0t7BtvbN',
+            alt: 'Carousel Image 1',
+            order: 0,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          },
+          {
+            id: 'default-2',
+            url: 'https://lh3.googleusercontent.com/d/1LVpLJm_V_PWnBLMV4VaJUosgi366da6S',
+            alt: 'Carousel Image 2',
+            order: 1,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          },
+          {
+            id: 'default-3',
+            url: 'https://lh3.googleusercontent.com/d/1N04ltODJrGMsucgz74yo-dy7cOKtnHAa',
+            alt: 'Carousel Image 3',
+            order: 2,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          }
+        ];
+      }
+      
+      return NextResponse.json(images.sort((a, b) => a.order - b.order));
     }
 
     const images = await getCarouselImages();
