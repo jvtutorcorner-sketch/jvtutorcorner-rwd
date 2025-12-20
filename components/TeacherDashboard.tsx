@@ -30,16 +30,25 @@ export default function TeacherDashboard({ teacherId, teacherName }: Props) {
           if (data?.ok && data.profile) setProfile(data.profile);
         }
       } catch (e) {}
-      // allow edit if stored user is admin or matches teacher email
+      // allow edit if stored user is admin, matches teacherId, or matches teacher email
       const s = getStoredUser();
-      if (s && (s.role === 'admin' || (profile && s.email === profile.email))) setCanEdit(true);
+      if (s && (s.role === 'admin' || (s.teacherId && s.teacherId === teacherId) || (profile && s.email === profile.email))) setCanEdit(true);
       // fallback: allow if stored user email equals teacher@test.com (demo teacher)
       if (s && s.email === 'teacher@test.com') setCanEdit(true);
       loadCourses();
-      loadOrders();
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [teacherId, teacherName, profile?.email]);
+
+  // After courses are loaded, fetch related orders
+  useEffect(() => {
+    if (courses && courses.length > 0) {
+      loadOrders();
+    }
+    // if no courses, clear orders
+    if (!courses || courses.length === 0) setOrders([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [courses]);
 
   async function loadCourses() {
     setLoading(true);

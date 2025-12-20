@@ -1,23 +1,39 @@
-
-"use client";
-
-import { useParams, useRouter } from 'next/navigation';
-import { useMemo, useEffect, useState } from 'react';
 import { COURSES } from '@/data/courses';
 import { EnrollButton } from '@/components/EnrollButton';
-import { getStoredUser } from '@/lib/mockAuth';
+import resolveDataFile from '@/lib/localData';
+import fs from 'fs/promises';
+import Link from 'next/link';
 
-export default function CourseDetailPage() {
-  const params = useParams<{ id: string }>();
-  const router = useRouter();
-  const id = params?.id as string | undefined;
+export default async function CourseDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
 
-  const course = useMemo(
-    () => (id ? COURSES.find((c) => c.id === id) : undefined),
-    [id]
-  );
+  // Load persisted courses and merge with built-in COURSES
+  let persisted: any[] = [];
+  try {
+    const DATA_FILE = await resolveDataFile('courses.json');
+    const raw = await fs.readFile(DATA_FILE, 'utf8');
+    persisted = JSON.parse(raw || '[]');
+  } catch (e) {
+    persisted = [];
+  }
 
-  if (!id || !course) {
+  // Merge persisted in front so recent creations appear first; avoid duplicate ids
+  const known = new Map<string, any>();
+  const merged = [] as any[];
+  for (const p of persisted) {
+    if (p && p.id) {
+      known.set(String(p.id), p);
+      merged.push(p);
+    }
+  }
+  for (const c of COURSES) {
+    if (!c || !c.id) continue;
+    if (!known.has(String(c.id))) merged.push(c);
+  }
+
+  const course = merged.find((c) => c.id === id);
+
+  if (!course) {
     // 找不到課程，簡單顯示一個提示，並給一個回列表的按鈕
     return (
       <div className="page">
@@ -25,12 +41,9 @@ export default function CourseDetailPage() {
           <h1>找不到課程</h1>
           <p>這個課程可能已下架，請回到課程列表重新選擇。</p>
         </header>
-        <button
-          className="card-button"
-          onClick={() => router.push('/courses')}
-        >
+        <Link href="/courses" className="card-button">
           回課程列表
-        </button>
+        </Link>
       </div>
     );
   }
@@ -82,7 +95,7 @@ export default function CourseDetailPage() {
           <div className="course-section">
             <h2>課程標籤</h2>
             <div className="card-tags">
-              {tags.map((tag) => (
+              {tags.map((tag: string) => (
                 <span key={tag} className="tag">
                   {tag}
                 </span>
@@ -136,12 +149,6 @@ export default function CourseDetailPage() {
               <EnrollButton courseId={course.id} courseTitle={course.title} />
             </div>
 
-            {/* Session duration setting (teacher only) */}
-            <div style={{ marginTop: 12 }}>
-              <h4>課堂倒數時間（分鐘）</h4>
-              <CourseSessionDurationEditor courseId={course.id} teacherName={teacherName} defaultMinutes={(course as any).sessionDurationMinutes ?? 50} />
-            </div>
-
             <p className="course-side-note">
               目前為示範環境，報名資料只會暫存在前端並輸出到 console。
               之後可以在這裡串接 Stripe / 跨國金流或本地第三方支付，
@@ -150,53 +157,6 @@ export default function CourseDetailPage() {
           </div>
         </aside>
       </div>
-    </div>
-  );
-}
-
-function CourseSessionDurationEditor({ courseId, teacherName, defaultMinutes }: { courseId: string; teacherName: string; defaultMinutes: number }) {
-  const [minutes, setMinutes] = useState<number>(defaultMinutes);
-  const [editing, setEditing] = useState(false);
-  const [isTeacher, setIsTeacher] = useState(false);
-
-  useEffect(() => {
-    try {
-      const u = getStoredUser();
-      if (u) {
-        const admin = u.role === 'admin';
-        const teacher = Boolean(u.role === 'teacher' || (u.displayName && teacherName && u.displayName.includes(teacherName)));
-        setIsTeacher(admin || teacher);
-      }
-    } catch (e) {}
-
-    try {
-      const raw = localStorage.getItem(`course_session_duration_${courseId}`);
-      if (raw) setMinutes(Number(raw));
-    } catch (e) {}
-  }, [courseId, teacherName]);
-
-  const save = () => {
-    try {
-      localStorage.setItem(`course_session_duration_${courseId}`, String(minutes));
-      setEditing(false);
-      alert('已儲存課堂倒數時間設定');
-    } catch (e) {
-      console.warn('save duration failed', e);
-      alert('儲存失敗');
-    }
-  };
-
-  return (
-    <div>
-      <div style={{ marginBottom: 8 }}>{minutes} 分鐘</div>
-      {isTeacher ? (
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <input type="number" value={minutes} min={1} max={240} onChange={(e) => setMinutes(Number(e.target.value || 0))} style={{ width: 80 }} />
-          <button onClick={save}>儲存</button>
-        </div>
-      ) : (
-        <div style={{ fontSize: 12, color: '#666' }}>僅授課者可編輯</div>
-      )}
     </div>
   );
 }

@@ -29,7 +29,7 @@ export async function POST(req: Request) {
 
     // Demo teacher credentials for local testing
     if (String(email).toLowerCase() === 'teacher@test.com' && password === '123456') {
-      const publicProfile: any = { roid_id: 'teacher-demo', nickname: 'Demo Teacher', plan: null, role: 'teacher' };
+      const publicProfile: any = { roid_id: 't3', nickname: '王老師', plan: 'pro', role: 'teacher', firstName: '王', lastName: '' };
       publicProfile.id = publicProfile.roid_id;
       return NextResponse.json({ ok: true, profile: publicProfile });
     }

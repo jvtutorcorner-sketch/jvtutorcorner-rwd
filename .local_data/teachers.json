@@ -13,7 +13,7 @@
     ],
     "rating": 4.9,
     "hourlyRate": 800,
-    "location": "線上 / 台北",
+    "location": "線上",
     "intro": "10 年雙語教學經驗，專攻英檢、TOEIC 口說與寫作。"
   },
   {
@@ -30,7 +30,7 @@
     ],
     "rating": 4.8,
     "hourlyRate": 700,
-    "location": "線上 / 新北",
+    "location": "線上",
     "intro": "擅長用生活化例子解釋數學觀念，陪學生建立自信。"
   },
   {
@@ -64,7 +64,7 @@
     ],
     "rating": 4.7,
     "hourlyRate": 900,
-    "location": "線上 / 東京",
+    "location": "線上",
     "intro": "日本在地老師，從零基礎開始練習自然對話。"
   }
 ]

@@ -1,9 +1,12 @@
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { redirect } from 'next/navigation';
 import { TEACHERS, type Teacher } from '@/data/teachers';
-import { COURSES } from '@/data/courses';
 import { promises as fs } from 'fs';
 import path from 'path';
+
+// Load client-only dashboard component
+const ClientTeacherDashboard = dynamic(() => import('@/components/TeacherDashboard'));
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -71,8 +74,6 @@ export default async function TeacherPage({ params }: Props) {
     );
   }
 
-  const teacherCourses = COURSES.filter((c) => c.teacherName === teacher.name);
-
   return (
     <div className="page">
       <header className="page-header">
@@ -116,33 +117,13 @@ export default async function TeacherPage({ params }: Props) {
         </div>
       </section>
 
-      {/* 教師管理面板已移除 */}
-
+      {/* Teacher dashboard (client) — handles permission checks itself using teacherId */}
       <section className="section">
-        <h2>該老師的課程</h2>
-        {teacherCourses.length === 0 ? (
-          <p className="muted">目前沒有公開課程。</p>
-        ) : (
-          <div style={{ display: 'grid', gap: 12 }}>
-            {teacherCourses.map((c) => (
-              <div key={c.id} className="card">
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <div>
-                    <h3 style={{ margin: 0 }}>{c.title}</h3>
-                    <p className="muted">{c.subject} • {c.level} • {c.language}</p>
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <p className="muted">NT$ {c.pricePerSession}</p>
-                    <Link href={`/courses/${c.id}`} className="card-button secondary">查看課程</Link>
-                  </div>
-                </div>
-                <p style={{ marginTop: 8 }}>{c.description}</p>
-              </div>
-            ))}
-          </div>
-
-        )}
+        {/* Dynamically load client-only dashboard */}
+        {/* eslint-disable-next-line @next/next/no-ssr-import-in-children */}
+        <ClientTeacherDashboard teacherId={teacher.id} teacherName={teacher.name} />
       </section>
+
     </div>
   );
 }

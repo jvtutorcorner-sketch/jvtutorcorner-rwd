@@ -1,5 +1,7 @@
 // app/courses/page.tsx
 import { COURSES } from '@/data/courses';
+import resolveDataFile from '@/lib/localData';
+import fs from 'fs/promises';
 import { CourseCard } from '@/components/CourseCard';
 import SearchForm from '@/components/SearchForm';
 
@@ -40,7 +42,38 @@ export default async function CoursesPage(props?: CoursesPageProps) {
   const languageTrim = language.trim().toLowerCase();
   const teacherTrim = teacher.trim().toLowerCase();
 
-  const filtered = COURSES.filter((c) => {
+  // load persisted courses from .local_data (if available) and merge with built-in COURSES
+  let persisted: any[] = [];
+  try {
+    const DATA_FILE = await resolveDataFile('courses.json');
+    const raw = await fs.readFile(DATA_FILE, 'utf8');
+    persisted = JSON.parse(raw || '[]');
+  } catch (e) {
+    // ignore if file missing
+    persisted = [];
+  }
+
+  // merge persisted in front so recent creations appear first; avoid duplicate ids
+  const known = new Map<string, any>();
+  const merged = [] as any[];
+  for (const p of persisted) {
+    if (p && p.id) {
+      known.set(String(p.id), p);
+      merged.push(p);
+    }
+  }
+  for (const c of COURSES) {
+    if (!c || !c.id) continue;
+    if (!known.has(String(c.id))) merged.push(c);
+  }
+
+  // DEBUG: expose persisted/merged counts and first few ids to help diagnose missing entries
+  const persistedCount = persisted.length;
+  const builtinCount = COURSES.length;
+  const mergedCount = merged.length;
+  const persistedSample = persisted.slice(0, 10).map((p) => p.id).join(', ');
+
+  const filtered = merged.filter((c) => {
     if (subjectTrim && !c.subject.toLowerCase().includes(subjectTrim)) return false;
     if (languageTrim && !c.language.toLowerCase().includes(languageTrim)) return false;
     if (teacherTrim && !c.teacherName.toLowerCase().includes(teacherTrim)) return false;

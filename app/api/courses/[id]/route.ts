@@ -37,6 +37,19 @@ export async function DELETE(req: Request, { params }: { params: any }) {
   }
 }
 
+export async function GET(req: Request, { params }: { params: any }) {
+  try {
+    const id = params.id;
+    const courses = await readCourses();
+    const c = courses.find((x) => String(x.id) === String(id));
+    if (!c) return NextResponse.json({ ok: false, message: 'Course not found' }, { status: 404 });
+    return NextResponse.json({ ok: true, course: c });
+  } catch (err: any) {
+    console.error('[courses GET by id] error', err?.message || err);
+    return NextResponse.json({ ok: false, message: 'Failed to read course' }, { status: 500 });
+  }
+}
+
 export async function PATCH(req: Request, { params }: { params: any }) {
   try {
     const id = params.id;

@@ -27,12 +27,17 @@ export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
     const teacher = url.searchParams.get('teacher');
+    const teacherId = url.searchParams.get('teacherId');
     const id = url.searchParams.get('id');
     const courses = await readCourses();
     if (id) {
       const c = courses.find((x) => String(x.id) === id);
       if (!c) return NextResponse.json({ ok: false, message: 'Course not found' }, { status: 404 });
       return NextResponse.json({ ok: true, course: c });
+    }
+    if (teacherId) {
+      const filtered = courses.filter((c) => String(c.teacherId || '').toLowerCase() === String(teacherId).toLowerCase());
+      return NextResponse.json({ ok: true, data: filtered });
     }
     if (teacher) {
       const filtered = courses.filter((c) => String(c.teacherName).toLowerCase() === String(teacher).toLowerCase());
@@ -48,8 +53,8 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    if (!body || !body.title || !body.teacherName) {
-      return NextResponse.json({ ok: false, message: 'title and teacherName required' }, { status: 400 });
+    if (!body || !body.title || (!body.teacherName && !body.teacherId)) {
+      return NextResponse.json({ ok: false, message: 'title and teacherName or teacherId required' }, { status: 400 });
     }
     const courses = await readCourses();
     const id = body.id || randomUUID();
@@ -61,6 +66,7 @@ export async function POST(req: Request) {
       level: body.level || '一般',
       language: body.language || '中文',
       teacherName: body.teacherName,
+      teacherId: body.teacherId || null,
       pricePerSession: body.pricePerSession || 0,
       durationMinutes: body.durationMinutes || 60,
       tags: body.tags || [],

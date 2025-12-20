@@ -50,19 +50,31 @@ export const TEST_PASSWORD = '123456';
 
 export const MOCK_USERS: Record<
   string,
-  { plan: PlanId; displayName: string }
+  { plan: PlanId; displayName: string; firstName: string; lastName: string }
 > = {
   'basic@test.com': {
     plan: 'basic',
     displayName: 'Basic 測試帳號',
+    firstName: '三',
+    lastName: '張',
   },
   'pro@test.com': {
     plan: 'pro',
     displayName: 'Pro 測試帳號',
+    firstName: '四',
+    lastName: '李',
   },
   'elite@test.com': {
     plan: 'elite',
     displayName: 'Elite 測試帳號',
+    firstName: '五',
+    lastName: '王',
+  },
+  'teacher@test.com': {
+    plan: 'pro',
+    displayName: '王老師',
+    firstName: '王',
+    lastName: '',
   },
 };
 
@@ -71,6 +83,8 @@ export type StoredUser = {
   plan: PlanId;
   // optional role for admin/teacher demo
   role?: 'admin' | 'user' | 'teacher';
+  // optional teacher id for demo teacher accounts
+  teacherId?: string;
   // optional display/name fields used in various UIs
   displayName?: string;
   firstName?: string;

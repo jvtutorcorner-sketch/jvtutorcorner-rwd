@@ -32,23 +32,42 @@ export async function GET(req: NextRequest) {
       Connection: 'keep-alive',
     });
 
-    const stream = new ReadableStream({
-      start(controller) {
+    // Ensure a ReadableStream implementation is available in this runtime.
+    let RS: any = (globalThis as any).ReadableStream;
+    if (!RS) {
+      try {
+        const mod = await import('stream/web');
+        RS = mod.ReadableStream;
+      } catch (e) {
+        console.warn('[WB SSE Server] stream/web import failed:', e);
+      }
+    }
+
+    if (!RS) {
+      console.error('[WB SSE Server] No ReadableStream available in this runtime; cannot open SSE stream.');
+      return new Response('Server does not support SSE in this runtime', { status: 500 });
+    }
+
+    function encodeSSE(obj: any) {
+      try { return new TextEncoder().encode(`data: ${JSON.stringify(obj)}\n\n`); } catch (e) { return new TextEncoder().encode(`data: {}\n\n`); }
+    }
+
+    const stream = new RS({
+      start(controller: any) {
         // send connected ping
-        controller.enqueue(encodeSSE({ type: 'connected', timestamp: Date.now() }));
+        try { controller.enqueue(encodeSSE({ type: 'connected', timestamp: Date.now() })); } catch (e) {}
 
         // Register client controller to clients map
         let set = clients.get(uuid);
         if (!set) { set = new Set(); clients.set(uuid, set); }
         const client = { controller };
         set.add(client);
-        console.log(`[WB SSE Server] Client registered. UUID: ${uuid}, Total clients: ${set.size}`);
+        try { console.log(`[WB SSE Server] Client registered. UUID: ${uuid}, Total clients: ${set.size}`); } catch (e) {}
 
         // If we have a last payload for this uuid, send it so new clients can catch up
         try {
           const last = lastPayload.get(uuid);
           if (last) {
-            // avoid sending extremely large payloads (e.g. PDF data URLs) inline
             if (last.type === 'pdf-set' && typeof last.dataUrl === 'string' && last.dataUrl.length > 20000) {
               try { controller.enqueue(encodeSSE({ type: 'state-available', stateType: 'pdf-set' })); } catch (e) {}
             } else {
@@ -57,19 +76,24 @@ export async function GET(req: NextRequest) {
           }
         } catch (e) {}
 
-        // On cancel/close remove
-        req.signal.addEventListener('abort', () => {
-          try { 
-            set!.delete(client); 
-            console.log(`[WB SSE Server] Client disconnected. UUID: ${uuid}, Remaining: ${set!.size}`);
-          } catch (e) {}
-        });
+        // On cancel/close remove (guard if signal exists)
+        try {
+          if (req.signal && typeof (req.signal as any).addEventListener === 'function') {
+            (req.signal as any).addEventListener('abort', () => {
+              try {
+                set!.delete(client);
+                console.log(`[WB SSE Server] Client disconnected. UUID: ${uuid}, Remaining: ${set!.size}`);
+              } catch (e) {}
+            });
+          }
+        } catch (e) {}
       }
     });
 
     return new Response(stream, { headers });
-  } catch (err) {
+  } catch (err: any) {
     console.error('[WB SSE Server] GET handler error:', err);
+    try { console.error(err?.stack ?? String(err)); } catch (_) {}
     return new Response('Internal server error', { status: 500 });
   }
 

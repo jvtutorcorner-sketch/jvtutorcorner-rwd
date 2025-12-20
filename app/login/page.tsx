@@ -41,10 +41,14 @@ export default function LoginPage() {
           const user: StoredUser = {
             email: email.trim().toLowerCase(),
             plan,
-            role: role === 'admin' ? 'admin' : 'user',
+            role: role === 'admin' ? 'admin' : (role === 'teacher' ? 'teacher' : 'user'),
             firstName: data.profile?.firstName,
             lastName: data.profile?.lastName,
           };
+          // attach teacherId for teacher profiles so client can use it for permission checks
+          if (role === 'teacher' && data.profile?.id) {
+            (user as any).teacherId = String(data.profile.id);
+          }
           setStoredUser(user);
           setCurrentUser(user);
           window.dispatchEvent(new Event('tutor:auth-changed'));
@@ -69,7 +73,17 @@ export default function LoginPage() {
           setError('密碼錯誤，統一測試密碼為：123456');
           return;
         }
-        const user: StoredUser = { email: trimmedEmail, plan: userConfig.plan };
+        const user: StoredUser = { 
+          email: trimmedEmail, 
+          plan: userConfig.plan,
+          firstName: userConfig.firstName,
+          lastName: userConfig.lastName,
+        };
+        // mock teacher fallback: attach demo teacher id
+        if (trimmedEmail === 'teacher@test.com') {
+          (user as any).teacherId = 't3';
+          (user as any).role = 'teacher';
+        }
         setStoredUser(user);
         setCurrentUser(user);
         window.dispatchEvent(new Event('tutor:auth-changed'));
@@ -176,16 +190,16 @@ export default function LoginPage() {
           <p>可使用以下任一帳號登入：</p>
           <ul>
             <li>
-              <strong>Basic：</strong> basic@test.com （Basic 普通會員）
+              <strong>Basic：</strong> basic@test.com （Basic 普通會員）<span style={{ color: '#2563eb', fontWeight: 'bold' }}>({MOCK_USERS['basic@test.com'].lastName}{MOCK_USERS['basic@test.com'].firstName})</span>
             </li>
             <li>
-              <strong>Pro：</strong> pro@test.com （Pro 中級會員）
+              <strong>Pro：</strong> pro@test.com （Pro 中級會員）<span style={{ color: '#2563eb', fontWeight: 'bold' }}>({MOCK_USERS['pro@test.com'].lastName}{MOCK_USERS['pro@test.com'].firstName})</span>
             </li>
             <li>
-              <strong>Elite：</strong> elite@test.com （Elite 高級會員）
+              <strong>Elite：</strong> elite@test.com （Elite 高級會員）<span style={{ color: '#2563eb', fontWeight: 'bold' }}>({MOCK_USERS['elite@test.com'].lastName}{MOCK_USERS['elite@test.com'].firstName})</span>
             </li>
             <li>
-              <strong>Teacher：</strong> teacher@test.com （示範老師帳號）
+              <strong>Teacher：</strong> teacher@test.com （示範老師帳號）<span style={{ color: '#2563eb', fontWeight: 'bold' }}>({MOCK_USERS['teacher@test.com'].lastName}{MOCK_USERS['teacher@test.com'].firstName})</span>
             </li>
           </ul>
           <div style={{ marginTop: 12 }}>
