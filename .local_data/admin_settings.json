@@ -381,7 +381,7 @@
         "ttt": false
       },
       "dropdown": {
-        "admin": false,
+        "admin": true,
         "teacher": false,
         "student": false,
         "test": false,
@@ -446,7 +446,7 @@
         "ttt": false
       },
       "dropdown": {
-        "admin": false,
+        "admin": true,
         "teacher": false,
         "student": false,
         "ttt": false
@@ -467,9 +467,72 @@
         "ttt": false
       },
       "dropdown": {
+        "admin": true,
+        "teacher": false,
+        "student": false,
+        "ttt": false
+      },
+      "page": {
+        "admin": true,
+        "teacher": true,
+        "student": true,
+        "ttt": true
+      }
+    },
+    "/admin/settings/pricing": {
+      "label": "方案與價格管理",
+      "menu": {
         "admin": false,
         "teacher": false,
         "student": false,
+        "ttt": false
+      },
+      "dropdown": {
+        "admin": true,
+        "teacher": false,
+        "student": false,
+        "ttt": false
+      },
+      "page": {
+        "admin": true,
+        "teacher": true,
+        "student": true,
+        "ttt": true
+      }
+    },
+    "/admin/settings/about": {
+      "label": "關於我們管理",
+      "menu": {
+        "admin": false,
+        "teacher": false,
+        "student": false,
+        "ttt": false
+      },
+      "dropdown": {
+        "admin": true,
+        "teacher": false,
+        "student": false,
+        "ttt": false
+      },
+      "page": {
+        "admin": true,
+        "teacher": true,
+        "student": true,
+        "ttt": true
+      }
+    },
+    "/calendar": {
+      "label": "課程行事曆",
+      "menu": {
+        "admin": false,
+        "teacher": false,
+        "student": false,
+        "ttt": false
+      },
+      "dropdown": {
+        "admin": true,
+        "teacher": true,
+        "student": true,
         "ttt": false
       },
       "page": {
@@ -1108,7 +1171,7 @@
           "roleId": "admin",
           "roleName": "Admin",
           "menuVisible": false,
-          "dropdownVisible": false,
+          "dropdownVisible": true,
           "pageVisible": true
         },
         {
@@ -1220,7 +1283,7 @@
           "roleId": "admin",
           "roleName": "Admin",
           "menuVisible": true,
-          "dropdownVisible": false,
+          "dropdownVisible": true,
           "pageVisible": true
         },
         {
@@ -1255,7 +1318,7 @@
           "roleId": "admin",
           "roleName": "Admin",
           "menuVisible": false,
-          "dropdownVisible": false,
+          "dropdownVisible": true,
           "pageVisible": true
         },
         {
@@ -1270,6 +1333,111 @@
           "roleName": "Student",
           "menuVisible": false,
           "dropdownVisible": false,
+          "pageVisible": true
+        },
+        {
+          "roleId": "ttt",
+          "roleName": "ttt",
+          "menuVisible": false,
+          "dropdownVisible": false,
+          "pageVisible": true
+        }
+      ]
+    },
+    {
+      "id": "/admin/settings/pricing",
+      "path": "/admin/settings/pricing",
+      "label": "方案與價格管理",
+      "permissions": [
+        {
+          "roleId": "admin",
+          "roleName": "Admin",
+          "menuVisible": false,
+          "dropdownVisible": true,
+          "pageVisible": true
+        },
+        {
+          "roleId": "teacher",
+          "roleName": "Teacher",
+          "menuVisible": false,
+          "dropdownVisible": false,
+          "pageVisible": true
+        },
+        {
+          "roleId": "student",
+          "roleName": "Student",
+          "menuVisible": false,
+          "dropdownVisible": false,
+          "pageVisible": true
+        },
+        {
+          "roleId": "ttt",
+          "roleName": "ttt",
+          "menuVisible": false,
+          "dropdownVisible": false,
+          "pageVisible": true
+        }
+      ]
+    },
+    {
+      "id": "/admin/settings/about",
+      "path": "/admin/settings/about",
+      "label": "關於我們管理",
+      "permissions": [
+        {
+          "roleId": "admin",
+          "roleName": "Admin",
+          "menuVisible": false,
+          "dropdownVisible": true,
+          "pageVisible": true
+        },
+        {
+          "roleId": "teacher",
+          "roleName": "Teacher",
+          "menuVisible": false,
+          "dropdownVisible": false,
+          "pageVisible": true
+        },
+        {
+          "roleId": "student",
+          "roleName": "Student",
+          "menuVisible": false,
+          "dropdownVisible": false,
+          "pageVisible": true
+        },
+        {
+          "roleId": "ttt",
+          "roleName": "ttt",
+          "menuVisible": false,
+          "dropdownVisible": false,
+          "pageVisible": true
+        }
+      ]
+    },
+    {
+      "id": "/calendar",
+      "path": "/calendar",
+      "label": "課程行事曆",
+      "permissions": [
+        {
+          "roleId": "admin",
+          "roleName": "Admin",
+          "menuVisible": false,
+          "dropdownVisible": true,
+          "pageVisible": true
+        },
+        {
+          "roleId": "teacher",
+          "roleName": "Teacher",
+          "menuVisible": false,
+          "dropdownVisible": true,
+          "pageVisible": true
+        },
+        {
+          "roleId": "student",
+          "roleName": "Student",
+          "menuVisible": false,
+          "dropdownVisible": true,
           "pageVisible": true
         },
         {

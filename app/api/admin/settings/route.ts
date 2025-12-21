@@ -48,6 +48,11 @@ async function readSettings() {
           { roleId: 'teacher', roleName: 'Teacher', menuVisible: true, dropdownVisible: true, pageVisible: true },
           { roleId: 'student', roleName: 'Student', menuVisible: true, dropdownVisible: true, pageVisible: true }
         ]},
+        { id: '/calendar', path: '/calendar', label: '課程行事曆', permissions: [
+          { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
+          { roleId: 'teacher', roleName: 'Teacher', menuVisible: true, dropdownVisible: true, pageVisible: true },
+          { roleId: 'student', roleName: 'Student', menuVisible: true, dropdownVisible: true, pageVisible: true }
+        ]},
         { id: '/pricing', path: '/pricing', label: '方案與價格', permissions: [
           { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
           { roleId: 'teacher', roleName: 'Teacher', menuVisible: true, dropdownVisible: true, pageVisible: true },

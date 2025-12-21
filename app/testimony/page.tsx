@@ -9,6 +9,7 @@ const testimonials = [
     name: '王小明',
     role: '英文學習者',
     content: '在這裡學習英文真的很有趣！老師非常有耐心，教材也很豐富。我的口說能力在短短三個月內有了顯著的進步。',
+    createdAt: '2025-11-30T10:30:00.000Z',
     avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix',
   },
   {
@@ -16,6 +17,7 @@ const testimonials = [
     name: '李美華',
     role: '日文進修中',
     content: '小班制的教學讓我有很多練習機會。即時白板功能非常強大，老師可以隨時糾正我的筆順和發音。',
+    createdAt: '2025-12-05T14:20:00.000Z',
     avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Aneka',
   },
   {
@@ -23,6 +25,7 @@ const testimonials = [
     name: '張大衛',
     role: '商務英語學員',
     content: '課程時間非常彈性，適合忙碌的上班族。錄影回放功能讓我可以在下班後隨時複習，真的很方便。',
+    createdAt: '2025-12-10T09:00:00.000Z',
     avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=David',
   },
 ];
@@ -48,7 +51,12 @@ export default function TestimonyPage() {
               />
               <div>
                 <h3 className="font-bold text-lg">{item.name}</h3>
-                <p className="text-blue-600 text-sm">{item.role}</p>
+                  <p className="text-blue-600 text-sm">{item.role}</p>
+                  {item.createdAt && (
+                    <p className="text-gray-500 text-xs" style={{ marginTop: 4 }}>
+                      發布於：{new Date(item.createdAt).toLocaleString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  )}
               </div>
             </div>
             <p className="text-gray-700 leading-relaxed italic">

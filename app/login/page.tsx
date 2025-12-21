@@ -73,15 +73,15 @@ export default function LoginPage() {
           setError('密碼錯誤，統一測試密碼為：123456');
           return;
         }
-        const user: StoredUser = { 
-          email: trimmedEmail, 
+        const user: StoredUser = {
+          email: trimmedEmail,
           plan: userConfig.plan,
           firstName: userConfig.firstName,
           lastName: userConfig.lastName,
         };
-        // mock teacher fallback: attach demo teacher id
-        if (trimmedEmail === 'teacher@test.com') {
-          (user as any).teacherId = 't3';
+        // If the mock user entry includes a teacherId, attach it and mark role
+        if ((userConfig as any).teacherId) {
+          (user as any).teacherId = (userConfig as any).teacherId;
           (user as any).role = 'teacher';
         }
         setStoredUser(user);
@@ -189,6 +189,7 @@ export default function LoginPage() {
           <h2>測試帳號一覽</h2>
           <p>可使用以下任一帳號登入：</p>
           <ul>
+            {/* Core test accounts */}
             <li>
               <strong>Basic：</strong> basic@test.com （Basic 普通會員）<span style={{ color: '#2563eb', fontWeight: 'bold' }}>({MOCK_USERS['basic@test.com'].lastName}{MOCK_USERS['basic@test.com'].firstName})</span>
             </li>
@@ -198,9 +199,17 @@ export default function LoginPage() {
             <li>
               <strong>Elite：</strong> elite@test.com （Elite 高級會員）<span style={{ color: '#2563eb', fontWeight: 'bold' }}>({MOCK_USERS['elite@test.com'].lastName}{MOCK_USERS['elite@test.com'].firstName})</span>
             </li>
-            <li>
-              <strong>Teacher：</strong> teacher@test.com （示範老師帳號）<span style={{ color: '#2563eb', fontWeight: 'bold' }}>({MOCK_USERS['teacher@test.com'].lastName}{MOCK_USERS['teacher@test.com'].firstName})</span>
-            </li>
+            {/* legacy demo teacher removed */}
+
+            {/* Additional teacher demo accounts generated from MOCK_USERS */}
+            {Object.entries(MOCK_USERS)
+              .filter(([email, cfg]) => (cfg as any).teacherId)
+              .map(([email, cfg]) => (
+                <li key={email}>
+                  <strong>{(cfg.displayName || '老師')}：</strong> {email} （{cfg.displayName}）
+                  <span style={{ color: '#2563eb', fontWeight: 'bold' }}>({cfg.lastName}{cfg.firstName})</span>
+                </li>
+              ))}
           </ul>
           <div style={{ marginTop: 12 }}>
             <small>統一測試密碼：123456</small>

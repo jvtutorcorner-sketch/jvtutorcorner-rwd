@@ -16,8 +16,8 @@ export default function MyCoursesPage() {
   const [user, setUser] = useState<StoredUser | null>(null);
   const firstName = user?.firstName || '';
   const lastName = user?.lastName || '';
-  // keep existing fetch identifier (some courses store teacher by lastName)
-  const teacherName = user?.lastName || user?.email || '';
+  // derive a teacherName that matches bundled sample courses (e.g. '林老師')
+  const teacherName = user?.lastName ? `${user.lastName}老師` : (user?.email || '');
   const allowedPlans = Object.keys(PLAN_LABELS);
   // datatable controls
   const [searchTerm, setSearchTerm] = useState('');
@@ -51,11 +51,20 @@ export default function MyCoursesPage() {
   async function fetchCourses() {
     setLoading(true);
     try {
-      // prefer filtering by teacherId when available, fallback to teacherName for older entries
-      const q = user?.teacherId ? `teacherId=${encodeURIComponent(String(user.teacherId))}` : `teacher=${encodeURIComponent(teacherName)}`;
-      const res = await fetch(`/api/courses?${q}`);
-      const json = await res.json();
-      if (json?.ok) setCourses(json.data || []);
+      // prefer filtering by teacherId when available
+      if (user?.teacherId) {
+        const res = await fetch(`/api/courses?teacherId=${encodeURIComponent(String(user.teacherId))}`);
+        const json = await res.json();
+        if (json?.ok && Array.isArray(json.data) && json.data.length > 0) {
+          setCourses(json.data || []);
+          return;
+        }
+        // fall through to teacherName query if no results by id
+      }
+      // fallback: query by teacherName (bundled sample data uses names like '林老師')
+      const res2 = await fetch(`/api/courses?teacher=${encodeURIComponent(teacherName)}`);
+      const json2 = await res2.json();
+      if (json2?.ok) setCourses(json2.data || []);
     } catch (err) {
       console.error(err);
     } finally {

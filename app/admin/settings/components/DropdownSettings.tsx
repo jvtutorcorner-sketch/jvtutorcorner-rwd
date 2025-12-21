@@ -21,8 +21,8 @@ export default function DropdownSettings() {
       const rs = await s.json();
       const r = await fetch('/api/admin/roles');
       const rr = await r.json();
-      if (s.ok && rs.ok) setSettings(rs.settings);
-      if (r.ok && rr.ok) setRoles(rr.roles);
+      if (s.ok) setSettings(rs.settings || rs);
+      if (r.ok) setRoles(rr.roles || rr);
     } catch (err) {
       console.error(err);
     } finally { setLoading(false); }

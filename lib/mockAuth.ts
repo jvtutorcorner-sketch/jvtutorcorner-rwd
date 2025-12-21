@@ -62,7 +62,7 @@ export const TEST_PASSWORD = '123456';
 
 export const MOCK_USERS: Record<
   string,
-  { plan: PlanId; displayName: string; firstName: string; lastName: string }
+  { plan: PlanId; displayName: string; firstName: string; lastName: string; teacherId?: string }
 > = {
   'basic@test.com': {
     plan: 'basic',
@@ -82,12 +82,33 @@ export const MOCK_USERS: Record<
     firstName: '五',
     lastName: '王',
   },
-  'teacher@test.com': {
+  // removed legacy demo teacher 'teacher@test.com'
+  // Teacher demo accounts mapped to real local profile emails
+  // 'lin@test.com' corresponds to teacher id 't1' (林老師)
+  'lin@test.com': {
+    plan: 'pro',
+    displayName: '林老師',
+    firstName: '林',
+    lastName: '',
+    teacherId: 't1',
+  },
+  // 'chen@test.com' corresponds to teacher id 't2' (陳老師)
+  'chen@test.com': {
+    plan: 'pro',
+    displayName: '陳老師',
+    firstName: '陳',
+    lastName: '',
+    teacherId: 't2',
+  },
+  // 'wang@test.com' corresponds to teacher id 't3' (王老師)
+  'wang@test.com': {
     plan: 'pro',
     displayName: '王老師',
     firstName: '王',
     lastName: '',
+    teacherId: 't3',
   },
+  // (removed optional fourth demo teacher)
 };
 
 export type StoredUser = {

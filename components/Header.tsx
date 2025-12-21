@@ -20,6 +20,7 @@ export default function Header() {
     { href: '/teachers', title: '專業師資 - 嚴選全球優質師資', defaultLabel: '專業師資' },
     { href: '/pricing', title: '方案與價格 - 定價與方案說明', defaultLabel: '方案與價格' },
     { href: '/courses', title: '課程總覽 - 多國語種課程總覽', defaultLabel: '課程總覽' },
+    { href: '/calendar', title: '課程行事曆 - 查看預約時段與提醒', defaultLabel: '課程行事曆' },
     { href: '/testimony', title: '學員見證 - 使用者真實學習心得', defaultLabel: '學員見證' },
     { href: '/about', title: '關於我們 - 認識 Tutor Corner 的教育使命', defaultLabel: '關於我們' },
   ];
@@ -219,6 +220,7 @@ export default function Header() {
                                   { href: '/admin/carousel', roleRequired: 'admin', label: '後台：輪播圖管理' },
                                   { href: '/admin/settings', roleRequired: 'admin', label: '網站設定' },
                                   { href: '/my-courses', roleRequired: 'teacher', label: '我的課程' },
+                                  { href: '/calendar', roleRequired: 'user', label: '課程行事曆' },
                                   { href: '/settings', roleRequired: 'user', label: '設定' },
                                 ].map((item) => {
                                   // role gating

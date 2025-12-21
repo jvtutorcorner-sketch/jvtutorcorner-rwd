@@ -1,4 +1,5 @@
 /* app/globals.css */
+@import "tailwindcss";
 
 body {
   margin: 0;
@@ -6,6 +7,38 @@ body {
     sans-serif;
   background: #f9fafb;
   color: #111827;
+}
+
+/* Global form input/textarea/select styles: always white background */
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="search"],
+input[type="tel"],
+input[type="url"],
+input[type="number"],
+textarea,
+select,
+.field input,
+.field textarea {
+  background: #ffffff !important;
+  color: #111827;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 8px 10px;
+  box-shadow: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+input:focus,
+textarea:focus,
+select:focus,
+.field input:focus,
+.field textarea:focus {
+  outline: none;
+  border-color: var(--primary, #2563eb) !important;
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.08) !important;
 }
 
 a {
@@ -128,6 +161,36 @@ a {
   font-weight: 600;
 }
 .menu-login-btn:hover { background: #1e40af; }
+
+/* Make buttons visually prominent across the site */
+button,
+input[type="button"],
+input[type="submit"],
+.btn,
+.btn-primary,
+.card-button,
+.card-button.primary,
+.menu-login,
+.menu-login-btn,
+.modal-button.primary,
+.enroll-button {
+  background: linear-gradient(90deg, var(--primary, #2563eb), var(--primary-600, #1d4ed8)) !important;
+  color: #ffffff !important;
+  border: none !important;
+  cursor: pointer;
+  box-shadow: 0 8px 20px rgba(37, 99, 235, 0.08) !important;
+}
+
+button:hover,
+input[type="button"]:hover,
+input[type="submit"]:hover,
+.menu-login:hover,
+.menu-login-btn:hover,
+.card-button:hover,
+.modal-button.primary:hover,
+.enroll-button:hover {
+  filter: brightness(0.95);
+}
 
 /* Status badge variants */
 .menu-status--online { background: #ecfdf5; color: #065f46; border: 1px solid rgba(6,95,70,0.08); }
@@ -258,6 +321,27 @@ nav.main-nav a.active {
 .hero-text p {
   margin-bottom: 16px;
   color: #4b5563;
+}
+
+/* Strong heading styles sitewide */
+h1,
+h2,
+h3 {
+  display: block;
+  font-weight: 800;
+  color: #0b1220;
+  line-height: 1.15;
+  margin: 0.9rem 0 0.6rem; /* top / left-right / bottom spacing */
+}
+
+/* Slightly tighter spacing for stronger visual weight */
+h1 { letter-spacing: -0.6px; margin-top: 1.1rem; }
+h2 { letter-spacing: -0.4px; margin-top: 0.9rem; }
+h3 { letter-spacing: -0.2px; margin-top: 0.7rem; }
+
+/* Ensure consecutive headings always have visible gap */
+h1 + h2, h1 + h3, h2 + h3, h2 + h1, h3 + h1, h3 + h2 {
+  margin-top: 0.8rem;
 }
 
 .hero-cta button {

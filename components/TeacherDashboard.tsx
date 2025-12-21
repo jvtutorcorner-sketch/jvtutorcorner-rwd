@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { getStoredUser } from '@/lib/mockAuth';
 
 type Props = { teacherId: string; teacherName: string };
@@ -108,15 +109,6 @@ export default function TeacherDashboard({ teacherId, teacherName }: Props) {
 
   return (
     <div style={{ marginTop: 18 }}>
-      <h3>教師管理面板</h3>
-      {!canEdit ? (
-        <p className="muted">非此老師或非管理者，僅顯示公開資訊。</p>
-      ) : (
-        <div style={{ marginBottom: 12 }}>
-          <p className="muted">管理功能已移除：若需新增或管理課程，請使用後台或專用管理介面。</p>
-        </div>
-      )}
-
       <div>
         <h4>課程列表</h4>
         {loading && <p>載入中…</p>}
@@ -126,11 +118,13 @@ export default function TeacherDashboard({ teacherId, teacherName }: Props) {
               <div key={c.id} className="card">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
-                    <strong>{c.title}</strong>
-                    <div className="muted">NT$ {c.pricePerSession} • {c.subject}</div>
-                    {c.nextStartDate ? <div className="muted">開始：{c.nextStartDate}</div> : null}
-                    {c.membershipPlan ? <div className="muted">所屬方案：{c.membershipPlan}</div> : null}
-                  </div>
+                          <Link href={`/courses/${encodeURIComponent(String(c.id))}`} style={{ display: 'block', color: 'inherit', textDecoration: 'none' }}>
+                            <strong>{c.title}</strong>
+                            <div className="muted">NT$ {c.pricePerSession} • {c.subject}</div>
+                            {c.nextStartDate ? <div className="muted">開始：{c.nextStartDate}</div> : null}
+                            {c.membershipPlan ? <div className="muted">所屬方案：{c.membershipPlan}</div> : null}
+                          </Link>
+                        </div>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                     {canEdit && <button onClick={() => {
                       const input = prompt('輸入新的開始日期（YYYY-MM-DD），留空則移除', c.nextStartDate || '');

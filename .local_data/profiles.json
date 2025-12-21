@@ -1,27 +1,23 @@
 [
   {
-    "roid_id": "f61ddf18-a947-4866-839a-e9112743babb",
-    "email": "test@example.com",
+    "roid_id": "teacher-demo2",
+    "email": "lin@test.com",
     "password": "123456",
-    "firstName": "CAIming",
-    "lastName": "AA",
-    "role": "student",
-    "plan": "viewer",
-    "bio": "我愛教育",
+    "firstName": "老師",
+    "lastName": "林",
+    "role": "teacher",
+    "plan": null,
+    "bio": "示範老師帳號，用於本地測試。",
     "country": "TW",
     "timezone": "Asia/Taipei",
     "termsAccepted": true,
-    "createdAtUtc": "2025-12-09T13:44:14.525Z",
-    "createdAtLocal": "2025-12-09T21:44:14",
-    "updatedAtUtc": "2025-12-09T14:42:38.796Z",
-    "updatedAtLocal": "2025-12-09T22:42:38",
+    "createdAtUtc": "2025-12-10T00:00:00.000Z",
+    "createdAtLocal": "2025-12-10T08:00:00",
+    "updatedAtUtc": "2025-12-21T09:51:12.803Z",
+    "updatedAtLocal": "2025-12-21T17:51:12",
     "backupEmail": "",
-    "card": {
-      "number": "",
-      "expiry": "",
-      "cvc": "",
-      "country": "TW"
-    }
+    "birthdate": "2025-12-21",
+    "gender": "male"
   },
   {
     "roid_id": "teacher-demo3",

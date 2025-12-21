@@ -53,10 +53,15 @@ export default function PricingSettingsPage() {
         const response = await fetch('/api/admin/pricing');
         const data = await response.json();
         if (response.ok && data.ok) {
-          setSettings(data.settings);
+          const loadedSettings = data.settings as PricingSettings;
+          setSettings(loadedSettings);
+          // If the stored settings look like defaults, try importing from public page
+          if (!loadedSettings.plans || loadedSettings.plans.length === 0 || loadedSettings.pageDescription === '管理會員方案的標籤、價格和功能特色') {
+            importFromPublicPricing(loadedSettings);
+          }
         } else {
           // Fallback to default data
-          setSettings({
+          const loadedSettings: PricingSettings = {
             pageTitle: '方案與價格設定',
             pageDescription: '管理會員方案的標籤、價格和功能特色',
             plans: [
@@ -119,12 +124,15 @@ export default function PricingSettingsPage() {
                 order: 4
               }
             ]
-          });
+          };
+          setSettings(loadedSettings);
+          // try to import from the public page to prefill
+          importFromPublicPricing(loadedSettings);
         }
       } catch (error) {
         console.error('Failed to load pricing data:', error);
         // Fallback to default data
-        setSettings({
+        const loadedSettings: PricingSettings = {
           pageTitle: '方案與價格設定',
           pageDescription: '管理會員方案的標籤、價格和功能特色',
           plans: [
@@ -187,7 +195,10 @@ export default function PricingSettingsPage() {
               order: 4
             }
           ]
-        });
+        };
+        setSettings(loadedSettings);
+        // try to import from the public page to prefill
+        importFromPublicPricing(loadedSettings);
       } finally {
         setLoading(false);
       }
@@ -195,6 +206,66 @@ export default function PricingSettingsPage() {
 
     loadPricingData();
   }, []);
+
+  // Import content from the public /pricing page into admin fields
+  const importFromPublicPricing = async (base?: PricingSettings) => {
+    try {
+      const html = await (await fetch('/pricing')).text();
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+
+      // header paragraph -> pageDescription
+      const headerP = doc.querySelector('header.page-header p');
+      const pageDescription = headerP ? headerP.textContent?.trim() || '' : '';
+
+      // Map plan cards by label (h2) to plan entries
+      const cards = Array.from(doc.querySelectorAll('.card.pricing-card'));
+      const currentPlans = base ? [...base.plans] : [...settings.plans];
+
+      cards.forEach((card) => {
+        const h2 = card.querySelector('h2');
+        const label = h2?.textContent?.trim() || '';
+
+        const subtitleP = card.querySelector('.pricing-subtitle');
+        const subtitleText = subtitleP ? subtitleP.textContent?.trim() || '' : '';
+
+        const priceP = card.querySelector('.pricing-price p');
+        const priceText = priceP ? priceP.textContent?.trim() || '' : '';
+
+        const badgeSpan = card.querySelector('.tag.tag-accent');
+        const badgeText = badgeSpan ? badgeSpan.textContent?.trim() || '' : '';
+
+        const targetP = card.querySelector('.pricing-target p');
+        const targetText = targetP ? targetP.textContent?.trim() || '' : '';
+
+        const featureLis = Array.from(card.querySelectorAll('.pricing-features ul li'));
+        const features = featureLis.map(li => li.textContent?.trim() || '').filter(Boolean);
+        
+        // includedFeatures: use subtitle if present, otherwise use the first 2-3 features joined
+        const includedSummary = subtitleText || (features.length > 0 ? features.slice(0, 2).join('、') : '');
+
+        // Find matching plan by label
+        const planIndex = currentPlans.findIndex(p => p.label === label);
+        if (planIndex !== -1) {
+          currentPlans[planIndex] = {
+            ...currentPlans[planIndex],
+            priceHint: priceText || currentPlans[planIndex].priceHint,
+            badge: badgeText || currentPlans[planIndex].badge,
+            targetAudience: targetText || currentPlans[planIndex].targetAudience,
+            includedFeatures: includedSummary || currentPlans[planIndex].includedFeatures,
+            features: features.length > 0 ? features : currentPlans[planIndex].features,
+          };
+        }
+      });
+
+      setSettings(prev => ({ ...prev, pageDescription: pageDescription || prev.pageDescription, plans: currentPlans }));
+      setMessage('已從公開頁面匯入內容');
+      setTimeout(() => setMessage(''), 3000);
+    } catch (err) {
+      console.error('Import error:', err);
+      setMessage('匯入失敗，請稍後再試');
+      setTimeout(() => setMessage(''), 3000);
+    }
+  };
 
   const updateSettings = (field: keyof PricingSettings, value: any) => {
     setSettings(prev => ({ ...prev, [field]: value }));
@@ -330,6 +401,12 @@ export default function PricingSettingsPage() {
               className="px-3 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
             >
               同步適合對象
+            </button>
+            <button
+              onClick={() => importFromPublicPricing()}
+              className="px-3 py-2 bg-yellow-500 text-white rounded-md hover:bg-yellow-600"
+            >
+              匯入公開頁內容
             </button>
             <button
               onClick={addPlan}
