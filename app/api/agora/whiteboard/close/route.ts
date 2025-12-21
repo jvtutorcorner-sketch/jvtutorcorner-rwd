@@ -25,13 +25,22 @@ export async function POST(req: NextRequest) {
     const deleteUrl = `${NETLESS_API_BASE}/v5/rooms/${encodeURIComponent(uuid)}`;
     console.log('[Whiteboard Close] Deleting room:', deleteUrl);
     
-    const res = await fetch(deleteUrl, {
-      method: 'DELETE',
-      headers: {
-        token: NETLESS_SDK_TOKEN,
-        region: NETLESS_REGION,
-      },
-    });
+    let res;
+    try {
+      res = await fetch(deleteUrl, {
+        method: 'DELETE',
+        headers: {
+          token: NETLESS_SDK_TOKEN,
+          region: NETLESS_REGION,
+        },
+      });
+    } catch (fetchErr: any) {
+      // If the network request failed because the client closed the connection
+      // (e.g. page navigated away), treat as non-fatal and return success to caller.
+      const msg = String(fetchErr?.message ?? fetchErr);
+      console.warn('[Whiteboard Close] Delete request failed, ignoring:', msg);
+      return NextResponse.json({ ok: true });
+    }
 
     if (!res.ok) {
       const txt = await res.text().catch(() => String(res.status));

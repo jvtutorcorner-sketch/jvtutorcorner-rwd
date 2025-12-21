@@ -81,6 +81,8 @@ export function useAgoraClassroom({
   let AgoraSDK: any = null;
 
   const [joined, setJoined] = useState(false);
+  const [autoplayFailed, setAutoplayFailed] = useState(false);
+  const [fixStatus, setFixStatus] = useState<'idle' | 'fixing' | 'success' | 'error'>('idle');
   const [remoteUsers, setRemoteUsers] = useState<IAgoraRTCRemoteUser[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -116,8 +118,8 @@ export function useAgoraClassroom({
       });
       setCurrentQuality(quality);
       console.log(`Video quality set to ${quality}:`, config);
-    } catch (error) {
-      console.error('Failed to set video quality:', error);
+    } catch (e) {
+      console.warn('Failed to set video quality:', e);
     }
   };
 
@@ -307,8 +309,8 @@ export function useAgoraClassroom({
             bitrateMax: qualityConfig.bitrate * 1.2,
           });
         }
-      } catch (err: any) {
-        console.warn('create tracks failed, attempting fallbacks', err?.message ?? err);
+      } catch (err) {
+        console.warn('create tracks failed, attempting fallbacks', (err as any)?.message ?? err);
         // individual fallbacks
         if (!micTrack && publishAudio) {
           try {
@@ -317,8 +319,8 @@ export function useAgoraClassroom({
               AgoraSDK = (mod as any).default ?? mod;
             }
             micTrack = await AgoraSDK.createMicrophoneAudioTrack();
-          } catch (mErr: any) {
-            console.warn('createMicrophoneAudioTrack failed', mErr?.message ?? mErr);
+          } catch (mErr) {
+            console.warn('createMicrophoneAudioTrack failed', (mErr as any)?.message ?? mErr);
             micTrack = null;
           }
         }
@@ -340,8 +342,8 @@ export function useAgoraClassroom({
                 bitrateMax: qualityConfig.bitrate * 1.2,
               });
             }
-          } catch (cErr: any) {
-            console.warn('createCameraVideoTrack failed', cErr?.message ?? cErr);
+          } catch (cErr) {
+            console.warn('createCameraVideoTrack failed', (cErr as any)?.message ?? cErr);
             camTrack = null;
           }
         }
@@ -356,7 +358,13 @@ export function useAgoraClassroom({
         const playEl = localVideoRef.current ?? remoteVideoRef.current;
         if (playEl) {
           try {
-            camTrack.play(playEl);
+            const playRes = camTrack.play(playEl) as any;
+            // Some implementations return a Promise
+            if (playRes && typeof playRes.then === 'function') {
+              playRes.catch((playErr: any) => {
+                console.warn('Failed to play local video track (promise)', playErr);
+              });
+            }
           } catch (playErr) {
             console.warn('Failed to play local video track', playErr);
           }
@@ -372,8 +380,8 @@ export function useAgoraClassroom({
       if (publishList.length > 0) {
         try {
           await client.publish(publishList);
-        } catch (pubErr: any) {
-          console.warn('Failed to publish local tracks', pubErr?.message ?? pubErr);
+        } catch (pubErr) {
+          console.warn('Failed to publish local tracks', (pubErr as any)?.message ?? pubErr);
         }
       } else {
         // No local tracks available: inform user but continue joined without publishing
@@ -402,7 +410,28 @@ export function useAgoraClassroom({
           }
 
           if (mediaType === 'audio' && user.audioTrack) {
-            user.audioTrack.play();
+            try {
+              const p = user.audioTrack.play();
+              // Mark global window flag when remote audio starts playing (useful for E2E detection)
+              try {
+                if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = false;
+              } catch (e) {}
+              if (p && typeof p.then === 'function') {
+                p.then(() => {
+                  try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = true; } catch (e) {}
+                }).catch((err: any) => {
+                  console.warn('Remote audio play rejected, may be blocked by autoplay policy', err);
+                  try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = false; } catch (e) {}
+                  setAutoplayFailed(true);
+                });
+              } else {
+                // Non-promise play; assume started
+                try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = true; } catch (e) {}
+              }
+            } catch (err) {
+              console.warn('Remote audio play threw, may be blocked by autoplay policy', err);
+              setAutoplayFailed(true);
+            }
           }
 
           setRemoteUsers([...client.remoteUsers]);
@@ -413,10 +442,12 @@ export function useAgoraClassroom({
 
       handleUserUnpublishedRef.current = (user: any) => {
         setRemoteUsers([...client.remoteUsers]);
+        try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = false; } catch (e) {}
       };
 
       handleUserLeftRef.current = () => {
         setRemoteUsers([...client.remoteUsers]);
+        try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = false; } catch (e) {}
       };
 
       if (handleUserPublishedRef.current) client.on('user-published', handleUserPublishedRef.current);
@@ -424,9 +455,21 @@ export function useAgoraClassroom({
       if (handleUserLeftRef.current) client.on('user-left', handleUserLeftRef.current);
 
       setJoined(true);
-    } catch (e: any) {
+      // Listen for SDK-level autoplay fail events if available
+      try {
+        if (client && typeof client.on === 'function') {
+          // common variants of the event name
+          const onAutoplay = (ev: any) => {
+            console.warn('Agora autoplay failed event received', ev);
+            setAutoplayFailed(true);
+          };
+          try { client.on('autoplay-failed', onAutoplay); } catch (e) {}
+          try { client.on('AUTOPLAY_FAILED', onAutoplay); } catch (e) {}
+        }
+      } catch (e) {}
+    } catch (e) {
       console.error('join classroom error:', e);
-      setError(e?.message ?? 'Unknown error');
+      setError((e as any)?.message ?? 'Unknown error');
     } finally {
       setLoading(false);
     }
@@ -435,6 +478,221 @@ export function useAgoraClassroom({
   // expose a convenience join that uses defaults (audio+video)
   const join = async (opts?: { publishAudio?: boolean; publishVideo?: boolean }) => {
     return joinWithOptions(opts);
+  };
+
+  // Attempt to enable audio playback by re-playing remote audio tracks.
+  const requestEnableSound = async () => {
+    try {
+      setAutoplayFailed(false);
+      const client = clientRef.current;
+      if (!client) return false;
+      const users = (client.remoteUsers || []) as any[];
+      let ok = false;
+      for (const u of users) {
+        try {
+          if (u.audioTrack) {
+            const r = u.audioTrack.play();
+            if (r && typeof r.then === 'function') {
+              try {
+                await r;
+                try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = true; } catch (e) {}
+              } catch (e) {
+                try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = false; } catch (e) {}
+              }
+            } else {
+              try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = true; } catch (e) {}
+            }
+            ok = true;
+          }
+        } catch (e) {
+          // ignore per-track failures
+        }
+      }
+      // also try to unmute/enable local audio if present
+      if (localMicTrackRef.current) {
+        try {
+          if (typeof localMicTrackRef.current.setEnabled === 'function') localMicTrackRef.current.setEnabled(true);
+        } catch (e) {}
+      }
+      return ok;
+    } catch (e) {
+      return false;
+    }
+  };
+
+  // triggerFix: three-step troubleshooting sequence
+  const triggerFix = async () => {
+    // Steps (sequential): 1) force-play remote audio tracks to leverage user gesture
+    // 2) recover local media devices (recreate + publish if needed)
+    // 3) refresh subscriptions for remote users
+    setFixStatus('fixing');
+    try {
+      const client = clientRef.current;
+      if (!client) {
+        setFixStatus('error');
+        return false;
+      }
+
+      // Step 1: Force-play remote audio tracks (user gesture unlocking)
+      try {
+        const users = (client.remoteUsers || []) as any[];
+        for (const u of users) {
+          if (u && u.audioTrack) {
+            try {
+              const res = u.audioTrack.play();
+              if (res && typeof res.then === 'function') {
+                await res.catch(() => {});
+              }
+            } catch (e) {
+              console.warn('triggerFix: audioTrack.play() failed for remote user', e);
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('triggerFix Step1 (play remote audio) failed', e);
+      }
+
+      // Step 2: Recover local media tracks (recreate & publish if closed)
+      try {
+        if (!AgoraSDK) {
+          const mod = await import('agora-rtc-sdk-ng');
+          AgoraSDK = (mod as any).default ?? mod;
+        }
+
+        const publishList: any[] = [];
+
+        // Audio
+        try {
+          let mic = localMicTrackRef.current;
+          let needPublishMic = false;
+          if (!mic) {
+            try {
+              mic = await AgoraSDK.createMicrophoneAudioTrack();
+              localMicTrackRef.current = mic;
+              needPublishMic = true;
+            } catch (e) {
+              console.warn('triggerFix: failed to recreate microphone track', e);
+            }
+          } else {
+            // check whether it appears stopped/closed
+            try {
+              if ((mic as any).closed || (mic as any).stopped) {
+                try {
+                  mic.stop?.(); mic.close?.();
+                } catch {}
+                mic = await AgoraSDK.createMicrophoneAudioTrack();
+                localMicTrackRef.current = mic;
+                needPublishMic = true;
+              }
+            } catch (e) {}
+          }
+          if (mic && needPublishMic && client) publishList.push(mic);
+        } catch (e) {
+          console.warn('triggerFix audio recover error', e);
+        }
+
+        // Video
+        try {
+          let cam = localCamTrackRef.current;
+          let needPublishCam = false;
+          if (!cam) {
+            try {
+              cam = await AgoraSDK.createCameraVideoTrack();
+              localCamTrackRef.current = cam;
+              needPublishCam = true;
+            } catch (e) {
+              console.warn('triggerFix: failed to recreate camera track', e);
+            }
+          } else {
+            try {
+              if ((cam as any).closed || (cam as any).stopped) {
+                try { cam.stop?.(); cam.close?.(); } catch {}
+                cam = await AgoraSDK.createCameraVideoTrack();
+                localCamTrackRef.current = cam;
+                needPublishCam = true;
+              }
+            } catch (e) {}
+          }
+          if (cam && needPublishCam && client) publishList.push(cam);
+        } catch (e) {
+          console.warn('triggerFix video recover error', e);
+        }
+
+        // If we have tracks to publish, unpublish old ones and publish new ones
+        if (publishList.length > 0 && client) {
+          try {
+            // Unpublish any existing local tracks that are closed
+            const toUnpublish: any[] = [];
+            if (localMicTrackRef.current && (localMicTrackRef.current as any).closed) toUnpublish.push(localMicTrackRef.current);
+            if (localCamTrackRef.current && (localCamTrackRef.current as any).closed) toUnpublish.push(localCamTrackRef.current);
+            try { if (toUnpublish.length > 0) await client.unpublish(toUnpublish); } catch (e) {}
+
+            try {
+              await client.publish(publishList);
+            } catch (pubErr) {
+              console.warn('triggerFix: publish failed', pubErr);
+            }
+          } catch (e) {
+            console.warn('triggerFix publishing error', e);
+          }
+        }
+      } catch (e) {
+        console.warn('triggerFix Step2 (recover local devices) failed', e);
+      }
+
+      // Step 3: Refresh subscriptions
+      try {
+        const client = clientRef.current;
+        if (client) {
+          const users = (client.remoteUsers || []) as any[];
+          for (const u of users) {
+            try {
+              if (u && (u.videoTrack || u.audioTrack)) {
+                // attempt to re-subscribe to both media types
+                try { await client.subscribe(u, 'video'); } catch (e) {}
+                try { await client.subscribe(u, 'audio'); } catch (e) {}
+
+                // attempt to play tracks into elements (if present)
+                if (u.videoTrack) {
+                  try {
+                    const remoteEl = remoteVideoRef.current ?? localVideoRef.current;
+                    if (remoteEl) u.videoTrack.play(remoteEl);
+                  } catch (e) {}
+                }
+                if (u.audioTrack) {
+                  try {
+                    const p = u.audioTrack.play();
+                    if (p && typeof p.then === 'function') {
+                      try { await p; try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = true; } catch (e) {} } catch (e) { try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = false; } catch (e) {} }
+                    } else {
+                      try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = true; } catch (e) {}
+                    }
+                  } catch (e) {}
+                }
+              }
+            } catch (e) {
+              // ignore per-user errors
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('triggerFix Step3 (refresh subscriptions) failed', e);
+      }
+
+      setFixStatus('success');
+      // clear autoplay failed as we've tried forcing playback
+      setAutoplayFailed(false);
+      return true;
+    } catch (e) {
+      console.error('triggerFix top-level error', e);
+      setFixStatus('error');
+      return false;
+    } finally {
+      // after a short delay, revert to idle so UI can trigger again
+      setTimeout(() => {
+        setFixStatus('idle');
+      }, 1500);
+    }
   };
 
   const leave = async () => {
@@ -469,8 +727,9 @@ export function useAgoraClassroom({
         clientChannelRef.current = null;
       }
     } finally {
-      setJoined(false);
-      setRemoteUsers([]);
+        try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = false; } catch (e) {}
+        setJoined(false);
+        setRemoteUsers([]);
     }
   };
 
@@ -557,6 +816,9 @@ export function useAgoraClassroom({
     localVideoRef,
     remoteVideoRef,
     whiteboardRef,
+    // Troubleshoot helpers
+    fixStatus,
+    triggerFix,
     // 控制
     join,
     leave,

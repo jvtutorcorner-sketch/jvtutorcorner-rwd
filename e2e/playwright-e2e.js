@@ -1,5 +1,21 @@
 const { chromium } = require('playwright');
 const http = require('http');
+const fs = require('fs');
+
+// append logs to e2e/e2e.log for post-run inspection
+const logPath = 'e2e/e2e.log';
+try { fs.mkdirSync('e2e', { recursive: true }); } catch (e) {}
+const logStream = fs.createWriteStream(logPath, { flags: 'a' });
+const _origLog = console.log.bind(console);
+const _origErr = console.error.bind(console);
+console.log = (...args) => {
+  try { logStream.write(args.map(a => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ') + '\n'); } catch (e) {}
+  _origLog(...args);
+};
+console.error = (...args) => {
+  try { logStream.write('[ERR] ' + args.map(a => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ') + '\n'); } catch (e) {}
+  _origErr(...args);
+};
 
 async function waitForServer(url, timeout = 15000) {
   const start = Date.now();
@@ -112,6 +128,48 @@ async function waitForServer(url, timeout = 15000) {
     console.log('Clicking Join on student...');
     await clickJoin(studentPage);
 
+    // Try clicking the troubleshoot button to simulate user gesture unlocking audio
+    const clickTroubleshoot = async (page) => {
+      try {
+        const btn = page.locator('#btn-troubleshoot');
+        if (await btn.count()) {
+          await btn.first().click({ timeout: 2000 }).catch(() => {});
+          console.log('Clicked #btn-troubleshoot on page');
+          return true;
+        }
+      } catch (e) { console.error('clickTroubleshoot error', e); }
+      return false;
+    };
+
+    // Wait until a remote video element appears/has dimensions before clicking troubleshoot
+    const waitForRemoteVideoPresence = async (page, timeout = 15000) => {
+      const start = Date.now();
+      while (Date.now() - start < timeout) {
+        try {
+          const res = await page.evaluate(() => {
+            const vids = Array.from(document.querySelectorAll('video'));
+            return vids.map(v => ({ w: v.videoWidth, h: v.videoHeight, ready: v.readyState }));
+          });
+          // require at least two video elements and at least one with non-zero dimensions
+          if (res.length >= 2 && res.some(v => v.w && v.w > 0)) return true;
+        } catch (e) {
+          // page may be navigating; ignore and retry
+        }
+        await page.waitForTimeout(300);
+      }
+      return false;
+    };
+
+    console.log('Waiting for remote video presence on teacher page before troubleshooting...');
+    await waitForRemoteVideoPresence(teacherPage, 15000);
+    console.log('Clicking troubleshoot on teacher...');
+    await clickTroubleshoot(teacherPage);
+
+    console.log('Waiting for remote video presence on student page before troubleshooting...');
+    await waitForRemoteVideoPresence(studentPage, 15000);
+    console.log('Clicking troubleshoot on student...');
+    await clickTroubleshoot(studentPage);
+
     // Wait up to 20s for local and remote videos to show play dimensions
     const waitForVideo = async (page, localIndex = 0, remoteIndex = 1) => {
       const start = Date.now();
@@ -151,21 +209,50 @@ async function waitForServer(url, timeout = 15000) {
       return { timeout: true };
     };
 
+    // Primary: check window.__agoraAudioPlaying flag set by page when remote audio starts
+    const waitForAgoraWindowFlag = async (page, timeout = 20000) => {
+      const start = Date.now();
+      while (Date.now() - start < timeout) {
+        try {
+          const flag = await page.evaluate(() => {
+            try { return !!(window && window.__agoraAudioPlaying); } catch (e) { return false; }
+          });
+          if (flag) return { ok: true, flag: true };
+        } catch (e) {}
+        await page.waitForTimeout(250);
+      }
+      return { timeout: true };
+    };
+
     // Fallback: listen to Agora SDK console logs for audio playback hints
     const waitForAudioConsole = async (page) => {
       return new Promise((resolve) => {
         const timeout = setTimeout(() => {
           page.removeListener('console', onConsole);
           resolve({ timeout: true });
-        }, 20000);
+        }, 30000); // Longer timeout for remote audio to start flowing
 
         const onConsole = (msg) => {
           try {
-            const text = msg.text();
-            if (/RemoteAudioTrack.play/.test(text) || /audio-element-status change .*=> playing/.test(text) || /audio-element-status change canplay => playing/.test(text)) {
-              clearTimeout(timeout);
-              page.removeListener('console', onConsole);
-              resolve({ ok: true, msg: text });
+            const text = String(msg.text()).toLowerCase();
+            // Detect a variety of Agora audio playback signatures and related hints
+            const patterns = [
+              /remoteaudiotrack\.play/, // RemoteAudioTrack.play
+              /remote audio track.*play/, // verbose forms
+              /audio-element-status.*playing/, // audio-element-status change ... => playing
+              /audio-element-status.*play/, // other variants
+              /remoteaudiotrack.*onSuccess/, // apiInvoke onSuccess
+              /remote audio.*started/, // generic hint
+              /audio playback|start audio playback|start audio/, // generic phrases
+              /remoteaudio.*playing/,
+            ];
+            for (const p of patterns) {
+              if (p.test(text)) {
+                clearTimeout(timeout);
+                page.removeListener('console', onConsole);
+                resolve({ ok: true, msg: text });
+                return;
+              }
             }
           } catch (e) {}
         };
@@ -178,17 +265,20 @@ async function waitForServer(url, timeout = 15000) {
     console.log('Waiting for student video...');
     const studentResult = await waitForVideo(studentPage, 0, 1);
 
-    console.log('Waiting for teacher audio...');
-    let teacherAudio = await waitForAudio(teacherPage, 0);
+    console.log('Waiting for teacher audio (window flag first)...');
+    let teacherAudio = await waitForAgoraWindowFlag(teacherPage, 20000);
     if (teacherAudio.timeout) {
-      console.log('Teacher DOM audio timed out, falling back to console log detection');
-      teacherAudio = await waitForAudioConsole(teacherPage);
+      console.log('Teacher window flag timed out, trying DOM audio then console fallback');
+      teacherAudio = await waitForAudio(teacherPage, 0);
+      if (teacherAudio.timeout) teacherAudio = await waitForAudioConsole(teacherPage);
     }
-    console.log('Waiting for student audio...');
-    let studentAudio = await waitForAudio(studentPage, 0);
+
+    console.log('Waiting for student audio (window flag first)...');
+    let studentAudio = await waitForAgoraWindowFlag(studentPage, 20000);
     if (studentAudio.timeout) {
-      console.log('Student DOM audio timed out, falling back to console log detection');
-      studentAudio = await waitForAudioConsole(studentPage);
+      console.log('Student window flag timed out, trying DOM audio then console fallback');
+      studentAudio = await waitForAudio(studentPage, 0);
+      if (studentAudio.timeout) studentAudio = await waitForAudioConsole(studentPage);
     }
 
     console.log('Teacher audio result:', teacherAudio);

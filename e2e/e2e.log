@@ -1,0 +1,489 @@
+Waiting for server at http://localhost:3000
+Launching browser, headless= true fakeVideoFile= null
+Navigating teacher...
+Navigating student...
+[teacher] console.info %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[student] console.info %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[teacher] console.log [HMR] connected
+[student] console.log [HMR] connected
+[teacher] console.log EnhancedWhiteboard mode: {useNetlessWhiteboard: false, hasRoom: false, hasWhiteboardRef: true, whiteboardRefCurrent: false}
+[teacher] console.log [WB SSE] Connecting to SSE stream: /api/whiteboard/stream?uuid=course_c1
+[teacher] console.log [Pre-join] Initializing whiteboard room...
+[teacher] console.log [Pre-join] Using course-scoped whiteboard UUID (canvas fallback)
+[teacher] console.log ClientClassroom initialized: {courseId: c1, orderId: null, channelName: undefined, effectiveChannelName: course_c1_default, urlRole: teacher}
+[teacher] console.log Whiteboard state: {hasWhiteboardRef: true, whiteboardMeta: null, joined: false}
+[ERR] [student] pageerror: {"name":"Error"}
+[student] console.log EnhancedWhiteboard mode: {useNetlessWhiteboard: false, hasRoom: false, hasWhiteboardRef: true, whiteboardRefCurrent: false}
+[teacher] console.log [WB SSE] Connection opened successfully
+[student] console.log [WB SSE] Connecting to SSE stream: /api/whiteboard/stream?uuid=course_c1
+[teacher] console.log [WB SSE] Received connected message
+[student] console.log [Pre-join] Initializing whiteboard room...
+[student] console.log [Pre-join] Using course-scoped whiteboard UUID (canvas fallback)
+[student] console.log ClientClassroom initialized: {courseId: c1, orderId: null, channelName: undefined, effectiveChannelName: course_c1_default, urlRole: student}
+[student] console.log Whiteboard state: {hasWhiteboardRef: true, whiteboardMeta: null, joined: false}
+[student] console.log EnhancedWhiteboard mode: {useNetlessWhiteboard: false, hasRoom: false, hasWhiteboardRef: true, whiteboardRefCurrent: false}
+[student] console.log [WB SSE] Connecting to SSE stream: /api/whiteboard/stream?uuid=course_c1
+[student] console.log [Pre-join] Initializing whiteboard room...
+[student] console.log [Pre-join] Using cached course-scoped whiteboard UUID, skipping server call
+[student] console.log ClientClassroom initialized: {courseId: c1, orderId: null, channelName: undefined, effectiveChannelName: course_c1_default, urlRole: student}
+[student] console.log Whiteboard state: {hasWhiteboardRef: true, whiteboardMeta: null, joined: false}
+[teacher] console.log [WB SSE] Applying fallback state from /state: 0 strokes
+[student] console.log [WB SSE] Connection opened successfully
+[student] console.log [WB SSE] Received connected message
+[teacher] console.log [Fast Refresh] rebuilding
+[student] console.log [WB SSE] Applying fallback state from /state: 0 strokes
+[student] console.log [Fast Refresh] rebuilding
+[teacher] console.log [Fast Refresh] done in 166ms
+[student] console.log [Fast Refresh] done in 149ms
+Clicking Join on teacher...
+Clicking Join on student...
+Waiting for remote video presence on teacher page before troubleshooting...
+[teacher] console.debug [lock-safari-1] is created.
+[student] console.debug [lock-safari-1] is created.
+[teacher] console.log 01:51:08:828 %cAgora-SDK [DEBUG]: color: #64B5F6; disable reportProxyServerurl: undefined
+[teacher] console.log 01:51:08:828 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1] Connect to choose_server: https://webrtc2-ap-web-1.agora.io/api/v2/transpond/webrtc?v=2
+[teacher] console.log 01:51:08:842 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1] Connect to choose_server: https://webrtc2-2.ap.sd-rtn.com/api/v2/transpond/webrtc?v=2
+[teacher] console.log 01:51:08:843 %cAgora-SDK [DEBUG]: color: #64B5F6; [device-check] default input Fake Default Audio Input and output Fake Default Audio Output is not the same group
+[teacher] console.log 01:51:08:857 %cAgora-SDK [DEBUG]: color: #64B5F6; browser ua:  Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/143.0.7499.4 Safari/537.36
+[teacher] console.log 01:51:08:858 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; browser info:  {name: Chrome, version: 143, os: Windows 10, osVersion: 10, browserVersion: 143.0.7499.4}
+[teacher] console.log 01:51:08:858 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; browser compatibility:  {getDisplayMedia: true, getStreamFromExtension: true, supportUnifiedPlan: true, supportMinBitrate: true, supportSetRtpSenderParameters: true}
+[teacher] console.log 01:51:08:858 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-1][client-064c1][createClient] start [Object]
+[teacher] console.log 01:51:08:858 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-1][client-064c1][createClient] onSuccess 
+[teacher] console.log 01:51:08:858 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-client-leave-2] is created.
+[teacher] console.log 01:51:08:858 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-client-publish-3] is created.
+[teacher] console.log 01:51:08:858 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-client-renewtoken-4] is created.
+[teacher] console.log 01:51:08:858 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-client-subscribe-5] is created.
+[teacher] console.log 01:51:08:874 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-064c1] Initializing AgoraRTC client v4.24.2 build: v4.24.2-0-g002485b1-dirty(12/12/2025, 5:26:54 PM), mode: rtc, codec: vp8
+[teacher] console.log 01:51:08:874 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-websocket-6] is created.
+[student] console.log 01:51:08:874 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9] Connect to choose_server: https://webrtc2-ap-web-1.agora.io/api/v2/transpond/webrtc?v=2
+[student] console.log 01:51:08:874 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9] Connect to choose_server: https://webrtc2-2.ap.sd-rtn.com/api/v2/transpond/webrtc?v=2
+[student] console.log 01:51:08:874 %cAgora-SDK [DEBUG]: color: #64B5F6; [device-check] default input Fake Default Audio Input and output Fake Default Audio Output is not the same group
+[student] console.log 01:51:08:889 %cAgora-SDK [DEBUG]: color: #64B5F6; browser ua:  Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/143.0.7499.4 Safari/537.36
+[student] console.log 01:51:08:890 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; browser info:  {name: Chrome, version: 143, os: Windows 10, osVersion: 10, browserVersion: 143.0.7499.4}
+[student] console.log 01:51:08:890 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; browser compatibility:  {getDisplayMedia: true, getStreamFromExtension: true, supportUnifiedPlan: true, supportMinBitrate: true, supportSetRtpSenderParameters: true}
+[student] console.log 01:51:08:890 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-1][client-ee4a9][createClient] start [Object]
+[student] console.log 01:51:08:890 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-1][client-ee4a9][createClient] onSuccess 
+[teacher] console.log 01:51:08:904 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-config-distribute-7] is created.
+[student] console.log 01:51:08:904 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-client-leave-2] is created.
+[teacher] console.log 01:51:08:905 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-P2PChannel-mutex-8] is created.
+[student] console.log 01:51:08:905 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-client-publish-3] is created.
+[student] console.log 01:51:08:905 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-client-renewtoken-4] is created.
+[teacher] console.log 01:51:08:905 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-064c1] signal connection state change: DISCONNECTED -> CONNECTING
+[student] console.log 01:51:08:905 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-client-subscribe-5] is created.
+[teacher] console.log 01:51:08:905 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-064c1] start join channel course_c1_default, join number: 1
+[student] console.log 01:51:08:905 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-ee4a9] Initializing AgoraRTC client v4.24.2 build: v4.24.2-0-g002485b1-dirty(12/12/2025, 5:26:54 PM), mode: rtc, codec: vp8
+[student] console.log 01:51:08:905 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-websocket-6] is created.
+[teacher] console.log 01:51:08:905 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-2][client-064c1][Client.join] start
+[student] console.log 01:51:08:905 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-config-distribute-7] is created.
+[teacher] console.log 01:51:08:905 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1] new Session 17B3DEB3317D4212910EA3382F995EEF
+[student] console.log 01:51:08:905 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-P2PChannel-mutex-8] is created.
+[student] console.log 01:51:08:935 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-ee4a9] signal connection state change: DISCONNECTED -> CONNECTING
+[student] console.log 01:51:08:935 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-ee4a9] start join channel course_c1_default, join number: 1
+[student] console.log 01:51:08:935 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-2][client-ee4a9][Client.join] start
+[student] console.log 01:51:08:935 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9] new Session 0D6456B733E14C27BDBF99E79E9AE0C4
+[student] console.log 01:51:08:967 %cAgora-SDK [DEBUG]: color: #64B5F6; disable reportProxyServerurl: undefined
+[teacher] console.log 01:51:09:762 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1] Connect to backup choose_server: https://webrtc2-ap-web-3.agora.io/api/v2/transpond/webrtc?v=2
+[teacher] console.log 01:51:09:763 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1] Connect to backup choose_server: https://webrtc2-4.ap.sd-rtn.com/api/v2/transpond/webrtc?v=2
+[student] console.log 01:51:09:793 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9] Connect to backup choose_server: https://webrtc2-ap-web-3.agora.io/api/v2/transpond/webrtc?v=2
+[student] console.log 01:51:09:794 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9] Connect to backup choose_server: https://webrtc2-4.ap.sd-rtn.com/api/v2/transpond/webrtc?v=2
+[teacher] console.warning 01:51:13:763 %cAgora-SDK [WARNING]: color: #FB8C00; font-weight: bold; [client-064c1] multi unilbs network error, retry AgoraRTCException: AgoraRTCError NETWORK_TIMEOUT: timeout of 5000ms exceeded
+    at http://localhost:3000/_next/static/chunks/node_modules_agora-rtc-sdk-ng_AgoraRTC_N-production_e51941cd.js:21762:123
+[teacher] console.warning 01:51:13:763 %cAgora-SDK [WARNING]: color: #FB8C00; font-weight: bold; [client-064c1] multi unilbs network error, retry AgoraRTCException: AgoraRTCError NETWORK_TIMEOUT: timeout of 5000ms exceeded
+    at http://localhost:3000/_next/static/chunks/node_modules_agora-rtc-sdk-ng_AgoraRTC_N-production_e51941cd.js:21762:123
+[student] console.warning 01:51:13:794 %cAgora-SDK [WARNING]: color: #FB8C00; font-weight: bold; [client-ee4a9] multi unilbs network error, retry AgoraRTCException: AgoraRTCError NETWORK_TIMEOUT: timeout of 5000ms exceeded
+    at http://localhost:3000/_next/static/chunks/node_modules_agora-rtc-sdk-ng_AgoraRTC_N-production_e51941cd.js:21762:123
+[student] console.warning 01:51:13:795 %cAgora-SDK [WARNING]: color: #FB8C00; font-weight: bold; [client-ee4a9] multi unilbs network error, retry AgoraRTCException: AgoraRTCError NETWORK_TIMEOUT: timeout of 5000ms exceeded
+    at http://localhost:3000/_next/static/chunks/node_modules_agora-rtc-sdk-ng_AgoraRTC_N-production_e51941cd.js:21762:123
+[teacher] console.warning 01:51:14:767 %cAgora-SDK [WARNING]: color: #FB8C00; font-weight: bold; [client-064c1] multi unilbs network error, retry AgoraRTCException: AgoraRTCError NETWORK_TIMEOUT: timeout of 5000ms exceeded
+    at http://localhost:3000/_next/static/chunks/node_modules_agora-rtc-sdk-ng_AgoraRTC_N-production_e51941cd.js:21762:123
+[teacher] console.warning 01:51:14:767 %cAgora-SDK [WARNING]: color: #FB8C00; font-weight: bold; [client-064c1] multi unilbs network error, retry AgoraRTCException: AgoraRTCError NETWORK_TIMEOUT: timeout of 5000ms exceeded
+    at http://localhost:3000/_next/static/chunks/node_modules_agora-rtc-sdk-ng_AgoraRTC_N-production_e51941cd.js:21762:123
+[student] console.warning 01:51:14:797 %cAgora-SDK [WARNING]: color: #FB8C00; font-weight: bold; [client-ee4a9] multi unilbs network error, retry AgoraRTCException: AgoraRTCError NETWORK_TIMEOUT: timeout of 5000ms exceeded
+    at http://localhost:3000/_next/static/chunks/node_modules_agora-rtc-sdk-ng_AgoraRTC_N-production_e51941cd.js:21762:123
+[student] console.warning 01:51:14:797 %cAgora-SDK [WARNING]: color: #FB8C00; font-weight: bold; [client-ee4a9] multi unilbs network error, retry AgoraRTCException: AgoraRTCError NETWORK_TIMEOUT: timeout of 5000ms exceeded
+    at http://localhost:3000/_next/static/chunks/node_modules_agora-rtc-sdk-ng_AgoraRTC_N-production_e51941cd.js:21762:123
+[student] console.log 01:51:15:843 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9] set joinGatewayStartTime at 1766339475843
+[student] console.log 01:51:15:843 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9] use websocket join uid 0
+[student] console.log 01:51:15:844 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-websocket-6] is locked, current queue 1. 
+[student] console.log 01:51:15:844 %cAgora-SDK [DEBUG]: color: #64B5F6; [gateway-client-ee4a9] start connect, url: {host: 107-155-30-162.edge.agora.io, port: 4719}
+[student] console.log 01:51:15:844 %cAgora-SDK [DEBUG]: color: #64B5F6; [choose-best-ws] currentDomain:  {host: 107-155-30-162.edge.agora.io, port: 4719} , domains:  [edge.agora.io, edge.sd-rtn.com] total: 3 current: 1
+[student] console.log 01:51:15:845 %cAgora-SDK [DEBUG]: color: #64B5F6; [choose-best-ws client-ee4a9 1] 1ms: createWebSocket: {host: 107-155-30-162.edge.agora.io, port: 4719} {isTry443Port: false, hasTimeoutDetection: false}
+[student] console.log 01:51:15:845 %cAgora-SDK [DEBUG]: color: #64B5F6; [choose-best-ws client-ee4a9 1] 1ms: ws is connecting: wss://107-155-30-162.edge.agora.io:4719/
+[student] console.log 01:51:15:846 %cAgora-SDK [DEBUG]: color: #64B5F6; [choose-best-ws client-ee4a9 1] 2ms: ws is connecting: wss://107-155-30-162.edge.sd-rtn.com:4719/
+[student] console.log 01:51:15:846 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-config-distribute-7] is locked, current queue 1. 
+[teacher] console.log 01:51:15:855 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1] set joinGatewayStartTime at 1766339475855
+[teacher] console.log 01:51:15:855 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1] use websocket join uid 0
+[teacher] console.log 01:51:15:856 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-websocket-6] is locked, current queue 1. 
+[teacher] console.log 01:51:15:856 %cAgora-SDK [DEBUG]: color: #64B5F6; [gateway-client-064c1] start connect, url: {host: 107-155-30-162.edge.agora.io, port: 3478}
+[teacher] console.log 01:51:15:856 %cAgora-SDK [DEBUG]: color: #64B5F6; [choose-best-ws] currentDomain:  {host: 107-155-30-162.edge.agora.io, port: 3478} , domains:  [edge.agora.io, edge.sd-rtn.com] total: 3 current: 1
+[teacher] console.log 01:51:15:857 %cAgora-SDK [DEBUG]: color: #64B5F6; [choose-best-ws client-064c1 1] 1ms: createWebSocket: {host: 107-155-30-162.edge.agora.io, port: 3478} {isTry443Port: false, hasTimeoutDetection: false}
+[teacher] console.log 01:51:15:857 %cAgora-SDK [DEBUG]: color: #64B5F6; [choose-best-ws client-064c1 1] 1ms: ws is connecting: wss://107-155-30-162.edge.agora.io:3478/
+[teacher] console.log 01:51:15:858 %cAgora-SDK [DEBUG]: color: #64B5F6; [choose-best-ws client-064c1 1] 2ms: ws is connecting: wss://107-155-30-162.edge.sd-rtn.com:3478/
+[teacher] console.log 01:51:15:858 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-config-distribute-7] is locked, current queue 1. 
+[student] console.log 01:51:15:978 %cAgora-SDK [DEBUG]: color: #64B5F6; [choose-best-ws client-ee4a9 1] 134ms: onopen: ws wss://107-155-30-162.edge.agora.io:4719/ open cost 133ms
+[student] console.warning WebSocket connection to 'wss://107-155-30-162.edge.sd-rtn.com:4719/' failed: WebSocket is closed before the connection is established.
+[student] console.log 01:51:15:979 %cAgora-SDK [DEBUG]: color: #64B5F6; [choose-best-ws client-ee4a9 1] 135ms: close backup websocket: wss://107-155-30-162.edge.sd-rtn.com:4719/
+[student] console.log 01:51:15:979 %cAgora-SDK [DEBUG]: color: #64B5F6; [gateway-client-ee4a9] websocket opened: wss://107-155-30-162.edge.agora.io:4719/
+[student] console.log 01:51:15:980 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9] use single turn, use turn server index: 0
+[student] console.log 01:51:15:980 %cAgora-SDK [DEBUG]: color: #64B5F6; websocket reset reconnect count, reason: opened
+[student] console.log 01:51:15:981 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-P2PChannel-mutex-8] is locked, current queue 1. From P2PChannel.startP2PConnection
+[student] console.log 01:51:15:981 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-websocket-6] is unlocked, current queue 0. 
+[student] console.log 01:51:15:981 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9] [0] forceTurn: false
+[student] console.log 01:51:15:981 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-P2PConnection-mutex-9] is created.
+[teacher] console.log 01:51:15:999 %cAgora-SDK [DEBUG]: color: #64B5F6; [choose-best-ws client-064c1 1] 143ms: onopen: ws wss://107-155-30-162.edge.agora.io:3478/ open cost 142ms
+[teacher] console.warning WebSocket connection to 'wss://107-155-30-162.edge.sd-rtn.com:3478/' failed: WebSocket is closed before the connection is established.
+[teacher] console.log 01:51:16:0 %cAgora-SDK [DEBUG]: color: #64B5F6; [choose-best-ws client-064c1 1] 144ms: close backup websocket: wss://107-155-30-162.edge.sd-rtn.com:3478/
+[teacher] console.log 01:51:16:0 %cAgora-SDK [DEBUG]: color: #64B5F6; [gateway-client-064c1] websocket opened: wss://107-155-30-162.edge.agora.io:3478/
+[teacher] console.log 01:51:16:1 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1] use single turn, use turn server index: 0
+[teacher] console.log 01:51:16:1 %cAgora-SDK [DEBUG]: color: #64B5F6; websocket reset reconnect count, reason: opened
+[teacher] console.log 01:51:16:1 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-P2PChannel-mutex-8] is locked, current queue 1. From P2PChannel.startP2PConnection
+[teacher] console.log 01:51:16:2 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-websocket-6] is unlocked, current queue 0. 
+[teacher] console.log 01:51:16:2 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1] [0] forceTurn: false
+[teacher] console.log 01:51:16:2 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-P2PConnection-mutex-9] is created.
+[student] console.log 01:51:16:5 %cAgora-SDK [DEBUG]: color: #64B5F6; raising H264 baseline profile priority
+[student] console.log 01:51:16:6 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-P2PChannel-mutex-8] is unlocked, current queue 0. From P2PChannel.startP2PConnection
+[teacher] console.log 01:51:16:27 %cAgora-SDK [DEBUG]: color: #64B5F6; raising H264 baseline profile priority
+[teacher] console.log 01:51:16:28 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-P2PChannel-mutex-8] is unlocked, current queue 0. From P2PChannel.startP2PConnection
+[student] console.log 01:51:16:37 %cAgora-SDK [DEBUG]: color: #64B5F6; [config-distribute] get config distribute {}
+[student] console.log 01:51:16:37 %cAgora-SDK [DEBUG]: color: #64B5F6; Caching global parameters {}
+[student] console.log 01:51:16:37 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-config-distribute-7] is unlocked, current queue 0. 
+[teacher] console.log 01:51:16:42 %cAgora-SDK [DEBUG]: color: #64B5F6; [config-distribute] get config distribute {}
+[teacher] console.log 01:51:16:43 %cAgora-SDK [DEBUG]: color: #64B5F6; Caching global parameters {}
+[teacher] console.log 01:51:16:43 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-config-distribute-7] is unlocked, current queue 0. 
+[student] console.log 01:51:16:67 %cAgora-SDK [DEBUG]: color: #64B5F6; Using remote candidate from AP 107.**:4719
+[student] console.log 01:51:16:67 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-P2PChannel-mutex-8] is locked, current queue 1. From P2PChannel.connect
+[student] console.log 01:51:16:68 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-ee4a9] signal connection state change: CONNECTING -> CONNECTED
+[student] console.log 01:51:16:69 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9] websocket join uid 5529 cost 226
+[student] console.log 01:51:16:69 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9] Connected to gateway server
+[student] console.log 01:51:16:69 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-P2PConnection-mutex-9] is locked, current queue 1. From P2PConnection.connect
+[student] console.log 01:51:16:69 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-2][client-ee4a9][Client.join] onSuccess
+[student] console.log 01:51:16:70 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-ee4a9] Joining channel success: channel: course_c1_default,uid: 5529
+[student] console.log 01:51:16:76 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-3][client-ee4a9][Client.setStreamFallbackOption] start [0, 1]
+[student] console.log 01:51:16:80 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9] [pc-1] RTCPeerConnection.onicegatheringstatechange(gathering)
+[student] console.log 01:51:16:82 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-ee4a9] [p2pId: 1]: P2PConnection.onICEConnectionStateChange(checking)
+[student] console.log 01:51:16:83 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-P2PConnection-mutex-9] is unlocked, current queue 0. From P2PConnection.connect
+[student] console.log 01:51:16:84 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-P2PChannel-mutex-8] is unlocked, current queue 0. From P2PChannel.connect
+[student] console.log 01:51:16:85 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-ee4a9] [p2pId: 1]: P2PConnection.onConnectionStateChange(connecting)
+[student] console.log 01:51:16:95 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-ee4a9] set remote 0 stream fallback type to 1
+[student] console.log 01:51:16:95 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-3][client-ee4a9][Client.setStreamFallbackOption] onSuccess 
+[student] console.log Applied 1-on-1 optimizations
+[student] console.log Whiteboard: Using cached course-scoped fallback uuid
+[student] console.log Whiteboard: Using canvas-based fallback instead of Netless SDK
+[student] console.log 01:51:16:96 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-4][track-mic-2665fbf6-track-cam-2ade064e][createMicrophoneAndCameraTracks] start [Object, Object, undefined]
+[student] console.log 01:51:16:96 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; start create camera video track(track-cam-2ade064e) and microphone audio track(track-mic-2665fbf6) with config, audio: {}, video: {}
+[student] console.log 01:51:16:97 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-mic-2665fbf6-track-cam-2ade064e] GetUserMedia {"video":{"width":640,"height":480,"frameRate":15},"audio":{}}
+[teacher] console.log 01:51:16:100 %cAgora-SDK [DEBUG]: color: #64B5F6; Using remote candidate from AP 107.**:3478
+[teacher] console.log 01:51:16:101 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-P2PChannel-mutex-8] is locked, current queue 1. From P2PChannel.connect
+[teacher] console.log 01:51:16:101 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-064c1] signal connection state change: CONNECTING -> CONNECTED
+[teacher] console.log 01:51:16:102 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1] websocket join uid 1 cost 247
+[teacher] console.log 01:51:16:103 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1] Connected to gateway server
+[teacher] console.log 01:51:16:103 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-P2PConnection-mutex-9] is locked, current queue 1. From P2PConnection.connect
+[teacher] console.log 01:51:16:103 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-2][client-064c1][Client.join] onSuccess
+[teacher] console.log 01:51:16:104 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-064c1] Joining channel success: channel: course_c1_default,uid: 1
+[student] console.log Whiteboard state: {hasWhiteboardRef: true, whiteboardMeta: Object, joined: false}
+[teacher] console.log 01:51:16:112 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-3][client-064c1][Client.setStreamFallbackOption] start [0, 1]
+[teacher] console.log 01:51:16:118 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1] [pc-1] RTCPeerConnection.onicegatheringstatechange(gathering)
+[teacher] console.log 01:51:16:121 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-064c1] [p2pId: 1]: P2PConnection.onICEConnectionStateChange(checking)
+[teacher] console.log 01:51:16:122 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-P2PConnection-mutex-9] is unlocked, current queue 0. From P2PConnection.connect
+[teacher] console.log 01:51:16:122 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-P2PChannel-mutex-8] is unlocked, current queue 0. From P2PChannel.connect
+[student] console.log 01:51:16:123 %cAgora-SDK [DEBUG]: color: #64B5F6; [lock-track-mic-2665fbf6-10] is created.
+[teacher] console.log 01:51:16:124 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-064c1] [p2pId: 1]: P2PConnection.onConnectionStateChange(connecting)
+[student] console.log 01:51:16:124 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; create audio context
+[student] console.log 01:51:16:124 %cAgora-SDK [DEBUG]: color: #64B5F6; audio context init option: {}
+[teacher] console.log 01:51:16:130 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-064c1] set remote 0 stream fallback type to 1
+[teacher] console.log 01:51:16:130 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-3][client-064c1][Client.setStreamFallbackOption] onSuccess 
+[teacher] console.log Applied 1-on-1 optimizations
+[teacher] console.log Whiteboard: Using cached course-scoped fallback uuid
+[teacher] console.log Whiteboard: Using canvas-based fallback instead of Netless SDK
+[teacher] console.log 01:51:16:130 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-4][track-mic-5d384ada-track-cam-93b269cb][createMicrophoneAndCameraTracks] start [Object, Object, undefined]
+[teacher] console.log 01:51:16:131 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; start create camera video track(track-cam-93b269cb) and microphone audio track(track-mic-5d384ada) with config, audio: {}, video: {}
+[teacher] console.log 01:51:16:131 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-mic-5d384ada-track-cam-93b269cb] GetUserMedia {"video":{"width":640,"height":480,"frameRate":15},"audio":{}}
+[teacher] console.log Whiteboard state: {hasWhiteboardRef: true, whiteboardMeta: Object, joined: false}
+[student] console.log 01:51:16:145 %cAgora-SDK [DEBUG]: color: #64B5F6; [lock-track-cam-2ade064e-11] is created.
+[student] console.log 01:51:16:147 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-4][track-mic-2665fbf6-track-cam-2ade064e][createMicrophoneAndCameraTracks] onSuccess 
+[student] console.log 01:51:16:147 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; create camera video track(track-cam-2ade064e) and microphone audio track(track-mic-2665fbf6) success
+[student] console.log 01:51:16:147 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-5][track-cam-2ade064e][CameraVideoTrack.setEncoderConfiguration] start [track-cam-2ade064e, Object]
+[student] console.log 01:51:16:148 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-cam-2ade064e] setEncoderConfiguration applyConstraints {"width":1280,"height":720,"frameRate":30,"bitrateMin":1200,"bitrateMax":1800} {"width":1280,"height":720,"frameRate":30}
+[student] console.log 01:51:16:152 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-5][track-cam-2ade064e][CameraVideoTrack.setEncoderConfiguration] onSuccess 
+[student] console.log 01:51:16:152 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-6][track-cam-2ade064e][LocalVideoTrack.play] start [track-cam-2ade064e, HTMLVideoElement, undefined]
+[student] console.log 01:51:16:152 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-cam-2ade064e] start video playback in HTMLVideoElement {}
+[student] console.log 01:51:16:153 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-cam-2ade064e] video-element-status change none => init
+[student] console.log 01:51:16:153 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-6][track-cam-2ade064e][LocalVideoTrack.play] onSuccess 
+[student] console.log 01:51:16:153 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-7][client-ee4a9][Client.publish] start [track-mic-2665fbf6, track-cam-2ade064e]
+[student] console.log 01:51:16:154 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-ee4a9] Publishing tracks, id track-mic-2665fbf6 ,track-cam-2ade064e 
+[student] console.log 01:51:16:154 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-client-publish-3] is locked, current queue 1. 
+[student] console.log 01:51:16:154 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9] publish high stream
+[student] console.log 01:51:16:155 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-P2PChannel-mutex-8] is locked, current queue 1. From P2PChannel.publish
+[student] console.log 01:51:16:156 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9] [p2pId: 1]: P2PConnection will send audioTrack [track-mic-2665fbf6]
+[student] console.log 01:51:16:156 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-P2PConnection-mutex-9] is locked, current queue 1. From P2PConnection.send
+[student] console.log 01:51:16:163 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-cam-2ade064e] video element status: play
+[student] console.log 01:51:16:163 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-cam-2ade064e] video-element-status change init => playing
+[student] console.log 01:51:16:163 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-cam-2ade064e] video-element-status change playing => waiting
+[student] console.log 01:51:16:209 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-cam-2ade064e] video-element-status change waiting => canplay
+[student] console.log 01:51:16:209 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-cam-2ade064e] video-element-status change canplay => playing
+[teacher] console.log 01:51:16:212 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1] user online 5529
+[student] console.log 01:51:16:212 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-cam-2ade064e] updateRtpSenderEncodings: [{"active":true,"adaptivePtime":false,"networkPriority":"high","priority":"low","maxBitrate":1800000}]
+[student] console.log 01:51:16:216 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-P2PConnection-mutex-9] is unlocked, current queue 0. From P2PConnection.send
+[student] console.log 01:51:16:217 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-P2PChannel-mutex-8] is unlocked, current queue 0. From P2PChannel.publish
+[student] console.log 01:51:16:218 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-ee4a9] Publish success, id track-mic-2665fbf6 ,track-cam-2ade064e 
+[student] console.log 01:51:16:218 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-client-publish-3] is unlocked, current queue 0. 
+[student] console.log 01:51:16:219 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-7][client-ee4a9][Client.publish] onSuccess 
+[teacher] console.log 01:51:16:221 %cAgora-SDK [DEBUG]: color: #64B5F6; [lock-track-mic-5d384ada-10] is created.
+[teacher] console.log 01:51:16:221 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; create audio context
+[teacher] console.log 01:51:16:222 %cAgora-SDK [DEBUG]: color: #64B5F6; audio context init option: {}
+[teacher] console.log 01:51:16:234 %cAgora-SDK [DEBUG]: color: #64B5F6; [lock-track-cam-93b269cb-11] is created.
+[student] console.log Whiteboard state: {hasWhiteboardRef: true, whiteboardMeta: Object, joined: true}
+[student] console.log 開始 30 秒倒計時
+[teacher] console.log 01:51:16:236 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-4][track-mic-5d384ada-track-cam-93b269cb][createMicrophoneAndCameraTracks] onSuccess 
+[teacher] console.log 01:51:16:236 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; create camera video track(track-cam-93b269cb) and microphone audio track(track-mic-5d384ada) success
+[teacher] console.log 01:51:16:236 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-5][track-cam-93b269cb][CameraVideoTrack.setEncoderConfiguration] start [track-cam-93b269cb, Object]
+[teacher] console.log 01:51:16:236 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-cam-93b269cb] setEncoderConfiguration applyConstraints {"width":1280,"height":720,"frameRate":30,"bitrateMin":1200,"bitrateMax":1800} {"width":1280,"height":720,"frameRate":30}
+[student] console.log 01:51:16:238 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9] [p2pId: 1]: P2PConnection.onICECandidateError(code: 701, message: Address not associated with the desired network interface.), url: turn:103.**:3478?transport=tcp, host_candidate:local: 2507
+[student] console.log 01:51:16:241 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9] [p2pId: 1]: P2PConnection.onICECandidateError(code: 701, message: Address not associated with the desired network interface.), url: turn:103.**:3478?transport=tcp, host_candidate:local: 2508
+[teacher] console.log 01:51:16:242 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-5][track-cam-93b269cb][CameraVideoTrack.setEncoderConfiguration] onSuccess 
+[teacher] console.log 01:51:16:242 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-6][track-cam-93b269cb][LocalVideoTrack.play] start [track-cam-93b269cb, HTMLVideoElement, undefined]
+[teacher] console.log 01:51:16:243 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-cam-93b269cb] start video playback in HTMLVideoElement {}
+[teacher] console.log 01:51:16:244 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-cam-93b269cb] video-element-status change none => init
+[teacher] console.log 01:51:16:244 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-6][track-cam-93b269cb][LocalVideoTrack.play] onSuccess 
+[teacher] console.log 01:51:16:245 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-7][client-064c1][Client.publish] start [track-mic-5d384ada, track-cam-93b269cb]
+[teacher] console.log 01:51:16:245 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-064c1] Publishing tracks, id track-mic-5d384ada ,track-cam-93b269cb 
+[teacher] console.log 01:51:16:246 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-client-publish-3] is locked, current queue 1. 
+[teacher] console.log 01:51:16:246 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1] publish high stream
+[teacher] console.log 01:51:16:246 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-P2PChannel-mutex-8] is locked, current queue 1. From P2PChannel.publish
+[teacher] console.log 01:51:16:247 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1] [p2pId: 1]: P2PConnection will send audioTrack [track-mic-5d384ada]
+[student] console.log 01:51:16:248 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-ee4a9] [pc-1] selectedcandidatepairchange: local "42.**:14680", remote "107.**:4719"
+[student] console.log 01:51:16:249 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-ee4a9] [p2pId: 1]: P2PConnection.onDTLSTransportStateChange(connecting)
+[student] console.log 01:51:16:249 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-ee4a9] [p2pId: 1]: P2PConnection.onICEConnectionStateChange(connected)
+[teacher] console.log 01:51:16:249 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-P2PConnection-mutex-9] is locked, current queue 1. From P2PConnection.send
+[student] console.log 01:51:16:249 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-ee4a9] [p2pId: 1]: P2PConnection.onICETransportStateChange(connected)
+[student] console.log 01:51:16:252 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-ee4a9] [p2pId: 1]: P2PConnection.SelectedLocalCandidateChanged({"candidateType":"unknown","protocol":"unknown","address":"unknown","port":0} -> {"candidateType":"srflx","protocol":"udp"})
+[student] console.log 01:51:16:253 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-ee4a9] [p2pId: 1]: P2PConnection.SelectedRemoteCandidateChanged({"candidateType":"unknown","protocol":"unknown","address":"unknown","port":0} -> {"candidateType":"host","protocol":"udp","address":"107.*.*.162","port":4719})
+[student] console.log 01:51:16:261 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9] [pc-1] RTCPeerConnection.onicegatheringstatechange(complete)
+[teacher] console.log 01:51:16:261 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-cam-93b269cb] video element status: play
+[teacher] console.log 01:51:16:262 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-cam-93b269cb] video-element-status change init => playing
+[student] console.log 01:51:16:262 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9] [pc-1] local candidate count 11
+[teacher] console.log 01:51:16:262 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-cam-93b269cb] video-element-status change playing => waiting
+[teacher] console.log 01:51:16:264 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1] [p2pId: 1]: P2PConnection.onICECandidateError(code: 701, message: Address not associated with the desired network interface.), url: turn:129.**:3478?transport=tcp, host_candidate:local: 2510
+[teacher] console.log 01:51:16:265 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1] [p2pId: 1]: P2PConnection.onICECandidateError(code: 701, message: Address not associated with the desired network interface.), url: turn:129.**:3478?transport=tcp, host_candidate:local: 2512
+[student] console.log 01:51:16:274 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-ee4a9] [p2pId: 1]: P2PConnection.onDTLSTransportStateChange(connected)
+[student] console.log 01:51:16:275 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-ee4a9] [p2pId: 1]: P2PConnection.onConnectionStateChange(connected)
+[teacher] console.log 01:51:16:282 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-064c1] [pc-1] selectedcandidatepairchange: local "42.**:13160", remote "107.**:3478"
+[teacher] console.log 01:51:16:283 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-cam-93b269cb] video-element-status change waiting => canplay
+[teacher] console.log 01:51:16:284 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-cam-93b269cb] video-element-status change canplay => playing
+[teacher] console.log 01:51:16:284 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-064c1] [p2pId: 1]: P2PConnection.onDTLSTransportStateChange(connecting)
+[teacher] console.log 01:51:16:285 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-064c1] [p2pId: 1]: P2PConnection.onICEConnectionStateChange(connected)
+[teacher] console.log 01:51:16:287 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-064c1] [p2pId: 1]: P2PConnection.onICETransportStateChange(connected)
+[teacher] console.log 01:51:16:287 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1] [pc-1] RTCPeerConnection.onicegatheringstatechange(complete)
+[teacher] console.log 01:51:16:288 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1] [pc-1] local candidate count 11
+[student] console.log 01:51:16:300 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9] user online 1
+[teacher] console.log 01:51:16:306 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-cam-93b269cb] updateRtpSenderEncodings: [{"active":true,"adaptivePtime":false,"networkPriority":"high","priority":"low","maxBitrate":1800000}]
+[teacher] console.log 01:51:16:308 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-064c1] [p2pId: 1]: P2PConnection.onDTLSTransportStateChange(connected)
+[teacher] console.log 01:51:16:315 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-P2PConnection-mutex-9] is unlocked, current queue 0. From P2PConnection.send
+[teacher] console.log 01:51:16:316 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-P2PChannel-mutex-8] is unlocked, current queue 0. From P2PChannel.publish
+[teacher] console.log 01:51:16:317 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-064c1] Publish success, id track-mic-5d384ada ,track-cam-93b269cb 
+[teacher] console.log 01:51:16:318 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-client-publish-3] is unlocked, current queue 0. 
+[teacher] console.log 01:51:16:318 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-7][client-064c1][Client.publish] onSuccess 
+[student] console.log 01:51:16:322 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9] [p2pId: 1]: P2PConnection.onICECandidateError(code: 701, message: Address not associated with the desired network interface.), url: turns:103-**:443?transport=tcp, host_candidate:local: 2514
+[teacher] console.log 01:51:16:325 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-064c1] [p2pId: 1]: P2PConnection.onConnectionStateChange(connected)
+[student] console.log 01:51:16:326 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9] [p2pId: 1]: P2PConnection.onICECandidateError(code: 701, message: Address not associated with the desired network interface.), url: turns:103-**:443?transport=tcp, host_candidate:local: 2513
+[student] console.log 01:51:16:327 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9] [p2pId: 1]: P2PConnection.onICECandidateError(code: 701, message: Address not associated with the desired network interface.), url: turns:103-**:443?transport=tcp, host_candidate:local: 2516
+[student] console.log 01:51:16:332 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9] [p2pId: 1]: P2PConnection.onICECandidateError(code: 701, message: Address not associated with the desired network interface.), url: turns:103-**:443?transport=tcp, host_candidate:local: 2517
+[teacher] console.log Whiteboard state: {hasWhiteboardRef: true, whiteboardMeta: Object, joined: true}
+[teacher] console.log 已廣播開始上課通知
+[teacher] console.log 開始 30 秒倒計時
+[teacher] console.log 01:51:16:352 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1] stream added with uid 5529, type audio
+[teacher] console.log 01:51:16:352 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-064c1] remote user 5529 published audio
+[teacher] console.log 01:51:16:352 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-8][client-064c1][Client.subscribe] start [5529, audio, undefined]
+[teacher] console.log 01:51:16:353 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-client-subscribe-5] is locked, current queue 1. 
+[teacher] console.log 01:51:16:355 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-P2PChannel-mutex-8] is locked, current queue 1. From P2PChannel.remoteMediaSsrcChanged
+[teacher] console.log 01:51:16:355 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-064c1] subscribe user 5529, mediaType: audio
+[teacher] console.log 01:51:16:355 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-P2PChannel-mutex-8] is locked, current queue 2. From P2PChannel.hasRemoteMediaWithLock
+[teacher] console.log 01:51:16:355 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-P2PChannel-mutex-8] is unlocked, current queue 1. From P2PChannel.remoteMediaSsrcChanged
+[teacher] console.log 01:51:16:356 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-P2PChannel-mutex-8] is unlocked, current queue 0. From P2PChannel.hasRemoteMediaWithLock
+[teacher] console.log 01:51:16:356 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-P2PChannel-mutex-8] is locked, current queue 1. From P2PChannel.subscribe
+[teacher] console.log 01:51:16:357 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-P2PConnection-mutex-9] is locked, current queue 1. From P2PConnection.receive
+[student] console.log 01:51:16:363 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9] stream added with uid 1, type audio
+[student] console.log 01:51:16:364 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-ee4a9] remote user 1 published audio
+[student] console.log 01:51:16:365 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-8][client-ee4a9][Client.subscribe] start [1, audio, undefined]
+[student] console.log 01:51:16:366 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-client-subscribe-5] is locked, current queue 1. 
+[student] console.log 01:51:16:367 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-P2PChannel-mutex-8] is locked, current queue 1. From P2PChannel.remoteMediaSsrcChanged
+[student] console.log 01:51:16:368 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-ee4a9] subscribe user 1, mediaType: audio
+[student] console.log 01:51:16:368 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-P2PChannel-mutex-8] is locked, current queue 2. From P2PChannel.hasRemoteMediaWithLock
+[student] console.log 01:51:16:368 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-P2PChannel-mutex-8] is unlocked, current queue 1. From P2PChannel.remoteMediaSsrcChanged
+[student] console.log 01:51:16:369 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-P2PChannel-mutex-8] is unlocked, current queue 0. From P2PChannel.hasRemoteMediaWithLock
+[student] console.log 01:51:16:369 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-P2PChannel-mutex-8] is locked, current queue 1. From P2PChannel.subscribe
+[student] console.log 01:51:16:369 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-P2PConnection-mutex-9] is locked, current queue 1. From P2PConnection.receive
+[teacher] console.log 01:51:16:372 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1] stream added with uid 5529, type video
+[teacher] console.log 01:51:16:373 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-064c1] remote user 5529 published video
+[teacher] console.log 01:51:16:373 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-9][client-064c1][Client.subscribe] start [5529, video, undefined]
+[teacher] console.log 01:51:16:374 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-client-subscribe-5] is locked, current queue 2. 
+[teacher] console.log 01:51:16:375 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-P2PChannel-mutex-8] is locked, current queue 2. From P2PChannel.remoteMediaSsrcChanged
+[student] console.log 01:51:16:391 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9] [P2PConnection] receive audio by exchanging SDP.
+[student] console.log 01:51:16:391 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-P2PConnection-mutex-9] is unlocked, current queue 0. From P2PConnection.receive
+[student] console.log 01:51:16:392 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-ee4a9] [1] create remote audio track: track-audio-1-client-ee4a9_106e1
+[student] console.log 01:51:16:392 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-P2PChannel-mutex-8] is unlocked, current queue 0. From P2PChannel.subscribe
+[teacher] console.log 01:51:16:393 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1] [P2PConnection] receive audio by exchanging SDP.
+[teacher] console.log 01:51:16:394 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-P2PConnection-mutex-9] is unlocked, current queue 0. From P2PConnection.receive
+[teacher] console.log 01:51:16:395 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-064c1] [1] create remote audio track: track-audio-5529-client-064c1_950ce
+[teacher] console.log 01:51:16:395 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-P2PChannel-mutex-8] is unlocked, current queue 1. From P2PChannel.subscribe
+[teacher] console.log 01:51:16:395 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-P2PChannel-mutex-8] is unlocked, current queue 0. From P2PChannel.remoteMediaSsrcChanged
+[student] console.log 01:51:16:408 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9] stream added with uid 1, type video
+[student] console.log 01:51:16:408 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-ee4a9] remote user 1 published video
+[student] console.log 01:51:16:409 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-9][client-ee4a9][Client.subscribe] start [1, video, undefined]
+[student] console.log 01:51:16:409 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-client-subscribe-5] is locked, current queue 2. 
+[student] console.log 01:51:16:411 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-P2PChannel-mutex-8] is locked, current queue 1. From P2PChannel.remoteMediaSsrcChanged
+[student] console.log 01:51:16:412 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-P2PChannel-mutex-8] is unlocked, current queue 0. From P2PChannel.remoteMediaSsrcChanged
+[student] console.log 01:51:16:423 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-ee4a9] subscribe success user 1, mediaType: audio
+[student] console.log 01:51:16:424 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-client-subscribe-5] is unlocked, current queue 1. 
+[student] console.log 01:51:16:424 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-8][client-ee4a9][Client.subscribe] onSuccess 
+[student] console.log 01:51:16:424 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-ee4a9] subscribe user 1, mediaType: video
+[student] console.log 01:51:16:424 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-P2PChannel-mutex-8] is locked, current queue 1. From P2PChannel.hasRemoteMediaWithLock
+[student] console.log 01:51:16:425 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-10][client-ee4a9][RemoteAudioTrack.play] start [track-audio-1-client-ee4a9_106e1]
+[student] console.log 01:51:16:425 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-audio-1-client-ee4a9_106e1] start audio playback
+[student] console.log 01:51:16:425 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-audio-1-client-ee4a9_106e1] use audio element to play
+[student] console.log 01:51:16:426 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-10][client-ee4a9][RemoteAudioTrack.play] onSuccess 
+[student] console.log 01:51:16:426 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-P2PChannel-mutex-8] is unlocked, current queue 0. From P2PChannel.hasRemoteMediaWithLock
+[student] console.log 01:51:16:426 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-P2PChannel-mutex-8] is locked, current queue 1. From P2PChannel.subscribe
+[student] console.log 01:51:16:427 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-P2PConnection-mutex-9] is locked, current queue 1. From P2PConnection.receive
+Clicking troubleshoot on teacher...
+[teacher] console.log 01:51:16:430 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-064c1] subscribe success user 5529, mediaType: audio
+[teacher] console.log 01:51:16:430 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-client-subscribe-5] is unlocked, current queue 1. 
+[teacher] console.log 01:51:16:430 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-8][client-064c1][Client.subscribe] onSuccess 
+[teacher] console.log 01:51:16:430 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-064c1] subscribe user 5529, mediaType: video
+[teacher] console.log 01:51:16:430 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-P2PChannel-mutex-8] is locked, current queue 1. From P2PChannel.hasRemoteMediaWithLock
+[teacher] console.log 01:51:16:431 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-10][client-064c1][RemoteAudioTrack.play] start [track-audio-5529-client-064c1_950ce]
+[student] console.log 01:51:16:431 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-audio-1-client-ee4a9_106e1] audio-element-status change init => play
+[student] console.log 01:51:16:431 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-audio-1-client-ee4a9_106e1] audio-element-status change play => waiting
+[teacher] console.log 01:51:16:431 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-audio-5529-client-064c1_950ce] start audio playback
+[teacher] console.log 01:51:16:431 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-audio-5529-client-064c1_950ce] use audio element to play
+[teacher] console.log 01:51:16:432 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-10][client-064c1][RemoteAudioTrack.play] onSuccess 
+[teacher] console.log 01:51:16:432 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-P2PChannel-mutex-8] is unlocked, current queue 0. From P2PChannel.hasRemoteMediaWithLock
+[teacher] console.log 01:51:16:432 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-P2PChannel-mutex-8] is locked, current queue 1. From P2PChannel.subscribe
+[teacher] console.log 01:51:16:432 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-P2PConnection-mutex-9] is locked, current queue 1. From P2PConnection.receive
+[student] console.log 01:51:16:436 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-audio-1-client-ee4a9_106e1] audio-element-status change waiting => loadeddata
+[student] console.log 01:51:16:437 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-audio-1-client-ee4a9_106e1] audio-element-status change loadeddata => canplay
+[student] console.log 01:51:16:437 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-audio-1-client-ee4a9_106e1] audio-element-status change canplay => playing
+[teacher] console.log 01:51:16:437 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-audio-5529-client-064c1_950ce] audio-element-status change init => play
+[teacher] console.log 01:51:16:437 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-audio-5529-client-064c1_950ce] audio-element-status change play => waiting
+[teacher] console.log 01:51:16:444 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-audio-5529-client-064c1_950ce] audio-element-status change waiting => loadeddata
+[teacher] console.log 01:51:16:444 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-audio-5529-client-064c1_950ce] audio-element-status change loadeddata => canplay
+[teacher] console.log 01:51:16:444 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-audio-5529-client-064c1_950ce] audio-element-status change canplay => playing
+[student] console.log 01:51:16:457 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9] [P2PConnection] receive video by exchanging SDP.
+[student] console.log 01:51:16:457 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-P2PConnection-mutex-9] is unlocked, current queue 0. From P2PConnection.receive
+[student] console.log 01:51:16:458 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-ee4a9] [1] create remote video track: track-video-1-client-ee4a9_c9bff
+[student] console.log 01:51:16:458 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-P2PChannel-mutex-8] is unlocked, current queue 0. From P2PChannel.subscribe
+[teacher] console.log 01:51:16:463 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1] [P2PConnection] receive video by exchanging SDP.
+[teacher] console.log 01:51:16:463 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-P2PConnection-mutex-9] is unlocked, current queue 0. From P2PConnection.receive
+[teacher] console.log 01:51:16:463 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-064c1] [1] create remote video track: track-video-5529-client-064c1_f01bc
+[teacher] console.log 01:51:16:464 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-P2PChannel-mutex-8] is unlocked, current queue 0. From P2PChannel.subscribe
+[teacher] console.log 01:51:16:478 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1] [p2pId: 1]: P2PConnection.onICECandidateError(code: 701, message: Address not associated with the desired network interface.), url: turns:129-**:443?transport=tcp, host_candidate:local: 2518
+[teacher] console.log 01:51:16:485 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1] [p2pId: 1]: P2PConnection.onICECandidateError(code: 701, message: Address not associated with the desired network interface.), url: turns:129-**:443?transport=tcp, host_candidate:local: 2522
+[student] console.log 01:51:16:491 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-ee4a9] subscribe success user 1, mediaType: video
+[student] console.log 01:51:16:491 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-client-subscribe-5] is unlocked, current queue 0. 
+[teacher] console.log 01:51:16:491 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-064c1] subscribe success user 5529, mediaType: video
+[student] console.log 01:51:16:491 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-9][client-ee4a9][Client.subscribe] onSuccess 
+[teacher] console.log 01:51:16:491 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-client-subscribe-5] is unlocked, current queue 0. 
+[teacher] console.log 01:51:16:491 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-9][client-064c1][Client.subscribe] onSuccess 
+[student] console.log 01:51:16:491 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-11][client-ee4a9][RemoteVideoTrack.play] start [track-video-1-client-ee4a9_c9bff, HTMLVideoElement, undefined]
+[teacher] console.log 01:51:16:492 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-11][client-064c1][RemoteVideoTrack.play] start [track-video-5529-client-064c1_f01bc, HTMLVideoElement, undefined]
+[student] console.log 01:51:16:492 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-video-1-client-ee4a9_c9bff] start video playback in HTMLVideoElement {}
+[teacher] console.log 01:51:16:492 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-video-5529-client-064c1_f01bc] start video playback in HTMLVideoElement {}
+[student] console.log 01:51:16:492 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-video-1-client-ee4a9_c9bff] video-element-status change none => init
+[teacher] console.log 01:51:16:492 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-video-5529-client-064c1_f01bc] video-element-status change none => init
+[student] console.log 01:51:16:493 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-11][client-ee4a9][RemoteVideoTrack.play] onSuccess 
+[teacher] console.log 01:51:16:493 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-11][client-064c1][RemoteVideoTrack.play] onSuccess 
+[teacher] console.log 01:51:16:493 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1] [p2pId: 1]: P2PConnection.onICECandidateError(code: 701, message: Address not associated with the desired network interface.), url: turns:129-**:443?transport=tcp, host_candidate:local: 2519
+[teacher] console.log 01:51:16:493 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1] [p2pId: 1]: P2PConnection.onICECandidateError(code: 701, message: Address not associated with the desired network interface.), url: turns:129-**:443?transport=tcp, host_candidate:local: 2521
+[student] console.log 01:51:16:493 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-video-1-client-ee4a9_c9bff] video element status: play
+[student] console.log 01:51:16:493 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-video-1-client-ee4a9_c9bff] video-element-status change init => playing
+[teacher] console.log 01:51:16:494 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-video-5529-client-064c1_f01bc] video element status: play
+[student] console.log 01:51:16:494 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-video-1-client-ee4a9_c9bff] video-element-status change playing => waiting
+[teacher] console.log 01:51:16:494 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-video-5529-client-064c1_f01bc] video-element-status change init => playing
+[teacher] console.log 01:51:16:494 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-video-5529-client-064c1_f01bc] video-element-status change playing => waiting
+[teacher] console.log 01:51:16:506 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-12][client-064c1][RemoteAudioTrack.play] start [track-audio-5529-client-064c1_950ce]
+[teacher] console.log 01:51:16:506 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-audio-5529-client-064c1_950ce] start audio playback
+[teacher] console.log 01:51:16:506 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-audio-5529-client-064c1_950ce] use audio element to play
+[teacher] console.log 01:51:16:506 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-12][client-064c1][RemoteAudioTrack.play] onSuccess 
+[teacher] console.log 01:51:16:513 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-13][client-064c1][Client.subscribe] start [5529, video, undefined]
+[teacher] console.log 01:51:16:514 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-client-subscribe-5] is locked, current queue 1. 
+[teacher] console.log 01:51:16:514 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-064c1] subscribe user 5529, mediaType: video
+[teacher] console.log 01:51:16:514 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-P2PChannel-mutex-8] is locked, current queue 1. From P2PChannel.hasRemoteMediaWithLock
+[teacher] console.log 01:51:16:514 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-P2PChannel-mutex-8] is unlocked, current queue 0. From P2PChannel.hasRemoteMediaWithLock
+[teacher] console.log 01:51:16:514 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-P2PChannel-mutex-8] is locked, current queue 1. From P2PChannel.unmuteRemote
+[teacher] console.log 01:51:16:514 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-P2PChannel-mutex-8] is unlocked, current queue 0. From P2PChannel.unmuteRemote
+[teacher] console.log 01:51:16:514 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-064c1] subscribe success user 5529, mediaType: video
+[teacher] console.log 01:51:16:515 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-client-subscribe-5] is unlocked, current queue 0. 
+[teacher] console.log 01:51:16:515 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-13][client-064c1][Client.subscribe] onSuccess 
+[teacher] console.log 01:51:16:515 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-14][client-064c1][Client.subscribe] start [5529, audio, undefined]
+[teacher] console.log 01:51:16:515 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-client-subscribe-5] is locked, current queue 1. 
+[teacher] console.log 01:51:16:515 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-064c1] subscribe user 5529, mediaType: audio
+[teacher] console.log 01:51:16:515 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-P2PChannel-mutex-8] is locked, current queue 1. From P2PChannel.hasRemoteMediaWithLock
+[teacher] console.log 01:51:16:515 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-P2PChannel-mutex-8] is unlocked, current queue 0. From P2PChannel.hasRemoteMediaWithLock
+[teacher] console.log 01:51:16:516 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-P2PChannel-mutex-8] is locked, current queue 1. From P2PChannel.unmuteRemote
+[teacher] console.log 01:51:16:516 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-P2PChannel-mutex-8] is unlocked, current queue 0. From P2PChannel.unmuteRemote
+[teacher] console.log 01:51:16:516 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-064c1] subscribe success user 5529, mediaType: audio
+[teacher] console.log 01:51:16:516 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-064c1][lock-client-subscribe-5] is unlocked, current queue 0. 
+[teacher] console.log 01:51:16:516 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-14][client-064c1][Client.subscribe] onSuccess 
+[teacher] console.log 01:51:16:516 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-15][client-064c1][RemoteVideoTrack.play] start [track-video-5529-client-064c1_f01bc, HTMLVideoElement, undefined]
+[teacher] console.log 01:51:16:516 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-video-5529-client-064c1_f01bc] start video playback in HTMLVideoElement {}
+[teacher] console.log 01:51:16:517 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-video-5529-client-064c1_f01bc] video-element-status change waiting => init
+[teacher] console.log 01:51:16:517 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-15][client-064c1][RemoteVideoTrack.play] onSuccess 
+[teacher] console.log 01:51:16:517 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-16][client-064c1][RemoteAudioTrack.play] start [track-audio-5529-client-064c1_950ce]
+[teacher] console.log 01:51:16:517 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-audio-5529-client-064c1_950ce] start audio playback
+[teacher] console.log 01:51:16:517 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-audio-5529-client-064c1_950ce] use audio element to play
+[teacher] console.log 01:51:16:518 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-16][client-064c1][RemoteAudioTrack.play] onSuccess 
+[teacher] console.log 01:51:16:528 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-064c1] [p2pId: 1]: P2PConnection.SelectedLocalCandidateChanged({"candidateType":"unknown","protocol":"unknown","address":"unknown","port":0} -> {"candidateType":"srflx","protocol":"udp"})
+[teacher] console.log 01:51:16:529 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-064c1] [p2pId: 1]: P2PConnection.SelectedRemoteCandidateChanged({"candidateType":"unknown","protocol":"unknown","address":"unknown","port":0} -> {"candidateType":"host","protocol":"udp","address":"107.*.*.162","port":3478})
+Clicked #btn-troubleshoot on page
+Waiting for remote video presence on student page before troubleshooting...
+Clicking troubleshoot on student...
+[student] console.log 01:51:16:565 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-12][client-ee4a9][RemoteAudioTrack.play] start [track-audio-1-client-ee4a9_106e1]
+[student] console.log 01:51:16:566 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-audio-1-client-ee4a9_106e1] start audio playback
+[student] console.log 01:51:16:566 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-audio-1-client-ee4a9_106e1] use audio element to play
+[student] console.log 01:51:16:566 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-12][client-ee4a9][RemoteAudioTrack.play] onSuccess 
+[student] console.log 01:51:16:572 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-13][client-ee4a9][Client.subscribe] start [1, video, undefined]
+[student] console.log 01:51:16:572 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-client-subscribe-5] is locked, current queue 1. 
+[student] console.log 01:51:16:572 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-ee4a9] subscribe user 1, mediaType: video
+[student] console.log 01:51:16:572 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-P2PChannel-mutex-8] is locked, current queue 1. From P2PChannel.hasRemoteMediaWithLock
+[student] console.log 01:51:16:572 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-P2PChannel-mutex-8] is unlocked, current queue 0. From P2PChannel.hasRemoteMediaWithLock
+[student] console.log 01:51:16:572 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-P2PChannel-mutex-8] is locked, current queue 1. From P2PChannel.unmuteRemote
+[student] console.log 01:51:16:572 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-P2PChannel-mutex-8] is unlocked, current queue 0. From P2PChannel.unmuteRemote
+[student] console.log 01:51:16:572 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-ee4a9] subscribe success user 1, mediaType: video
+[student] console.log 01:51:16:573 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-client-subscribe-5] is unlocked, current queue 0. 
+[student] console.log 01:51:16:573 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-13][client-ee4a9][Client.subscribe] onSuccess 
+[student] console.log 01:51:16:573 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-14][client-ee4a9][Client.subscribe] start [1, audio, undefined]
+[student] console.log 01:51:16:573 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-client-subscribe-5] is locked, current queue 1. 
+[student] console.log 01:51:16:573 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-ee4a9] subscribe user 1, mediaType: audio
+[student] console.log 01:51:16:573 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-P2PChannel-mutex-8] is locked, current queue 1. From P2PChannel.hasRemoteMediaWithLock
+[student] console.log 01:51:16:573 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-P2PChannel-mutex-8] is unlocked, current queue 0. From P2PChannel.hasRemoteMediaWithLock
+[student] console.log 01:51:16:573 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-P2PChannel-mutex-8] is locked, current queue 1. From P2PChannel.unmuteRemote
+[student] console.log 01:51:16:573 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-P2PChannel-mutex-8] is unlocked, current queue 0. From P2PChannel.unmuteRemote
+[student] console.log 01:51:16:574 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [client-ee4a9] subscribe success user 1, mediaType: audio
+[student] console.log 01:51:16:574 %cAgora-SDK [DEBUG]: color: #64B5F6; [client-ee4a9][lock-client-subscribe-5] is unlocked, current queue 0. 
+[student] console.log 01:51:16:574 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-14][client-ee4a9][Client.subscribe] onSuccess 
+[student] console.log 01:51:16:574 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-15][client-ee4a9][RemoteVideoTrack.play] start [track-video-1-client-ee4a9_c9bff, HTMLVideoElement, undefined]
+[student] console.log 01:51:16:574 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-video-1-client-ee4a9_c9bff] start video playback in HTMLVideoElement {}
+[student] console.log 01:51:16:574 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-video-1-client-ee4a9_c9bff] video-element-status change waiting => init
+[student] console.log 01:51:16:574 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-15][client-ee4a9][RemoteVideoTrack.play] onSuccess 
+[student] console.log 01:51:16:574 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-16][client-ee4a9][RemoteAudioTrack.play] start [track-audio-1-client-ee4a9_106e1]
+[student] console.log 01:51:16:574 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-audio-1-client-ee4a9_106e1] start audio playback
+[student] console.log 01:51:16:575 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-audio-1-client-ee4a9_106e1] use audio element to play
+[student] console.log 01:51:16:575 %cAgora-SDK [INFO]: color: #1E88E5; font-weight: bold; [apiInvoke-16][client-ee4a9][RemoteAudioTrack.play] onSuccess 
+Clicked #btn-troubleshoot on page
+Waiting for teacher video...
+[student] console.log 01:51:16:615 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-video-1-client-ee4a9_c9bff] video-element-status change init => canplay
+[student] console.log 01:51:16:615 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-video-1-client-ee4a9_c9bff] video-element-status change canplay => playing
+[teacher] console.log 01:51:16:664 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-video-5529-client-064c1_f01bc] video-element-status change init => canplay
+[teacher] console.log 01:51:16:664 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-video-5529-client-064c1_f01bc] video-element-status change canplay => playing
+[student] console.log 01:51:16:664 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-cam-2ade064e] current video dimensions: 640 480
+[teacher] console.log 01:51:16:763 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-cam-93b269cb] current video dimensions: 640 480
+[student] console.log 01:51:16:994 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-video-1-client-ee4a9_c9bff] current video dimensions: 640 480
+[teacher] console.log 01:51:16:995 %cAgora-SDK [DEBUG]: color: #64B5F6; [track-video-5529-client-064c1_f01bc] current video dimensions: 640 480
+Waiting for student video...
+Waiting for teacher audio (window flag first)...
+Waiting for student audio (window flag first)...
+Teacher audio result: {"ok":true,"flag":true}
+Student audio result: {"ok":true,"flag":true}
+Teacher result: {"localOK":true,"remoteOK":true,"details":[{"w":640,"h":480,"ready":4},{"w":640,"h":480,"ready":4}]}
+Student result: {"localOK":true,"remoteOK":true,"details":[{"w":640,"h":480,"ready":4},{"w":640,"h":480,"ready":4}]}
+E2E video test PASSED

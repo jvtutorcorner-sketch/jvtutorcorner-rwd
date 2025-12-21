@@ -79,6 +79,9 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     setVideoQuality,
     setLowLatencyMode,
     setLocalAudioEnabled,
+    // Troubleshoot helpers
+    fixStatus,
+    triggerFix,
   } = useAgoraClassroom({
     channelName: effectiveChannelName,
     role: (urlRole === 'teacher' || urlRole === 'student') ? (urlRole as Role) : computedRole,
@@ -393,10 +396,15 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       
       await leave();
       try { (window as any).__wbRoom = null; } catch (e) {}
-      if (whiteboardMeta?.uuid) {
+        if (whiteboardMeta?.uuid) {
         try {
-          await fetch('/api/agora/whiteboard/close', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ uuid: whiteboardMeta.uuid }) });
-        } catch (e) { console.warn('whiteboard close request failed', e); }
+          await fetch('/api/agora/whiteboard/close', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ uuid: whiteboardMeta.uuid }),
+            keepalive: true,
+          });
+        } catch (e) { console.warn('whiteboard close request failed (ignored)', e); }
       }
       
       // 返回到等待页面，保持相应的 role 参数
@@ -849,6 +857,35 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                   ) : (
                     <div style={{ height: 0 }} />
                   )}
+
+                  {/* Troubleshoot button to allow user gesture to unlock audio/video */}
+                  <div>
+                    <button
+                      id="btn-troubleshoot"
+                      onClick={async () => {
+                        try {
+                          if (typeof triggerFix === 'function') {
+                            await triggerFix();
+                          }
+                        } catch (e) {
+                          console.warn('Troubleshoot click failed', e);
+                        }
+                      }}
+                      disabled={fixStatus === 'fixing'}
+                      style={{
+                        marginTop: 8,
+                        background: '#1f2937',
+                        color: 'white',
+                        border: 'none',
+                        padding: '8px 12px',
+                        borderRadius: 6,
+                        cursor: fixStatus === 'fixing' ? 'not-allowed' : 'pointer',
+                        width: '100%'
+                      }}
+                    >
+                      {fixStatus === 'fixing' ? '修復中...' : fixStatus === 'success' ? '✅ 修復成功' : '🔧 沒聲音/沒畫面點我'}
+                    </button>
+                  </div>
 
                   <button
                     onClick={() => { try { handleLeave(); } catch (e) { console.error('Leave click error', e); } }}
