@@ -9,6 +9,7 @@ import {
   PLAN_DESCRIPTIONS,
   PLAN_PRICES,
   PLAN_FEATURES,
+  PLAN_TARGETS,
   getStoredUser,
   clearStoredUser,
   setStoredUser,
@@ -29,7 +30,7 @@ const PLANS: PlanConfig[] = [
     id: 'viewer',
     badge: '預設',
     priceHint: 'NT$0 / 僅查詢',
-    target: '僅供瀏覽與查詢師資／課程的使用者。',
+    target: PLAN_TARGETS.viewer,
     features: [
       '僅能瀏覽與查詢老師和課程清單',
       '無法預約或參與付費課程',
@@ -39,7 +40,7 @@ const PLANS: PlanConfig[] = [
   {
     id: 'basic',
     priceHint: '最低入門價（可到時再定價）',
-    target: '剛開始嘗試線上家教、想先試水溫的學生與家長。',
+    target: PLAN_TARGETS.basic,
     features: [
       '可預約老師',
       '一般畫質視訊上課',
@@ -51,7 +52,7 @@ const PLANS: PlanConfig[] = [
     id: 'pro',
     priceHint: '主力方案，建議訂為 Basic 的 2–3 倍',
     badge: '推薦',
-    target: '固定每週上課、重視白板與錄影回放的學生／家長。',
+    target: PLAN_TARGETS.pro,
     features: [
       '高畫質視訊（720p / 1080p 視實作而定）',
       '內建線上白板，可畫圖、寫題目、標註重點',
@@ -63,7 +64,7 @@ const PLANS: PlanConfig[] = [
   {
     id: 'elite',
     priceHint: '高客單價、可採合約制或專案報價',
-    target: '國際學校、補教體系或願意投資高額家教的 VIP 家長。',
+    target: PLAN_TARGETS.elite,
     features: [
       '高速視訊、優先走高頻寬節點',
       '支援並行串流：小班團體課＋家長旁聽',

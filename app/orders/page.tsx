@@ -42,7 +42,6 @@ export default function OrdersPage() {
   useEffect(() => {
     if (!mounted || !user) return;
     setLoading(true);
-<<<<<<< HEAD
     // Fetch server-side filtered orders: admin gets all, others get their own orders or teacher gets orders for their courses
     const current = getStoredUser();
     const isAdmin = current?.role === 'admin';
@@ -129,23 +128,6 @@ export default function OrdersPage() {
         .finally(() => setLoading(false));
     }
   }, [user?.email, mounted]);
-=======
-    const uid = user.id || user.email;
-    fetch(`/api/orders?limit=50&userId=${encodeURIComponent(uid || '')}`)
-      .then((r) => r.json())
-      .then((data) => {
-        if (data && data.ok) {
-          setOrders(data.data || data);
-        } else if (data && data.data) {
-          setOrders(data.data || []);
-        } else {
-          setOrders([]);
-        }
-      })
-      .catch((err) => setError(String(err?.message || err)))
-      .finally(() => setLoading(false));
-  }, [user?.email]);
->>>>>>> b2914d1 (chore(orders): remove demo enrollment and simulation sections from /orders page)
 
   // Always render the same header structure to avoid hydration mismatches
   const getPageTitle = () => {
@@ -175,10 +157,7 @@ export default function OrdersPage() {
           <p>目前沒有訂單紀錄。</p>
         ) : (
           <>
-<<<<<<< HEAD
             <h2>{getPageTitle()}</h2>
-=======
->>>>>>> b2914d1 (chore(orders): remove demo enrollment and simulation sections from /orders page)
             <table className="orders-table" style={{ borderCollapse: 'collapse', border: '2px solid #ccc', width: '100%' }}>
               <thead>
                 <tr>

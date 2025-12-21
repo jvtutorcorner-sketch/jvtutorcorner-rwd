@@ -353,11 +353,12 @@ export default function AdminSettingsPage() {
       <section style={{ marginTop: 24 }}>
         <h3>頁面存取權限管理</h3>
         <p style={{ marginTop: 6 }}>已拆分為三個專頁：Menu、Page、Dropdown Menu。請從下方連結打開對應設定畫面進行編輯。</p>
-        <div style={{ marginTop: 12, display: 'flex', gap: 12 }}>
+        <div style={{ marginTop: 12, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           <a href="/admin/settings/menu"><button style={{ padding: '8px 14px' }}>Menu 設定</button></a>
           <a href="/admin/settings/page-permissions"><button style={{ padding: '8px 14px' }}>Page 存取權限</button></a>
           <a href="/admin/settings/dropdown"><button style={{ padding: '8px 14px' }}>Dropdown Menu 設定</button></a>
           <a href="/admin/settings/roles-usage"><button style={{ padding: '8px 14px' }}>Role 使用設定</button></a>
+          <a href="/admin/settings/pricing"><button style={{ padding: '8px 14px' }}>方案與價格設定</button></a>
         </div>
       </section>
       <section style={{ marginTop: 16 }}>
