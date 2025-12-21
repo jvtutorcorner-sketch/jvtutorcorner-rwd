@@ -36,11 +36,13 @@ async function waitForServer(url, timeout = 15000) {
   const headless = process.env.E2E_HEADLESS !== '0';
   // allow optionally passing a fake video file via E2E_FAKE_VIDEO_FILE
   const fakeVideoFile = process.env.E2E_FAKE_VIDEO_FILE || null;
+  const fakeAudioFile = process.env.E2E_FAKE_AUDIO_FILE || null;
   const extraArgs = [
     '--use-fake-device-for-media-stream',
     '--use-fake-ui-for-media-stream',
   ];
   if (fakeVideoFile) extraArgs.push(`--use-file-for-fake-video-capture=${fakeVideoFile}`);
+  if (fakeAudioFile) extraArgs.push(`--use-file-for-fake-audio-capture=${fakeAudioFile}`);
 
   console.log('Launching browser, headless=', headless, 'fakeVideoFile=', fakeVideoFile);
   const browser = await chromium.launch({ headless, args: extraArgs });
@@ -128,15 +130,62 @@ async function waitForServer(url, timeout = 15000) {
       return { timeout: true };
     };
 
+    // Wait up to 20s for remote audio to start playing (audio elements present and advancing)
+    const waitForAudio = async (page, remoteIndex = 0) => {
+      const start = Date.now();
+      while (Date.now() - start < 20000) {
+        const res = await page.evaluate(() => {
+          const auds = Array.from(document.querySelectorAll('audio'));
+          return auds.map(a => ({ paused: a.paused, ready: a.readyState, t: a.currentTime }));
+        });
+        if (res.length > remoteIndex) {
+          const r = res[remoteIndex];
+          if (r && r.ready >= 3 && r.t > 0) return { ok: true, details: res };
+        }
+        await page.waitForTimeout(300);
+      }
+      return { timeout: true };
+    };
+
+    // Fallback: listen to Agora SDK console logs for audio playback hints
+    const waitForAudioConsole = async (page) => {
+      return new Promise((resolve) => {
+        const timeout = setTimeout(() => {
+          page.removeListener('console', onConsole);
+          resolve({ timeout: true });
+        }, 20000);
+
+        const onConsole = (msg) => {
+          try {
+            const text = msg.text();
+            if (/RemoteAudioTrack.play/.test(text) || /audio-element-status change .*=> playing/.test(text) || /audio-element-status change canplay => playing/.test(text)) {
+              clearTimeout(timeout);
+              page.removeListener('console', onConsole);
+              resolve({ ok: true, msg: text });
+            }
+          } catch (e) {}
+        };
+        page.on('console', onConsole);
+      });
+    };
+
     console.log('Waiting for teacher video...');
     const teacherResult = await waitForVideo(teacherPage, 0, 1);
     console.log('Waiting for student video...');
     const studentResult = await waitForVideo(studentPage, 0, 1);
 
+    console.log('Waiting for teacher audio...');
+    const teacherAudio = await waitForAudio(teacherPage, 0);
+    console.log('Waiting for student audio...');
+    const studentAudio = await waitForAudio(studentPage, 0);
+
+    console.log('Teacher audio result:', teacherAudio);
+    console.log('Student audio result:', studentAudio);
+
     console.log('Teacher result:', teacherResult);
     console.log('Student result:', studentResult);
 
-    const success = !teacherResult.timeout && !studentResult.timeout && teacherResult.localOK && teacherResult.remoteOK && studentResult.localOK && studentResult.remoteOK;
+    const success = !teacherResult.timeout && !studentResult.timeout && teacherResult.localOK && teacherResult.remoteOK && studentResult.localOK && studentResult.remoteOK && !teacherAudio.timeout && !studentAudio.timeout && teacherAudio.ok && studentAudio.ok;
 
     console.log('E2E video test', success ? 'PASSED' : 'FAILED');
     await teacherCtx.close();
