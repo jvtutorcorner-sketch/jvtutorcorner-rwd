@@ -260,6 +260,70 @@ async function waitForServer(url, timeout = 15000) {
       });
     };
 
+    // Attempt to collect RTCPeerConnection stats by probing window.__agoraClient and scanning window
+    const collectPeerConnectionStats = async (page, label) => {
+      try {
+        const res = await page.evaluate(async () => {
+          const out = { foundClient: false, stats: [], errors: [] };
+          try {
+            const client = window.__agoraClient;
+            out.foundClient = !!client;
+            const candidates = [];
+            if (client) {
+              const fields = ['_p2pConnections', '_pc', '_pcs', 'p2pConnections', 'pcMap', '_pcMap'];
+                for (const f of fields) {
+                  try { if (client && client[f]) candidates.push(client[f]); } catch (e) {}
+                }
+            }
+
+            const pcs = [];
+            const addIfPC = (v) => {
+              if (!v) return;
+              if (Array.isArray(v)) return v.forEach(addIfPC);
+              if (typeof v === 'object') {
+                Object.values(v).forEach(addIfPC);
+                if (typeof v.getStats === 'function') pcs.push(v);
+              }
+            };
+            addIfPC(candidates);
+
+            // Scan window for objects exposing getStats()
+            try {
+              for (const k in window) {
+                try {
+                  const v = window[k];
+                  if (v && typeof v.getStats === 'function') pcs.push(v);
+                } catch (e) {}
+              }
+            } catch (e) {}
+
+            // unique
+            const unique = Array.from(new Set(pcs));
+            for (const pc of unique) {
+              try {
+                const report = await pc.getStats();
+                const arr = [];
+                try { report.forEach((r) => arr.push(r)); } catch (e) {
+                  for (const k of Object.keys(report)) arr.push(report[k]);
+                }
+                out.stats.push({ ok: true, entries: arr.slice(0, 200) });
+              } catch (e) {
+                out.stats.push({ ok: false, error: String(e) });
+              }
+            }
+          } catch (err) {
+            out.errors.push(String(err));
+          }
+          return out;
+        });
+        console.log(`${label} PC stats:`, JSON.stringify(res));
+        return res;
+      } catch (e) {
+        console.warn('collectPeerConnectionStats error', e);
+        return null;
+      }
+    };
+
     console.log('Waiting for teacher video...');
     const teacherResult = await waitForVideo(teacherPage, 0, 1);
     console.log('Waiting for student video...');
@@ -283,6 +347,12 @@ async function waitForServer(url, timeout = 15000) {
 
     console.log('Teacher audio result:', teacherAudio);
     console.log('Student audio result:', studentAudio);
+
+      // Collect peer connection stats for deeper debugging
+      console.log('Collecting peer-connection stats (teacher)...');
+      await collectPeerConnectionStats(teacherPage, 'teacher');
+      console.log('Collecting peer-connection stats (student)...');
+      await collectPeerConnectionStats(studentPage, 'student');
 
     console.log('Teacher result:', teacherResult);
     console.log('Student result:', studentResult);

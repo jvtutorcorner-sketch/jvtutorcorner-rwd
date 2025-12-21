@@ -205,6 +205,14 @@ export function useAgoraClassroom({
 
       await client.join(data.appId, data.channelName, data.token, data.uid);
       clientChannelRef.current = data.channelName;
+      // Expose client on window for E2E debugging (temporary)
+      try {
+        if (typeof window !== 'undefined') {
+          (window as any).__agoraClient = client;
+          // initialize audio-playing flag for E2E
+          (window as any).__agoraAudioPlaying = false;
+        }
+      } catch (e) {}
 
       // 应用1对1优化 (AFTER join, when websocket is ready)
       if (isOneOnOne) {
@@ -458,14 +466,14 @@ export function useAgoraClassroom({
       // Listen for SDK-level autoplay fail events if available
       try {
         if (client && typeof client.on === 'function') {
-          // common variants of the event name
-          const onAutoplay = (ev: any) => {
-            console.warn('Agora autoplay failed event received', ev);
-            setAutoplayFailed(true);
-          };
-          try { client.on('autoplay-failed', onAutoplay); } catch (e) {}
-          try { client.on('AUTOPLAY_FAILED', onAutoplay); } catch (e) {}
-        }
+            // common variants of the event name
+            const onAutoplay = (ev: any) => {
+              console.warn('Agora autoplay failed event received', ev);
+              setAutoplayFailed(true);
+            };
+            try { client.on('autoplay-failed', onAutoplay); } catch (e) {}
+            try { client.on('AUTOPLAY_FAILED', onAutoplay); } catch (e) {}
+          }
       } catch (e) {}
     } catch (e) {
       console.error('join classroom error:', e);
