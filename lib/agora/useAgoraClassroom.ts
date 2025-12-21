@@ -351,13 +351,17 @@ export function useAgoraClassroom({
       localCamTrackRef.current = camTrack;
 
       if (camTrack) {
-        const playEl = (role === 'teacher') ? localVideoRef.current : remoteVideoRef.current;
+        // Always play the local camera track into the local preview element.
+        // This ensures both teachers and students see their own camera preview.
+        const playEl = localVideoRef.current ?? remoteVideoRef.current;
         if (playEl) {
           try {
             camTrack.play(playEl);
           } catch (playErr) {
             console.warn('Failed to play local video track', playErr);
           }
+        } else {
+          console.warn('No local or remote video element available to play local camera');
         }
       }
 
@@ -383,9 +387,17 @@ export function useAgoraClassroom({
           await client.subscribe(user, mediaType);
 
           if (mediaType === 'video' && user.videoTrack) {
-            const remoteEl = (role === 'teacher') ? remoteVideoRef.current : localVideoRef.current;
+            // Always play remote video into the remoteVideoRef when available.
+            // Fallback to localVideoRef only if remote element is missing.
+            const remoteEl = remoteVideoRef.current ?? localVideoRef.current;
             if (remoteEl) {
-              try { user.videoTrack.play(remoteEl); } catch (e) { console.warn('Failed to play remote video track', e); }
+              try {
+                user.videoTrack.play(remoteEl);
+              } catch (e) {
+                console.warn('Failed to play remote video track', e);
+              }
+            } else {
+              console.warn('No video element available to play remote video');
             }
           }
 

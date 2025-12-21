@@ -706,10 +706,10 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           </div>
           <div className="whiteboard-container">
             <EnhancedWhiteboard 
+              channelName={effectiveChannelName}
               room={undefined} // Using canvas fallback instead of Netless SDK
               whiteboardRef={whiteboardRef}
-              width={1600} 
-              height={1200} 
+              autoFit={true}
               className="flex-1" 
               onPdfSelected={(f) => { setSelectedPdf(f); }}
               pdfFile={selectedPdf}
@@ -801,6 +801,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                     onClick={() => { try { handleLeave(); } catch (e) { console.error('Leave click error', e); } }}
                     disabled={!joined}
                     style={{
+                      display: typeof window !== 'undefined' && window.location.pathname === '/classroom/test' ? 'none' : 'block',
                       background: joined ? '#f44336' : '#ef9a9a',
                       color: 'white',
                       border: 'none',
@@ -853,6 +854,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                     onClick={() => { try { handleLeave(); } catch (e) { console.error('Leave click error', e); } }}
                     disabled={!joined}
                     style={{
+                      display: typeof window !== 'undefined' && window.location.pathname === '/classroom/test' ? 'none' : 'block',
                       background: joined ? '#f44336' : '#ef9a9a',
                       color: 'white',
                       border: 'none',

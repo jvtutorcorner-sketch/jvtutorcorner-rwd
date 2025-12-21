@@ -6,8 +6,10 @@ import { getStoredUser } from '@/lib/mockAuth';
 export interface WhiteboardProps {
   room?: any; // Netless whiteboard room (if provided, use it; otherwise use canvas fallback)
   whiteboardRef?: React.RefObject<HTMLDivElement>; // Ref for Netless whiteboard container
+  channelName?: string;
   width?: number;
   height?: number;
+  autoFit?: boolean;
   className?: string;
   onPdfSelected?: (file: File | null) => void;
   pdfFile?: File | null; // PDF file to display as background
@@ -22,8 +24,10 @@ type Stroke = { points: number[]; stroke: string; strokeWidth: number; mode: 'dr
 export default function EnhancedWhiteboard({ 
   room,
   whiteboardRef,
+  channelName,
   width = 800, 
   height = 600, 
+  autoFit = true,
   className = '', 
   onPdfSelected, 
   pdfFile,
@@ -39,18 +43,61 @@ export default function EnhancedWhiteboard({
   // helper to POST events to server relay
   const postEventToServer = useCallback(async (event: any) => {
     try {
-      // Use courseId as UUID so all participants in same course share the channel
+      // Normalize to course-scoped UUID so SSE and event POST use same key
       const params = new URLSearchParams(window.location.search);
-      const courseId = params.get('courseId') || 'default';
-      const uuid = `course_${courseId}`;
+      const courseParam = params.get('courseId') || 'default';
+      const courseIdFromChannel = (channelName ? (channelName.startsWith('course_') ? channelName.replace(/^course_/, '').split('_')[0] : channelName.split('_')[0]) : courseParam) || 'default';
+      const uuid = `course_${courseIdFromChannel}`;
       console.log('[WB POST] Sending event to server:', event.type, 'uuid:', uuid);
-      const response = await fetch('/api/whiteboard/event', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ uuid, event }) });
+      const response = await fetch('/api/whiteboard/event', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ uuid, event: { ...event, clientId: clientIdRef.current } })
+      });
       const result = await response.json();
       console.log('[WB POST] Server response:', result);
     } catch (e) {
       console.error('[WB POST] Error posting event:', e);
     }
-  }, []);
+  }, [channelName]);
+
+  // Buffer/high-frequency update batching for stroke-update events
+  const pendingUpdatesRef = useRef<Map<string, { points: number[] }>>(new Map());
+  const flushTimerRef = useRef<number | null>(null);
+  const currentStrokeIdRef = useRef<string | null>(null);
+  const FLUSH_INTERVAL = 100; // ms
+
+  const flushPendingUpdates = useCallback(() => {
+    try {
+      if (flushTimerRef.current) {
+        window.clearTimeout(flushTimerRef.current);
+        flushTimerRef.current = null;
+      }
+    } catch (e) {}
+
+    const entries = Array.from(pendingUpdatesRef.current.entries());
+    if (entries.length === 0) return;
+    // send latest update per strokeId
+    for (const [strokeId, data] of entries) {
+      try {
+        postEventToServer({ type: 'stroke-update', strokeId, points: data.points });
+      } catch (e) {}
+    }
+    pendingUpdatesRef.current.clear();
+  }, [postEventToServer]);
+
+  const scheduleFlush = useCallback(() => {
+    if (flushTimerRef.current) return;
+    flushTimerRef.current = window.setTimeout(() => {
+      flushTimerRef.current = null;
+      flushPendingUpdates();
+    }, FLUSH_INTERVAL) as unknown as number;
+  }, [flushPendingUpdates]);
+
+  const enqueueStrokeUpdate = useCallback((strokeId: string, points: number[]) => {
+    pendingUpdatesRef.current.set(strokeId, { points });
+    scheduleFlush();
+  }, [scheduleFlush]);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const bgCanvasRef = useRef<HTMLCanvasElement>(null); // Background canvas for PDF
@@ -64,7 +111,24 @@ export default function EnhancedWhiteboard({
   const [mounted, setMounted] = useState(false);
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
   const [whiteboardPermissions, setWhiteboardPermissions] = useState<Record<string, string[] | undefined> | null>(null);
-  const [currentUserRoleId, setCurrentUserRoleId] = useState<string | null>(null);
+  const [currentUserRoleId, setCurrentUserRoleId] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const params = new URLSearchParams(window.location.search);
+    const urlRole = params.get('role');
+    if (urlRole) return urlRole === 'user' ? 'student' : urlRole;
+    try {
+      const u = getStoredUser();
+      return u?.role === 'user' ? 'student' : (u?.role || null);
+    } catch (e) {
+      return null;
+    }
+  });
+
+  // Keep a ref of strokes for BroadcastChannel state requests to avoid effect re-runs
+  const strokesRef = useRef<Stroke[]>(strokes);
+  useEffect(() => {
+    strokesRef.current = strokes;
+  }, [strokes]);
   
   // PDF state
   const [pdfLib, setPdfLib] = useState<any | null>(null);
@@ -90,17 +154,6 @@ export default function EnhancedWhiteboard({
   // load current user role and admin settings (permissions)
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    // role can be supplied via URL param for testing (e.g. ?role=student)
-    const params = new URLSearchParams(window.location.search);
-    const urlRole = params.get('role');
-    if (urlRole) {
-      const mapped = urlRole === 'user' ? 'student' : urlRole;
-      setCurrentUserRoleId(mapped);
-    } else {
-      const u = getStoredUser();
-      const roleId = u?.role === 'user' ? 'student' : (u?.role || null);
-      if (roleId) setCurrentUserRoleId(roleId);
-    }
 
     const loadSettings = async () => {
       try {
@@ -316,7 +369,9 @@ export default function EnhancedWhiteboard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mounted]);
 
-  const isActionAllowed = (actionKey: string) => {
+  const isActionAllowed = useCallback((actionKey: string) => {
+    // If student, deny all drawing/tool actions
+    if (currentUserRoleId === 'student') return false;
     // If admin settings are not configured, allow by default
     if (!whiteboardPermissions) return true;
     // If settings exist but we couldn't determine role, deny to be safe
@@ -324,9 +379,9 @@ export default function EnhancedWhiteboard({
     const allowed = whiteboardPermissions[actionKey];
     if (!Array.isArray(allowed)) return true;
     return allowed.includes(currentUserRoleId);
-  };
+  }, [currentUserRoleId, whiteboardPermissions]);
 
-  // draw all strokes into the canvas (coordinates are CSS pixels)
+  // draw all strokes into the canvas (coordinates are normalized 0..1)
   const drawAll = useCallback(() => {
     const el = canvasRef.current;
     if (!el) return;
@@ -352,9 +407,10 @@ export default function EnhancedWhiteboard({
       ctx.globalCompositeOperation = s.mode === 'erase' ? 'destination-out' : 'source-over';
 
       ctx.beginPath();
-      ctx.moveTo(s.points[0], s.points[1]);
+      // Scale normalized coordinates back to display pixels
+      ctx.moveTo(s.points[0] * displayW, s.points[1] * displayH);
       for (let i = 2; i < s.points.length; i += 2) {
-        ctx.lineTo(s.points[i], s.points[i + 1]);
+        ctx.lineTo(s.points[i] * displayW, s.points[i + 1] * displayH);
       }
       ctx.stroke();
     });
@@ -366,19 +422,30 @@ export default function EnhancedWhiteboard({
   const getPointerPos = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>): { x: number; y: number } => {
     if (!canvasRef.current) return { x: 0, y: 0 };
     const rect = canvasRef.current.getBoundingClientRect();
+    let clientX, clientY;
     if ('touches' in e) {
       const touch = e.touches[0];
-      return { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
+      clientX = touch.clientX;
+      clientY = touch.clientY;
+    } else {
+      clientX = e.clientX;
+      clientY = e.clientY;
     }
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    // Return normalized coordinates (0..1)
+    return { 
+      x: (clientX - rect.left) / rect.width, 
+      y: (clientY - rect.top) / rect.height 
+    };
   };
 
   const handlePointerDown = useCallback((e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    if (!isActionAllowed('draw')) return;
     isDrawingRef.current = true;
     const pos = getPointerPos(e);
     const newStroke: Stroke & { id?: string; origin?: string } = { points: [pos.x, pos.y], stroke: color, strokeWidth, mode: tool === 'eraser' ? 'erase' : 'draw', id: `${clientIdRef.current}_${Date.now()}` , origin: clientIdRef.current };
     setStrokes((s) => [...s, newStroke]);
     setUndone([]);
+    currentStrokeIdRef.current = newStroke.id as string;
     try {
       if (!useNetlessWhiteboard && bcRef.current) {
         bcRef.current.postMessage({ type: 'stroke-start', stroke: newStroke, clientId: clientIdRef.current });
@@ -389,7 +456,7 @@ export default function EnhancedWhiteboard({
         postEventToServer({ type: 'stroke-start', stroke: newStroke });
       }
     } catch (e) { console.error('[WB] Error in handlePointerDown:', e); }
-  }, [tool, color, strokeWidth, postEventToServer]);
+  }, [tool, color, strokeWidth, postEventToServer, isActionAllowed, useNetlessWhiteboard]);
 
   const handlePointerMove = useCallback((e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
     if (!isDrawingRef.current) return;
@@ -407,18 +474,32 @@ export default function EnhancedWhiteboard({
         }
         // also post to server
         if (!useNetlessWhiteboard && (last as any).origin === clientIdRef.current) {
-          postEventToServer({ type: 'stroke-update', strokeId: (updated as any).id, points: updated.points });
+          // enqueue high-frequency updates to reduce network/SSE load
+          enqueueStrokeUpdate((updated as any).id, updated.points);
         }
       } catch (e) {}
       return out;
     });
-  }, [postEventToServer]);
+  }, [enqueueStrokeUpdate, useNetlessWhiteboard]);
 
   const handlePointerUp = useCallback(() => {
     isDrawingRef.current = false;
+    // flush any pending updates for the stroke that just finished
+    try {
+      const sid = currentStrokeIdRef.current;
+      if (sid) {
+        // ensure final update is sent immediately
+        const pending = pendingUpdatesRef.current.get(sid);
+        if (pending) {
+          try { postEventToServer({ type: 'stroke-update', strokeId: sid, points: pending.points }); } catch (e) {}
+          pendingUpdatesRef.current.delete(sid);
+        }
+      }
+    } catch (e) {}
   }, []);
 
   const undo = useCallback(() => {
+    if (!isActionAllowed('undo')) return;
     setStrokes((s) => {
       if (s.length === 0) return s;
       const last = s[s.length - 1];
@@ -428,9 +509,10 @@ export default function EnhancedWhiteboard({
       try { if (!useNetlessWhiteboard) postEventToServer({ type: 'undo', strokeId: (last as any).id }); } catch (e) {}
       return next;
     });
-  }, []);
+  }, [isActionAllowed, useNetlessWhiteboard, postEventToServer]);
 
   const redo = useCallback(() => {
+    if (!isActionAllowed('redo')) return;
     setUndone((u) => {
       if (u.length === 0) return u;
       const last = u[u.length - 1];
@@ -439,14 +521,15 @@ export default function EnhancedWhiteboard({
       try { if (!useNetlessWhiteboard) postEventToServer({ type: 'redo', stroke: last }); } catch (e) {}
       return u.slice(0, -1);
     });
-  }, []);
+  }, [isActionAllowed, useNetlessWhiteboard, postEventToServer]);
 
   const clearAll = useCallback(() => {
+    if (!isActionAllowed('clear')) return;
     setStrokes([]);
     setUndone([]);
     try { if (!useNetlessWhiteboard && bcRef.current) bcRef.current.postMessage({ type: 'clear', clientId: clientIdRef.current }); } catch (e) {}
     try { if (!useNetlessWhiteboard) postEventToServer({ type: 'clear' }); } catch (e) {}
-  }, [useNetlessWhiteboard, postEventToServer]);
+  }, [isActionAllowed, useNetlessWhiteboard, postEventToServer]);
 
   // BroadcastChannel setup for canvas sync (per-page channel)
   useEffect(() => {
@@ -454,9 +537,10 @@ export default function EnhancedWhiteboard({
     if (typeof window === 'undefined') return;
     try {
       const params = new URLSearchParams(window.location.search);
-      const courseId = params.get('courseId') || 'default';
-      const name = `whiteboard_course_${courseId}`;
-      const ch = new BroadcastChannel(name);
+      const courseParam = params.get('courseId') || 'default';
+      const courseIdFromChannel = (channelName ? (channelName.startsWith('course_') ? channelName.replace(/^course_/, '').split('_')[0] : channelName.split('_')[0]) : courseParam) || 'default';
+      const bcName = `whiteboard_course_${courseIdFromChannel}`;
+      const ch = new BroadcastChannel(bcName);
       bcRef.current = ch;
       ch.onmessage = (ev: MessageEvent) => {
         const data = ev.data as any;
@@ -501,7 +585,11 @@ export default function EnhancedWhiteboard({
           }
           if (data.type === 'stroke-start') {
             applyingRemoteRef.current = true;
-            setStrokes((s) => [...s, data.stroke]);
+            setStrokes((s) => {
+              const strokeId = data.strokeId || (data.stroke as any)?.id;
+              if (strokeId && s.some(st => (st as any).id === strokeId)) return s;
+              return [...s, data.stroke];
+            });
             applyingRemoteRef.current = false;
           } else if (data.type === 'stroke-update') {
             applyingRemoteRef.current = true;
@@ -530,7 +618,7 @@ export default function EnhancedWhiteboard({
             applyingRemoteRef.current = false;
           } else if (data.type === 'request-state') {
             // reply with full state
-            try { ch.postMessage({ type: 'state', strokes, clientId: clientIdRef.current }); } catch (e) {}
+            try { ch.postMessage({ type: 'state', strokes: strokesRef.current, clientId: clientIdRef.current }); } catch (e) {}
           } else if (data.type === 'state') {
             // only apply if local empty to avoid overwriting
             setStrokes((local) => {
@@ -551,7 +639,7 @@ export default function EnhancedWhiteboard({
       // BroadcastChannel not available
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [useNetlessWhiteboard, setStrokes, setUndone, strokes]);
+  }, [useNetlessWhiteboard, setStrokes, setUndone]);
 
   // Attach non-passive touch listeners to prevent page scroll while drawing on mobile
   useEffect(() => {
@@ -603,10 +691,13 @@ export default function EnhancedWhiteboard({
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const toolbarHeight = 48; // same as used when computing canvas height
+    // Responsive toolbar height: smaller on mobile
+    const isMobilePortrait = window.innerWidth <= 768 && window.innerHeight > window.innerWidth;
+    const toolbarHeight = isMobilePortrait ? 40 : 48;
 
     function resizeCanvasToDisplaySize() {
-      if (pdf) return; // When PDF is loaded, size is fixed by props
+      // if PDF is loaded and autoFit is disabled, keep fixed size
+      if (pdf && !autoFit) return;
       const c = canvasRef.current;
       if (!c) return;
       const parent = c.parentElement || c;
@@ -637,6 +728,7 @@ export default function EnhancedWhiteboard({
       }
     }
 
+    // initial resize
     resizeCanvasToDisplaySize();
 
     const ro = new ResizeObserver(() => {
@@ -654,7 +746,7 @@ export default function EnhancedWhiteboard({
       window.removeEventListener('resize', resizeCanvasToDisplaySize);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [drawAll]);
+  }, [drawAll, pdf, autoFit]);
 
   // redraw when strokes change
   useEffect(() => {
@@ -669,21 +761,53 @@ export default function EnhancedWhiteboard({
     }
     if (typeof window === 'undefined') return;
     try {
-      // Use courseId as UUID so all participants in same course share the channel
+      // Use explicit channelName if provided, otherwise fall back to courseId
       const params = new URLSearchParams(window.location.search);
-      const courseId = params.get('courseId') || 'default';
-      const uuid = `course_${courseId}`;
+      const courseParam = params.get('courseId') || 'default';
+      const courseIdFromChannel = (channelName ? (channelName.startsWith('course_') ? channelName.replace(/^course_/, '').split('_')[0] : channelName.split('_')[0]) : courseParam) || 'default';
+      const uuid = `course_${courseIdFromChannel}`;
       console.log('[WB SSE] Connecting to SSE stream:', `/api/whiteboard/stream?uuid=${uuid}`);
-      const es = new EventSource(`/api/whiteboard/stream?uuid=${uuid}`);
+      const es = new EventSource(`/api/whiteboard/stream?uuid=${encodeURIComponent(uuid)}`);
       
       es.onopen = () => {
         console.log('[WB SSE] Connection opened successfully');
+        // Try fetching persisted state as a fallback in case any messages were missed
+        (async () => {
+          try {
+            const resp = await fetch(`/api/whiteboard/state?uuid=${encodeURIComponent(uuid)}`);
+            if (resp.ok) {
+              const j = await resp.json();
+              const s = j?.state;
+              if (s && Array.isArray(s.strokes) && strokesRef.current.length === 0) {
+                console.log('[WB SSE] Applying fallback state from /state:', s.strokes.length, 'strokes');
+                setStrokes(s.strokes);
+                if (s.pdf && s.pdf.dataUrl && s.pdf.dataUrl !== '(large-data-url)') {
+                  try {
+                    const r = await fetch(s.pdf.dataUrl);
+                    const blob = await r.blob();
+                    const file = new File([blob], s.pdf.name || 'remote.pdf', { type: blob.type });
+                    setSelectedFileName(file.name);
+                    setLocalPdfFile(file);
+                  } catch (e) {
+                    // ignore
+                  }
+                }
+              }
+            }
+          } catch (e) {
+            // ignore fallback errors
+          }
+        })();
       };
       
       es.onmessage = (ev) => {
         try {
           const data = JSON.parse(ev.data);
           if (!data) return;
+          
+          // Ignore our own events to avoid double-drawing
+          if (data.clientId === clientIdRef.current) return;
+
           // ignore connected pings
           if (data.type === 'connected') {
             console.log('[WB SSE] Received connected message');
@@ -692,6 +816,28 @@ export default function EnhancedWhiteboard({
           if (data.type === 'ping') return;
 
           console.log('[WB SSE] Received event:', data.type, data);
+
+          if (data.type === 'init-state') {
+            console.log('[WB SSE] Applying initial state:', data.strokes?.length, 'strokes');
+            if (Array.isArray(data.strokes)) {
+              setStrokes(data.strokes);
+            }
+            if (data.pdf) {
+              // Restore PDF if available
+              if (data.pdf.dataUrl && data.pdf.dataUrl !== '(large-data-url)') {
+                (async () => {
+                  try {
+                    const resp = await fetch(data.pdf.dataUrl);
+                    const blob = await resp.blob();
+                    const file = new File([blob], data.pdf.name || 'remote.pdf', { type: blob.type });
+                    setSelectedFileName(file.name);
+                    setLocalPdfFile(file);
+                  } catch (e) {}
+                })();
+              }
+            }
+            return;
+          }
 
           // apply same handlers as BroadcastChannel messages
           if (data.type === 'setColor') {
@@ -717,7 +863,11 @@ export default function EnhancedWhiteboard({
           }
           if (data.type === 'stroke-start') {
             console.log('[WB SSE] Applying stroke-start:', data);
-            setStrokes((s) => [...s, data.stroke]);
+            setStrokes((s) => {
+              const strokeId = data.strokeId || (data.stroke as any)?.id;
+              if (strokeId && s.some(st => (st as any).id === strokeId)) return s;
+              return [...s, data.stroke];
+            });
           } else if (data.type === 'stroke-update') {
             console.log('[WB SSE] Applying stroke-update:', data.strokeId);
             setStrokes((s) => {
@@ -846,8 +996,7 @@ export default function EnhancedWhiteboard({
             {/* Drawing canvas on top */}
             <canvas
               ref={canvasRef}
-              width={whiteboardWidth}
-              height={whiteboardHeight - 48}
+              {...(autoFit ? {} : { width: whiteboardWidth, height: whiteboardHeight - 48 })}
               onMouseDown={handlePointerDown}
               onMouseMove={handlePointerMove}
               onMouseUp={handlePointerUp}

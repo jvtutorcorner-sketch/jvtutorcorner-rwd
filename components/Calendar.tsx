@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { getStoredUser } from '@/lib/mockAuth';
 import {
   format,
   addMonths,
@@ -234,14 +235,21 @@ const Calendar: React.FC<CalendarProps> = ({ events }) => {
               <div className="pt-4 border-t border-gray-100 space-y-3">
                 {selectedEvent.courseId && (
                   <div className="mb-2">
-                    <a
-                      href={`/classroom?courseId=${selectedEvent.courseId}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="w-full inline-flex items-center justify-center px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors font-medium text-sm"
-                    >
-                      進入教室等待頁
-                    </a>
+                    {(() => {
+                      const user = getStoredUser();
+                      const roleParam = user?.role ? `&role=${encodeURIComponent(user.role)}` : '';
+                      const href = `/classroom/wait?courseId=${encodeURIComponent(selectedEvent.courseId)}${roleParam}`;
+                      return (
+                        <a
+                          href={href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="w-full inline-flex items-center justify-center px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors font-medium text-sm"
+                        >
+                          進入教室等待頁
+                        </a>
+                      );
+                    })()}
                   </div>
                 )}
                 {reminders[selectedEvent.id] ? (

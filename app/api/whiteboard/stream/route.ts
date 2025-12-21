@@ -3,8 +3,9 @@ import { NextRequest } from 'next/server';
 // Simple in-memory map of uuid -> Set of response-like client objects
 const clients: Map<string, Set<any>> = new Map();
 
-// Store last broadcasted payload per uuid so new clients can catch up
-const lastPayload: Map<string, any> = new Map();
+// Store full state per uuid so new clients can catch up
+// state: { strokes: any[], pdf: any | null }
+const roomStates: Map<string, { strokes: any[], pdf: any | null }> = new Map();
 
 function normalizeUuid(raw?: string | null) {
   if (!raw) return 'default';
@@ -64,17 +65,15 @@ export async function GET(req: NextRequest) {
         set.add(client);
         try { console.log(`[WB SSE Server] Client registered. UUID: ${uuid}, Total clients: ${set.size}`); } catch (e) {}
 
-        // If we have a last payload for this uuid, send it so new clients can catch up
+        // Send full initial state to the new client
         try {
-          const last = lastPayload.get(uuid);
-          if (last) {
-            if (last.type === 'pdf-set' && typeof last.dataUrl === 'string' && last.dataUrl.length > 20000) {
-              try { controller.enqueue(encodeSSE({ type: 'state-available', stateType: 'pdf-set' })); } catch (e) {}
-            } else {
-              try { controller.enqueue(encodeSSE(last)); } catch (e) {}
-            }
+          const state = roomStates.get(uuid);
+          if (state) {
+            controller.enqueue(encodeSSE({ type: 'init-state', strokes: state.strokes, pdf: state.pdf }));
           }
-        } catch (e) {}
+        } catch (e) {
+          console.error('[WB SSE Server] Failed to send initial state:', e);
+        }
 
         // On cancel/close remove (guard if signal exists)
         try {
@@ -127,11 +126,48 @@ export function broadcastToUuid(uuid: string, payload: any) {
   console.log(`[WB SSE Server] Broadcast complete. Sent to ${successCount}/${set.size} clients`);
 
   try {
-    // avoid storing massive data URLs in-memory; keep a lightweight manifest instead
-    let toStore = payload;
-    if (payload && payload.type === 'pdf-set' && typeof payload.dataUrl === 'string' && payload.dataUrl.length > 20000) {
-      toStore = { type: 'pdf-set', name: payload.name, size: payload.dataUrl.length, large: true };
+    // Update in-memory state for persistence on refresh
+    let state = roomStates.get(normalized);
+    if (!state) {
+      state = { strokes: [], pdf: null };
+      roomStates.set(normalized, state);
     }
-    lastPayload.set(normalized, toStore);
-  } catch (e) {}
+
+    if (payload.type === 'stroke-start') {
+      state.strokes.push(payload.stroke);
+    } else if (payload.type === 'stroke-update') {
+      const idx = state.strokes.findIndex((s: any) => s.id === payload.strokeId);
+      if (idx >= 0) {
+        state.strokes[idx].points = payload.points;
+      } else {
+        // Fallback: if update arrives before start, create it
+        state.strokes.push({ id: payload.strokeId, points: payload.points, stroke: '#000', strokeWidth: 2, mode: 'draw' });
+      }
+    } else if (payload.type === 'undo') {
+      state.strokes = state.strokes.filter((s: any) => s.id !== payload.strokeId);
+    } else if (payload.type === 'clear') {
+      state.strokes = [];
+    } else if (payload.type === 'pdf-set') {
+      // avoid storing massive data URLs in-memory; keep a lightweight manifest instead
+      if (payload.dataUrl && payload.dataUrl.length > 50000) {
+        state.pdf = { ...payload, dataUrl: '(large-data-url)', large: true };
+      } else {
+        state.pdf = payload;
+      }
+    }
+  } catch (e) {
+    console.error('[WB SSE Server] State update failed:', e);
+  }
+}
+
+// Export helper to read in-memory state for external routes
+export function getRoomState(rawUuid?: string | null) {
+  try {
+    const normalized = normalizeUuid(rawUuid);
+    const state = roomStates.get(normalized);
+    if (!state) return { strokes: [], pdf: null };
+    return state;
+  } catch (e) {
+    return { strokes: [], pdf: null };
+  }
 }

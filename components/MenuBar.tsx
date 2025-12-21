@@ -63,7 +63,6 @@ export default function MenuBar() {
           <li><Link href="/admin/orders">訂單管理</Link></li>
         )}
         <li><Link href="/courses">課程總覽</Link></li>
-        <li><Link href="/calendar">行事曆</Link></li>
         <li><Link href="/about">關於我們</Link></li>
       </ul>
 
