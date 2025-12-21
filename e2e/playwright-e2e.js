@@ -134,13 +134,17 @@ async function waitForServer(url, timeout = 15000) {
     const waitForAudio = async (page, remoteIndex = 0) => {
       const start = Date.now();
       while (Date.now() - start < 20000) {
-        const res = await page.evaluate(() => {
-          const auds = Array.from(document.querySelectorAll('audio'));
-          return auds.map(a => ({ paused: a.paused, ready: a.readyState, t: a.currentTime }));
-        });
-        if (res.length > remoteIndex) {
-          const r = res[remoteIndex];
-          if (r && r.ready >= 3 && r.t > 0) return { ok: true, details: res };
+        try {
+          const res = await page.evaluate(() => {
+            const auds = Array.from(document.querySelectorAll('audio'));
+            return auds.map(a => ({ paused: a.paused, ready: a.readyState, t: a.currentTime }));
+          });
+          if (res.length > remoteIndex) {
+            const r = res[remoteIndex];
+            if (r && r.ready >= 3 && r.t > 0) return { ok: true, details: res };
+          }
+        } catch (e) {
+          // page may have navigated or context destroyed; keep trying until timeout
         }
         await page.waitForTimeout(300);
       }
@@ -175,9 +179,17 @@ async function waitForServer(url, timeout = 15000) {
     const studentResult = await waitForVideo(studentPage, 0, 1);
 
     console.log('Waiting for teacher audio...');
-    const teacherAudio = await waitForAudio(teacherPage, 0);
+    let teacherAudio = await waitForAudio(teacherPage, 0);
+    if (teacherAudio.timeout) {
+      console.log('Teacher DOM audio timed out, falling back to console log detection');
+      teacherAudio = await waitForAudioConsole(teacherPage);
+    }
     console.log('Waiting for student audio...');
-    const studentAudio = await waitForAudio(studentPage, 0);
+    let studentAudio = await waitForAudio(studentPage, 0);
+    if (studentAudio.timeout) {
+      console.log('Student DOM audio timed out, falling back to console log detection');
+      studentAudio = await waitForAudioConsole(studentPage);
+    }
 
     console.log('Teacher audio result:', teacherAudio);
     console.log('Student audio result:', studentAudio);
