@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useMemo } from 'react';
+import { useT } from './IntlProvider';
 
 interface Props {
   triggerFix: () => Promise<boolean> | Promise<void>;
@@ -7,13 +8,14 @@ interface Props {
 }
 
 export const TroubleshootButton: React.FC<Props> = ({ triggerFix, fixStatus, className }) => {
+  const t = useT();
   const isFixing = fixStatus === 'fixing';
-  const label = (() => {
-    if (fixStatus === 'fixing') return 'Troubleshooting...';
-    if (fixStatus === 'success') return 'Fix applied';
-    if (fixStatus === 'error') return 'Fix failed';
-    return 'Run Troubleshoot';
-  })();
+  const label = useMemo(() => {
+    if (fixStatus === 'fixing') return t('troubleshoot_fixing');
+    if (fixStatus === 'success') return t('troubleshoot_success');
+    if (fixStatus === 'error') return t('troubleshoot_error');
+    return t('troubleshoot_button');
+  }, [fixStatus, t]);
 
   return (
     <button

@@ -1,6 +1,7 @@
 // components/TeacherCard.tsx
 import { Teacher } from '@/data/teachers';
 import Link from 'next/link';
+import { useT } from './IntlProvider';
 
 interface TeacherCardProps {
   teacher: Teacher;
@@ -10,6 +11,11 @@ export const TeacherCard: React.FC<TeacherCardProps> = ({ teacher }) => {
   const href = teacher.id
     ? `/teachers/${encodeURIComponent(String(teacher.id))}`
     : `/teachers?teacher=${encodeURIComponent(String(teacher.name))}`;
+  const t = useT();
+  const tt = (key: string, fallback: string) => {
+    const v = t(key);
+    return v === key ? fallback : v;
+  };
 
   return (
     <Link href={href} className="card card-link">
@@ -20,16 +26,16 @@ export const TeacherCard: React.FC<TeacherCardProps> = ({ teacher }) => {
           className="card-avatar"
         />
         <div>
-          <h3 className="card-title">{teacher.name}</h3>
+          <h3 className="card-title">{tt(`teachers.${teacher.id}.name`, teacher.name)}</h3>
           <p className="card-subtitle">
-            {teacher.subjects.join(' · ')}｜{teacher.location}
+            {tt(`teachers.${teacher.id}.subjects`, teacher.subjects.join(' · '))}｜{tt(`teachers.${teacher.id}.location`, teacher.location)}
           </p>
         </div>
       </div>
-      <p className="card-intro">{teacher.intro}</p>
+      <p className="card-intro">{tt(`teachers.${teacher.id}.intro`, teacher.intro)}</p>
       <div className="card-meta">
         <span>⭐ {teacher.rating.toFixed(1)}</span>
-        <span>NT$ {teacher.hourlyRate}/時</span>
+        <span>{t('currency')} {teacher.hourlyRate}/{t('per_session')}</span>
       </div>
       <div className="card-tags">
         {teacher.languages.map((lang) => (

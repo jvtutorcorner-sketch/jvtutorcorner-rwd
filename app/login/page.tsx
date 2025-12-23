@@ -13,9 +13,11 @@ import {
   clearStoredUser,
   StoredUser,
 } from '@/lib/mockAuth';
+import { useT } from '@/components/IntlProvider';
 
 export default function LoginPage() {
   const router = useRouter();
+  const t = useT();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState(TEST_PASSWORD);
   const [error, setError] = useState<string | null>(null);
@@ -53,11 +55,11 @@ export default function LoginPage() {
           setCurrentUser(user);
           window.dispatchEvent(new Event('tutor:auth-changed'));
           if (role === 'admin') {
-            alert('Admin 登入成功，將導向首頁。');
+            alert(t('login_admin_success'));
             router.push('/');
             return;
           }
-          alert(`登入成功！\n目前使用方案：${PLAN_LABELS[user.plan]}\n接下來會導向到首頁。`);
+          alert(`${t('login_success')}\n${t('current_plan')}: ${PLAN_LABELS[user.plan]}\n${t('redirecting_home')}`);
           router.push('/');
           return;
         }
@@ -66,11 +68,11 @@ export default function LoginPage() {
         const trimmedEmail = email.trim().toLowerCase();
         const userConfig = MOCK_USERS[trimmedEmail];
         if (!userConfig) {
-          setError('帳號不存在，請先建立帳戶或使用測試帳號。');
+          setError(t('login_account_not_found'));
           return;
         }
         if (password !== TEST_PASSWORD) {
-          setError('密碼錯誤，統一測試密碼為：123456');
+          setError(t('login_password_wrong'));
           return;
         }
         const user: StoredUser = {
@@ -87,11 +89,11 @@ export default function LoginPage() {
         setStoredUser(user);
         setCurrentUser(user);
         window.dispatchEvent(new Event('tutor:auth-changed'));
-        alert(`登入成功！\n目前使用方案：${PLAN_LABELS[user.plan]}（測試帳號）\n接下來會導向到首頁。`);
+        alert(`${t('login_success')}\n${t('current_plan')}: ${PLAN_LABELS[user.plan]}(${t('test_account')})\n${t('redirecting_home')}`);
         router.push('/');
       } catch (err) {
         console.error(err);
-        setError('登入時發生錯誤，請稍後再試。');
+        setError(t('login_error'));
       }
     })();
   };
@@ -103,7 +105,7 @@ export default function LoginPage() {
       window.dispatchEvent(new Event('tutor:auth-changed'));
     }
     router.refresh();
-    alert('已登出測試帳號。');
+    alert(t('logout_test_account'));
   };
 
   return (
@@ -114,11 +116,11 @@ export default function LoginPage() {
       {currentUser && (
         <section className="section">
           <div className="card">
-            <h2>目前登入狀態</h2>
+            <h2>{t('login_status')}</h2>
             <p>
-              帳號：<strong>{currentUser.email}</strong>
+              {t('account')}: <strong>{currentUser.email}</strong>
               <br />
-              方案：<strong>{PLAN_LABELS[currentUser.plan]}</strong>
+              {t('plan')}: <strong>{PLAN_LABELS[currentUser.plan]}</strong>
               {('role' in currentUser && (currentUser as any).role === 'admin') && (
                 <>
                   <br />
@@ -128,14 +130,14 @@ export default function LoginPage() {
             </p>
             <div className="card-actions">
               <button className="card-button" onClick={handleLogout}>
-                登出
+                {t('logout')}
               </button>
               <Link href="/pricing" className="card-button secondary">
-                前往價目頁 /pricing
+                {t('go_pricing')}
               </Link>
               {('role' in currentUser && (currentUser as any).role === 'admin') && (
                 <Link href="/admin/orders" className="card-button secondary">
-                  管理後台：訂單
+                  {t('admin_orders')}
                 </Link>
               )}
             </div>
@@ -145,7 +147,7 @@ export default function LoginPage() {
 
       <section className="section">
         <div className="card">
-          <h2>登入</h2>
+          <h2>{t('login_heading')}</h2>
           <form onSubmit={handleSubmit} className="modal-form">
             <div className="field">
               <label htmlFor="email">Email</label>
@@ -153,13 +155,13 @@ export default function LoginPage() {
                 id="email"
                 type="email"
                 value={email}
-                placeholder="例如：pro@test.com"
+                placeholder={t('email_placeholder')}
                 onChange={(e) => setEmail(e.target.value)}
                 autoComplete="email"
               />
             </div>
             <div className="field">
-              <label htmlFor="password">密碼</label>
+              <label htmlFor="password">{t('password')}</label>
               <input
                 id="password"
                 type="password"
@@ -174,10 +176,10 @@ export default function LoginPage() {
 
             <div className="modal-actions">
               <button type="submit" className="modal-button primary">
-                登入
+                {t('login')}
               </button>
               <Link href="/login/register" className="modal-button secondary">
-                建立帳戶
+                {t('create_account')}
               </Link>
             </div>
           </form>
@@ -186,18 +188,18 @@ export default function LoginPage() {
 
       <section className="section">
         <div className="card">
-          <h2>測試帳號一覽</h2>
-          <p>可使用以下任一帳號登入：</p>
+          <h2>{t('test_accounts')}</h2>
+          <p>{t('use_test_accounts')}</p>
           <ul>
             {/* Core test accounts */}
             <li>
-              <strong>Basic：</strong> basic@test.com （Basic 普通會員）<span style={{ color: '#2563eb', fontWeight: 'bold' }}>({MOCK_USERS['basic@test.com'].lastName}{MOCK_USERS['basic@test.com'].firstName})</span>
+              <strong>Basic：</strong> basic@test.com （Basic {t('basic_plan')}）<span style={{ color: '#2563eb', fontWeight: 'bold' }}>({MOCK_USERS['basic@test.com'].lastName}{MOCK_USERS['basic@test.com'].firstName})</span>
             </li>
             <li>
-              <strong>Pro：</strong> pro@test.com （Pro 中級會員）<span style={{ color: '#2563eb', fontWeight: 'bold' }}>({MOCK_USERS['pro@test.com'].lastName}{MOCK_USERS['pro@test.com'].firstName})</span>
+              <strong>Pro：</strong> pro@test.com （Pro {t('pro_plan')}）<span style={{ color: '#2563eb', fontWeight: 'bold' }}>({MOCK_USERS['pro@test.com'].lastName}{MOCK_USERS['pro@test.com'].firstName})</span>
             </li>
             <li>
-              <strong>Elite：</strong> elite@test.com （Elite 高級會員）<span style={{ color: '#2563eb', fontWeight: 'bold' }}>({MOCK_USERS['elite@test.com'].lastName}{MOCK_USERS['elite@test.com'].firstName})</span>
+              <strong>Elite：</strong> elite@test.com （Elite {t('elite_plan')}）<span style={{ color: '#2563eb', fontWeight: 'bold' }}>({MOCK_USERS['elite@test.com'].lastName}{MOCK_USERS['elite@test.com'].firstName})</span>
             </li>
             {/* legacy demo teacher removed */}
 
@@ -206,13 +208,13 @@ export default function LoginPage() {
               .filter(([email, cfg]) => (cfg as any).teacherId)
               .map(([email, cfg]) => (
                 <li key={email}>
-                  <strong>{(cfg.displayName || '老師')}：</strong> {email} （{cfg.displayName}）
+                  <strong>{(cfg.displayName || t('teacher'))}：</strong> {email} （{cfg.displayName}）
                   <span style={{ color: '#2563eb', fontWeight: 'bold' }}>({cfg.lastName}{cfg.firstName})</span>
                 </li>
               ))}
           </ul>
           <div style={{ marginTop: 12 }}>
-            <small>統一測試密碼：123456</small>
+            <small>{t('test_password_label')}: 123456</small>
           </div>
         </div>
       </section>

@@ -3,6 +3,7 @@
 import { useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { useT } from './IntlProvider';
 
 type Props = {
   initial?: {
@@ -30,6 +31,7 @@ export default function SearchForm({
   modeOptions,
 }: Props) {
   const router = useRouter();
+  const t = useT();
   const [subject, setSubject] = useState(initial?.subject ?? '');
   const [language, setLanguage] = useState(initial?.language ?? '');
   const [teacher, setTeacher] = useState(initial?.teacher ?? '');
@@ -79,18 +81,18 @@ export default function SearchForm({
                   {/* If on teachers or courses, show teacher text input instead of subject */}
                   {(isTeacherPage || isCoursePage) ? (
                     <div className="field">
-                      <label>老師</label>
+                      <label>{t('teacher')}</label>
                       <input
                         value={teacher}
                         onChange={(e) => setTeacher(e.target.value)}
-                        placeholder="老師姓名，支援模糊搜尋（可輸入部分名稱）"
+                        placeholder={t('search_teacher_placeholder')}
                       />
                     </div>
                   ) : (
                     <div className="field">
-                      <label>科目</label>
+                      <label>{t('subject')}</label>
                       <select value={subject} onChange={(e) => setSubject(e.target.value)}>
-                        <option value="">不限</option>
+                        <option value="">{t('unlimited')}</option>
                         {(subjectOptions ?? ['英文', '數學', '日文']).map((s: string) => (
                           <option key={s} value={s}>
                             {s}
@@ -101,16 +103,16 @@ export default function SearchForm({
                   )}
                 </div>
                 <div className="field">
-                  <label>授課語言</label>
+                  <label>{t('teaching_language')}</label>
                   {isTeacherPage || isCoursePage ? (
                     <input
                       value={language}
                       onChange={(e) => setLanguage(e.target.value)}
-                      placeholder="例如：中文、英文，支援模糊搜尋"
+                      placeholder={t('search_language_placeholder')}
                     />
                   ) : (
                     <select value={language} onChange={(e) => setLanguage(e.target.value)}>
-                      <option value="">不限</option>
+                      <option value="">{t('unlimited')}</option>
                       {(languageOptions ?? ['中文', '英文', '日文']).map((l: string) => (
                         <option key={l} value={l}>
                           {l}
@@ -126,9 +128,9 @@ export default function SearchForm({
         {!hideRegionAndMode && (
           <div className="search-row">
             <div className="field">
-              <label>地區</label>
+              <label>{t('region')}</label>
               <select value={region} onChange={(e) => setRegion(e.target.value)}>
-                <option value="">線上 / 不限</option>
+                <option value="">{t('online_unlimited')}</option>
                 {(regionOptions ?? ['線上', '台北', '新北', '東京', '其他']).map((r: string) => (
                   <option key={r} value={r}>
                     {r}
@@ -137,12 +139,12 @@ export default function SearchForm({
               </select>
             </div>
             <div className="field">
-              <label>授課方式</label>
+              <label>{t('teaching_mode')}</label>
               <select
                 value={mode}
                 onChange={(e) => setMode(e.target.value as 'online' | 'onsite' | '')}
               >
-                <option value="">不限</option>
+                <option value="">{t('unlimited')}</option>
                 {(modeOptions ?? ['online', 'onsite']).map((m: string) => (
                   <option key={m} value={m}>
                     {m}
@@ -155,7 +157,7 @@ export default function SearchForm({
 
         <div className="search-actions">
           <button type="submit" className="search-button">
-            搜尋
+            {t('search')}
           </button>
         </div>
       </form>

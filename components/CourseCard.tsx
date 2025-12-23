@@ -13,6 +13,10 @@ interface CourseCardProps {
 export const CourseCard: React.FC<CourseCardProps> = ({ course }) => {
   const router = useRouter();
   const t = useT();
+  const tt = (key: string, fallback: string) => {
+    const v = t(key);
+    return v === key ? fallback : v;
+  };
   // try to find a teacher id from the bundled TEACHERS data by name
   const teacherMatch = TEACHERS.find((t) => String(t.name || '').trim().toLowerCase() === String(course.teacherName || '').trim().toLowerCase());
   const teacherHref = teacherMatch
@@ -21,9 +25,9 @@ export const CourseCard: React.FC<CourseCardProps> = ({ course }) => {
 
   return (
     <Link href={`/courses/${course.id}`} className="card">
-      <h3 className="card-title">{course.title}</h3>
+      <h3 className="card-title">{tt(`courses.${course.id}.title`, course.title)}</h3>
       <p className="card-subtitle">
-        {course.subject}｜{course.level}
+        {tt(`courses.${course.id}.subject`, course.subject)}｜{tt(`courses.${course.id}.level`, course.level)}
       </p>
       <p className="card-intro">
         {t('teacher_label')}
@@ -46,7 +50,7 @@ export const CourseCard: React.FC<CourseCardProps> = ({ course }) => {
           {course.teacherName}
         </span>
         <br />
-        {t('course_language_label')}{course.language}
+        {t('course_language_label')}{tt(`courses.${course.id}.language`, course.language)}
       </p>
       <div className="card-meta">
         <span>
@@ -55,9 +59,9 @@ export const CourseCard: React.FC<CourseCardProps> = ({ course }) => {
         <span>{course.mode === 'online' ? t('online_course') : t('offline_course')}</span>
       </div>
       <div className="card-tags">
-        {course.tags.map((tag) => (
+        {course.tags.map((tag, i) => (
           <span key={tag} className="tag">
-            {tag}
+            {tt(`courses.${course.id}.tags.${i}`, tag)}
           </span>
         ))}
       </div>
