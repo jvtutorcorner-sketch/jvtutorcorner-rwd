@@ -240,16 +240,17 @@ export default function Header() {
                                           <>
                                             {
                                               // fixed items for students and teachers
-                                              (['teacher','student','user'].includes(user?.role || '')) ? (() => {
-                                                const fixed = user?.role === 'teacher'
-                                                  ? ['/teacher_courses', '/calendar', '/settings']
+                                              (user ? (() => {
+                                                const fixed = user.role === 'teacher'
+                                                  ? ['/my-courses', '/calendar', '/settings']
                                                   : ['/student_courses', '/calendar', '/settings'];
                                                 return fixed.map((p) => {
+                                                  // ensure student orders always available to authenticated users
                                                   if (p === '/student_courses' && !user) return null;
                                                   const pc = (adminSettings?.pageConfigs || []).find((x: any) => x.path === p);
                                                   const label = pc?.label || (
                                                     p === '/student_courses' ? t('orders_my_orders') :
-                                                    p === '/teacher_courses' ? t('my_courses') :
+                                                    p === '/my-courses' ? t('my_courses') :
                                                     p === '/calendar' ? t('calendar_label') : t('settings_label')
                                                   ) || p;
                                                   return (
@@ -258,7 +259,7 @@ export default function Header() {
                                                     </li>
                                                   );
                                                 });
-                                              })() : null
+                                              })() : null)
                                             }
 
                                             {
@@ -266,7 +267,7 @@ export default function Header() {
                                               user?.role === 'teacher' ? null : (
                                                 // otherwise (e.g. student), render other admin-configured dropdown items, excluding the fixed ones and page-permissions
                                                 (adminSettings?.pageConfigs || [])
-                                                  .filter((pc: any) => !!pc.path && pc.path !== '/admin/settings/page-permissions' && !['/student_courses', '/calendar', '/settings'].includes(pc.path))
+                                                  .filter((pc: any) => !!pc.path && pc.path !== '/admin/settings/page-permissions' && !['/student_courses', '/calendar', '/settings', '/my-courses'].includes(pc.path))
                                                   .map((pc: any) => {
                                                     const roleKey = user?.role || 'user';
                                                     const perm = (pc.permissions || []).find((p: any) => p.roleId === roleKey);

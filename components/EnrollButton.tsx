@@ -1,7 +1,7 @@
 // components/EnrollButton.tsx
 "use client";
 
-import { useState, FormEvent } from 'react';
+import { useState, FormEvent, useEffect } from 'react';
 import Link from 'next/link';
 import { getStoredUser } from '@/lib/mockAuth';
 import { useT } from '@/components/IntlProvider';
@@ -32,7 +32,14 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
   const [submissions, setSubmissions] = useState<Enrollment[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const storedUser = typeof window !== 'undefined' ? getStoredUser() : null;
+  const [storedUser, setStoredUserState] = useState(() => (typeof window !== 'undefined' ? getStoredUser() : null));
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handler = () => setStoredUserState(getStoredUser());
+    window.addEventListener('tutor:auth-changed', handler);
+    return () => window.removeEventListener('tutor:auth-changed', handler);
+  }, []);
 
   const resetForm = () => {
     setName('');
