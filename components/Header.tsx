@@ -1,5 +1,4 @@
 "use client";
-
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { getStoredUser, clearStoredUser, type StoredUser } from '@/lib/mockAuth';
@@ -226,27 +225,64 @@ export default function Header() {
                                         })() : null
                                       }
                                       {
-                                        // Build dropdown items dynamically from adminSettings.pageConfigs
-                                        // Skip the page-permissions entry to avoid duplicate
-                                        (adminSettings?.pageConfigs || [])
-                                          .filter((pc: any) => !!pc.path && pc.path !== '/admin/settings/page-permissions')
-                                          .map((pc: any) => {
-                                            const roleKey = user?.role || 'user';
-                                            const perm = (pc.permissions || []).find((p: any) => p.roleId === roleKey);
-                                            // if no explicit permission entry for this role, treat as not-visible in dropdown
-                                            const visible = perm ? (perm.dropdownVisible !== false) : false;
-                                            // ensure student orders always available to authenticated users
-                                            if (pc.path === '/student_courses') {
-                                              if (!user) return null;
-                                            }
-                                            if (!visible && pc.path !== '/student_courses') return null;
-                                            const label = t(pc.label) || pc.label || pc.path;
+                                        // If admin, show only the curated admin dropdown pages (in order)
+                                        user?.role === 'admin' ? (
+                                          (['/admin/dashboard','/admin/roles','/admin/settings','/admin/carousel','/admin/orders','/settings'] as string[]).map((p) => {
+                                            const pc = (adminSettings?.pageConfigs || []).find((x: any) => x.path === p);
+                                            const label = (pc && (pc.label || pc.path)) || (p === '/settings' ? t('settings_label') : p);
                                             return (
-                                              <li key={pc.path}>
-                                                <span role="menuitem" tabIndex={0} className="menu-link" onClick={() => { setMenuOpen(false); router.push(pc.path); }}>{label}</span>
+                                              <li key={p}>
+                                                <span role="menuitem" tabIndex={0} className="menu-link" onClick={() => { setMenuOpen(false); router.push(p); }}>{label}</span>
                                               </li>
                                             );
                                           })
+                                        ) : (
+                                          <>
+                                            {
+                                              // fixed items for students and teachers
+                                              (['teacher','student','user'].includes(user?.role || '')) ? (() => {
+                                                const fixed = user?.role === 'teacher'
+                                                  ? ['/teacher_courses', '/calendar', '/settings']
+                                                  : ['/student_courses', '/calendar', '/settings'];
+                                                return fixed.map((p) => {
+                                                  if (p === '/student_courses' && !user) return null;
+                                                  const pc = (adminSettings?.pageConfigs || []).find((x: any) => x.path === p);
+                                                  const label = pc?.label || (
+                                                    p === '/student_courses' ? t('orders_my_orders') :
+                                                    p === '/teacher_courses' ? t('my_courses') :
+                                                    p === '/calendar' ? t('calendar_label') : t('settings_label')
+                                                  ) || p;
+                                                  return (
+                                                    <li key={p}>
+                                                      <span role="menuitem" tabIndex={0} className="menu-link" onClick={() => { setMenuOpen(false); router.push(p); }}>{label}</span>
+                                                    </li>
+                                                  );
+                                                });
+                                              })() : null
+                                            }
+
+                                            {
+                                              // If user is teacher, do NOT render additional admin-configured items — teachers only see the fixed three
+                                              user?.role === 'teacher' ? null : (
+                                                // otherwise (e.g. student), render other admin-configured dropdown items, excluding the fixed ones and page-permissions
+                                                (adminSettings?.pageConfigs || [])
+                                                  .filter((pc: any) => !!pc.path && pc.path !== '/admin/settings/page-permissions' && !['/student_courses', '/calendar', '/settings'].includes(pc.path))
+                                                  .map((pc: any) => {
+                                                    const roleKey = user?.role || 'user';
+                                                    const perm = (pc.permissions || []).find((p: any) => p.roleId === roleKey);
+                                                    const visible = perm ? (perm.dropdownVisible !== false) : false;
+                                                    if (!visible) return null;
+                                                    const label = pc?.label || pc.path;
+                                                    return (
+                                                      <li key={pc.path}>
+                                                        <span role="menuitem" tabIndex={0} className="menu-link" onClick={() => { setMenuOpen(false); router.push(pc.path); }}>{label}</span>
+                                                      </li>
+                                                    );
+                                                  })
+                                              )
+                                            }
+                                          </>
+                                        )
                                       }
                               <li style={{ borderTop: '1px solid #f3f4f6', marginTop: 8, paddingTop: 8 }}>
                                 <button onClick={() => { setMenuOpen(false); handleLogout(); }} className="menu-logout" style={{ width: '100%' }}>{t('logout')}</button>
