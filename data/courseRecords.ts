@@ -1,6 +1,8 @@
 // data/courseRecords.ts
 import { Course } from './courses';
 import { Student } from './students';
+import { COURSES } from './courses';
+import { STUDENTS } from './students';
 
 export type CourseRecord = {
   id: string;
@@ -11,11 +13,10 @@ export type CourseRecord = {
   studentId: string;
 };
 
-// Helper function to get course/student names - makes display easier later
-import { COURSES } from './courses';
-import { STUDENTS } from './students';
+type CourseRecordWithNames = CourseRecord & { courseName: string; studentName: string };
 
-export const COURSE_RECORDS: (CourseRecord & { courseName: string, studentName: string })[] = [
+// Base records data (without enrichment)
+const BASE_COURSE_RECORDS: CourseRecord[] = [
   {
     id: 'cr1',
     date: '2025-12-10',
@@ -23,8 +24,6 @@ export const COURSE_RECORDS: (CourseRecord & { courseName: string, studentName: 
     status: 'attended',
     courseId: 'c1',
     studentId: 's1',
-    courseName: COURSES.find(c => c.id === 'c1')?.title || '',
-    studentName: STUDENTS.find(s => s.id === 's1')?.name || '',
   },
   {
     id: 'cr2',
@@ -33,8 +32,6 @@ export const COURSE_RECORDS: (CourseRecord & { courseName: string, studentName: 
     status: 'missed',
     courseId: 'c1',
     studentId: 's1',
-    courseName: COURSES.find(c => c.id === 'c1')?.title || '',
-    studentName: STUDENTS.find(s => s.id === 's1')?.name || '',
   },
   {
     id: 'cr3',
@@ -43,8 +40,6 @@ export const COURSE_RECORDS: (CourseRecord & { courseName: string, studentName: 
     status: 'attended',
     courseId: 'c2',
     studentId: 's2',
-    courseName: COURSES.find(c => c.id === 'c2')?.title || '',
-    studentName: STUDENTS.find(s => s.id === 's2')?.name || '',
   },
   {
     id: 'cr4',
@@ -53,7 +48,16 @@ export const COURSE_RECORDS: (CourseRecord & { courseName: string, studentName: 
     status: 'pending',
     courseId: 'c1',
     studentId: 's1',
-    courseName: COURSES.find(c => c.id === 'c1')?.title || '',
-    studentName: STUDENTS.find(s => s.id === 's1')?.name || '',
   },
 ];
+
+// Function to enrich records with course and student names
+function enrichRecords(records: CourseRecord[]): CourseRecordWithNames[] {
+  return records.map(record => ({
+    ...record,
+    courseName: COURSES.find(c => c.id === record.courseId)?.title || '',
+    studentName: STUDENTS.find(s => s.id === record.studentId)?.name || '',
+  }));
+}
+
+export const COURSE_RECORDS: CourseRecordWithNames[] = enrichRecords(BASE_COURSE_RECORDS);

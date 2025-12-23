@@ -1088,7 +1088,7 @@
     {
       "id": "/student_courses",
       "path": "/student_courses",
-      "label": "訂單",
+      "label": "學生的課程訂單",
       "permissions": [
         {
           "roleId": "admin",
@@ -1200,7 +1200,7 @@
     {
       "id": "/teacher_courses",
       "path": "/teacher_courses",
-      "label": "我的課程(老師用)",
+      "label": "老師的課程訂單",
       "permissions": [
         {
           "roleId": "admin",
@@ -2024,7 +2024,7 @@
       }
     },
     "/student_courses": {
-      "label": "student_courses",
+      "label": "學生的課程訂單",
       "menu": {
         "admin": true,
         "teacher": true,
@@ -2096,7 +2096,7 @@
       }
     },
     "/teacher_courses": {
-      "label": "teacher_courses",
+      "label": "老師的課程訂單",
       "menu": {
         "admin": true,
         "teacher": true,

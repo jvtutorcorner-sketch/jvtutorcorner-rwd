@@ -78,12 +78,12 @@ async function readSettings() {
           { roleId: 'teacher', roleName: 'Teacher', menuVisible: true, dropdownVisible: true, pageVisible: true },
           { roleId: 'student', roleName: 'Student', menuVisible: true, dropdownVisible: true, pageVisible: true }
         ]},
-        { id: '/teacher_courses', path: '/teacher_courses', label: '我的課程', permissions: [
+        { id: '/teacher_courses', path: '/teacher_courses', label: '老師的課程訂單', permissions: [
           { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
           { roleId: 'teacher', roleName: 'Teacher', menuVisible: true, dropdownVisible: true, pageVisible: true },
           { roleId: 'student', roleName: 'Student', menuVisible: true, dropdownVisible: true, pageVisible: true }
         ]},
-        { id: '/student_courses', path: '/student_courses', label: '訂單', permissions: [
+        { id: '/student_courses', path: '/student_courses', label: '學生的課程訂單', permissions: [
           { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
           { roleId: 'teacher', roleName: 'Teacher', menuVisible: true, dropdownVisible: true, pageVisible: true },
           { roleId: 'student', roleName: 'Student', menuVisible: true, dropdownVisible: true, pageVisible: true }

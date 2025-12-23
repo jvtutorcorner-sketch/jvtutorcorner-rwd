@@ -12,6 +12,7 @@ export default function TeacherDashboard({ teacherId, teacherName }: Props) {
   const [canEdit, setCanEdit] = useState(false);
   const [profile, setProfile] = useState<any>(null);
   const [courses, setCourses] = useState<any[]>([]);
+  const [orderCount, setOrderCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [newCourseTitle, setNewCourseTitle] = useState('');
   const [newCoursePrice, setNewCoursePrice] = useState('');
@@ -55,11 +56,41 @@ export default function TeacherDashboard({ teacherId, teacherName }: Props) {
     try {
       const res = await fetch(`/api/courses?teacher=${encodeURIComponent(String(teacherName))}`);
       const data = await res.json();
-      if (res.ok && data?.data) setCourses(data.data);
+      if (res.ok && data?.data) {
+        setCourses(data.data);
+        // Load order count for these courses
+        loadOrderCount(data.data);
+      }
     } catch (e) {
       // ignore
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadOrderCount(teacherCourses: any[]) {
+    const courseIds = teacherCourses.map((c: any) => c.id).filter(Boolean);
+    if (courseIds.length === 0) {
+      setOrderCount(0);
+      return;
+    }
+
+    try {
+      const orderPromises = courseIds.map((courseId: string) =>
+        fetch(`/api/orders?courseId=${encodeURIComponent(courseId)}&limit=100`)
+          .then((r) => r.json())
+          .then((data) => (data?.ok ? data.data || [] : data?.data || []))
+          .catch(() => [])
+      );
+
+      const orderArrays = await Promise.all(orderPromises);
+      const allOrders = orderArrays.flat();
+      const uniqueOrders = allOrders.filter((order, index, self) =>
+        index === self.findIndex((o) => o.orderId === order.orderId)
+      );
+      setOrderCount(uniqueOrders.length);
+    } catch (e) {
+      // ignore
     }
   }
 
@@ -111,6 +142,19 @@ export default function TeacherDashboard({ teacherId, teacherName }: Props) {
 
   return (
     <div style={{ marginTop: 18 }}>
+      {/* 訂單統計 */}
+      {orderCount !== null && (
+        <div style={{ marginBottom: 16, padding: 12, backgroundColor: '#f0f9ff', border: '1px solid #bfdbfe', borderRadius: 6 }}>
+          <h4 style={{ margin: '0 0 8px 0' }}>📊 訂單統計</h4>
+          <p style={{ margin: 0, fontSize: 14 }}>
+            課程訂單總數：<strong style={{ color: '#2563eb', fontSize: 16 }}>{orderCount}</strong> 個
+          </p>
+          <Link href="/teacher_courses" style={{ fontSize: 12, color: '#2563eb', textDecoration: 'underline' }}>
+            查看詳細訂單 →
+          </Link>
+        </div>
+      )}
+
       <div>
         <h4>{t('course_list')}</h4>
         {loading && <p>{t('loading')}</p>}

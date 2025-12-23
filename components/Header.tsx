@@ -242,7 +242,7 @@ export default function Header() {
                                               // fixed items for students and teachers
                                               (user ? (() => {
                                                 const fixed = user.role === 'teacher'
-                                                  ? ['/my-courses', '/calendar', '/settings']
+                                                  ? ['/teacher_courses', '/my-courses', '/calendar', '/settings']
                                                   : ['/student_courses', '/calendar', '/settings'];
                                                 return fixed.map((p) => {
                                                   // ensure student orders always available to authenticated users
@@ -250,6 +250,7 @@ export default function Header() {
                                                   const pc = (adminSettings?.pageConfigs || []).find((x: any) => x.path === p);
                                                   const label = pc?.label || (
                                                     p === '/student_courses' ? t('orders_my_orders') :
+                                                    p === '/teacher_courses' ? t('course_orders') :
                                                     p === '/my-courses' ? t('my_courses') :
                                                     p === '/calendar' ? t('calendar_label') : t('settings_label')
                                                   ) || p;
@@ -346,7 +347,7 @@ export default function Header() {
                   <div>
                     <div style={{ marginBottom: 8, fontWeight: 600 }}>{user.email}</div>
                     <div style={{ display: 'flex', gap: 8 }}>
-                      <button onClick={() => { setMobileMenuOpen(false); router.push('/student_courses'); }} style={{ padding: '8px 12px' }}>{t('orders_my_orders')}</button>
+                      <button onClick={() => { setMobileMenuOpen(false); router.push(user.role === 'teacher' ? '/teacher_courses' : '/student_courses'); }} style={{ padding: '8px 12px' }}>{user.role === 'teacher' ? t('course_orders') : t('orders_my_orders')}</button>
                       <button onClick={() => { setMobileMenuOpen(false); handleLogout(); }} style={{ padding: '8px 12px' }}>{t('logout')}</button>
                     </div>
                   </div>

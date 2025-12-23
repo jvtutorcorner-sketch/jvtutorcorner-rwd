@@ -32,13 +32,16 @@ const hexToRgbArray = (value: string | number[]): [number, number, number] => {
 };
 
 const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) => {
+  const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+  const courseId = searchParams?.get('courseId') ?? 'c1';
+  const orderId = searchParams?.get('orderId') ?? null;
+  const sessionParam = searchParams?.get('session');
+  const sessionReadyKey = sessionParam || channelName || `classroom_session_ready_${courseId}`;
   // determine courseId from query string (e.g. ?courseId=c1)
-  const courseId = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('courseId') ?? 'c1' : 'c1';
-  const orderId = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('orderId') ?? null : null;
   const course = COURSES.find((c) => c.id === courseId) || null;
   
-  // Use courseId + orderId as channel name to ensure same classroom
-  const effectiveChannelName = channelName || `course_${courseId}_${orderId || 'default'}`;
+  // Share classroom and media channel via explicit session param when available
+  const effectiveChannelName = sessionParam || channelName || `classroom_session_ready_${courseId}`;
 
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
@@ -201,8 +204,6 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   // pre-join waiting / readiness state (require same course + order)
   const [ready, setReady] = useState(false);
   const [canJoin, setCanJoin] = useState(false);
-
-  const sessionReadyKey = `classroom_session_ready_${courseId}_${orderId ?? 'noorder'}`;
 
   // Camera preview and mic test
   const previewStreamRef = useRef<MediaStream | null>(null);
@@ -631,57 +632,80 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   const toggleMic = async () => {
     if (micTogglePendingRef.current) return;
     micTogglePendingRef.current = true;
-    if (micEnabled) {
-      // Mute microphone
-      try {
-        if (micStreamRef.current) {
-          micStreamRef.current.getAudioTracks().forEach(track => {
-            track.enabled = false;
-          });
-        }
-        setMicEnabled(false);
-        console.log('Microphone muted');
-        try { if (joined && typeof setLocalAudioEnabled === 'function') await setLocalAudioEnabled(false); } catch (e) { console.warn('Failed to mute Agora audio', e); }
-      } catch (e) {
-        console.warn('Failed to mute microphone:', e);
-      }
-    } else {
-      // Unmute microphone
-      try {
-        if (!micStreamRef.current) {
-          // Get microphone access if not already have it
-          const constraints: any = { audio: true };
-          if (selectedAudioDeviceId && selectedAudioDeviceId !== '') {
-            constraints.audio = { deviceId: { ideal: selectedAudioDeviceId } };
+    try {
+      if (micEnabled) {
+        // Mute microphone
+        try {
+          console.log('[toggleMic] muting, micStreamRef=', micStreamRef.current);
+          if (micStreamRef.current) {
+            micStreamRef.current.getAudioTracks().forEach(track => {
+              track.enabled = false;
+            });
           }
-          const stream = await navigator.mediaDevices.getUserMedia(constraints);
-          micStreamRef.current = stream;
-
-          // Set up audio context for level monitoring
-          audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-          const ctx = audioContextRef.current;
-          const src = ctx.createMediaStreamSource(stream);
-          const analyser = ctx.createAnalyser();
-          analyser.fftSize = 256;
-          src.connect(analyser);
-          analyserRef.current = analyser;
-          micSourceRef.current = src;
+          setMicEnabled(false);
+          console.log('Microphone muted');
+          try {
+            if (joined && typeof setLocalAudioEnabled === 'function') {
+              console.log('[toggleMic] calling setLocalAudioEnabled(false) for Agora');
+              await setLocalAudioEnabled(false);
+            }
+          } catch (e) { console.warn('Failed to mute Agora audio', e); }
+        } catch (e) {
+          console.warn('Failed to mute microphone:', e);
         }
+      } else {
+        // Unmute microphone
+        try {
+          console.log('[toggleMic] unmuting, micStreamRef=', micStreamRef.current);
+          // If already joined and Agora can manage local mic, prefer that
+          if (joined && typeof setLocalAudioEnabled === 'function') {
+            try {
+              console.log('[toggleMic] joined=true, calling setLocalAudioEnabled(true)');
+              await setLocalAudioEnabled(true);
+              setMicEnabled(true);
+              console.log('Microphone unmuted via Agora');
+              return;
+            } catch (e) {
+              console.warn('setLocalAudioEnabled(true) failed, falling back to getUserMedia', e);
+            }
+          }
 
-        // Enable microphone tracks
-        micStreamRef.current.getAudioTracks().forEach(track => {
-          track.enabled = true;
-        });
+          if (!micStreamRef.current) {
+            // Get microphone access if not already have it
+            const constraints: any = { audio: true };
+            if (selectedAudioDeviceId && selectedAudioDeviceId !== '') {
+              constraints.audio = { deviceId: { ideal: selectedAudioDeviceId } };
+            }
+            const stream = await navigator.mediaDevices.getUserMedia(constraints);
+            micStreamRef.current = stream;
 
-        setMicEnabled(true);
-        console.log('Microphone unmuted');
-        try { if (joined && typeof setLocalAudioEnabled === 'function') await setLocalAudioEnabled(true); } catch (e) { console.warn('Failed to unmute Agora audio', e); }
-      } catch (e) {
-        console.warn('Failed to unmute microphone:', e);
-        alert('無法啟動麥克風，請確認已授予權限。');
+            // Set up audio context for level monitoring
+            audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+            const ctx = audioContextRef.current;
+            const src = ctx.createMediaStreamSource(stream);
+            const analyser = ctx.createAnalyser();
+            analyser.fftSize = 256;
+            src.connect(analyser);
+            analyserRef.current = analyser;
+            micSourceRef.current = src;
+          }
+
+          // Enable microphone tracks
+          micStreamRef.current.getAudioTracks().forEach(track => {
+            track.enabled = true;
+          });
+
+          setMicEnabled(true);
+          console.log('Microphone unmuted');
+          try { if (joined && typeof setLocalAudioEnabled === 'function') await setLocalAudioEnabled(true); } catch (e) { console.warn('Failed to unmute Agora audio', e); }
+        } catch (e) {
+          console.warn('Failed to unmute microphone:', e);
+          alert('無法啟動麥克風，請確認已授予權限。');
+        }
       }
+    } finally {
+      micTogglePendingRef.current = false;
     }
-    micTogglePendingRef.current = false;
   };
 
   useEffect(() => {
@@ -786,8 +810,37 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                   {/* Microphone placed here (swapped with Join) */}
                   <button
                     type="button"
-                    onClick={async () => { await toggleMic(); }}
-                    disabled={hasAudioInput === false}
+                    onClick={async () => {
+                      console.log('Mic button clicked, permissionGranted=', permissionGranted, 'hasAudioInput=', hasAudioInput);
+                      try {
+                        if (!permissionGranted) {
+                          await requestPermissions();
+                        }
+                      } catch (e) {
+                        console.warn('requestPermissions failed', e);
+                      }
+
+                      // Re-check available devices after requesting permissions
+                      let hasAudio = hasAudioInput;
+                      try {
+                        if (navigator && navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+                          const devs = await navigator.mediaDevices.enumerateDevices();
+                          hasAudio = devs.some(d => d.kind === 'audioinput');
+                          console.log('enumerateDevices result, hasAudio=', hasAudio, devs);
+                        }
+                      } catch (e) {
+                        console.warn('enumerateDevices failed', e);
+                      }
+
+                      if (!hasAudio) {
+                        alert('找不到麥克風裝置或未授權，請確認瀏覽器已允許麥克風並接上設備');
+                        return;
+                      }
+
+                      await toggleMic();
+                    }}
+                    // keep button enabled so user gesture can request permissions
+                    disabled={false}
                     style={{
                       flex: 1,
                       minWidth: 0,
@@ -796,7 +849,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                       border: 'none',
                       padding: '8px 12px',
                       borderRadius: 4,
-                      cursor: hasAudioInput === false ? 'not-allowed' : 'pointer',
+                      cursor: 'pointer',
                       fontWeight: 600,
                       textAlign: 'center'
                     }}

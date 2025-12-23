@@ -37,7 +37,22 @@ export async function GET(req: Request) {
       courses = BUNDLED_COURSES as any[];
     }
     if (id) {
-      const c = courses.find((x) => String(x.id) === id);
+      const idNorm = String(id).trim();
+      // try exact match in persisted courses
+      let c = courses.find((x) => String(x.id || '').trim() === idNorm);
+      // fallback to bundled sample data
+      if (!c && Array.isArray(BUNDLED_COURSES) && BUNDLED_COURSES.length > 0) {
+        c = (BUNDLED_COURSES as any[]).find((x) => String(x.id || '').trim() === idNorm) as any | undefined;
+      }
+      // try decodeURIComponent in case the id was encoded differently
+      if (!c) {
+        try {
+          const dec = decodeURIComponent(idNorm);
+          c = courses.find((x) => String(x.id || '').trim() === dec) || (Array.isArray(BUNDLED_COURSES) ? (BUNDLED_COURSES as any[]).find((x) => String(x.id || '').trim() === dec) : undefined);
+        } catch (e) {
+          // ignore
+        }
+      }
       if (!c) return NextResponse.json({ ok: false, message: 'Course not found' }, { status: 404 });
       return NextResponse.json({ ok: true, course: c });
     }

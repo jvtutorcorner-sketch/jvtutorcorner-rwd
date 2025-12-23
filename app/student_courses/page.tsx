@@ -21,6 +21,7 @@ export default function StudentCoursesPage() {
   const router = useRouter();
   const t = useT();
   const [orders, setOrders] = useState<Order[] | null>(null);
+  const [courseMap, setCourseMap] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [user, setUser] = useState<StoredUser | null>(null);
@@ -124,6 +125,30 @@ export default function StudentCoursesPage() {
     }
   }, [user?.email, mounted]);
 
+  // When orders change, fetch course titles for any courseIds found
+  useEffect(() => {
+    if (!orders || orders.length === 0) {
+      setCourseMap({});
+      return;
+    }
+    const ids = Array.from(new Set(orders.map(o => o.courseId).filter((id): id is string => !!id)));
+    if (ids.length === 0) {
+      setCourseMap({});
+      return;
+    }
+    const fetches = ids.map((cid: string) =>
+      fetch(`/api/courses?id=${encodeURIComponent(cid)}`).then(r => r.json()).then(j => (j && j.ok && j.course ? j.course.title : null)).catch(() => null)
+    );
+    Promise.all(fetches).then((titles) => {
+      const map: Record<string, string> = {};
+      ids.forEach((id: string, idx: number) => {
+        const t = titles[idx];
+        if (t) map[id] = t as string;
+      });
+      setCourseMap(map);
+    }).catch(() => setCourseMap({}));
+  }, [orders]);
+
   const getPageTitle = () => {
     if (!user) return t('orders_label');
     if (user.role === 'admin') return t('all_orders');
@@ -171,7 +196,7 @@ export default function StudentCoursesPage() {
                     <td style={{ border: '2px solid #ccc', padding: '6px' }}>
                       <Link href={`/student_courses/${o.orderId}`}>{o.orderId}</Link>
                     </td>
-                    <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.courseId ?? '-'}</td>
+                    <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.courseId ? (courseMap[o.courseId] || o.courseId) : '-'}</td>
                     <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.amount !== undefined && o.amount !== null ? `${o.amount} ${o.currency ?? 'TWD'}` : '-'}</td>
                     <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.status ?? '-'}</td>
                     <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.createdAt ? new Date(o.createdAt).toLocaleString() : '-'}</td>
