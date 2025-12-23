@@ -1,8 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useT } from '@/components/IntlProvider';
 
 export default function ProfilePage() {
+  const t = useT();
   const [user, setUser] = useState<any>(null);
 
   // 取得使用者資料
@@ -23,7 +25,7 @@ export default function ProfilePage() {
   if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center text-gray-600">
-        載入中 Loading...
+        {t('loading')}
       </div>
     );
   }
@@ -31,7 +33,7 @@ export default function ProfilePage() {
   return (
     <div className="min-h-screen bg-gray-100 py-10 px-5">
       <div className="max-w-4xl mx-auto bg-white shadow-lg rounded-xl p-10">
-        <h1 className="text-3xl font-bold mb-6">個人資料 Profile</h1>
+        <h1 className="text-3xl font-bold mb-6">{t('profile_label')}</h1>
 
         {/* Profile Header */}
         <div className="flex items-center gap-6 border-b pb-6 mb-6">
@@ -40,7 +42,7 @@ export default function ProfilePage() {
               <img src={user.avatar} className="w-full h-full object-cover" />
             ) : (
               <div className="w-full h-full flex items-center justify-center text-gray-600">
-                No Photo
+                {t('no_photo')}
               </div>
             )}
           </div>
@@ -51,7 +53,7 @@ export default function ProfilePage() {
             </h2>
             <p className="text-gray-500">{user.nickname}</p>
             <p className="text-blue-600 font-medium">
-              {user.role === 'Teacher' ? '老師 Teacher' : '學生 Student'}
+              {user.role === 'Teacher' ? t('role_teacher') : t('role_student')}
             </p>
           </div>
         </div>
@@ -59,21 +61,21 @@ export default function ProfilePage() {
         {/* Profile Details */}
         <div className="grid md:grid-cols-2 gap-8">
           <div>
-            <h3 className="text-xl font-semibold mb-3">基本資訊 Basic Info</h3>
+            <h3 className="text-xl font-semibold mb-3">{t('basic_info')}</h3>
             <div className="space-y-2 text-gray-700">
-              <p><strong>Email：</strong> {user.email}</p>
-              <p><strong>性別 Gender：</strong> {user.gender}</p>
-              <p><strong>生日 Birthday：</strong> {user.birthday}</p>
-              <p><strong>國家 Country：</strong> {user.country}</p>
+              <p><strong>{t('email')}：</strong> {user.email}</p>
+              <p><strong>{t('gender')}：</strong> {user.gender}</p>
+              <p><strong>{t('birthday')}：</strong> {user.birthday}</p>
+              <p><strong>{t('country')}：</strong> {user.country}</p>
             </div>
           </div>
 
           <div>
-            <h3 className="text-xl font-semibold mb-3">系統資訊 System Info</h3>
+            <h3 className="text-xl font-semibold mb-3">{t('system_info')}</h3>
             <div className="space-y-2 text-gray-700">
-              <p><strong>帳號 ID：</strong> {user.accountId}</p>
-              <p><strong>角色 Role：</strong> {user.role}</p>
-              <p><strong>建立時間：</strong> {user.createdAt}</p>
+              <p><strong>{t('account_id')}：</strong> {user.accountId}</p>
+              <p><strong>{t('role')}：</strong> {user.role}</p>
+              <p><strong>{t('created_time')}：</strong> {user.createdAt}</p>
             </div>
           </div>
         </div>
@@ -81,11 +83,11 @@ export default function ProfilePage() {
         {/* Buttons */}
         <div className="mt-10 flex gap-4">
           <button className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
-            編輯資料 Edit Profile
+            {t('edit_profile')}
           </button>
 
           <button className="px-6 py-3 bg-gray-800 text-white rounded-lg hover:bg-black transition">
-            登出 Logout
+            {t('logout')}
           </button>
         </div>
       </div>

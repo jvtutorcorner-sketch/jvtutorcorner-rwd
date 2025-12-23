@@ -71,12 +71,12 @@ export default function HomePage() {
           items={[
             {
               key: 'teachers',
-              title: '推薦老師',
+              title: t('recommended_teachers'),
               content: (
                 <>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                    <h2 className="section-title">推薦老師</h2>
-                    <Link href="/teachers" className="section-link">看全部老師 →</Link>
+                    <h2 className="section-title">{t('recommended_teachers')}</h2>
+                    <Link href="/teachers" className="section-link">{t('see_all_teachers')} →</Link>
                   </div>
                   <div className="card-grid">
                     {recommendedTeachers.map((teacher) => (
@@ -88,12 +88,12 @@ export default function HomePage() {
             },
             {
               key: 'courses',
-              title: '熱門課程',
+              title: t('popular_courses'),
               content: (
                 <>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                    <h2 className="section-title">熱門課程</h2>
-                    <Link href="/courses" className="section-link">看全部課程 →</Link>
+                    <h2 className="section-title">{t('popular_courses')}</h2>
+                    <Link href="/courses" className="section-link">{t('see_all_courses')} →</Link>
                   </div>
                   <div className="card-grid">
                     {hotCourses.map((course) => (
@@ -105,22 +105,22 @@ export default function HomePage() {
             },
             ...(user?.role === 'admin' ? [{
               key: 'features',
-              title: '平台特色',
+              title: t('platform_features'),
               content: (
                 <>
-                  <h2 className="section-title">平台特色</h2>
+                  <h2 className="section-title">{t('platform_features')}</h2>
                   <div className="feature-grid">
                     <div className="feature-card">
-                      <h3>線上白板與錄影</h3>
-                      <p>內建小畫家式白板與課後錄影回放，方便複習重點。</p>
+                      <h3>{t('feature_whiteboard')}</h3>
+                      <p>{t('feature_whiteboard_desc')}</p>
                     </div>
                     <div className="feature-card">
-                      <h3>多國語系介面</h3>
-                      <p>支援繁中 / 英文介面，未來可擴充更多語言，方便跨國教學。</p>
+                      <h3>{t('feature_multilingual')}</h3>
+                      <p>{t('feature_multilingual_desc')}</p>
                     </div>
                     <div className="feature-card">
-                      <h3>跨國金流收款</h3>
-                      <p>規劃整合 Stripe + 在地金流，支援國內外學生安全付款。</p>
+                      <h3>{t('feature_payment')}</h3>
+                      <p>{t('feature_payment_desc')}</p>
                     </div>
                   </div>
                 </>

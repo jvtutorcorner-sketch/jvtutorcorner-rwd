@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { getStoredUser, type StoredUser } from '@/lib/mockAuth';
 import Link from 'next/link';
+import { useT } from '@/components/IntlProvider';
 
 type Order = {
   orderId: string;
@@ -16,6 +17,7 @@ type Order = {
 };
 
 export default function OrdersPage() {
+  const t = useT();
   const [orders, setOrders] = useState<Order[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -131,30 +133,30 @@ export default function OrdersPage() {
 
   // Always render the same header structure to avoid hydration mismatches
   const getPageTitle = () => {
-    if (!user) return '訂單紀錄';
-    if (user.role === 'admin') return '所有訂單紀錄';
-    if (user.role === 'teacher') return '課程訂單紀錄';
-    return '我的訂單紀錄';
+    if (!user) return t('orders_label');
+    if (user.role === 'admin') return t('all_orders');
+    if (user.role === 'teacher') return t('course_orders');
+    return t('my_orders');
   };
 
   return (
     <div className="page">
       <section className="section">
         {!mounted ? (
-          <p>載入中…</p>
+          <p>{t('loading')}</p>
         ) : !user ? (
           <>
-            <p>請先登入以檢視你的訂單紀錄。</p>
+            <p>{t('login_to_view_orders')}</p>
             <p>
-              <Link href="/login">前往登入</Link>
+              <Link href="/login">{t('go_login')}</Link>
             </p>
           </>
         ) : loading ? (
-          <p>讀取中…</p>
+          <p>{t('loading')}</p>
         ) : error ? (
-          <p>讀取失敗：{error}</p>
+          <p>{t('load_error')}: {error}</p>
         ) : !orders || orders.length === 0 ? (
-          <p>目前沒有訂單紀錄。</p>
+          <p>{t('no_orders')}</p>
         ) : (
           <>
             <h2>{getPageTitle()}</h2>

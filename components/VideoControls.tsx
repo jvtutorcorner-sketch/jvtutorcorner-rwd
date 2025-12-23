@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { VideoQuality } from '@/lib/agora/useAgoraClassroom';
+import { useT } from './IntlProvider';
 
 export interface VideoControlsProps {
   currentQuality: VideoQuality;
@@ -20,11 +21,12 @@ const VideoControls: React.FC<VideoControlsProps> = ({
   hasVideo,
   className = ''
 }) => {
+  const t = useT();
   const qualities: { value: VideoQuality; label: string; description: string }[] = [
-    { value: 'low', label: '低质量', description: '320x240, 15fps' },
-    { value: 'medium', label: '中等质量', description: '640x480, 15fps' },
-    { value: 'high', label: '高质量', description: '1280x720, 30fps' },
-    { value: 'ultra', label: '超高质量', description: '1920x1080, 30fps' }
+    { value: 'low', label: t('video_quality_low'), description: '320x240, 15fps' },
+    { value: 'medium', label: t('video_quality_medium'), description: '640x480, 15fps' },
+    { value: 'high', label: t('video_quality_high'), description: '1280x720, 30fps' },
+    { value: 'ultra', label: t('video_quality_ultra'), description: '1920x1080, 30fps' }
   ];
 
   if (!hasVideo) {
@@ -41,12 +43,12 @@ const VideoControls: React.FC<VideoControlsProps> = ({
       borderRadius: '8px',
       border: '1px solid #dee2e6'
     }}>
-      <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 'bold' }}>视频设置</h4>
+      <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 'bold' }}>{t('video_settings')}</h4>
 
       {/* 视频质量选择 */}
       <div>
         <label style={{ display: 'block', marginBottom: '8px', fontSize: '13px', fontWeight: '500' }}>
-          视频质量:
+          {t('video_quality')}:
         </label>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
           {qualities.map(quality => (
@@ -87,17 +89,17 @@ const VideoControls: React.FC<VideoControlsProps> = ({
             onChange={(e) => onLowLatencyToggle(e.target.checked)}
             style={{ margin: 0 }}
           />
-          低延迟模式
+          {t('low_latency_mode')}
         </label>
         <div style={{ fontSize: '11px', color: '#666', marginTop: '4px' }}>
-          启用后减少延迟，但可能影响稳定性。适合1对1教学场景。
+          {t('low_latency_desc')}
         </div>
       </div>
 
       {/* 网络状态指示器 */}
       <div style={{ fontSize: '12px', color: '#666' }}>
-        <div>当前质量: <strong>{qualities.find(q => q.value === currentQuality)?.label}</strong></div>
-        <div>延迟模式: <strong>{isLowLatencyMode ? '启用' : '禁用'}</strong></div>
+        <div>{t('current_quality')}: <strong>{qualities.find(q => q.value === currentQuality)?.label}</strong></div>
+        <div>{t('latency_mode')}: <strong>{isLowLatencyMode ? t('enabled') : t('disabled')}</strong></div>
       </div>
     </div>
   );

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useT } from './IntlProvider';
 
 type Enrollment = {
   id: string;
@@ -23,6 +24,7 @@ type Order = {
 };
 
 export default function EnrollmentManager() {
+  const t = useT();
   const [items, setItems] = useState<Enrollment[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -61,10 +63,10 @@ export default function EnrollmentManager() {
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || "Failed to create order");
       const display = data.order?.orderNumber || data.order?.orderId || '(no id)';
-      alert("Order created: " + display);
+      alert(t('order_created') + ": " + display);
       await load();
     } catch (err: any) {
-      alert("Create order error: " + (err?.message || err));
+      alert(t('create_order_error') + ": " + (err?.message || err));
     }
   }
 
@@ -97,10 +99,10 @@ export default function EnrollmentManager() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || "Payment webhook failed");
-      alert("Payment simulated for order " + orderId);
+      alert(t('payment_simulated') + ": " + orderId);
       await load();
     } catch (err: any) {
-      alert("Simulate payment error: " + (err?.message || err));
+      alert(t('simulate_payment_error') + ": " + (err?.message || err));
     }
   }
 
@@ -122,10 +124,10 @@ export default function EnrollmentManager() {
         body: JSON.stringify({ id: enrollment.id, status: "CANCELLED" }),
       });
 
-      alert("Enrollment cancelled");
+      alert(t('enrollment_cancelled'));
       await load();
     } catch (err: any) {
-      alert("Cancel error: " + (err?.message || err));
+      alert(t('cancel_error') + ": " + (err?.message || err));
     }
   }
 
@@ -148,45 +150,45 @@ export default function EnrollmentManager() {
         body: JSON.stringify({ id: enrollment.id, status: "REFUNDED" }),
       });
 
-      alert("Refund processed (demo)");
+      alert(t('refund_processed'));
       await load();
     } catch (err: any) {
-      alert("Refund error: " + (err?.message || err));
+      alert(t('refund_error') + ": " + (err?.message || err));
     }
   }
 
   return (
     <div>
-      <h2>我的報名 / 訂單（Demo）</h2>
-      {loading && <p>載入中…</p>}
+      <h2>{t('my_enrollments')}</h2>
+      {loading && <p>{t('loading')}</p>}
       {error && <p style={{ color: "red" }}>{error}</p>}
-      {!loading && items.length === 0 && <p>目前沒有報名紀錄。</p>}
+      {!loading && items.length === 0 && <p>{t('no_enrollments')}</p>}
       <ul>
         {items.map((e) => (
           <li key={e.id} style={{ marginBottom: 12, borderBottom: "1px solid #eee", paddingBottom: 8 }}>
             <div><strong>{e.courseTitle}</strong> — {e.name} ({e.email})</div>
-            <div>狀態：{e.status}</div>
+            <div>{t('status')}: {e.status}</div>
             <div style={{ marginTop: 8 }}>
               {e.status === "PENDING_PAYMENT" && (
                 <>
-                  <button onClick={() => createOrder(e)} style={{ marginRight: 8 }}>建立訂單</button>
-                  <button onClick={() => simulatePayment(e)} style={{ marginRight: 8 }}>模擬付款</button>
+                  <button onClick={() => createOrder(e)} style={{ marginRight: 8 }}>{t('create_order')}</button>
+                  <button onClick={() => simulatePayment(e)} style={{ marginRight: 8 }}>{t('simulate_payment')}</button>
                 </>
               )}
               {e.status === "PAID" && (
                 <>
-                  <button onClick={() => simulatePayment(e)} style={{ marginRight: 8 }}>確認付款（再模擬）</button>
-                  <button onClick={() => refundEnrollment(e)} style={{ marginRight: 8 }}>退款</button>
+                  <button onClick={() => simulatePayment(e)} style={{ marginRight: 8 }}>{t('confirm_payment')}</button>
+                  <button onClick={() => refundEnrollment(e)} style={{ marginRight: 8 }}>{t('refund')}</button>
                 </>
               )}
               {e.status === "ACTIVE" && (
                 <>
-                  <span style={{ marginRight: 8 }}>課程已生效</span>
-                  <button onClick={() => cancelEnrollment(e)}>取消報名</button>
+                  <span style={{ marginRight: 8 }}>{t('course_active')}</span>
+                  <button onClick={() => cancelEnrollment(e)}>{t('cancel_enrollment')}</button>
                 </>
               )}
               {(e.status === "CANCELLED" || e.status === "REFUNDED") && (
-                <span style={{ color: "gray" }}>已取消 / 已退款</span>
+                <span style={{ color: "gray" }}>{t('cancelled_or_refunded')}</span>
               )}
             </div>
           </li>

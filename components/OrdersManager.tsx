@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from 'next/link';
 import { COURSES } from '../data/courses';
+import { useT } from './IntlProvider';
 
 type Order = {
   orderId?: string;
@@ -19,6 +20,7 @@ type Order = {
 };
 
 export default function OrdersManager() {
+  const t = useT();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -102,7 +104,7 @@ export default function OrdersManager() {
 
   function exportCSV() {
     if (!orders || orders.length === 0) {
-      alert('沒有可匯出的訂單');
+      alert(t('no_orders_to_export'));
       return;
     }
 
@@ -183,7 +185,7 @@ export default function OrdersManager() {
 
   function confirmAndPatch(order: Order | undefined, label: string, status: string) {
     if (!order || !order.orderId) return;
-    const ok = typeof window !== 'undefined' ? window.confirm(`確定要 ${label} 嗎？這個操作不可逆。`) : true;
+    const ok = typeof window !== 'undefined' ? window.confirm(`${t('confirm_action')} ${label}${t('action_irreversible')}`) : true;
     if (!ok) return;
 
     const payment = {
@@ -210,7 +212,7 @@ export default function OrdersManager() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || 'Failed to update order');
-      alert('Order updated');
+      alert(t('order_updated'));
       if (data && data.order) {
         setOrders((prev) => prev.map((o) => (o.orderId === orderId ? data.order : o)));
       } else {
@@ -223,9 +225,9 @@ export default function OrdersManager() {
 
   return (
     <div>
-      <h3>訂單管理</h3>
+      <h3>{t('order_management')}</h3>
       <div style={{ marginBottom: 8 }}>
-        <label>每頁顯示: </label>
+        <label>{t('per_page')}: </label>
         <select value={limit} onChange={(e) => setLimit(parseInt(e.target.value, 10))}>
           <option value={10}>10</option>
           <option value={20}>20</option>
@@ -235,9 +237,9 @@ export default function OrdersManager() {
       </div>
 
       <div style={{ marginBottom: 12 }}>
-        <label style={{ marginRight: 8 }}>Status:</label>
+        <label style={{ marginRight: 8 }}>{t('status')}:</label>
         <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} style={{ marginRight: 12 }}>
-          <option value="">All</option>
+          <option value="">{t('all')}</option>
           <option value="PENDING">PENDING</option>
           <option value="PAID">PAID</option>
           <option value="CANCELLED">CANCELLED</option>
@@ -249,31 +251,31 @@ export default function OrdersManager() {
         <input value={filterOrderId} onChange={(e) => setFilterOrderId(e.target.value)} placeholder="orderId" style={{ marginRight: 12 }} />
 
         <div style={{ display: 'inline-block', marginLeft: 8 }}>
-          <label style={{ marginRight: 6 }}>From:</label>
+          <label style={{ marginRight: 6 }}>{t('from')}:</label>
           <input type="date" value={filterStartDate} onChange={(e) => setFilterStartDate(e.target.value)} style={{ marginRight: 8 }} />
-          <label style={{ marginRight: 6 }}>To:</label>
+          <label style={{ marginRight: 6 }}>{t('to')}:</label>
           <input type="date" value={filterEndDate} onChange={(e) => setFilterEndDate(e.target.value)} style={{ marginRight: 8 }} />
         </div>
 
-        <button onClick={handleSearch} style={{ marginLeft: 8 }}>搜尋</button>
-        <button onClick={() => exportCSV()} style={{ marginLeft: 8 }}>導出 CSV</button>
+        <button onClick={handleSearch} style={{ marginLeft: 8 }}>{t('search')}</button>
+        <button onClick={() => exportCSV()} style={{ marginLeft: 8 }}>{t('export_csv')}</button>
       </div>
 
-      {loading && <p>載入中…</p>}
+      {loading && <p>{t('loading')}</p>}
       {error && <p style={{ color: 'red' }}>{error}</p>}
 
       <table className="orders-table" style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #ddd' }}>
             <thead>
                 <tr>
-                <th style={{ border: '1px solid #ddd', padding: '8px 6px', textAlign: 'left' }}>OrderId</th>
-                <th style={{ border: '1px solid #ddd', padding: '8px 6px', textAlign: 'left' }}>使用者</th>
-                <th style={{ border: '1px solid #ddd', padding: '8px 6px', textAlign: 'left' }}>CourseId</th>
-                <th style={{ border: '1px solid #ddd', padding: '8px 6px', textAlign: 'left' }}>Amount</th>
-                <th style={{ border: '1px solid #ddd', padding: '8px 6px', textAlign: 'left' }}>Currency</th>
-                <th style={{ border: '1px solid #ddd', padding: '8px 6px', textAlign: 'left' }}>Status</th>
-                <th style={{ border: '1px solid #ddd', padding: '8px 6px', textAlign: 'left' }}>Create Time</th>
-                <th style={{ border: '1px solid #ddd', padding: '8px 6px', textAlign: 'left' }}>Update Time</th>
-                <th style={{ border: '1px solid #ddd', padding: '8px 6px', textAlign: 'left' }}>Actions</th>
+                <th style={{ border: '1px solid #ddd', padding: '8px 6px', textAlign: 'left' }}>{t('order_id')}</th>
+                <th style={{ border: '1px solid #ddd', padding: '8px 6px', textAlign: 'left' }}>{t('user')}</th>
+                <th style={{ border: '1px solid #ddd', padding: '8px 6px', textAlign: 'left' }}>{t('course_id')}</th>
+                <th style={{ border: '1px solid #ddd', padding: '8px 6px', textAlign: 'left' }}>{t('amount')}</th>
+                <th style={{ border: '1px solid #ddd', padding: '8px 6px', textAlign: 'left' }}>{t('currency_label')}</th>
+                <th style={{ border: '1px solid #ddd', padding: '8px 6px', textAlign: 'left' }}>{t('status')}</th>
+                <th style={{ border: '1px solid #ddd', padding: '8px 6px', textAlign: 'left' }}>{t('create_time')}</th>
+                <th style={{ border: '1px solid #ddd', padding: '8px 6px', textAlign: 'left' }}>{t('update_time')}</th>
+                <th style={{ border: '1px solid #ddd', padding: '8px 6px', textAlign: 'left' }}>{t('actions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -282,7 +284,7 @@ export default function OrdersManager() {
                   <td style={{ padding: '8px 6px', border: '1px solid #ddd' }}>
                       <Link
                         href={`/admin/orders/${o.orderId}`}
-                        title={`檢視訂單 ${o.orderNumber || o.orderId || o.id}`}
+                        title={`${t('view_order')} ${o.orderNumber || o.orderId || o.id}`}
                         style={{ color: '#0366d6', textDecoration: 'underline', fontWeight: 700, cursor: 'pointer' }}
                       >
                         {o.orderId || o.id}
@@ -296,28 +298,28 @@ export default function OrdersManager() {
                   <td style={{ padding: '8px 6px', border: '1px solid #ddd' }}>{o.createdAt ? new Date(o.createdAt).toLocaleString() : '-'}</td>
                   <td style={{ padding: '8px 6px', border: '1px solid #ddd' }}>{o.updatedAt ? new Date(o.updatedAt).toLocaleString() : '-'}</td>
                   <td style={{ padding: '8px 6px', border: '1px solid #ddd' }}>
-                    <button onClick={() => confirmAndPatch(o, '標示為已付款', 'PAID')} style={{ marginRight: 8 }}>Set PAID</button>
-                    <button onClick={() => confirmAndPatch(o, '取消訂單', 'CANCELLED')} style={{ marginRight: 8 }}>Cancel</button>
+                    <button onClick={() => confirmAndPatch(o, t('mark_as_paid'), 'PAID')} style={{ marginRight: 8 }}>{t('set_paid')}</button>
+                    <button onClick={() => confirmAndPatch(o, t('cancel_order'), 'CANCELLED')} style={{ marginRight: 8 }}>{t('cancel')}</button>
                     {(() => {
                       const canComplete = (o.status || '').toUpperCase() === 'PAID';
                       return (
                         <button
                           onClick={() => {
                             if (!canComplete) {
-                              alert('訂單只有在 PAID 狀態才能完成');
+                              alert(t('order_complete_only_paid'));
                               return;
                             }
-                            confirmAndPatch(o, '完成訂單', 'COMPLETED');
+                            confirmAndPatch(o, t('complete_order'), 'COMPLETED');
                           }}
                           disabled={!canComplete}
-                          title={canComplete ? '完成訂單' : '僅在 PAID 狀態可完成'}
+                          title={canComplete ? t('complete_order') : t('complete_only_paid')}
                           style={{ marginRight: 8, opacity: canComplete ? 1 : 0.6, cursor: canComplete ? 'pointer' : 'not-allowed' }}
                         >
-                          完成
+                          {t('complete')}
                         </button>
                       );
                     })()}
-                    <button onClick={() => confirmAndPatch(o, '退款', 'REFUNDED')}>Refund</button>
+                    <button onClick={() => confirmAndPatch(o, t('refund'), 'REFUNDED')}>{t('refund')}</button>
                   </td>
                 </tr>
               ))}
@@ -325,8 +327,8 @@ export default function OrdersManager() {
           </table>
 
       <div style={{ marginTop: 12 }}>
-        <button onClick={handlePrev} disabled={history.length === 0} style={{ marginRight: 8 }}>Previous</button>
-        <button onClick={handleNext} disabled={!lastKey}>Next</button>
+        <button onClick={handlePrev} disabled={history.length === 0} style={{ marginRight: 8 }}>{t('previous')}</button>
+        <button onClick={handleNext} disabled={!lastKey}>{t('next')}</button>
       </div>
     </div>
   );

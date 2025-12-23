@@ -3,10 +3,12 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { getStoredUser } from '@/lib/mockAuth';
+import { useT } from './IntlProvider';
 
 type Props = { teacherId: string; teacherName: string };
 
 export default function TeacherDashboard({ teacherId, teacherName }: Props) {
+  const t = useT();
   const [canEdit, setCanEdit] = useState(false);
   const [profile, setProfile] = useState<any>(null);
   const [courses, setCourses] = useState<any[]>([]);
@@ -73,25 +75,25 @@ export default function TeacherDashboard({ teacherId, teacherName }: Props) {
       };
       const res = await fetch('/api/courses', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.message || '新增失敗');
+      if (!res.ok) throw new Error(data?.message || t('add_course_failed'));
       setNewCourseTitle(''); setNewCoursePrice(''); setNewStartDate(''); setNewMembershipPlan('');
       loadCourses();
-      alert('已新增課程（示範）');
+      alert(t('course_added_demo'));
     } catch (err: any) {
-      alert(err?.message || '新增課程失敗');
+      alert(err?.message || t('add_course_failed'));
     }
   }
 
   async function handleDeleteCourse(id: string) {
-    if (!confirm('確定刪除此課程（示範資料）？')) return;
+    if (!confirm(t('confirm_delete_course'))) return;
     try {
       const res = await fetch(`/api/courses/${encodeURIComponent(id)}`, { method: 'DELETE' });
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.message || '刪除失敗');
+      if (!res.ok) throw new Error(data?.message || t('delete_failed'));
       loadCourses();
-      alert('已刪除課程（示範）');
+      alert(t('course_deleted_demo'));
     } catch (err: any) {
-      alert(err?.message || '刪除失敗');
+      alert(err?.message || t('delete_failed'));
     }
   }
 
@@ -99,20 +101,20 @@ export default function TeacherDashboard({ teacherId, teacherName }: Props) {
     try {
       const res = await fetch(`/api/courses/${encodeURIComponent(id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updates) });
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.message || '更新失敗');
+      if (!res.ok) throw new Error(data?.message || t('update_failed'));
       loadCourses();
-      alert('已更新課程（示範）');
+      alert(t('course_updated_demo'));
     } catch (err: any) {
-      alert(err?.message || '更新失敗');
+      alert(err?.message || t('update_failed'));
     }
   }
 
   return (
     <div style={{ marginTop: 18 }}>
       <div>
-        <h4>課程列表</h4>
-        {loading && <p>載入中…</p>}
-        {courses.length === 0 ? <p className="muted">目前沒有課程</p> : (
+        <h4>{t('course_list')}</h4>
+        {loading && <p>{t('loading')}</p>}
+        {courses.length === 0 ? <p className="muted">{t('no_courses')}</p> : (
           <div style={{ display: 'grid', gap: 8 }}>
             {courses.map((c) => (
               <div key={c.id} className="card">
@@ -121,22 +123,22 @@ export default function TeacherDashboard({ teacherId, teacherName }: Props) {
                           <Link href={`/courses/${encodeURIComponent(String(c.id))}`} style={{ display: 'block', color: 'inherit', textDecoration: 'none' }}>
                             <strong>{c.title}</strong>
                             <div className="muted">NT$ {c.pricePerSession} • {c.subject}</div>
-                            {c.nextStartDate ? <div className="muted">開始：{c.nextStartDate}</div> : null}
-                            {c.membershipPlan ? <div className="muted">所屬方案：{c.membershipPlan}</div> : null}
+                            {c.nextStartDate ? <div className="muted">{t('start_date')}: {c.nextStartDate}</div> : null}
+                            {c.membershipPlan ? <div className="muted">{t('membership_plan')}: {c.membershipPlan}</div> : null}
                           </Link>
                         </div>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                     {canEdit && <button onClick={() => {
-                      const input = prompt('輸入新的開始日期（YYYY-MM-DD），留空則移除', c.nextStartDate || '');
+                      const input = prompt(t('prompt_start_date'), c.nextStartDate || '');
                       if (input === null) return;
                       handlePatchCourse(c.id, { nextStartDate: input || null });
-                    }}>設定開始</button>}
+                    }}>{t('set_start_date')}</button>}
                     {canEdit && <button onClick={() => {
-                      const mp = prompt('輸入所屬會員方案 key（如 basic/pro/elite），留空則移除', c.membershipPlan || '');
+                      const mp = prompt(t('prompt_membership_plan'), c.membershipPlan || '');
                       if (mp === null) return;
                       handlePatchCourse(c.id, { membershipPlan: mp || null });
-                    }}>設定方案</button>}
-                    {canEdit && <button onClick={() => handleDeleteCourse(c.id)} style={{ color: 'crimson' }}>刪除</button>}
+                    }}>{t('set_plan')}</button>}
+                    {canEdit && <button onClick={() => handleDeleteCourse(c.id)} style={{ color: 'crimson' }}>{t('delete')}</button>}
                   </div>
                 </div>
                 {c.description ? <p style={{ marginTop: 8 }}>{c.description}</p> : null}

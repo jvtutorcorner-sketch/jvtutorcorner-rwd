@@ -1,3 +1,4 @@
+"use client";
 // components/TeacherCard.tsx
 import { Teacher } from '@/data/teachers';
 import Link from 'next/link';
