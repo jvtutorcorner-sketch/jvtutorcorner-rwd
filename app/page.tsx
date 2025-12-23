@@ -1,11 +1,9 @@
 // app/page.tsx
-'use client';
+ 'use client';
 
-import { useEffect, useState, FormEvent } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import zhTW from '@/locales/zh-TW/common.json';
-import en from '@/locales/en/common.json';
 import { Carousel } from '@/components/Carousel';
 import { TEACHERS } from '@/data/teachers';
 import { COURSES } from '@/data/courses';
@@ -14,35 +12,11 @@ import { CourseCard } from '@/components/CourseCard';
 import Tabs from '@/components/Tabs';
 import { getStoredUser, type StoredUser } from '@/lib/mockAuth';
 
-type Locale = 'zh-TW' | 'en';
-type Messages = typeof zhTW;
-
-const dictionaries: Record<Locale, Messages> = {
-  'zh-TW': zhTW,
-  en,
-};
-
-function useI18n() {
-  const [locale, setLocale] = useState<Locale>('zh-TW');
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const stored = window.localStorage.getItem('locale') as Locale | null;
-      if (stored && dictionaries[stored]) {
-        setLocale(stored);
-      }
-    }
-  }, []);
-
-  const t = (key: keyof Messages) => dictionaries[locale][key] ?? key;
-
-  return { t, locale, setLocale };
-}
-
+import { useT } from '@/components/IntlProvider';
 type SearchTarget = 'teachers' | 'courses';
 
 export default function HomePage() {
-  const { t } = useI18n();
+  const t = useT();
   const router = useRouter();
   const [user, setUser] = useState<StoredUser | null>(null);
   const [carouselImages, setCarouselImages] = useState<string[]>([

@@ -4,8 +4,10 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { getStoredUser, setStoredUser, PLAN_LABELS, PLAN_PRICES } from '@/lib/mockAuth';
 import type { PlanId } from '@/lib/mockAuth';
+import { useT } from '@/components/IntlProvider';
 
 export default function SettingsPage() {
+  const t = useT();
   const [user, setUser] = useState<any>(null);
   const [hydrated, setHydrated] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -74,8 +76,8 @@ export default function SettingsPage() {
     return (
       <div className="page">
         <header className="page-header">
-          <h1>個人化設定</h1>
-          <p>在此可以更新個人資訊、備用電子郵件與示範用的付款資料（請勿輸入真實卡號）。</p>
+          <h1>{t('personal_settings_title')}</h1>
+          <p>{t('personal_settings_description')}</p>
         </header>
         <section className="section">
           <div className="card">載入中…</div>
@@ -88,11 +90,11 @@ export default function SettingsPage() {
     return (
       <div className="page">
         <header className="page-header">
-          <h1>個人化設定</h1>
+          <h1>{t('personal_settings_title')}</h1>
         </header>
         <section className="section">
-          <p>請先登入以編輯個人設定。</p>
-          <p><Link href="/login">前往登入</Link></p>
+          <p>{t('please_login_to_edit_settings')}</p>
+          <p><Link href="/login">{t('go_to_login')}</Link></p>
         </section>
       </div>
     );
@@ -141,60 +143,60 @@ export default function SettingsPage() {
   return (
     <div className="page">
       <header className="page-header">
-        <h1>個人化設定</h1>
-        <p>在此可以更新個人資訊、備用電子郵件與示範用的付款資料（請勿輸入真實卡號）。</p>
+        <h1>{t('personal_settings_title')}</h1>
+        <p>{t('personal_settings_description')}</p>
       </header>
 
       <section className="section">
         <div className="card">
           <form onSubmit={handleSubmit} className="modal-form">
             <div className="field">
-              <label>電子郵件（不可變更）</label>
+              <label>{t('email_label')}</label>
               <input value={user.email} readOnly disabled />
             </div>
 
             <div className="field">
-              <label>Role / Identifier</label>
+              <label>{t('role_label')}</label>
               <input value={roleId || ''} readOnly disabled />
             </div>
 
             <div className="field">
-              <label>備用電子郵件（備援）</label>
-              <input value={backupEmail} onChange={(e) => setBackupEmail(e.target.value)} placeholder="備用 email（選填）" />
-              <small className="muted">可提供一個備用聯絡 email（示範用途）。</small>
+              <label>{t('backup_email_label')}</label>
+              <input value={backupEmail} onChange={(e) => setBackupEmail(e.target.value)} placeholder={t('backup_placeholder')} />
+              <small className="muted">{t('backup_muted')}</small>
             </div>
 
             {/* Plan / payment has been moved out — use Pricing page for upgrades. */}
 
             <div className="field-row">
               <div className="field">
-                <label>First Name</label>
+                <label>{t('first_name_label')}</label>
                 <input value={firstName} onChange={(e) => setFirstName(e.target.value)} />
               </div>
               <div className="field">
-                <label>Last Name</label>
+                <label>{t('last_name_label')}</label>
                 <input value={lastName} onChange={(e) => setLastName(e.target.value)} />
               </div>
             </div>
 
             <div className="field">
-              <label>出生日期</label>
+              <label>{t('birthdate_label')}</label>
               <input type="date" value={birthdate} onChange={(e) => setBirthdate(e.target.value)} />
             </div>
 
             <div className="field">
-              <label>性別</label>
+              <label>{t('gender_label')}</label>
               <select value={gender} onChange={(e) => setGender(e.target.value)}>
-                <option value="">請選擇</option>
-                <option value="male">男</option>
-                <option value="female">女</option>
+                <option value="">{t('select_placeholder')}</option>
+                <option value="male">{t('gender_male')}</option>
+                <option value="female">{t('gender_female')}</option>
               </select>
             </div>
 
             <div className="field">
-              <label>國家</label>
+              <label>{t('country_label')}</label>
               <select value={country} onChange={(e) => setCountry(e.target.value)}>
-                <option value="">請選擇</option>
+                <option value="">{t('select_placeholder')}</option>
                 <option value="TW">台灣</option>
                 <option value="JP">日本</option>
                 <option value="US">美國</option>
@@ -220,21 +222,21 @@ export default function SettingsPage() {
             </div>
 
             <div className="field">
-              <label>自我介紹（Markdown 支援）</label>
+              <label>{t('bio_label')}</label>
               <textarea
                 rows={4}
                 value={bio}
                 onChange={(e) => setBio(e.target.value)}
-                placeholder="請輸入個人簡介（最多500字）"
+                placeholder={t('bio_placeholder')}
               />
-              <small className="muted">支援 Markdown 格式，最多 500 字。</small>
+              <small className="muted">{t('bio_muted')}</small>
             </div>
 
             {/* Payment moved to Pricing page */}
 
             <div className="modal-actions" style={{ marginTop: 12 }}>
-              <button type="submit" className="modal-button primary" disabled={loading}>{loading ? '儲存中…' : '儲存設定'}</button>
-              <Link href="/">返回首頁</Link>
+              <button type="submit" className="modal-button primary" disabled={loading}>{loading ? t('saving') : t('save_settings')}</button>
+              <Link href="/">{t('return_home')}</Link>
             </div>
             {message && <p className="form-success" style={{ marginTop: 8 }}>{message}</p>}
           </form>

@@ -4,6 +4,7 @@
 import { useState, FormEvent } from 'react';
 import Link from 'next/link';
 import { getStoredUser } from '@/lib/mockAuth';
+import { useT } from '@/components/IntlProvider';
 
 interface EnrollButtonProps {
   courseId: string;
@@ -23,6 +24,7 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
   courseId,
   courseTitle,
 }) => {
+  const t = useT();
   const [isOpen, setIsOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [name, setName] = useState('');
@@ -46,12 +48,12 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
     const contactName = storedUser ? (storedUser.email.split('@')[0] || storedUser.email) : name;
 
     if (!contactName.trim() || !contactEmail.trim()) {
-      setError('請填寫姓名與 Email。');
+      setError(t('enroll_error_fill'));
       return;
     }
 
     if (!contactEmail.includes('@')) {
-      setError('Email 格式看起來不正確。');
+      setError(t('enroll_error_email_format'));
       return;
     }
 
@@ -114,11 +116,11 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ orderId: orderData.order.orderId, status: 'PAID' }),
           });
-          alert('已模擬付款完成，課程應已生效（Demo）。');
+          alert(t('enroll_alert_payment_simulated'));
         }
       } catch (err) {
         console.error('建立訂單或模擬付款失敗:', err);
-        alert('報名成功，但建立訂單或模擬付款時發生錯誤（請查看 console）。');
+        alert(t('enroll_alert_order_error'));
       }
 
       resetForm();
@@ -126,7 +128,7 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
       setIsOpen(false);
     } catch (err) {
       console.error('呼叫 /api/enroll 時發生錯誤:', err);
-      setError('無法連線到伺服器，請稍後再試。');
+      setError(t('enroll_error_network'));
     } finally {
       setIsSubmitting(false);
     }
@@ -145,18 +147,18 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
           setConfirmOpen(true);
         }}
         disabled={!storedUser}
-        title={!storedUser ? '請先登入以報名課程' : `以 ${storedUser.email} 報名`}
+        title={!storedUser ? t('enroll_title_login') : `${t('enroll_title_logged_prefix')} ${storedUser.email} ${t('enroll_title_logged_suffix')}`}
       >
-        立即報名
+        {t('enroll_button_label')}
       </button>
 
       {!storedUser && (
-        <p className="auth-warning">請先登入才能報名，請先前往 <Link href="/login">登入</Link>。</p>
+        <p className="auth-warning">{t('enroll_login_hint_before')} <Link href="/login">{t('login')}</Link>{t('enroll_login_hint_after')}</p>
       )}
 
       {submissions.length > 0 && (
         <p className="enroll-summary">
-          已收到 {submissions.length} 筆報名（Demo，重新整理頁面會重置）。
+          {t('enroll_submissions_received_prefix')} {submissions.length} {t('enroll_submissions_received_suffix')}
         </p>
       )}
 
@@ -169,9 +171,9 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
               e.stopPropagation();
             }}
           >
-            <h3>確認報名</h3>
-            <p className="modal-subtitle">課程：{courseTitle}</p>
-            <p>你將使用帳號：<strong>{storedUser?.email}</strong> 進行報名。確定要建立報名並建立訂單嗎？</p>
+            <h3>{t('enroll_confirm_title')}</h3>
+            <p className="modal-subtitle">{t('enroll_confirm_subtitle_prefix')} {courseTitle}</p>
+            <p>{t('enroll_confirm_message_prefix')} <strong>{storedUser?.email}</strong> {t('enroll_confirm_message_suffix')}</p>
 
             {error && <p className="form-error">{error}</p>}
 
@@ -182,7 +184,7 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
                 onClick={() => setConfirmOpen(false)}
                 disabled={isSubmitting}
               >
-                取消
+                {t('cancel')}
               </button>
               <button
                 type="button"
@@ -190,7 +192,7 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
                 onClick={() => handleSubmit(null)}
                 disabled={isSubmitting}
               >
-                {isSubmitting ? '處理中…' : '確認並建立訂單'}
+                {isSubmitting ? t('processing') : t('enroll_confirm_create_order')}
               </button>
             </div>
           </div>

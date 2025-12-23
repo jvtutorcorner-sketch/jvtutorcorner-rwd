@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { getStoredUser, clearStoredUser, type StoredUser } from '@/lib/mockAuth';
 import { useRouter } from 'next/navigation';
+import { useT } from './IntlProvider';
 
 export default function MenuBar() {
   const [user, setUser] = useState<StoredUser | null>(null);
@@ -52,18 +53,20 @@ export default function MenuBar() {
     }
     // navigate to homepage after logout
     router.push('/');
-    alert('已登出測試帳號。');
+    alert(t('alert_logged_out'));
   }
 
+  const t = useT();
+
   return (
-    <nav className="homepage-menu" aria-label="主選單">
+    <nav className="homepage-menu" aria-label={t('menu_label')}>
         <ul className="menu-left">
-        <li><Link href="/teachers">師資</Link></li>
+        <li><Link href="/teachers">{t('menu_teachers')}</Link></li>
         {user?.role === 'admin' && (
-          <li><Link href="/admin/orders">訂單管理</Link></li>
+          <li><Link href="/admin/orders">{t('admin_orders')}</Link></li>
         )}
-        <li><Link href="/courses">課程總覽</Link></li>
-        <li><Link href="/about">關於我們</Link></li>
+        <li><Link href="/courses">{t('menu_courses')}</Link></li>
+        <li><Link href="/about">{t('menu_about')}</Link></li>
       </ul>
 
       <div className="menu-right">
@@ -126,12 +129,12 @@ export default function MenuBar() {
                       <ul style={{ listStyle: 'none', margin: 0, padding: 8 }}>
                         {user?.role === 'admin' && (
                           <li>
-                            <Link href="/admin/orders" onClick={() => setMenuOpen(false)} className="menu-link">訂單管理</Link>
+                            <Link href="/admin/orders" onClick={() => setMenuOpen(false)} className="menu-link">{t('admin_orders')}</Link>
                           </li>
                         )}
                         {user?.role === 'admin' && (
                           <li>
-                            <Link href="/admin/settings" onClick={() => setMenuOpen(false)} className="menu-link">網站設定</Link>
+                            <Link href="/admin/settings" onClick={() => setMenuOpen(false)} className="menu-link">{t('site_settings')}</Link>
                           </li>
                         )}
                         {user?.role === 'teacher' ? (
@@ -143,7 +146,7 @@ export default function MenuBar() {
                               onClick={() => { setMenuOpen(false); router.push('/my-courses'); }}
                               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { setMenuOpen(false); router.push('/my-courses'); } }}
                             >
-                              我的課程
+                              {t('my_courses')}
                             </span>
                           </li>
                         ) : (
@@ -155,7 +158,7 @@ export default function MenuBar() {
                               onClick={() => { setMenuOpen(false); router.push('/settings'); }}
                               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { setMenuOpen(false); router.push('/settings'); } }}
                             >
-                              設定
+                              {t('settings_label')}
                             </span>
                           </li>
                         )}
@@ -163,10 +166,10 @@ export default function MenuBar() {
                             {/* Personalize now accessed via /settings */}
                         </li>
                         <li>
-                          <Link href="/settings" onClick={() => setMenuOpen(false)} className="menu-link">設定</Link>
+                          <Link href="/settings" onClick={() => setMenuOpen(false)} className="menu-link">{t('settings_label')}</Link>
                         </li>
                         <li style={{ borderTop: '1px solid #f3f4f6', marginTop: 8, paddingTop: 8 }}>
-                          <button onClick={() => { setMenuOpen(false); handleLogout(); }} className="menu-logout" style={{ width: '100%' }}>登出</button>
+                          <button onClick={() => { setMenuOpen(false); handleLogout(); }} className="menu-logout" style={{ width: '100%' }}>{t('logout')}</button>
                         </li>
                       </ul>
                     </div>
@@ -178,9 +181,9 @@ export default function MenuBar() {
         </ul>
         <div style={{ marginLeft: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
           {user ? (
-            <button onClick={handleLogout} className="menu-logout">登出</button>
+            <button onClick={handleLogout} className="menu-logout">{t('logout')}</button>
           ) : (
-            <Link href="/login" className="menu-login">登入</Link>
+            <Link href="/login" className="menu-login">{t('login')}</Link>
           )}
         </div>
       </div>

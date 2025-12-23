@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import { getStoredUser } from '@/lib/mockAuth';
+import { useT } from '@/components/IntlProvider';
 
 export function CourseSessionDurationEditor({ courseId, teacherName, defaultMinutes }: { courseId: string; teacherName: string; defaultMinutes: number }) {
+  const t = useT();
   const [minutes, setMinutes] = useState<number>(defaultMinutes);
   const [editing, setEditing] = useState(false);
   const [isTeacher, setIsTeacher] = useState(false);
@@ -28,10 +30,10 @@ export function CourseSessionDurationEditor({ courseId, teacherName, defaultMinu
     try {
       localStorage.setItem(`course_session_duration_${courseId}`, String(minutes));
       setEditing(false);
-      alert('已儲存課堂倒數時間設定');
+      alert(t('saved_duration'));
     } catch (e) {
       console.warn('save duration failed', e);
-      alert('儲存失敗');
+      alert(t('save_failed'));
     }
   };
 
@@ -41,10 +43,10 @@ export function CourseSessionDurationEditor({ courseId, teacherName, defaultMinu
       {isTeacher ? (
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <input type="number" value={minutes} min={1} max={240} onChange={(e) => setMinutes(Number(e.target.value || 0))} style={{ width: 80 }} />
-          <button onClick={save}>儲存</button>
+          <button onClick={save}>{t('save')}</button>
         </div>
       ) : (
-        <div style={{ fontSize: 12, color: '#666' }}>僅授課者可編輯</div>
+        <div style={{ fontSize: 12, color: '#666' }}>{t('only_teacher_editable')}</div>
       )}
     </div>
   );

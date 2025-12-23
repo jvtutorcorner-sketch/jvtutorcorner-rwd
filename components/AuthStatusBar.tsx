@@ -10,6 +10,7 @@ import {
   PLAN_LABELS,
   type StoredUser,
 } from '@/lib/mockAuth';
+import { useT } from '@/components/IntlProvider';
 
 export function AuthStatusBar() {
   const [user, setUser] = useState<StoredUser | null>(null);
@@ -28,16 +29,18 @@ export function AuthStatusBar() {
       window.dispatchEvent(new Event('tutor:auth-changed'));
     }
     router.refresh();
-    alert('已登出測試帳號。');
+    alert(t('alert_logged_out'));
   };
+
+  const t = useT();
 
   if (!user) {
     // 尚未登入 → 顯示登入按鈕
     return (
       <div className="tag" style={{ marginBottom: '1rem' }}>
-        尚未登入。
+        {t('auth_not_logged_in')}
         <Link href="/login" className="card-button secondary" style={{ marginLeft: 8 }}>
-          前往登入
+          {t('auth_go_to_login')}
         </Link>
       </div>
     );
@@ -47,8 +50,8 @@ export function AuthStatusBar() {
   return (
     <div className="tag" style={{ marginBottom: '1rem' }}>
       {user.lastName ? <div style={{ fontWeight: 700 }}>{user.lastName}</div> : null}
-      目前以 <strong>{user.email}</strong> 登入，
-      方案：<strong>{PLAN_LABELS[user.plan]}</strong>
+      {t('auth_status_prefix')} <strong>{user.email}</strong> {t('auth_status_suffix')}
+      {t('plan_label')}<strong>{PLAN_LABELS[user.plan]}</strong>
       <button
         className="card-button secondary"
         style={{ marginLeft: 8 }}
@@ -61,7 +64,7 @@ export function AuthStatusBar() {
         className="card-button secondary"
         style={{ marginLeft: 8 }}
       >
-        查看方案 /pricing
+        {t('view_pricing')}
       </Link>
     </div>
   );

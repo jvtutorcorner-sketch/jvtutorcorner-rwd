@@ -6,6 +6,7 @@ import { getStoredUser, clearStoredUser, type StoredUser } from '@/lib/mockAuth'
 import { useRouter, usePathname } from 'next/navigation';
 import { LanguageSwitcher } from './LanguageSwitcher';
 import NavLink from './NavLink';
+import { useT } from './IntlProvider';
 
 export default function Header() {
   const [user, setUser] = useState<StoredUser | null>(null);
@@ -17,11 +18,11 @@ export default function Header() {
   const hideHeader = typeof pathname === 'string' && pathname.startsWith('/classroom');
 
   const MENU_ITEMS = [
-    { href: '/teachers', title: '專業師資 - 嚴選全球優質師資', defaultLabel: '專業師資' },
-    { href: '/pricing', title: '方案與價格 - 定價與方案說明', defaultLabel: '方案與價格' },
-    { href: '/courses', title: '課程總覽 - 多國語種課程總覽', defaultLabel: '課程總覽' },
-    { href: '/testimony', title: '學員見證 - 使用者真實學習心得', defaultLabel: '學員見證' },
-    { href: '/about', title: '關於我們 - 認識 Tutor Corner 的教育使命', defaultLabel: '關於我們' },
+    { href: '/teachers', titleKey: 'menu_teachers_title', labelKey: 'menu_teachers', defaultLabel: '專業師資' },
+    { href: '/pricing', titleKey: 'menu_pricing_title', labelKey: 'menu_pricing', defaultLabel: '方案與價格' },
+    { href: '/courses', titleKey: 'menu_courses_title', labelKey: 'menu_courses', defaultLabel: '課程總覽' },
+    { href: '/testimony', titleKey: 'menu_testimony_title', labelKey: 'menu_testimony', defaultLabel: '學員見證' },
+    { href: '/about', titleKey: 'menu_about_title', labelKey: 'menu_about', defaultLabel: '關於我們' },
   ];
 
   // Fallback: mark anchors in .main-nav as active based on pathname
@@ -39,6 +40,8 @@ export default function Header() {
     }, 50);
     return () => clearTimeout(timer);
   }, [pathname]);
+
+  const t = useT();
 
   function isActive(path: string) {
     if (!pathname) return false;
@@ -121,7 +124,7 @@ export default function Header() {
     }
     // navigate to homepage after logout
     router.push('/');
-    alert('已登出測試帳號。');
+    alert(t('alert_logged_out'));
   }
 
   function handleLogin() {
@@ -158,9 +161,9 @@ export default function Header() {
                   visible = roleFlag === undefined ? true : !!roleFlag;
               }
               if (!visible) return null;
-              const label = visEntry?.label || item.defaultLabel;
+              const label = visEntry?.label || t((item as any).labelKey) || item.defaultLabel;
               return (
-                <li key={item.href}><NavLink href={item.href} title={item.title}>{label}</NavLink></li>
+                <li key={item.href}><NavLink href={item.href} title={t((item as any).titleKey)}>{label}</NavLink></li>
               );
             })
           }
@@ -168,7 +171,7 @@ export default function Header() {
 
         {hydrated && user ? (
           <ul className="account-nav-left">
-            <li><NavLink href="/orders" title="訂單紀錄 - 檢視你的購買紀錄">我的訂單</NavLink></li>
+            <li><NavLink href="/orders" title={t('menu_teachers_title') /* keep title generic */}>{t('orders_my_orders')}</NavLink></li>
           </ul>
         ) : null}
 
@@ -212,15 +215,15 @@ export default function Header() {
                         {menuOpen && (
                           <div className="avatar-dropdown" style={{ position: 'absolute', right: 0, marginTop: 8, minWidth: 180, background: '#fff', border: '1px solid #e5e7eb', boxShadow: '0 6px 18px rgba(0,0,0,0.08)', borderRadius: 8, zIndex: 50 }}>
                             <ul style={{ listStyle: 'none', margin: 0, padding: 8 }}>
-                              {
+                                      {
                                 // build dropdown items and apply adminSettings.pageVisibility.dropdown rules
                                 [
-                                  { href: '/admin/orders', roleRequired: 'admin', label: '後台：訂單管理' },
-                                  { href: '/admin/carousel', roleRequired: 'admin', label: '後台：輪播圖管理' },
-                                  { href: '/admin/settings', roleRequired: 'admin', label: '網站設定' },
-                                  { href: '/my-courses', roleRequired: 'teacher', label: '我的課程' },
-                                  { href: '/calendar', roleRequired: 'user', label: '課程行事曆' },
-                                  { href: '/settings', roleRequired: 'user', label: '設定' },
+                                  { href: '/admin/orders', roleRequired: 'admin', labelKey: 'admin_orders' },
+                                  { href: '/admin/carousel', roleRequired: 'admin', labelKey: 'admin_carousel' },
+                                  { href: '/admin/settings', roleRequired: 'admin', labelKey: 'site_settings' },
+                                  { href: '/my-courses', roleRequired: 'teacher', labelKey: 'my_courses' },
+                                  { href: '/calendar', roleRequired: 'user', labelKey: 'calendar_label' },
+                                  { href: '/settings', roleRequired: 'user', labelKey: 'settings_label' },
                                 ].map((item) => {
                                   // role gating
                                   if (item.roleRequired === 'admin' && user?.role !== 'admin') return null;
@@ -230,7 +233,7 @@ export default function Header() {
                                   const permission = pageConfig?.permissions?.find((p: any) => p.roleId === user?.role);
                                   const visible = permission?.dropdownVisible !== false; // default to true if not set
                                   if (!visible) return null;
-                                  const label = pageConfig?.label || item.label;
+                                  const label = pageConfig?.label || t((item as any).labelKey);
                                   return (
                                     <li key={item.href}>
                                       <span role="menuitem" tabIndex={0} className="menu-link" onClick={() => { setMenuOpen(false); router.push(item.href); }}>{label}</span>
@@ -239,7 +242,7 @@ export default function Header() {
                                 })
                               }
                               <li style={{ borderTop: '1px solid #f3f4f6', marginTop: 8, paddingTop: 8 }}>
-                                <button onClick={() => { setMenuOpen(false); handleLogout(); }} className="menu-logout" style={{ width: '100%' }}>登出</button>
+                                <button onClick={() => { setMenuOpen(false); handleLogout(); }} className="menu-logout" style={{ width: '100%' }}>{t('logout')}</button>
                               </li>
                             </ul>
                           </div>
@@ -247,7 +250,7 @@ export default function Header() {
                       </div>
                     </>
                   ) : (
-                    <button type="button" onClick={handleLogin} className="menu-login-btn">登入</button>
+                    <button type="button" onClick={handleLogin} className="menu-login-btn">{t('login')}</button>
                   )
                 ) : null}
                 {hydrated ? (
@@ -255,7 +258,7 @@ export default function Header() {
                     className={`menu-status ${user ? 'menu-status--online' : 'menu-status--offline'}`}
                     aria-live="polite"
                   >
-                    {user ? '已登入' : '尚未登入'}
+                    {user ? t('status_logged_in') : t('status_logged_out')}
                   </span>
                 ) : null}
               </li>
@@ -272,7 +275,7 @@ export default function Header() {
           >
             <div style={{ width: 280, background: '#fff', padding: 16, overflowY: 'auto' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <div style={{ fontWeight: 700 }}>選單</div>
+                <div style={{ fontWeight: 700 }}>{t('menu_label')}</div>
                 <button aria-label="關閉選單" onClick={() => setMobileMenuOpen(false)} style={{ border: 0, background: 'transparent', cursor: 'pointer' }}>✕</button>
               </div>
               <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
@@ -285,7 +288,7 @@ export default function Header() {
                     visible = roleFlag === undefined ? true : !!roleFlag;
                   }
                   if (!visible) return null;
-                  const label = visEntry?.label || item.defaultLabel;
+                  const label = visEntry?.label || t((item as any).labelKey) || item.defaultLabel;
                   return (
                     <li key={item.href} style={{ marginBottom: 8 }}>
                       <a className="mobile-menu-link" href={item.href} onClick={() => setMobileMenuOpen(false)} style={{ color: '#111827', textDecoration: 'none' }}>{label}</a>
@@ -299,13 +302,13 @@ export default function Header() {
                   <div>
                     <div style={{ marginBottom: 8, fontWeight: 600 }}>{user.email}</div>
                     <div style={{ display: 'flex', gap: 8 }}>
-                      <button onClick={() => { setMobileMenuOpen(false); router.push('/orders'); }} style={{ padding: '8px 12px' }}>我的訂單</button>
-                      <button onClick={() => { setMobileMenuOpen(false); handleLogout(); }} style={{ padding: '8px 12px' }}>登出</button>
+                      <button onClick={() => { setMobileMenuOpen(false); router.push('/orders'); }} style={{ padding: '8px 12px' }}>{t('orders_my_orders')}</button>
+                      <button onClick={() => { setMobileMenuOpen(false); handleLogout(); }} style={{ padding: '8px 12px' }}>{t('logout')}</button>
                     </div>
                   </div>
                 ) : (
                   <div>
-                    <button onClick={() => { setMobileMenuOpen(false); handleLogin(); }} style={{ padding: '8px 12px' }}>登入</button>
+                    <button onClick={() => { setMobileMenuOpen(false); handleLogin(); }} style={{ padding: '8px 12px' }}>{t('login')}</button>
                   </div>
                 )}
               </div>

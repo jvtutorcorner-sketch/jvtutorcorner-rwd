@@ -4,6 +4,7 @@ import './globals.css';
 import Script from 'next/script';
 import { GA_MEASUREMENT_ID } from '@/lib/gtag';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
+import { IntlProvider } from '@/components/IntlProvider';
 import Link from 'next/link';
 import ConfigureAmplify from '@/components/ConfigureAmplify';
 import Header from '@/components/Header';
@@ -23,6 +24,7 @@ export default function RootLayout({
     <html lang="zh-TW">
       <body>
         <ConfigureAmplify />
+        <IntlProvider>
         {/* GA4：放在 body 裡，用 next/script */}
         {GA_MEASUREMENT_ID && (
           <>
@@ -57,6 +59,7 @@ export default function RootLayout({
         <footer className="site-footer">
           © {new Date().getFullYear()} Tutor Corner
         </footer>
+        </IntlProvider>
       </body>
     </html>
   );

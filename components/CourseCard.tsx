@@ -4,6 +4,7 @@ import { Course } from '@/data/courses';
 import { TEACHERS } from '@/data/teachers';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useT } from './IntlProvider';
 
 interface CourseCardProps {
   course: Course;
@@ -11,6 +12,7 @@ interface CourseCardProps {
 
 export const CourseCard: React.FC<CourseCardProps> = ({ course }) => {
   const router = useRouter();
+  const t = useT();
   // try to find a teacher id from the bundled TEACHERS data by name
   const teacherMatch = TEACHERS.find((t) => String(t.name || '').trim().toLowerCase() === String(course.teacherName || '').trim().toLowerCase());
   const teacherHref = teacherMatch
@@ -24,7 +26,7 @@ export const CourseCard: React.FC<CourseCardProps> = ({ course }) => {
         {course.subject}｜{course.level}
       </p>
       <p className="card-intro">
-        授課老師：
+        {t('teacher_label')}
         <span
           role="link"
           tabIndex={0}
@@ -44,13 +46,13 @@ export const CourseCard: React.FC<CourseCardProps> = ({ course }) => {
           {course.teacherName}
         </span>
         <br />
-        課程語言：{course.language}
+        {t('course_language_label')}{course.language}
       </p>
       <div className="card-meta">
         <span>
-          NT$ {course.pricePerSession}/堂 · {course.durationMinutes} 分鐘
+          {t('currency')} {course.pricePerSession}/{t('per_session')} · {course.durationMinutes} {t('minutes')}
         </span>
-        <span>{course.mode === 'online' ? '線上課程' : '實體課程'}</span>
+        <span>{course.mode === 'online' ? t('online_course') : t('offline_course')}</span>
       </div>
       <div className="card-tags">
         {course.tags.map((tag) => (

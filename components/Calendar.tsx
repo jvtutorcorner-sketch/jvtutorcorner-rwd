@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { getStoredUser } from '@/lib/mockAuth';
+import { useT } from '@/components/IntlProvider';
 import {
   format,
   addMonths,
@@ -33,6 +34,7 @@ interface CalendarProps {
 }
 
 const Calendar: React.FC<CalendarProps> = ({ events }) => {
+  const t = useT();
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
@@ -73,7 +75,7 @@ const Calendar: React.FC<CalendarProps> = ({ events }) => {
             onClick={() => setCurrentMonth(new Date())}
             className="px-3 py-1 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
           >
-            今天
+            {t('today')}
           </button>
           <button
             onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
@@ -89,7 +91,7 @@ const Calendar: React.FC<CalendarProps> = ({ events }) => {
   };
 
   const renderDays = () => {
-    const days = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
+    const days = [t('day_sun'), t('day_mon'), t('day_tue'), t('day_wed'), t('day_thu'), t('day_fri'), t('day_sat')];
     return (
       <div className="grid grid-cols-7 bg-gray-50 border-b border-gray-200">
         {days.map((day) => (
@@ -203,7 +205,7 @@ const Calendar: React.FC<CalendarProps> = ({ events }) => {
               if (selectedEvent.ownerType === 'student') return 'bg-indigo-600';
               return selectedEvent.type === 'activity' ? 'bg-green-600' : 'bg-blue-600';
             })()} text-white`}>
-              <h3 className="text-lg font-bold">課程詳情</h3>
+              <h3 className="text-lg font-bold">{t('course_details')}</h3>
               <button onClick={() => setSelectedEvent(null)} className="text-white hover:text-gray-200">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -212,22 +214,22 @@ const Calendar: React.FC<CalendarProps> = ({ events }) => {
             </div>
             <div className="p-6 space-y-4">
               <div>
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">課程名稱</label>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('course_name')}</label>
                 <p className="text-lg font-medium text-gray-900">{selectedEvent.title}</p>
               </div>
               <div className="flex space-x-8">
                 <div>
-                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">日期</label>
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('date')}</label>
                   <p className="text-gray-700">{format(selectedEvent.start, 'yyyy年MM月dd日', { locale: zhTW })}</p>
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">時間</label>
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('time')}</label>
                   <p className="text-gray-700">{format(selectedEvent.start, 'HH:mm')}</p>
                 </div>
               </div>
               {selectedEvent.description && (
                 <div>
-                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">備註/描述</label>
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('description_label')}</label>
                   <p className="text-gray-700 text-sm leading-relaxed">{selectedEvent.description}</p>
                 </div>
               )}
@@ -246,7 +248,7 @@ const Calendar: React.FC<CalendarProps> = ({ events }) => {
                           rel="noopener noreferrer"
                           className="w-full inline-flex items-center justify-center px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors font-medium text-sm"
                         >
-                          進入教室等待頁
+                          {t('enter_waiting_room')}
                         </a>
                       );
                     })()}
@@ -258,7 +260,7 @@ const Calendar: React.FC<CalendarProps> = ({ events }) => {
                       <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
                         <path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z" />
                       </svg>
-                      已設定提醒：課程開始前 {reminders[selectedEvent.id]} 分鐘
+                      {t('reminder_set_prefix')} {reminders[selectedEvent.id]} {t('reminder_set_suffix')}
                     </div>
                     <button
                       onClick={() => {
@@ -268,7 +270,7 @@ const Calendar: React.FC<CalendarProps> = ({ events }) => {
                       }}
                       className="w-full flex items-center justify-center px-4 py-2 border border-red-200 text-red-600 rounded-lg hover:bg-red-50 transition-colors font-medium text-sm"
                     >
-                      取消提醒
+                      {t('cancel_reminder')}
                     </button>
                   </div>
                 ) : (
@@ -279,7 +281,7 @@ const Calendar: React.FC<CalendarProps> = ({ events }) => {
                     <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                     </svg>
-                    設定時間提醒
+                    {t('set_time_reminder')}
                   </button>
                 )}
               </div>
@@ -292,32 +294,32 @@ const Calendar: React.FC<CalendarProps> = ({ events }) => {
       {showReminderModal && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
           <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full p-6">
-            <h3 className="text-lg font-bold text-gray-900 mb-4">設定提醒時間</h3>
-            <p className="text-sm text-gray-600 mb-4">請選擇在課程開始前多久發送 Email 提醒：</p>
+            <h3 className="text-lg font-bold text-gray-900 mb-4">{t('set_reminder_title')}</h3>
+            <p className="text-sm text-gray-600 mb-4">{t('set_reminder_description')}</p>
             <select
               value={reminderTime}
               onChange={(e) => setReminderTime(e.target.value)}
               className="w-full p-2 border border-gray-300 rounded-lg mb-6 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
             >
-              <option value="5">5 分鐘前</option>
-              <option value="10">10 分鐘前</option>
-              <option value="15">15 分鐘前</option>
-              <option value="30">30 分鐘前</option>
-              <option value="60">1 小時前</option>
-              <option value="1440">1 天前</option>
+              <option value="5">{t('mins_before_5')}</option>
+              <option value="10">{t('mins_before_10')}</option>
+              <option value="15">{t('mins_before_15')}</option>
+              <option value="30">{t('mins_before_30')}</option>
+              <option value="60">{t('mins_before_60')}</option>
+              <option value="1440">{t('mins_before_1440')}</option>
             </select>
             <div className="flex space-x-3">
               <button
                 onClick={() => setShowReminderModal(false)}
                 className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
               >
-                取消
+                {t('cancel')}
               </button>
               <button
                 onClick={handleSetReminder}
                 className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium"
               >
-                確認設定
+                {t('confirm')}
               </button>
             </div>
           </div>
