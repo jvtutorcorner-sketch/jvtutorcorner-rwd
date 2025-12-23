@@ -11,7 +11,7 @@ const BASE_KEY_MAP: Record<string, string> = {
   '/courses': 'menu_courses',
   '/testimony': 'menu_testimony',
   '/about': 'menu_about',
-  '/orders': 'orders_my_orders',
+  '/student_courses': 'orders_my_orders',
   '/profile': 'profile_label',
   '/students': 'students_label',
 };

@@ -78,12 +78,12 @@ async function readSettings() {
           { roleId: 'teacher', roleName: 'Teacher', menuVisible: true, dropdownVisible: true, pageVisible: true },
           { roleId: 'student', roleName: 'Student', menuVisible: true, dropdownVisible: true, pageVisible: true }
         ]},
-        { id: '/my-courses', path: '/my-courses', label: '我的課程', permissions: [
+        { id: '/teacher_courses', path: '/teacher_courses', label: '我的課程', permissions: [
           { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
           { roleId: 'teacher', roleName: 'Teacher', menuVisible: true, dropdownVisible: true, pageVisible: true },
           { roleId: 'student', roleName: 'Student', menuVisible: true, dropdownVisible: true, pageVisible: true }
         ]},
-        { id: '/orders', path: '/orders', label: '訂單', permissions: [
+        { id: '/student_courses', path: '/student_courses', label: '訂單', permissions: [
           { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
           { roleId: 'teacher', roleName: 'Teacher', menuVisible: true, dropdownVisible: true, pageVisible: true },
           { roleId: 'student', roleName: 'Student', menuVisible: true, dropdownVisible: true, pageVisible: true }
@@ -220,6 +220,82 @@ export async function POST(req: Request) {
       merged.pageVisibility = pageVisibility;
     }
 
+    // support a refresh action: scan `app/` to regenerate pageConfigs automatically
+    if (body.action === 'refresh') {
+      // scan app/ directory for pages
+      const appRoot = path.resolve(process.cwd(), 'app');
+      async function walk(dir: string, out: string[] = []) {
+        const entries = await fs.readdir(dir, { withFileTypes: true });
+        for (const e of entries) {
+          const full = path.join(dir, e.name);
+          if (e.isDirectory()) {
+            await walk(full, out);
+          } else if (e.isFile()) {
+            if (/^page\.(t|j)sx?$/.test(e.name)) {
+              out.push(full);
+            }
+          }
+        }
+        return out;
+      }
+
+      const pages = await walk(appRoot).catch(() => [] as string[]);
+      const pc: any[] = [];
+      const roles = merged.roles || [
+        { id: 'admin', name: 'Admin' },
+        { id: 'teacher', name: 'Teacher' },
+        { id: 'student', name: 'Student' }
+      ];
+
+      // preserve existing labels from current settings when possible
+      const existingLabelMap = new Map<string, string>();
+      (current && current.pageConfigs || []).forEach((p: any) => {
+        const key = p.path || p.id;
+        if (key) existingLabelMap.set(key, p.label || p.id || key);
+      });
+
+      const seen = new Set<string>();
+      pages.forEach(p => {
+        // make route path from file path
+        let rel = path.relative(appRoot, p).replace(/\\/g, '/');
+        // remove trailing /page.*
+        rel = rel.replace(/\/page\.(t|j)sx?$/, '');
+        // if empty -> root
+        const routePath = '/' + (rel === '' ? '' : rel);
+        // normalize: split by '/', remove empty segments, rejoin
+        const parts = routePath.split('/').filter(Boolean);
+        const cleanPath = parts.length === 0 ? '/' : '/' + parts.join('/');
+        if (seen.has(cleanPath)) return;
+        seen.add(cleanPath);
+        // prefer existing label from settings; otherwise derive a label
+        const labelFromExisting = existingLabelMap.get(cleanPath);
+        const label = labelFromExisting || (cleanPath === '/' ? '首頁' : decodeURIComponent(cleanPath.replace(/\//g, ' ').trim()));
+        const permissions = roles.map((r: any) => ({
+          roleId: r.id,
+          roleName: r.name,
+          menuVisible: !cleanPath.startsWith('/admin'),
+          dropdownVisible: !cleanPath.startsWith('/admin'),
+          pageVisible: true
+        }));
+        pc.push({ id: cleanPath, path: cleanPath, label, permissions });
+      });
+
+      merged.pageConfigs = pc;
+
+      // regenerate legacy pageVisibility as well
+      const pageVisibility: Record<string, any> = {};
+      merged.pageConfigs.forEach((pc: any) => {
+        const entry: any = { label: pc.label || pc.path, menu: {}, dropdown: {}, page: {} };
+        (pc.permissions || []).forEach((perm: any) => {
+          const roleKey = (perm.roleId || '').toLowerCase();
+          entry.menu[roleKey] = !!perm.menuVisible;
+          entry.dropdown[roleKey] = !!perm.dropdownVisible;
+          entry.page[roleKey] = !!perm.pageVisible;
+        });
+        pageVisibility[pc.path] = entry;
+      });
+      merged.pageVisibility = pageVisibility;
+    }
     await writeSettings(merged);
     return NextResponse.json({ ok: true, settings: merged });
   } catch (err: any) {

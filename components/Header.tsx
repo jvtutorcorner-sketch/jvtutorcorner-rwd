@@ -161,7 +161,8 @@ export default function Header() {
                   visible = roleFlag === undefined ? true : !!roleFlag;
               }
               if (!visible) return null;
-              const label = visEntry?.label || t((item as any).labelKey) || item.defaultLabel;
+              // Prefer localized label from translations; fall back to admin-provided label, then default
+              const label = t((item as any).labelKey) || visEntry?.label || item.defaultLabel;
               return (
                 <li key={item.href}><NavLink href={item.href} title={t((item as any).titleKey)}>{label}</NavLink></li>
               );
@@ -169,11 +170,7 @@ export default function Header() {
           }
         </ul>
 
-        {hydrated && user ? (
-          <ul className="account-nav-left">
-            <li><NavLink href="/orders" title={t('menu_teachers_title') /* keep title generic */}>{t('orders_my_orders')}</NavLink></li>
-          </ul>
-        ) : null}
+        {/* moved /orders into the avatar dropdown - keep mobile button below */}
 
         <div className="main-nav-right">
           <ul>
@@ -216,31 +213,41 @@ export default function Header() {
                           <div className="avatar-dropdown" style={{ position: 'absolute', right: 0, marginTop: 8, minWidth: 180, background: '#fff', border: '1px solid #e5e7eb', boxShadow: '0 6px 18px rgba(0,0,0,0.08)', borderRadius: 8, zIndex: 50 }}>
                             <ul style={{ listStyle: 'none', margin: 0, padding: 8 }}>
                                       {
-                                // build dropdown items and apply adminSettings.pageVisibility.dropdown rules
-                                [
-                                  { href: '/admin/orders', roleRequired: 'admin', labelKey: 'admin_orders' },
-                                  { href: '/admin/carousel', roleRequired: 'admin', labelKey: 'admin_carousel' },
-                                  { href: '/admin/settings', roleRequired: 'admin', labelKey: 'site_settings' },
-                                  { href: '/my-courses', roleRequired: 'teacher', labelKey: 'my_courses' },
-                                  { href: '/calendar', roleRequired: 'user', labelKey: 'calendar_label' },
-                                  { href: '/settings', roleRequired: 'user', labelKey: 'settings_label' },
-                                ].map((item) => {
-                                  // role gating
-                                  if (item.roleRequired === 'admin' && user?.role !== 'admin') return null;
-                                  if (item.roleRequired === 'teacher' && user?.role !== 'teacher') return null;
-                                  // determine dropdown visibility from admin settings
-                                  const pageConfig = adminSettings?.pageConfigs?.find((pc: any) => pc.path === item.href);
-                                  const permission = pageConfig?.permissions?.find((p: any) => p.roleId === user?.role);
-                                  const visible = permission?.dropdownVisible !== false; // default to true if not set
-                                  if (!visible) return null;
-                                  const label = pageConfig?.label || t((item as any).labelKey);
-                                  return (
-                                    <li key={item.href}>
-                                      <span role="menuitem" tabIndex={0} className="menu-link" onClick={() => { setMenuOpen(false); router.push(item.href); }}>{label}</span>
-                                    </li>
-                                  );
-                                })
-                              }
+                                        // admin-only shortcut: Page Permissions should appear first in the dropdown
+                                        user?.role === 'admin' ? (() => {
+                                          const ppPath = '/admin/settings/page-permissions';
+                                          const pc = (adminSettings?.pageConfigs || []).find((x: any) => x.path === ppPath);
+                                          const label = (pc && (pc.label || pc.path)) || 'Page 存取權限';
+                                          return (
+                                            <li key={ppPath}>
+                                              <span role="menuitem" tabIndex={0} className="menu-link" onClick={() => { setMenuOpen(false); router.push(ppPath); }}>{label}</span>
+                                            </li>
+                                          );
+                                        })() : null
+                                      }
+                                      {
+                                        // Build dropdown items dynamically from adminSettings.pageConfigs
+                                        // Skip the page-permissions entry to avoid duplicate
+                                        (adminSettings?.pageConfigs || [])
+                                          .filter((pc: any) => !!pc.path && pc.path !== '/admin/settings/page-permissions')
+                                          .map((pc: any) => {
+                                            const roleKey = user?.role || 'user';
+                                            const perm = (pc.permissions || []).find((p: any) => p.roleId === roleKey);
+                                            // if no explicit permission entry for this role, treat as not-visible in dropdown
+                                            const visible = perm ? (perm.dropdownVisible !== false) : false;
+                                            // ensure student orders always available to authenticated users
+                                            if (pc.path === '/student_courses') {
+                                              if (!user) return null;
+                                            }
+                                            if (!visible && pc.path !== '/student_courses') return null;
+                                            const label = t(pc.label) || pc.label || pc.path;
+                                            return (
+                                              <li key={pc.path}>
+                                                <span role="menuitem" tabIndex={0} className="menu-link" onClick={() => { setMenuOpen(false); router.push(pc.path); }}>{label}</span>
+                                              </li>
+                                            );
+                                          })
+                                      }
                               <li style={{ borderTop: '1px solid #f3f4f6', marginTop: 8, paddingTop: 8 }}>
                                 <button onClick={() => { setMenuOpen(false); handleLogout(); }} className="menu-logout" style={{ width: '100%' }}>{t('logout')}</button>
                               </li>
@@ -288,7 +295,7 @@ export default function Header() {
                     visible = roleFlag === undefined ? true : !!roleFlag;
                   }
                   if (!visible) return null;
-                  const label = visEntry?.label || t((item as any).labelKey) || item.defaultLabel;
+                  const label = t((item as any).labelKey) || visEntry?.label || item.defaultLabel;
                   return (
                     <li key={item.href} style={{ marginBottom: 8 }}>
                       <a className="mobile-menu-link" href={item.href} onClick={() => setMobileMenuOpen(false)} style={{ color: '#111827', textDecoration: 'none' }}>{label}</a>
@@ -302,7 +309,7 @@ export default function Header() {
                   <div>
                     <div style={{ marginBottom: 8, fontWeight: 600 }}>{user.email}</div>
                     <div style={{ display: 'flex', gap: 8 }}>
-                      <button onClick={() => { setMobileMenuOpen(false); router.push('/orders'); }} style={{ padding: '8px 12px' }}>{t('orders_my_orders')}</button>
+                      <button onClick={() => { setMobileMenuOpen(false); router.push('/student_courses'); }} style={{ padding: '8px 12px' }}>{t('orders_my_orders')}</button>
                       <button onClick={() => { setMobileMenuOpen(false); handleLogout(); }} style={{ padding: '8px 12px' }}>{t('logout')}</button>
                     </div>
                   </div>

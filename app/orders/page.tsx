@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { getStoredUser, type StoredUser } from '@/lib/mockAuth';
 import Link from 'next/link';
 import { useT } from '@/components/IntlProvider';
@@ -17,6 +18,7 @@ type Order = {
 };
 
 export default function OrdersPage() {
+  const router = useRouter();
   const t = useT();
   const [orders, setOrders] = useState<Order[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -40,6 +42,16 @@ export default function OrdersPage() {
       }
     };
   }, []);
+
+  // Redirect /orders to /my-courses
+  useEffect(() => {
+    // client-side replace to avoid adding history entry
+    try {
+      router.replace('/my-courses');
+    } catch (e) {
+      // ignore in environments without router
+    }
+  }, [router]);
 
   useEffect(() => {
     if (!mounted || !user) return;
