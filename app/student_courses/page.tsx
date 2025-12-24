@@ -21,7 +21,7 @@ export default function StudentCoursesPage() {
   const router = useRouter();
   const t = useT();
   const [orders, setOrders] = useState<Order[] | null>(null);
-  const [courseMap, setCourseMap] = useState<Record<string, string>>({});
+  const [courseMap, setCourseMap] = useState<Record<string, { title?: string; teacherName?: string }>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [user, setUser] = useState<StoredUser | null>(null);
@@ -137,13 +137,16 @@ export default function StudentCoursesPage() {
       return;
     }
     const fetches = ids.map((cid: string) =>
-      fetch(`/api/courses?id=${encodeURIComponent(cid)}`).then(r => r.json()).then(j => (j && j.ok && j.course ? j.course.title : null)).catch(() => null)
+      fetch(`/api/courses?id=${encodeURIComponent(cid)}`)
+        .then(r => r.json())
+        .then(j => (j && j.ok && j.course ? { title: j.course.title, teacherName: j.course.teacherName || j.course.teacher || null } : null))
+        .catch(() => null)
     );
-    Promise.all(fetches).then((titles) => {
-      const map: Record<string, string> = {};
+    Promise.all(fetches).then((results) => {
+      const map: Record<string, { title?: string; teacherName?: string }> = {};
       ids.forEach((id: string, idx: number) => {
-        const t = titles[idx];
-        if (t) map[id] = t as string;
+        const t = results[idx] as any | null;
+        if (t) map[id] = { title: t.title, teacherName: t.teacherName };
       });
       setCourseMap(map);
     }).catch(() => setCourseMap({}));
@@ -196,7 +199,7 @@ export default function StudentCoursesPage() {
                     <td style={{ border: '2px solid #ccc', padding: '6px' }}>
                       <Link href={`/student_courses/${o.orderId}`}>{o.orderId}</Link>
                     </td>
-                    <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.courseId ? (courseMap[o.courseId] || o.courseId) : '-'}</td>
+                    <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.courseId ? (courseMap[o.courseId]?.title || o.courseId) : '-'}</td>
                     <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.amount !== undefined && o.amount !== null ? `${o.amount} ${o.currency ?? 'TWD'}` : '-'}</td>
                     <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.status ?? '-'}</td>
                     <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.createdAt ? new Date(o.createdAt).toLocaleString() : '-'}</td>

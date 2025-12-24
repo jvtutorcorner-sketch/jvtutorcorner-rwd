@@ -175,7 +175,7 @@ export default function OrdersPage() {
             <table className="orders-table" style={{ borderCollapse: 'collapse', border: '2px solid #ccc', width: '100%' }}>
               <thead>
                 <tr>
-                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>使用者</th>
+                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>{t('role_student')}</th>
                   <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>訂單編號</th>
                   <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>課程 / ID</th>
                   <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>金額</th>
