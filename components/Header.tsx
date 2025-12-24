@@ -342,12 +342,85 @@ export default function Header() {
                 })}
               </ul>
 
+              {/* Mirror desktop avatar-dropdown items in mobile menu for parity */}
+              <div style={{ marginTop: 12 }}>
+                {hydrated && user ? (
+                  <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                    {
+                      // admin-only shortcut: Page Permissions first
+                      user?.role === 'admin' ? (() => {
+                        const ppPath = '/admin/settings/page-permissions';
+                        const pc = (adminSettings?.pageConfigs || []).find((x: any) => x.path === ppPath);
+                        const label = (pc && (pc.label || pc.path)) || 'Page 存取權限';
+                        return (
+                          <li key={ppPath} style={{ marginBottom: 8 }}>
+                            <button onClick={() => { setMobileMenuOpen(false); router.push(ppPath); }} style={{ padding: '8px 12px', width: '100%', textAlign: 'left' }}>{label}</button>
+                          </li>
+                        );
+                      })() : null
+                    }
+
+                    {
+                      user?.role === 'admin' ? (
+                        (['/admin/dashboard','/admin/roles','/admin/settings','/admin/carousel','/admin/orders','/settings'] as string[]).map((p) => {
+                          const pc = (adminSettings?.pageConfigs || []).find((x: any) => x.path === p);
+                          const label = (pc && (pc.label || pc.path)) || (p === '/settings' ? t('settings_label') : p);
+                          return (
+                            <li key={p} style={{ marginBottom: 8 }}>
+                              <button onClick={() => { setMobileMenuOpen(false); router.push(p); }} style={{ padding: '8px 12px', width: '100%', textAlign: 'left' }}>{label}</button>
+                            </li>
+                          );
+                        })
+                      ) : (
+                        // fixed items for authenticated non-admin users
+                        user ? (
+                          (user.role === 'teacher' ? ['/teacher_courses', '/my-courses', '/calendar', '/settings'] : ['/student_courses', '/calendar', '/settings'])
+                          .map((p) => {
+                            if (p === '/student_courses' && !user) return null;
+                            const pc = (adminSettings?.pageConfigs || []).find((x: any) => x.path === p);
+                            const label = pc?.label || (
+                              p === '/student_courses' ? t('orders_my_orders') :
+                              p === '/teacher_courses' ? t('course_orders') :
+                              p === '/my-courses' ? t('my_courses') :
+                              p === '/calendar' ? t('calendar_label') : t('settings_label')
+                            ) || p;
+                            return (
+                              <li key={p} style={{ marginBottom: 8 }}>
+                                <button onClick={() => { setMobileMenuOpen(false); router.push(p); }} style={{ padding: '8px 12px', width: '100%', textAlign: 'left' }}>{label}</button>
+                              </li>
+                            );
+                          })
+                        ) : null
+                      )
+                    }
+
+                    {
+                      // additional admin-configured dropdown items for non-teacher users
+                      user?.role === 'teacher' ? null : (
+                        (adminSettings?.pageConfigs || [])
+                          .filter((pc: any) => !!pc.path && pc.path !== '/admin/settings/page-permissions' && !['/student_courses', '/calendar', '/settings', '/my-courses'].includes(pc.path))
+                          .map((pc: any) => {
+                            const roleKey = user?.role || 'user';
+                            const perm = (pc.permissions || []).find((p: any) => p.roleId === roleKey);
+                            const visible = perm ? (perm.dropdownVisible !== false) : false;
+                            if (!visible) return null;
+                            const label = pc?.label || pc.path;
+                            return (
+                              <li key={pc.path} style={{ marginBottom: 8 }}>
+                                <button onClick={() => { setMobileMenuOpen(false); router.push(pc.path); }} style={{ padding: '8px 12px', width: '100%', textAlign: 'left' }}>{label}</button>
+                              </li>
+                            );
+                          })
+                      )
+                    }
+                  </ul>
+                ) : null}
+              </div>
               <div style={{ borderTop: '1px solid #eee', marginTop: 12, paddingTop: 12 }}>
                 {hydrated && user ? (
                   <div>
                     <div style={{ marginBottom: 8, fontWeight: 600 }}>{user.email}</div>
                     <div style={{ display: 'flex', gap: 8 }}>
-                      <button onClick={() => { setMobileMenuOpen(false); router.push(user.role === 'teacher' ? '/teacher_courses' : '/student_courses'); }} style={{ padding: '8px 12px' }}>{user.role === 'teacher' ? t('course_orders') : t('orders_my_orders')}</button>
                       <button onClick={() => { setMobileMenuOpen(false); handleLogout(); }} style={{ padding: '8px 12px' }}>{t('logout')}</button>
                     </div>
                   </div>

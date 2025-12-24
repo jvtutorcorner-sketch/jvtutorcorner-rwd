@@ -531,6 +531,9 @@ h1 + h2, h1 + h3, h2 + h3, h2 + h1, h3 + h1, h3 + h2 {
 .avatar-dropdown {
   position: relative;
   min-width: 180px;
+  /* Ensure dropdown floats above mobile overlays and is not clipped */
+  z-index: 1000;
+  overflow: visible;
 }
 .avatar-dropdown ul {
   list-style: none;

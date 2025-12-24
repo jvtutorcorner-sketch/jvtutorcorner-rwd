@@ -99,9 +99,9 @@ export function useAgoraClassroom({
 
   const localMicTrackRef = useRef<IMicrophoneAudioTrack | null>(null);
   const localCamTrackRef = useRef<ICameraVideoTrack | null>(null);
-  const handleUserPublishedRef = useRef<((user: any, mediaType: any) => Promise<void>) | null>(null);
-  const handleUserUnpublishedRef = useRef<((user: any) => void) | null>(null);
-  const handleUserLeftRef = useRef<(() => void) | null>(null);
+  const handleUserPublishedRef = useRef<((user: IAgoraRTCRemoteUser, mediaType: 'audio' | 'video') => Promise<void>) | null>(null);
+  const handleUserUnpublishedRef = useRef<((user: IAgoraRTCRemoteUser) => void) | null>(null);
+  const handleUserLeftRef = useRef<((user: IAgoraRTCRemoteUser) => void) | null>(null);
 
   // 视频质量控制函数
   const setVideoQuality = async (quality: VideoQuality) => {
@@ -170,11 +170,15 @@ export function useAgoraClassroom({
       const res = await fetch(`/api/agora/token?channelName=${encodeURIComponent(channelName)}&uid=${uid}`);
 
       if (!res.ok) {
-        const { error } = await res.json();
+        let bodyText = '';
+        try { bodyText = await res.text(); } catch (e) { bodyText = String(e); }
+        console.error('[Agora] Token fetch failed', { status: res.status, bodyText, channelName, uid });
+        const { error } = await res.json().catch(() => ({ error: bodyText }));
         throw new Error(error || 'Failed to fetch token');
       }
 
       const data = (await res.json()) as AgoraJoinResponse;
+      console.log('[Agora] Token response', { channelName: data.channelName, uid: data.uid });
 
       // if a client is already connected to a different channel, leave first
       if (clientRef.current && clientChannelRef.current && clientChannelRef.current !== channelName) {
@@ -192,18 +196,165 @@ export function useAgoraClassroom({
         const Agora = (AgoraModule as any).default ?? AgoraModule;
         AgoraSDK = Agora;
         
-        // 使用 RTC 模式，所有参与者都可以发布和订阅
+        // 開啟詳細日誌
+        try {
+          Agora.setLogLevel(0); // 0: DEBUG, 1: INFO, 2: WARNING, 3: ERROR, 4: NONE
+          console.log('[Agora] SDK Log level set to DEBUG');
+        } catch (e) {
+          console.warn('[Agora] Failed to set log level', e);
+        }
+        
+        // 使用 RTC 模式，所有参与者都可以发布 and 订阅
         const clientConfig = {
           mode: 'rtc' as const,
           codec: 'vp8' as const
         };
         
-        clientRef.current = Agora.createClient(clientConfig);
+        const client = Agora.createClient(clientConfig);
+        clientRef.current = client;
+
+        // 監控連線狀態
+        client.on('connection-state-change', (curState: string, revState: string, reason?: string) => {
+          console.log(`[Agora] Connection state changed from ${revState} to ${curState}. Reason: ${reason}`);
+          if (curState === 'DISCONNECTED' && reason === 'INTERRUPTED') {
+            console.warn('[Agora] Connection interrupted, check your network (UDP ports might be blocked)');
+          }
+        });
+
+        // Register persistent listeners that use refs to call the latest handlers
+        client.on('user-published', async (user: IAgoraRTCRemoteUser, mediaType: 'audio' | 'video') => {
+          console.log('[Agora] Persistent user-published event', { uid: user.uid, mediaType });
+          if (handleUserPublishedRef.current) {
+            await handleUserPublishedRef.current(user, mediaType);
+          }
+        });
+        client.on('user-unpublished', (user: IAgoraRTCRemoteUser) => {
+          console.log('[Agora] Persistent user-unpublished event', { uid: user.uid });
+          if (handleUserUnpublishedRef.current) {
+            handleUserUnpublishedRef.current(user);
+          }
+        });
+        client.on('user-left', (user: IAgoraRTCRemoteUser) => {
+          console.log('[Agora] Persistent user-left event', { uid: user.uid });
+          if (handleUserLeftRef.current) {
+            handleUserLeftRef.current(user);
+          }
+        });
       }
 
       const client = clientRef.current!;
 
+      // 監聽遠端使用者 — 定義 handlers 並更新 refs
+      const onUserPublished = async (user: IAgoraRTCRemoteUser, mediaType: 'audio' | 'video') => {
+        try {
+          console.log('[Agora] user-published handler executing', { uid: user.uid, mediaType });
+          console.log('[Agora] Subscribing to user', { uid: user.uid, mediaType });
+          await client.subscribe(user, mediaType);
+
+          // Log presence of tracks
+          console.log('[Agora] After subscribe, tracks:', {
+            uid: user.uid,
+            hasVideo: !!user.videoTrack,
+            hasAudio: !!user.audioTrack
+          });
+
+          if (mediaType === 'video' && user.videoTrack) {
+            const remoteEl = remoteVideoRef.current ?? localVideoRef.current;
+            if (remoteEl) {
+              try {
+                const playRes = user.videoTrack.play(remoteEl) as any;
+                if (playRes && typeof playRes.then === 'function') {
+                  playRes.catch((playErr: any) => {
+                    console.warn('[Agora] Remote video play rejected (promise), scheduling retry', playErr);
+                    setTimeout(() => {
+                      try { 
+                        if (user.videoTrack) {
+                          user.videoTrack.play(remoteEl); 
+                          console.log('[Agora] Retry video play attempted'); 
+                        }
+                      } catch (e) { console.warn('[Agora] Retry video play failed', e); }
+                    }, 500);
+                  });
+                }
+              } catch (e) {
+                console.warn('[Agora] Failed to play remote video track, will retry once', e);
+                setTimeout(() => {
+                  try { 
+                    if (user.videoTrack) {
+                      user.videoTrack.play(remoteEl); 
+                      console.log('[Agora] Retry video play attempted'); 
+                    }
+                  } catch (err) { console.warn('[Agora] Retry video play failed', err); }
+                }, 500);
+              }
+            } else {
+              console.warn('[Agora] No video element available to play remote video');
+            }
+          }
+
+          if (mediaType === 'audio' && user.audioTrack) {
+            try {
+              const p = user.audioTrack.play() as any;
+              try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = false; } catch (e) {}
+              if (p && typeof p.then === 'function') {
+                p.then(() => {
+                  try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = true; } catch (e) {}
+                  console.log('[Agora] Remote audio started playing for', user.uid);
+                }).catch((err: any) => {
+                  console.warn('[Agora] Remote audio play rejected, may be blocked by autoplay policy', err);
+                  try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = false; } catch (e) {}
+                  setAutoplayFailed(true);
+                  setTimeout(() => { try { requestEnableSound(); } catch (e) { console.warn('[Agora] requestEnableSound failed', e); } }, 1000);
+                });
+              } else {
+                try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = true; } catch (e) {}
+                console.log('[Agora] Remote audio play returned non-promise, assuming playing for', user.uid);
+              }
+            } catch (err) {
+              console.warn('[Agora] Remote audio play threw, may be blocked by autoplay policy', err);
+              setAutoplayFailed(true);
+              setTimeout(() => { try { requestEnableSound(); } catch (e) { console.warn('[Agora] requestEnableSound failed', e); } }, 1000);
+            }
+          }
+
+          setRemoteUsers([...client.remoteUsers]);
+          console.log('[Agora] remoteUsers updated, count:', client.remoteUsers.length);
+        } catch (err) {
+          console.warn('user-published handler error', err);
+        }
+      };
+
+      const onUserUnpublished = (user: IAgoraRTCRemoteUser) => {
+        console.log('[Agora] user-unpublished handler executing', { uid: user.uid });
+        setRemoteUsers([...client.remoteUsers]);
+        try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = false; } catch (e) {}
+      };
+
+      const onUserLeft = (user: IAgoraRTCRemoteUser) => {
+        console.log('[Agora] user-left handler executing', { uid: user.uid });
+        setRemoteUsers([...client.remoteUsers]);
+        try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = false; } catch (e) {}
+      };
+
+      handleUserPublishedRef.current = onUserPublished;
+      handleUserUnpublishedRef.current = onUserUnpublished;
+      handleUserLeftRef.current = onUserLeft;
+
+      console.log('[Agora] Final channel name for join:', channelName);
+      console.log('[Agora] Attempting client.join', { appId: data.appId, channelName: data.channelName, uid: data.uid });
       await client.join(data.appId, data.channelName, data.token, data.uid);
+      console.log('[Agora] client.join succeeded', { channelName: data.channelName, uid: data.uid });
+
+      // Safety check: if there are already remote users publishing, trigger handlers manually
+      // (though registering before join should have caught them)
+      if (client.remoteUsers && client.remoteUsers.length > 0) {
+        console.log('[Agora] Found existing remote users after join:', client.remoteUsers.length);
+        for (const user of client.remoteUsers) {
+          if (user.hasAudio) onUserPublished(user, 'audio');
+          if (user.hasVideo) onUserPublished(user, 'video');
+        }
+      }
+
       clientChannelRef.current = data.channelName;
       // Expose client on window for E2E debugging (temporary)
       try {
@@ -297,14 +448,19 @@ export function useAgoraClassroom({
         }
 
         if (publishAudio && publishVideo) {
+          console.log('[Agora] creating microphone and camera tracks');
           const tracks = await AgoraSDK.createMicrophoneAndCameraTracks();
           micTrack = tracks[0] ?? null;
           camTrack = tracks[1] ?? null;
         } else if (publishAudio && !publishVideo) {
+          console.log('[Agora] creating microphone track only');
           micTrack = await AgoraSDK.createMicrophoneAudioTrack();
         } else if (!publishAudio && publishVideo) {
+          console.log('[Agora] creating camera track only');
           camTrack = await AgoraSDK.createCameraVideoTrack();
         }
+
+        console.log('[Agora] tracks created', { hasMic: !!micTrack, hasCam: !!camTrack, currentQuality });
 
         // 应用视频质量设置
         if (camTrack) {
@@ -381,86 +537,23 @@ export function useAgoraClassroom({
         }
       }
 
-      const publishList: any[] = [];
+        const publishList: any[] = [];
       if (micTrack) publishList.push(micTrack);
       if (camTrack) publishList.push(camTrack);
 
       if (publishList.length > 0) {
         try {
+          console.log('[Agora] publishing local tracks', { count: publishList.length });
           await client.publish(publishList);
+          console.log('[Agora] publish succeeded');
         } catch (pubErr) {
-          console.warn('Failed to publish local tracks', (pubErr as any)?.message ?? pubErr);
+          console.warn('[Agora] Failed to publish local tracks', (pubErr as any)?.message ?? pubErr);
         }
       } else {
         // No local tracks available: inform user but continue joined without publishing
-        console.warn('No local audio/video tracks available to publish');
+        console.warn('[Agora] No local audio/video tracks available to publish');
         setError((prev) => (prev ? prev + ' | No local devices available' : 'No local devices available'));
       }
-
-      // 監聽遠端使用者 — 使用可移除的 handler refs
-      handleUserPublishedRef.current = async (user: any, mediaType: any) => {
-        try {
-          await client.subscribe(user, mediaType);
-
-          if (mediaType === 'video' && user.videoTrack) {
-            // Always play remote video into the remoteVideoRef when available.
-            // Fallback to localVideoRef only if remote element is missing.
-            const remoteEl = remoteVideoRef.current ?? localVideoRef.current;
-            if (remoteEl) {
-              try {
-                user.videoTrack.play(remoteEl);
-              } catch (e) {
-                console.warn('Failed to play remote video track', e);
-              }
-            } else {
-              console.warn('No video element available to play remote video');
-            }
-          }
-
-          if (mediaType === 'audio' && user.audioTrack) {
-            try {
-              const p = user.audioTrack.play();
-              // Mark global window flag when remote audio starts playing (useful for E2E detection)
-              try {
-                if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = false;
-              } catch (e) {}
-              if (p && typeof p.then === 'function') {
-                p.then(() => {
-                  try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = true; } catch (e) {}
-                }).catch((err: any) => {
-                  console.warn('Remote audio play rejected, may be blocked by autoplay policy', err);
-                  try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = false; } catch (e) {}
-                  setAutoplayFailed(true);
-                });
-              } else {
-                // Non-promise play; assume started
-                try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = true; } catch (e) {}
-              }
-            } catch (err) {
-              console.warn('Remote audio play threw, may be blocked by autoplay policy', err);
-              setAutoplayFailed(true);
-            }
-          }
-
-          setRemoteUsers([...client.remoteUsers]);
-        } catch (err) {
-          console.warn('user-published handler error', err);
-        }
-      };
-
-      handleUserUnpublishedRef.current = (user: any) => {
-        setRemoteUsers([...client.remoteUsers]);
-        try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = false; } catch (e) {}
-      };
-
-      handleUserLeftRef.current = () => {
-        setRemoteUsers([...client.remoteUsers]);
-        try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = false; } catch (e) {}
-      };
-
-      if (handleUserPublishedRef.current) client.on('user-published', handleUserPublishedRef.current);
-      if (handleUserUnpublishedRef.current) client.on('user-unpublished', handleUserUnpublishedRef.current);
-      if (handleUserLeftRef.current) client.on('user-left', handleUserLeftRef.current);
 
       setJoined(true);
       // Listen for SDK-level autoplay fail events if available
@@ -743,6 +836,8 @@ export function useAgoraClassroom({
 
   // Listen for whiteboard room UUID from other tabs
   useEffect(() => {
+    console.log('[useAgoraClassroom] Hook initialized for channel:', channelName, 'role:', role);
+    
     if (typeof window === 'undefined') return;
     
     const courseIdFromChannel = channelName.replace(/^course_/, '').split('_')[0];

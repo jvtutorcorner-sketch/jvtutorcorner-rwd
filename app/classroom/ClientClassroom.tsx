@@ -95,6 +95,10 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
 
   const firstRemote = useMemo(() => remoteUsers?.[0] ?? null, [remoteUsers]);
 
+  useEffect(() => {
+    console.log('[ClientClassroom] remoteUsers changed:', remoteUsers.length);
+  }, [remoteUsers]);
+
   const [hasAudioInput, setHasAudioInput] = useState<boolean | null>(null);
   const [hasVideoInput, setHasVideoInput] = useState<boolean | null>(null);
   const [wantPublishVideo, setWantPublishVideo] = useState(true);
@@ -106,8 +110,8 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   // PDF viewer state
   const [selectedPdf, setSelectedPdf] = useState<File | null>(null);
   const [showPdf, setShowPdf] = useState(false);
-  // session countdown - 改为30秒测试
-  const [sessionDurationMinutes, setSessionDurationMinutes] = useState<number>(0.5); // 0.5分钟 = 30秒
+  // session countdown - default to 5 minutes
+  const [sessionDurationMinutes, setSessionDurationMinutes] = useState<number>(5); // 5 minutes
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
   const timerRef = useRef<number | null>(null);
 
@@ -237,16 +241,31 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     });
   }, [whiteboardRef, whiteboardMeta, joined]);
 
-  // 跨标签页同步：老师开始上课时通知学生
+  // 跨标签页同步：老師開始上課時通知學生
   useEffect(() => {
-    const sessionKey = `classroom_session_${effectiveChannelName}`;
-    const bc = new BroadcastChannel(sessionKey);
+    // Use the shared session identifier (same as waiting page) so messages are received across pages
+    const sessionBroadcastName = sessionParam || channelName || `classroom_session_ready_${courseId}`;
+    console.log('ClientClassroom broadcast channel:', sessionBroadcastName);
+    const bc = new BroadcastChannel(sessionBroadcastName);
     
     bc.onmessage = (event) => {
+      console.log('[BroadcastChannel] Received message:', event.data);
       if (event.data?.type === 'class_started' && !joined && !loading) {
-        console.log('收到開始上課通知，自動加入...');
+        console.log('收到開始上課通知，自動加入... 頻道:', effectiveChannelName);
         // 学生端自动加入
         join({ publishAudio: micEnabled, publishVideo: wantPublishVideo });
+      } else if (event.data?.type === 'ready-updated') {
+        // Another tab updated ready state — re-check localStorage and update canJoin immediately
+        try {
+          const raw = localStorage.getItem(sessionReadyKey);
+          const arr = raw ? JSON.parse(raw) as Array<{ role: string; email?: string }> : [];
+          const hasTeacher = arr.some((p) => p.role === 'teacher');
+          const hasStudent = arr.some((p) => p.role === 'student');
+          setCanJoin(hasTeacher && hasStudent);
+          console.log('[BroadcastChannel] ready-updated processed, canJoin=', hasTeacher && hasStudent);
+        } catch (e) {
+          console.warn('Failed to process ready-updated BC message', e);
+        }
       } else if (event.data?.type === 'class_ended') {
         console.log('收到結束上課通知');
         // 如果已经在课堂中，自动离开并返回等待页
@@ -257,9 +276,32 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     };
     
     return () => {
-      bc.close();
+      try { bc.close(); } catch (e) {}
     };
-  }, [courseId, orderId, joined, loading, micEnabled, wantPublishVideo, join]);
+  }, [courseId, orderId, joined, loading, micEnabled, wantPublishVideo, join, sessionParam, channelName]);
+
+  // 學生端：如果進入頁面時老師已經在線，則自動加入
+  useEffect(() => {
+    if (mounted && !joined && !loading && (urlRole === 'student' || computedRole === 'student')) {
+      const checkAndAutoJoin = () => {
+        try {
+          const raw = localStorage.getItem(sessionReadyKey);
+          const arr = raw ? JSON.parse(raw) as Array<{ role: string; email?: string }> : [];
+          const hasTeacher = arr.some((p) => p.role === 'teacher');
+          if (hasTeacher) {
+            console.log('[AutoJoin] Teacher is already present, joining class...');
+            join({ publishAudio: micEnabled, publishVideo: wantPublishVideo });
+          }
+        } catch (e) {
+          console.warn('[AutoJoin] Failed to check teacher presence', e);
+        }
+      };
+      
+      // 延遲一下確保一切就緒
+      const timer = setTimeout(checkAndAutoJoin, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [mounted, joined, loading, sessionReadyKey, urlRole, computedRole, micEnabled, wantPublishVideo, join]);
 
   useEffect(() => {
     let mountedFlag = true;
@@ -388,12 +430,16 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
 
   const endSession = async () => {
     try {
-      // 广播结束上课通知
-      const sessionKey = `classroom_session_${effectiveChannelName}`;
-      const bc = new BroadcastChannel(sessionKey);
-      bc.postMessage({ type: 'class_ended', timestamp: Date.now() });
-      console.log('已廣播結束上課通知');
-      setTimeout(() => bc.close(), 100);
+      // 广播结束上课通知 (use same shared session name as wait page)
+      const sessionBroadcastName = sessionParam || channelName || `classroom_session_ready_${courseId}`;
+      try {
+        const bc = new BroadcastChannel(sessionBroadcastName);
+        bc.postMessage({ type: 'class_ended', timestamp: Date.now() });
+        console.log('已廣播結束上課通知 ->', sessionBroadcastName);
+        setTimeout(() => { try { bc.close(); } catch (e) {} }, 100);
+      } catch (e) {
+        console.warn('BroadcastChannel endSession failed', e);
+      }
       
       await leave();
       try { (window as any).__wbRoom = null; } catch (e) {}
@@ -509,11 +555,11 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       // 老师开始上课时，广播通知学生
       const isTeacher = (urlRole === 'teacher' || urlRole === 'student') ? urlRole === 'teacher' : computedRole === 'teacher';
       if (isTeacher) {
-        const sessionKey = `classroom_session_${effectiveChannelName}`;
-        const bc = new BroadcastChannel(sessionKey);
+        const sessionBroadcastName = sessionParam || channelName || `classroom_session_ready_${courseId}`;
+        const bc = new BroadcastChannel(sessionBroadcastName);
         bc.postMessage({ type: 'class_started', timestamp: Date.now() });
-        console.log('已廣播開始上課通知');
-        setTimeout(() => bc.close(), 100);
+        console.log('已廣播開始上課通知 ->', sessionBroadcastName);
+        setTimeout(() => { try { bc.close(); } catch (e) {} }, 100);
       }
       
       // initialize remaining seconds - 30秒倒计时
@@ -879,6 +925,35 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                 </div>
 
                 <div style={{ marginTop: 8, display: 'flex', gap: 8, flexDirection: 'column', alignItems: 'stretch' }}>
+                  {/* Ready toggle: allow participants to mark themselves ready (synchronized with waiting page) */}
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button
+                      onClick={() => {
+                        try {
+                          markReady(!ready);
+                        } catch (e) { console.warn('markReady click failed', e); }
+                      }}
+                      style={{
+                        flex: 1,
+                        minWidth: 0,
+                        background: ready ? '#10b981' : '#6b7280',
+                        color: 'white',
+                        border: 'none',
+                        padding: '8px 12px',
+                        borderRadius: 6,
+                        cursor: 'pointer',
+                        fontWeight: 600,
+                        textAlign: 'center'
+                      }}
+                    >
+                      {ready ? '已準備 (取消準備)' : '我已準備'}
+                    </button>
+
+                    <div style={{ display: 'flex', alignItems: 'center', paddingLeft: 8, color: canJoin ? '#10b981' : '#666', fontSize: 13 }}>
+                      {canJoin ? '等待就緒：完成，雙方可開始' : '等待就緒：尚未完成'}
+                    </div>
+                  </div>
+
                   {!joined ? (
                     <button
                       onClick={() => {
@@ -891,21 +966,27 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                           }
                           setPreviewingCamera(false);
                         }
+                        if (!canJoin) {
+                          // Shouldn't be clickable when disabled, but guard anyway
+                          alert('尚未達到等待頁就緒條件，請確認雙方在等待頁都已按下「準備」。');
+                          return;
+                        }
+                        console.log('[UI] Manual Join button clicked. Channel:', effectiveChannelName);
                         join({ publishAudio: micEnabled, publishVideo: wantPublishVideo });
                       }}
-                      disabled={loading}
+                      disabled={loading || !canJoin}
                       style={{
-                        background: loading ? '#9CA3AF' : '#4CAF50',
+                        background: loading || !canJoin ? '#9CA3AF' : '#4CAF50',
                         color: 'white',
                         border: 'none',
                         padding: '8px 16px',
                         borderRadius: 6,
-                        cursor: loading ? 'not-allowed' : 'pointer',
+                        cursor: loading || !canJoin ? 'not-allowed' : 'pointer',
                         fontWeight: 600,
                         width: '100%'
                       }}
                     >
-                      {loading ? '加入中...' : '🚀 Join (開始上課)'}
+                      {loading ? '加入中...' : (canJoin ? '🚀 Join (開始上課)' : '等待對方就緒...')}
                     </button>
                   ) : (
                     <div style={{ height: 0 }} />
