@@ -1,6 +1,7 @@
 "use client";
 import Link from 'next/link';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { getStoredUser, clearStoredUser, type StoredUser } from '@/lib/mockAuth';
 import { useRouter, usePathname } from 'next/navigation';
 import { LanguageSwitcher } from './LanguageSwitcher';
@@ -11,6 +12,7 @@ export default function Header() {
   const [user, setUser] = useState<StoredUser | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [adminSettings, setAdminSettings] = useState<any | null>(null);
+  const [roles, setRoles] = useState<any[]>([]);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
@@ -57,6 +59,13 @@ export default function Header() {
         const res = await fetch('/api/admin/settings');
         const data = await res.json();
         if (res.ok && data?.ok) setAdminSettings(data.settings || null);
+        try {
+          const r = await fetch('/api/admin/roles');
+          const rr = await r.json();
+          if (r.ok && rr?.ok) setRoles(rr.roles || rr);
+        } catch (e) {
+          // ignore
+        }
       } catch (e) {
         // ignore
       }
@@ -72,6 +81,13 @@ export default function Header() {
         const res = await fetch('/api/admin/settings');
         const data = await res.json();
         if (res.ok && data?.ok) setAdminSettings(data.settings || null);
+        try {
+          const r = await fetch('/api/admin/roles');
+          const rr = await r.json();
+          if (r.ok && rr?.ok) setRoles(rr.roles || rr);
+        } catch (e) {
+          // ignore
+        }
       } catch (e) {
         // ignore
       }
@@ -82,6 +98,27 @@ export default function Header() {
     return () => {
       if (typeof window !== 'undefined') {
         window.removeEventListener('tutor:admin-settings-changed', onSettingsChanged);
+      }
+    };
+  }, []);
+
+  // listen for role changes dispatched when admin updates roles
+  useEffect(() => {
+    async function reloadRoles() {
+      try {
+        const r = await fetch('/api/admin/roles');
+        const rr = await r.json();
+        if (r.ok && rr?.ok) setRoles(rr.roles || rr);
+      } catch (e) {
+        // ignore
+      }
+    }
+    if (typeof window !== 'undefined') {
+      window.addEventListener('tutor:roles-changed', reloadRoles);
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('tutor:roles-changed', reloadRoles);
       }
     };
   }, []);
@@ -103,17 +140,50 @@ export default function Header() {
 
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const portalContainerRef = useRef<HTMLDivElement | null>(null);
+  const [portalPos, setPortalPos] = useState<{ top: number; left: number } | null>(null);
+  const PORTAL_MIN_WIDTH = 180;
 
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
-      if (!menuRef.current) return;
-      if (e.target instanceof Node && !menuRef.current.contains(e.target)) {
-        setMenuOpen(false);
-      }
+      const target = e.target;
+      const insideMenu = menuRef.current && target instanceof Node && menuRef.current.contains(target);
+      const insidePortal = portalContainerRef.current && target instanceof Node && portalContainerRef.current.contains(target);
+      if (!insideMenu && !insidePortal) setMenuOpen(false);
     }
     if (typeof window !== 'undefined') document.addEventListener('mousedown', onDocClick);
     return () => { if (typeof window !== 'undefined') document.removeEventListener('mousedown', onDocClick); };
   }, []);
+
+  // create portal container for avatar dropdown (client-only)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const el = document.createElement('div');
+    el.className = 'avatar-dropdown-portal';
+    document.body.appendChild(el);
+    portalContainerRef.current = el;
+    return () => {
+      if (portalContainerRef.current && portalContainerRef.current.parentElement) {
+        portalContainerRef.current.parentElement.removeChild(portalContainerRef.current);
+      }
+      portalContainerRef.current = null;
+    };
+  }, []);
+
+  // compute portal position whenever menu opens
+  useLayoutEffect(() => {
+    if (!menuOpen) return;
+    if (typeof window === 'undefined') return;
+    const btn = menuRef.current;
+    if (!btn) return;
+    const rect = btn.getBoundingClientRect();
+    const minW = PORTAL_MIN_WIDTH;
+    let left = rect.right - minW;
+    if (left < 8) left = 8;
+    if (left + minW > window.innerWidth - 8) left = Math.max(8, window.innerWidth - minW - 8);
+    const top = rect.bottom + 8 + window.scrollY;
+    setPortalPos({ top, left });
+  }, [menuOpen]);
 
   function handleLogout() {
     clearStoredUser();
@@ -183,6 +253,10 @@ export default function Header() {
                         <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>
                           {(() => {
                             const r = user.role;
+                            // map our local stored role ('user') to canonical admin role id ('student')
+                            const lookupId = r === 'user' ? 'student' : r;
+                            const roleObj = roles.find((x: any) => x.id === lookupId);
+                            if (roleObj) return roleObj.description || roleObj.name || (lookupId === 'admin' ? '管理者' : lookupId === 'teacher' ? '教師' : '使用者');
                             if (r === 'admin') return '管理者';
                             if (r === 'teacher') return '教師';
                             return '使用者';
@@ -208,8 +282,8 @@ export default function Header() {
                             })()}
                           </span>
                         </button>
-                        {menuOpen && (
-                          <div className="avatar-dropdown" style={{ position: 'absolute', right: 0, marginTop: 8, minWidth: 180, background: '#fff', border: '1px solid #e5e7eb', boxShadow: '0 6px 18px rgba(0,0,0,0.08)', borderRadius: 8, zIndex: 50 }}>
+                        {menuOpen && portalContainerRef.current && portalPos ? createPortal(
+                          <div className="avatar-dropdown" style={{ position: 'absolute', top: portalPos.top, left: portalPos.left, minWidth: PORTAL_MIN_WIDTH, background: '#fff', border: '1px solid #e5e7eb', boxShadow: '0 6px 18px rgba(0,0,0,0.08)', borderRadius: 8, zIndex: 1000 }}>
                             <ul style={{ listStyle: 'none', margin: 0, padding: 8 }}>
                                       {
                                         // admin-only shortcut: Page Permissions should appear first in the dropdown
@@ -225,17 +299,25 @@ export default function Header() {
                                         })() : null
                                       }
                                       {
-                                        // If admin, show only the curated admin dropdown pages (in order)
+                                        // If admin, show admin-configured dropdown pages only when Dropdown Menu access is enabled
                                         user?.role === 'admin' ? (
-                                          (['/admin/dashboard','/admin/roles','/admin/settings','/admin/carousel','/admin/orders','/settings'] as string[]).map((p) => {
-                                            const pc = (adminSettings?.pageConfigs || []).find((x: any) => x.path === p);
-                                            const label = (pc && (pc.label || pc.path)) || (p === '/settings' ? t('settings_label') : p);
-                                            return (
-                                              <li key={p}>
-                                                <span role="menuitem" tabIndex={0} className="menu-link" onClick={() => { setMenuOpen(false); router.push(p); }}>{label}</span>
-                                              </li>
-                                            );
-                                          })
+                                          (adminSettings?.pageConfigs || [])
+                                            .filter((pc: any) => !!pc.path && pc.path !== '/admin/settings/page-permissions')
+                                            .filter((pc: any) => {
+                                              const roleKey = 'admin';
+                                              const perm = (pc.permissions || []).find((p: any) => p.roleId === roleKey);
+                                              const visible = perm ? (perm.dropdownVisible !== false) : false;
+                                              return !!visible;
+                                            })
+                                            .map((pc: any) => {
+                                              const p = pc.path;
+                                              const label = pc.label || (p === '/settings' ? t('settings_label') : p);
+                                              return (
+                                                <li key={p}>
+                                                  <span role="menuitem" tabIndex={0} className="menu-link" onClick={() => { setMenuOpen(false); router.push(p); }}>{label}</span>
+                                                </li>
+                                              );
+                                            })
                                         ) : (
                                           <>
                                             {
@@ -290,8 +372,9 @@ export default function Header() {
                                 <button onClick={() => { setMenuOpen(false); handleLogout(); }} className="menu-logout" style={{ width: '100%' }}>{t('logout')}</button>
                               </li>
                             </ul>
-                          </div>
-                        )}
+                          </div>,
+                          portalContainerRef.current
+                        ) : null}
                       </div>
                     </>
                   ) : (
@@ -362,15 +445,23 @@ export default function Header() {
 
                     {
                       user?.role === 'admin' ? (
-                        (['/admin/dashboard','/admin/roles','/admin/settings','/admin/carousel','/admin/orders','/settings'] as string[]).map((p) => {
-                          const pc = (adminSettings?.pageConfigs || []).find((x: any) => x.path === p);
-                          const label = (pc && (pc.label || pc.path)) || (p === '/settings' ? t('settings_label') : p);
-                          return (
-                            <li key={p} style={{ marginBottom: 8 }}>
-                              <button onClick={() => { setMobileMenuOpen(false); router.push(p); }} style={{ padding: '8px 12px', width: '100%', textAlign: 'left' }}>{label}</button>
-                            </li>
-                          );
-                        })
+                        (adminSettings?.pageConfigs || [])
+                          .filter((pc: any) => !!pc.path && pc.path !== '/admin/settings/page-permissions')
+                          .filter((pc: any) => {
+                            const roleKey = 'admin';
+                            const perm = (pc.permissions || []).find((p: any) => p.roleId === roleKey);
+                            const visible = perm ? (perm.dropdownVisible !== false) : false;
+                            return !!visible;
+                          })
+                          .map((pc: any) => {
+                            const p = pc.path;
+                            const label = pc.label || (p === '/settings' ? t('settings_label') : p);
+                            return (
+                              <li key={p} style={{ marginBottom: 8 }}>
+                                <button onClick={() => { setMobileMenuOpen(false); router.push(p); }} style={{ padding: '8px 12px', width: '100%', textAlign: 'left' }}>{label}</button>
+                              </li>
+                            );
+                          })
                       ) : (
                         // fixed items for authenticated non-admin users
                         user ? (

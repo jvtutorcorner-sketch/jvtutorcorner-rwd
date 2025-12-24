@@ -205,9 +205,68 @@ export async function POST(req: Request) {
     // If caller provided pageConfigs, regenerate the legacy `pageVisibility` map
     // so parts of the app that read pageVisibility (Header, SSR code) reflect the changes.
     if (body.pageConfigs && Array.isArray(body.pageConfigs)) {
-      const pageVisibility: Record<string, any> = merged.pageVisibility || {};
-      // build from pageConfigs
+      // Merge incoming pageConfigs into existing pageConfigs so that unspecified flags
+      // (e.g. dropdownVisible) are preserved instead of being reset.
+      const existingMap = new Map<string, any>();
+      (current && current.pageConfigs || []).forEach((pc: any) => existingMap.set(pc.path || pc.id, pc));
+
+      // Build merged pageConfigs starting from existing ones
+      const mergedPageConfigs: any[] = (current && current.pageConfigs) ? JSON.parse(JSON.stringify(current.pageConfigs)) : [];
+      const mergedMap = new Map<string, any>();
+      mergedPageConfigs.forEach((pc: any) => mergedMap.set(pc.path || pc.id, pc));
+
       body.pageConfigs.forEach((pc: any) => {
+        const pathKey = pc.path || pc.id;
+        const existing = mergedMap.get(pathKey) || existingMap.get(pathKey) || { path: pathKey, id: pathKey, label: pc.label || pathKey, permissions: [] };
+
+        // build a role-indexed map of existing permissions
+        const existingPermsMap = new Map<string, any>();
+        (existing.permissions || []).forEach((p: any) => existingPermsMap.set(p.roleId, p));
+
+        // incoming permissions may include only flags for some roles; merge per-role
+        const incomingPerms = pc.permissions || [];
+        const roleIds = new Set<string>([...incomingPerms.map((p: any) => p.roleId), ...Array.from(existingPermsMap.keys())]);
+        const mergedPerms: any[] = [];
+        roleIds.forEach((roleId) => {
+          const inc = incomingPerms.find((p: any) => p.roleId === roleId) || {};
+          const ex = existingPermsMap.get(roleId) || {};
+          mergedPerms.push({
+            roleId: roleId,
+            roleName: inc.roleName || ex.roleName || '',
+            menuVisible: inc.menuVisible !== undefined ? !!inc.menuVisible : (ex.menuVisible !== undefined ? !!ex.menuVisible : false),
+            dropdownVisible: inc.dropdownVisible !== undefined ? !!inc.dropdownVisible : (ex.dropdownVisible !== undefined ? !!ex.dropdownVisible : false),
+            pageVisible: inc.pageVisible !== undefined ? !!inc.pageVisible : (ex.pageVisible !== undefined ? !!ex.pageVisible : true)
+          });
+        });
+
+        const updated = {
+          id: existing.id || pathKey,
+          path: pathKey,
+          label: pc.label || existing.label || pathKey,
+          permissions: mergedPerms
+        };
+
+        mergedMap.set(pathKey, updated);
+      });
+
+      // produce array from mergedMap preserving original order where possible
+      const finalPageConfigs: any[] = [];
+      // prefer keys in current.pageConfigs order
+      (current && current.pageConfigs || []).forEach((pc: any) => {
+        const k = pc.path || pc.id;
+        if (mergedMap.has(k)) {
+          finalPageConfigs.push(mergedMap.get(k));
+          mergedMap.delete(k);
+        }
+      });
+      // append any remaining ones (new pages)
+      mergedMap.forEach((v) => finalPageConfigs.push(v));
+
+      merged.pageConfigs = finalPageConfigs;
+
+      // regenerate legacy pageVisibility from merged.pageConfigs
+      const pageVisibility: Record<string, any> = merged.pageVisibility || {};
+      merged.pageConfigs.forEach((pc: any) => {
         const entry: any = { label: pc.label || pc.path, menu: {}, dropdown: {}, page: {} };
         (pc.permissions || []).forEach((perm: any) => {
           const roleKey = (perm.roleId || '').toLowerCase();

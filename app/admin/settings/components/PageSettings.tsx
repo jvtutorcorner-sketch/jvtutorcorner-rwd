@@ -7,50 +7,21 @@ type PageConfig = { id: string; path: string; label?: string; permissions: PageP
 type Role = { id: string; name: string; description?: string; isActive: boolean };
 type Settings = { pageConfigs: PageConfig[] } & Record<string, any>;
 
-export default function PageSettings() {
-  const [settings, setSettings] = useState<Settings | null>(null);
-  const [loading, setLoading] = useState(true);
+export default function PageSettings({ settings, setSettings, roles }: { settings: any | null; setSettings: React.Dispatch<React.SetStateAction<any | null>>; roles: any[] }) {
   const [newPath, setNewPath] = useState('');
   const [newLabel, setNewLabel] = useState('');
-  const [saving, setSaving] = useState(false);
   const [editingPath, setEditingPath] = useState<string | null>(null);
   const [editingLabel, setEditingLabel] = useState('');
   const [checkingPath, setCheckingPath] = useState<string | null>(null);
-
-  useEffect(() => { load(); }, []);
-
-  async function load() {
-    try {
-      const s = await fetch('/api/admin/settings');
-      const rs = await s.json();
-      if (s.ok && rs.ok) setSettings(rs.settings);
-    } catch (err) {
-      console.error(err);
-    } finally { setLoading(false); }
-  }
-
-  async function save() {
-    if (!settings) return;
-    setSaving(true);
-    try {
-      const res = await fetch('/api/admin/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(settings) });
-      const data = await res.json().catch(() => null);
-      if (res.ok && data && data.ok) {
-        if (typeof window !== 'undefined') alert('儲存成功');
-      } else {
-        console.warn('save failed', data);
-      }
-    } finally { setSaving(false); }
-  }
 
   function addPage() {
     if (!settings) return;
     const path = (newPath || '').trim();
     if (!path) return alert('請輸入頁面路徑');
     if (settings.pageConfigs.some((pc: PageConfig) => pc.path === path)) return alert('頁面已存在');
-    const defaultPerms = (settings.roles || []).filter((r: Role) => r.isActive).map((r: Role) => ({ roleId: r.id, roleName: r.name, menuVisible: false, dropdownVisible: false, pageVisible: true }));
+    const defaultPerms = (roles || []).filter((r: Role) => r.isActive).map((r: Role) => ({ roleId: r.id, roleName: r.name, menuVisible: false, dropdownVisible: false, pageVisible: true }));
     const newPage: PageConfig = { id: path, path, label: newLabel || path, permissions: defaultPerms };
-    setSettings(prev => prev ? { ...prev, pageConfigs: [...prev.pageConfigs, newPage] } : prev);
+    setSettings((prev: Settings | null) => prev ? { ...prev, pageConfigs: [...prev.pageConfigs, newPage] } : prev);
     setNewPath(''); setNewLabel('');
   }
 
@@ -58,7 +29,7 @@ export default function PageSettings() {
     if (!settings) return;
     const ok = confirm(`確定要刪除頁面 ${path} 嗎？此操作無法復原。`);
     if (!ok) return;
-    setSettings(prev => prev ? { ...prev, pageConfigs: prev.pageConfigs.filter((pc: PageConfig) => pc.path !== path) } : prev);
+    setSettings((prev: Settings | null) => prev ? { ...prev, pageConfigs: prev.pageConfigs.filter((pc: PageConfig) => pc.path !== path) } : prev);
   }
 
   function startEdit(p: PageConfig) {
@@ -76,7 +47,7 @@ export default function PageSettings() {
   function saveEdit(path: string) {
     if (!settings) return;
     const label = (editingLabel || '').trim();
-    setSettings(prev => prev ? {
+    setSettings((prev: Settings | null) => prev ? {
       ...prev,
       pageConfigs: prev.pageConfigs.map(pc => pc.path === path ? { ...pc, label: label || pc.path } : pc)
     } : prev);
@@ -100,7 +71,7 @@ export default function PageSettings() {
     }
   }
 
-  if (loading || !settings) return <div style={{ padding: 16 }}>Loading Page settings…</div>;
+  if (!settings) return <div style={{ padding: 16 }}>Loading Page settings…</div>;
 
   return (
     <div style={{ padding: 16 }}>
@@ -110,7 +81,7 @@ export default function PageSettings() {
           <input placeholder="/example-path" value={newPath} onChange={(e) => setNewPath(e.target.value)} style={{ padding: 6, minWidth: 180 }} />
           <input placeholder="Label" value={newLabel} onChange={(e) => setNewLabel(e.target.value)} style={{ padding: 6, minWidth: 140 }} />
           <button onClick={addPage}>新增 Page</button>
-          <button onClick={save} disabled={saving} style={{ marginLeft: 12 }}>{saving ? '儲存中…' : '儲存設定'}</button>
+          <span style={{ marginLeft: 12, color: '#666' }}>使用上方「儲存設定」按鈕儲存變更。</span>
         </div>
       </div>
 
@@ -138,15 +109,6 @@ export default function PageSettings() {
                 <td style={{ padding: 8, border: '2px solid #ccc', textAlign: 'center' }}>
                   <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
                     <button onClick={() => checkLink(p.path)} disabled={checkingPath === p.path}>{checkingPath === p.path ? '檢查中…' : '檢查連結'}</button>
-                    <button onClick={async () => {
-                      // 同步此頁面的標籤 (h1) 為 path，然後儲存
-                      if (!settings) return;
-                      setSettings(prev => prev ? {
-                        ...prev,
-                        pageConfigs: prev.pageConfigs.map(pc => pc.path === p.path ? { ...pc, label: p.path } : pc)
-                      } : prev);
-                      await save();
-                    }}>同步 H1</button>
                   </div>
                 </td>
                 <td style={{ padding: 8, textAlign: 'center', border: '2px solid #ccc' }}>

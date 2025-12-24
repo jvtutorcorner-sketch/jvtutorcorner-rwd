@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from 'react';
+import PageSettings from './components/PageSettings';
 import { PLAN_LABELS } from '@/lib/mockAuth';
 
 // 页面权限类型
@@ -176,9 +177,14 @@ export default function AdminSettingsPage() {
       const rolesData = await rolesRes.json();
 
       if (settingsRes.ok && settingsData.ok && rolesRes.ok && rolesData.ok) {
-        // 转换旧数据格式到新格式
-        const convertedSettings = convertOldSettingsToNew(settingsData.settings, rolesData.roles);
-        setSettings(convertedSettings);
+        // 如果後端已經回傳新格式（含 pageConfigs），直接使用；否則嘗試轉換舊格式
+        const serverSettings = settingsData.settings || settingsData;
+        if (serverSettings && Array.isArray(serverSettings.pageConfigs) && serverSettings.pageConfigs.length > 0) {
+          setSettings(serverSettings);
+        } else {
+          const convertedSettings = convertOldSettingsToNew(serverSettings || {}, rolesData.roles || []);
+          setSettings(convertedSettings);
+        }
         setRoles(rolesData.roles);
         setRolesLoading(false);
       } else {
@@ -360,6 +366,10 @@ export default function AdminSettingsPage() {
           <a href="/admin/settings/roles-usage"><button style={{ padding: '8px 14px' }}>Role 使用設定</button></a>
           <a href="/admin/settings/pricing"><button style={{ padding: '8px 14px' }}>方案與價格設定</button></a>
         </div>
+      </section>
+      <section style={{ marginTop: 12 }}>
+        <h2>Page 基本設定</h2>
+        <PageSettings settings={settings} setSettings={setSettings} roles={roles} />
       </section>
       <section style={{ marginTop: 16 }}>
         <h3>老師頁面顯示設定</h3>

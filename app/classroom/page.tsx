@@ -1,9 +1,8 @@
-// Server wrapper page for classroom — loads client component on the client only
-import React from 'react';
-import ClientClassroom from './ClientClassroom';
+// Classroom top-level route disabled — return 404 to remove /classroom
+import { notFound } from 'next/navigation';
 
 export default function Page() {
-  return <ClientClassroom />;
+  notFound();
 }
 
 export const dynamic = 'force-dynamic';
