@@ -20,9 +20,9 @@ export default function HomePage() {
   const router = useRouter();
   const [user, setUser] = useState<StoredUser | null>(null);
   const [carouselImages, setCarouselImages] = useState<string[]>([
-    '一對一視訊家教',
-    '小班制團體課程',
-    '即時白板 + 錄影回放',
+    t('carousel_slide1'),
+    t('carousel_slide2'),
+    t('carousel_slide3'),
   ]);
 
   useEffect(() => {

@@ -4,6 +4,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useT } from '@/components/IntlProvider';
 import {
   PLAN_LABELS,
   PLAN_DESCRIPTIONS,
@@ -25,57 +26,8 @@ type PlanConfig = {
   target: string;
 };
 
-const PLANS: PlanConfig[] = [
-  {
-    id: 'viewer',
-    badge: '預設',
-    priceHint: 'NT$0 / 僅查詢',
-    target: PLAN_TARGETS.viewer,
-    features: [
-      '僅能瀏覽與查詢老師和課程清單',
-      '無法預約或參與付費課程',
-      '無白板與錄影回放功能',
-    ],
-  },
-  {
-    id: 'basic',
-    priceHint: '最低入門價（可到時再定價）',
-    target: PLAN_TARGETS.basic,
-    features: [
-      '可預約老師',
-      '一般畫質視訊上課',
-      '無內建白板（可自行使用紙本或截圖）',
-      'App 基本功能：課表、通知、簡單評價',
-    ],
-  },
-  {
-    id: 'pro',
-    priceHint: '主力方案，建議訂為 Basic 的 2–3 倍',
-    badge: '推薦',
-    target: PLAN_TARGETS.pro,
-    features: [
-      '高畫質視訊（720p / 1080p 視實作而定）',
-      '內建線上白板，可畫圖、寫題目、標註重點',
-      '課後雲端錄影回放（保留 7–30 天，可再調整）',
-      '優先客服：App 內客服／Line 客服',
-      '老師選擇更多，可篩選專長、評價、時薪區間',
-    ],
-  },
-  {
-    id: 'elite',
-    priceHint: '高客單價、可採合約制或專案報價',
-    target: PLAN_TARGETS.elite,
-    features: [
-      '高速視訊、優先走高頻寬節點',
-      '支援並行串流：小班團體課＋家長旁聽',
-      '完整錄影，雲端保留 180–365 天，並可提供下載',
-      '高端師資：資深老師、名校背景、雙語／全英教學',
-      '專屬客服窗口與學習報表：出席率、時數、主題統計',
-    ],
-  },
-];
-
 export default function PricingPage() {
+  const t = useT();
   const [user, setUser] = useState<StoredUser | null>(null);
   const [plan, setPlan] = useState<PlanId | ''>('');
   const [cardNumber, setCardNumber] = useState('');
@@ -84,6 +36,56 @@ export default function PricingPage() {
   const [cardCountry, setCardCountry] = useState('TW');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+
+  const PLANS: PlanConfig[] = [
+    {
+      id: 'viewer',
+      badge: t('plan_viewer_badge'),
+      priceHint: t('plan_viewer_price_hint'),
+      target: t('plan_viewer_target'),
+      features: [
+        t('plan_viewer_feature1'),
+        t('plan_viewer_feature2'),
+        t('plan_viewer_feature3'),
+      ],
+    },
+    {
+      id: 'basic',
+      priceHint: t('plan_basic_price_hint'),
+      target: t('plan_basic_target'),
+      features: [
+        t('plan_basic_feature1'),
+        t('plan_basic_feature2'),
+        t('plan_basic_feature3'),
+        t('plan_basic_feature4'),
+      ],
+    },
+    {
+      id: 'pro',
+      priceHint: t('plan_pro_price_hint'),
+      badge: t('plan_pro_badge'),
+      target: t('plan_pro_target'),
+      features: [
+        t('plan_pro_feature1'),
+        t('plan_pro_feature2'),
+        t('plan_pro_feature3'),
+        t('plan_pro_feature4'),
+        t('plan_pro_feature5'),
+      ],
+    },
+    {
+      id: 'elite',
+      priceHint: t('plan_elite_price_hint'),
+      target: t('plan_elite_target'),
+      features: [
+        t('plan_elite_feature1'),
+        t('plan_elite_feature2'),
+        t('plan_elite_feature3'),
+        t('plan_elite_feature4'),
+        t('plan_elite_feature5'),
+      ],
+    },
+  ];
 
   useEffect(() => {
     setUser(getStoredUser());
@@ -98,7 +100,7 @@ export default function PricingPage() {
       window.dispatchEvent(new Event('tutor:auth-changed'));
     }
     router.refresh();
-    alert('已登出測試帳號。');
+    alert(t('alert_logged_out'));
   };
   const router = useRouter();
 
@@ -109,11 +111,9 @@ export default function PricingPage() {
   return (
     <div className="page">
       <header className="page-header">
-        <h1>方案與價格（Pricing）</h1>
+        <h1>{t('pricing_title')}</h1>
         <p>
-          依照不同的學習深度與需求，將家教平台分為{' '}
-          <strong>Basic / Pro / Elite</strong> 三種方案，
-          核心差異在於視訊品質、白板與錄影回放、以及師資與服務等級。
+          {t('pricing_description')}
         </p>
 
         {/* Auth tag removed from Pricing page per request */}
@@ -143,16 +143,16 @@ export default function PricingPage() {
 
                 <div className="pricing-price">
                   <p>{plan.priceHint}</p>
-                  <small>（實際價格可在上線前再細部調整）</small>
+                  <small>{t('pricing_price_note')}</small>
                 </div>
 
                 <div className="pricing-target">
-                  <h3>適合對象</h3>
+                  <h3>{t('pricing_target_title')}</h3>
                   <p>{plan.target}</p>
                 </div>
 
                 <div className="pricing-features">
-                  <h3>包含功能</h3>
+                  <h3>{t('pricing_features_title')}</h3>
                   <ul>
                     {plan.features.map((f) => (
                       <li key={f}>{f}</li>
@@ -163,14 +163,14 @@ export default function PricingPage() {
                 <div className="card-actions">
                   {isCurrent ? (
                     <button className="card-button" disabled>
-                      ✓ 您目前已啟用此方案
+                      {t('pricing_current_plan')}
                     </button>
                   ) : (
                     <Link
                       href="/login"
                       className="card-button primary"
                     >
-                      登入以使用此方案
+                      {t('pricing_login_to_use')}
                     </Link>
                   )}
                 </div>

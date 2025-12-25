@@ -8,8 +8,10 @@ import { COURSES } from '@/data/courses';
 import { TEACHERS } from '@/data/teachers';
 import { parseISO, format, addMinutes } from 'date-fns';
 import { getStoredUser } from '@/lib/mockAuth';
+import { useT } from '@/components/IntlProvider';
 
 export default function CalendarPage() {
+  const t = useT();
   const [allowedCourseIds, setAllowedCourseIds] = useState<Set<string> | null>(null);
 
   useEffect(() => {
@@ -106,10 +108,10 @@ export default function CalendarPage() {
         id: record.id,
         title: `${record.courseName} (${
           record.status === 'attended'
-            ? '已出席'
+            ? t('calendar_status_attended')
             : record.status === 'missed'
-              ? '缺席'
-              : '待處理'
+              ? t('calendar_status_missed')
+              : t('calendar_status_pending')
         })`,
         start,
         description: record.notes,
@@ -132,7 +134,7 @@ export default function CalendarPage() {
       const statusStr: 'upcoming' | 'ongoing' | 'finished' = now < start ? 'upcoming' : now >= start && now < end ? 'ongoing' : 'finished';
       return {
         id: 'course-' + course.id + '-start',
-        title: course.title + ' 開課',
+        title: course.title + ' ' + t('calendar_course_start'),
         start,
         description: course.description || '',
         type: 'activity' as const,
@@ -154,8 +156,8 @@ export default function CalendarPage() {
     <div className="min-h-screen bg-gray-50">
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">課程行事曆</h1>
-          <p className="mt-2 text-sm text-gray-600">查看您的預約課程時段，並設定 Email 提醒。</p>
+          <h1 className="text-3xl font-bold text-gray-900">{t('calendar_title')}</h1>
+          <p className="mt-2 text-sm text-gray-600">{t('calendar_description')}</p>
         </div>
 
         <div className="h-[800px]">
