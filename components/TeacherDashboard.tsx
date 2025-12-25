@@ -7,6 +7,7 @@ import { TEACHERS } from '@/data/teachers';
 import { useRouter } from 'next/navigation';
 import { getStoredUser } from '@/lib/mockAuth';
 import { useT } from './IntlProvider';
+import Button from './UI/Button';
 
 type Props = { teacherId?: string; teacherName?: string };
 
@@ -196,7 +197,7 @@ export default function TeacherDashboard({ teacherId, teacherName }: Props) {
                     <td style={{ border: '2px solid #ccc', padding: '8px' }}>{c.membershipPlan || '-'}</td>
                     <td style={{ border: '2px solid #ccc', padding: '8px' }}>
                       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                        <button
+                        <Button
                           onClick={() => {
                             if (!canEdit) {
                               alert(t('no_permission') || 'You do not have permission');
@@ -205,12 +206,12 @@ export default function TeacherDashboard({ teacherId, teacherName }: Props) {
                             handleEditCourse(c.id);
                           }}
                           disabled={!canEdit}
-                          className={`px-3 py-1 rounded text-sm font-medium ${canEdit ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-gray-200 text-gray-500 cursor-not-allowed opacity-60'}`}
+                          variant="primary"
                         >
                           {t('edit') || 'Edit'}
-                        </button>
+                        </Button>
 
-                        <button
+                        <Button
                           onClick={() => {
                             if (!canEdit) {
                               alert(t('no_permission') || 'You do not have permission');
@@ -221,12 +222,12 @@ export default function TeacherDashboard({ teacherId, teacherName }: Props) {
                             handlePatchCourse(c.id, { nextStartDate: input || null });
                           }}
                           disabled={!canEdit}
-                          className={`px-3 py-1 rounded text-sm font-medium ${canEdit ? 'bg-indigo-100 text-indigo-800 hover:bg-indigo-200' : 'bg-gray-200 text-gray-500 cursor-not-allowed opacity-60'}`}
+                          variant="secondary"
                         >
                           {t('set_start_date')}
-                        </button>
+                        </Button>
 
-                        <button
+                        <Button
                           onClick={() => {
                             if (!canEdit) {
                               alert(t('no_permission') || 'You do not have permission');
@@ -237,12 +238,12 @@ export default function TeacherDashboard({ teacherId, teacherName }: Props) {
                             handlePatchCourse(c.id, { membershipPlan: mp || null });
                           }}
                           disabled={!canEdit}
-                          className={`px-3 py-1 rounded text-sm font-medium ${canEdit ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200' : 'bg_gray-200 text-gray-500 cursor-not-allowed opacity-60'}`}
+                          variant="muted"
                         >
                           {t('set_plan')}
-                        </button>
+                        </Button>
 
-                        <button
+                        <Button
                           onClick={() => {
                             if (!canEdit) {
                               alert(t('no_permission') || 'You do not have permission');
@@ -252,10 +253,10 @@ export default function TeacherDashboard({ teacherId, teacherName }: Props) {
                             handleDeleteCourse(c.id);
                           }}
                           disabled={!canEdit}
-                          className={`px-3 py-1 rounded text-sm font-medium ${canEdit ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-gray-200 text-gray-500 cursor-not-allowed opacity-60'}`}
+                          variant="danger"
                         >
                           {t('delete')}
-                        </button>
+                        </Button>
                       </div>
                     </td>
                   </tr>

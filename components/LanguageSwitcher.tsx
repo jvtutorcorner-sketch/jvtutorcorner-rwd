@@ -3,6 +3,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { useLocale, useSetLocale } from './IntlProvider';
+import Button from './UI/Button';
 
 type Locale = 'zh-TW' | 'zh-CN' | 'en';
 
@@ -31,25 +32,11 @@ export const LanguageSwitcher: React.FC = () => {
 
   return (
     <div ref={ref} style={{ position: 'relative', display: 'inline-block' }}>
-      <button
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => setOpen((s) => !s)}
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 8,
-          padding: '6px 10px',
-          borderRadius: 8,
-          border: '1px solid #e5e7eb',
-          background: '#fff',
-          cursor: 'pointer',
-        }}
-      >
+      <Button aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((s) => !s)} variant="outline" className="inline-flex items-center gap-2 rounded-md">
         <span style={{ fontSize: 16 }}>{current.flag}</span>
         <span style={{ fontSize: 14 }}>{current.label}</span>
         <span aria-hidden style={{ marginLeft: 6, opacity: 0.7 }}>▾</span>
-      </button>
+      </Button>
 
       {open && (
         <div
@@ -68,29 +55,20 @@ export const LanguageSwitcher: React.FC = () => {
           }}
         >
           {LANGS.map((l) => (
-            <button
+            <Button
               key={l.code}
               role="menuitem"
+              variant="ghost"
+              className="w-full flex items-center gap-2 text-left px-3 py-2"
               onClick={() => {
                 setLocale(l.code);
                 setOpen(false);
-              }}
-              style={{
-                display: 'flex',
-                gap: 10,
-                alignItems: 'center',
-                width: '100%',
-                padding: '8px 12px',
-                background: 'transparent',
-                border: 0,
-                cursor: 'pointer',
-                textAlign: 'left',
               }}
             >
               <span style={{ fontSize: 18 }}>{l.flag}</span>
               <span style={{ flex: 1 }}>{l.label}</span>
               {locale === l.code ? <span style={{ opacity: 0.6 }}>✓</span> : null}
-            </button>
+            </Button>
           ))}
         </div>
       )}

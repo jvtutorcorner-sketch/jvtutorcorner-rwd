@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { getStoredUser, clearStoredUser, type StoredUser } from '@/lib/mockAuth';
 import { useRouter } from 'next/navigation';
 import { useT } from './IntlProvider';
+import Button from './UI/Button';
 
 export default function MenuBar() {
   const [user, setUser] = useState<StoredUser | null>(null);
@@ -79,22 +80,12 @@ export default function MenuBar() {
               </li>
               <li>
                 <div ref={menuRef} style={{ position: 'relative', display: 'inline-block' }}>
-                  <button
+                  <Button
                     aria-haspopup="true"
                     aria-expanded={menuOpen}
                     onClick={() => setMenuOpen((s) => !s)}
-                    className="menu-avatar-button"
-                    style={{
-                      width: 40,
-                      height: 40,
-                      borderRadius: '50%',
-                      border: '1px solid #ddd',
-                      background: '#fff',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      cursor: 'pointer',
-                    }}
+                    variant="ghost"
+                    className="menu-avatar-button w-10 h-10 rounded-full inline-flex items-center justify-center border border-gray-200"
                   >
                     <span style={{ fontWeight: 600 }}>
                       {(() => {
@@ -107,7 +98,7 @@ export default function MenuBar() {
                         return user.email ? user.email[0].toUpperCase() : 'U';
                       })()}
                     </span>
-                  </button>
+                  </Button>
                   {menuOpen && (
                     <div
                       role="menu"
@@ -169,7 +160,7 @@ export default function MenuBar() {
                           <Link href="/settings" onClick={() => setMenuOpen(false)} className="menu-link">{t('settings_label')}</Link>
                         </li>
                         <li style={{ borderTop: '1px solid #f3f4f6', marginTop: 8, paddingTop: 8 }}>
-                          <button onClick={() => { setMenuOpen(false); handleLogout(); }} className="menu-logout" style={{ width: '100%' }}>{t('logout')}</button>
+                          <Button variant="outline" className="w-full text-left" onClick={() => { setMenuOpen(false); handleLogout(); }}>{t('logout')}</Button>
                         </li>
                       </ul>
                     </div>
@@ -181,7 +172,7 @@ export default function MenuBar() {
         </ul>
         <div style={{ marginLeft: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
           {user ? (
-            <button onClick={handleLogout} className="menu-logout">{t('logout')}</button>
+            <Button variant="outline" onClick={handleLogout}>{t('logout')}</Button>
           ) : (
             <Link href="/login" className="menu-login">{t('login')}</Link>
           )}

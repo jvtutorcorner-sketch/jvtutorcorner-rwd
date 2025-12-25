@@ -4,6 +4,7 @@ import { useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useT } from './IntlProvider';
+import Button from './UI/Button';
 
 type Props = {
   initial?: {
@@ -156,9 +157,7 @@ export default function SearchForm({
         )}
 
         <div className="search-actions">
-          <button type="submit" className="search-button">
-            {t('search')}
-          </button>
+          <Button type="submit" variant="primary" className="search-button">{t('search')}</Button>
         </div>
       </form>
     </div>

@@ -11,6 +11,7 @@ import {
   type StoredUser,
 } from '@/lib/mockAuth';
 import { useT } from '@/components/IntlProvider';
+import Button from './UI/Button';
 
 export function AuthStatusBar() {
   const [user, setUser] = useState<StoredUser | null>(null);
@@ -39,8 +40,8 @@ export function AuthStatusBar() {
     return (
       <div className="tag" style={{ marginBottom: '1rem' }}>
         {t('auth_not_logged_in')}
-        <Link href="/login" className="card-button secondary" style={{ marginLeft: 8 }}>
-          {t('auth_go_to_login')}
+        <Link href="/login" style={{ marginLeft: 8 }}>
+          <Button variant="primary">{t('auth_go_to_login')}</Button>
         </Link>
       </div>
     );
@@ -52,19 +53,9 @@ export function AuthStatusBar() {
       {user.lastName ? <div style={{ fontWeight: 700 }}>{user.lastName}</div> : null}
       {t('auth_status_prefix')} <strong>{user.email}</strong> {t('auth_status_suffix')}
       {t('plan_label')}<strong>{PLAN_LABELS[user.plan]}</strong>
-      <button
-        className="card-button secondary"
-        style={{ marginLeft: 8 }}
-        onClick={handleLogout}
-      >
-        登出
-      </button>
-      <Link
-        href="/pricing"
-        className="card-button secondary"
-        style={{ marginLeft: 8 }}
-      >
-        {t('view_pricing')}
+      <Button variant="outline" className="ml-2" onClick={handleLogout}>登出</Button>
+      <Link href="/pricing" style={{ marginLeft: 8 }}>
+        <Button variant="secondary">{t('view_pricing')}</Button>
       </Link>
     </div>
   );

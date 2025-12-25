@@ -17,6 +17,7 @@ import {
   parseISO,
 } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
+import Button from './UI/Button';
 
 interface CalendarEvent {
   id: string;
@@ -63,28 +64,19 @@ const Calendar: React.FC<CalendarProps> = ({ events }) => {
           </h2>
         </div>
         <div className="flex items-center space-x-2">
-          <button
-            onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
-            className="p-2 rounded-full hover:bg-gray-100 transition-colors"
-          >
+          <Button onClick={() => setCurrentMonth(subMonths(currentMonth, 1))} variant="ghost" className="p-2 rounded-full">
             <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
-          </button>
-          <button
-            onClick={() => setCurrentMonth(new Date())}
-            className="px-3 py-1 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
-          >
+          </Button>
+          <Button onClick={() => setCurrentMonth(new Date())} variant="outline" className="px-4 py-2 rounded-lg">
             {t('today')}
-          </button>
-          <button
-            onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
-            className="p-2 rounded-full hover:bg-gray-100 transition-colors"
-          >
+          </Button>
+          <Button onClick={() => setCurrentMonth(addMonths(currentMonth, 1))} variant="ghost" className="p-2 rounded-full">
             <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
             </svg>
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -246,7 +238,7 @@ const Calendar: React.FC<CalendarProps> = ({ events }) => {
                           href={href}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="w-full inline-flex items-center justify-center px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors font-medium text-sm"
+                          className="w-full inline-flex items-center justify-center px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors font-medium text-sm shadow-sm"
                         >
                           {t('enter_waiting_room')}
                         </a>
@@ -268,7 +260,7 @@ const Calendar: React.FC<CalendarProps> = ({ events }) => {
                         delete newReminders[selectedEvent.id];
                         saveReminders(newReminders);
                       }}
-                      className="w-full flex items-center justify-center px-4 py-2 border border-red-200 text-red-600 rounded-lg hover:bg-red-50 transition-colors font-medium text-sm"
+                      className="w-full flex items-center justify-center px-4 py-2 border border-red-200 text-red-600 rounded-lg hover:bg-red-50 transition-colors font-medium text-sm shadow-sm"
                     >
                       {t('cancel_reminder')}
                     </button>
@@ -276,7 +268,7 @@ const Calendar: React.FC<CalendarProps> = ({ events }) => {
                 ) : (
                   <button
                     onClick={() => setShowReminderModal(true)}
-                    className="w-full flex items-center justify-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium"
+                    className="w-full flex items-center justify-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium shadow-sm"
                   >
                     <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
@@ -309,18 +301,12 @@ const Calendar: React.FC<CalendarProps> = ({ events }) => {
               <option value="1440">{t('mins_before_1440')}</option>
             </select>
             <div className="flex space-x-3">
-              <button
-                onClick={() => setShowReminderModal(false)}
-                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-              >
+              <Button onClick={() => setShowReminderModal(false)} variant="outline" className="flex-1">
                 {t('cancel')}
-              </button>
-              <button
-                onClick={handleSetReminder}
-                className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium"
-              >
+              </Button>
+              <Button onClick={handleSetReminder} variant="primary" className="flex-1">
                 {t('confirm')}
-              </button>
+              </Button>
             </div>
           </div>
         </div>
