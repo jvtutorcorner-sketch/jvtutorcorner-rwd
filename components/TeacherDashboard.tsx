@@ -3,6 +3,8 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { TEACHERS } from '@/data/teachers';
+import { useRouter } from 'next/navigation';
 import { getStoredUser } from '@/lib/mockAuth';
 import { useT } from './IntlProvider';
 
@@ -10,10 +12,10 @@ type Props = { teacherId?: string; teacherName?: string };
 
 export default function TeacherDashboard({ teacherId, teacherName }: Props) {
   const t = useT();
+  const router = useRouter();
   const [canEdit, setCanEdit] = useState(false);
   const [profile, setProfile] = useState<any>(null);
   const [courses, setCourses] = useState<any[]>([]);
-  const [orderCount, setOrderCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -42,42 +44,67 @@ export default function TeacherDashboard({ teacherId, teacherName }: Props) {
   async function loadCourses() {
     setLoading(true);
     try {
-      const res = await fetch(`/api/courses?teacher=${encodeURIComponent(String(teacherName || ''))}`);
+      const stored = getStoredUser();
+      let url = `/api/courses`;
+      // prefer teacherId for logged-in teacher
+      if (stored?.role === 'teacher' && stored?.teacherId) {
+        url = `/api/courses?teacherId=${encodeURIComponent(stored.teacherId)}`;
+      } else if (teacherId) {
+        url = `/api/courses?teacherId=${encodeURIComponent(String(teacherId))}`;
+      } else if (teacherName) {
+        url = `/api/courses?teacher=${encodeURIComponent(String(teacherName))}`;
+      }
+
+      const res = await fetch(url);
       const data = await res.json();
       if (res.ok && data?.data) {
-        setCourses(data.data);
-        loadOrderCount(data.data);
+        let list = Array.isArray(data.data) ? data.data : [];
+        // if user is teacher and no results, try fallback by teacher name (bundled data uses teacherName)
+        if ((stored?.role === 'teacher' && stored?.teacherId) && list.length === 0) {
+          const t = TEACHERS.find((x) => String(x.id) === String(stored.teacherId));
+          const name = t?.name || `${stored.lastName}老師` || stored.displayName || '';
+          if (name) {
+            const res2 = await fetch(`/api/courses?teacher=${encodeURIComponent(name)}`);
+            const d2 = await res2.json();
+            if (res2.ok && d2?.data && Array.isArray(d2.data) && d2.data.length > 0) {
+              list = d2.data;
+            }
+          }
+
+          // Still empty? fetch all courses from the source (.local_data/courses.json) and show them.
+          if (list.length === 0) {
+            try {
+              const resAll = await fetch('/api/courses');
+              const dAll = await resAll.json();
+              if (resAll.ok && dAll?.data && Array.isArray(dAll.data)) {
+                list = dAll.data;
+              }
+            } catch (e) {
+              // ignore
+            }
+          }
+        }
+
+        if (stored?.role === 'teacher' && stored?.teacherId) {
+          // Try to filter to the logged-in teacher where possible; if matching information is missing, fall back to showing all fetched courses.
+          const teacherKey = String(stored.teacherId).toLowerCase();
+          const teacherNameFromList = (TEACHERS.find(x => String(x.id) === String(stored.teacherId))?.name || '').toLowerCase();
+          const filtered = list.filter((c: any) => {
+            const ids = String(c.teacherId || c.teacher || '').toLowerCase();
+            const names = String(c.teacherName || c.teacher || '').toLowerCase();
+            if (ids && ids.includes(teacherKey)) return true;
+            if (teacherNameFromList && names.includes(teacherNameFromList)) return true;
+            return false;
+          });
+          setCourses(filtered.length > 0 ? filtered : list);
+        } else {
+          setCourses(list);
+        }
       }
     } catch (e) {
       // ignore
     } finally {
       setLoading(false);
-    }
-  }
-
-  async function loadOrderCount(teacherCourses: any[]) {
-    const courseIds = teacherCourses.map((c: any) => c.id).filter(Boolean);
-    if (courseIds.length === 0) {
-      setOrderCount(0);
-      return;
-    }
-
-    try {
-      const orderPromises = courseIds.map((courseId: string) =>
-        fetch(`/api/orders?courseId=${encodeURIComponent(courseId)}&limit=100`)
-          .then((r) => r.json())
-          .then((data) => (data?.ok ? data.data || [] : data?.data || []))
-          .catch(() => [])
-      );
-
-      const orderArrays = await Promise.all(orderPromises);
-      const allOrders = orderArrays.flat();
-      const uniqueOrders = allOrders.filter((order, index, self) =>
-        index === self.findIndex((o) => o.orderId === order.orderId)
-      );
-      setOrderCount(uniqueOrders.length);
-    } catch (e) {
-      // ignore
     }
   }
 
@@ -94,6 +121,12 @@ export default function TeacherDashboard({ teacherId, teacherName }: Props) {
     }
   }
 
+  function handleEditCourse(id: string) {
+    const ok = confirm(t('confirm_edit_course') || 'Confirm edit this course?');
+    if (!ok) return;
+    router.push(`/my-courses/${encodeURIComponent(id)}/edit`);
+  }
+
   async function handlePatchCourse(id: string, updates: any) {
     try {
       const res = await fetch(`/api/courses/${encodeURIComponent(id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updates) });
@@ -106,6 +139,17 @@ export default function TeacherDashboard({ teacherId, teacherName }: Props) {
     }
   }
 
+  function formatDateTime(value: any) {
+    if (!value) return '-';
+    try {
+      const d = new Date(value);
+      if (isNaN(d.getTime())) return String(value);
+      return d.toLocaleString(undefined, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    } catch (e) {
+      return String(value);
+    }
+  }
+
   return (
     <div style={{ marginTop: 18 }}>
       {canEdit && (
@@ -115,51 +159,109 @@ export default function TeacherDashboard({ teacherId, teacherName }: Props) {
           </Link>
         </div>
       )}
-      {orderCount !== null && (
-        <div style={{ marginBottom: 16, padding: 12, backgroundColor: '#f0f9ff', border: '1px solid #bfdbfe', borderRadius: 6 }}>
-          <h4 style={{ margin: '0 0 8px 0' }}>📊 訂單統計</h4>
-          <p style={{ margin: 0, fontSize: 14 }}>
-            課程訂單總數：<strong style={{ color: '#2563eb', fontSize: 16 }}>{orderCount}</strong> 個
-          </p>
-          <Link href="/teacher_courses" style={{ fontSize: 12, color: '#2563eb', textDecoration: 'underline' }}>
-            查看詳細訂單 →
-          </Link>
-        </div>
-      )}
 
       <div>
         <h4>{t('course_list')}</h4>
         {loading && <p>{t('loading')}</p>}
-        {courses.length === 0 ? <p className="muted">{t('no_courses')}</p> : (
-          <div style={{ display: 'grid', gap: 8 }}>
-            {courses.map((c) => (
-              <div key={c.id} className="card">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <Link href={`/courses/${encodeURIComponent(String(c.id))}`} style={{ display: 'block', color: 'inherit', textDecoration: 'none' }}>
-                      <strong>{c.title}</strong>
-                      <div className="muted">NT$ {c.pricePerSession} • {c.subject}</div>
-                      {c.nextStartDate ? <div className="muted">{t('start_date')}: {c.nextStartDate}</div> : null}
-                      {c.membershipPlan ? <div className="muted">{t('membership_plan')}: {c.membershipPlan}</div> : null}
-                    </Link>
-                  </div>
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                    {canEdit && <button onClick={() => {
-                      const input = prompt(t('prompt_start_date'), c.nextStartDate || '');
-                      if (input === null) return;
-                      handlePatchCourse(c.id, { nextStartDate: input || null });
-                    }}>{t('set_start_date')}</button>}
-                    {canEdit && <button onClick={() => {
-                      const mp = prompt(t('prompt_membership_plan'), c.membershipPlan || '');
-                      if (mp === null) return;
-                      handlePatchCourse(c.id, { membershipPlan: mp || null });
-                    }}>{t('set_plan')}</button>}
-                    {canEdit && <button onClick={() => handleDeleteCourse(c.id)} style={{ color: 'crimson' }}>{t('delete')}</button>}
-                  </div>
-                </div>
-                {c.description ? <p style={{ marginTop: 8 }}>{c.description}</p> : null}
-              </div>
-            ))}
+        {courses.length === 0 ? (
+          <p className="muted">{t('no_courses')}</p>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', border: '2px solid #ccc' }}>
+              <thead>
+                <tr>
+                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left', backgroundColor: '#f3f4f6', fontWeight: 600 }}>{t('course_title') || 'Title'}</th>
+                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left', backgroundColor: '#f3f4f6', fontWeight: 600 }}>{t('teacher') || 'Teacher'}</th>
+                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left', backgroundColor: '#f3f4f6', fontWeight: 600 }}>{t('subject') || 'Subject'}</th>
+                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left', backgroundColor: '#f3f4f6', fontWeight: 600 }}>{t('price') || 'Price'}</th>
+                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left', backgroundColor: '#f3f4f6', fontWeight: 600 }}>{t('start_date') || 'Start Date'}</th>
+                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left', backgroundColor: '#f3f4f6', fontWeight: 600 }}>{t('end_date') || 'End Date'}</th>
+                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left', backgroundColor: '#f3f4f6', fontWeight: 600 }}>{t('membership_plan') || 'Plan'}</th>
+                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left', backgroundColor: '#f3f4f6', fontWeight: 600 }}>{t('actions') || 'Actions'}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {courses.map((c, idx) => (
+                  <tr key={c.id} style={{ backgroundColor: idx % 2 === 0 ? '#ffffff' : '#f8fafc' }}>
+                    <td style={{ border: '2px solid #ccc', padding: '8px' }}>
+                      <Link href={`/courses/${encodeURIComponent(String(c.id))}`} style={{ color: 'inherit', textDecoration: 'none' }}>
+                        <strong>{c.title}</strong>
+                      </Link>
+                    </td>
+                    <td style={{ border: '2px solid #ccc', padding: '8px' }}>{c.teacherName || c.teacher || '-'}</td>
+                    <td style={{ border: '2px solid #ccc', padding: '8px' }}>{c.subject}</td>
+                    <td style={{ border: '2px solid #ccc', padding: '8px' }}>NT$ {c.pricePerSession}</td>
+                    <td style={{ border: '2px solid #ccc', padding: '8px' }}>{formatDateTime(c.nextStartDate || c.startDate)}</td>
+                    <td style={{ border: '2px solid #ccc', padding: '8px' }}>{formatDateTime(c.endDate)}</td>
+                    <td style={{ border: '2px solid #ccc', padding: '8px' }}>{c.membershipPlan || '-'}</td>
+                    <td style={{ border: '2px solid #ccc', padding: '8px' }}>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        <button
+                          onClick={() => {
+                            if (!canEdit) {
+                              alert(t('no_permission') || 'You do not have permission');
+                              return;
+                            }
+                            handleEditCourse(c.id);
+                          }}
+                          disabled={!canEdit}
+                          className={`px-3 py-1 rounded text-sm font-medium ${canEdit ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-gray-200 text-gray-500 cursor-not-allowed opacity-60'}`}
+                        >
+                          {t('edit') || 'Edit'}
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            if (!canEdit) {
+                              alert(t('no_permission') || 'You do not have permission');
+                              return;
+                            }
+                            const input = prompt(t('prompt_start_date'), c.nextStartDate || '');
+                            if (input === null) return;
+                            handlePatchCourse(c.id, { nextStartDate: input || null });
+                          }}
+                          disabled={!canEdit}
+                          className={`px-3 py-1 rounded text-sm font-medium ${canEdit ? 'bg-indigo-100 text-indigo-800 hover:bg-indigo-200' : 'bg-gray-200 text-gray-500 cursor-not-allowed opacity-60'}`}
+                        >
+                          {t('set_start_date')}
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            if (!canEdit) {
+                              alert(t('no_permission') || 'You do not have permission');
+                              return;
+                            }
+                            const mp = prompt(t('prompt_membership_plan'), c.membershipPlan || '');
+                            if (mp === null) return;
+                            handlePatchCourse(c.id, { membershipPlan: mp || null });
+                          }}
+                          disabled={!canEdit}
+                          className={`px-3 py-1 rounded text-sm font-medium ${canEdit ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200' : 'bg_gray-200 text-gray-500 cursor-not-allowed opacity-60'}`}
+                        >
+                          {t('set_plan')}
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            if (!canEdit) {
+                              alert(t('no_permission') || 'You do not have permission');
+                              return;
+                            }
+                            if (!confirm(t('confirm_delete_course'))) return;
+                            handleDeleteCourse(c.id);
+                          }}
+                          disabled={!canEdit}
+                          className={`px-3 py-1 rounded text-sm font-medium ${canEdit ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-gray-200 text-gray-500 cursor-not-allowed opacity-60'}`}
+                        >
+                          {t('delete')}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>

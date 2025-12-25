@@ -18,8 +18,6 @@ export const TeacherCard: React.FC<TeacherCardProps> = ({ teacher }) => {
     return v === key ? fallback : v;
   };
 
-
-
   return (
     <Link href={href} className="card card-link">
       <div className="card-header">
