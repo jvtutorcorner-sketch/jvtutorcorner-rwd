@@ -450,7 +450,7 @@
           "roleId": "admin",
           "roleName": "Admin",
           "menuVisible": false,
-          "dropdownVisible": false,
+          "dropdownVisible": true,
           "pageVisible": true
         },
         {
@@ -1729,7 +1729,7 @@
         "student": false
       },
       "dropdown": {
-        "admin": false,
+        "admin": true,
         "teacher": false,
         "student": false
       },

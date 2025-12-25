@@ -311,5 +311,8 @@
   "enrollment_cancelled": "已取消报名",
   "cancel_error": "取消错误",
   "refund_processed": "退款完成（demo）",
-  "refund_error": "退款错误"
+  "refund_error": "退款错误",
+  "page_not_found_title": "页面未找到",
+  "page_not_found_message": "您寻找的页面不存在。",
+  "go_back_home": "返回首页"
 }

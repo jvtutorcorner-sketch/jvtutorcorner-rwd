@@ -311,6 +311,9 @@
   "enrollment_cancelled": "Enrollment cancelled",
   "cancel_error": "Cancel error",
   "refund_processed": "Refund processed (demo)",
-  "refund_error": "Refund error"
+  "refund_error": "Refund error",
+  "page_not_found_title": "Page Not Found",
+  "page_not_found_message": "The page you are looking for does not exist.",
+  "go_back_home": "Go back to Home"
 }
 

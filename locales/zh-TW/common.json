@@ -311,6 +311,9 @@
   "enrollment_cancelled": "已取消報名",
   "cancel_error": "取消錯誤",
   "refund_processed": "退款完成（demo）",
-  "refund_error": "退款錯誤"
+  "refund_error": "退款錯誤",
+  "page_not_found_title": "頁面未找到",
+  "page_not_found_message": "您尋找的頁面不存在。",
+  "go_back_home": "返回首頁"
 }
 
