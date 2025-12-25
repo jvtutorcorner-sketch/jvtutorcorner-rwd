@@ -392,5 +392,13 @@
   "calendar_status_attended": "已出席",
   "calendar_status_missed": "缺席",
   "calendar_status_pending": "待处理",
-  "calendar_course_start": "开课"
+  "calendar_course_start": "开课",
+  "student_courses_student": "学生",
+  "student_courses_course_name": "课程名称",
+  "student_courses_teacher": "老师",
+  "student_courses_order_number": "订单编号",
+  "student_courses_amount": "金额",
+  "student_courses_status": "状态",
+  "student_courses_created_at": "建立时间",
+  "enter_classroom": "进入教室"
 }

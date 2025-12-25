@@ -13,7 +13,7 @@ export default function AboutPage() {
   const defaultContact = t('about_contact');
 
   const introText = intro;
-  const featuresRaw = null; // use defaults
+  const featuresRaw: string | string[] | null = null; // use defaults
   const contactRaw = defaultContact;
 
   // helper to render features
@@ -28,7 +28,7 @@ export default function AboutPage() {
     if (Array.isArray(featuresRaw)) {
       return (
         <ul>
-          {featuresRaw.map((f: string) => (<li key={f}>{f}</li>))}
+          {(featuresRaw as string[]).map((f: string) => (<li key={f}>{f}</li>))}
         </ul>
       );
     }

@@ -1,18 +1,31 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: >-
-  CloudFormation template to create DynamoDB tables used by JV Tutor Corner.
-  This stack creates two tables: teachers and courses. Tables are configured
-  with on-demand billing (PAY_PER_REQUEST) and include optional TTL attribute.
+Description: 'CloudFormation template to create all DynamoDB tables for JV Tutor Corner'
 
 Parameters:
   TeachersTableName:
     Type: String
     Default: jvtutorcorner-teachers
     Description: DynamoDB table name for teacher records
+
   CoursesTableName:
     Type: String
     Default: jvtutorcorner-courses
     Description: DynamoDB table name for course records
+
+  OrdersTableName:
+    Type: String
+    Default: jvtutorcorner-orders
+    Description: DynamoDB table name for order records
+
+  EnrollmentsTableName:
+    Type: String
+    Default: jvtutorcorner-enrollments
+    Description: DynamoDB table name for enrollment records
+
+  CarouselTableName:
+    Type: String
+    Default: jvtutorcorner-carousel
+    Description: DynamoDB table name for carousel images
 
 Resources:
   TeachersTable:
@@ -85,6 +98,98 @@ Resources:
         - Key: Project
           Value: jvtutorcorner
 
+  OrdersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref OrdersTableName
+      AttributeDefinitions:
+        - AttributeName: orderId
+          AttributeType: S
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: courseId
+          AttributeType: S
+        - AttributeName: createdAt
+          AttributeType: S
+      KeySchema:
+        - AttributeName: orderId
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+      GlobalSecondaryIndexes:
+        - IndexName: UserIdIndex
+          KeySchema:
+            - AttributeName: userId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        - IndexName: CourseIdIndex
+          KeySchema:
+            - AttributeName: courseId
+              KeyType: HASH
+            - AttributeName: createdAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: false
+      Tags:
+        - Key: Project
+          Value: jvtutorcorner
+
+  EnrollmentsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref EnrollmentsTableName
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: courseId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+      GlobalSecondaryIndexes:
+        - IndexName: UserIdIndex
+          KeySchema:
+            - AttributeName: userId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        - IndexName: CourseIdIndex
+          KeySchema:
+            - AttributeName: courseId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: false
+      Tags:
+        - Key: Project
+          Value: jvtutorcorner
+
+  CarouselTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref CarouselTableName
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: false
+      Tags:
+        - Key: Project
+          Value: jvtutorcorner
+
 Outputs:
   TeachersTableName:
     Description: Name of teachers DynamoDB table
@@ -92,95 +197,31 @@ Outputs:
   TeachersTableArn:
     Description: ARN of teachers DynamoDB table
     Value: !GetAtt TeachersTable.Arn
+
   CoursesTableName:
     Description: Name of courses DynamoDB table
     Value: !Ref CoursesTableName
   CoursesTableArn:
     Description: ARN of courses DynamoDB table
     Value: !GetAtt CoursesTable.Arn
-AWSTemplateFormatVersion: '2010-09-09'
-Description: "Create DynamoDB tables for jvtutorcorner (orders and enrollments)."
 
-Resources:
-  OrdersTable:
-    Type: AWS::DynamoDB::Table
-    Properties:
-      TableName: !Sub '${OrdersTableName}'
-      AttributeDefinitions:
-        - AttributeName: orderId
-          AttributeType: S
-      KeySchema:
-        - AttributeName: orderId
-          KeyType: HASH
-      BillingMode: PAY_PER_REQUEST
-
-  EnrollmentsTable:
-    Type: AWS::DynamoDB::Table
-    Properties:
-      TableName: !Sub '${EnrollmentsTableName}'
-      AttributeDefinitions:
-        - AttributeName: id
-          AttributeType: S
-      KeySchema:
-        - AttributeName: id
-          KeyType: HASH
-      BillingMode: PAY_PER_REQUEST
-
-Parameters:
   OrdersTableName:
-    Type: String
-    Description: Name for the Orders DynamoDB table
-    Default: jvtutorcorner-orders
-
-  EnrollmentsTableName:
-    Type: String
-    Description: Name for the Enrollments DynamoDB table
-    Default: jvtutorcorner-enrollments
-
-Outputs:
-  OrdersTableName:
-    Description: "Orders table name"
+    Description: Name of orders DynamoDB table
     Value: !Ref OrdersTableName
-
   OrdersTableArn:
-    Description: "Orders table ARN"
+    Description: ARN of orders DynamoDB table
     Value: !GetAtt OrdersTable.Arn
 
   EnrollmentsTableName:
-    Description: "Enrollments table name"
+    Description: Name of enrollments DynamoDB table
     Value: !Ref EnrollmentsTableName
-
   EnrollmentsTableArn:
-    Description: "Enrollments table ARN"
+    Description: ARN of enrollments DynamoDB table
     Value: !GetAtt EnrollmentsTable.Arn
 
-AWSTemplateFormatVersion: '2010-09-09'
-Description: "Create DynamoDB table for carousel images."
-
-Resources:
-  CarouselTable:
-    Type: AWS::DynamoDB::Table
-    Properties:
-      TableName: !Sub '${CarouselTableName}'
-      AttributeDefinitions:
-        - AttributeName: id
-          AttributeType: S
-      KeySchema:
-        - AttributeName: id
-          KeyType: HASH
-      BillingMode: PAY_PER_REQUEST
-
-Parameters:
   CarouselTableName:
-    Type: String
-    Description: Name for the Carousel DynamoDB table
-    Default: jvtutorcorner-carousel
-
-Outputs:
-  CarouselTableName:
-    Description: "Carousel table name"
+    Description: Name of carousel DynamoDB table
     Value: !Ref CarouselTableName
-
   CarouselTableArn:
-    Description: "Carousel table ARN"
+    Description: ARN of carousel DynamoDB table
     Value: !GetAtt CarouselTable.Arn

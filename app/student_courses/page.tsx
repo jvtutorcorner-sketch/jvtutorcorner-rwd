@@ -22,6 +22,7 @@ export default function StudentCoursesPage() {
   const t = useT();
   const [orders, setOrders] = useState<Order[] | null>(null);
   const [courseMap, setCourseMap] = useState<Record<string, { title?: string; teacherName?: string }>>({});
+  const [userMap, setUserMap] = useState<Record<string, { firstName?: string; lastName?: string }>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [user, setUser] = useState<StoredUser | null>(null);
@@ -152,6 +153,33 @@ export default function StudentCoursesPage() {
     }).catch(() => setCourseMap({}));
   }, [orders]);
 
+  // When orders change, fetch user details for any userIds found
+  useEffect(() => {
+    if (!orders || orders.length === 0) {
+      setUserMap({});
+      return;
+    }
+    const ids = Array.from(new Set(orders.map(o => o.userId).filter((id): id is string => !!id)));
+    if (ids.length === 0) {
+      setUserMap({});
+      return;
+    }
+    const fetches = ids.map((uid: string) =>
+      fetch(`/api/profile?email=${encodeURIComponent(uid)}`)
+        .then(r => r.json())
+        .then(j => (j && j.ok && j.profile ? { firstName: j.profile.firstName, lastName: j.profile.lastName } : null))
+        .catch(() => null)
+    );
+    Promise.all(fetches).then((results) => {
+      const map: Record<string, { firstName?: string; lastName?: string }> = {};
+      ids.forEach((id: string, idx: number) => {
+        const u = results[idx] as any | null;
+        if (u) map[id] = { firstName: u.firstName, lastName: u.lastName };
+      });
+      setUserMap(map);
+    }).catch(() => setUserMap({}));
+  }, [orders]);
+
   const getPageTitle = () => {
     if (!user) return t('orders_label');
     if (user.role === 'admin') return t('all_orders');
@@ -183,23 +211,25 @@ export default function StudentCoursesPage() {
             <table className="orders-table" style={{ borderCollapse: 'collapse', border: '2px solid #ccc', width: '100%' }}>
               <thead>
                 <tr>
-                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>使用者</th>
-                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>訂單編號</th>
-                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>課程 / ID</th>
-                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>金額</th>
-                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>狀態</th>
-                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>建立時間</th>
-                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>進入教室</th>
+                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>{t('student_courses_student')}</th>
+                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>{t('student_courses_order_number')}</th>
+                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>{t('student_courses_course_name')}</th>
+                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>{t('student_courses_teacher')}</th>
+                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>{t('student_courses_amount')}</th>
+                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>{t('student_courses_status')}</th>
+                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>{t('student_courses_created_at')}</th>
+                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>{t('enter_classroom')}</th>
                 </tr>
               </thead>
               <tbody>
                 {orders.map((o) => (
                   <tr key={o.orderId}>
-                    <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.userId || user?.email || '-'}</td>
+                    <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.userId ? (userMap[o.userId]?.firstName && userMap[o.userId]?.lastName ? `${userMap[o.userId].firstName} ${userMap[o.userId].lastName}` : o.userId) : '-'}</td>
                     <td style={{ border: '2px solid #ccc', padding: '6px' }}>
                       <Link href={`/student_courses/${o.orderId}`}>{o.orderId}</Link>
                     </td>
                     <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.courseId ? (courseMap[o.courseId]?.title || o.courseId) : '-'}</td>
+                    <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.courseId ? (courseMap[o.courseId]?.teacherName || '-') : '-'}</td>
                     <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.amount !== undefined && o.amount !== null ? `${o.amount} ${o.currency ?? 'TWD'}` : '-'}</td>
                     <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.status ?? '-'}</td>
                     <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.createdAt ? new Date(o.createdAt).toLocaleString() : '-'}</td>
@@ -210,7 +240,7 @@ export default function StudentCoursesPage() {
                           className="btn btn-primary"
                           style={{ padding: '4px 8px', fontSize: '12px' }}
                         >
-                          進入教室
+                          {t('enter_classroom')}
                         </Link>
                       ) : (
                         '-'

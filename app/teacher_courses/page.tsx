@@ -22,6 +22,7 @@ export default function TeacherOrdersPage() {
   const t = useT();
   const [orders, setOrders] = useState<Order[] | null>(null);
   const [courseMap, setCourseMap] = useState<Record<string, { title?: string; teacherName?: string }>>({});
+  const [userMap, setUserMap] = useState<Record<string, { firstName?: string; lastName?: string }>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [user, setUser] = useState<StoredUser | null>(null);
@@ -114,6 +115,33 @@ export default function TeacherOrdersPage() {
       });
   }, [user, mounted]);
 
+  // When orders change, fetch user details for any userIds found
+  useEffect(() => {
+    if (!orders || orders.length === 0) {
+      setUserMap({});
+      return;
+    }
+    const ids = Array.from(new Set(orders.map(o => o.userId).filter((id): id is string => !!id)));
+    if (ids.length === 0) {
+      setUserMap({});
+      return;
+    }
+    const fetches = ids.map((uid: string) =>
+      fetch(`/api/profile?email=${encodeURIComponent(uid)}`)
+        .then(r => r.json())
+        .then(j => (j && j.ok && j.profile ? { firstName: j.profile.firstName, lastName: j.profile.lastName } : null))
+        .catch(() => null)
+    );
+    Promise.all(fetches).then((results) => {
+      const map: Record<string, { firstName?: string; lastName?: string }> = {};
+      ids.forEach((id: string, idx: number) => {
+        const u = results[idx] as any | null;
+        if (u) map[id] = { firstName: u.firstName, lastName: u.lastName };
+      });
+      setUserMap(map);
+    }).catch(() => setUserMap({}));
+  }, [orders]);
+
   if (!mounted) return <div>{t('loading')}</div>;
   if (!user) return (
     <div>
@@ -142,7 +170,7 @@ export default function TeacherOrdersPage() {
                 <tr>
                   <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>{t('role_student')}</th>
                   <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>訂單編號</th>
-                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>課程 / ID</th>
+                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>{t('student_courses_course_name')}</th>
                   <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>{t('role_teacher')}</th>
                   <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>金額</th>
                   <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>狀態</th>
@@ -153,7 +181,7 @@ export default function TeacherOrdersPage() {
               <tbody>
                 {orders.map((o) => (
                   <tr key={o.orderId}>
-                    <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.userId || '-'}</td>
+                    <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.userId ? (userMap[o.userId]?.firstName && userMap[o.userId]?.lastName ? `${userMap[o.userId].firstName} ${userMap[o.userId].lastName}` : o.userId) : '-'}</td>
                     <td style={{ border: '2px solid #ccc', padding: '6px' }}><Link href={`/orders/${o.orderId}`}>{o.orderId}</Link></td>
                     <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.courseId ? (courseMap[o.courseId]?.title || o.courseId) : '-'}</td>
                     <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.courseId ? (courseMap[o.courseId]?.teacherName || '-') : '-'}</td>
@@ -161,7 +189,7 @@ export default function TeacherOrdersPage() {
                     <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.status ?? '-'}</td>
                     <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.createdAt ? new Date(o.createdAt).toLocaleString() : '-'}</td>
                     <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.courseId ? (
-                      <Link href={`/classroom/wait?courseId=${encodeURIComponent(o.courseId)}&orderId=${encodeURIComponent(o.orderId)}`} className="btn btn-primary" style={{ padding: '4px 8px', fontSize: '12px' }}>進入教室</Link>
+                      <Link href={`/classroom/wait?courseId=${encodeURIComponent(o.courseId)}&orderId=${encodeURIComponent(o.orderId)}`} className="btn btn-primary" style={{ padding: '4px 8px', fontSize: '12px' }}>{t('enter_classroom')}</Link>
                     ) : '-'}
                     </td>
                   </tr>

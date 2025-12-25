@@ -393,6 +393,14 @@
   "calendar_status_attended": "Attended",
   "calendar_status_missed": "Missed",
   "calendar_status_pending": "Pending",
-  "calendar_course_start": "Course Start"
+  "calendar_course_start": "Course Start",
+  "student_courses_student": "Student",
+  "student_courses_course_name": "Course Name",
+  "student_courses_teacher": "Teacher",
+  "student_courses_order_number": "Order Number",
+  "student_courses_amount": "Amount",
+  "student_courses_status": "Status",
+  "student_courses_created_at": "Created At",
+  "enter_classroom": "Enter Classroom"
 }
 

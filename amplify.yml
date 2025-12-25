@@ -30,3 +30,8 @@ applications:
       - AGORA_WB_AK: ByMpZIif0VnfCFgu
       - AGORA_WB_SK: UWKI2cXUU5GK03b_8WJDevMsrEAQChG1
       - NETLESS_APP_ID: 7b1e4f40-d807-11f0-9780-fd0783967389
+      - DYNAMODB_TABLE_ORDERS: jvtutorcorner-orders
+      - DYNAMODB_TABLE_ENROLLMENTS: jvtutorcorner-enrollments
+      - DYNAMODB_TABLE_COURSES: jvtutorcorner-courses
+      - DYNAMODB_TABLE_TEACHERS: jvtutorcorner-teachers
+      - DYNAMODB_TABLE_CAROUSEL: jvtutorcorner-carousel
