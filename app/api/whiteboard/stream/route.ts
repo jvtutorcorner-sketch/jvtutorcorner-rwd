@@ -93,9 +93,15 @@ export async function GET(req: NextRequest) {
 
     return new Response(stream, { headers });
   } catch (err: any) {
-    console.error('[WB SSE Server] GET handler error:', err);
-    try { console.error(err?.stack ?? String(err)); } catch (_) {}
-    return new Response('Internal server error', { status: 500 });
+    try {
+      const errorId = (typeof (globalThis as any).crypto?.randomUUID === 'function') ? (globalThis as any).crypto.randomUUID() : `err-${Date.now()}-${Math.floor(Math.random()*1000)}`;
+      console.error(`[WB SSE Server] ErrorId=${errorId} RequestURL=${req?.url ?? 'unknown'} Error:`, err && err.stack ? err.stack : err);
+      const payload = JSON.stringify({ message: 'SSE server error', errorId });
+      return new Response(payload, { status: 500, headers: { 'Content-Type': 'application/json' } });
+    } catch (logErr) {
+      console.error('[WB SSE Server] Failed while logging error:', logErr);
+      return new Response('Internal server error', { status: 500 });
+    }
   }
 
   function encodeSSE(obj: any) {
