@@ -109,7 +109,16 @@ export async function GET(req: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('SSE route error:', error);
-    return new Response('Internal Server Error', { status: 500 });
+    try {
+      const err: any = error;
+      const errorId = (typeof (globalThis as any).crypto?.randomUUID === 'function') ? (globalThis as any).crypto.randomUUID() : `err-${Date.now()}-${Math.floor(Math.random()*1000)}`;
+      console.error(`[SSE] ErrorId=${errorId} RequestURL=${req?.url ?? 'unknown'} Error:`, err && err.stack ? err.stack : err);
+      // Returning a small JSON payload with masked message and errorId helps correlate logs.
+      const payload = JSON.stringify({ message: 'SSE server error', errorId });
+      return new Response(payload, { status: 500, headers: { 'Content-Type': 'application/json' } });
+    } catch (logErr) {
+      console.error('[SSE] Failed while logging error:', logErr);
+      return new Response('Internal Server Error', { status: 500 });
+    }
   }
 }
