@@ -202,7 +202,8 @@ export default function ClassroomWaitPage() {
           }
         };
 
-        // If SSE doesn't open within 2 seconds, start polling as a reliable fallback
+        // If SSE doesn't open within 8 seconds, start polling as a reliable fallback
+        // Increased timeout to allow for slow startups / proxy buffering.
         const sseTimeout = window.setTimeout(() => {
             if (!sseOpened) {
             console.warn('SSE did not open in time, starting polling fallback');

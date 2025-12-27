@@ -11,8 +11,24 @@ export async function GET(req: NextRequest) {
     const uuid = url.searchParams.get('uuid') || 'default';
 
     console.log('[SSE] creating ReadableStream');
+    // Ensure ReadableStream is available in this runtime (Next.js Node runtimes may not expose it)
+    let RS: any = (globalThis as any).ReadableStream;
+    if (!RS) {
+      try {
+        const mod = await import('stream/web');
+        RS = (mod as any).ReadableStream;
+        console.log('[SSE] using stream/web.ReadableStream fallback');
+      } catch (e) {
+        console.warn('[SSE] stream/web import failed:', e);
+      }
+    }
+    if (!RS) {
+      console.error('[SSE] No ReadableStream available in this runtime; cannot open SSE stream.');
+      return new Response('Server does not support SSE in this runtime', { status: 500 });
+    }
+
     const encoder = new TextEncoder();
-    const stream = new ReadableStream({
+    const stream = new RS({
       start(controller) {
         console.log('[SSE] ReadableStream start called');
         const send = (payload: any) => {
@@ -85,8 +101,9 @@ export async function GET(req: NextRequest) {
       status: 200,
       headers: {
         'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
+        'Cache-Control': 'no-cache, no-transform',
         'Connection': 'keep-alive',
+        'X-Accel-Buffering': 'no',
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Headers': 'Cache-Control',
       },

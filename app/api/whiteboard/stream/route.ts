@@ -29,8 +29,10 @@ export async function GET(req: NextRequest) {
 
     const headers = new Headers({
       'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
+      'Cache-Control': 'no-cache, no-transform',
       Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+      'Access-Control-Allow-Origin': '*',
     });
 
     // Ensure a ReadableStream implementation is available in this runtime.
