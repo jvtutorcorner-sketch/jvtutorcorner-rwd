@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
 
     const encoder = new TextEncoder();
     const stream = new RS({
-      start(controller) {
+      start(controller: any) {
         console.log('[SSE] ReadableStream start called');
         const send = (payload: any) => {
           try {
