@@ -4,6 +4,7 @@ import path from 'path';
 import resolveDataFile from '@/lib/localData';
 import { ddbDocClient } from '@/lib/dynamo';
 import { ScanCommand, GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
+import { MOCK_USERS } from '@/lib/mockAuth';
 
 async function readProfiles(): Promise<any[]> {
   const PROFILES_TABLE = process.env.DYNAMODB_TABLE_PROFILES || process.env.PROFILES_TABLE || '';
@@ -55,12 +56,44 @@ export async function GET(req: Request) {
     const profiles = await readProfiles();
     if (email) {
       const p = profiles.find((x) => String(x.email).toLowerCase() === String(email).toLowerCase());
-      if (!p) return NextResponse.json({ ok: false, message: 'Profile not found' }, { status: 404 });
+      if (!p) {
+        // Fallback to MOCK_USERS for demo/test accounts
+        const mock = MOCK_USERS[String(email).toLowerCase()];
+        if (mock) {
+          const mockProfile = {
+            ...mock,
+            email: String(email).toLowerCase(),
+            roid_id: mock.teacherId || `mock_${String(email).toLowerCase().replace(/[@.]/g, '_')}`,
+            role: mock.teacherId ? 'teacher' : 'user'
+          };
+          (mockProfile as any).id = mockProfile.roid_id;
+          return NextResponse.json({ ok: true, profile: mockProfile });
+        }
+        return NextResponse.json({ ok: false, message: 'Profile not found' }, { status: 404 });
+      }
       return NextResponse.json({ ok: true, profile: p });
     }
     if (id) {
       const p = profiles.find((x) => x.roid_id === id || x.id === id);
-      if (!p) return NextResponse.json({ ok: false, message: 'Profile not found' }, { status: 404 });
+      if (!p) {
+        // Fallback to MOCK_USERS by teacherId or generated mock id
+        const mockEntry = Object.entries(MOCK_USERS).find(([email, u]) => {
+          const mockId = (u as any).teacherId || `mock_${email.toLowerCase().replace(/[@.]/g, '_')}`;
+          return mockId === id;
+        });
+        if (mockEntry) {
+          const [email, mock] = mockEntry;
+          const mockProfile = {
+            ...mock,
+            email: email.toLowerCase(),
+            roid_id: (mock as any).teacherId || `mock_${email.toLowerCase().replace(/[@.]/g, '_')}`,
+            role: (mock as any).teacherId ? 'teacher' : 'user'
+          };
+          (mockProfile as any).id = mockProfile.roid_id;
+          return NextResponse.json({ ok: true, profile: mockProfile });
+        }
+        return NextResponse.json({ ok: false, message: 'Profile not found' }, { status: 404 });
+      }
       return NextResponse.json({ ok: true, profile: p });
     }
     return NextResponse.json({ ok: true, profiles });
