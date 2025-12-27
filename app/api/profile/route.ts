@@ -147,8 +147,40 @@ export async function PATCH(req: Request) {
         if (email) return String(p.email).toLowerCase() === email;
         return p.roid_id === id || p.id === id;
       });
-      if (idx === -1) return NextResponse.json({ ok: false, message: 'Profile not found' }, { status: 404 });
-      profile = profiles[idx];
+      if (idx === -1) {
+        // Fallback to MOCK_USERS for demo/test accounts
+        if (email) {
+          const mock = MOCK_USERS[email];
+          if (mock) {
+            profile = {
+              ...mock,
+              email: email,
+              roid_id: mock.teacherId || `mock_${email.replace(/[@.]/g, '_')}`,
+              role: mock.teacherId ? 'teacher' : 'user'
+            };
+            (profile as any).id = profile.roid_id;
+          }
+        } else if (id) {
+          // Fallback to MOCK_USERS by teacherId or generated mock id
+          const mockEntry = Object.entries(MOCK_USERS).find(([email, u]) => {
+            const mockId = (u as any).teacherId || `mock_${email.toLowerCase().replace(/[@.]/g, '_')}`;
+            return mockId === id;
+          });
+          if (mockEntry) {
+            const [mockEmail, mock] = mockEntry;
+            profile = {
+              ...mock,
+              email: mockEmail.toLowerCase(),
+              roid_id: (mock as any).teacherId || `mock_${mockEmail.toLowerCase().replace(/[@.]/g, '_')}`,
+              role: (mock as any).teacherId ? 'teacher' : 'user'
+            };
+            (profile as any).id = profile.roid_id;
+          }
+        }
+        if (!profile) return NextResponse.json({ ok: false, message: 'Profile not found' }, { status: 404 });
+      } else {
+        profile = profiles[idx];
+      }
     }
     // apply allowed updates (for demo, we allow adding/updating payment info and names)
     const updates: any = {};
