@@ -7,10 +7,11 @@ import Button from './UI/Button';
 
 type Locale = 'zh-TW' | 'zh-CN' | 'en';
 
-const LANGS: { code: Locale; label: string; flag: string }[] = [
-  { code: 'zh-TW', label: '繁體中文', flag: '🇹🇼' },
-  { code: 'zh-CN', label: '简体中文', flag: '🇨🇳' },
-  { code: 'en', label: 'English', flag: '🇺🇸' },
+// Use two-letter codes instead of flag emojis
+const LANGS: { code: Locale; label: string; code2: string }[] = [
+  { code: 'zh-TW', label: '繁體中文', code2: 'TW' },
+  { code: 'zh-CN', label: '简体中文', code2: 'CN' },
+  { code: 'en', label: 'English', code2: 'EN' },
 ];
 
 export const LanguageSwitcher: React.FC = () => {
@@ -33,7 +34,7 @@ export const LanguageSwitcher: React.FC = () => {
   return (
     <div ref={ref} style={{ position: 'relative', display: 'inline-block' }}>
       <Button aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((s) => !s)} variant="outline" className="inline-flex items-center gap-2 rounded-md">
-        <span style={{ fontSize: 16 }}>{current.flag}</span>
+        <span style={{ fontSize: 13, fontWeight: 600 }}>{current.code2}</span>
         <span style={{ fontSize: 14 }}>{current.label}</span>
         <span aria-hidden style={{ marginLeft: 6, opacity: 0.7 }}>▾</span>
       </Button>
@@ -65,7 +66,7 @@ export const LanguageSwitcher: React.FC = () => {
                 setOpen(false);
               }}
             >
-              <span style={{ fontSize: 18 }}>{l.flag}</span>
+              <span style={{ fontSize: 12, fontWeight: 600, width: 36 }}>{l.code2}</span>
               <span style={{ flex: 1 }}>{l.label}</span>
               {locale === l.code ? <span style={{ opacity: 0.6 }}>✓</span> : null}
             </Button>
