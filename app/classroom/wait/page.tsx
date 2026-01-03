@@ -33,6 +33,7 @@ export default function ClassroomWaitPage() {
   const esRef = useRef<EventSource | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
   const retryCountRef = useRef(0);
+  const sseDisabledRef = useRef(false);
   const bcRef = useRef<BroadcastChannel | null>(null);
   const isUpdatingRef = useRef(false);
   const [deviceCheckPassed, setDeviceCheckPassed] = useState(false);
@@ -180,7 +181,13 @@ export default function ClassroomWaitPage() {
     // 4. Real-time Server Sync (Server-Sent Events)
     // The primary method for getting updates from other users.
     // Use a reconnect loop with exponential backoff to ensure returning users reattach.
+    // If SSE consistently fails (e.g., in Serverless environments), disable it permanently.
     const createEventSource = () => {
+      if (sseDisabledRef.current) {
+        console.log('SYNC: SSE is disabled, relying on polling only.');
+        setSyncMode('polling');
+        return;
+      }
       try {
         console.log('SYNC: Creating EventSource ->', `/api/classroom/stream?uuid=${encodeURIComponent(sessionReadyKey)}`);
         const es = new EventSource(`/api/classroom/stream?uuid=${encodeURIComponent(sessionReadyKey)}`);
@@ -201,7 +208,7 @@ export default function ClassroomWaitPage() {
 
         es.onerror = (err) => {
           console.warn('SYNC: SSE error.', err);
-          setSyncMode('disconnected');
+          setSyncMode('polling');
           try { es.close(); } catch (e) {}
           esRef.current = null;
 
@@ -221,8 +228,20 @@ export default function ClassroomWaitPage() {
             } catch (e) {}
           }
 
-          // schedule reconnect with exponential backoff
+          // Increment retry counter and check if we should disable SSE permanently
           const attempts = ++retryCountRef.current;
+          if (attempts >= 3) {
+            console.warn('SYNC: SSE failed 3 times. Disabling SSE and using polling only.');
+            sseDisabledRef.current = true;
+            setSyncMode('polling');
+            if (reconnectTimerRef.current) {
+              clearTimeout(reconnectTimerRef.current);
+              reconnectTimerRef.current = null;
+            }
+            return;
+          }
+
+          // schedule reconnect with exponential backoff
           const delay = Math.min(30000, 500 * Math.pow(2, Math.max(0, attempts - 1)));
           console.log(`SYNC: Scheduling SSE reconnect in ${delay}ms (attempt ${attempts})`);
           if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
@@ -233,7 +252,7 @@ export default function ClassroomWaitPage() {
         };
       } catch (e) {
         console.warn('SYNC: Failed to create EventSource, falling back to polling.', e);
-        setSyncMode('disconnected');
+        setSyncMode('polling');
       }
     };
 
@@ -242,7 +261,7 @@ export default function ClassroomWaitPage() {
     // If the user navigates back to this tab or the window gains focus, attempt immediate reconnect
     const ensureConnected = () => {
       try {
-        if (!sessionReadyKey) return;
+        if (!sessionReadyKey || sseDisabledRef.current) return;
         if (!esRef.current) {
           console.log('SYNC: ensureConnected triggered, attempting to recreate EventSource');
           // reset retry counter so we try promptly
