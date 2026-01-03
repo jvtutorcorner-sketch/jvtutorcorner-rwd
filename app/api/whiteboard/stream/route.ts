@@ -1,5 +1,8 @@
 import { NextRequest } from 'next/server';
 
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
 // Simple in-memory map of uuid -> Set of response-like client objects
 const clients: Map<string, Set<any>> = new Map();
 
@@ -27,10 +30,12 @@ export async function GET(req: NextRequest) {
     const uuid = normalizeUuid(rawUuid);
     console.log('[WB SSE Server] New client connecting, raw:', rawUuid, 'normalized:', uuid);
 
+    // Note: avoid setting explicit `Connection` header because some
+    // serverless/proxy environments (Amplify/CDN) reject or buffer
+    // streaming responses when that header is present.
     const headers = new Headers({
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache, no-transform',
-      Connection: 'keep-alive',
       'X-Accel-Buffering': 'no',
       'Access-Control-Allow-Origin': '*',
     });

@@ -772,6 +772,38 @@ export default function EnhancedWhiteboard({
       const courseParam = params.get('courseId') || 'default';
       const courseIdFromChannel = (channelName ? (channelName.startsWith('course_') ? channelName.replace(/^course_/, '').split('_')[0] : channelName.split('_')[0]) : courseParam) || 'default';
       const uuid = `course_${courseIdFromChannel}`;
+      // In production (Amplify) long-lived SSE often fails; skip SSE there.
+      const isProduction = window.location.hostname === 'www.jvtutorcorner.com' || window.location.hostname === 'jvtutorcorner.com';
+      if (isProduction) {
+        console.log('[WB SSE] Production detected - skipping SSE. Falling back to /api/whiteboard/state polling.');
+        // Try fetching persisted state immediately
+        (async () => {
+          try {
+            const resp = await fetch(`/api/whiteboard/state?uuid=${encodeURIComponent(uuid)}`);
+            if (resp.ok) {
+              const j = await resp.json();
+              const s = j?.state;
+              if (s && Array.isArray(s.strokes) && strokesRef.current.length === 0) {
+                console.log('[WB SSE] Applying fallback state from /state (production):', s.strokes.length, 'strokes');
+                setStrokes(s.strokes);
+                if (s.pdf && s.pdf.dataUrl && s.pdf.dataUrl !== '(large-data-url)') {
+                  try {
+                    const r = await fetch(s.pdf.dataUrl);
+                    const blob = await r.blob();
+                    const file = new File([blob], s.pdf.name || 'remote.pdf', { type: blob.type });
+                    setSelectedFileName(file.name);
+                    setLocalPdfFile(file);
+                  } catch (e) {}
+                }
+              }
+            }
+          } catch (e) {
+            console.warn('[WB SSE] Failed to fetch /state in production fallback', e);
+          }
+        })();
+        return;
+      }
+
       console.log('[WB SSE] Connecting to SSE stream:', `/api/whiteboard/stream?uuid=${uuid}`);
       const es = new EventSource(`/api/whiteboard/stream?uuid=${encodeURIComponent(uuid)}`);
       
