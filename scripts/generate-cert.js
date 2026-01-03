@@ -59,7 +59,8 @@ async function generate(opts = {}) {
 if (require.main === module) {
   // When run directly, generate default certs for localhost and common local IPs
   (async () => {
-    const alt = ['localhost', '127.0.0.1', '::1', '192.168.79.1'];
+    // Include common local interfaces and the known Wi-Fi IP used in debugging
+    const alt = ['localhost', '127.0.0.1', '::1', '192.168.79.1', '10.133.190.1'];
     try {
       const res = await generate({ commonName: 'localhost', altNames: alt });
       console.log('Generated dev certs:', res);

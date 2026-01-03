@@ -95,6 +95,8 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
 
   const firstRemote = useMemo(() => remoteUsers?.[0] ?? null, [remoteUsers]);
 
+  const isTeacher = (urlRole === 'teacher' || computedRole === 'teacher');
+
   useEffect(() => {
     console.log('[ClientClassroom] remoteUsers changed:', remoteUsers.length);
   }, [remoteUsers]);
@@ -555,6 +557,10 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           // Also clear the ready state for the session
           localStorage.removeItem(sessionReadyKey);
         } catch (e) {}
+        try {
+          // clear authoritative server session record as well
+          try { await fetch('/api/classroom/session', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ uuid: sessionReadyKey, action: 'clear' }) }); } catch (e) { console.warn('Failed to clear server session', e); }
+        } catch (e) {}
       } catch (e) {}
       window.location.href = waitPageUrl;
     } catch (e) {
@@ -654,58 +660,86 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     }
 
     if (joined) {
-      // 老师开始上课时，广播通知学生 and persist end timestamp
-      const isTeacher = (urlRole === 'teacher' || urlRole === 'student') ? urlRole === 'teacher' : computedRole === 'teacher';
-      const secs = Math.floor((sessionDurationMinutes || 0.5) * 60);
-      const endKey = `class_end_ts_${sessionReadyKey}`;
+      (async () => {
+        // 老师开始上课时，广播通知学生 and persist end timestamp
+        const isTeacher = (urlRole === 'teacher' || urlRole === 'student') ? urlRole === 'teacher' : computedRole === 'teacher';
+        const secs = Math.floor((sessionDurationMinutes || 0.5) * 60);
+        const endKey = `class_end_ts_${sessionReadyKey}`;
 
-      // Determine or create authoritative end timestamp
-      let endTs: number | null = null;
-      try {
-        const existing = typeof window !== 'undefined' ? localStorage.getItem(endKey) : null;
-        if (existing) {
-          const parsed = Number(existing || 0);
-          if (!Number.isNaN(parsed) && parsed > Date.now()) endTs = parsed;
-        }
-      } catch (e) { /* ignore */ }
-
-      if (!endTs && isTeacher) {
-        endTs = Date.now() + secs * 1000;
-        try { localStorage.setItem(endKey, String(endTs)); } catch (e) {}
-      }
-
-      // Broadcast class_started with endTs so other tabs can pick it up immediately
-      if (isTeacher) {
-        const sessionBroadcastName = sessionParam || channelName || `classroom_session_ready_${courseId}`;
+        // Determine or create authoritative end timestamp
+        let endTs: number | null = null;
         try {
-          const bc = new BroadcastChannel(sessionBroadcastName);
-          bc.postMessage({ type: 'class_started', timestamp: Date.now(), endTs });
-          console.log('已廣播開始上課通知 ->', sessionBroadcastName, 'endTs=', endTs);
-          setTimeout(() => { try { bc.close(); } catch (e) {} }, 100);
-        } catch (e) {
-          console.warn('Failed to broadcast class_started', e);
-        }
-      }
-
-      // initialize remaining seconds from endTs if available, otherwise fallback to secs
-      const initialRemaining = endTs ? Math.max(0, Math.ceil((endTs - Date.now()) / 1000)) : secs;
-      setRemainingSeconds(initialRemaining);
-      console.log(`開始倒計時, remainingSeconds=${initialRemaining}`);
-
-      timerRef.current = window.setInterval(() => {
-        setRemainingSeconds((prev) => {
-          if (prev === null) return prev;
-          if (prev <= 1) {
-            // time's up
-            console.log('時間到！自動結束課程並返回等待頁');
-            try { if (timerRef.current) { window.clearInterval(timerRef.current); timerRef.current = null; } } catch (e) {}
-            // trigger endSession
-            endSession();
-            return 0;
+          const existing = typeof window !== 'undefined' ? localStorage.getItem(endKey) : null;
+          if (existing) {
+            const parsed = Number(existing || 0);
+            if (!Number.isNaN(parsed) && parsed > Date.now()) endTs = parsed;
           }
-          return prev - 1;
-        });
-      }, 1000) as unknown as number;
+        } catch (e) { /* ignore */ }
+
+        // If no local endTs, check authoritative server session store
+        if (!endTs) {
+          try {
+            const resp = await fetch(`/api/classroom/session?uuid=${encodeURIComponent(sessionReadyKey)}`);
+            if (resp.ok) {
+              const j = await resp.json();
+              const sEnd = j?.endTs;
+              if (typeof sEnd === 'number' && sEnd > Date.now()) {
+                endTs = sEnd;
+                try { localStorage.setItem(endKey, String(endTs)); } catch (e) {}
+              }
+            }
+          } catch (e) { /* ignore fetch errors */ }
+        }
+
+        if (!endTs && isTeacher) {
+          endTs = Date.now() + secs * 1000;
+          try { localStorage.setItem(endKey, String(endTs)); } catch (e) {}
+        }
+
+        // Broadcast class_started with endTs so other tabs can pick it up immediately
+        if (isTeacher) {
+          const sessionBroadcastName = sessionParam || channelName || `classroom_session_ready_${courseId}`;
+          try {
+            const bc = new BroadcastChannel(sessionBroadcastName);
+            bc.postMessage({ type: 'class_started', timestamp: Date.now(), endTs });
+            console.log('已廣播開始上課通知 ->', sessionBroadcastName, 'endTs=', endTs);
+            setTimeout(() => { try { bc.close(); } catch (e) {} }, 100);
+          } catch (e) {
+            console.warn('Failed to broadcast class_started', e);
+          }
+
+          // Persist authoritative endTs on server for rejoining clients
+          try {
+            await fetch('/api/classroom/session', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ uuid: sessionReadyKey, endTs }),
+            });
+          } catch (e) {
+            console.warn('Failed to persist session endTs to server', e);
+          }
+        }
+
+        // initialize remaining seconds from endTs if available, otherwise fallback to secs
+        const initialRemaining = endTs ? Math.max(0, Math.ceil((endTs - Date.now()) / 1000)) : secs;
+        setRemainingSeconds(initialRemaining);
+        console.log(`開始倒計時, remainingSeconds=${initialRemaining}`);
+
+        timerRef.current = window.setInterval(() => {
+          setRemainingSeconds((prev) => {
+            if (prev === null) return prev;
+            if (prev <= 1) {
+              // time's up
+              console.log('時間到！自動結束課程並返回等待頁');
+              try { if (timerRef.current) { window.clearInterval(timerRef.current); timerRef.current = null; } } catch (e) {}
+              // trigger endSession
+              endSession();
+              return 0;
+            }
+            return prev - 1;
+          });
+        }, 1000) as unknown as number;
+      })();
     } else {
       setRemainingSeconds(null);
     }
@@ -912,6 +946,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
               channelName={effectiveChannelName}
               room={undefined} // Using canvas fallback instead of Netless SDK
               whiteboardRef={whiteboardRef}
+              editable={isTeacher}
               autoFit={true}
               className="flex-1" 
               onPdfSelected={(f) => { setSelectedPdf(f); }}

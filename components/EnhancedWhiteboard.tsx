@@ -17,6 +17,7 @@ export interface WhiteboardProps {
   onToggleMic?: () => void;
   hasMic?: boolean;
   onLeave?: () => void;
+  editable?: boolean; // whether the current client may draw/interact
 }
 
 type Stroke = { points: number[]; stroke: string; strokeWidth: number; mode: 'draw' | 'erase' };
@@ -35,6 +36,7 @@ export default function EnhancedWhiteboard({
   onToggleMic,
   hasMic,
   onLeave
+  , editable = true
 }: WhiteboardProps) {
   const bcRef = useRef<BroadcastChannel | null>(null);
   const clientIdRef = useRef<string>(`c_${Math.random().toString(36).slice(2)}`);
@@ -123,6 +125,8 @@ export default function EnhancedWhiteboard({
       return null;
     }
   });
+
+  // `editable` comes from props; default true
 
   // Keep a ref of strokes for BroadcastChannel state requests to avoid effect re-runs
   const strokesRef = useRef<Stroke[]>(strokes);
@@ -370,6 +374,8 @@ export default function EnhancedWhiteboard({
   }, [mounted]);
 
   const isActionAllowed = useCallback((actionKey: string) => {
+    // If editable prop explicitly disabled, deny all actions
+    if (!editable) return false;
     // If student, deny all drawing/tool actions
     if (currentUserRoleId === 'student') return false;
     // If admin settings are not configured, allow by default
@@ -982,7 +988,8 @@ export default function EnhancedWhiteboard({
             style={{ 
               width: '100%', 
               height: '100%',
-              background: 'white'
+              background: 'white',
+              pointerEvents: editable ? 'auto' : 'none'
             }} 
           />
         ) : (
@@ -1001,7 +1008,7 @@ export default function EnhancedWhiteboard({
               onMouseMove={handlePointerMove}
               onMouseUp={handlePointerUp}
               onMouseLeave={handlePointerUp}
-              style={{ position: 'absolute', top: 0, left: 0, display: 'block', cursor: 'crosshair', width: '100%', height: '100%' }}
+              style={{ position: 'absolute', top: 0, left: 0, display: 'block', cursor: editable ? 'crosshair' : 'default', width: '100%', height: '100%', pointerEvents: editable ? 'auto' : 'none' }}
             />
           </>
         )}

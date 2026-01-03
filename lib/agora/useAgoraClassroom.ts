@@ -91,6 +91,7 @@ export function useAgoraClassroom({
   // 新增：视频质量控制状态
   const [currentQuality, setCurrentQuality] = useState<VideoQuality>(defaultQuality);
   const [isLowLatencyMode, setIsLowLatencyMode] = useState(isOneOnOne);
+  const [audioOutputDeviceId, setAudioOutputDeviceId] = useState<string | null>(null);
 
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -151,6 +152,27 @@ export function useAgoraClassroom({
       console.log('Applied 1-on-1 optimizations');
     } catch (error) {
       console.error('Failed to apply 1-on-1 optimizations:', error);
+    }
+  };
+
+  // Apply a selected audio output device to all existing remote audio tracks (if supported)
+  const applyOutputDeviceToExisting = async (deviceId: string | null) => {
+    try {
+      const client = clientRef.current;
+      if (!client) return;
+      const users = (client.remoteUsers || []) as any[];
+      for (const u of users) {
+        try {
+          if (u && u.audioTrack && deviceId && typeof (u.audioTrack as any).setPlaybackDevice === 'function') {
+            await (u.audioTrack as any).setPlaybackDevice(deviceId);
+            console.log('[Agora] applied playback device to existing track', deviceId, 'uid', u.uid);
+          }
+        } catch (e) {
+          // ignore per-user failures
+        }
+      }
+    } catch (e) {
+      console.warn('applyOutputDeviceToExisting failed', e);
     }
   };
 
@@ -265,6 +287,15 @@ export function useAgoraClassroom({
           // Play audio first (if present)
           if (user.audioTrack) {
             try {
+              // If an audio output device has been selected, attempt to set it on the remote track
+              try {
+                if (audioOutputDeviceId && typeof (user.audioTrack as any).setPlaybackDevice === 'function') {
+                  await (user.audioTrack as any).setPlaybackDevice(audioOutputDeviceId);
+                  console.log('[Agora] set remote audio playback device', audioOutputDeviceId, 'for', user.uid);
+                }
+              } catch (e) {
+                console.warn('[Agora] setPlaybackDevice failed', e);
+              }
               const audioPlay: any = user.audioTrack.play();
               try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = false; } catch (e) {}
               if (audioPlay && typeof audioPlay.then === 'function') {
@@ -314,6 +345,8 @@ export function useAgoraClassroom({
           console.warn('user-published handler error', err);
         }
       };
+
+      
 
       const onUserUnpublished = (user: IAgoraRTCRemoteUser) => {
         console.log('[Agora] user-unpublished handler executing', { uid: user.uid });
@@ -920,6 +953,24 @@ export function useAgoraClassroom({
         return { hasAudioInput: false, hasVideoInput: false };
       }
     },
+    getAudioOutputDevices: async () => {
+      if (typeof navigator === 'undefined' || !navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return [] as Array<{ deviceId: string; label?: string }>;
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        return devices.filter((d) => d.kind === 'audiooutput').map((d) => ({ deviceId: d.deviceId, label: d.label }));
+      } catch (e) {
+        return [] as Array<{ deviceId: string; label?: string }>;
+      }
+    },
+    setAudioOutputDevice: async (deviceId: string | null) => {
+      try {
+        setAudioOutputDeviceId(deviceId);
+        await applyOutputDeviceToExisting(deviceId);
+      } catch (e) {
+        console.warn('setAudioOutputDevice failed', e);
+      }
+    },
+    audioOutputDeviceId,
     // DOM refs
     localVideoRef,
     remoteVideoRef,

@@ -12,6 +12,9 @@ import { useT } from '@/components/IntlProvider';
 export default function ClassroomWaitPage() {
   const router = useRouter();
 
+  const [isClient, setIsClient] = useState(false);
+  useEffect(() => { setIsClient(true); }, []);
+
   const [courseId, setCourseId] = useState('c1');
   const [orderId, setOrderId] = useState<string | null>(null);
   const [storedUserState, setStoredUserState] = useState<any>(null);
@@ -28,6 +31,8 @@ export default function ClassroomWaitPage() {
   const [isLowLatencyMode, setIsLowLatencyMode] = useState(false);
   const pollRef = useRef<number | null>(null);
   const esRef = useRef<EventSource | null>(null);
+  const reconnectTimerRef = useRef<number | null>(null);
+  const retryCountRef = useRef(0);
   const bcRef = useRef<BroadcastChannel | null>(null);
   const isUpdatingRef = useRef(false);
   const [deviceCheckPassed, setDeviceCheckPassed] = useState(false);
@@ -116,6 +121,18 @@ export default function ClassroomWaitPage() {
       // After successfully telling the server, immediately sync the latest state from it.
       // The server is the source of truth.
       syncStateFromServer();
+      // Notify other tabs in this browser to re-sync immediately
+      try {
+        if (bcRef.current) {
+          bcRef.current.postMessage({ type: 'ready_changed', uuid: syncUuid, timestamp: Date.now() });
+        } else {
+          const bc = new BroadcastChannel(syncUuid);
+          bc.postMessage({ type: 'ready_changed', uuid: syncUuid, timestamp: Date.now() });
+          setTimeout(() => bc.close(), 200);
+        }
+      } catch (e) {
+        // ignore
+      }
     })
     .catch(err => {
       console.error('toggleReady POST failed:', err);
@@ -162,39 +179,86 @@ export default function ClassroomWaitPage() {
 
     // 4. Real-time Server Sync (Server-Sent Events)
     // The primary method for getting updates from other users.
-    const es = new EventSource(`/api/classroom/stream?uuid=${encodeURIComponent(sessionReadyKey)}`);
-    esRef.current = es;
+    // Use a reconnect loop with exponential backoff to ensure returning users reattach.
+    const createEventSource = () => {
+      try {
+        console.log('SYNC: Creating EventSource ->', `/api/classroom/stream?uuid=${encodeURIComponent(sessionReadyKey)}`);
+        const es = new EventSource(`/api/classroom/stream?uuid=${encodeURIComponent(sessionReadyKey)}`);
+        esRef.current = es;
 
-    es.onopen = () => {
-      console.log('SYNC: SSE connection opened.');
-      setSyncMode('sse');
-    };
+        es.onopen = () => {
+          console.log('SYNC: SSE connection opened.');
+          setSyncMode('sse');
+          // reset retry counter and clear any pending reconnect
+          retryCountRef.current = 0;
+          if (reconnectTimerRef.current) { clearTimeout(reconnectTimerRef.current); reconnectTimerRef.current = null; }
+        };
 
-    es.onmessage = (ev) => {
-      console.log('SYNC: SSE message received, re-syncing from server.');
-      // The message from the server is just a lightweight trigger.
-      // We always re-fetch the state from the API to ensure we have the absolute latest version.
-      syncStateFromServer();
-    };
+        es.onmessage = (ev) => {
+          console.log('SYNC: SSE message received, re-syncing from server.');
+          syncStateFromServer();
+        };
 
-    es.onerror = (err) => {
-      console.warn('SYNC: SSE error.', err);
-      setSyncMode('disconnected');
-      // If SSE fails, it's possible the user has lost connection.
-      // Make a best-effort attempt to mark this user as 'unready' on the server.
-      const syncUuid = sessionReadyKey;
-      const email = storedUserState?.email;
-      const userId = email || role || 'anonymous';
-      if (syncUuid && role && ready) {
-        console.log('SYNC: Attempting to POST unready status due to SSE error.');
-        fetch('/api/classroom/ready', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ uuid: syncUuid, role, userId, action: 'unready' }),
-          keepalive: true, // Use keepalive for requests during page unload
-        });
+        es.onerror = (err) => {
+          console.warn('SYNC: SSE error.', err);
+          setSyncMode('disconnected');
+          try { es.close(); } catch (e) {}
+          esRef.current = null;
+
+          // best-effort: mark this user as unready if we were previously ready
+          const syncUuid = sessionReadyKey;
+          const email = storedUserState?.email;
+          const userId = email || role || 'anonymous';
+          if (syncUuid && role && ready) {
+            console.log('SYNC: Attempting to POST unready status due to SSE error.');
+            try {
+              fetch('/api/classroom/ready', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ uuid: syncUuid, role, userId, action: 'unready' }),
+                keepalive: true,
+              }).catch(() => {});
+            } catch (e) {}
+          }
+
+          // schedule reconnect with exponential backoff
+          const attempts = ++retryCountRef.current;
+          const delay = Math.min(30000, 500 * Math.pow(2, Math.max(0, attempts - 1)));
+          console.log(`SYNC: Scheduling SSE reconnect in ${delay}ms (attempt ${attempts})`);
+          if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+          reconnectTimerRef.current = window.setTimeout(() => {
+            reconnectTimerRef.current = null;
+            if (!esRef.current) createEventSource();
+          }, delay);
+        };
+      } catch (e) {
+        console.warn('SYNC: Failed to create EventSource, falling back to polling.', e);
+        setSyncMode('disconnected');
       }
     };
+
+    createEventSource();
+
+    // If the user navigates back to this tab or the window gains focus, attempt immediate reconnect
+    const ensureConnected = () => {
+      try {
+        if (!sessionReadyKey) return;
+        if (!esRef.current) {
+          console.log('SYNC: ensureConnected triggered, attempting to recreate EventSource');
+          // reset retry counter so we try promptly
+          retryCountRef.current = 0;
+          if (reconnectTimerRef.current) { clearTimeout(reconnectTimerRef.current); reconnectTimerRef.current = null; }
+          createEventSource();
+        }
+      } catch (e) {
+        console.warn('SYNC: ensureConnected error', e);
+      }
+    };
+
+    window.addEventListener('focus', ensureConnected);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') ensureConnected();
+    });
 
     // Cleanup all listeners on unmount
     return () => {
@@ -205,8 +269,12 @@ export default function ClassroomWaitPage() {
         bcRef.current = null;
       }
       if (esRef.current) {
-        esRef.current.close();
+        try { esRef.current.close(); } catch (e) {}
         esRef.current = null;
+      }
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
       }
     };
   }, [sessionReadyKey, syncStateFromServer]);
@@ -251,6 +319,8 @@ export default function ClassroomWaitPage() {
     setVideoOk(video);
     setDeviceCheckPassed(audio && video);
   }, []);
+
+  if (!isClient) return null;
 
   return (
     <div style={{ padding: 24, maxWidth: 1200, margin: '0 auto' }}>
@@ -412,14 +482,17 @@ function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, vi
 
   const [audioInputs, setAudioInputs] = React.useState<MediaDeviceInfo[]>([]);
   const [videoInputs, setVideoInputs] = React.useState<MediaDeviceInfo[]>([]);
+  const [audioOutputs, setAudioOutputs] = React.useState<MediaDeviceInfo[]>([]);
   const [selectedAudioDeviceId, setSelectedAudioDeviceId] = React.useState<string | null>(null);
   const [selectedVideoDeviceId, setSelectedVideoDeviceId] = React.useState<string | null>(null);
+  const [selectedAudioOutputId, setSelectedAudioOutputId] = React.useState<string | null>(null);
   const [permissionGranted, setPermissionGranted] = React.useState(false);
   const [previewingCamera, setPreviewingCamera] = React.useState(false);
   const [testingMic, setTestingMic] = React.useState(false);
   const testingMicRef = React.useRef(false);
   const [micLevel, setMicLevel] = React.useState(0);
   const [audioTested, setAudioTested] = React.useState(false);
+  const [speakerTested, setSpeakerTested] = React.useState(false);
   const [videoTested, setVideoTested] = React.useState(false);
   const [isClient, setIsClient] = React.useState(false);
   const [showIosNotice, setShowIosNotice] = React.useState(false);
@@ -447,14 +520,23 @@ function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, vi
         if (!mounted) return;
         const ais = list.filter((d) => d.kind === 'audioinput');
         const vis = list.filter((d) => d.kind === 'videoinput');
+        const aos = list.filter((d) => d.kind === 'audiooutput');
         setAudioInputs(ais);
+        setAudioOutputs(aos);
         setVideoInputs(vis);
         const sa = localStorage.getItem('tutor_selected_audio');
         const sv = localStorage.getItem('tutor_selected_video');
+        const so = localStorage.getItem('tutor_selected_output');
         if (sa) setSelectedAudioDeviceId(sa);
         else if (!selectedAudioDeviceId && ais.length) setSelectedAudioDeviceId(ais[0].deviceId);
         if (sv) setSelectedVideoDeviceId(sv);
         else if (!selectedVideoDeviceId && vis.length) setSelectedVideoDeviceId(vis[0].deviceId);
+        if (so) setSelectedAudioOutputId(so);
+        else if (!selectedAudioOutputId && aos.length) setSelectedAudioOutputId(aos[0].deviceId);
+        // mark audio presence: treat any audiooutput (including headphones) as present
+        try { setSpeakerTested(aos.length > 0); } catch (e) {}
+        // mark microphone presence by device enumeration only
+        try { setAudioTested(ais.length > 0); } catch (e) {}
       } catch (e) {
         console.warn('[Device Enum] enumeration failed:', e);
       }
@@ -626,14 +708,68 @@ function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, vi
   React.useEffect(() => {
     try { if (selectedVideoDeviceId) localStorage.setItem('tutor_selected_video', selectedVideoDeviceId); } catch (e) {}
   }, [selectedVideoDeviceId]);
+  React.useEffect(() => {
+    try { if (selectedAudioOutputId) localStorage.setItem('tutor_selected_output', selectedAudioOutputId); } catch (e) {}
+  }, [selectedAudioOutputId]);
 
   // 通知父組件檢測狀態
   React.useEffect(() => {
     if (onStatusChange) {
-      // Only notify if status actually changed to avoid unnecessary re-renders in parent
-      onStatusChange(audioTested, videoTested);
+      // Require both microphone and speaker to be tested for audio readiness
+      const audioReady = audioTested && speakerTested;
+      onStatusChange(audioReady, videoTested);
     }
-  }, [audioTested, videoTested, onStatusChange]);
+  }, [audioTested, speakerTested, videoTested, onStatusChange]);
+
+  // Speaker test: play a short tone into selected output (or default)
+  const testSpeaker = async () => {
+    try {
+      // Create an AudioContext and oscillator, connect to a MediaStreamDestination
+      const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) {
+        alert(t('wait.sound_not_supported'));
+        return;
+      }
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      gain.gain.value = 0.15;
+      osc.type = 'sine';
+      osc.frequency.value = 880;
+      const dest = ctx.createMediaStreamDestination();
+      osc.connect(gain);
+      gain.connect(dest);
+
+      const a = document.createElement('audio');
+      a.autoplay = true;
+      a.srcObject = dest.stream;
+
+      // If sink selection is supported, try to set it
+      try {
+        const sink = (selectedAudioOutputId && selectedAudioOutputId !== '') ? selectedAudioOutputId : undefined;
+        if (sink && typeof (a as any).setSinkId === 'function') {
+          await (a as any).setSinkId(sink);
+          console.log('[SpeakerTest] setSinkId applied:', sink);
+        }
+      } catch (e) {
+        console.warn('[SpeakerTest] setSinkId failed', e);
+      }
+
+      // Play tone briefly
+      osc.start();
+      document.body.appendChild(a);
+      // stop after 700ms
+      setTimeout(async () => {
+        try { osc.stop(); } catch (e) {}
+        try { ctx.close(); } catch (e) {}
+        try { a.pause(); a.srcObject = null; a.remove(); } catch (e) {}
+        setSpeakerTested(true);
+      }, 700);
+      } catch (e) {
+      console.warn('testSpeaker failed', e);
+      alert(t('wait.sound_test_failed'));
+    }
+  };
 
   // No auto-request: permissions will be requested by explicit user gesture
   React.useEffect(() => {
@@ -700,6 +836,32 @@ function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, vi
                 <div style={{ width: `${micLevel}%`, height: '100%', background: micLevel > 60 ? '#4caf50' : '#ff9800', transition: 'width 0.1s' }} />
               </div>
             </div>
+          )}
+        </div>
+
+        {/* 喇叭 (輸出裝置) 檢查 */}
+        <div style={{ padding: 14, border: '1px solid #e0e0e0', borderRadius: 8, background: 'white' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+              <div style={{ width: 20, height: 20, borderRadius: '50%', background: speakerTested ? '#4caf50' : '#ccc', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 12, fontWeight: 'bold' }}>
+                {speakerTested ? '✓' : ''}
+              </div>
+              <label style={{ fontSize: 14, fontWeight: 600, color: '#333' }}>{t('wait.sound')}</label>
+          </div>
+          {isClient && (
+            <>
+              <select
+                value={selectedAudioOutputId ?? ''}
+                onChange={(e) => setSelectedAudioOutputId(e.target.value || null)}
+                style={{ width: '100%', padding: '8px 10px', fontSize: 13, borderRadius: 6, border: '1px solid #ccc', marginBottom: 10 }}>
+                {audioOutputs.length === 0 && <option value="">{t('wait.no_sound')}</option>}
+                {audioOutputs.map((d) => (<option key={d.deviceId} value={d.deviceId}>{d.label || t('wait.sound')}</option>))}
+              </select>
+              <button
+                onClick={() => { testSpeaker(); }}
+                style={{ width: '100%', padding: '10px 14px', background: '#1976d2', color: 'white', border: 'none', borderRadius: 6, fontWeight: 500, cursor: 'pointer' }}>
+                🔊 {t('wait.sound_test')}
+              </button>
+            </>
           )}
         </div>
 
