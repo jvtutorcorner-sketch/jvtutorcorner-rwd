@@ -436,8 +436,8 @@
   "wait.no_camera": "未偵測到攝影機",
   "wait.camera_stop_preview": "🔴 停止預覽",
   "wait.camera_preview": "📹 預覽攝影機",
-  "wait.https_required_notice": "此功能需要 HTTPS 連接。\n\niOS/iPhone 必須使用 HTTPS 才能存取相機和麥克風。\n\n請使用 ngrok：\n1. 執行：ngrok http 3000\n2. 在 iPhone 開啟 ngrok 提供的 HTTPS URL",
-  "wait.permissions_failed_notice": "無法取得權限。如果您在 iPhone 上，請確保使用 HTTPS（ngrok http 3000）",
+  "wait.https_required_notice": "此功能需要 HTTPS 連接才能存取相機和麥克風。",
+  "wait.permissions_failed_notice": "無法取得權限。請確保您使用的是 HTTPS 連接並已授予權限。",
   "wait.grant_permissions": "授予麥克風和攝影機權限",
   "wait.permissions_granted": "權限已授予，請選擇裝置並測試",
   "wait.devices_saved_hint": "提示：完成測試後，您的裝置偏好會被記住"

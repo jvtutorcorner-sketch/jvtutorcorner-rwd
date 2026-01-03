@@ -4,7 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:http": "next dev -p 3001",
     "dev:https": "next dev --experimental-https",
+    "dev:proxy": "node dev-https-proxy.js",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
@@ -41,7 +43,9 @@
     "babel-plugin-react-compiler": "1.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.0.3",
+    "http-proxy": "^1.18.1",
     "playwright": "^1.57.0",
+    "selfsigned": "^5.4.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

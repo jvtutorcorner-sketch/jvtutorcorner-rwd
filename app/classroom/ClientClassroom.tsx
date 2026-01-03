@@ -290,13 +290,27 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   // 學生端：如果進入頁面時老師已經在線，則自動加入
   useEffect(() => {
     if (mounted && !joined && !loading && (urlRole === 'student' || computedRole === 'student')) {
-      const checkAndAutoJoin = () => {
+      const checkAndAutoJoin = async () => {
         try {
+          // Check server state instead of just localStorage for cross-device support
+          const r = await fetch(`/api/classroom/ready?uuid=${encodeURIComponent(sessionReadyKey)}`);
+          if (r.ok) {
+            const j = await r.json();
+            const parts = j.participants || [];
+            const hasTeacher = parts.some((p: any) => p.role === 'teacher');
+            if (hasTeacher) {
+              console.log('[AutoJoin] Teacher is already present on server, joining class...');
+              join({ publishAudio: micEnabled, publishVideo: wantPublishVideo, audioDeviceId: selectedAudioDeviceId, videoDeviceId: selectedVideoDeviceId });
+              return;
+            }
+          }
+          
+          // Fallback to localStorage for same-device tabs
           const raw = localStorage.getItem(sessionReadyKey);
           const arr = raw ? JSON.parse(raw) as Array<{ role: string; email?: string }> : [];
-          const hasTeacher = arr.some((p) => p.role === 'teacher');
-          if (hasTeacher) {
-            console.log('[AutoJoin] Teacher is already present, joining class...');
+          const hasTeacherLocal = arr.some((p) => p.role === 'teacher');
+          if (hasTeacherLocal) {
+            console.log('[AutoJoin] Teacher is already present in localStorage, joining class...');
             join({ publishAudio: micEnabled, publishVideo: wantPublishVideo, audioDeviceId: selectedAudioDeviceId, videoDeviceId: selectedVideoDeviceId });
           }
         } catch (e) {
@@ -466,6 +480,43 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       try { es?.close(); } catch (e) {}
     };
   }, [sessionReadyKey]);
+
+  // Report current user as ready to the server when entering the classroom page
+  // This ensures cross-device synchronization works even if localStorage is not shared.
+  useEffect(() => {
+    if (!mounted || !sessionReadyKey) return;
+
+    const reportReady = async () => {
+      const roleName = (urlRole === 'teacher' || computedRole === 'teacher') ? 'teacher' : 'student';
+      const userId = storedUser?.email || roleName || 'anonymous';
+      
+      try {
+        // First, check if we are already in the list to avoid redundant broadcasts
+        const r = await fetch(`/api/classroom/ready?uuid=${encodeURIComponent(sessionReadyKey)}`);
+        if (!r.ok) return;
+        const j = await r.json();
+        const parts = j.participants || [];
+        const alreadyReady = parts.some((p: any) => p.role === roleName && p.userId === userId);
+        
+        if (!alreadyReady) {
+          await fetch('/api/classroom/ready', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ uuid: sessionReadyKey, role: roleName, userId, action: 'ready' }),
+          });
+          console.log(`[ClientClassroom] Reported ${roleName} as ready to server`);
+        }
+      } catch (e) {
+        console.warn('[ClientClassroom] Failed to report ready to server', e);
+      }
+    };
+
+    reportReady();
+    
+    // Periodic heartbeat to keep the ready status alive while on this page
+    const interval = setInterval(reportReady, 10000);
+    return () => clearInterval(interval);
+  }, [mounted, sessionReadyKey, urlRole, computedRole, storedUser]);
 
   const endSession = async () => {
     try {

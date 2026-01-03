@@ -468,10 +468,8 @@ function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, vi
     try {
       console.log('[Permission] Requesting camera and microphone access...');
       
-      // On iOS Safari over HTTP, getUserMedia is not available
-      // User must use HTTPS (ngrok tunnel recommended)
       if (!navigator.mediaDevices) {
-        console.error('[Permission] navigator.mediaDevices not available - requires HTTPS on iOS');
+        console.error('[Permission] navigator.mediaDevices not available');
         return false;
       }
 
@@ -528,9 +526,9 @@ function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, vi
       } else if (e?.name === 'NotFoundError' || e?.name === 'DevicesNotFoundError') {
         alert('未找到相機或麥克風。請確認硬體已連接。');
       } else if (e?.name === 'NotSupportedError') {
-        alert('您的瀏覽器不支援此功能。\n\n提示：iPhone 需要使用 HTTPS 連接（不能用 HTTP）。\n請使用 ngrok：ngrok http 3000');
+        alert('您的瀏覽器不支援此功能。');
       } else {
-        alert(`發生錯誤：${e?.message || '未知錯誤'}\n\n如果您在 iPhone 上，請確保使用 HTTPS 連接。`);
+        alert(`發生錯誤：${e?.message || '未知錯誤'}`);
       }
       return false;
     }
@@ -644,21 +642,14 @@ function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, vi
 
   return (
     <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-      {/* iOS HTTPS Notice */}
+      {/* HTTPS Notice */}
       {showIosNotice && (
         <div style={{ width: '100%', padding: 16, background: '#ffebee', border: '2px solid #d32f2f', borderRadius: 12, marginBottom: 8 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{ fontSize: 24 }}>⚠️</div>
             <div>
-              <div style={{ fontWeight: 700, fontSize: 15, color: '#d32f2f' }}>iPhone 需要 HTTPS 連接</div>
-              <div style={{ fontSize: 13, color: '#666', marginTop: 2 }}>HTTP 連接無法存取相機和麥克風，請使用 ngrok 建立 HTTPS 隧道</div>
+              <div style={{ fontWeight: 700, fontSize: 15, color: '#d32f2f' }}>{t('wait.https_required_notice')}</div>
             </div>
-          </div>
-          <div style={{ fontSize: 12, color: '#666', fontFamily: 'monospace', background: '#fff', padding: 8, borderRadius: 6, marginBottom: 8 }}>
-            ngrok http 3000
-          </div>
-          <div style={{ fontSize: 12, color: '#666' }}>
-            然後在 iPhone 瀏覽器開啟 ngrok 提供的 HTTPS 網址（如：https://xxxxx.ngrok.io）
           </div>
         </div>
       )}
