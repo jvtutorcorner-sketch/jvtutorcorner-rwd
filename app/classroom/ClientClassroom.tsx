@@ -260,7 +260,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
         }
         console.log('收到開始上課通知，自動加入... 頻道:', effectiveChannelName);
         // 学生端自动加入
-        join({ publishAudio: micEnabled, publishVideo: wantPublishVideo, audioDeviceId: selectedAudioDeviceId, videoDeviceId: selectedVideoDeviceId });
+        join({ publishAudio: micEnabled, publishVideo: wantPublishVideo, audioDeviceId: selectedAudioDeviceId ?? undefined, videoDeviceId: selectedVideoDeviceId ?? undefined });
       } else if (event.data?.type === 'ready-updated') {
         // Another tab updated ready state — re-check localStorage and update canJoin immediately
         try {
@@ -300,7 +300,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
             const hasTeacher = parts.some((p: any) => p.role === 'teacher');
             if (hasTeacher) {
               console.log('[AutoJoin] Teacher is already present on server, joining class...');
-              join({ publishAudio: micEnabled, publishVideo: wantPublishVideo, audioDeviceId: selectedAudioDeviceId, videoDeviceId: selectedVideoDeviceId });
+              join({ publishAudio: micEnabled, publishVideo: wantPublishVideo, audioDeviceId: selectedAudioDeviceId ?? undefined, videoDeviceId: selectedVideoDeviceId ?? undefined });
               return;
             }
           }
@@ -311,7 +311,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           const hasTeacherLocal = arr.some((p) => p.role === 'teacher');
           if (hasTeacherLocal) {
             console.log('[AutoJoin] Teacher is already present in localStorage, joining class...');
-            join({ publishAudio: micEnabled, publishVideo: wantPublishVideo, audioDeviceId: selectedAudioDeviceId, videoDeviceId: selectedVideoDeviceId });
+            join({ publishAudio: micEnabled, publishVideo: wantPublishVideo, audioDeviceId: selectedAudioDeviceId ?? undefined, videoDeviceId: selectedVideoDeviceId ?? undefined });
           }
         } catch (e) {
           console.warn('[AutoJoin] Failed to check teacher presence', e);
@@ -1068,7 +1068,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                             return;
                           }
                           console.log('[UI] Manual Join button clicked. Channel:', effectiveChannelName);
-                          join({ publishAudio: micEnabled, publishVideo: wantPublishVideo, audioDeviceId: selectedAudioDeviceId, videoDeviceId: selectedVideoDeviceId });
+                          join({ publishAudio: micEnabled, publishVideo: wantPublishVideo, audioDeviceId: selectedAudioDeviceId ?? undefined, videoDeviceId: selectedVideoDeviceId ?? undefined });
                         }}
                         disabled={loading || !canJoin}
                         style={{
