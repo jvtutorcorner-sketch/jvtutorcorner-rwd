@@ -25,10 +25,25 @@ function normalizeUuid(raw?: string | null) {
 
 export async function GET(req: NextRequest) {
   try {
-    const { searchParams } = new URL(req.url);
+    const urlObj = new URL(req.url);
+    const { searchParams } = urlObj;
     const rawUuid = searchParams.get('uuid') || 'default';
     const uuid = normalizeUuid(rawUuid);
     console.log('[WB SSE Server] New client connecting, raw:', rawUuid, 'normalized:', uuid);
+
+    // In production hosts (Amplify) streaming often fails. Return a
+    // single connected SSE payload (so EventSource opens cleanly) and
+    // let clients fall back to polling/state fetch instead of keeping
+    // a long-lived stream.
+    const host = urlObj.hostname || '';
+    if (host.endsWith('jvtutorcorner.com')) {
+      try {
+        const single = `data: ${JSON.stringify({ type: 'connected', uuid, timestamp: Date.now() })}\n\n`;
+        return new Response(single, { headers });
+      } catch (e) {
+        console.warn('[WB SSE Server] Production short-response failed, continuing to stream fallback', e);
+      }
+    }
 
     // Note: avoid setting explicit `Connection` header because some
     // serverless/proxy environments (Amplify/CDN) reject or buffer
