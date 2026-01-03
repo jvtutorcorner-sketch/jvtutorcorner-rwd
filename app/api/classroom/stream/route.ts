@@ -2,7 +2,6 @@ import { NextRequest } from 'next/server';
 import { registerClient } from '@/lib/classroomSSE';
 
 export const dynamic = 'force-dynamic';
-export const runtime = 'nodejs';
 
 export async function GET(req: NextRequest) {
   try {
@@ -11,25 +10,10 @@ export async function GET(req: NextRequest) {
     const uuid = url.searchParams.get('uuid') || 'default';
 
     console.log('[SSE] creating ReadableStream');
-    // Ensure ReadableStream is available in this runtime (Next.js Node runtimes may not expose it)
-    let RS: any = (globalThis as any).ReadableStream;
-    if (!RS) {
-      try {
-        const mod = await import('stream/web');
-        RS = (mod as any).ReadableStream;
-        console.log('[SSE] using stream/web.ReadableStream fallback');
-      } catch (e) {
-        console.warn('[SSE] stream/web import failed:', e);
-      }
-    }
-    if (!RS) {
-      console.error('[SSE] No ReadableStream available in this runtime; cannot open SSE stream.');
-      return new Response('Server does not support SSE in this runtime', { status: 500 });
-    }
-
     const encoder = new TextEncoder();
-    const stream = new RS({
-      start(controller: any) {
+    
+    const stream = new ReadableStream({
+      start(controller) {
         console.log('[SSE] ReadableStream start called');
         const send = (payload: any) => {
           try {
@@ -40,14 +24,7 @@ export async function GET(req: NextRequest) {
         };
 
         console.log('[SSE] registering client');
-        let unregister: () => void;
-        try {
-          unregister = registerClient(uuid, send);
-        } catch (e) {
-          console.error('Failed to register client:', e);
-          controller.error(e);
-          return;
-        }
+        const unregister = registerClient(uuid, send);
 
         // Send initial connection message
         console.log('[SSE] sending initial connection message');
@@ -66,33 +43,21 @@ export async function GET(req: NextRequest) {
         // When client disconnects, unregister and close controller
         const onAbort = () => {
           console.log('[SSE] client disconnecting, cleaning up');
-          try {
-            clearInterval(keepAliveInterval);
-            if (unregister) unregister();
-          } catch (e) {}
+          clearInterval(keepAliveInterval);
+          if (unregister) unregister();
           try { controller.close(); } catch (e) {}
         };
 
-        try {
-          // @ts-ignore next-runtime signal
-          const s = (req as any).signal;
-          if (s && typeof s.addEventListener === 'function') {
-            console.log('[SSE] setting up abort listener');
-            s.addEventListener('abort', onAbort);
-          } else {
-            console.log('[SSE] no signal available, using timeout fallback');
-            // Fallback: set a timeout to clean up after 5 minutes
-            setTimeout(onAbort, 5 * 60 * 1000);
-          }
-        } catch (e) {
-          console.warn('Failed to set up abort listener, using timeout fallback:', e);
-          // Fallback: set a timeout to clean up after 5 minutes
+        if (req.signal) {
+          console.log('[SSE] setting up abort listener');
+          req.signal.addEventListener('abort', onAbort);
+        } else {
+          console.log('[SSE] no signal available, using timeout fallback');
           setTimeout(onAbort, 5 * 60 * 1000);
         }
       },
       cancel() {
         console.log('[SSE] ReadableStream cancel called');
-        // noop — cleanup handled in start via abort
       },
     });
 
@@ -105,7 +70,6 @@ export async function GET(req: NextRequest) {
         'Connection': 'keep-alive',
         'X-Accel-Buffering': 'no',
         'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Cache-Control',
       },
     });
   } catch (error) {

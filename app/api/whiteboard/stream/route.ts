@@ -35,28 +35,12 @@ export async function GET(req: NextRequest) {
       'Access-Control-Allow-Origin': '*',
     });
 
-    // Ensure a ReadableStream implementation is available in this runtime.
-    let RS: any = (globalThis as any).ReadableStream;
-    if (!RS) {
-      try {
-        const mod = await import('stream/web');
-        RS = mod.ReadableStream;
-      } catch (e) {
-        console.warn('[WB SSE Server] stream/web import failed:', e);
-      }
-    }
-
-    if (!RS) {
-      console.error('[WB SSE Server] No ReadableStream available in this runtime; cannot open SSE stream.');
-      return new Response('Server does not support SSE in this runtime', { status: 500 });
-    }
-
     function encodeSSE(obj: any) {
       try { return new TextEncoder().encode(`data: ${JSON.stringify(obj)}\n\n`); } catch (e) { return new TextEncoder().encode(`data: {}\n\n`); }
     }
 
-    const stream = new RS({
-      start(controller: any) {
+    const stream = new ReadableStream({
+      start(controller) {
         // send connected ping
         try { controller.enqueue(encodeSSE({ type: 'connected', timestamp: Date.now() })); } catch (e) {}
 
@@ -78,16 +62,14 @@ export async function GET(req: NextRequest) {
         }
 
         // On cancel/close remove (guard if signal exists)
-        try {
-          if (req.signal && typeof (req.signal as any).addEventListener === 'function') {
-            (req.signal as any).addEventListener('abort', () => {
-              try {
-                set!.delete(client);
-                console.log(`[WB SSE Server] Client disconnected. UUID: ${uuid}, Remaining: ${set!.size}`);
-              } catch (e) {}
-            });
-          }
-        } catch (e) {}
+        if (req.signal) {
+          req.signal.addEventListener('abort', () => {
+            try {
+              set!.delete(client);
+              console.log(`[WB SSE Server] Client disconnected. UUID: ${uuid}, Remaining: ${set!.size}`);
+            } catch (e) {}
+          });
+        }
       }
     });
 
