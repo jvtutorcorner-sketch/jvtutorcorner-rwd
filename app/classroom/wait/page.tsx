@@ -179,26 +179,37 @@ export default function ClassroomWaitPage() {
     window.addEventListener('storage', onStorage);
 
     // 4. Real-time Server Sync (Server-Sent Events)
-    // The primary method for getting updates from other users.
-    // Use a reconnect loop with exponential backoff to ensure returning users reattach.
-    // If SSE consistently fails (e.g., in Serverless environments), disable it permanently.
+    // SSE is disabled in production (Amplify/Serverless doesn't support long-lived connections).
+    // In development, try SSE but disable it after first failure to avoid console spam.
     const createEventSource = () => {
-      if (sseDisabledRef.current) {
-        console.log('SYNC: SSE is disabled, relying on polling only.');
+      // Auto-disable SSE in production environment
+      const isProduction = window.location.hostname === 'www.jvtutorcorner.com' || 
+                           window.location.hostname === 'jvtutorcorner.com';
+      
+      if (sseDisabledRef.current || isProduction) {
+        if (isProduction) {
+          console.log('SYNC: Production environment detected, using polling mode only.');
+        } else {
+          console.log('SYNC: SSE is disabled, relying on polling only.');
+        }
         setSyncMode('polling');
         return;
       }
+
+      // In development, try SSE once but disable immediately on error
       try {
         console.log('SYNC: Creating EventSource ->', `/api/classroom/stream?uuid=${encodeURIComponent(sessionReadyKey)}`);
         const es = new EventSource(`/api/classroom/stream?uuid=${encodeURIComponent(sessionReadyKey)}`);
         esRef.current = es;
 
         es.onopen = () => {
-          console.log('SYNC: SSE connection opened.');
+          console.log('SYNC: SSE connection opened successfully.');
           setSyncMode('sse');
-          // reset retry counter and clear any pending reconnect
           retryCountRef.current = 0;
-          if (reconnectTimerRef.current) { clearTimeout(reconnectTimerRef.current); reconnectTimerRef.current = null; }
+          if (reconnectTimerRef.current) { 
+            clearTimeout(reconnectTimerRef.current); 
+            reconnectTimerRef.current = null; 
+          }
         };
 
         es.onmessage = (ev) => {
@@ -207,51 +218,21 @@ export default function ClassroomWaitPage() {
         };
 
         es.onerror = (err) => {
-          console.warn('SYNC: SSE error.', err);
+          console.warn('SYNC: SSE error, disabling and switching to polling mode.');
           setSyncMode('polling');
           try { es.close(); } catch (e) {}
           esRef.current = null;
 
-          // best-effort: mark this user as unready if we were previously ready
-          const syncUuid = sessionReadyKey;
-          const email = storedUserState?.email;
-          const userId = email || role || 'anonymous';
-          if (syncUuid && role && ready) {
-            console.log('SYNC: Attempting to POST unready status due to SSE error.');
-            try {
-              fetch('/api/classroom/ready', {
-                method: 'POST',
-                headers: { 'content-type': 'application/json' },
-                body: JSON.stringify({ uuid: syncUuid, role, userId, action: 'unready' }),
-                keepalive: true,
-              }).catch(() => {});
-            } catch (e) {}
-          }
-
-          // Increment retry counter and check if we should disable SSE permanently
-          const attempts = ++retryCountRef.current;
-          if (attempts >= 3) {
-            console.warn('SYNC: SSE failed 3 times. Disabling SSE and using polling only.');
-            sseDisabledRef.current = true;
-            setSyncMode('polling');
-            if (reconnectTimerRef.current) {
-              clearTimeout(reconnectTimerRef.current);
-              reconnectTimerRef.current = null;
-            }
-            return;
-          }
-
-          // schedule reconnect with exponential backoff
-          const delay = Math.min(30000, 500 * Math.pow(2, Math.max(0, attempts - 1)));
-          console.log(`SYNC: Scheduling SSE reconnect in ${delay}ms (attempt ${attempts})`);
-          if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
-          reconnectTimerRef.current = window.setTimeout(() => {
+          // Immediately disable SSE after first error (no retries in dev either)
+          sseDisabledRef.current = true;
+          if (reconnectTimerRef.current) {
+            clearTimeout(reconnectTimerRef.current);
             reconnectTimerRef.current = null;
-            if (!esRef.current) createEventSource();
-          }, delay);
+          }
         };
       } catch (e) {
         console.warn('SYNC: Failed to create EventSource, falling back to polling.', e);
+        sseDisabledRef.current = true;
         setSyncMode('polling');
       }
     };
@@ -280,10 +261,9 @@ export default function ClassroomWaitPage() {
     });
 
     // 5. Polling Fallback
-    // If SSE is not working or disconnected, poll the server every 5 seconds.
+    // Primary sync method in production. Poll every 5 seconds to keep state updated.
     const pollingTimer = setInterval(() => {
       if (esRef.current === null || esRef.current.readyState !== EventSource.OPEN) {
-        console.log('SYNC: Polling fallback triggered (SSE not active).');
         syncStateFromServer();
       }
     }, 5000);
