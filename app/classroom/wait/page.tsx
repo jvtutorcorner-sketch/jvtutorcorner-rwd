@@ -260,10 +260,20 @@ export default function ClassroomWaitPage() {
       if (document.visibilityState === 'visible') ensureConnected();
     });
 
+    // 5. Polling Fallback
+    // If SSE is not working or disconnected, poll the server every 5 seconds.
+    const pollingTimer = setInterval(() => {
+      if (esRef.current === null || esRef.current.readyState !== EventSource.OPEN) {
+        console.log('SYNC: Polling fallback triggered (SSE not active).');
+        syncStateFromServer();
+      }
+    }, 5000);
+
     // Cleanup all listeners on unmount
     return () => {
       console.log('SYNC: Cleaning up all synchronization listeners.');
       window.removeEventListener('storage', onStorage);
+      clearInterval(pollingTimer);
       if (bcRef.current) {
         bcRef.current.close();
         bcRef.current = null;
