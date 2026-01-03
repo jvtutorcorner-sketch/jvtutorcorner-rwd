@@ -251,9 +251,16 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     bc.onmessage = (event) => {
       console.log('[BroadcastChannel] Received message:', event.data);
       if (event.data?.type === 'class_started' && !joined && !loading) {
+        // New: Student saves the authoritative endTs from teacher
+        if (event.data.endTs) {
+            const endKey = `class_end_ts_${sessionReadyKey}`;
+            try {
+                localStorage.setItem(endKey, String(event.data.endTs));
+            } catch (e) {}
+        }
         console.log('收到開始上課通知，自動加入... 頻道:', effectiveChannelName);
         // 学生端自动加入
-        join({ publishAudio: micEnabled, publishVideo: wantPublishVideo });
+        join({ publishAudio: micEnabled, publishVideo: wantPublishVideo, audioDeviceId: selectedAudioDeviceId, videoDeviceId: selectedVideoDeviceId });
       } else if (event.data?.type === 'ready-updated') {
         // Another tab updated ready state — re-check localStorage and update canJoin immediately
         try {
@@ -290,7 +297,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           const hasTeacher = arr.some((p) => p.role === 'teacher');
           if (hasTeacher) {
             console.log('[AutoJoin] Teacher is already present, joining class...');
-            join({ publishAudio: micEnabled, publishVideo: wantPublishVideo });
+            join({ publishAudio: micEnabled, publishVideo: wantPublishVideo, audioDeviceId: selectedAudioDeviceId, videoDeviceId: selectedVideoDeviceId });
           }
         } catch (e) {
           console.warn('[AutoJoin] Failed to check teacher presence', e);
@@ -399,12 +406,8 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
 
   // readiness management using localStorage to coordinate between teacher/student tabs
   useEffect(() => {
-    if (!orderId) {
-      setCanJoin(false);
-      return;
-    }
-
-    const readReady = () => {
+    let es: EventSource | null = null;
+    const readReadyLocal = () => {
       try {
         const raw = localStorage.getItem(sessionReadyKey);
         const arr = raw ? JSON.parse(raw) as Array<{ role: string; email?: string }> : [];
@@ -416,17 +419,53 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       }
     };
 
-    readReady();
+    // Run local read immediately to have some state
+    readReadyLocal();
 
+    // Also attempt an authoritative server-side read to avoid relying on localStorage after navigation
+    (async () => {
+      try {
+        if (!sessionReadyKey) return;
+        const r = await fetch(`/api/classroom/ready?uuid=${encodeURIComponent(sessionReadyKey)}`);
+        const j = await r.json();
+        const parts = j.participants || [];
+        const hasTeacher = parts.some((p: any) => p.role === 'teacher');
+        const hasStudent = parts.some((p: any) => p.role === 'student');
+        setCanJoin(hasTeacher && hasStudent);
+      } catch (e) {
+        // ignore server read errors
+      }
+    })();
+
+    // Subscribe to server SSE for updates to participants (keeps canJoin in sync)
+    try {
+      if (sessionReadyKey) {
+        es = new EventSource(`/api/classroom/stream?uuid=${encodeURIComponent(sessionReadyKey)}`);
+        es.onmessage = (ev) => {
+          try {
+            const data = JSON.parse(ev.data);
+            if (data.participants) {
+              const parts = data.participants as Array<{ role: string; userId?: string }>;
+              const hasTeacher = parts.some((p) => p.role === 'teacher');
+              const hasStudent = parts.some((p) => p.role === 'student');
+              setCanJoin(hasTeacher && hasStudent);
+            }
+          } catch (e) {}
+        };
+      }
+    } catch (e) {}
+
+    // Also respond to storage events from other tabs
     const onStorage = (ev: StorageEvent) => {
-      if (ev.key === sessionReadyKey) readReady();
+      if (ev.key === sessionReadyKey) readReadyLocal();
     };
     window.addEventListener('storage', onStorage);
+
     return () => {
       window.removeEventListener('storage', onStorage);
+      try { es?.close(); } catch (e) {}
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orderId, courseId]);
+  }, [sessionReadyKey]);
 
   const endSession = async () => {
     try {
@@ -457,6 +496,15 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       // 返回到等待页面，保持相应的 role 参数
       const currentRole = (urlRole === 'teacher' || urlRole === 'student') ? urlRole : computedRole;
       const waitPageUrl = `/classroom/wait?courseId=${courseId}${orderId ? `&orderId=${orderId}` : ''}&role=${currentRole}`;
+      try {
+        // Clear persistent end timestamp when session ends
+        const endKey = `class_end_ts_${sessionReadyKey}`;
+        try { 
+          localStorage.removeItem(endKey);
+          // Also clear the ready state for the session
+          localStorage.removeItem(sessionReadyKey);
+        } catch (e) {}
+      } catch (e) {}
       window.location.href = waitPageUrl;
     } catch (e) {
       console.warn('end session failed', e);
@@ -529,19 +577,22 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   };
 
   useEffect(() => {
-    // cleanup own ready mark on unmount
-    return () => {
-      try {
-        const raw = localStorage.getItem(sessionReadyKey);
-        const arr = raw ? JSON.parse(raw) as Array<{ role: string; email?: string }> : [];
-        const email = (getStoredUser && typeof getStoredUser === 'function') ? (getStoredUser()?.email ?? undefined) : undefined;
-        const roleName = (urlRole === 'teacher' || computedRole === 'teacher') ? 'teacher' : 'student';
-        const filtered = arr.filter((p) => !(p.role === roleName && p.email === email));
-        localStorage.setItem(sessionReadyKey, JSON.stringify(filtered));
-      } catch (e) {}
-    };
+    // This effect is intentionally left empty. The original logic that cleared
+    // the "ready" status on unmount has been moved to the `useEffect` that
+    // handles the `joined` state change. This prevents a user leaving the
+    // classroom from affecting the state of the waiting room.
+    return () => {};
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // The 'beforeunload' logic that modified the ready list has also been removed
+  // to prevent race conditions and incorrect state changes for the wait page.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    // This effect is intentionally left empty.
+    return () => {};
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionReadyKey, urlRole, computedRole]);
 
   // start/stop countdown when `joined` changes
   useEffect(() => {
@@ -552,21 +603,44 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     }
 
     if (joined) {
-      // 老师开始上课时，广播通知学生
+      // 老师开始上课时，广播通知学生 and persist end timestamp
       const isTeacher = (urlRole === 'teacher' || urlRole === 'student') ? urlRole === 'teacher' : computedRole === 'teacher';
+      const secs = Math.floor((sessionDurationMinutes || 0.5) * 60);
+      const endKey = `class_end_ts_${sessionReadyKey}`;
+
+      // Determine or create authoritative end timestamp
+      let endTs: number | null = null;
+      try {
+        const existing = typeof window !== 'undefined' ? localStorage.getItem(endKey) : null;
+        if (existing) {
+          const parsed = Number(existing || 0);
+          if (!Number.isNaN(parsed) && parsed > Date.now()) endTs = parsed;
+        }
+      } catch (e) { /* ignore */ }
+
+      if (!endTs && isTeacher) {
+        endTs = Date.now() + secs * 1000;
+        try { localStorage.setItem(endKey, String(endTs)); } catch (e) {}
+      }
+
+      // Broadcast class_started with endTs so other tabs can pick it up immediately
       if (isTeacher) {
         const sessionBroadcastName = sessionParam || channelName || `classroom_session_ready_${courseId}`;
-        const bc = new BroadcastChannel(sessionBroadcastName);
-        bc.postMessage({ type: 'class_started', timestamp: Date.now() });
-        console.log('已廣播開始上課通知 ->', sessionBroadcastName);
-        setTimeout(() => { try { bc.close(); } catch (e) {} }, 100);
+        try {
+          const bc = new BroadcastChannel(sessionBroadcastName);
+          bc.postMessage({ type: 'class_started', timestamp: Date.now(), endTs });
+          console.log('已廣播開始上課通知 ->', sessionBroadcastName, 'endTs=', endTs);
+          setTimeout(() => { try { bc.close(); } catch (e) {} }, 100);
+        } catch (e) {
+          console.warn('Failed to broadcast class_started', e);
+        }
       }
-      
-      // initialize remaining seconds - 30秒倒计时
-      const secs = Math.floor((sessionDurationMinutes || 0.5) * 60);
-      setRemainingSeconds(secs);
-      console.log(`開始 ${secs} 秒倒計時`);
-      
+
+      // initialize remaining seconds from endTs if available, otherwise fallback to secs
+      const initialRemaining = endTs ? Math.max(0, Math.ceil((endTs - Date.now()) / 1000)) : secs;
+      setRemainingSeconds(initialRemaining);
+      console.log(`開始倒計時, remainingSeconds=${initialRemaining}`);
+
       timerRef.current = window.setInterval(() => {
         setRemainingSeconds((prev) => {
           if (prev === null) return prev;
@@ -924,121 +998,68 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                   {/* Mic toggle and Leave placed below the Join button */}
                 </div>
 
-                <div style={{ marginTop: 8, display: 'flex', gap: 8, flexDirection: 'column', alignItems: 'stretch' }}>
-                  {/* Ready toggle: allow participants to mark themselves ready (synchronized with waiting page) */}
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button
-                      onClick={() => {
-                        try {
-                          markReady(!ready);
-                        } catch (e) { console.warn('markReady click failed', e); }
-                      }}
-                      style={{
-                        flex: 1,
-                        minWidth: 0,
-                        background: ready ? '#10b981' : '#6b7280',
-                        color: 'white',
-                        border: 'none',
-                        padding: '8px 12px',
-                        borderRadius: 6,
-                        cursor: 'pointer',
-                        fontWeight: 600,
-                        textAlign: 'center'
-                      }}
-                    >
-                      {ready ? '已準備 (取消準備)' : '我已準備'}
-                    </button>
+                  <div style={{ marginTop: 8, display: 'flex', gap: 8, flexDirection: 'column', alignItems: 'stretch' }}>
+                    {!joined ? (
+                      <button
+                        onClick={() => {
+                          // Stop camera preview if running before joining
+                          if (previewingCamera && previewStreamRef.current) {
+                            previewStreamRef.current.getTracks().forEach(t => t.stop());
+                            previewStreamRef.current = null;
+                            if (localVideoRef.current) {
+                              localVideoRef.current.srcObject = null;
+                            }
+                            setPreviewingCamera(false);
+                          }
+                          if (!canJoin) {
+                            // Shouldn't be clickable when disabled, but guard anyway
+                            alert('尚未達到等待頁就緒條件，請確認雙方在等待頁都已按下「準備」。');
+                            return;
+                          }
+                          console.log('[UI] Manual Join button clicked. Channel:', effectiveChannelName);
+                          join({ publishAudio: micEnabled, publishVideo: wantPublishVideo, audioDeviceId: selectedAudioDeviceId, videoDeviceId: selectedVideoDeviceId });
+                        }}
+                        disabled={loading || !canJoin}
+                        style={{
+                          background: loading || !canJoin ? '#9CA3AF' : '#4CAF50',
+                          color: 'white',
+                          border: 'none',
+                          padding: '8px 16px',
+                          borderRadius: 6,
+                          cursor: loading || !canJoin ? 'not-allowed' : 'pointer',
+                          fontWeight: 600,
+                          width: '100%'
+                        }}
+                      >
+                        {loading ? '加入中...' : (canJoin ? '🚀 Join (開始上課)' : '等待對方就緒...')}
+                      </button>
+                    ) : (
+                      <div style={{ height: 0 }} />
+                    )}
 
-                    <div style={{ display: 'flex', alignItems: 'center', paddingLeft: 8, color: canJoin ? '#10b981' : '#666', fontSize: 13 }}>
+                    {/* Moved ready status message below Join button */}
+                    <div style={{ marginTop: 8, color: canJoin ? '#10b981' : '#666', fontSize: 13, textAlign: 'center' }}>
                       {canJoin ? '等待就緒：完成，雙方可開始' : '等待就緒：尚未完成'}
                     </div>
-                  </div>
 
-                  {!joined ? (
                     <button
-                      onClick={() => {
-                        // Stop camera preview if running before joining
-                        if (previewingCamera && previewStreamRef.current) {
-                          previewStreamRef.current.getTracks().forEach(t => t.stop());
-                          previewStreamRef.current = null;
-                          if (localVideoRef.current) {
-                            localVideoRef.current.srcObject = null;
-                          }
-                          setPreviewingCamera(false);
-                        }
-                        if (!canJoin) {
-                          // Shouldn't be clickable when disabled, but guard anyway
-                          alert('尚未達到等待頁就緒條件，請確認雙方在等待頁都已按下「準備」。');
-                          return;
-                        }
-                        console.log('[UI] Manual Join button clicked. Channel:', effectiveChannelName);
-                        join({ publishAudio: micEnabled, publishVideo: wantPublishVideo });
-                      }}
-                      disabled={loading || !canJoin}
+                      onClick={() => { try { handleLeave(); } catch (e) { console.error('Leave click error', e); } }}
+                      disabled={!joined}
                       style={{
-                        background: loading || !canJoin ? '#9CA3AF' : '#4CAF50',
-                        color: 'white',
-                        border: 'none',
-                        padding: '8px 16px',
-                        borderRadius: 6,
-                        cursor: loading || !canJoin ? 'not-allowed' : 'pointer',
-                        fontWeight: 600,
-                        width: '100%'
-                      }}
-                    >
-                      {loading ? '加入中...' : (canJoin ? '🚀 Join (開始上課)' : '等待對方就緒...')}
-                    </button>
-                  ) : (
-                    <div style={{ height: 0 }} />
-                  )}
-
-                  {/* Troubleshoot button to allow user gesture to unlock audio/video */}
-                  <div>
-                    <button
-                      id="btn-troubleshoot"
-                      onClick={async () => {
-                        try {
-                          if (typeof triggerFix === 'function') {
-                            await triggerFix();
-                          }
-                        } catch (e) {
-                          console.warn('Troubleshoot click failed', e);
-                        }
-                      }}
-                      disabled={fixStatus === 'fixing'}
-                      style={{
-                        marginTop: 8,
-                        background: '#1f2937',
+                        display: typeof window !== 'undefined' && window.location.pathname === '/classroom/test' ? 'none' : 'block',
+                        background: joined ? '#f44336' : '#ef9a9a',
                         color: 'white',
                         border: 'none',
                         padding: '8px 12px',
                         borderRadius: 6,
-                        cursor: fixStatus === 'fixing' ? 'not-allowed' : 'pointer',
+                        cursor: joined ? 'pointer' : 'not-allowed',
+                        fontWeight: 600,
                         width: '100%'
                       }}
                     >
-                      {fixStatus === 'fixing' ? '修復中...' : fixStatus === 'success' ? '✅ 修復成功' : '🔧 沒聲音/沒畫面點我'}
+                      Leave (離開)
                     </button>
                   </div>
-
-                  <button
-                    onClick={() => { try { handleLeave(); } catch (e) { console.error('Leave click error', e); } }}
-                    disabled={!joined}
-                    style={{
-                      display: typeof window !== 'undefined' && window.location.pathname === '/classroom/test' ? 'none' : 'block',
-                      background: joined ? '#f44336' : '#ef9a9a',
-                      color: 'white',
-                      border: 'none',
-                      padding: '8px 12px',
-                      borderRadius: 6,
-                      cursor: joined ? 'pointer' : 'not-allowed',
-                      fontWeight: 600,
-                      width: '100%'
-                    }}
-                  >
-                    Leave (離開)
-                  </button>
-                </div>
 
                 {joined && (
                   <div style={{ marginTop: 6, fontSize: 11, color: '#ffeb3b', background: 'rgba(255,235,59,0.1)', padding: 4, borderRadius: 4 }}>

@@ -155,8 +155,8 @@ export function useAgoraClassroom({
   };
 
   // join with options: whether to publish audio/video
-  const joinWithOptions = async (opts?: { publishAudio?: boolean; publishVideo?: boolean }) => {
-    const { publishAudio = true, publishVideo = true } = opts || {};
+  const joinWithOptions = async (opts?: { publishAudio?: boolean; publishVideo?: boolean; audioDeviceId?: string; videoDeviceId?: string; }) => {
+    const { publishAudio = true, publishVideo = true, audioDeviceId, videoDeviceId } = opts || {};
     if (joined || loading) return;
 
     try {
@@ -258,26 +258,42 @@ export function useAgoraClassroom({
             hasAudio: !!user.audioTrack
           });
 
-          if (mediaType === 'video' && user.videoTrack) {
+          // To reduce A/V desync, prefer to start audio playback first and await it,
+          // then start video playback. This reduces the chance video appears before audio.
+          const tStart = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+
+          // Play audio first (if present)
+          if (user.audioTrack) {
+            try {
+              const audioPlay: any = user.audioTrack.play();
+              try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = false; } catch (e) {}
+              if (audioPlay && typeof audioPlay.then === 'function') {
+                await audioPlay as Promise<void>;
+                try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = true; } catch (e) {}
+                console.log('[Agora] Remote audio started playing for', user.uid, 'at', (performance.now ? performance.now() : Date.now()) - tStart, 'ms');
+              } else {
+                try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = true; } catch (e) {}
+                console.log('[Agora] Remote audio play (non-promise) assumed playing for', user.uid);
+              }
+            } catch (err) {
+              console.warn('[Agora] Remote audio play failed/blocked', err);
+              setAutoplayFailed(true);
+              setTimeout(() => { try { requestEnableSound(); } catch (e) { console.warn('[Agora] requestEnableSound failed', e); } }, 1000);
+            }
+          }
+
+          // Then play video (if present)
+          if (user.videoTrack) {
             const remoteEl = remoteVideoRef.current ?? localVideoRef.current;
             if (remoteEl) {
               try {
-                const playRes = user.videoTrack.play(remoteEl) as any;
+                const playRes: any = user.videoTrack.play(remoteEl);
                 if (playRes && typeof playRes.then === 'function') {
-                  playRes.catch((playErr: any) => {
-                    console.warn('[Agora] Remote video play rejected (promise), scheduling retry', playErr);
-                    setTimeout(() => {
-                      try { 
-                        if (user.videoTrack) {
-                          user.videoTrack.play(remoteEl); 
-                          console.log('[Agora] Retry video play attempted'); 
-                        }
-                      } catch (e) { console.warn('[Agora] Retry video play failed', e); }
-                    }, 500);
-                  });
+                  await playRes;
+                  console.log('[Agora] Remote video started playing for', user.uid, 'at', (performance.now ? performance.now() : Date.now()) - tStart, 'ms');
                 }
               } catch (e) {
-                console.warn('[Agora] Failed to play remote video track, will retry once', e);
+                console.warn('[Agora] Failed to play remote video track, scheduling retry', e);
                 setTimeout(() => {
                   try { 
                     if (user.videoTrack) {
@@ -285,35 +301,10 @@ export function useAgoraClassroom({
                       console.log('[Agora] Retry video play attempted'); 
                     }
                   } catch (err) { console.warn('[Agora] Retry video play failed', err); }
-                }, 500);
+                }, 300);
               }
             } else {
               console.warn('[Agora] No video element available to play remote video');
-            }
-          }
-
-          if (mediaType === 'audio' && user.audioTrack) {
-            try {
-              const p = user.audioTrack.play() as any;
-              try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = false; } catch (e) {}
-              if (p && typeof p.then === 'function') {
-                p.then(() => {
-                  try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = true; } catch (e) {}
-                  console.log('[Agora] Remote audio started playing for', user.uid);
-                }).catch((err: any) => {
-                  console.warn('[Agora] Remote audio play rejected, may be blocked by autoplay policy', err);
-                  try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = false; } catch (e) {}
-                  setAutoplayFailed(true);
-                  setTimeout(() => { try { requestEnableSound(); } catch (e) { console.warn('[Agora] requestEnableSound failed', e); } }, 1000);
-                });
-              } else {
-                try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = true; } catch (e) {}
-                console.log('[Agora] Remote audio play returned non-promise, assuming playing for', user.uid);
-              }
-            } catch (err) {
-              console.warn('[Agora] Remote audio play threw, may be blocked by autoplay policy', err);
-              setAutoplayFailed(true);
-              setTimeout(() => { try { requestEnableSound(); } catch (e) { console.warn('[Agora] requestEnableSound failed', e); } }, 1000);
             }
           }
 
@@ -440,6 +431,20 @@ export function useAgoraClassroom({
       let micTrack: IMicrophoneAudioTrack | null = null;
       let camTrack: ICameraVideoTrack | null = null;
 
+      // New: Prepare device configs
+      const micConfig: any = {};
+      if (audioDeviceId) {
+        micConfig.microphoneId = audioDeviceId;
+      }
+
+      const camConfig: any = {
+        // Prefer front camera for classroom setting on mobile
+        facingMode: 'user',
+      };
+      if (videoDeviceId) {
+        camConfig.cameraId = videoDeviceId;
+      }
+
       try {
         if (!AgoraSDK) {
           // ensure SDK is loaded (should have been loaded when creating client)
@@ -448,16 +453,16 @@ export function useAgoraClassroom({
         }
 
         if (publishAudio && publishVideo) {
-          console.log('[Agora] creating microphone and camera tracks');
-          const tracks = await AgoraSDK.createMicrophoneAndCameraTracks();
+          console.log('[Agora] creating microphone and camera tracks with config', { micConfig, camConfig });
+          const tracks = await AgoraSDK.createMicrophoneAndCameraTracks(micConfig, camConfig);
           micTrack = tracks[0] ?? null;
           camTrack = tracks[1] ?? null;
         } else if (publishAudio && !publishVideo) {
-          console.log('[Agora] creating microphone track only');
-          micTrack = await AgoraSDK.createMicrophoneAudioTrack();
+          console.log('[Agora] creating microphone track only with config', { micConfig });
+          micTrack = await AgoraSDK.createMicrophoneAudioTrack(micConfig);
         } else if (!publishAudio && publishVideo) {
-          console.log('[Agora] creating camera track only');
-          camTrack = await AgoraSDK.createCameraVideoTrack();
+          console.log('[Agora] creating camera track only with config', { camConfig });
+          camTrack = await AgoraSDK.createCameraVideoTrack(camConfig);
         }
 
         console.log('[Agora] tracks created', { hasMic: !!micTrack, hasCam: !!camTrack, currentQuality });
@@ -482,7 +487,7 @@ export function useAgoraClassroom({
               const mod = await import('agora-rtc-sdk-ng');
               AgoraSDK = (mod as any).default ?? mod;
             }
-            micTrack = await AgoraSDK.createMicrophoneAudioTrack();
+            micTrack = await AgoraSDK.createMicrophoneAudioTrack(micConfig);
           } catch (mErr) {
             console.warn('createMicrophoneAudioTrack failed', (mErr as any)?.message ?? mErr);
             micTrack = null;
@@ -494,7 +499,7 @@ export function useAgoraClassroom({
               const mod = await import('agora-rtc-sdk-ng');
               AgoraSDK = (mod as any).default ?? mod;
             }
-            camTrack = await AgoraSDK.createCameraVideoTrack();
+            camTrack = await AgoraSDK.createCameraVideoTrack(camConfig);
             // 即使是fallback也要應用質量設置
             if (camTrack) {
               const qualityConfig = VIDEO_QUALITY_PRESETS[currentQuality];
@@ -577,7 +582,7 @@ export function useAgoraClassroom({
   };
 
   // expose a convenience join that uses defaults (audio+video)
-  const join = async (opts?: { publishAudio?: boolean; publishVideo?: boolean }) => {
+  const join = async (opts?: { publishAudio?: boolean; publishVideo?: boolean; audioDeviceId?: string; videoDeviceId?: string; }) => {
     return joinWithOptions(opts);
   };
 
