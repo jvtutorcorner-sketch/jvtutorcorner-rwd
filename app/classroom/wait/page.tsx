@@ -332,16 +332,11 @@ export default function ClassroomWaitPage() {
   if (!isClient) return null;
 
   return (
-    <div style={{ padding: 24, maxWidth: 1200, margin: '0 auto' }}>
+    <div className="wait-page-container">
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <h2>{t('wait.title')}</h2>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <LanguageSwitcher />
-          <SyncBadge mode={syncMode} />
-          <div style={{ fontSize: 12, color: '#666' }}>
-            <div style={{ fontWeight: 600 }}>{t('wait.session_label')}</div>
-            <div style={{ fontFamily: 'monospace', fontSize: 11, color: '#333' }}>{sessionReadyKey}</div>
-          </div>
         </div>
       </div>
       <div style={{ marginTop: 12 }}>
@@ -350,6 +345,14 @@ export default function ClassroomWaitPage() {
         {orderId && <div style={{ color: '#666' }}>{t('wait.order_id_label')} {orderId}</div>}
         <div style={{ marginTop: 4, color: '#666' }}>
           {t('wait.role_label')} {role ? (role === 'teacher' ? `${t('role_teacher')} (Teacher)` : `${t('role_student')} (Student)`) : '—'}
+        </div>
+
+        <div className="wait-sync-info">
+          <SyncBadge mode={syncMode} />
+          <div style={{ fontSize: 12, color: '#666' }}>
+            <div style={{ fontWeight: 600 }}>{t('wait.session_label')}</div>
+            <div style={{ fontFamily: 'monospace', fontSize: 11, color: '#333' }}>{sessionReadyKey}</div>
+          </div>
         </div>
       </div>
 
@@ -786,7 +789,7 @@ function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, vi
   }, []);
 
   return (
-    <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+    <div className="wait-device-setup">
       {/* HTTPS Notice */}
       {showIosNotice && (
         <div style={{ width: '100%', padding: 16, background: '#ffebee', border: '2px solid #d32f2f', borderRadius: 12, marginBottom: 8 }}>
@@ -799,7 +802,7 @@ function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, vi
         </div>
       )}
 
-      <div style={{ flex: '0 0 auto', width: '100%', maxWidth: 420, background: '#000', padding: 16, borderRadius: 12, position: 'relative' }}>
+      <div className="wait-preview">
         <div style={{ width: '100%', aspectRatio: '16/9', background: '#1a1a1a', borderRadius: 8, overflow: 'hidden', position: 'relative' }}>
           <video ref={localVideoRef} autoPlay muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           {!previewingCamera && (
@@ -813,7 +816,7 @@ function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, vi
           <span>{videoTested ? t('wait.video_tested') : t('wait.video_not_tested')}</span>
         </div>
       </div>
-      <div style={{ flex: '1 1 320px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div className="wait-controls">
         {/* 麥克風設定 */}
         <div style={{ padding: 14, border: '1px solid #e0e0e0', borderRadius: 8, background: 'white' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
