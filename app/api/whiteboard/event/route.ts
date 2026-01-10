@@ -82,7 +82,8 @@ export async function POST(req: NextRequest) {
       try {
         // diagnostic: log current in-memory room state summary so server logs
         const state = getRoomState(uuid);
-        console.log('[WB Event Server] Post-broadcast room state summary:', { uuid, strokes: Array.isArray(state?.strokes) ? state.strokes.length : 0, lastEvent: state?.lastEvent ?? null });
+        const lastEvent = (state as any)?.lastEvent ?? null;
+        console.log('[WB Event Server] Post-broadcast room state summary:', { uuid, strokes: Array.isArray(state?.strokes) ? state.strokes.length : 0, lastEvent });
       } catch (e) {
         console.warn('[WB Event Server] Failed to read room state for diagnostic', e);
       }

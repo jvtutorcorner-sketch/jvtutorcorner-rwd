@@ -94,7 +94,7 @@ export default function EnhancedWhiteboard({
         if (event && (event.type === 'stroke-start' || event.type === 'stroke-update')) {
           const strokeId = event.stroke?.id || event.strokeId;
           if (strokeId) {
-            try { ensureServerAckForStroke(strokeId, courseIdFromChannel); } catch (e) { /* ignore */ }
+            try { ensureServerAckForStroke(strokeId, courseParam); } catch (e) { /* ignore */ }
           }
         }
       } catch (e) {}
