@@ -36,7 +36,10 @@ export async function GET(req: NextRequest) {
     // let clients fall back to polling/state fetch instead of keeping
     // a long-lived stream.
     const host = urlObj.hostname || '';
-    if (host.endsWith('jvtutorcorner.com')) {
+    // Many hosting/CDN environments (Amplify, CloudFront) do not support long-lived
+    // streaming responses. Treat those hosts as production-style and return a
+    // short "connected" SSE payload so clients can fallback to polling.
+    if (host.endsWith('jvtutorcorner.com') || host.includes('amplifyapp.com') || host.includes('amplifyapp') || host.includes('cloudfront.net')) {
       try {
         const single = `data: ${JSON.stringify({ type: 'connected', uuid, timestamp: Date.now() })}\n\n`;
         return new Response(single, { headers: {
@@ -141,8 +144,10 @@ export function broadcastToUuid(uuid: string, payload: any) {
   console.log(`[WB SSE Server] Broadcast complete. Sent to ${successCount}/${set.size} clients`);
 
   try {
-    // Update in-memory state for persistence on refresh
+    // Update in-memory state for persistence on refresh; log before/after summaries
     let state = roomStates.get(normalized);
+    const prevStrokes = state?.strokes?.length ?? 0;
+    const prevPdfInfo = state?.pdf ? { name: state.pdf.name ?? null, large: !!state.pdf?.large, preview: String(state.pdf?.dataUrl || '').slice(0,100) } : null;
     if (!state) {
       state = { strokes: [], pdf: null };
       roomStates.set(normalized, state);
@@ -170,8 +175,12 @@ export function broadcastToUuid(uuid: string, payload: any) {
         state.pdf = payload;
       }
     }
+
+    const newStrokes = state.strokes?.length ?? 0;
+    const newPdfInfo = state?.pdf ? { name: state.pdf.name ?? null, large: !!state.pdf?.large, preview: String(state.pdf?.dataUrl || '').slice(0,100) } : null;
+    console.log('[WB SSE Server] roomStates updated for', normalized, { prevStrokes, newStrokes, prevPdfInfo, newPdfInfo });
   } catch (e) {
-    console.error('[WB SSE Server] State update failed:', e);
+    console.error('[WB SSE Server] State update failed:', e && (e as Error).stack ? (e as Error).stack : e);
   }
 }
 

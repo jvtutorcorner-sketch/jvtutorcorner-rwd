@@ -56,10 +56,23 @@ export default function EnhancedWhiteboard({
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ uuid, event: { ...event, clientId: clientIdRef.current } })
       });
-      const result = await response.json();
-      console.log('[WB POST] Server response:', result);
+      let resultText = null;
+      try {
+        resultText = await response.text();
+        try {
+          const parsed = JSON.parse(resultText);
+          console.log('[WB POST] Server response (parsed):', parsed);
+        } catch (e) {
+          console.log('[WB POST] Server response (text):', resultText.slice(0, 1000));
+        }
+      } catch (e) {
+        console.warn('[WB POST] Failed to read server response body', e);
+      }
+      if (!response.ok) {
+        console.error('[WB POST] Non-OK response from /api/whiteboard/event', { status: response.status, bodyPreview: resultText?.slice(0, 200) });
+      }
     } catch (e) {
-      console.error('[WB POST] Error posting event:', e);
+      console.error('[WB POST] Error posting event:', e && (e as Error).stack ? (e as Error).stack : e);
     }
   }, [channelName]);
 
@@ -633,16 +646,16 @@ export default function EnhancedWhiteboard({
             });
           }
         } catch (e) {
-          // ignore
+          console.error('[WB BC] Error handling incoming message:', e);
         }
       };
 
       // ask for state from others
-      setTimeout(() => { try { ch.postMessage({ type: 'request-state', clientId: clientIdRef.current }); } catch (e) {} }, 200);
+      setTimeout(() => { try { ch.postMessage({ type: 'request-state', clientId: clientIdRef.current }); } catch (e) { console.error('[WB BC] Failed to request state from channel', e); } }, 200);
 
-      return () => { try { ch.close(); } catch (e) {} };
+      return () => { try { ch.close(); } catch (e) { console.warn('[WB BC] Error closing channel', e); } };
     } catch (e) {
-      // BroadcastChannel not available
+      console.error('[WB BC] BroadcastChannel setup failed:', e);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [useNetlessWhiteboard, setStrokes, setUndone]);
@@ -781,7 +794,11 @@ export default function EnhancedWhiteboard({
         const fetchAndApply = async () => {
           try {
             const resp = await fetch(`/api/whiteboard/state?uuid=${encodeURIComponent(uuid)}`);
-            if (!resp.ok) return;
+            if (!resp.ok) {
+              const txt = await resp.text().catch(() => '(no body)');
+              console.warn('[WB POLL] /api/whiteboard/state returned non-ok', resp.status, txt.slice(0, 200));
+              return;
+            }
             const j = await resp.json();
             const s = j?.state;
             if (s && Array.isArray(s.strokes)) {
@@ -801,7 +818,7 @@ export default function EnhancedWhiteboard({
               }
             }
           } catch (e) {
-            console.warn('[WB POLL] Failed to fetch /state in production fallback', e);
+            console.warn('[WB POLL] Failed to fetch /state in production fallback', e && (e as Error).stack ? (e as Error).stack : e);
           }
         };
 
@@ -954,11 +971,11 @@ export default function EnhancedWhiteboard({
       };
       es.onerror = (err) => { 
         console.error('[WB SSE] Connection error:', err);
-        try { es.close(); } catch (e) {} 
+        try { es.close(); } catch (e) { console.warn('[WB SSE] Error closing EventSource after error', e); } 
       };
       return () => { try { es.close(); } catch (e) {} };
     } catch (e) {
-      // ignore
+      console.error('[WB SSE] Setup failed:', e && (e as Error).stack ? (e as Error).stack : e);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [useNetlessWhiteboard]);

@@ -6,8 +6,30 @@ export async function POST(req: NextRequest) {
     // Read raw text once and parse robustly. Some Windows clients wrap JSON
     // in extra quotes which makes a direct JSON.parse fail.
     const text = await req.text();
-    console.log('[WB Event Server] Raw body length:', text?.length ?? 0);
-    try { console.log('[WB Event Server] Raw body preview:', (text || '').slice(0, 200)); } catch (logErr) { console.warn('[WB Event Server] Raw body preview failed', String(logErr)); }
+    const now = Date.now();
+    console.log(`[WB Event Server] [${new Date(now).toISOString()}] Raw body length:`, text?.length ?? 0);
+    try { console.log('[WB Event Server] Raw body preview:', (text || '').slice(0, 400)); } catch (logErr) { console.warn('[WB Event Server] Raw body preview failed', String(logErr)); }
+
+    // Log some request metadata (safe, non-sensitive headers only)
+    try {
+      const hdr = req.headers;
+      const headerPreview: Record<string,string|null> = {
+        host: hdr.get('host'),
+        'x-forwarded-for': hdr.get('x-forwarded-for'),
+        'x-real-ip': hdr.get('x-real-ip'),
+        via: hdr.get('via'),
+        'user-agent': hdr.get('user-agent')?.slice(0,200) ?? null,
+        referer: hdr.get('referer')?.slice(0,200) ?? null,
+      };
+      console.log('[WB Event Server] Request headers preview:', headerPreview);
+      // Also log query params if present
+      try {
+        const qs = new URL(req.url).searchParams.toString();
+        if (qs) console.log('[WB Event Server] Query params:', qs);
+      } catch (e) {}
+    } catch (e) {
+      console.warn('[WB Event Server] Failed to read headers for debug', e);
+    }
 
     let body: any;
     try {
@@ -33,13 +55,31 @@ export async function POST(req: NextRequest) {
       console.warn('[WB Event Server] Missing event in parsed body, preview:', (text || '').slice(0, 200));
       return new Response(JSON.stringify({ ok: false, error: 'no event', rawPreview: (text || '').slice(0, 200) }), { status: 400 });
     }
-    console.log('[WB Event Server] Received event:', { uuid, eventType: event?.type });
+    try {
+      // Log a concise event summary without dumping large payloads
+      const evtSummary: any = { type: event?.type, clientId: event?.clientId ?? event?.clientID ?? null };
+      if (event?.type === 'stroke-start' && event.stroke) {
+        evtSummary.strokeId = event.stroke.id || null;
+        evtSummary.points = Array.isArray(event.stroke.points) ? event.stroke.points.length / 2 : null;
+      } else if (event?.type === 'stroke-update') {
+        evtSummary.strokeId = event.strokeId || null;
+        evtSummary.points = Array.isArray(event.points) ? event.points.length / 2 : null;
+      } else if (event?.type === 'pdf-set' || event?.type === 'pdf') {
+        // Avoid logging large data URLs; log length instead
+        if (event.pdf?.dataUrl) evtSummary.pdfDataUrlLength = String(event.pdf.dataUrl).length;
+        if (event.dataUrl) evtSummary.pdfDataUrlLength = String(event.dataUrl).length;
+        evtSummary.pdfName = event.name || event.pdf?.name || null;
+      }
+      console.log('[WB Event Server] Received event summary:', { uuid, ...evtSummary });
+    } catch (e) {
+      console.warn('[WB Event Server] Failed to summarize event for logs', e);
+    }
 
     // Broadcast to connected SSE clients (best-effort)
     try {
       broadcastToUuid(uuid, event);
     } catch (e) {
-      console.error('[WB Event Server] Broadcast failed:', e);
+      console.error('[WB Event Server] Broadcast failed:', e && (e as Error).stack ? (e as Error).stack : e);
     }
 
     return new Response(JSON.stringify({ ok: true }), { status: 200 });
