@@ -133,30 +133,9 @@ export async function GET(req: NextRequest) {
 export function broadcastToUuid(uuid: string, payload: any): number {
   const normalized = normalizeUuid(uuid);
   console.log(`[WB SSE Server] broadcastToUuid: raw uuid="${uuid}", normalized="${normalized}"`);
-  const set = clients.get(normalized) || clients.get(uuid);
-  let preview = '';
-  try { preview = JSON.stringify(payload).slice(0, 200); } catch (e) { preview = String(payload).slice(0, 200); }
-  console.log(`[WB SSE Server] Broadcasting to uuid: ${uuid} (normalized: ${normalized}), clients: ${set?.size || 0}, event type: ${payload?.type}, preview: ${preview}`);
-  if (!set) {
-    console.log('[WB SSE Server] No clients connected for this uuid');
-    return 0;
-  }
-  const msg = `data: ${JSON.stringify(payload)}\n\n`;
-  let successCount = 0;
-  for (const c of Array.from(set)) {
-    const meta = (c as any).meta ?? null;
-    try {
-      c.controller.enqueue(new TextEncoder().encode(msg));
-      successCount++;
-    } catch (e) {
-      console.error('[WB SSE Server] Failed to send to client:', e, 'clientMeta:', meta);
-      try { set.delete(c); } catch (delErr) { console.warn('[WB SSE Server] Failed to delete client after send error', delErr); }
-    }
-  }
-  console.log(`[WB SSE Server] Broadcast complete. Sent to ${successCount}/${set.size} clients`);
-
+  
+  // CRITICAL FIX: Update state FIRST (before broadcasting), so it persists across serverless invocations
   try {
-    // Update in-memory state for persistence on refresh; log before/after summaries
     console.log('[WB SSE Server] [STATE_UPDATE] normalized uuid:', normalized, 'roomStates map keys before:', Array.from(roomStates.keys()));
     let state = roomStates.get(normalized) as any;
     const prevStrokes = state?.strokes?.length ?? 0;
@@ -213,6 +192,31 @@ export function broadcastToUuid(uuid: string, payload: any): number {
   } catch (e) {
     console.error('[WB SSE Server] State update failed:', e && (e as Error).stack ? (e as Error).stack : e);
   }
+
+  // Now broadcast to any connected SSE clients (if any)
+  const set = clients.get(normalized) || clients.get(uuid);
+  let preview = '';
+  try { preview = JSON.stringify(payload).slice(0, 200); } catch (e) { preview = String(payload).slice(0, 200); }
+  console.log(`[WB SSE Server] Broadcasting to uuid: ${uuid} (normalized: ${normalized}), clients: ${set?.size || 0}, event type: ${payload?.type}, preview: ${preview}`);
+  
+  if (!set) {
+    console.log('[WB SSE Server] No clients connected for this uuid - state updated but not broadcast to clients');
+    return 0;
+  }
+  
+  const msg = `data: ${JSON.stringify(payload)}\n\n`;
+  let successCount = 0;
+  for (const c of Array.from(set)) {
+    const meta = (c as any).meta ?? null;
+    try {
+      c.controller.enqueue(new TextEncoder().encode(msg));
+      successCount++;
+    } catch (e) {
+      console.error('[WB SSE Server] Failed to send to client:', e, 'clientMeta:', meta);
+      try { set.delete(c); } catch (delErr) { console.warn('[WB SSE Server] Failed to delete client after send error', delErr); }
+    }
+  }
+  console.log(`[WB SSE Server] Broadcast complete. Sent to ${successCount}/${set.size} clients`);
   return successCount;
 }
 
