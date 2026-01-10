@@ -1,7 +1,7 @@
 // app/login/page.tsx
 'use client';
 
-import { FormEvent, useState } from 'react';
+import { FormEvent, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -21,6 +21,10 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState(TEST_PASSWORD);
   const [error, setError] = useState<string | null>(null);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const [captchaImage, setCaptchaImage] = useState<string | null>(null);
+  const [captchaValue, setCaptchaValue] = useState('');
+  const [captchaLoading, setCaptchaLoading] = useState(false);
   const [currentUser, setCurrentUser] = useState<StoredUser | null>(
     typeof window !== 'undefined' ? getStoredUser() : null,
   );
@@ -34,9 +38,11 @@ export default function LoginPage() {
         const res = await fetch('/api/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
+          body: JSON.stringify({ email: email.trim().toLowerCase(), password, captchaToken, captchaValue }),
         });
         const data = await res.json();
+        
+        // If API succeeded, handle redirect
         if (res.ok && data?.ok) {
           const role = data.profile?.role as string | undefined;
           const plan = (data.profile?.plan as any) || 'basic';
@@ -68,15 +74,32 @@ export default function LoginPage() {
           return;
         }
 
+        // If API failed...
+        if (!res.ok) {
+          // If 401 (Unauthorized), it means captcha was good but user not in DB, so we continue to mock fallback
+          if (res.status === 401) {
+            // continue to mock users
+            console.log('User not in profiles DB, trying mock users...');
+          } else {
+            // Other errors (like 400 Captcha error) should stop here and refresh captcha
+            const msg = data?.message ? t(data.message) : t('login_error');
+            setError(msg);
+            await loadCaptcha();
+            return;
+          }
+        }
+
         // Fallback to mock users
         const trimmedEmail = email.trim().toLowerCase();
         const userConfig = MOCK_USERS[trimmedEmail];
         if (!userConfig) {
           setError(t('login_account_not_found'));
+          await loadCaptcha();
           return;
         }
         if (password !== TEST_PASSWORD) {
           setError(t('login_password_wrong'));
+          await loadCaptcha();
           return;
         }
         const user: StoredUser = {
@@ -104,6 +127,27 @@ export default function LoginPage() {
       }
     })();
   };
+
+  async function loadCaptcha() {
+    try {
+      setCaptchaLoading(true);
+      const res = await fetch('/api/captcha');
+      const data = await res.json();
+      if (res.ok && data?.token && data?.image) {
+        setCaptchaToken(data.token);
+        setCaptchaImage(data.image);
+        setCaptchaValue('');
+      }
+    } catch (e) {
+      console.warn('captcha load failed', e);
+    } finally {
+      setCaptchaLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadCaptcha();
+  }, []);
 
   const handleLogout = () => {
     clearStoredUser();
@@ -179,10 +223,32 @@ export default function LoginPage() {
               {/* moved to the test accounts card */}
             </div>
 
+            <div className="field">
+              <label htmlFor="captcha">{t('captcha_label') || '驗證碼'}</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {captchaImage ? (
+                  <img src={captchaImage} alt="captcha" style={{ height: 48, border: '1px solid #ddd' }} />
+                ) : (
+                  <div style={{ width: 140, height: 48, background: '#f3f4f6' }} />
+                )}
+                <button type="button" className="card-button secondary" onClick={async () => await loadCaptcha()} disabled={captchaLoading}>
+                  {t('captcha_refresh') || '重新取得'}
+                </button>
+              </div>
+              <input
+                id="captcha"
+                type="text"
+                value={captchaValue}
+                placeholder={t('captcha_placeholder') || ''}
+                onChange={(e) => setCaptchaValue(e.target.value)}
+                autoComplete="off"
+              />
+            </div>
+
             {error && <p className="form-error">{error}</p>}
 
             <div className="modal-actions">
-              <button type="submit" className="modal-button primary">
+              <button type="submit" className="modal-button primary" disabled={captchaLoading || !captchaToken}>
                 {t('login')}
               </button>
               <Link href="/login/register" className="modal-button secondary">
