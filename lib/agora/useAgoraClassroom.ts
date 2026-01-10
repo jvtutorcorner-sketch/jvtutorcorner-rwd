@@ -982,7 +982,7 @@ export function useAgoraClassroom({
     join,
     leave,
     // control local audio track (mute/unmute or create+publish)
-    setLocalAudioEnabled: async (enabled: boolean) => {
+    setLocalAudioEnabled: async (enabled: boolean, deviceId?: string) => {
       try {
         // If not joined, nothing to do
         if (!clientRef.current) return;
@@ -995,7 +995,9 @@ export function useAgoraClassroom({
           // create & publish if missing
           if (!localMicTrackRef.current) {
             try {
-              localMicTrackRef.current = await AgoraSDK.createMicrophoneAudioTrack();
+              const micCfg: any = {};
+              if (deviceId) micCfg.microphoneId = deviceId;
+              localMicTrackRef.current = await AgoraSDK.createMicrophoneAudioTrack(micCfg);
               if (localMicTrackRef.current && clientRef.current) {
                 await clientRef.current.publish([localMicTrackRef.current]);
               }
@@ -1024,6 +1026,49 @@ export function useAgoraClassroom({
         }
       } catch (e) {
         console.warn('setLocalAudioEnabled error', e);
+      }
+    },
+    // control local video track (enable/disable or create+publish)
+    setLocalVideoEnabled: async (enabled: boolean) => {
+      try {
+        if (!clientRef.current) return;
+        if (!AgoraSDK) {
+          const mod = await import('agora-rtc-sdk-ng');
+          AgoraSDK = (mod as any).default ?? mod;
+        }
+
+        if (enabled) {
+          // create & publish if missing
+          if (!localCamTrackRef.current) {
+            try {
+              localCamTrackRef.current = await AgoraSDK.createCameraVideoTrack();
+              if (localCamTrackRef.current && clientRef.current) {
+                // play into local preview element when available
+                const playEl = localVideoRef.current ?? remoteVideoRef.current;
+                try { localCamTrackRef.current.play(playEl); } catch (e) {}
+                await clientRef.current.publish([localCamTrackRef.current]);
+              }
+            } catch (e) {
+              console.warn('Failed to create/publish local cam track', e);
+            }
+          } else {
+            try {
+              if (typeof localCamTrackRef.current.setEnabled === 'function') {
+                localCamTrackRef.current.setEnabled(true);
+              }
+            } catch (e) { console.warn('Failed to enable local cam track', e); }
+          }
+        } else {
+          if (localCamTrackRef.current) {
+            try {
+              if (typeof localCamTrackRef.current.setEnabled === 'function') {
+                localCamTrackRef.current.setEnabled(false);
+              }
+            } catch (e) { console.warn('Failed to disable local cam track', e); }
+          }
+        }
+      } catch (e) {
+        console.warn('setLocalVideoEnabled error', e);
       }
     },
     // 新增：视频质量控制函数
