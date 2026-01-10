@@ -776,32 +776,43 @@ export default function EnhancedWhiteboard({
       const isProduction = window.location.hostname === 'www.jvtutorcorner.com' || window.location.hostname === 'jvtutorcorner.com';
       if (isProduction) {
         console.log('[WB SSE] Production detected - skipping SSE. Falling back to /api/whiteboard/state polling.');
-        // Try fetching persisted state immediately
-        (async () => {
+        // Try fetching persisted state immediately and then poll periodically
+        let pollId: number | null = null;
+        const fetchAndApply = async () => {
           try {
             const resp = await fetch(`/api/whiteboard/state?uuid=${encodeURIComponent(uuid)}`);
-            if (resp.ok) {
-              const j = await resp.json();
-              const s = j?.state;
-              if (s && Array.isArray(s.strokes) && strokesRef.current.length === 0) {
-                console.log('[WB SSE] Applying fallback state from /state (production):', s.strokes.length, 'strokes');
+            if (!resp.ok) return;
+            const j = await resp.json();
+            const s = j?.state;
+            if (s && Array.isArray(s.strokes)) {
+              // Only replace strokes when there is a difference to avoid overwriting local in-progress strokes
+              if (s.strokes.length !== strokesRef.current.length) {
+                console.log('[WB POLL] Updating strokes from /state:', s.strokes.length, 'strokes');
                 setStrokes(s.strokes);
-                if (s.pdf && s.pdf.dataUrl && s.pdf.dataUrl !== '(large-data-url)') {
-                  try {
-                    const r = await fetch(s.pdf.dataUrl);
-                    const blob = await r.blob();
-                    const file = new File([blob], s.pdf.name || 'remote.pdf', { type: blob.type });
-                    setSelectedFileName(file.name);
-                    setLocalPdfFile(file);
-                  } catch (e) {}
-                }
+              }
+              if (s.pdf && s.pdf.dataUrl && s.pdf.dataUrl !== '(large-data-url)' && !localPdfFile) {
+                try {
+                  const r = await fetch(s.pdf.dataUrl);
+                  const blob = await r.blob();
+                  const file = new File([blob], s.pdf.name || 'remote.pdf', { type: blob.type });
+                  setSelectedFileName(file.name);
+                  setLocalPdfFile(file);
+                } catch (e) { console.warn('[WB POLL] Failed to fetch remote PDF', e); }
               }
             }
           } catch (e) {
-            console.warn('[WB SSE] Failed to fetch /state in production fallback', e);
+            console.warn('[WB POLL] Failed to fetch /state in production fallback', e);
           }
-        })();
-        return;
+        };
+
+        // initial fetch
+        fetchAndApply();
+        // poll every 1500ms
+        try { pollId = window.setInterval(fetchAndApply, 1500) as unknown as number; } catch (e) { pollId = null; }
+
+        return () => {
+          try { if (pollId) window.clearInterval(pollId); } catch (e) {}
+        };
       }
 
       console.log('[WB SSE] Connecting to SSE stream:', `/api/whiteboard/stream?uuid=${uuid}`);
