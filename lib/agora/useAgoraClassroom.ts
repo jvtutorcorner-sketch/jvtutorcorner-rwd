@@ -1045,7 +1045,11 @@ export function useAgoraClassroom({
               if (localCamTrackRef.current && clientRef.current) {
                 // play into local preview element when available
                 const playEl = localVideoRef.current ?? remoteVideoRef.current;
-                try { localCamTrackRef.current.play(playEl); } catch (e) {}
+                try {
+                  if (playEl) {
+                    localCamTrackRef.current.play(playEl as any);
+                  }
+                } catch (e) {}
                 await clientRef.current.publish([localCamTrackRef.current]);
               }
             } catch (e) {

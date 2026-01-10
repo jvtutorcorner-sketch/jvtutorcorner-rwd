@@ -138,7 +138,7 @@ export default function ClassroomWaitPage() {
     .catch(err => {
       console.error('toggleReady POST failed:', err);
       // If the POST fails, we can show an error and re-sync to get the last good state.
-      alert('無法更新準備狀態，請稍後再試。');
+      alert(t('wait.sync_update_failed'));
       syncStateFromServer();
     });
   };
@@ -616,13 +616,13 @@ function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, vi
       
       // Provide more specific error messages
       if (e?.name === 'NotAllowedError') {
-        alert('您拒絕了相機或麥克風的權限。請在設定中允許存取權限。');
+        alert(t('permission_denied_devices'));
       } else if (e?.name === 'NotFoundError' || e?.name === 'DevicesNotFoundError') {
-        alert('未找到相機或麥克風。請確認硬體已連接。');
+        alert(t('devices_not_found'));
       } else if (e?.name === 'NotSupportedError') {
-        alert('您的瀏覽器不支援此功能。');
+        alert(t('browser_not_supported'));
       } else {
-        alert(`發生錯誤：${e?.message || '未知錯誤'}`);
+        alert(t('error_occurred_prefix') + (e?.message || t('unknown_error')));
       }
       return false;
     }
@@ -641,7 +641,7 @@ function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, vi
       setVideoTested(true);
     } catch (e) {
       console.warn('startCameraPreview failed', e);
-      alert('無法啟動相機預覽，請確認已授予權限且相機未被其他應用程式使用。');
+      alert(t('camera_preview_failed'));
       setPreviewingCamera(false);
       setVideoTested(false);
     }
@@ -697,7 +697,7 @@ function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, vi
       setTestingMic(false);
       testingMicRef.current = false;
       setAudioTested(false);
-      alert('無法啟動麥克風，請檢查權限設定');
+      alert(t('mic_start_failed'));
     }
   };
 

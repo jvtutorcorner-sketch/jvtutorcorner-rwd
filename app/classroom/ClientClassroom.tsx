@@ -6,6 +6,7 @@ import { getStoredUser, setStoredUser } from '@/lib/mockAuth';
 import { COURSES } from '@/data/courses';
 import EnhancedWhiteboard from '@/components/EnhancedWhiteboard';
 import dynamic from 'next/dynamic';
+import { useT } from '@/components/IntlProvider';
 
 const PdfViewer = dynamic(() => import('@/components/PdfViewer'), { ssr: false });
 
@@ -37,6 +38,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   const orderId = searchParams?.get('orderId') ?? null;
   const sessionParam = searchParams?.get('session');
   const sessionReadyKey = sessionParam || channelName || `classroom_session_ready_${courseId}`;
+  const t = useT();
   // determine courseId from query string (e.g. ?courseId=c1)
   const course = COURSES.find((c) => c.id === courseId) || null;
   
@@ -418,10 +420,10 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       setVideoInputs(list.filter((d) => d.kind === 'videoinput'));
       setHasAudioInput(list.some((d) => d.kind === 'audioinput'));
       setHasVideoInput(list.some((d) => d.kind === 'videoinput'));
-      alert('權限已授予！現在可以選擇麥克風和攝影機。');
+      alert(t('permission_granted_devices'));
     } catch (e) {
       console.warn('Permission request failed', e);
-      alert('無法取得權限，請確認瀏覽器設定允許存取麥克風和攝影機。');
+      alert(t('permission_denied_devices'));
     }
   };
 
@@ -608,7 +610,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       setPreviewingCamera(true);
     } catch (e) {
       console.warn('startCameraPreview failed', e);
-      alert('無法啟動相機預覽，請確認已授予權限且相機未被其他應用程式使用。');
+      alert(t('camera_preview_failed'));
       setPreviewingCamera(false);
     }
   };
@@ -819,7 +821,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       requestAnimationFrame(loop);
     } catch (e) {
       console.warn('startMicTest failed', e);
-      alert('無法啟動麥克風測試，請確認已授予權限。');
+      alert(t('mic_test_failed'));
     }
   };
 
@@ -924,7 +926,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
             console.log('Microphone unmuted via getUserMedia');
           } catch (e) {
             console.warn('Failed to unmute microphone via getUserMedia:', e);
-            alert('無法啟動麥克風，請確認已授予權限。');
+            alert(t('mic_start_failed'));
             // State was already set to true above; audio will stay enabled in UI but may not actually work
           }
         }
@@ -1055,7 +1057,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                           transition: 'background-color 0.2s ease'
                         }}
                     >
-                      {previewingCamera ? '📷 攝影機關' : '📹 攝影機開'}
+                      {previewingCamera ? t('camera_off') : t('camera_on')}
                     </button>
                   )}
 
@@ -1085,7 +1087,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                       }
 
                       if (!hasAudio) {
-                        alert('找不到麥克風裝置或未授權，請確認瀏覽器已允許麥克風並接上設備');
+                        alert(t('microphone_not_found'));
                         return;
                       }
 
@@ -1109,7 +1111,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                       transition: 'background-color 0.2s ease'
                     }}
                   >
-                    {micEnabled ? '🎤 麥克風開' : '🔇 麥克風關'}
+                    {micEnabled ? t('mic_on') : t('mic_off')}
                   </button>
 
                   {/* New Leave button in the controls row (same as handleLeave) */}
@@ -1127,7 +1129,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                       fontWeight: 600
                     }}
                   >
-                    Leave (離開)
+                    {t('leave')}
                   </button>
 
                   {/* Mic toggle and Leave placed below the Join button */}
@@ -1146,9 +1148,9 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                             }
                             setPreviewingCamera(false);
                           }
-                          if (!canJoin) {
+                            if (!canJoin) {
                             // Shouldn't be clickable when disabled, but guard anyway
-                            alert('尚未達到等待頁就緒條件，請確認雙方在等待頁都已按下「準備」。');
+                            alert(t('waitpage_not_ready'));
                             return;
                           }
                           console.log('[UI] Manual Join button clicked. Channel:', effectiveChannelName);
@@ -1165,8 +1167,8 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                           fontWeight: 600,
                           width: '100%'
                         }}
-                      >
-                        {loading ? '加入中...' : (canJoin ? '🚀 Join (開始上課)' : '等待對方就緒...')}
+                        >
+                        {loading ? t('joining') : (canJoin ? t('join_start') : t('wait_other_ready'))}
                       </button>
                     ) : (
                       <div style={{ height: 0 }} />
@@ -1174,7 +1176,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
 
                     {/* Moved ready status message below Join button */}
                     <div style={{ marginTop: 8, color: canJoin ? '#10b981' : '#666', fontSize: 13, textAlign: 'center' }}>
-                      {canJoin ? '等待就緒：完成，雙方可開始' : '等待就緒：尚未完成'}
+                      {canJoin ? t('ready_complete') : t('ready_incomplete')}
                     </div>
 
                     <button
@@ -1192,30 +1194,30 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                         width: '100%'
                       }}
                     >
-                      Leave (離開)
+                      {t('leave')}
                     </button>
                   </div>
 
                 {joined && (
                   <div style={{ marginTop: 6, fontSize: 11, color: '#ffeb3b', background: 'rgba(255,235,59,0.1)', padding: 4, borderRadius: 4 }}>
-                    ⏱ 已開始計費 | Agora 按分鐘收費
+                    {t('started_billing')}
                   </div>
                 )}
                 
                 <div style={{ marginTop: 6, fontSize: 12, color: '#666' }}>
-                  <div><strong>Join</strong>: 開始視訊通話和白板協作（此時開始計費）</div>
-                  <div><strong>Leave</strong>: 只離開目前這個瀏覽器分頁或裝置；不會影響其他參與者。</div>
-                  <div><strong>End Session</strong>: 正式結束課堂，關閉白板並使所有參與者離開（只有老師可執行）。</div>
+                  <div><strong>{t('join')}</strong>: {t('join_desc')}</div>
+                  <div><strong>{t('leave')}</strong>: {t('leave_desc')}</div>
+                  <div><strong>{t('end_session')}</strong>: {t('end_session_desc')}</div>
                 </div>
                 
                 {remainingSeconds !== null && (
                   <div style={{ marginTop: 6 }}>
-                    <strong>剩餘時間：</strong> {Math.floor((remainingSeconds || 0) / 60)}:{String((remainingSeconds || 0) % 60).padStart(2, '0')}
+                    <strong>{t('remaining_time')}</strong> {Math.floor((remainingSeconds || 0) / 60)}:{String((remainingSeconds || 0) % 60).padStart(2, '0')}
                   </div>
                 )}
               </>
             )}
-            {loading && <div style={{ color: '#ccc' }}>Joining...</div>}
+            {loading && <div style={{ color: '#ccc' }}>{t('joining')}</div>}
             {error && <div style={{ color: 'salmon' }}>{error}</div>}
           </div>
         </div>
