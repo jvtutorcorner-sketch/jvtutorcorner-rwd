@@ -39,7 +39,12 @@ export async function GET(req: NextRequest) {
     if (host.endsWith('jvtutorcorner.com')) {
       try {
         const single = `data: ${JSON.stringify({ type: 'connected', uuid, timestamp: Date.now() })}\n\n`;
-        return new Response(single, { headers });
+        return new Response(single, { headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache, no-transform',
+          'X-Accel-Buffering': 'no',
+          'Access-Control-Allow-Origin': '*',
+        } });
       } catch (e) {
         console.warn('[WB SSE Server] Production short-response failed, continuing to stream fallback', e);
       }
