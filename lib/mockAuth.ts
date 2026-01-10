@@ -125,6 +125,7 @@ export type StoredUser = {
 };
 
 export const STORAGE_KEY = 'tutor_mock_user';
+export const SESSION_START_KEY = 'tutor_session_start';
 
 // 取得目前登入使用者（從 localStorage）
 export function getStoredUser(): StoredUser | null {
@@ -144,10 +145,35 @@ export function getStoredUser(): StoredUser | null {
 export function setStoredUser(user: StoredUser) {
   if (typeof window === 'undefined') return;
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
+  // Set session start timestamp when user logs in
+  try {
+    window.localStorage.setItem(SESSION_START_KEY, String(Date.now()));
+  } catch {}
 }
 
 // 登出
 export function clearStoredUser() {
   if (typeof window === 'undefined') return;
   window.localStorage.removeItem(STORAGE_KEY);
+  try {
+    window.localStorage.removeItem(SESSION_START_KEY);
+  } catch {}
+}
+
+export function getSessionStart(): number | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const v = window.localStorage.getItem(SESSION_START_KEY);
+    if (!v) return null;
+    const n = Number(v);
+    if (Number.isFinite(n) && n > 0) return n;
+  } catch {}
+  return null;
+}
+
+export function setSessionStart(ms: number) {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(SESSION_START_KEY, String(ms));
+  } catch {}
 }

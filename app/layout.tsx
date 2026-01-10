@@ -9,6 +9,7 @@ import Link from 'next/link';
 import ConfigureAmplify from '@/components/ConfigureAmplify';
 import Header from '@/components/Header';
 import PageBreadcrumb from '@/components/PageBreadcrumb';
+import SessionTimeout from '@/components/SessionTimeout';
 
 export const metadata: Metadata = {
   title: 'Tutor Platform',
@@ -50,6 +51,8 @@ export default function RootLayout({
         )}
 
         <Header />
+
+        <SessionTimeout />
 
         <main>
           <PageBreadcrumb />

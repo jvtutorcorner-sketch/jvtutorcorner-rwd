@@ -4,6 +4,7 @@ import path from 'path';
 import resolveDataFile from '@/lib/localData';
 import { ddbDocClient } from '@/lib/dynamo';
 import { ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { verifyCaptcha } from '@/lib/captcha';
 
 async function readProfiles() {
   try {
@@ -17,9 +18,13 @@ async function readProfiles() {
 
 export async function POST(req: Request) {
   try {
-    const { email, password } = await req.json();
+    const { email, password, captchaToken, captchaValue } = await req.json();
     if (!email || !password) {
       return NextResponse.json({ message: 'Email and password required' }, { status: 400 });
+    }
+    // Validate captcha before attempting login
+    if (!verifyCaptcha(captchaToken, captchaValue)) {
+      return NextResponse.json({ message: 'captcha_incorrect' }, { status: 400 });
     }
 
     // Demo admin credentials (hardcoded for local/demo use only)
