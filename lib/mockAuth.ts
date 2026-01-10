@@ -150,4 +150,7 @@ export function setStoredUser(user: StoredUser) {
 export function clearStoredUser() {
   if (typeof window === 'undefined') return;
   window.localStorage.removeItem(STORAGE_KEY);
+  try {
+    window.localStorage.removeItem('tutor_session_expiry');
+  } catch {}
 }

@@ -53,6 +53,10 @@ export default function LoginPage() {
           }
           setStoredUser(user);
           setCurrentUser(user);
+          // set 30-minute session expiry (client-side)
+          try {
+            window.localStorage.setItem('tutor_session_expiry', String(Date.now() + 30 * 60 * 1000));
+          } catch {}
           window.dispatchEvent(new Event('tutor:auth-changed'));
           if (role === 'admin') {
             alert(t('login_admin_success'));
@@ -88,6 +92,9 @@ export default function LoginPage() {
         }
         setStoredUser(user);
         setCurrentUser(user);
+        try {
+          window.localStorage.setItem('tutor_session_expiry', String(Date.now() + 30 * 60 * 1000));
+        } catch {}
         window.dispatchEvent(new Event('tutor:auth-changed'));
         alert(`${t('login_success')}\n${t('current_plan')}: ${PLAN_LABELS[user.plan]}(${t('test_account')})\n${t('redirecting_home')}`);
         router.push('/');

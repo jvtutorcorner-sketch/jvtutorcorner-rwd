@@ -38,6 +38,10 @@
   "per_session": "堂",
   "minutes": "分鐘"
   ,
+  "session_expiry_warning_title": "會話即將到期",
+  "session_expiry_warning_message": "您的登入還有 1 分鐘就會自動登出，請儲存重要資料。",
+  "session_expired": "會話已結束，已自動登出。",
+  "dismiss": "關閉",
   "home": "首頁",
   "profile_label": "個人檔案",
   "students_label": "學生列表"

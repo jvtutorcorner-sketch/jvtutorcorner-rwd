@@ -9,6 +9,7 @@ import Link from 'next/link';
 import ConfigureAmplify from '@/components/ConfigureAmplify';
 import Header from '@/components/Header';
 import PageBreadcrumb from '@/components/PageBreadcrumb';
+import SessionTimer from '@/components/SessionTimer';
 
 export const metadata: Metadata = {
   title: 'Tutor Platform',
@@ -25,6 +26,13 @@ export default function RootLayout({
       <body>
         <ConfigureAmplify />
         <IntlProvider>
+          {/* Session timer handles 30-minute expiry + 1-minute warning */}
+          {/* eslint-disable-next-line @typescript-eslint/ban-ts-comment */}
+          {/* @ts-ignore */}
+          <script />
+          {/* Mount SessionTimer as a client component */}
+          {/* Import dynamically to avoid server-side errors */}
+          {/* We'll render via a client component import below */}
         {/* GA4：放在 body 裡，用 next/script */}
         {GA_MEASUREMENT_ID && (
           <>
@@ -50,6 +58,7 @@ export default function RootLayout({
         )}
 
         <Header />
+        <SessionTimer />
 
         <main>
           <PageBreadcrumb />
