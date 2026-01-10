@@ -157,29 +157,30 @@ export function broadcastToUuid(uuid: string, payload: any): number {
 
   try {
     // Update in-memory state for persistence on refresh; log before/after summaries
+    console.log('[WB SSE Server] [STATE_UPDATE] normalized uuid:', normalized, 'roomStates map keys before:', Array.from(roomStates.keys()));
     let state = roomStates.get(normalized) as any;
     const prevStrokes = state?.strokes?.length ?? 0;
     const prevPdfInfo = state?.pdf ? { name: state.pdf.name ?? null, large: !!state.pdf?.large, preview: String(state.pdf?.dataUrl || '').slice(0,100) } : null;
     if (!state) {
       state = { strokes: [], pdf: null } as any;
       roomStates.set(normalized, state);
-      console.log('[WB SSE Server] Created new roomState for normalized uuid:', normalized);
+      console.log('[WB SSE Server] [STATE_CREATE] Created new roomState for normalized uuid:', normalized, 'map size now:', roomStates.size);
     }
 
-    console.log('[WB SSE Server] Before update - roomStates keys:', Array.from(roomStates.keys()), 'normalized:', normalized, 'has state:', roomStates.has(normalized));
+    console.log('[WB SSE Server] [STATE_BEFORE] roomStates keys:', Array.from(roomStates.keys()), 'normalized:', normalized, 'has state:', roomStates.has(normalized), 'state.strokes.length:', state.strokes?.length);
 
     if (payload.type === 'stroke-start') {
       state.strokes.push(payload.stroke);
-      console.log('[WB SSE Server] Added stroke-start. Now state has', state.strokes.length, 'strokes');
+      console.log('[WB SSE Server] [STROKE_START] Added stroke. Now state.strokes.length =', state.strokes.length, 'Verification check - roomStates.get(normalized).strokes.length:', roomStates.get(normalized)?.strokes?.length);
     } else if (payload.type === 'stroke-update') {
       const idx = state.strokes.findIndex((s: any) => s.id === payload.strokeId);
       if (idx >= 0) {
         state.strokes[idx].points = payload.points;
-        console.log('[WB SSE Server] Updated stroke at idx', idx);
+        console.log('[WB SSE Server] [STROKE_UPDATE] Updated stroke at idx', idx, 'total strokes:', state.strokes.length);
       } else {
         // Fallback: if update arrives before start, create it
         state.strokes.push({ id: payload.strokeId, points: payload.points, stroke: '#000', strokeWidth: 2, mode: 'draw' });
-        console.log('[WB SSE Server] Stroke-update arrived before start, created new stroke. Now state has', state.strokes.length, 'strokes');
+        console.log('[WB SSE Server] [STROKE_UPDATE_FALLBACK] Stroke-update arrived before start, created new stroke. Now state.strokes.length =', state.strokes.length);
       }
     } else if (payload.type === 'undo') {
       state.strokes = state.strokes.filter((s: any) => s.id !== payload.strokeId);
@@ -205,7 +206,10 @@ export function broadcastToUuid(uuid: string, payload: any): number {
     const newStrokes = state.strokes?.length ?? 0;
     const newPdfInfo = state?.pdf ? { name: state.pdf.name ?? null, large: !!state.pdf?.large, preview: String(state.pdf?.dataUrl || '').slice(0,100) } : null;
     state.updatedAt = Date.now();
-    console.log('[WB SSE Server] roomStates updated for', normalized, { prevStrokes, newStrokes, prevPdfInfo, newPdfInfo, lastEvent: state.lastEvent, updatedAt: state.updatedAt });
+    
+    // CRITICAL: Verify the state was actually updated
+    const verifyState = roomStates.get(normalized);
+    console.log('[WB SSE Server] [STATE_FINAL] roomStates updated for', normalized, { prevStrokes, newStrokes, verifyStrokes: verifyState?.strokes?.length, prevPdfInfo, newPdfInfo, lastEvent: state.lastEvent, updatedAt: state.updatedAt });
   } catch (e) {
     console.error('[WB SSE Server] State update failed:', e && (e as Error).stack ? (e as Error).stack : e);
   }
@@ -216,10 +220,16 @@ export function broadcastToUuid(uuid: string, payload: any): number {
 export function getRoomState(rawUuid?: string | null) {
   try {
     const normalized = normalizeUuid(rawUuid);
+    console.log('[WB RoomState] getRoomState called: rawUuid=', rawUuid, ', normalized=', normalized, ', roomStates.has(normalized)=', roomStates.has(normalized), ', roomStates.keys=', Array.from(roomStates.keys()));
     const state = roomStates.get(normalized);
-    if (!state) return { strokes: [], pdf: null };
+    if (!state) {
+      console.log('[WB RoomState] State not found for', normalized, 'returning empty state');
+      return { strokes: [], pdf: null };
+    }
+    console.log('[WB RoomState] Returning state for', normalized, 'with', state.strokes?.length, 'strokes');
     return state;
   } catch (e) {
+    console.error('[WB RoomState] Error in getRoomState:', e);
     return { strokes: [], pdf: null };
   }
 }
