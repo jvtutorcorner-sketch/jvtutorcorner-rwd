@@ -41,6 +41,22 @@ export default function EnhancedWhiteboard({
   const bcRef = useRef<BroadcastChannel | null>(null);
   const clientIdRef = useRef<string>(`c_${Math.random().toString(36).slice(2)}`);
   const applyingRemoteRef = useRef(false);
+  const verboseLogging = typeof window !== 'undefined' && window.location.pathname === '/classroom/test';
+
+  const logAnomaly = (title: string, info?: any) => {
+    try {
+      const snapshot = {
+        time: Date.now(),
+        page: typeof window !== 'undefined' ? window.location.pathname : 'unknown',
+        clientId: clientIdRef.current,
+        strokesCount: strokesRef.current.length,
+        recentStrokes: strokesRef.current.slice(-10).map((s) => ({ id: (s as any).id, len: s.points.length }))
+      };
+      console.error(`[WB-ANOMALY] ${title}`, { info, snapshot });
+    } catch (e) {
+      console.error('[WB-ANOMALY] Failed to log anomaly', e);
+    }
+  };
 
   // helper to POST events to server relay
   const postEventToServer = useCallback(async (event: any) => {
@@ -71,10 +87,77 @@ export default function EnhancedWhiteboard({
       if (!response.ok) {
         console.error('[WB POST] Non-OK response from /api/whiteboard/event', { status: response.status, bodyPreview: resultText?.slice(0, 200) });
       }
+      // If this is a stroke event, start ack polling to ensure other clients (students)
+      // receive the stroke via server relay. We poll persisted /api/whiteboard/state
+      // and show an error if the stroke isn't visible after retries.
+      try {
+        if (event && (event.type === 'stroke-start' || event.type === 'stroke-update')) {
+          const strokeId = event.stroke?.id || event.strokeId;
+          if (strokeId) {
+            try { ensureServerAckForStroke(strokeId, courseIdFromChannel); } catch (e) { /* ignore */ }
+          }
+        }
+      } catch (e) {}
     } catch (e) {
       console.error('[WB POST] Error posting event:', e && (e as Error).stack ? (e as Error).stack : e);
     }
   }, [channelName]);
+
+  // Pending ack timers and helper to surface UI errors
+  const pendingAckRef = useRef<Map<string, number>>(new Map());
+  const [errors, setErrors] = useState<string[]>([]);
+  const pushError = useCallback((msg: string) => {
+    setErrors((e) => [...e.slice(-9), msg]);
+    console.error('[WB ERR]', msg);
+  }, []);
+
+  const ensureServerAckForStroke = useCallback(async (strokeId: string, courseIdFromChannel: string) => {
+    const uuid = `course_${courseIdFromChannel}`;
+    // avoid duplicate ack watchers
+    if (pendingAckRef.current.has(strokeId)) return;
+    let attempts = 0;
+    const maxAttempts = 4;
+    const intervalMs = 1000;
+
+    const check = async () => {
+      attempts += 1;
+      try {
+        const resp = await fetch(`/api/whiteboard/state?uuid=${encodeURIComponent(uuid)}`);
+        if (resp.ok) {
+          const j = await resp.json();
+          const s = j?.state;
+          if (s && Array.isArray(s.strokes)) {
+            const found = s.strokes.some((st: any) => (st as any).id === strokeId);
+            if (found) {
+              // ack received, clear timer
+              const t = pendingAckRef.current.get(strokeId);
+              if (t) { try { window.clearInterval(t); } catch (e) {} }
+              pendingAckRef.current.delete(strokeId);
+              if (verboseLogging) console.log('[WB ACK] Stroke acknowledged by server state:', strokeId);
+              return;
+            }
+          }
+        }
+      } catch (e) {
+        // ignore transient fetch errors
+      }
+
+      if (attempts >= maxAttempts) {
+        // not found after retries -> error
+        pendingAckRef.current.delete(strokeId);
+        const msg = `Canvas sync possibly not received by other participants for stroke ${strokeId}`;
+        logAnomaly('Ack timeout for stroke', { strokeId, attempts, courseIdFromChannel });
+        pushError(msg);
+        return;
+      }
+    };
+
+    // schedule repeated checks
+    const timerId = window.setInterval(check, intervalMs) as unknown as number;
+    pendingAckRef.current.set(strokeId, timerId);
+    // run first check immediately
+    void check();
+  }, [pushError]);
 
   // Buffer/high-frequency update batching for stroke-update events
   const pendingUpdatesRef = useRef<Map<string, { points: number[] }>>(new Map());
@@ -203,6 +286,16 @@ export default function EnhancedWhiteboard({
         }
         currentRenderTask.current = null;
       }
+    };
+  }, []);
+
+  // Cleanup pending ack timers on unmount
+  useEffect(() => {
+    return () => {
+      try {
+        pendingAckRef.current.forEach((t) => { try { window.clearInterval(t); } catch (e) {} });
+        pendingAckRef.current.clear();
+      } catch (e) {}
     };
   }, []);
   
@@ -614,11 +707,19 @@ export default function EnhancedWhiteboard({
             applyingRemoteRef.current = true;
             setStrokes((s) => {
               const idx = s.findIndex((st) => (st as any).id === data.strokeId);
+              // Validate points
+              const malformed = !Array.isArray(data.points) || data.points.some((p: any) => typeof p !== 'number' || Number.isNaN(p));
+              if (malformed) {
+                if (verboseLogging) logAnomaly('BC received malformed stroke-update (points invalid)', { strokeId: data.strokeId, points: data.points });
+                // still try to ignore the malformed update
+                return s;
+              }
               if (idx >= 0) {
                 const updated = { ...(s[idx] as any), points: data.points };
                 return [...s.slice(0, idx), updated, ...s.slice(idx + 1)];
               }
-              // if not found, append
+              // if not found, append but record anomaly for diagnostics
+              if (verboseLogging) logAnomaly('BC received stroke-update for unknown strokeId (appending)', { strokeId: data.strokeId, pointsLen: Array.isArray(data.points) ? data.points.length : null });
               return [...s, { points: data.points, stroke: '#000', strokeWidth: 2, mode: 'draw', id: data.strokeId } as any];
             });
             applyingRemoteRef.current = false;
@@ -647,13 +748,33 @@ export default function EnhancedWhiteboard({
           }
         } catch (e) {
           console.error('[WB BC] Error handling incoming message:', e);
+          if (verboseLogging) {
+            pushError('[WB BC] Error handling incoming message');
+            logAnomaly('BroadcastChannel message handler error', e);
+          }
         }
       };
 
-      // ask for state from others
-      setTimeout(() => { try { ch.postMessage({ type: 'request-state', clientId: clientIdRef.current }); } catch (e) { console.error('[WB BC] Failed to request state from channel', e); } }, 200);
+      // ask for state from others (store timer so it can be cleared if channel closes)
+      let stateRequestTimer: number | null = null;
+      try {
+        stateRequestTimer = window.setTimeout(() => {
+          try {
+            // only attempt post if channel still exists
+            if (ch) ch.postMessage({ type: 'request-state', clientId: clientIdRef.current });
+          } catch (e) {
+            console.error('[WB BC] Failed to request state from channel', e);
+          }
+        }, 200) as unknown as number;
+      } catch (e) {
+        // ignore timer setup failures
+      }
 
-      return () => { try { ch.close(); } catch (e) { console.warn('[WB BC] Error closing channel', e); } };
+      return () => {
+        try { if (stateRequestTimer) { window.clearTimeout(stateRequestTimer); stateRequestTimer = null; } } catch (e) {}
+        try { ch.close(); } catch (e) { console.warn('[WB BC] Error closing channel', e); }
+        try { bcRef.current = null; } catch (e) {}
+      };
     } catch (e) {
       console.error('[WB BC] BroadcastChannel setup failed:', e);
     }
@@ -794,11 +915,15 @@ export default function EnhancedWhiteboard({
         const fetchAndApply = async () => {
           try {
             const resp = await fetch(`/api/whiteboard/state?uuid=${encodeURIComponent(uuid)}`);
-            if (!resp.ok) {
-              const txt = await resp.text().catch(() => '(no body)');
-              console.warn('[WB POLL] /api/whiteboard/state returned non-ok', resp.status, txt.slice(0, 200));
-              return;
-            }
+              if (!resp.ok) {
+                const txt = await resp.text().catch(() => '(no body)');
+                console.warn('[WB POLL] /api/whiteboard/state returned non-ok', resp.status, txt.slice(0, 200));
+                if (verboseLogging) {
+                  pushError(`[WB POLL] /api/whiteboard/state returned non-ok ${resp.status}`);
+                  logAnomaly('Production /state returned non-ok', { status: resp.status, bodyPreview: txt?.slice(0,200) });
+                }
+                return;
+              }
             const j = await resp.json();
             const s = j?.state;
             if (s && Array.isArray(s.strokes)) {
@@ -806,6 +931,9 @@ export default function EnhancedWhiteboard({
               if (s.strokes.length !== strokesRef.current.length) {
                 console.log('[WB POLL] Updating strokes from /state:', s.strokes.length, 'strokes');
                 setStrokes(s.strokes);
+                  if (verboseLogging) {
+                    console.log('[WB POLL] Applied remote strokes in production poll');
+                  }
               }
               if (s.pdf && s.pdf.dataUrl && s.pdf.dataUrl !== '(large-data-url)' && !localPdfFile) {
                 try {
@@ -818,7 +946,12 @@ export default function EnhancedWhiteboard({
               }
             }
           } catch (e) {
-            console.warn('[WB POLL] Failed to fetch /state in production fallback', e && (e as Error).stack ? (e as Error).stack : e);
+              const errStack = e && (e as Error).stack ? (e as Error).stack : e;
+              console.warn('[WB POLL] Failed to fetch /state in production fallback', errStack);
+              if (verboseLogging) {
+                pushError('[WB POLL] Failed to fetch /state in production fallback');
+                logAnomaly('Production /state fetch failed', { error: errStack });
+              }
           }
         };
 
@@ -886,7 +1019,15 @@ export default function EnhancedWhiteboard({
           if (data.type === 'init-state') {
             console.log('[WB SSE] Applying initial state:', data.strokes?.length, 'strokes');
             if (Array.isArray(data.strokes)) {
-              setStrokes(data.strokes);
+              // Only apply initial state if local is empty to avoid wiping
+              // a locally drawn stroke that may have happened just before
+              // the server's init-state arrives (common race condition).
+              if (strokesRef.current.length === 0) {
+                setStrokes(data.strokes);
+              } else {
+                if (verboseLogging) logAnomaly('SSE init-state ignored due to non-empty local strokes', { localCount: strokesRef.current.length, remoteCount: data.strokes.length });
+                console.log('[WB SSE] init-state ignored because local strokes exist:', strokesRef.current.length);
+              }
             }
             if (data.pdf) {
               // Restore PDF if available
@@ -938,10 +1079,16 @@ export default function EnhancedWhiteboard({
             console.log('[WB SSE] Applying stroke-update:', data.strokeId);
             setStrokes((s) => {
               const idx = s.findIndex((st) => (st as any).id === data.strokeId);
+              const malformed = !Array.isArray(data.points) || data.points.some((p: any) => typeof p !== 'number' || Number.isNaN(p));
+              if (malformed) {
+                if (verboseLogging) logAnomaly('SSE received malformed stroke-update (points invalid)', { strokeId: data.strokeId, points: data.points });
+                return s;
+              }
               if (idx >= 0) {
                 const updated = { ...(s[idx] as any), points: data.points };
                 return [...s.slice(0, idx), updated, ...s.slice(idx + 1)];
               }
+              if (verboseLogging) logAnomaly('SSE received stroke-update for unknown strokeId (appending)', { strokeId: data.strokeId, pointsLen: Array.isArray(data.points) ? data.points.length : null });
               return [...s, { points: data.points, stroke: '#000', strokeWidth: 2, mode: 'draw', id: data.strokeId } as any];
             });
           } else if (data.type === 'undo') {
@@ -971,6 +1118,19 @@ export default function EnhancedWhiteboard({
       };
       es.onerror = (err) => { 
         console.error('[WB SSE] Connection error:', err);
+        if (verboseLogging) {
+          pushError('[WB SSE] Connection error - check server or network');
+          (async () => {
+            try {
+              const resp = await fetch(`/api/whiteboard/state?uuid=${encodeURIComponent(uuid)}`);
+              const txt = await resp.text().catch(() => '(no body)');
+              console.error('[WB SSE] Diagnostic /api/whiteboard/state response:', { status: resp.status, bodyPreview: txt.slice(0, 200) });
+            } catch (e) {
+              console.error('[WB SSE] Diagnostic fetch /state failed', e);
+              logAnomaly('SSE diagnostic fetch failed', e);
+            }
+          })();
+        }
         try { es.close(); } catch (e) { console.warn('[WB SSE] Error closing EventSource after error', e); } 
       };
       return () => { try { es.close(); } catch (e) {} };
@@ -983,6 +1143,11 @@ export default function EnhancedWhiteboard({
   return (
     <div className={`canvas-whiteboard ${className}`} style={{ border: '1px solid #ddd', width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', gap: 8, padding: '4px 8px', background: '#f5f5f5', borderBottom: '1px solid #ddd', flexWrap: 'wrap', alignItems: 'center', flexShrink: 0 }}>
+        {errors.length > 0 && (
+          <div style={{ background: 'rgba(244, 67, 54, 0.08)', color: '#c62828', padding: '6px 8px', borderRadius: 4, marginRight: 8, fontSize: 12 }}>
+            <strong>Canvas Sync Error:</strong> {errors[errors.length - 1]}
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           {/* PDF selector moved to /my-courses page (server-side whiteboard events). */}
 

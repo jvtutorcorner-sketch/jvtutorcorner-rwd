@@ -75,9 +75,19 @@ export async function GET(req: NextRequest) {
         // Register client controller to clients map
         let set = clients.get(uuid);
         if (!set) { set = new Set(); clients.set(uuid, set); }
-        const client = { controller };
+        // capture a small header preview to help correlate client connections
+        let headerPreview: Record<string,string|null> | null = null;
+        try {
+          const hdr = req.headers;
+          headerPreview = {
+            host: hdr.get('host'),
+            'x-forwarded-for': hdr.get('x-forwarded-for'),
+            'user-agent': hdr.get('user-agent')?.slice(0,200) ?? null,
+          };
+        } catch (e) { headerPreview = null; }
+        const client = { controller, meta: { connectedAt: Date.now(), headerPreview } } as any;
         set.add(client);
-        try { console.log(`[WB SSE Server] Client registered. UUID: ${uuid}, Total clients: ${set.size}`); } catch (e) {}
+        try { console.log(`[WB SSE Server] Client registered. UUID: ${uuid}, Total clients: ${set.size}`, client.meta); } catch (e) {}
 
         // Send full initial state to the new client
         try {
@@ -94,8 +104,8 @@ export async function GET(req: NextRequest) {
           req.signal.addEventListener('abort', () => {
             try {
               set!.delete(client);
-              console.log(`[WB SSE Server] Client disconnected. UUID: ${uuid}, Remaining: ${set!.size}`);
-            } catch (e) {}
+              console.log(`[WB SSE Server] Client disconnected. UUID: ${uuid}, Remaining: ${set!.size}`, client.meta);
+            } catch (e) { console.warn('[WB SSE Server] Error removing client on abort', e); }
           });
         }
       }
@@ -120,7 +130,7 @@ export async function GET(req: NextRequest) {
 }
 
 // Helper used by POST route to broadcast
-export function broadcastToUuid(uuid: string, payload: any) {
+export function broadcastToUuid(uuid: string, payload: any): number {
   const normalized = normalizeUuid(uuid);
   const set = clients.get(normalized) || clients.get(uuid);
   let preview = '';
@@ -128,28 +138,29 @@ export function broadcastToUuid(uuid: string, payload: any) {
   console.log(`[WB SSE Server] Broadcasting to uuid: ${uuid} (normalized: ${normalized}), clients: ${set?.size || 0}, event type: ${payload?.type}, preview: ${preview}`);
   if (!set) {
     console.log('[WB SSE Server] No clients connected for this uuid');
-    return;
+    return 0;
   }
   const msg = `data: ${JSON.stringify(payload)}\n\n`;
   let successCount = 0;
   for (const c of Array.from(set)) {
-    try { 
-      c.controller.enqueue(new TextEncoder().encode(msg)); 
+    const meta = (c as any).meta ?? null;
+    try {
+      c.controller.enqueue(new TextEncoder().encode(msg));
       successCount++;
-    } catch (e) { 
-      console.error('[WB SSE Server] Failed to send to client:', e);
-      try { set.delete(c); } catch (e) {} 
+    } catch (e) {
+      console.error('[WB SSE Server] Failed to send to client:', e, 'clientMeta:', meta);
+      try { set.delete(c); } catch (delErr) { console.warn('[WB SSE Server] Failed to delete client after send error', delErr); }
     }
   }
   console.log(`[WB SSE Server] Broadcast complete. Sent to ${successCount}/${set.size} clients`);
 
   try {
     // Update in-memory state for persistence on refresh; log before/after summaries
-    let state = roomStates.get(normalized);
+    let state = roomStates.get(normalized) as any;
     const prevStrokes = state?.strokes?.length ?? 0;
     const prevPdfInfo = state?.pdf ? { name: state.pdf.name ?? null, large: !!state.pdf?.large, preview: String(state.pdf?.dataUrl || '').slice(0,100) } : null;
     if (!state) {
-      state = { strokes: [], pdf: null };
+      state = { strokes: [], pdf: null } as any;
       roomStates.set(normalized, state);
     }
 
@@ -176,12 +187,22 @@ export function broadcastToUuid(uuid: string, payload: any) {
       }
     }
 
+    // attach lastEvent metadata for debugging (small summary only)
+    try {
+      const lastSummary: any = { type: payload?.type, clientId: payload?.clientId ?? payload?.clientID ?? null, timestamp: Date.now() };
+      if (payload?.type === 'stroke-start') lastSummary.strokeId = payload.stroke?.id ?? null;
+      if (payload?.type === 'stroke-update') lastSummary.strokeId = payload.strokeId ?? null;
+      state.lastEvent = lastSummary;
+    } catch (e) { /* ignore */ }
+
     const newStrokes = state.strokes?.length ?? 0;
     const newPdfInfo = state?.pdf ? { name: state.pdf.name ?? null, large: !!state.pdf?.large, preview: String(state.pdf?.dataUrl || '').slice(0,100) } : null;
-    console.log('[WB SSE Server] roomStates updated for', normalized, { prevStrokes, newStrokes, prevPdfInfo, newPdfInfo });
+    state.updatedAt = Date.now();
+    console.log('[WB SSE Server] roomStates updated for', normalized, { prevStrokes, newStrokes, prevPdfInfo, newPdfInfo, lastEvent: state.lastEvent, updatedAt: state.updatedAt });
   } catch (e) {
     console.error('[WB SSE Server] State update failed:', e && (e as Error).stack ? (e as Error).stack : e);
   }
+  return successCount;
 }
 
 // Export helper to read in-memory state for external routes

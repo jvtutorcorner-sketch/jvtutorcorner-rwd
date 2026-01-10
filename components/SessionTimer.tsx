@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { useT } from './IntlProvider';
 import { getStoredUser, clearStoredUser } from '@/lib/mockAuth';
 import { useRouter } from 'next/navigation';
+import WaitCountdownModal from './WaitCountdownModal';
 
 const SESSION_EXPIRY_KEY = 'tutor_session_expiry';
 const WARNING_MS = 60 * 1000; // 1 minute
@@ -13,6 +14,7 @@ export default function SessionTimer() {
   const router = useRouter();
   const [remaining, setRemaining] = useState<number | null>(null);
   const [showWarning, setShowWarning] = useState(false);
+  const [modalSeconds, setModalSeconds] = useState<number>(0);
 
   useEffect(() => {
     let mounted = true;
@@ -46,7 +48,10 @@ export default function SessionTimer() {
         return;
       }
       if (r <= WARNING_MS) {
-        if (!showWarning && mounted) setShowWarning(true);
+        if (!showWarning && mounted) {
+          setShowWarning(true);
+          if (mounted) setModalSeconds(Math.max(0, Math.ceil(r / 1000)));
+        }
       }
     }
 
@@ -65,23 +70,39 @@ export default function SessionTimer() {
 
   const seconds = Math.max(0, Math.ceil(remaining / 1000));
 
+  const handleStay = () => {
+    // Extend session by 30 minutes
+    try {
+      const newExpiry = Date.now() + 30 * 60 * 1000;
+      window.localStorage.setItem(SESSION_EXPIRY_KEY, String(newExpiry));
+      window.dispatchEvent(new Event('tutor:auth-changed'));
+    } catch (e) {}
+    setShowWarning(false);
+  };
+
+  const handleLeave = () => {
+    // force logout
+    clearStoredUser();
+    try { window.localStorage.removeItem(SESSION_EXPIRY_KEY); } catch (e) {}
+    window.dispatchEvent(new Event('tutor:auth-changed'));
+    router.push('/login');
+  };
+
   return (
     <>
-      {showWarning && (
-        <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
-          <div style={{ background: 'white', padding: 20, borderRadius: 8, boxShadow: '0 6px 24px rgba(0,0,0,0.3)', width: 360, textAlign: 'center' }}>
-            <h3>{t('session_expiry_warning_title') || '會話即將到期'}</h3>
-            <p>{t('session_expiry_warning_message') || '您的登入即將到期，請在倒數結束前儲存所有重要內容。'}</p>
-            <div style={{ fontSize: 28, fontWeight: 700, marginTop: 8 }}>{seconds}s</div>
-            <div style={{ marginTop: 12 }}>
-              <button className="card-button" onClick={() => {
-                // Dismiss warning (do not extend session)
-                setShowWarning(false);
-              }}>{t('dismiss') || '關閉'}</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <WaitCountdownModal
+        show={showWarning}
+        seconds={modalSeconds || seconds}
+        onStay={handleStay}
+        onLeave={handleLeave}
+        title={t('session_expiry_warning_title')}
+        message={t('session_expiry_warning_message')}
+        stayLabel={t('wait_countdown_stay') || t('dismiss')}
+        leaveLabel={t('wait_countdown_leave') || t('logout')}
+      />
+      <div style={{ position: 'fixed', right: 12, bottom: 12, background: 'rgba(17,24,39,0.9)', color: 'white', padding: '6px 10px', borderRadius: 8, fontWeight: 600, zIndex: 9998 }}>
+        {t('session_expiry_bottom') ? `${t('session_expiry_bottom')} ${seconds}s` : `${t('session_expiry_warning_title') || 'Session'} ${seconds}s`}
+      </div>
     </>
   );
 }

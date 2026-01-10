@@ -75,9 +75,10 @@ export async function POST(req: NextRequest) {
       console.warn('[WB Event Server] Failed to summarize event for logs', e);
     }
 
-    // Broadcast to connected SSE clients (best-effort)
+    // Broadcast to connected SSE clients (best-effort) and log how many clients received it
     try {
-      broadcastToUuid(uuid, event);
+      const sent = broadcastToUuid(uuid, event);
+      console.log(`[WB Event Server] broadcastToUuid sent=${sent} for uuid=${uuid}, eventType=${event?.type}`);
     } catch (e) {
       console.error('[WB Event Server] Broadcast failed:', e && (e as Error).stack ? (e as Error).stack : e);
     }
