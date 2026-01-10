@@ -116,8 +116,8 @@ export default function EnhancedWhiteboard({
     // avoid duplicate ack watchers
     if (pendingAckRef.current.has(strokeId)) return;
     let attempts = 0;
-    const maxAttempts = 8; // increased from 4 for 500ms polling = 4 seconds total wait
-    const intervalMs = 500; // faster polling for quicker ack
+    const maxAttempts = 15; // 80ms * 15 = 1.2 seconds for fast ACK detection
+    const intervalMs = 80; // smart ACK polling: 80ms (12.5x/sec) - only for single stroke
 
     const check = async () => {
       attempts += 1;
@@ -133,7 +133,7 @@ export default function EnhancedWhiteboard({
               const t = pendingAckRef.current.get(strokeId);
               if (t) { try { window.clearInterval(t); } catch (e) {} }
               pendingAckRef.current.delete(strokeId);
-              if (verboseLogging) console.log('[WB ACK] Stroke acknowledged by server state:', strokeId);
+              if (verboseLogging) console.log('[WB ACK] ✓ Stroke ACK confirmed:', strokeId, `(attempt ${attempts})`);
               return;
             }
           }
@@ -145,7 +145,8 @@ export default function EnhancedWhiteboard({
       if (attempts >= maxAttempts) {
         // not found after retries -> error
         pendingAckRef.current.delete(strokeId);
-        const msg = `Canvas sync possibly not received by other participants for stroke ${strokeId}`;
+        const msg = `Canvas sync not confirmed for stroke ${strokeId}`;
+        console.warn('[WB ACK] ✗ Timeout after', attempts, 'attempts:', strokeId);
         logAnomaly('Ack timeout for stroke', { strokeId, attempts, courseIdFromChannel });
         pushError(msg);
         return;
@@ -912,6 +913,7 @@ export default function EnhancedWhiteboard({
         console.log('[WB POLL] Using uuid:', uuid, 'from courseId:', courseParam);
         // Try fetching persisted state immediately and then poll periodically
         let pollId: number | null = null;
+        let lastRemoteHash = '';
         const fetchAndApply = async () => {
           try {
             const resp = await fetch(`/api/whiteboard/state?uuid=${encodeURIComponent(uuid)}`);
@@ -930,15 +932,25 @@ export default function EnhancedWhiteboard({
               // Compare both count and content to detect updates (not just count changes)
               const remoteCount = s.strokes.length;
               const localCount = strokesRef.current.length;
-              const remoteHash = remoteCount > 0 ? JSON.stringify(s.strokes.map((st: any) => st.id)).slice(0, 50) : '';
-              const localHash = localCount > 0 ? JSON.stringify(strokesRef.current.map((st: any) => st.id)).slice(0, 50) : '';
+              const remoteHash = remoteCount > 0 ? JSON.stringify(s.strokes.map((st: any) => st.id)).slice(0, 100) : '';
+              const localHash = localCount > 0 ? JSON.stringify(strokesRef.current.map((st: any) => st.id)).slice(0, 100) : '';
               
-              if (remoteCount !== localCount || remoteHash !== localHash) {
-                console.log('[WB POLL] Updating strokes from /state: local=', localCount, 'remote=', remoteCount, 'remoteHash vs localHash:', remoteHash !== localHash);
+              // Detect missing strokes: if remote has more or different content
+              const isMismatch = remoteCount !== localCount || remoteHash !== localHash;
+              const isNewUpdate = remoteHash !== lastRemoteHash; // content actually changed since last sync
+              
+              if (isMismatch && isNewUpdate) {
+                console.log('[WB POLL] ✓ Sync update detected: local=', localCount, 'remote=', remoteCount, 'mismatch=', isMismatch);
                 setStrokes(s.strokes);
+                lastRemoteHash = remoteHash; // track this update
                   if (verboseLogging) {
                     console.log('[WB POLL] Applied remote strokes in production poll');
                   }
+              } else if (isMismatch && !isNewUpdate) {
+                // Same data as before, but client is still behind - force full resync
+                console.warn('[WB POLL] ⚠ Client behind server by', remoteCount - localCount, 'strokes - forcing resync');
+                setStrokes(s.strokes);
+                lastRemoteHash = remoteHash;
               }
               if (s.pdf && s.pdf.dataUrl && s.pdf.dataUrl !== '(large-data-url)' && !localPdfFile) {
                 try {
@@ -962,8 +974,8 @@ export default function EnhancedWhiteboard({
 
         // initial fetch
         fetchAndApply();
-        // poll every 500ms for faster sync in production
-        try { pollId = window.setInterval(fetchAndApply, 500) as unknown as number; } catch (e) { pollId = null; }
+        // Two-tier polling: fast ACK (80ms) for stroke confirmation + balanced main polling (300ms) to avoid overload
+        try { pollId = window.setInterval(fetchAndApply, 300) as unknown as number; } catch (e) { pollId = null; } // 300ms = 3x per second (sustainable)
 
         return () => {
           try { if (pollId) window.clearInterval(pollId); } catch (e) {}
