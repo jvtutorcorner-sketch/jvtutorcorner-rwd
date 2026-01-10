@@ -405,6 +405,8 @@ export function useAgoraClassroom({
       try {
         // Try to get existing room UUID from localStorage
         const cachedUuid = typeof window !== 'undefined' ? localStorage.getItem(whiteboardRoomKey) : null;
+        const host = typeof window !== 'undefined' ? window.location.hostname : '';
+        const isProductionHost = host.endsWith('jvtutorcorner.com') || host.includes('amplifyapp.com') || host.includes('cloudfront.net');
 
         // If cachedUuid exists and is NOT a local course-scoped fallback, request token from server.
         if (cachedUuid && !cachedUuid.startsWith('course_')) {
@@ -449,9 +451,43 @@ export function useAgoraClassroom({
             console.warn('whiteboard API returned non-OK:', wbResp.status, txt);
           }
         } else if (cachedUuid && cachedUuid.startsWith('course_')) {
-          // Use the cached course-scoped uuid without contacting server
-          setWhiteboardMeta({ uuid: cachedUuid, appId: undefined, region: undefined });
-          console.log('Whiteboard: Using cached course-scoped fallback uuid');
+          // If running in production, avoid trusting the local course-scoped fallback
+          // because serverless instances and CDN routing can cause inconsistent
+          // in-memory state. Try to create/request a server-backed room instead.
+          if (isProductionHost) {
+            try {
+              const wbResp = await fetch('/api/agora/whiteboard', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ name: channelName, role: 'admin' }),
+              });
+              if (wbResp.ok) {
+                const wbJson = await wbResp.json();
+                wbAppId = wbJson.whiteboardAppId ?? null;
+                wbUuid = wbJson.uuid ?? null;
+                wbRoomToken = wbJson.roomToken ?? null;
+                wbRegion = wbJson.region ?? null;
+                if (wbUuid && typeof window !== 'undefined') {
+                  localStorage.setItem(whiteboardRoomKey, wbUuid);
+                }
+                setWhiteboardMeta({ uuid: wbUuid ?? undefined, appId: wbAppId ?? undefined, region: wbRegion ?? undefined });
+                console.log('Whiteboard: Obtained server-backed room in production (replacing course-scoped fallback)');
+              } else {
+                const txt = await wbResp.text();
+                console.warn('whiteboard API returned non-OK when replacing course-scoped fallback:', wbResp.status, txt);
+                // fallback to cached course-scoped if server fails (best-effort)
+                setWhiteboardMeta({ uuid: cachedUuid, appId: undefined, region: undefined });
+                console.log('Whiteboard: Falling back to cached course-scoped uuid after server failure');
+              }
+            } catch (e) {
+              console.warn('Failed to request whiteboard token in production, using cached course-scoped fallback as last resort', e);
+              setWhiteboardMeta({ uuid: cachedUuid, appId: undefined, region: undefined });
+            }
+          } else {
+            // Non-production: use the cached course-scoped uuid without contacting server
+            setWhiteboardMeta({ uuid: cachedUuid, appId: undefined, region: undefined });
+            console.log('Whiteboard: Using cached course-scoped fallback uuid (non-production)');
+          }
         }
       } catch (err) {
         console.warn('Failed to call /api/agora/whiteboard', err);

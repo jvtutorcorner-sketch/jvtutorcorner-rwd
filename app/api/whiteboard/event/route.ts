@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { broadcastToUuid } from '../stream/route';
+import { broadcastToUuid, getRoomState } from '../stream/route';
 
 export async function POST(req: NextRequest) {
   try {
@@ -79,6 +79,13 @@ export async function POST(req: NextRequest) {
     try {
       const sent = broadcastToUuid(uuid, event);
       console.log(`[WB Event Server] broadcastToUuid sent=${sent} for uuid=${uuid}, eventType=${event?.type}`);
+      try {
+        // diagnostic: log current in-memory room state summary so server logs
+        const state = getRoomState(uuid);
+        console.log('[WB Event Server] Post-broadcast room state summary:', { uuid, strokes: Array.isArray(state?.strokes) ? state.strokes.length : 0, lastEvent: state?.lastEvent ?? null });
+      } catch (e) {
+        console.warn('[WB Event Server] Failed to read room state for diagnostic', e);
+      }
     } catch (e) {
       console.error('[WB Event Server] Broadcast failed:', e && (e as Error).stack ? (e as Error).stack : e);
     }

@@ -167,21 +167,54 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           console.log('[Pre-join] Using cached course-scoped whiteboard UUID, skipping server call');
         }
 
-        // If no cached UUID or server token not available, use a course-scoped UUID so
-        // participants in the same course share the same canvas fallback without needing
-        // Netless/whiteboard server configuration.
+        // If no cached UUID or server token not available, decide strategy based on environment.
+        // In production we must NOT use a course-scoped local fallback to avoid inconsistent
+        // in-memory states across serverless instances / CDN. Instead, try to request a
+        // server-backed whiteboard room/token. Only fall back to course-scoped locally in
+        // non-production (local dev) environments.
         if (!localStorage.getItem(whiteboardRoomKey)) {
-          const courseScoped = `course_${courseId}`;
-          localStorage.setItem(whiteboardRoomKey, courseScoped);
-          try {
-            const bc = new BroadcastChannel(`whiteboard_course_${courseId}`);
-            bc.postMessage({ type: 'whiteboard_room_created', uuid: courseScoped, timestamp: Date.now() });
-            setTimeout(() => bc.close(), 100);
-          } catch (e) {
-            console.warn('BroadcastChannel not available:', e);
+          const host = window.location.hostname || '';
+          const isProductionHost = host.endsWith('jvtutorcorner.com') || host.includes('amplifyapp.com') || host.includes('cloudfront.net');
+          if (isProductionHost) {
+            try {
+              const wbResp = await fetch('/api/agora/whiteboard', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ name: effectiveChannelName, role: 'admin' }),
+              });
+              if (wbResp.ok) {
+                const wbJson = await wbResp.json();
+                const wbAppId = wbJson.whiteboardAppId ?? null;
+                const wbUuid = wbJson.uuid ?? null;
+                const wbRegion = wbJson.region ?? null;
+                if (wbUuid) {
+                  localStorage.setItem(whiteboardRoomKey, wbUuid);
+                  setWhiteboardMetaBeforeJoin({ uuid: wbUuid, appId: wbAppId ?? undefined, region: wbRegion ?? undefined });
+                  console.log('[Pre-join] Obtained whiteboard room from server (production)');
+                } else {
+                  console.warn('[Pre-join] Server returned no uuid; not setting local fallback in production');
+                }
+              } else {
+                const txt = await wbResp.text().catch(() => '(no body)');
+                console.warn('[Pre-join] Whiteboard API returned non-OK in production:', wbResp.status, txt);
+              }
+            } catch (e) {
+              console.warn('[Pre-join] Failed to request whiteboard token in production:', e);
+            }
+          } else {
+            // non-production: use course-scoped fallback so local dev works without server
+            const courseScoped = `course_${courseId}`;
+            localStorage.setItem(whiteboardRoomKey, courseScoped);
+            try {
+              const bc = new BroadcastChannel(`whiteboard_course_${courseId}`);
+              bc.postMessage({ type: 'whiteboard_room_created', uuid: courseScoped, timestamp: Date.now() });
+              setTimeout(() => bc.close(), 100);
+            } catch (e) {
+              console.warn('BroadcastChannel not available:', e);
+            }
+            setWhiteboardMetaBeforeJoin({ uuid: courseScoped, appId: undefined, region: undefined });
+            console.log('[Pre-join] Using course-scoped whiteboard UUID (canvas fallback, non-production)');
           }
-          setWhiteboardMetaBeforeJoin({ uuid: courseScoped, appId: undefined, region: undefined });
-          console.log('[Pre-join] Using course-scoped whiteboard UUID (canvas fallback)');
         }
       } catch (err) {
         console.warn('[Pre-join] Failed to initialize whiteboard:', err);
