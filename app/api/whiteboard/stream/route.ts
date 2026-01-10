@@ -132,6 +132,7 @@ export async function GET(req: NextRequest) {
 // Helper used by POST route to broadcast
 export function broadcastToUuid(uuid: string, payload: any): number {
   const normalized = normalizeUuid(uuid);
+  console.log(`[WB SSE Server] broadcastToUuid: raw uuid="${uuid}", normalized="${normalized}"`);
   const set = clients.get(normalized) || clients.get(uuid);
   let preview = '';
   try { preview = JSON.stringify(payload).slice(0, 200); } catch (e) { preview = String(payload).slice(0, 200); }
@@ -162,17 +163,23 @@ export function broadcastToUuid(uuid: string, payload: any): number {
     if (!state) {
       state = { strokes: [], pdf: null } as any;
       roomStates.set(normalized, state);
+      console.log('[WB SSE Server] Created new roomState for normalized uuid:', normalized);
     }
+
+    console.log('[WB SSE Server] Before update - roomStates keys:', Array.from(roomStates.keys()), 'normalized:', normalized, 'has state:', roomStates.has(normalized));
 
     if (payload.type === 'stroke-start') {
       state.strokes.push(payload.stroke);
+      console.log('[WB SSE Server] Added stroke-start. Now state has', state.strokes.length, 'strokes');
     } else if (payload.type === 'stroke-update') {
       const idx = state.strokes.findIndex((s: any) => s.id === payload.strokeId);
       if (idx >= 0) {
         state.strokes[idx].points = payload.points;
+        console.log('[WB SSE Server] Updated stroke at idx', idx);
       } else {
         // Fallback: if update arrives before start, create it
         state.strokes.push({ id: payload.strokeId, points: payload.points, stroke: '#000', strokeWidth: 2, mode: 'draw' });
+        console.log('[WB SSE Server] Stroke-update arrived before start, created new stroke. Now state has', state.strokes.length, 'strokes');
       }
     } else if (payload.type === 'undo') {
       state.strokes = state.strokes.filter((s: any) => s.id !== payload.strokeId);

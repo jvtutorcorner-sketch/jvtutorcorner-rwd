@@ -55,6 +55,7 @@ export async function POST(req: NextRequest) {
       console.warn('[WB Event Server] Missing event in parsed body, preview:', (text || '').slice(0, 200));
       return new Response(JSON.stringify({ ok: false, error: 'no event', rawPreview: (text || '').slice(0, 200) }), { status: 400 });
     }
+    console.log('[WB Event Server] Raw uuid from client:', uuid);
     try {
       // Log a concise event summary without dumping large payloads
       const evtSummary: any = { type: event?.type, clientId: event?.clientId ?? event?.clientID ?? null };
