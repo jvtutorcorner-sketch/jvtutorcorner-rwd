@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useEffect, useState, useRef } from 'react';
+import WaitCountdownModal from '@/components/WaitCountdownModal';
+import WaitCountdownManager from '@/components/WaitCountdownManager';
 import { useRouter } from 'next/navigation';
 import { COURSES } from '@/data/courses';
 import { getStoredUser } from '@/lib/mockAuth';
@@ -40,6 +42,9 @@ export default function ClassroomWaitPage() {
   const [audioOk, setAudioOk] = useState(false);
   const [videoOk, setVideoOk] = useState(false);
   const t = useT();
+
+  
+  
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -470,6 +475,10 @@ export default function ClassroomWaitPage() {
           <VideoControls currentQuality={currentQuality} isLowLatencyMode={isLowLatencyMode} onQualityChange={setCurrentQuality} onLowLatencyToggle={setIsLowLatencyMode} hasVideo={true} />
         </div>
       )}
+    {/* Place countdown manager at the end of the page content so it flows with scroll */}
+    <div style={{ marginTop: 24 }}>
+      <WaitCountdownManager />
+    </div>
     </div>
   );
 }
@@ -546,10 +555,8 @@ function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, vi
         else if (!selectedVideoDeviceId && vis.length) setSelectedVideoDeviceId(vis[0].deviceId);
         if (so) setSelectedAudioOutputId(so);
         else if (!selectedAudioOutputId && aos.length) setSelectedAudioOutputId(aos[0].deviceId);
-        // mark audio presence: treat any audiooutput (including headphones) as present
-        try { setSpeakerTested(aos.length > 0); } catch (e) {}
-        // mark microphone presence by device enumeration only
-        try { setAudioTested(ais.length > 0); } catch (e) {}
+        // Do NOT mark devices as "tested" based on enumeration alone.
+        // Testing should be explicit (mic test / speaker test) or after permission.
       } catch (e) {
         console.warn('[Device Enum] enumeration failed:', e);
       }
@@ -935,6 +942,7 @@ function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, vi
         <div style={{ padding: 12, background: '#e3f2fd', borderRadius: 6, fontSize: 13, color: '#1565c0' }}>
           💡 {t('wait.devices_saved_hint')}
         </div>
+        {/* Countdown modal removed from here; managed by WaitCountdownManager */}
       </div>
     </div>
   );
