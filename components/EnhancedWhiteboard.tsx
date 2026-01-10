@@ -116,8 +116,8 @@ export default function EnhancedWhiteboard({
     // avoid duplicate ack watchers
     if (pendingAckRef.current.has(strokeId)) return;
     let attempts = 0;
-    const maxAttempts = 4;
-    const intervalMs = 1000;
+    const maxAttempts = 8; // increased from 4 for 500ms polling = 4 seconds total wait
+    const intervalMs = 500; // faster polling for quicker ack
 
     const check = async () => {
       attempts += 1;
@@ -927,9 +927,14 @@ export default function EnhancedWhiteboard({
             const j = await resp.json();
             const s = j?.state;
             if (s && Array.isArray(s.strokes)) {
-              // Only replace strokes when there is a difference to avoid overwriting local in-progress strokes
-              if (s.strokes.length !== strokesRef.current.length) {
-                console.log('[WB POLL] Updating strokes from /state:', s.strokes.length, 'strokes');
+              // Compare both count and content to detect updates (not just count changes)
+              const remoteCount = s.strokes.length;
+              const localCount = strokesRef.current.length;
+              const remoteHash = remoteCount > 0 ? JSON.stringify(s.strokes.map((st: any) => st.id)).slice(0, 50) : '';
+              const localHash = localCount > 0 ? JSON.stringify(strokesRef.current.map((st: any) => st.id)).slice(0, 50) : '';
+              
+              if (remoteCount !== localCount || remoteHash !== localHash) {
+                console.log('[WB POLL] Updating strokes from /state: local=', localCount, 'remote=', remoteCount, 'remoteHash vs localHash:', remoteHash !== localHash);
                 setStrokes(s.strokes);
                   if (verboseLogging) {
                     console.log('[WB POLL] Applied remote strokes in production poll');
@@ -957,8 +962,8 @@ export default function EnhancedWhiteboard({
 
         // initial fetch
         fetchAndApply();
-        // poll every 1500ms
-        try { pollId = window.setInterval(fetchAndApply, 1500) as unknown as number; } catch (e) { pollId = null; }
+        // poll every 500ms for faster sync in production
+        try { pollId = window.setInterval(fetchAndApply, 500) as unknown as number; } catch (e) { pollId = null; }
 
         return () => {
           try { if (pollId) window.clearInterval(pollId); } catch (e) {}
