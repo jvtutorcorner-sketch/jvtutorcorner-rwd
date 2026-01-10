@@ -475,7 +475,8 @@ export default function ClassroomWaitPage() {
 }
 
 function SyncBadge({ mode }: { mode: 'sse' | 'polling' | 'disconnected' }) {
-  const label = mode === 'sse' ? 'SSE' : (mode === 'polling' ? 'Polling' : 'Disconnected');
+  const t = useT();
+  const label = mode === 'sse' ? t('wait.sse') : (mode === 'polling' ? t('wait.polling') : t('wait.disconnected'));
   const color = mode === 'sse' ? '#2e7d32' : (mode === 'polling' ? '#ff9800' : '#d32f2f');
   return (
     <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 999, background: '#fff', border: `1px solid ${color}`, boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>

@@ -461,8 +461,10 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     })();
 
     // Subscribe to server SSE for updates to participants (keeps canJoin in sync)
+    // In production, we skip SSE (which returns 503) and rely on the polling interval set below
+    const isProduction = process.env.NODE_ENV === 'production';
     try {
-      if (sessionReadyKey) {
+      if (sessionReadyKey && !isProduction) {
         es = new EventSource(`/api/classroom/stream?uuid=${encodeURIComponent(sessionReadyKey)}`);
         es.onmessage = (ev) => {
           try {
@@ -478,6 +480,23 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       }
     } catch (e) {}
 
+    // In production, add a fallback interval to refresh participant status since SSE is disabled
+    let pollingInterval: any = null;
+    if (isProduction && sessionReadyKey) {
+      pollingInterval = setInterval(async () => {
+        try {
+          const r = await fetch(`/api/classroom/ready?uuid=${encodeURIComponent(sessionReadyKey)}`);
+          if (r.ok) {
+            const j = await r.json();
+            const parts = j.participants || [];
+            const hasTeacher = parts.some((p: any) => p.role === 'teacher');
+            const hasStudent = parts.some((p: any) => p.role === 'student');
+            setCanJoin(hasTeacher && hasStudent);
+          }
+        } catch (e) {}
+      }, 10000); // Poll every 10 seconds
+    }
+
     // Also respond to storage events from other tabs
     const onStorage = (ev: StorageEvent) => {
       if (ev.key === sessionReadyKey) readReadyLocal();
@@ -486,6 +505,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
 
     return () => {
       window.removeEventListener('storage', onStorage);
+      if (pollingInterval) clearInterval(pollingInterval);
       try { es?.close(); } catch (e) {}
     };
   }, [sessionReadyKey]);
@@ -991,14 +1011,14 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           <div className="video-container">
             <video ref={localVideoRef} autoPlay muted playsInline />
             <div className="video-label">
-              {mounted && (urlRole === 'teacher' || computedRole === 'teacher') ? 'Teacher (You)' : 'Student (You)'}
+              {mounted && (urlRole === 'teacher' || computedRole === 'teacher') ? t('teacher_you') : t('student_you')}
             </div>
           </div>
 
           <div className="video-container">
             <video ref={remoteVideoRef} autoPlay playsInline />
             <div className="video-label">
-              {firstRemote ? `${mounted && (urlRole === 'teacher' || computedRole === 'teacher') ? 'Student' : 'Teacher'}` : (mounted && (urlRole === 'teacher' || computedRole === 'teacher') ? 'Student' : 'Teacher')}
+              {firstRemote ? `${mounted && (urlRole === 'teacher' || computedRole === 'teacher') ? t('student') : t('teacher')}` : (mounted && (urlRole === 'teacher' || computedRole === 'teacher') ? t('student') : t('teacher'))}
             </div>
             {/* Controls moved: mic and leave are shown under the Join button in the controls area. */}
           </div>
