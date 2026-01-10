@@ -61,11 +61,11 @@ export default function EnhancedWhiteboard({
   // helper to POST events to server relay
   const postEventToServer = useCallback(async (event: any) => {
     try {
-      // Normalize to course-scoped UUID so SSE and event POST use same key
+      // Use courseId from URL parameter directly (or fallback to 'classroom' if not present).
+      // This ensures POST and GET use the SAME uuid for server state consistency.
       const params = new URLSearchParams(window.location.search);
-      const courseParam = params.get('courseId') || 'default';
-      const courseIdFromChannel = (channelName ? (channelName.startsWith('course_') ? channelName.replace(/^course_/, '').split('_')[0] : channelName.split('_')[0]) : courseParam) || 'default';
-      const uuid = `course_${courseIdFromChannel}`;
+      const courseParam = params.get('courseId') || 'classroom';
+      const uuid = `course_${courseParam}`;
       console.log('[WB POST] Sending event to server:', event.type, 'uuid:', uuid);
       const response = await fetch('/api/whiteboard/event', {
         method: 'POST',
@@ -901,15 +901,15 @@ export default function EnhancedWhiteboard({
     }
     if (typeof window === 'undefined') return;
     try {
-      // Use explicit channelName if provided, otherwise fall back to courseId
+      // Use courseId from URL parameter directly to ensure POST and GET use same uuid
       const params = new URLSearchParams(window.location.search);
-      const courseParam = params.get('courseId') || 'default';
-      const courseIdFromChannel = (channelName ? (channelName.startsWith('course_') ? channelName.replace(/^course_/, '').split('_')[0] : channelName.split('_')[0]) : courseParam) || 'default';
-      const uuid = `course_${courseIdFromChannel}`;
+      const courseParam = params.get('courseId') || 'classroom';
+      const uuid = `course_${courseParam}`;
       // In production (Amplify) long-lived SSE often fails; skip SSE there.
       const isProduction = window.location.hostname === 'www.jvtutorcorner.com' || window.location.hostname === 'jvtutorcorner.com';
       if (isProduction) {
         console.log('[WB SSE] Production detected - skipping SSE. Falling back to /api/whiteboard/state polling.');
+        console.log('[WB POLL] Using uuid:', uuid, 'from courseId:', courseParam);
         // Try fetching persisted state immediately and then poll periodically
         let pollId: number | null = null;
         const fetchAndApply = async () => {
