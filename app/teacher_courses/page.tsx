@@ -17,7 +17,7 @@ type Order = {
   createdAt?: string;
 };
 
-export default function TeacherOrdersPage() {
+export default function TeacherCoursesPage() {
   const router = useRouter();
   const t = useT();
   const [orders, setOrders] = useState<Order[] | null>(null);
@@ -175,22 +175,29 @@ export default function TeacherOrdersPage() {
                   <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>金額</th>
                   <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>狀態</th>
                   <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>建立時間</th>
-                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>進入教室</th>
+                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>詳情</th>
                 </tr>
               </thead>
               <tbody>
                 {orders.map((o) => (
                   <tr key={o.orderId}>
                     <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.userId ? (userMap[o.userId]?.firstName && userMap[o.userId]?.lastName ? `${userMap[o.userId].firstName} ${userMap[o.userId].lastName}` : o.userId) : '-'}</td>
-                    <td style={{ border: '2px solid #ccc', padding: '6px' }}><Link href={`/orders/${o.orderId}`}>{o.orderId}</Link></td>
+                    <td style={{ border: '2px solid #ccc', padding: '6px' }}>
+                      <Link href={`/teacher_courses/${o.orderId}`}>{o.orderId}</Link>
+                    </td>
                     <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.courseId ? (courseMap[o.courseId]?.title || o.courseId) : '-'}</td>
                     <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.courseId ? (courseMap[o.courseId]?.teacherName || '-') : '-'}</td>
                     <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.amount !== undefined && o.amount !== null ? `${o.amount} ${o.currency ?? 'TWD'}` : '-'}</td>
                     <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.status ?? '-'}</td>
                     <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.createdAt ? new Date(o.createdAt).toLocaleString() : '-'}</td>
-                    <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.courseId ? (
-                      <Link href={`/classroom/wait?courseId=${encodeURIComponent(o.courseId)}&orderId=${encodeURIComponent(o.orderId)}`} className="btn btn-primary" style={{ padding: '4px 8px', fontSize: '12px' }}>{t('enter_classroom')}</Link>
-                    ) : '-'}
+                    <td style={{ border: '2px solid #ccc', padding: '6px' }}>
+                      <Link 
+                        href={`/teacher_courses/${o.orderId}`}
+                        className="btn btn-primary"
+                        style={{ padding: '4px 8px', fontSize: '12px' }}
+                      >
+                        詳情
+                      </Link>
                     </td>
                   </tr>
                 ))}
