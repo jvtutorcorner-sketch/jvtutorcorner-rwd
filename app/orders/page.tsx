@@ -259,7 +259,7 @@ export default function OrdersPage() {
                   <option value="REFUNDED">已退款</option>
                 </select>
 
-                {user?.role !== 'student' && (
+                {user?.role !== 'user' && (
                   <>
                     <label style={{ marginRight: 8 }}>課程：</label>
                     <select value={filterCourseId} onChange={(e) => setFilterCourseId(e.target.value)} style={{ padding: '4px 8px', marginRight: 12 }}>
