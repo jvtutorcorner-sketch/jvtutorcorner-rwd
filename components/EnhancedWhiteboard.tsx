@@ -2,9 +2,21 @@
 
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { getStoredUser } from '@/lib/mockAuth';
-import { generateClient } from 'aws-amplify/api';
 
-const client = generateClient();
+// Dynamically load Amplify API at runtime to avoid static bundler errors
+let _AmplifyAPI: any = null;
+async function getAmplifyAPI(): Promise<any | null> {
+  if (_AmplifyAPI) return _AmplifyAPI;
+  try {
+    const mod = await import('aws-amplify');
+    // try common export locations
+    _AmplifyAPI = (mod as any).API ?? (mod as any).default?.API ?? (mod as any);
+    return _AmplifyAPI;
+  } catch (e) {
+    console.warn('[WB] Dynamic import of aws-amplify failed:', e);
+    return null;
+  }
+}
 
 // GraphQL definitions for whiteboard sync
 const createWhiteboardEventMutation = /* GraphQL */ `
@@ -88,17 +100,20 @@ export default function EnhancedWhiteboard({
       const courseParam = params.get('courseId') || 'classroom';
       const uuid = `course_${courseParam}`;
       
-      // 1. AppSync Mutation (Real-time broadcast)
+      // 1. AppSync Mutation (Real-time broadcast) - dynamic import
       try {
-        await client.graphql({
-          query: createWhiteboardEventMutation,
-          variables: {
-            input: {
-              room: uuid,
-              event: JSON.stringify({ ...event, clientId: clientIdRef.current })
+        const APIclient = await getAmplifyAPI();
+        if (APIclient && typeof APIclient.graphql === 'function') {
+          await APIclient.graphql({
+            query: createWhiteboardEventMutation,
+            variables: {
+              input: {
+                room: uuid,
+                event: JSON.stringify({ ...event, clientId: clientIdRef.current })
+              }
             }
-          }
-        });
+          } as any);
+        }
       } catch (appsyncErr) {
         console.warn('[WB AppSync] Mutation failed, falling back to REST:', appsyncErr);
       }
@@ -463,19 +478,6 @@ export default function EnhancedWhiteboard({
       }
     })();
   }, [pdf, currentPage, numPages, whiteboardWidth, canvasHeight]); // Re-render if size changes
-        // Clear before render to avoid ghosting
-        ctx.clearRect(0, 0, bgCanvas.width, bgCanvas.height);
-
-        const renderTask = page.render({ canvasContext: ctx, viewport: renderViewport });
-        currentRenderTask.current = renderTask;
-        await renderTask.promise;
-        currentRenderTask.current = null;
-      } catch (e) {
-        console.error('Failed to render PDF page', e);
-        currentRenderTask.current = null;
-      }
-    })();
-  }, [pdf, currentPage, numPages]);
 
   // expose simple helpers for existing controls that call global __wb_setTool / __wb_setColor
   useEffect(() => {
@@ -840,22 +842,32 @@ export default function EnhancedWhiteboard({
         const uuid = `course_${courseParam}`;
 
         console.log('[WB AppSync] Subscribing to room:', uuid);
-        sub = client.graphql({
-          query: onCreateWhiteboardEventSubscription,
-          variables: { room: uuid }
-        } as any).subscribe({
-          next: ({ data }: any) => {
-            const event = data.onCreateWhiteboardEvent;
-            if (!event || !event.event) return;
-            try {
-              const parsed = JSON.parse(event.event);
-              handleIncomingEvent(parsed);
-            } catch (e) {
-              console.error('[WB AppSync] Failed to parse event', e);
+        try {
+          const APIclient = await getAmplifyAPI();
+          if (APIclient && typeof APIclient.graphql === 'function') {
+            const maybeObs = APIclient.graphql({ query: onCreateWhiteboardEventSubscription, variables: { room: uuid } } as any);
+            // Amplify may return an Observable when the realtime provider is configured
+            if (maybeObs && typeof (maybeObs as any).subscribe === 'function') {
+              sub = (maybeObs as any).subscribe({
+                next: ({ data }: any) => {
+                  const event = data.onCreateWhiteboardEvent;
+                  if (!event || !event.event) return;
+                  try {
+                    const parsed = JSON.parse(event.event);
+                    handleIncomingEvent(parsed);
+                  } catch (e) {
+                    console.error('[WB AppSync] Failed to parse event', e);
+                  }
+                },
+                error: (err: any) => console.error('[WB AppSync] Subscription error:', err)
+              });
+            } else {
+              console.warn('[WB AppSync] Subscription did not return Observable; realtime may not be configured');
             }
-          },
-          error: (err: any) => console.error('[WB AppSync] Subscription error:', err)
-        });
+          }
+        } catch (subErr) {
+          console.warn('[WB AppSync] Subscribe error:', subErr);
+        }
       } catch (err) {
         console.warn('[WB AppSync] Failed to setup subscription:', err);
       }
@@ -1182,7 +1194,7 @@ export default function EnhancedWhiteboard({
         try {
           const data = JSON.parse(ev.data);
           if (!data) return;
-          
+
           // connected and ping are special for SSE
           if (data.type === 'connected') {
             console.log('[WB SSE] Received connected message');
@@ -1193,49 +1205,27 @@ export default function EnhancedWhiteboard({
           console.log('[WB SSE] Received event:', data.type);
 
           if (data.type === 'init-state') {
-            if (Array.isArray(data.strokes)) {
-              if (strokesRef.current.length === 0) setStrokes(data.strokes);
+            if (Array.isArray(data.strokes) && strokesRef.current.length === 0) {
+              setStrokes(data.strokes);
+            }
+            if (data.pdf && data.pdf.dataUrl && data.pdf.dataUrl !== '(large-data-url)') {
+              (async () => {
+                try {
+                  const resp = await fetch(data.pdf.dataUrl);
+                  const blob = await resp.blob();
+                  const file = new File([blob], data.pdf.name || 'remote.pdf', { type: blob.type });
+                  setSelectedFileName(file.name);
+                  setLocalPdfFile(file);
+                } catch (e) {
+                  // ignore PDF restore errors
+                }
+              })();
             }
             return;
           }
 
-          // use shared handler
+          // delegate to shared handler for other event types
           handleIncomingEvent(data);
-        } catch (e) {
-          console.error('[WB SSE] Error parsing message:', e);
-        }
-      };
-                if (verboseLogging) logAnomaly('SSE received malformed stroke-update (points invalid)', { strokeId: data.strokeId, points: data.points });
-                return s;
-              }
-              if (idx >= 0) {
-                const updated = { ...(s[idx] as any), points: data.points };
-                return [...s.slice(0, idx), updated, ...s.slice(idx + 1)];
-              }
-              if (verboseLogging) logAnomaly('SSE received stroke-update for unknown strokeId (appending)', { strokeId: data.strokeId, pointsLen: Array.isArray(data.points) ? data.points.length : null });
-              return [...s, { points: data.points, stroke: '#000', strokeWidth: 2, mode: 'draw', id: data.strokeId } as any];
-            });
-          } else if (data.type === 'undo') {
-            setStrokes((s) => s.filter((st) => (st as any).id !== data.strokeId));
-          } else if (data.type === 'redo') {
-            setStrokes((s) => [...s, data.stroke]);
-          } else if (data.type === 'clear') {
-            setStrokes([]);
-            setUndone([]);
-          } else if (data.type === 'pdf-set') {
-            (async () => {
-              try {
-                const name = data.name || 'remote.pdf';
-                const resp = await fetch(data.dataUrl);
-                const blob = await resp.blob();
-                const file = new File([blob], name, { type: blob.type });
-                setSelectedFileName(file.name);
-                setLocalPdfFile(file);
-              } catch (e) {
-                console.error('[WB SSE] Failed to apply remote pdf-set', e);
-              }
-            })();
-          }
         } catch (e) {
           console.error('[WB SSE] Error parsing message:', e);
         }
