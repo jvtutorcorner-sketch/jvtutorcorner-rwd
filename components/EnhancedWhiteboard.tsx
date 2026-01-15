@@ -2,6 +2,29 @@
 
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { getStoredUser } from '@/lib/mockAuth';
+import { generateClient } from 'aws-amplify/api';
+
+const client = generateClient();
+
+// GraphQL definitions for whiteboard sync
+const createWhiteboardEventMutation = /* GraphQL */ `
+  mutation CreateWhiteboardEvent($input: CreateWhiteboardEventInput!) {
+    createWhiteboardEvent(input: $input) {
+      id
+      event
+      room
+    }
+  }
+`;
+
+const onCreateWhiteboardEventSubscription = /* GraphQL */ `
+  subscription OnCreateWhiteboardEvent($room: String!) {
+    onCreateWhiteboardEvent(filter: { room: { eq: $room } }) {
+      event
+      room
+    }
+  }
+`;
 
 export interface WhiteboardProps {
   room?: any; // Netless whiteboard room (if provided, use it; otherwise use canvas fallback)
@@ -58,38 +81,41 @@ export default function EnhancedWhiteboard({
     }
   };
 
-  // helper to POST events to server relay
+  // helper to POST events to server relay (AppSync + REST fallback)
   const postEventToServer = useCallback(async (event: any) => {
     try {
-      // Use courseId from URL parameter directly (or fallback to 'classroom' if not present).
-      // This ensures POST and GET use the SAME uuid for server state consistency.
       const params = new URLSearchParams(window.location.search);
       const courseParam = params.get('courseId') || 'classroom';
       const uuid = `course_${courseParam}`;
+      
+      // 1. AppSync Mutation (Real-time broadcast)
+      try {
+        await client.graphql({
+          query: createWhiteboardEventMutation,
+          variables: {
+            input: {
+              room: uuid,
+              event: JSON.stringify({ ...event, clientId: clientIdRef.current })
+            }
+          }
+        });
+      } catch (appsyncErr) {
+        console.warn('[WB AppSync] Mutation failed, falling back to REST:', appsyncErr);
+      }
+
+      // 2. REST API call (for backward compatibility and server-side persistence)
       console.log('[WB POST] Sending event to server:', event.type, 'uuid:', uuid);
       const response = await fetch('/api/whiteboard/event', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ uuid, event: { ...event, clientId: clientIdRef.current } })
       });
-      let resultText = null;
-      try {
-        resultText = await response.text();
-        try {
-          const parsed = JSON.parse(resultText);
-          console.log('[WB POST] Server response (parsed):', parsed);
-        } catch (e) {
-          console.log('[WB POST] Server response (text):', resultText.slice(0, 1000));
-        }
-      } catch (e) {
-        console.warn('[WB POST] Failed to read server response body', e);
-      }
+      
       if (!response.ok) {
-        console.error('[WB POST] Non-OK response from /api/whiteboard/event', { status: response.status, bodyPreview: resultText?.slice(0, 200) });
+        console.error('[WB POST] Non-OK response from /api/whiteboard/event', { status: response.status });
       }
-      // If this is a stroke event, start ack polling to ensure other clients (students)
-      // receive the stroke via server relay. We poll persisted /api/whiteboard/state
-      // and show an error if the stroke isn't visible after retries.
+      
+      // ... REST of the logic for acks ...
       try {
         if (event && (event.type === 'stroke-start' || event.type === 'stroke-update')) {
           const strokeId = event.stroke?.id || event.strokeId;
@@ -99,7 +125,7 @@ export default function EnhancedWhiteboard({
         }
       } catch (e) {}
     } catch (e) {
-      console.error('[WB POST] Error posting event:', e && (e as Error).stack ? (e as Error).stack : e);
+      console.error('[WB POST] Error posting event:', e);
     }
   }, [channelName]);
 
@@ -164,7 +190,9 @@ export default function EnhancedWhiteboard({
   const pendingUpdatesRef = useRef<Map<string, { points: number[] }>>(new Map());
   const flushTimerRef = useRef<number | null>(null);
   const currentStrokeIdRef = useRef<string | null>(null);
-  const FLUSH_INTERVAL = 100; // ms
+  const localActiveStrokeRef = useRef<Stroke | null>(null);
+  const lastPointerPosRef = useRef<{ x: number; y: number } | null>(null);
+  const FLUSH_INTERVAL = 60; // Reduced from 100ms to 60ms for smoother sync
 
   const flushPendingUpdates = useCallback(() => {
     try {
@@ -198,8 +226,10 @@ export default function EnhancedWhiteboard({
     scheduleFlush();
   }, [scheduleFlush]);
 
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const mainCanvasRef = useRef<HTMLCanvasElement>(null);
+  const activeCanvasRef = useRef<HTMLCanvasElement>(null);
   const bgCanvasRef = useRef<HTMLCanvasElement>(null); // Background canvas for PDF
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const currentRenderTask = useRef<any>(null); // Track PDF render task
   const [tool, setTool] = useState<'pencil' | 'eraser'>('pencil');
   const [color, setColor] = useState('#000000');
@@ -412,27 +442,29 @@ export default function EnhancedWhiteboard({
         const bgCanvas = bgCanvasRef.current;
         if (!bgCanvas) return;
 
-        const dpr = window.devicePixelRatio || 1;
-        const scale = 1.5;
-        const renderViewport = page.getViewport({ scale: scale * dpr });
-
-        // Set canvas dimensions (Physical pixels)
-        bgCanvas.width = renderViewport.width;
-        bgCanvas.height = renderViewport.height;
-        
-        // Set canvas CSS dimensions (Logical pixels)
-        const logicalWidth = renderViewport.width / dpr;
-        const logicalHeight = renderViewport.height / dpr;
-        
-        bgCanvas.style.width = `${logicalWidth}px`;
-        bgCanvas.style.height = `${logicalHeight}px`;
-        
-        // Position at top-left
-        bgCanvas.style.left = '0px';
-        bgCanvas.style.top = '0px';
-
         const ctx = bgCanvas.getContext('2d');
         if (!ctx) return;
+
+        // Use the actual canvas width/height set by resize observer
+        const viewportNative = page.getViewport({ scale: 1 });
+        const scale = bgCanvas.width / viewportNative.width;
+        const renderViewport = page.getViewport({ scale });
+
+        // Clear before render to avoid ghosting
+        ctx.clearRect(0, 0, bgCanvas.width, bgCanvas.height);
+
+        const renderTask = page.render({ canvasContext: ctx, viewport: renderViewport });
+        currentRenderTask.current = renderTask;
+        await renderTask.promise;
+        currentRenderTask.current = null;
+      } catch (e) {
+        console.error('Failed to render PDF page', e);
+        currentRenderTask.current = null;
+      }
+    })();
+  }, [pdf, currentPage, numPages, whiteboardWidth, canvasHeight]); // Re-render if size changes
+        // Clear before render to avoid ghosting
+        ctx.clearRect(0, 0, bgCanvas.width, bgCanvas.height);
 
         const renderTask = page.render({ canvasContext: ctx, viewport: renderViewport });
         currentRenderTask.current = renderTask;
@@ -496,7 +528,7 @@ export default function EnhancedWhiteboard({
 
   // draw all strokes into the canvas (coordinates are normalized 0..1)
   const drawAll = useCallback(() => {
-    const el = canvasRef.current;
+    const el = mainCanvasRef.current;
     if (!el) return;
     const ctx = el.getContext('2d');
     if (!ctx) return;
@@ -527,14 +559,16 @@ export default function EnhancedWhiteboard({
       }
       ctx.stroke();
     });
+
+    // We no longer need to draw the localActiveStroke here because it is on the active canvas
   }, [strokes]);
 
   // Attach non-passive touch listeners to prevent page scroll while drawing on mobile
   
 
   const getPointerPos = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>): { x: number; y: number } => {
-    if (!canvasRef.current) return { x: 0, y: 0 };
-    const rect = canvasRef.current.getBoundingClientRect();
+    if (!activeCanvasRef.current) return { x: 0, y: 0 };
+    const rect = activeCanvasRef.current.getBoundingClientRect();
     let clientX, clientY;
     if ('touches' in e) {
       const touch = e.touches[0];
@@ -555,7 +589,9 @@ export default function EnhancedWhiteboard({
     if (!isActionAllowed('draw')) return;
     isDrawingRef.current = true;
     const pos = getPointerPos(e);
+    lastPointerPosRef.current = pos;
     const newStroke: Stroke & { id?: string; origin?: string } = { points: [pos.x, pos.y], stroke: color, strokeWidth, mode: tool === 'eraser' ? 'erase' : 'draw', id: `${clientIdRef.current}_${Date.now()}` , origin: clientIdRef.current };
+    localActiveStrokeRef.current = newStroke;
     setStrokes((s) => [...s, newStroke]);
     setUndone([]);
     currentStrokeIdRef.current = newStroke.id as string;
@@ -572,31 +608,83 @@ export default function EnhancedWhiteboard({
   }, [tool, color, strokeWidth, postEventToServer, isActionAllowed, useNetlessWhiteboard]);
 
   const handlePointerMove = useCallback((e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
-    if (!isDrawingRef.current) return;
+    if (!isDrawingRef.current || !localActiveStrokeRef.current) return;
     const pos = getPointerPos(e);
-    setStrokes((prev) => {
-      const last = prev[prev.length - 1];
-      if (!last) return prev;
-      const updated = { ...last, points: last.points.concat([pos.x, pos.y]) };
-      const out = [...prev.slice(0, -1), updated];
-      try {
-        if (!useNetlessWhiteboard && bcRef.current && (last as any).origin !== clientIdRef.current) {
-          // don't re-broadcast remote-applied strokes
-        } else if (!useNetlessWhiteboard && bcRef.current) {
-          bcRef.current.postMessage({ type: 'stroke-update', strokeId: (updated as any).id, points: updated.points, clientId: clientIdRef.current });
-        }
-        // also post to server
-        if (!useNetlessWhiteboard && (last as any).origin === clientIdRef.current) {
-          // enqueue high-frequency updates to reduce network/SSE load
-          enqueueStrokeUpdate((updated as any).id, updated.points);
-        }
-      } catch (e) {}
-      return out;
-    });
+    const stroke = localActiveStrokeRef.current;
+    
+    // 1. Instant local drawing for zero lag on ACTIVE canvas
+    const el = activeCanvasRef.current;
+    const lastPos = lastPointerPosRef.current;
+    if (el && lastPos) {
+      const ctx = el.getContext('2d');
+      if (ctx) {
+        const dpr = window.devicePixelRatio || 1;
+        const displayW = el.width / dpr;
+        const displayH = el.height / dpr;
+        
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.scale(dpr, dpr);
+        ctx.strokeStyle = stroke.stroke;
+        ctx.lineWidth = stroke.strokeWidth;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.globalCompositeOperation = stroke.mode === 'erase' ? 'destination-out' : 'source-over';
+        
+        ctx.beginPath();
+        ctx.moveTo(lastPos.x * displayW, lastPos.y * displayH);
+        ctx.lineTo(pos.x * displayW, pos.y * displayH);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+    
+    // 2. Update points in ref (O(1) compared to React state which is O(N))
+    stroke.points.push(pos.x, pos.y);
+    lastPointerPosRef.current = pos;
+    
+    // 3. Network/Sync updates (throttled by enqueueStrokeUpdate)
+    try {
+      const strokeId = (stroke as any).id;
+      if (!useNetlessWhiteboard && bcRef.current) {
+        bcRef.current.postMessage({ type: 'stroke-update', strokeId, points: stroke.points, clientId: clientIdRef.current });
+      }
+      if (!useNetlessWhiteboard) {
+        enqueueStrokeUpdate(strokeId, stroke.points);
+      }
+    } catch (e) {}
   }, [enqueueStrokeUpdate, useNetlessWhiteboard]);
 
   const handlePointerUp = useCallback(() => {
+    if (!isDrawingRef.current) return;
     isDrawingRef.current = false;
+    
+    // Clear the active canvas
+    const activeEl = activeCanvasRef.current;
+    if (activeEl) {
+      const ctx = activeEl.getContext('2d');
+      if (ctx) {
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, activeEl.width, activeEl.height);
+      }
+    }
+
+    // Commit the final points from ref to React state
+    if (localActiveStrokeRef.current) {
+      const finalStroke = { ...localActiveStrokeRef.current };
+      setStrokes((prev) => {
+        const idx = prev.findIndex(s => (s as any).id === (finalStroke as any).id);
+        if (idx >= 0) {
+          const out = [...prev];
+          out[idx] = finalStroke;
+          return out;
+        }
+        return [...prev, finalStroke];
+      });
+      localActiveStrokeRef.current = null;
+    }
+    lastPointerPosRef.current = null;
+
     // flush any pending updates for the stroke that just finished
     try {
       const sid = currentStrokeIdRef.current;
@@ -609,7 +697,7 @@ export default function EnhancedWhiteboard({
         }
       }
     } catch (e) {}
-  }, []);
+  }, [postEventToServer]);
 
   const undo = useCallback(() => {
     if (!isActionAllowed('undo')) return;
@@ -644,6 +732,139 @@ export default function EnhancedWhiteboard({
     try { if (!useNetlessWhiteboard) postEventToServer({ type: 'clear' }); } catch (e) {}
   }, [isActionAllowed, useNetlessWhiteboard, postEventToServer]);
 
+  const handlePdfUpload = useCallback(async (file: File | null) => {
+    if (!file) return;
+    if (!isActionAllowed('pdf-set')) return;
+
+    setSelectedFileName(file.name);
+    setLocalPdfFile(file);
+    if (onPdfSelected) onPdfSelected(file);
+
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const dataUrl = reader.result as string;
+      try {
+        if (!useNetlessWhiteboard && bcRef.current) {
+          bcRef.current.postMessage({ type: 'pdf-set', name: file.name, dataUrl, clientId: clientIdRef.current });
+        }
+        if (!useNetlessWhiteboard) {
+          postEventToServer({ type: 'pdf-set', name: file.name, dataUrl });
+        }
+      } catch (e) {
+        console.error('[WB] Failed to broadcast PDF', e);
+      }
+    };
+    reader.readAsDataURL(file);
+  }, [isActionAllowed, onPdfSelected, postEventToServer, useNetlessWhiteboard]);
+
+  const handleIncomingEvent = useCallback((data: any) => {
+    if (!data || data.clientId === clientIdRef.current) return;
+    applyingRemoteRef.current = true;
+    try {
+      if (data.type === 'setColor') {
+        try {
+          if (data.color) {
+            if (Array.isArray(data.color)) {
+              const c = data.color as number[];
+              setColor(`#${((1 << 24) + (c[0] << 16) + (c[1] << 8) + c[2]).toString(16).slice(1)}`);
+            } else {
+              setColor(String(data.color));
+            }
+          }
+        } catch (e) {}
+      } else if (data.type === 'setTool') {
+        try { if (data.tool === 'eraser') setTool('eraser'); else setTool('pencil'); } catch (e) {}
+      } else if (data.type === 'setWidth') {
+        try { if (typeof data.width === 'number') setStrokeWidth(Number(data.width)); } catch (e) {}
+      } else if (data.type === 'stroke-start') {
+        setStrokes((s) => {
+          const strokeId = data.strokeId || (data.stroke as any)?.id;
+          if (strokeId && s.some(st => (st as any).id === strokeId)) return s;
+          return [...s, data.stroke];
+        });
+      } else if (data.type === 'stroke-update') {
+        setStrokes((s) => {
+          const strokeId = data.strokeId;
+          const points = data.points;
+          if (!strokeId || !Array.isArray(points)) return s;
+          
+          const idx = s.findIndex((st) => (st as any).id === strokeId);
+          if (idx >= 0) {
+            const updated = { ...(s[idx] as any), points };
+            return [...s.slice(0, idx), updated, ...s.slice(idx + 1)];
+          }
+          // fallback if start was missed
+          return [...s, { points, stroke: '#000', strokeWidth: 2, mode: 'draw', id: strokeId } as any];
+        });
+      } else if (data.type === 'undo') {
+        setStrokes((s) => s.filter((st) => (st as any).id !== data.strokeId));
+      } else if (data.type === 'redo') {
+        if (data.stroke) setStrokes((s) => [...s, data.stroke]);
+      } else if (data.type === 'clear') {
+        setStrokes([]);
+        setUndone([]);
+      } else if (data.type === 'pdf-set') {
+        (async () => {
+          try {
+            const name = data.name || (data.pdf as any)?.name || 'remote.pdf';
+            const url = data.dataUrl || (data.pdf as any)?.dataUrl;
+            if (!url) return;
+            const resp = await fetch(url);
+            const blob = await resp.blob();
+            const file = new File([blob], name, { type: blob.type });
+            setSelectedFileName(file.name);
+            setLocalPdfFile(file);
+          } catch (e) {
+            console.error('[WB] Failed to apply remote PDF', e);
+          }
+        })();
+      }
+    } catch (e) {
+      console.error('[WB] Error handling incoming event:', e);
+    } finally {
+      applyingRemoteRef.current = false;
+    }
+  }, []);
+
+  // AppSync Subscription for high-frequency real-time sync
+  useEffect(() => {
+    if (useNetlessWhiteboard) return;
+    if (typeof window === 'undefined') return;
+    
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    let sub: any;
+    const setupSubscription = async () => {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const courseParam = params.get('courseId') || 'classroom';
+        const uuid = `course_${courseParam}`;
+
+        console.log('[WB AppSync] Subscribing to room:', uuid);
+        sub = client.graphql({
+          query: onCreateWhiteboardEventSubscription,
+          variables: { room: uuid }
+        } as any).subscribe({
+          next: ({ data }: any) => {
+            const event = data.onCreateWhiteboardEvent;
+            if (!event || !event.event) return;
+            try {
+              const parsed = JSON.parse(event.event);
+              handleIncomingEvent(parsed);
+            } catch (e) {
+              console.error('[WB AppSync] Failed to parse event', e);
+            }
+          },
+          error: (err: any) => console.error('[WB AppSync] Subscription error:', err)
+        });
+      } catch (err) {
+        console.warn('[WB AppSync] Failed to setup subscription:', err);
+      }
+    };
+    
+    setupSubscription();
+    return () => { if (sub) sub.unsubscribe(); };
+  }, [useNetlessWhiteboard, handleIncomingEvent]);
+
   // BroadcastChannel setup for canvas sync (per-page channel)
   useEffect(() => {
     if (useNetlessWhiteboard) return;
@@ -657,102 +878,16 @@ export default function EnhancedWhiteboard({
       bcRef.current = ch;
       ch.onmessage = (ev: MessageEvent) => {
         const data = ev.data as any;
-        if (!data || data.clientId === clientIdRef.current) return; // ignore our own
-        try {
-          // support admin-driven tool/color/width events
-          if (data.type === 'setColor') {
-            try {
-              if (data.color) {
-                if (Array.isArray(data.color)) {
-                  const c = data.color as number[];
-                  setColor(`#${((1 << 24) + (c[0] << 16) + (c[1] << 8) + c[2]).toString(16).slice(1)}`);
-                } else {
-                  setColor(String(data.color));
-                }
-              }
-            } catch (e) {}
-            return;
-          }
-          if (data.type === 'setTool') {
-            try { if (data.tool === 'eraser') setTool('eraser'); else setTool('pencil'); } catch (e) {}
-            return;
-          }
-          if (data.type === 'setWidth') {
-            try { if (typeof data.width === 'number') setStrokeWidth(Number(data.width)); } catch (e) {}
-            return;
-          }
-          if (data.type === 'pdf-set') {
-            // data: { type: 'pdf-set', name, dataUrl, clientId }
-            (async () => {
-              try {
-                const resp = await fetch(data.dataUrl);
-                const blob = await resp.blob();
-                const file = new File([blob], data.name || 'remote.pdf', { type: blob.type });
-                setSelectedFileName(file.name);
-                setLocalPdfFile(file);
-              } catch (e) {
-                console.error('[WB] Failed to apply remote PDF', e);
-              }
-            })();
-            return;
-          }
-          if (data.type === 'stroke-start') {
-            applyingRemoteRef.current = true;
-            setStrokes((s) => {
-              const strokeId = data.strokeId || (data.stroke as any)?.id;
-              if (strokeId && s.some(st => (st as any).id === strokeId)) return s;
-              return [...s, data.stroke];
-            });
-            applyingRemoteRef.current = false;
-          } else if (data.type === 'stroke-update') {
-            applyingRemoteRef.current = true;
-            setStrokes((s) => {
-              const idx = s.findIndex((st) => (st as any).id === data.strokeId);
-              // Validate points
-              const malformed = !Array.isArray(data.points) || data.points.some((p: any) => typeof p !== 'number' || Number.isNaN(p));
-              if (malformed) {
-                if (verboseLogging) logAnomaly('BC received malformed stroke-update (points invalid)', { strokeId: data.strokeId, points: data.points });
-                // still try to ignore the malformed update
-                return s;
-              }
-              if (idx >= 0) {
-                const updated = { ...(s[idx] as any), points: data.points };
-                return [...s.slice(0, idx), updated, ...s.slice(idx + 1)];
-              }
-              // if not found, append but record anomaly for diagnostics
-              if (verboseLogging) logAnomaly('BC received stroke-update for unknown strokeId (appending)', { strokeId: data.strokeId, pointsLen: Array.isArray(data.points) ? data.points.length : null });
-              return [...s, { points: data.points, stroke: '#000', strokeWidth: 2, mode: 'draw', id: data.strokeId } as any];
-            });
-            applyingRemoteRef.current = false;
-          } else if (data.type === 'undo') {
-            applyingRemoteRef.current = true;
-            setStrokes((s) => s.filter((st) => (st as any).id !== data.strokeId));
-            applyingRemoteRef.current = false;
-          } else if (data.type === 'redo') {
-            applyingRemoteRef.current = true;
-            setStrokes((s) => [...s, data.stroke]);
-            applyingRemoteRef.current = false;
-          } else if (data.type === 'clear') {
-            applyingRemoteRef.current = true;
-            setStrokes([]);
-            setUndone([]);
-            applyingRemoteRef.current = false;
-          } else if (data.type === 'request-state') {
-            // reply with full state
-            try { ch.postMessage({ type: 'state', strokes: strokesRef.current, clientId: clientIdRef.current }); } catch (e) {}
-          } else if (data.type === 'state') {
-            // only apply if local empty to avoid overwriting
-            setStrokes((local) => {
-              if (local.length === 0 && Array.isArray(data.strokes)) return data.strokes;
-              return local;
-            });
-          }
-        } catch (e) {
-          console.error('[WB BC] Error handling incoming message:', e);
-          if (verboseLogging) {
-            pushError('[WB BC] Error handling incoming message');
-            logAnomaly('BroadcastChannel message handler error', e);
-          }
+        handleIncomingEvent(data);
+        
+        // request-state and state are special for BC
+        if (data.type === 'request-state') {
+          try { ch.postMessage({ type: 'state', strokes: strokesRef.current, clientId: clientIdRef.current }); } catch (e) {}
+        } else if (data.type === 'state') {
+          setStrokes((local) => {
+            if (local.length === 0 && Array.isArray(data.strokes)) return data.strokes;
+            return local;
+          });
         }
       };
 
@@ -784,7 +919,7 @@ export default function EnhancedWhiteboard({
 
   // Attach non-passive touch listeners to prevent page scroll while drawing on mobile
   useEffect(() => {
-    const el = canvasRef.current;
+    const el = activeCanvasRef.current;
     if (!el) return;
 
     function onTouchStart(ev: TouchEvent) {
@@ -829,8 +964,8 @@ export default function EnhancedWhiteboard({
 
   // Keep canvas pixel size in sync with displayed size (handles rotation and DPR)
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+    const mainCanvas = mainCanvasRef.current;
+    if (!mainCanvas) return;
 
     // Responsive toolbar height: smaller on mobile
     const isMobilePortrait = window.innerWidth <= 768 && window.innerHeight > window.innerWidth;
@@ -839,34 +974,61 @@ export default function EnhancedWhiteboard({
     function resizeCanvasToDisplaySize() {
       // if PDF is loaded and autoFit is disabled, keep fixed size
       if (pdf && !autoFit) return;
-      const c = canvasRef.current;
-      if (!c) return;
-      const parent = c.parentElement || c;
+      
+      const canvases = [mainCanvasRef.current, activeCanvasRef.current, bgCanvasRef.current];
+      if (!mainCanvasRef.current) return;
+      
+      const parent = mainCanvasRef.current.parentElement;
+      if (!parent) return;
+      
       const rect = parent.getBoundingClientRect();
-      const displayW = rect.width;
-      const displayH = Math.max(32, rect.height - toolbarHeight);
+      let displayW = rect.width;
+      let displayH = Math.max(32, rect.height - toolbarHeight);
+
+      // If PDF is loaded, adjust dimensions to maintain aspect ratio
+      if (pdf && whiteboardWidth > 0 && canvasHeight > 0) {
+        const pdfAspect = whiteboardWidth / canvasHeight;
+        const containerAspect = displayW / displayH;
+        
+        if (containerAspect > pdfAspect) {
+          // container is wider than PDF
+          displayW = displayH * pdfAspect;
+        } else {
+          // container is taller than PDF
+          displayH = displayW / pdfAspect;
+        }
+      }
 
       const dpr = window.devicePixelRatio || 1;
       const pixelW = Math.max(1, Math.round(displayW * dpr));
       const pixelH = Math.max(1, Math.round(displayH * dpr));
 
-      // set CSS size
-      c.style.width = `${displayW}px`;
-      c.style.height = `${displayH}px`;
+      canvases.forEach(c => {
+        if (!c) return;
 
-      // set drawing buffer size
-      if (c.width !== pixelW || c.height !== pixelH) {
-        c.width = pixelW;
-        c.height = pixelH;
-        // apply scaling for DPR before drawing
-        const ctx = c.getContext('2d');
-        if (ctx) {
-          ctx.setTransform(1, 0, 0, 1, 0, 0);
-          ctx.scale(dpr, dpr);
+        // set CSS size
+        c.style.width = `${displayW}px`;
+        c.style.height = `${displayH}px`;
+        
+        // center in parent
+        c.style.left = '50%';
+        c.style.top = '50%';
+        c.style.transform = 'translate(-50%, -50%)';
+
+        // set drawing buffer size
+        if (c.width !== pixelW || c.height !== pixelH) {
+          c.width = pixelW;
+          c.height = pixelH;
+          // apply scaling for DPR
+          const ctx = c.getContext('2d');
+          if (ctx) {
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.scale(dpr, dpr);
+          }
         }
-        // redraw strokes at new size
-        drawAll();
-      }
+      });
+      // redraw strokes at new size
+      drawAll();
     }
 
     // initial resize
@@ -875,7 +1037,7 @@ export default function EnhancedWhiteboard({
     const ro = new ResizeObserver(() => {
       resizeCanvasToDisplaySize();
     });
-    const parent = canvas.parentElement || canvas;
+    const parent = mainCanvas.parentElement || mainCanvas;
     try { ro.observe(parent); } catch (e) {}
 
     window.addEventListener('orientationchange', resizeCanvasToDisplaySize);
@@ -974,8 +1136,8 @@ export default function EnhancedWhiteboard({
 
         // initial fetch
         fetchAndApply();
-        // Two-tier polling: fast ACK (80ms) for stroke confirmation + balanced main polling (300ms) to avoid overload
-        try { pollId = window.setInterval(fetchAndApply, 300) as unknown as number; } catch (e) { pollId = null; } // 300ms = 3x per second (sustainable)
+        // Two-tier polling: fast ACK (80ms) for stroke confirmation + balanced main polling (180ms) to avoid overload
+        try { pollId = window.setInterval(fetchAndApply, 180) as unknown as number; } catch (e) { pollId = null; } // 180ms = ~5.5x per second (better sync for Amplify)
 
         return () => {
           try { if (pollId) window.clearInterval(pollId); } catch (e) {}
@@ -1021,83 +1183,28 @@ export default function EnhancedWhiteboard({
           const data = JSON.parse(ev.data);
           if (!data) return;
           
-          // Ignore our own events to avoid double-drawing
-          if (data.clientId === clientIdRef.current) return;
-
-          // ignore connected pings
+          // connected and ping are special for SSE
           if (data.type === 'connected') {
             console.log('[WB SSE] Received connected message');
             return;
           }
           if (data.type === 'ping') return;
 
-          console.log('[WB SSE] Received event:', data.type, data);
+          console.log('[WB SSE] Received event:', data.type);
 
           if (data.type === 'init-state') {
-            console.log('[WB SSE] Applying initial state:', data.strokes?.length, 'strokes');
             if (Array.isArray(data.strokes)) {
-              // Only apply initial state if local is empty to avoid wiping
-              // a locally drawn stroke that may have happened just before
-              // the server's init-state arrives (common race condition).
-              if (strokesRef.current.length === 0) {
-                setStrokes(data.strokes);
-              } else {
-                if (verboseLogging) logAnomaly('SSE init-state ignored due to non-empty local strokes', { localCount: strokesRef.current.length, remoteCount: data.strokes.length });
-                console.log('[WB SSE] init-state ignored because local strokes exist:', strokesRef.current.length);
-              }
-            }
-            if (data.pdf) {
-              // Restore PDF if available
-              if (data.pdf.dataUrl && data.pdf.dataUrl !== '(large-data-url)') {
-                (async () => {
-                  try {
-                    const resp = await fetch(data.pdf.dataUrl);
-                    const blob = await resp.blob();
-                    const file = new File([blob], data.pdf.name || 'remote.pdf', { type: blob.type });
-                    setSelectedFileName(file.name);
-                    setLocalPdfFile(file);
-                  } catch (e) {}
-                })();
-              }
+              if (strokesRef.current.length === 0) setStrokes(data.strokes);
             }
             return;
           }
 
-          // apply same handlers as BroadcastChannel messages
-          if (data.type === 'setColor') {
-            try {
-              if (data.color) {
-                if (Array.isArray(data.color)) {
-                  const c = data.color as number[];
-                  setColor(`#${((1 << 24) + (c[0] << 16) + (c[1] << 8) + c[2]).toString(16).slice(1)}`);
-                } else {
-                  setColor(String(data.color));
-                }
-              }
-            } catch (e) {}
-            return;
-          }
-          if (data.type === 'setTool') {
-            try { if (data.tool === 'eraser') setTool('eraser'); else setTool('pencil'); } catch (e) {}
-            return;
-          }
-          if (data.type === 'setWidth') {
-            try { if (typeof data.width === 'number') setStrokeWidth(Number(data.width)); } catch (e) {}
-            return;
-          }
-          if (data.type === 'stroke-start') {
-            console.log('[WB SSE] Applying stroke-start:', data);
-            setStrokes((s) => {
-              const strokeId = data.strokeId || (data.stroke as any)?.id;
-              if (strokeId && s.some(st => (st as any).id === strokeId)) return s;
-              return [...s, data.stroke];
-            });
-          } else if (data.type === 'stroke-update') {
-            console.log('[WB SSE] Applying stroke-update:', data.strokeId);
-            setStrokes((s) => {
-              const idx = s.findIndex((st) => (st as any).id === data.strokeId);
-              const malformed = !Array.isArray(data.points) || data.points.some((p: any) => typeof p !== 'number' || Number.isNaN(p));
-              if (malformed) {
+          // use shared handler
+          handleIncomingEvent(data);
+        } catch (e) {
+          console.error('[WB SSE] Error parsing message:', e);
+        }
+      };
                 if (verboseLogging) logAnomaly('SSE received malformed stroke-update (points invalid)', { strokeId: data.strokeId, points: data.points });
                 return s;
               }
@@ -1166,9 +1273,22 @@ export default function EnhancedWhiteboard({
           </div>
         )}
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          {/* PDF selector moved to /my-courses page (server-side whiteboard events). */}
-
-          {/* Microphone and leave controls moved to the classroom sidebar; toolbar keeps drawing tools only. */}
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={(e) => handlePdfUpload(e.target.files?.[0] || null)}
+            accept="application/pdf"
+            style={{ display: 'none' }}
+          />
+          {isActionAllowed('pdf-set') && (
+            <button 
+              onClick={() => fileInputRef.current?.click()} 
+              style={{ padding: '6px 10px', background: 'white', border: '1px solid #ddd', borderRadius: 4, cursor: 'pointer' }}
+              title="匯入 PDF"
+            >
+              📄
+            </button>
+          )}
 
           {isActionAllowed('setTool:pencil') && (
             <button onClick={() => setTool('pencil')} style={{ padding: '6px 10px', background: tool === 'pencil' ? '#e3f2fd' : 'white', border: '1px solid #ddd', borderRadius: 4, cursor: 'pointer' }}>✏️</button>
@@ -1222,7 +1342,7 @@ export default function EnhancedWhiteboard({
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }} />
       </div>
 
-      <div style={{ position: 'relative', width: '100%', flex: 1, background: 'white', minHeight: 0 }}>
+      <div style={{ position: 'relative', width: '100%', flex: 1, background: '#eee', minHeight: 0, overflow: 'hidden' }}>
         {useNetlessWhiteboard ? (
           // Use Netless whiteboard (collaborative)
           <div 
@@ -1242,9 +1362,14 @@ export default function EnhancedWhiteboard({
               ref={bgCanvasRef}
               style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none' }}
             />
-            {/* Drawing canvas on top */}
+            {/* Main drawing canvas (finished strokes) */}
             <canvas
-              ref={canvasRef}
+              ref={mainCanvasRef}
+              style={{ position: 'absolute', top: 0, left: 0, display: 'block', width: '100%', height: '100%', pointerEvents: 'none' }}
+            />
+            {/* Active drawing canvas (current stroke) */}
+            <canvas
+              ref={activeCanvasRef}
               {...(autoFit ? {} : { width: whiteboardWidth, height: whiteboardHeight - 48 })}
               onMouseDown={handlePointerDown}
               onMouseMove={handlePointerMove}
