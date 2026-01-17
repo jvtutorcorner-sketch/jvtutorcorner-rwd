@@ -15,6 +15,7 @@ export async function getWhiteboardState(uuid: string): Promise<WhiteboardState 
     const params = {
       TableName: TABLE_NAME,
       Key: { id: uuid },
+      ConsistentRead: true, // CRITICAL: Force strongly consistent read to see recent writes immediately
     };
     const startTime = Date.now();
     const { Item } = await ddbDocClient.send(new GetCommand(params));
