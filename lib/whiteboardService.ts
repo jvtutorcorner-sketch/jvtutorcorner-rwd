@@ -16,10 +16,15 @@ export async function getWhiteboardState(uuid: string): Promise<WhiteboardState 
       TableName: TABLE_NAME,
       Key: { id: uuid },
     };
+    const startTime = Date.now();
     const { Item } = await ddbDocClient.send(new GetCommand(params));
+    const duration = Date.now() - startTime;
+    if (Item) {
+      console.log('[WhiteboardService] Retrieved state from DynamoDB:', { uuid, strokeCount: (Item as any).strokes?.length || 0, duration: `${duration}ms` });
+    }
     return Item as WhiteboardState | null;
   } catch (error) {
-    console.error('[WhiteboardService] Error getting state:', error);
+    console.error('[WhiteboardService] Error getting state:', { uuid, error: String(error), errorStack: (error as any)?.stack });
     return null;
   }
 }
@@ -38,9 +43,13 @@ export async function saveWhiteboardState(uuid: string, strokes: any[], pdf: any
         ttl,
       },
     };
+    console.log('[WhiteboardService] Saving state to DynamoDB:', { uuid, strokeCount: strokes.length, hasPdf: !!pdf, TABLE_NAME });
+    const startTime = Date.now();
     await ddbDocClient.send(new PutCommand(params));
+    const duration = Date.now() - startTime;
+    console.log('[WhiteboardService] State saved successfully:', { uuid, strokeCount: strokes.length, duration: `${duration}ms` });
   } catch (error) {
-    console.error('[WhiteboardService] Error saving state:', error);
+    console.error('[WhiteboardService] Error saving state:', { uuid, error: String(error), errorStack: (error as any)?.stack });
   }
 }
 

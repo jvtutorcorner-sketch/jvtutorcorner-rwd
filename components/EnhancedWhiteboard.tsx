@@ -135,7 +135,10 @@ export default function EnhancedWhiteboard({
         if (event && (event.type === 'stroke-start' || event.type === 'stroke-update')) {
           const strokeId = event.stroke?.id || event.strokeId;
           if (strokeId) {
+            console.log('[WB POST] Starting ACK check for stroke:', strokeId);
             try { ensureServerAckForStroke(strokeId, courseParam); } catch (e) { /* ignore */ }
+          } else {
+            console.warn('[WB POST] No strokeId found for ACK check - event:', event);
           }
         }
       } catch (e) {}
@@ -157,8 +160,9 @@ export default function EnhancedWhiteboard({
     // avoid duplicate ack watchers
     if (pendingAckRef.current.has(strokeId)) return;
     let attempts = 0;
-    const maxAttempts = 15; // 80ms * 15 = 1.2 seconds for fast ACK detection
-    const intervalMs = 80; // smart ACK polling: 80ms (12.5x/sec) - only for single stroke
+    // Adaptive timeout: start fast, then slow down if needed
+    const maxAttempts = 80; // up to 12-14 seconds total (100ms*50 + 200ms*30)
+    let intervalMs = 100; // start with 100ms
 
     const check = async () => {
       attempts += 1;
@@ -174,7 +178,7 @@ export default function EnhancedWhiteboard({
               const t = pendingAckRef.current.get(strokeId);
               if (t) { try { window.clearInterval(t); } catch (e) {} }
               pendingAckRef.current.delete(strokeId);
-              if (verboseLogging) console.log('[WB ACK] ✓ Stroke ACK confirmed:', strokeId, `(attempt ${attempts})`);
+              if (verboseLogging) console.log('[WB ACK] ✓ Stroke ACK confirmed:', strokeId, `(attempt ${attempts}, after ${attempts * intervalMs}ms)`);
               return;
             }
           }
@@ -188,14 +192,24 @@ export default function EnhancedWhiteboard({
         const t = pendingAckRef.current.get(strokeId);
         if (t) { try { window.clearInterval(t); } catch (e) {} }
         pendingAckRef.current.delete(strokeId);
-        // In production fallback mode, DynamoDB may not be configured, so suppress repeated errors
-        if (verboseLogging) {
-          const msg = `Canvas sync not confirmed for stroke ${strokeId}`;
-          console.warn('[WB ACK] ✗ Timeout after', attempts, 'attempts:', strokeId);
-          logAnomaly('Ack timeout for stroke', { strokeId, attempts, courseIdFromChannel });
-          pushError(msg);
+        // In production fallback mode, accept ACK timeout but still log for diagnosis
+        const totalWaitMs = attempts * intervalMs;
+        console.warn('[WB ACK] ✗ Timeout after', attempts, 'attempts (~' + totalWaitMs + 'ms):', strokeId);
+        // Only log anomaly and push error if in verbose mode or if timeout is very high
+        if (verboseLogging || attempts > 50) {
+          logAnomaly('Ack timeout for stroke', { strokeId, attempts, totalWaitMs, courseIdFromChannel });
+          if (verboseLogging) pushError(`Canvas sync not confirmed for stroke ${strokeId} after ${totalWaitMs}ms`);
         }
         return;
+      }
+
+      // Adaptive backoff: increase interval after 50 attempts
+      if (attempts === 50) {
+        const currentTimer = pendingAckRef.current.get(strokeId);
+        if (currentTimer) window.clearInterval(currentTimer);
+        intervalMs = 200; // switch to slower checking (200ms intervals)
+        const newTimerId = window.setInterval(check, intervalMs) as unknown as number;
+        pendingAckRef.current.set(strokeId, newTimerId);
       }
     };
 
@@ -1126,8 +1140,12 @@ export default function EnhancedWhiteboard({
                     console.log('[WB POLL] Applied remote strokes in production poll');
                   }
               } else if (isMismatch && !isNewUpdate) {
-                // Same data as before, but client is still behind - force full resync
-                console.warn('[WB POLL] ⚠ Client behind server by', remoteCount - localCount, 'strokes - forcing resync');
+                // Same data as before, but counts don't match - sync mismatch detected
+                const strokeDiff = remoteCount - localCount;
+                const diffMsg = strokeDiff > 0 
+                  ? `Client behind server by ${strokeDiff} strokes`
+                  : `Client ahead of server by ${Math.abs(strokeDiff)} strokes (possible sync lag)`;
+                console.warn('[WB POLL] ⚠', diffMsg, '- forcing resync');
                 setStrokes(s.strokes);
                 lastRemoteHash = remoteHash;
               }
@@ -1153,7 +1171,7 @@ export default function EnhancedWhiteboard({
 
         // initial fetch
         fetchAndApply();
-        // Two-tier polling: fast ACK (80ms) for stroke confirmation + balanced main polling (300ms) to avoid overload
+        // Two-tier polling: adaptive ACK (100ms-200ms backoff) for stroke confirmation + main polling (300ms) for state sync
         try { pollId = window.setInterval(fetchAndApply, 300) as unknown as number; } catch (e) { pollId = null; } // 300ms = 3x per second (sustainable)
 
         return () => {
