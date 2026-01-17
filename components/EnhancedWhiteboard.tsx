@@ -184,12 +184,17 @@ export default function EnhancedWhiteboard({
       }
 
       if (attempts >= maxAttempts) {
-        // not found after retries -> error
+        // not found after retries -> clear interval and error
+        const t = pendingAckRef.current.get(strokeId);
+        if (t) { try { window.clearInterval(t); } catch (e) {} }
         pendingAckRef.current.delete(strokeId);
-        const msg = `Canvas sync not confirmed for stroke ${strokeId}`;
-        console.warn('[WB ACK] ✗ Timeout after', attempts, 'attempts:', strokeId);
-        logAnomaly('Ack timeout for stroke', { strokeId, attempts, courseIdFromChannel });
-        pushError(msg);
+        // In production fallback mode, DynamoDB may not be configured, so suppress repeated errors
+        if (verboseLogging) {
+          const msg = `Canvas sync not confirmed for stroke ${strokeId}`;
+          console.warn('[WB ACK] ✗ Timeout after', attempts, 'attempts:', strokeId);
+          logAnomaly('Ack timeout for stroke', { strokeId, attempts, courseIdFromChannel });
+          pushError(msg);
+        }
         return;
       }
     };
