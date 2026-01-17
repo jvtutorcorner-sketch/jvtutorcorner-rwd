@@ -177,6 +177,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           const isProductionHost = host.endsWith('jvtutorcorner.com') || host.includes('amplifyapp.com') || host.includes('cloudfront.net');
           if (isProductionHost) {
             try {
+              console.log('[Pre-join] Attempting to create whiteboard room on server...');
               const wbResp = await fetch('/api/agora/whiteboard', {
                 method: 'POST',
                 headers: { 'content-type': 'application/json' },
@@ -190,16 +191,27 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                 if (wbUuid) {
                   localStorage.setItem(whiteboardRoomKey, wbUuid);
                   setWhiteboardMetaBeforeJoin({ uuid: wbUuid, appId: wbAppId ?? undefined, region: wbRegion ?? undefined });
-                  console.log('[Pre-join] Obtained whiteboard room from server (production)');
+                  console.log('[Pre-join] ✓ Obtained whiteboard room from server (production):', { wbUuid });
                 } else {
                   console.warn('[Pre-join] Server returned no uuid; not setting local fallback in production');
                 }
               } else {
                 const txt = await wbResp.text().catch(() => '(no body)');
                 console.warn('[Pre-join] Whiteboard API returned non-OK in production:', wbResp.status, txt);
+                // If server fails (e.g., NETLESS_SDK_TOKEN not configured), fall back to course-scoped canvas
+                // This allows the whiteboard to still work locally in Amplify, though it won't persist across instances
+                console.warn('[Pre-join] Falling back to course-scoped whiteboard for this session');
+                const courseScoped = `course_${courseId}`;
+                localStorage.setItem(whiteboardRoomKey, courseScoped);
+                setWhiteboardMetaBeforeJoin({ uuid: courseScoped, appId: undefined, region: undefined });
               }
             } catch (e) {
               console.warn('[Pre-join] Failed to request whiteboard token in production:', e);
+              // Fall back to course-scoped in case of network error
+              const courseScoped = `course_${courseId}`;
+              localStorage.setItem(whiteboardRoomKey, courseScoped);
+              setWhiteboardMetaBeforeJoin({ uuid: courseScoped, appId: undefined, region: undefined });
+              console.warn('[Pre-join] Falling back to course-scoped whiteboard due to error');
             }
           } else {
             // non-production: use course-scoped fallback so local dev works without server
