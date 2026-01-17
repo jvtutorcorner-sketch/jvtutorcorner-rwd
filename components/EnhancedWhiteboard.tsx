@@ -120,7 +120,7 @@ export default function EnhancedWhiteboard({
     // avoid duplicate ack watchers
     if (pendingAckRef.current.has(strokeId)) return;
     let attempts = 0;
-    const maxAttempts = 15; // 80ms * 15 = 1.2 seconds for fast ACK detection
+    const maxAttempts = 100; // 80ms * 100 = 8 seconds for fast ACK detection
     const intervalMs = 80; // smart ACK polling: 80ms (12.5x/sec) - only for single stroke
 
     const check = async () => {
@@ -971,7 +971,15 @@ export default function EnhancedWhiteboard({
                     console.log('[WB POLL] Applied remote strokes in production poll');
                   }
               } else if (isMismatch && !isNewUpdate) {
-                // Same data as before, but client is still behind - force full resync
+                // Same data as before (server didn't change), but we mismatch.
+                // If local > remote, it means we have pending strokes that server hasn't seen yet.
+                // DO NOT overwrite local state with stale remote state.
+                if (localCount > remoteCount) {
+                  if (verboseLogging) console.log('[WB POLL] Local ahead of server (pending sync), ignoring stale remote state');
+                  return;
+                }
+
+                // Only force resync if we are truly behind (remote > local) or same count but diff hash (rare collision/corruption)
                 console.warn('[WB POLL] ⚠ Client behind server by', remoteCount - localCount, 'strokes - forcing resync');
                 setStrokes(s.strokes);
                 lastRemoteHash = remoteHash;
