@@ -132,8 +132,9 @@ export default function EnhancedWhiteboard({
       
       // ... REST of the logic for acks ...
       try {
-        if (event && (event.type === 'stroke-start' || event.type === 'stroke-update')) {
-          const strokeId = event.stroke?.id || event.strokeId;
+        // Only start ACK check for stroke-start, not for every update
+        if (event && event.type === 'stroke-start') {
+          const strokeId = event.stroke?.id;
           if (strokeId) {
             console.log('[WB POST] Starting ACK check for stroke:', strokeId);
             try { ensureServerAckForStroke(strokeId, courseParam); } catch (e) { /* ignore */ }
