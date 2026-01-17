@@ -90,11 +90,15 @@ export default function EnhancedWhiteboard({
       // If this is a stroke event, start ack polling to ensure other clients (students)
       // receive the stroke via server relay. We poll persisted /api/whiteboard/state
       // and show an error if the stroke isn't visible after retries.
+      // CRITICAL FIX: Only trigger on stroke-start, not on every stroke-update
       try {
-        if (event && (event.type === 'stroke-start' || event.type === 'stroke-update')) {
-          const strokeId = event.stroke?.id || event.strokeId;
+        if (event && event.type === 'stroke-start') {
+          const strokeId = event.stroke?.id;
           if (strokeId) {
+            console.log('[WB POST] Starting ACK check for stroke:', strokeId);
             try { ensureServerAckForStroke(strokeId, courseParam); } catch (e) { /* ignore */ }
+          } else {
+            console.warn('[WB POST] No strokeId found for ACK check - event:', event);
           }
         }
       } catch (e) {}
@@ -700,7 +704,11 @@ export default function EnhancedWhiteboard({
             applyingRemoteRef.current = true;
             setStrokes((s) => {
               const strokeId = data.strokeId || (data.stroke as any)?.id;
-              if (strokeId && s.some(st => (st as any).id === strokeId)) return s;
+              if (strokeId && s.some(st => (st as any).id === strokeId)) {
+                console.log('[WB BC] Ignoring stroke-start for duplicate strokeId:', strokeId);
+                return s;
+              }
+              console.log('[WB BC] Adding new stroke:', strokeId);
               return [...s, data.stroke];
             });
             applyingRemoteRef.current = false;
@@ -712,15 +720,20 @@ export default function EnhancedWhiteboard({
               const malformed = !Array.isArray(data.points) || data.points.some((p: any) => typeof p !== 'number' || Number.isNaN(p));
               if (malformed) {
                 if (verboseLogging) logAnomaly('BC received malformed stroke-update (points invalid)', { strokeId: data.strokeId, points: data.points });
+                console.warn('[WB BC] Malformed stroke-update, ignoring:', data.strokeId);
                 // still try to ignore the malformed update
                 return s;
               }
               if (idx >= 0) {
+                // Update specific stroke without affecting others
                 const updated = { ...(s[idx] as any), points: data.points };
-                return [...s.slice(0, idx), updated, ...s.slice(idx + 1)];
+                const result = [...s.slice(0, idx), updated, ...s.slice(idx + 1)];
+                console.log('[WB BC] Updated stroke at index', idx, 'now total:', result.length);
+                return result;
               }
               // if not found, append but record anomaly for diagnostics
               if (verboseLogging) logAnomaly('BC received stroke-update for unknown strokeId (appending)', { strokeId: data.strokeId, pointsLen: Array.isArray(data.points) ? data.points.length : null });
+              console.warn('[WB BC] stroke-update for unknown strokeId, creating new:', data.strokeId);
               return [...s, { points: data.points, stroke: '#000', strokeWidth: 2, mode: 'draw', id: data.strokeId } as any];
             });
             applyingRemoteRef.current = false;
@@ -741,11 +754,22 @@ export default function EnhancedWhiteboard({
             // reply with full state
             try { ch.postMessage({ type: 'state', strokes: strokesRef.current, clientId: clientIdRef.current }); } catch (e) {}
           } else if (data.type === 'state') {
-            // only apply if local empty to avoid overwriting
+            // Avoid applying stale state that would overwrite recent local strokes.
+            // Only apply if local is empty AND we're not currently applying remote events.
+            // This prevents old state snapshots from overwriting newly drawn strokes.
+            applyingRemoteRef.current = true;
             setStrokes((local) => {
-              if (local.length === 0 && Array.isArray(data.strokes)) return data.strokes;
+              if (local.length === 0 && Array.isArray(data.strokes)) {
+                console.log('[WB BC] Applying state snapshot:', data.strokes.length, 'strokes');
+                return data.strokes;
+              }
+              if (local.length > 0) {
+                if (verboseLogging) logAnomaly('BC state ignored due to local strokes', { localCount: local.length, remoteCount: data.strokes?.length });
+                console.log('[WB BC] Ignoring state snapshot because local strokes exist:', local.length);
+              }
               return local;
             });
+            applyingRemoteRef.current = false;
           }
         } catch (e) {
           console.error('[WB BC] Error handling incoming message:', e);
@@ -1039,12 +1063,17 @@ export default function EnhancedWhiteboard({
               // Only apply initial state if local is empty to avoid wiping
               // a locally drawn stroke that may have happened just before
               // the server's init-state arrives (common race condition).
-              if (strokesRef.current.length === 0) {
-                setStrokes(data.strokes);
-              } else {
-                if (verboseLogging) logAnomaly('SSE init-state ignored due to non-empty local strokes', { localCount: strokesRef.current.length, remoteCount: data.strokes.length });
-                console.log('[WB SSE] init-state ignored because local strokes exist:', strokesRef.current.length);
-              }
+              // This prevents stale init-state from overwriting fresh strokes.
+              setStrokes((local) => {
+                if (local.length === 0) {
+                  console.log('[WB SSE] Accepted init-state with', data.strokes.length, 'strokes');
+                  return data.strokes;
+                } else {
+                  if (verboseLogging) logAnomaly('SSE init-state ignored due to non-empty local strokes', { localCount: local.length, remoteCount: data.strokes.length });
+                  console.log('[WB SSE] init-state ignored because local strokes exist:', local.length);
+                  return local;
+                }
+              });
             }
             if (data.pdf) {
               // Restore PDF if available
@@ -1087,27 +1116,40 @@ export default function EnhancedWhiteboard({
           }
           if (data.type === 'stroke-start') {
             console.log('[WB SSE] Applying stroke-start:', data);
+            applyingRemoteRef.current = true;
             setStrokes((s) => {
               const strokeId = data.strokeId || (data.stroke as any)?.id;
-              if (strokeId && s.some(st => (st as any).id === strokeId)) return s;
+              if (strokeId && s.some(st => (st as any).id === strokeId)) {
+                console.log('[WB SSE] Ignoring stroke-start for duplicate strokeId:', strokeId);
+                return s;
+              }
+              console.log('[WB SSE] Adding new stroke:', strokeId);
               return [...s, data.stroke];
             });
+            applyingRemoteRef.current = false;
           } else if (data.type === 'stroke-update') {
             console.log('[WB SSE] Applying stroke-update:', data.strokeId);
+            applyingRemoteRef.current = true;
             setStrokes((s) => {
               const idx = s.findIndex((st) => (st as any).id === data.strokeId);
               const malformed = !Array.isArray(data.points) || data.points.some((p: any) => typeof p !== 'number' || Number.isNaN(p));
               if (malformed) {
                 if (verboseLogging) logAnomaly('SSE received malformed stroke-update (points invalid)', { strokeId: data.strokeId, points: data.points });
+                console.warn('[WB SSE] Malformed stroke-update, ignoring:', data.strokeId);
                 return s;
               }
               if (idx >= 0) {
+                // Update specific stroke without affecting others
                 const updated = { ...(s[idx] as any), points: data.points };
-                return [...s.slice(0, idx), updated, ...s.slice(idx + 1)];
+                const result = [...s.slice(0, idx), updated, ...s.slice(idx + 1)];
+                console.log('[WB SSE] Updated stroke at index', idx, 'now total:', result.length);
+                return result;
               }
               if (verboseLogging) logAnomaly('SSE received stroke-update for unknown strokeId (appending)', { strokeId: data.strokeId, pointsLen: Array.isArray(data.points) ? data.points.length : null });
+              console.warn('[WB SSE] stroke-update for unknown strokeId, creating new:', data.strokeId);
               return [...s, { points: data.points, stroke: '#000', strokeWidth: 2, mode: 'draw', id: data.strokeId } as any];
             });
+            applyingRemoteRef.current = false;
           } else if (data.type === 'undo') {
             setStrokes((s) => s.filter((st) => (st as any).id !== data.strokeId));
           } else if (data.type === 'redo') {
