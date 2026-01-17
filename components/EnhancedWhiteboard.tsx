@@ -157,10 +157,8 @@ export default function EnhancedWhiteboard({
     // avoid duplicate ack watchers
     if (pendingAckRef.current.has(strokeId)) return;
     let attempts = 0;
-    const isProduction = window.location.hostname === 'www.jvtutorcorner.com' || window.location.hostname === 'jvtutorcorner.com';
-    // In production (Amplify), server response times are slower; increase max attempts from 15 to 40 (3.2 seconds)
-    const maxAttempts = isProduction ? 40 : 15;
-    const intervalMs = isProduction ? 80 : 80; // Keep 80ms for production too (better sync responsiveness)
+    const maxAttempts = 15; // 80ms * 15 = 1.2 seconds for fast ACK detection
+    const intervalMs = 80; // smart ACK polling: 80ms (12.5x/sec) - only for single stroke
 
     const check = async () => {
       attempts += 1;
@@ -183,19 +181,15 @@ export default function EnhancedWhiteboard({
         }
       } catch (e) {
         // ignore transient fetch errors
-        if (verboseLogging) console.warn('[WB ACK] Fetch error during check:', e);
       }
 
       if (attempts >= maxAttempts) {
-        // not found after retries -> error (but don't block drawing)
+        // not found after retries -> error
         pendingAckRef.current.delete(strokeId);
-        const msg = `Canvas sync not confirmed for stroke ${strokeId} (${attempts} attempts)`;
+        const msg = `Canvas sync not confirmed for stroke ${strokeId}`;
         console.warn('[WB ACK] ✗ Timeout after', attempts, 'attempts:', strokeId);
-        logAnomaly('Ack timeout for stroke', { strokeId, attempts, courseIdFromChannel, isProduction });
-        // Only push error if this is repeated (avoid spam)
-        if (attempts % 10 === 0 || attempts === maxAttempts) {
-          pushError(msg);
-        }
+        logAnomaly('Ack timeout for stroke', { strokeId, attempts, courseIdFromChannel });
+        pushError(msg);
         return;
       }
     };
