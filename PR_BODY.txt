@@ -1,0 +1,20 @@
+﻿修復在 Amplify 生產環境下白板延遲與不同步問題。
+
+主要變更：
+- 將生產環境輪詢間隔從 300ms 調整為 100ms，提高同步回應速度。
+- 將 stroke-update 批處理間隔從 100ms 調整為 40ms，減少繪圖延遲。
+- 使用完整 stroke ID 列表比較與同步，避免截斷哈希造成誤判。
+- 改進 SSE 處理：允許無 clientId 的中繼訊息通過，只過濾來自本客戶端的訊息，降低事件遺失風險。
+- init-state 與 polling 改為合併新增 strokes，避免覆蓋本地正在繪製的筆畫。
+- 新增網路容錯：連續失敗自動降頻，恢復後回復正常頻率。
+
+測試步驟：
+1. 在 Amplify 上部署並打開兩個視窗（老師與學生）。
+2. 老師端快速繪圖，檢查學生端延遲是否顯著降低。
+3. 在慢網環境下（Chrome DevTools Network Throttling）檢查自動降頻與恢復行為。
+4. 檢查瀏覽器控制台 `[WB POLL]`、`[WB SSE]` 日誌。
+
+相關檔案：
+- components/EnhancedWhiteboard.tsx
+
+如需我協助在 PR 建立後執行 QA 或部署測試，請告知。
