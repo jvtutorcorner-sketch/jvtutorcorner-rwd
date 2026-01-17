@@ -109,6 +109,7 @@ export default function EnhancedWhiteboard({
 
   // Pending ack timers and helper to surface UI errors
   const pendingAckRef = useRef<Map<string, number>>(new Map());
+  const maxConcurrentAcks = 3; // 限制最多同時進行的 ACK 檢查數量
   const [errors, setErrors] = useState<string[]>([]);
   const pushError = useCallback((msg: string) => {
     setErrors((e) => [...e.slice(-9), msg]);
@@ -119,9 +120,14 @@ export default function EnhancedWhiteboard({
     const uuid = `course_${courseIdFromChannel}`;
     // avoid duplicate ack watchers
     if (pendingAckRef.current.has(strokeId)) return;
+    // 限制並發數量，防止資源耗盡
+    if (pendingAckRef.current.size >= maxConcurrentAcks) {
+      console.warn('[WB ACK] Too many concurrent ACK checks, skipping:', strokeId);
+      return;
+    }
     let attempts = 0;
-    const maxAttempts = 15; // 80ms * 15 = 1.2 seconds for fast ACK detection
-    const intervalMs = 80; // smart ACK polling: 80ms (12.5x/sec) - only for single stroke
+    const maxAttempts = 30; // 200ms * 30 = 6 seconds (合理的等待時間)
+    const intervalMs = 200; // 增加間隔減少請求頻率: 200ms (5x/sec)
 
     const check = async () => {
       attempts += 1;
@@ -148,6 +154,10 @@ export default function EnhancedWhiteboard({
 
       if (attempts >= maxAttempts) {
         // not found after retries -> error
+        const timerId = pendingAckRef.current.get(strokeId);
+        if (timerId) {
+          try { window.clearInterval(timerId); } catch (e) { console.warn('[WB ACK] clearInterval failed', e); }
+        }
         pendingAckRef.current.delete(strokeId);
         const msg = `Canvas sync not confirmed for stroke ${strokeId}`;
         console.warn('[WB ACK] ✗ Timeout after', attempts, 'attempts:', strokeId);
@@ -294,9 +304,26 @@ export default function EnhancedWhiteboard({
     };
   }, []);
 
-  // Cleanup pending ack timers on unmount
+  // Cleanup pending ack timers on unmount AND periodically check for stuck timers
   useEffect(() => {
+    // 定期清理超時的 ACK 檢查（每 10 秒檢查一次）
+    const cleanupInterval = window.setInterval(() => {
+      const now = Date.now();
+      const maxAge = 15000; // 15 秒
+      pendingAckRef.current.forEach((timerId, strokeId) => {
+        // 假設 strokeId 格式為: c_xxxxx_timestamp
+        const parts = strokeId.split('_');
+        const timestamp = parseInt(parts[parts.length - 1]);
+        if (!isNaN(timestamp) && (now - timestamp) > maxAge) {
+          console.warn('[WB ACK] Force cleaning stuck ACK timer:', strokeId);
+          try { window.clearInterval(timerId); } catch (e) {}
+          pendingAckRef.current.delete(strokeId);
+        }
+      });
+    }, 10000);
+
     return () => {
+      try { window.clearInterval(cleanupInterval); } catch (e) {}
       try {
         pendingAckRef.current.forEach((t) => { try { window.clearInterval(t); } catch (e) {} });
         pendingAckRef.current.clear();
@@ -971,7 +998,15 @@ export default function EnhancedWhiteboard({
                     console.log('[WB POLL] Applied remote strokes in production poll');
                   }
               } else if (isMismatch && !isNewUpdate) {
-                // Same data as before, but client is still behind - force full resync
+                // Same data as before (server didn't change), but we mismatch.
+                // If local > remote, it means we have pending strokes that server hasn't seen yet.
+                // DO NOT overwrite local state with stale remote state.
+                if (localCount > remoteCount) {
+                  if (verboseLogging) console.log('[WB POLL] Local ahead of server (pending sync), ignoring stale remote state');
+                  return;
+                }
+
+                // Only force resync if we are truly behind (remote > local) or same count but diff hash (rare collision/corruption)
                 console.warn('[WB POLL] ⚠ Client behind server by', remoteCount - localCount, 'strokes - forcing resync');
                 setStrokes(s.strokes);
                 lastRemoteHash = remoteHash;
