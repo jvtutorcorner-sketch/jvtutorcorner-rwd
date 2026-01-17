@@ -176,6 +176,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           const host = window.location.hostname || '';
           const isProductionHost = host.endsWith('jvtutorcorner.com') || host.includes('amplifyapp.com') || host.includes('cloudfront.net');
           if (isProductionHost) {
+            let serverSuccess = false;
             try {
               const wbResp = await fetch('/api/agora/whiteboard', {
                 method: 'POST',
@@ -191,8 +192,9 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                   localStorage.setItem(whiteboardRoomKey, wbUuid);
                   setWhiteboardMetaBeforeJoin({ uuid: wbUuid, appId: wbAppId ?? undefined, region: wbRegion ?? undefined });
                   console.log('[Pre-join] Obtained whiteboard room from server (production)');
+                  serverSuccess = true;
                 } else {
-                  console.warn('[Pre-join] Server returned no uuid; not setting local fallback in production');
+                  console.warn('[Pre-join] Server returned no uuid; falling back to course-scoped UUID');
                 }
               } else {
                 const txt = await wbResp.text().catch(() => '(no body)');
@@ -200,6 +202,15 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
               }
             } catch (e) {
               console.warn('[Pre-join] Failed to request whiteboard token in production:', e);
+            }
+
+            if (!serverSuccess) {
+              // If server-side whiteboard fails (e.g. missing tokens, 400/500 errors),
+              // fall back to the course-scoped deterministic UUID so polling/canvas sync still works.
+              const courseScoped = `course_${courseId}`;
+              localStorage.setItem(whiteboardRoomKey, courseScoped);
+              setWhiteboardMetaBeforeJoin({ uuid: courseScoped, appId: undefined, region: undefined });
+              console.log('[Pre-join] Server whiteboard failed in production, falling back to course-scoped UUID for polling/canvas sync.');
             }
           } else {
             // non-production: use course-scoped fallback so local dev works without server
