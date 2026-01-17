@@ -164,7 +164,7 @@ export default function EnhancedWhiteboard({
   const pendingUpdatesRef = useRef<Map<string, { points: number[] }>>(new Map());
   const flushTimerRef = useRef<number | null>(null);
   const currentStrokeIdRef = useRef<string | null>(null);
-  const FLUSH_INTERVAL = 100; // ms
+  const FLUSH_INTERVAL = 40; // ms - 减少延迟以提升实时性
 
   const flushPendingUpdates = useCallback(() => {
     try {
@@ -913,45 +913,92 @@ export default function EnhancedWhiteboard({
         console.log('[WB POLL] Using uuid:', uuid, 'from courseId:', courseParam);
         // Try fetching persisted state immediately and then poll periodically
         let pollId: number | null = null;
-        let lastRemoteHash = '';
+        let lastRemoteStrokeIds: string[] = [];
+        let consecutiveFailures = 0;
+        const maxFailures = 5;
+        
         const fetchAndApply = async () => {
           try {
             const resp = await fetch(`/api/whiteboard/state?uuid=${encodeURIComponent(uuid)}`);
               if (!resp.ok) {
+                consecutiveFailures++;
                 const txt = await resp.text().catch(() => '(no body)');
                 console.warn('[WB POLL] /api/whiteboard/state returned non-ok', resp.status, txt.slice(0, 200));
                 if (verboseLogging) {
                   pushError(`[WB POLL] /api/whiteboard/state returned non-ok ${resp.status}`);
                   logAnomaly('Production /state returned non-ok', { status: resp.status, bodyPreview: txt?.slice(0,200) });
                 }
+                // 如果连续失败太多次，增加轮询间隔
+                if (consecutiveFailures >= maxFailures && pollId) {
+                  window.clearInterval(pollId);
+                  pollId = window.setInterval(fetchAndApply, 500) as unknown as number;
+                  console.warn('[WB POLL] Too many failures, reducing poll frequency to 500ms');
+                }
                 return;
               }
+            
+            // 成功后重置失败计数
+            if (consecutiveFailures >= maxFailures && pollId) {
+              // 恢复正常轮询间隔
+              window.clearInterval(pollId);
+              pollId = window.setInterval(fetchAndApply, 100) as unknown as number;
+              console.log('[WB POLL] Connection recovered, restoring normal poll frequency');
+            }
+            consecutiveFailures = 0;
+            
             const j = await resp.json();
             const s = j?.state;
             if (s && Array.isArray(s.strokes)) {
-              // Compare both count and content to detect updates (not just count changes)
-              const remoteCount = s.strokes.length;
-              const localCount = strokesRef.current.length;
-              const remoteHash = remoteCount > 0 ? JSON.stringify(s.strokes.map((st: any) => st.id)).slice(0, 100) : '';
-              const localHash = localCount > 0 ? JSON.stringify(strokesRef.current.map((st: any) => st.id)).slice(0, 100) : '';
+              // 使用完整的stroke ID列表进行精确比较
+              const remoteStrokeIds = s.strokes.map((st: any) => st.id || 'unknown');
+              const localStrokeIds = strokesRef.current.map((st: any) => (st as any).id || 'unknown');
               
-              // Detect missing strokes: if remote has more or different content
-              const isMismatch = remoteCount !== localCount || remoteHash !== localHash;
-              const isNewUpdate = remoteHash !== lastRemoteHash; // content actually changed since last sync
+              // 检查是否有新stroke或顺序变化
+              const hasChanges = remoteStrokeIds.length !== localStrokeIds.length || 
+                                 remoteStrokeIds.some((id: string, idx: number) => id !== localStrokeIds[idx]);
               
-              if (isMismatch && isNewUpdate) {
-                console.log('[WB POLL] ✓ Sync update detected: local=', localCount, 'remote=', remoteCount, 'mismatch=', isMismatch);
-                setStrokes(s.strokes);
-                lastRemoteHash = remoteHash; // track this update
-                  if (verboseLogging) {
-                    console.log('[WB POLL] Applied remote strokes in production poll');
-                  }
-              } else if (isMismatch && !isNewUpdate) {
-                // Same data as before, but client is still behind - force full resync
-                console.warn('[WB POLL] ⚠ Client behind server by', remoteCount - localCount, 'strokes - forcing resync');
-                setStrokes(s.strokes);
-                lastRemoteHash = remoteHash;
+              // 检查是否是新的更新（与上次远程状态比较）
+              const isNewUpdate = remoteStrokeIds.length !== lastRemoteStrokeIds.length ||
+                                  remoteStrokeIds.some((id: string, idx: number) => id !== lastRemoteStrokeIds[idx]);
+              
+              if (hasChanges && isNewUpdate) {
+                console.log('[WB POLL] ✓ Sync update: local=', localStrokeIds.length, 'remote=', remoteStrokeIds.length);
+                
+                // 检查是否需要合并而不是完全替换
+                const localHasNewer = strokesRef.current.some(st => {
+                  const id = (st as any).id;
+                  return id && id.startsWith(clientIdRef.current) && !remoteStrokeIds.includes(id);
+                });
+                
+                if (localHasNewer) {
+                  // 合并：保留本地新增的stroke
+                  console.log('[WB POLL] Merging local and remote strokes');
+                  const merged = [...s.strokes];
+                  strokesRef.current.forEach(st => {
+                    const id = (st as any).id;
+                    if (id && id.startsWith(clientIdRef.current) && !remoteStrokeIds.includes(id)) {
+                      merged.push(st);
+                    }
+                  });
+                  setStrokes(merged);
+                } else {
+                  // 完全替换
+                  setStrokes(s.strokes);
+                }
+                
+                lastRemoteStrokeIds = remoteStrokeIds;
+                if (verboseLogging) {
+                  console.log('[WB POLL] Applied remote strokes in production poll');
+                }
+              } else if (hasChanges) {
+                // 本地落后于服务器，但远程状态没变 - 可能是初始同步
+                if (localStrokeIds.length === 0 && remoteStrokeIds.length > 0) {
+                  console.log('[WB POLL] Initial sync from server');
+                  setStrokes(s.strokes);
+                  lastRemoteStrokeIds = remoteStrokeIds;
+                }
               }
+              
               if (s.pdf && s.pdf.dataUrl && s.pdf.dataUrl !== '(large-data-url)' && !localPdfFile) {
                 try {
                   const r = await fetch(s.pdf.dataUrl);
@@ -963,6 +1010,7 @@ export default function EnhancedWhiteboard({
               }
             }
           } catch (e) {
+              consecutiveFailures++;
               const errStack = e && (e as Error).stack ? (e as Error).stack : e;
               console.warn('[WB POLL] Failed to fetch /state in production fallback', errStack);
               if (verboseLogging) {
@@ -974,8 +1022,8 @@ export default function EnhancedWhiteboard({
 
         // initial fetch
         fetchAndApply();
-        // Two-tier polling: fast ACK (80ms) for stroke confirmation + balanced main polling (300ms) to avoid overload
-        try { pollId = window.setInterval(fetchAndApply, 300) as unknown as number; } catch (e) { pollId = null; } // 300ms = 3x per second (sustainable)
+        // 优化轮询间隔：100ms = 10次/秒，在实时性和性能之间取得平衡
+        try { pollId = window.setInterval(fetchAndApply, 100) as unknown as number; } catch (e) { pollId = null; }
 
         return () => {
           try { if (pollId) window.clearInterval(pollId); } catch (e) {}
@@ -1021,8 +1069,8 @@ export default function EnhancedWhiteboard({
           const data = JSON.parse(ev.data);
           if (!data) return;
           
-          // Ignore our own events to avoid double-drawing
-          if (data.clientId === clientIdRef.current) return;
+          // Ignore our own events to avoid double-drawing (但允许没有clientId的消息通过)
+          if (data.clientId && data.clientId === clientIdRef.current) return;
 
           // ignore connected pings
           if (data.type === 'connected') {
@@ -1036,14 +1084,23 @@ export default function EnhancedWhiteboard({
           if (data.type === 'init-state') {
             console.log('[WB SSE] Applying initial state:', data.strokes?.length, 'strokes');
             if (Array.isArray(data.strokes)) {
-              // Only apply initial state if local is empty to avoid wiping
-              // a locally drawn stroke that may have happened just before
-              // the server's init-state arrives (common race condition).
-              if (strokesRef.current.length === 0) {
+              const localCount = strokesRef.current.length;
+              const remoteCount = data.strokes.length;
+              
+              if (localCount === 0) {
+                // 本地为空，直接应用远程状态
                 setStrokes(data.strokes);
+              } else if (remoteCount > localCount) {
+                // 远程有更多strokes，尝试合并
+                console.log('[WB SSE] Merging init-state with local strokes');
+                const localIds = new Set(strokesRef.current.map((st: any) => st.id));
+                const remoteOnly = data.strokes.filter((st: any) => !localIds.has(st.id));
+                if (remoteOnly.length > 0) {
+                  setStrokes([...strokesRef.current, ...remoteOnly]);
+                }
               } else {
-                if (verboseLogging) logAnomaly('SSE init-state ignored due to non-empty local strokes', { localCount: strokesRef.current.length, remoteCount: data.strokes.length });
-                console.log('[WB SSE] init-state ignored because local strokes exist:', strokesRef.current.length);
+                if (verboseLogging) logAnomaly('SSE init-state ignored due to non-empty local strokes', { localCount, remoteCount });
+                console.log('[WB SSE] init-state ignored, local has more strokes:', localCount, 'vs', remoteCount);
               }
             }
             if (data.pdf) {
