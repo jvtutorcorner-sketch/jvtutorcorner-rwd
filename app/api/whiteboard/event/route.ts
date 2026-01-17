@@ -61,28 +61,46 @@ export async function POST(req: NextRequest) {
     try {
       const currentState = await getWhiteboardState(uuid) || { strokes: [], pdf: null, updatedAt: 0 };
       const newState = { ...currentState };
+      const beforeCount = newState.strokes.length;
       
       if (event.type === 'stroke-start') {
-        newState.strokes.push(event.stroke);
+        if (!event.stroke || !event.stroke.id) {
+          console.warn('[WB Event Server] Invalid stroke-start: missing stroke or stroke.id', { event, uuid });
+        } else {
+          newState.strokes.push(event.stroke);
+          console.log('[WB Event Server] Added stroke-start:', { uuid, strokeId: event.stroke.id, totalStrokes: newState.strokes.length });
+        }
       } else if (event.type === 'stroke-update') {
         const idx = newState.strokes.findIndex((s: any) => s.id === event.strokeId);
         if (idx >= 0) {
           newState.strokes[idx].points = event.points;
+          console.log('[WB Event Server] Updated stroke:', { uuid, strokeId: event.strokeId, pointCount: event.points.length });
         } else {
           // Fallback: create if missing
           newState.strokes.push({ id: event.strokeId, points: event.points, stroke: '#000', strokeWidth: 2, mode: 'draw' });
+          console.warn('[WB Event Server] Stroke not found, created fallback:', { uuid, strokeId: event.strokeId });
         }
       } else if (event.type === 'undo') {
+        const beforeUndo = newState.strokes.length;
         newState.strokes = newState.strokes.filter((s: any) => s.id !== event.strokeId);
+        console.log('[WB Event Server] Undo:', { uuid, strokeId: event.strokeId, before: beforeUndo, after: newState.strokes.length });
       } else if (event.type === 'clear') {
+        console.log('[WB Event Server] Clear all strokes:', { uuid, strokesCleared: newState.strokes.length });
         newState.strokes = [];
       } else if (event.type === 'pdf-set') {
         newState.pdf = event.pdf || event;
+        console.log('[WB Event Server] PDF set:', { uuid, pdfName: event.pdf?.name || 'unknown' });
+      } else {
+        console.log('[WB Event Server] Unrecognized event type:', { uuid, eventType: event.type });
+      }
+      
+      if (newState.strokes.length !== beforeCount) {
+        console.log('[WB Event Server] State changed after event:', { uuid, strokesBefore: beforeCount, strokesAfter: newState.strokes.length });
       }
       
       await saveWhiteboardState(uuid, newState.strokes, newState.pdf);
     } catch (e) {
-      console.error('[WB Event Server] Failed to update DynamoDB state:', e);
+      console.error('[WB Event Server] Failed to update DynamoDB state:', { uuid, error: String(e), eventType: event?.type });
     }
 
     // Broadcast to connected SSE clients (best-effort)
