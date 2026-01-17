@@ -160,8 +160,9 @@ export default function EnhancedWhiteboard({
     // avoid duplicate ack watchers
     if (pendingAckRef.current.has(strokeId)) return;
     let attempts = 0;
-    const maxAttempts = 50; // 100ms * 50 = 5 seconds for robust ACK detection (was 1.2s)
-    const intervalMs = 100; // balanced ACK polling: 100ms (10x/sec) - increased from 80ms for stability
+    // Adaptive timeout: start fast, then slow down if needed
+    const maxAttempts = 80; // up to 12-14 seconds total (100ms*50 + 200ms*30)
+    let intervalMs = 100; // start with 100ms
 
     const check = async () => {
       attempts += 1;
@@ -177,7 +178,7 @@ export default function EnhancedWhiteboard({
               const t = pendingAckRef.current.get(strokeId);
               if (t) { try { window.clearInterval(t); } catch (e) {} }
               pendingAckRef.current.delete(strokeId);
-              if (verboseLogging) console.log('[WB ACK] ✓ Stroke ACK confirmed:', strokeId, `(attempt ${attempts})`);
+              if (verboseLogging) console.log('[WB ACK] ✓ Stroke ACK confirmed:', strokeId, `(attempt ${attempts}, after ${attempts * intervalMs}ms)`);
               return;
             }
           }
@@ -192,14 +193,23 @@ export default function EnhancedWhiteboard({
         if (t) { try { window.clearInterval(t); } catch (e) {} }
         pendingAckRef.current.delete(strokeId);
         // In production fallback mode, accept ACK timeout but still log for diagnosis
-        const msg = `Canvas sync not confirmed for stroke ${strokeId} after ${attempts} attempts`;
-        console.warn('[WB ACK] ✗ Timeout after', attempts, 'attempts:', strokeId);
-        // Only log anomaly and push error if in verbose mode or if multiple timeouts detected
-        if (verboseLogging || attempts > 30) {
-          logAnomaly('Ack timeout for stroke', { strokeId, attempts, courseIdFromChannel });
-          if (verboseLogging) pushError(msg);
+        const totalWaitMs = attempts * intervalMs;
+        console.warn('[WB ACK] ✗ Timeout after', attempts, 'attempts (~' + totalWaitMs + 'ms):', strokeId);
+        // Only log anomaly and push error if in verbose mode or if timeout is very high
+        if (verboseLogging || attempts > 50) {
+          logAnomaly('Ack timeout for stroke', { strokeId, attempts, totalWaitMs, courseIdFromChannel });
+          if (verboseLogging) pushError(`Canvas sync not confirmed for stroke ${strokeId} after ${totalWaitMs}ms`);
         }
         return;
+      }
+
+      // Adaptive backoff: increase interval after 50 attempts
+      if (attempts === 50) {
+        const currentTimer = pendingAckRef.current.get(strokeId);
+        if (currentTimer) window.clearInterval(currentTimer);
+        intervalMs = 200; // switch to slower checking (200ms intervals)
+        const newTimerId = window.setInterval(check, intervalMs) as unknown as number;
+        pendingAckRef.current.set(strokeId, newTimerId);
       }
     };
 
@@ -1161,7 +1171,7 @@ export default function EnhancedWhiteboard({
 
         // initial fetch
         fetchAndApply();
-        // Two-tier polling: fast ACK (80ms) for stroke confirmation + balanced main polling (300ms) to avoid overload
+        // Two-tier polling: adaptive ACK (100ms-200ms backoff) for stroke confirmation + main polling (300ms) for state sync
         try { pollId = window.setInterval(fetchAndApply, 300) as unknown as number; } catch (e) { pollId = null; } // 300ms = 3x per second (sustainable)
 
         return () => {
