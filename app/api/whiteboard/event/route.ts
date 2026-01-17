@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
-import { broadcastToUuid, getRoomState } from '../stream/route';
+import { broadcastToUuid } from '../stream/route';
+import { getWhiteboardState, saveWhiteboardState } from '@/lib/whiteboardService';
 
 export async function POST(req: NextRequest) {
   try {
@@ -55,42 +56,39 @@ export async function POST(req: NextRequest) {
       console.warn('[WB Event Server] Missing event in parsed body, preview:', (text || '').slice(0, 200));
       return new Response(JSON.stringify({ ok: false, error: 'no event', rawPreview: (text || '').slice(0, 200) }), { status: 400 });
     }
-    console.log('[WB Event Server] Raw uuid from client:', uuid);
+    
+    // Update State in DynamoDB (Persistence)
     try {
-      // Log a concise event summary without dumping large payloads
-      const evtSummary: any = { type: event?.type, clientId: event?.clientId ?? event?.clientID ?? null };
-      if (event?.type === 'stroke-start' && event.stroke) {
-        evtSummary.strokeId = event.stroke.id || null;
-        evtSummary.points = Array.isArray(event.stroke.points) ? event.stroke.points.length / 2 : null;
-      } else if (event?.type === 'stroke-update') {
-        evtSummary.strokeId = event.strokeId || null;
-        evtSummary.points = Array.isArray(event.points) ? event.points.length / 2 : null;
-      } else if (event?.type === 'pdf-set' || event?.type === 'pdf') {
-        // Avoid logging large data URLs; log length instead
-        if (event.pdf?.dataUrl) evtSummary.pdfDataUrlLength = String(event.pdf.dataUrl).length;
-        if (event.dataUrl) evtSummary.pdfDataUrlLength = String(event.dataUrl).length;
-        evtSummary.pdfName = event.name || event.pdf?.name || null;
+      const currentState = await getWhiteboardState(uuid) || { strokes: [], pdf: null, updatedAt: 0 };
+      const newState = { ...currentState };
+      
+      if (event.type === 'stroke-start') {
+        newState.strokes.push(event.stroke);
+      } else if (event.type === 'stroke-update') {
+        const idx = newState.strokes.findIndex((s: any) => s.id === event.strokeId);
+        if (idx >= 0) {
+          newState.strokes[idx].points = event.points;
+        } else {
+          // Fallback: create if missing
+          newState.strokes.push({ id: event.strokeId, points: event.points, stroke: '#000', strokeWidth: 2, mode: 'draw' });
+        }
+      } else if (event.type === 'undo') {
+        newState.strokes = newState.strokes.filter((s: any) => s.id !== event.strokeId);
+      } else if (event.type === 'clear') {
+        newState.strokes = [];
+      } else if (event.type === 'pdf-set') {
+        newState.pdf = event.pdf || event;
       }
-      console.log('[WB Event Server] Received event summary:', { uuid, ...evtSummary });
+      
+      await saveWhiteboardState(uuid, newState.strokes, newState.pdf);
     } catch (e) {
-      console.warn('[WB Event Server] Failed to summarize event for logs', e);
+      console.error('[WB Event Server] Failed to update DynamoDB state:', e);
     }
 
-    // Broadcast to connected SSE clients (best-effort) and log how many clients received it
+    // Broadcast to connected SSE clients (best-effort)
     try {
-      const sent = broadcastToUuid(uuid, event);
-      console.log(`[WB Event Server] broadcastToUuid sent=${sent} for uuid=${uuid}, eventType=${event?.type}`);
-      try {
-        // diagnostic: log current in-memory room state summary so server logs
-        const state = getRoomState(uuid);
-        const lastEvent = (state as any)?.lastEvent ?? null;
-        console.log('[WB Event Server] Post-broadcast room state summary:', { uuid, strokes: Array.isArray(state?.strokes) ? state.strokes.length : 0, lastEvent });
-      } catch (e) {
-        console.warn('[WB Event Server] Failed to read room state for diagnostic', e);
-      }
-    } catch (e) {
-      console.error('[WB Event Server] Broadcast failed:', e && (e as Error).stack ? (e as Error).stack : e);
-    }
+      broadcastToUuid(uuid, event);
+    } catch (e) {}
 
     return new Response(JSON.stringify({ ok: true }), { status: 200 });
   } catch (e) {
