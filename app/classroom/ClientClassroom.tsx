@@ -289,6 +289,13 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       whiteboardMeta,
       joined
     });
+    
+    // 為 E2E 測試暴露狀態
+    if (typeof window !== 'undefined') {
+      (window as any).__classroom_joined = joined;
+      (window as any).__classroom_whiteboard_ready = !!whiteboardMeta;
+      (window as any).__classroom_ready = joined && !!whiteboardMeta;
+    }
   }, [whiteboardRef, whiteboardMeta, joined]);
 
   // 跨标签页同步：老師開始上課時通知學生
@@ -315,9 +322,9 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
         // Another tab updated ready state — re-check localStorage and update canJoin immediately
         try {
           const raw = localStorage.getItem(sessionReadyKey);
-          const arr = raw ? JSON.parse(raw) as Array<{ role: string; email?: string }> : [];
-          const hasTeacher = arr.some((p) => p.role === 'teacher');
-          const hasStudent = arr.some((p) => p.role === 'student');
+          const arr = raw ? JSON.parse(raw) as Array<{ role: string; email?: string; present?: boolean }> : [];
+          const hasTeacher = arr.some((p) => p.role === 'teacher' && p.present);
+          const hasStudent = arr.some((p) => p.role === 'student' && p.present);
           setCanJoin(hasTeacher && hasStudent);
           console.log('[BroadcastChannel] ready-updated processed, canJoin=', hasTeacher && hasStudent);
         } catch (e) {
@@ -337,42 +344,70 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     };
   }, [courseId, orderId, joined, loading, micEnabled, wantPublishVideo, join, sessionParam, channelName]);
 
-  // 學生端：如果進入頁面時老師已經在線，則自動加入
+  // 🚀 自動加入/恢復機制 (Auto-join / Re-join)
+  // 處理學生自動進入已開始的課堂，以及老師重新整理頁面後恢復通話
   useEffect(() => {
-    if (mounted && !joined && !loading && (urlRole === 'student' || computedRole === 'student')) {
-      const checkAndAutoJoin = async () => {
-        try {
-          // Check server state instead of just localStorage for cross-device support
-          const r = await fetch(`/api/classroom/ready?uuid=${encodeURIComponent(sessionReadyKey)}`);
-          if (r.ok) {
-            const j = await r.json();
-            const parts = j.participants || [];
-            const hasTeacher = parts.some((p: any) => p.role === 'teacher');
-            if (hasTeacher) {
-              console.log('[AutoJoin] Teacher is already present on server, joining class...');
-              join({ publishAudio: micEnabled, publishVideo: wantPublishVideo, audioDeviceId: selectedAudioDeviceId ?? undefined, videoDeviceId: selectedVideoDeviceId ?? undefined });
-              return;
-            }
+    if (!mounted || joined || loading || !sessionReadyKey) return;
+
+    const checkAndAutoJoin = async () => {
+      try {
+        const roleName = (urlRole === 'teacher' || computedRole === 'teacher') ? 'teacher' : 'student';
+        const isTeacher = roleName === 'teacher';
+        const isStudent = roleName === 'student';
+
+        // 1. 檢查伺服器端的會話狀態（判斷課堂是否已經正式開始）
+        const sResp = await fetch(`/api/classroom/session?uuid=${encodeURIComponent(sessionReadyKey)}`);
+        let hasActiveSession = false;
+        if (sResp.ok) {
+          const sJson = await sResp.json();
+          // 如果 endTs 存在且大於目前時間，表示課堂已在進行中
+          if (sJson.endTs && sJson.endTs > Date.now()) {
+            hasActiveSession = true;
           }
-          
-          // Fallback to localStorage for same-device tabs
-          const raw = localStorage.getItem(sessionReadyKey);
-          const arr = raw ? JSON.parse(raw) as Array<{ role: string; email?: string }> : [];
-          const hasTeacherLocal = arr.some((p) => p.role === 'teacher');
-          if (hasTeacherLocal) {
-            console.log('[AutoJoin] Teacher is already present in localStorage, joining class...');
-            join({ publishAudio: micEnabled, publishVideo: wantPublishVideo, audioDeviceId: selectedAudioDeviceId ?? undefined, videoDeviceId: selectedVideoDeviceId ?? undefined });
-          }
-        } catch (e) {
-          console.warn('[AutoJoin] Failed to check teacher presence', e);
         }
-      };
-      
-      // 延遲一下確保一切就緒
-      const timer = setTimeout(checkAndAutoJoin, 2000);
-      return () => clearTimeout(timer);
-    }
-  }, [mounted, joined, loading, sessionReadyKey, urlRole, computedRole, micEnabled, wantPublishVideo, join]);
+
+        // 檢查雙方是否都已「進入教室」(present)
+        const qResp = await fetch(`/api/classroom/ready?uuid=${encodeURIComponent(sessionReadyKey)}`, { cache: 'no-store' });
+        let bothPresent = false;
+        if (qResp.ok) {
+          const qJson = await qResp.json();
+          const parts = qJson.participants || [];
+          bothPresent = parts.some((p: any) => p.role === 'teacher' && p.present) && 
+                        parts.some((p: any) => p.role === 'student' && p.present);
+        }
+
+        if (hasActiveSession) {
+          console.log(`[AutoJoin] ${roleName} 檢測到進行中會話，正在自動加入...`);
+          join({ 
+            publishAudio: micEnabled, 
+            publishVideo: wantPublishVideo, 
+            audioDeviceId: selectedAudioDeviceId ?? undefined, 
+            videoDeviceId: selectedVideoDeviceId ?? undefined 
+          });
+          return;
+        }
+
+        // 2. 只有當雙方都在教室內 (canJoin=true 或 qResp 返回雙方都 present) 才觸發啟動
+        if (canJoin || bothPresent) {
+          if (bothPresent && !canJoin) setCanJoin(true);
+          console.log(`[AutoJoin] 雙方都已進入教室，${roleName} 自動加入...`);
+          join({ 
+            publishAudio: micEnabled, 
+            publishVideo: wantPublishVideo, 
+            audioDeviceId: selectedAudioDeviceId ?? undefined, 
+            videoDeviceId: selectedVideoDeviceId ?? undefined 
+          });
+        }
+      } catch (e) {
+        console.warn('[AutoJoin] 自動加入檢查失敗:', e);
+      }
+    };
+
+    // 如果 canJoin 已經為 true，縮短延遲以加速啟動
+    const delay = canJoin ? 500 : 2000;
+    const timer = setTimeout(checkAndAutoJoin, delay);
+    return () => clearTimeout(timer);
+  }, [mounted, joined, loading, sessionReadyKey, urlRole, computedRole, micEnabled, wantPublishVideo, join, canJoin]);
 
   useEffect(() => {
     let mountedFlag = true;
@@ -477,9 +512,10 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     const readReadyLocal = () => {
       try {
         const raw = localStorage.getItem(sessionReadyKey);
-        const arr = raw ? JSON.parse(raw) as Array<{ role: string; email?: string }> : [];
-        const hasTeacher = arr.some((p) => p.role === 'teacher');
-        const hasStudent = arr.some((p) => p.role === 'student');
+        const arr = raw ? JSON.parse(raw) as Array<{ role: string; email?: string; present?: boolean }> : [];
+        // Only consider them "ready" in the classroom if they are also "present"
+        const hasTeacher = arr.some((p) => p.role === 'teacher' && p.present);
+        const hasStudent = arr.some((p) => p.role === 'student' && p.present);
         setCanJoin(hasTeacher && hasStudent);
       } catch (e) {
         setCanJoin(false);
@@ -493,11 +529,12 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     (async () => {
       try {
         if (!sessionReadyKey) return;
-        const r = await fetch(`/api/classroom/ready?uuid=${encodeURIComponent(sessionReadyKey)}`);
+        const r = await fetch(`/api/classroom/ready?uuid=${encodeURIComponent(sessionReadyKey)}`, { cache: 'no-store' });
         const j = await r.json();
         const parts = j.participants || [];
-        const hasTeacher = parts.some((p: any) => p.role === 'teacher');
-        const hasStudent = parts.some((p: any) => p.role === 'student');
+        // Require both to be marked as 'present' (meaning they've entered the classroom page)
+        const hasTeacher = parts.some((p: any) => p.role === 'teacher' && p.present);
+        const hasStudent = parts.some((p: any) => p.role === 'student' && p.present);
         setCanJoin(hasTeacher && hasStudent);
       } catch (e) {
         // ignore server read errors
@@ -514,9 +551,9 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           try {
             const data = JSON.parse(ev.data);
             if (data.participants) {
-              const parts = data.participants as Array<{ role: string; userId?: string }>;
-              const hasTeacher = parts.some((p) => p.role === 'teacher');
-              const hasStudent = parts.some((p) => p.role === 'student');
+              const parts = data.participants as Array<{ role: string; userId?: string; present?: boolean }>;
+              const hasTeacher = parts.some((p) => p.role === 'teacher' && p.present);
+              const hasStudent = parts.some((p) => p.role === 'student' && p.present);
               setCanJoin(hasTeacher && hasStudent);
             }
           } catch (e) {}
@@ -524,21 +561,22 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       }
     } catch (e) {}
 
-    // In production, add a fallback interval to refresh participant status since SSE is disabled
+    // Add a fallback interval to refresh participant status (essential for production where SSE is disabled, 
+    // and good as a safety fallback in development if SSE fails).
     let pollingInterval: any = null;
-    if (isProduction && sessionReadyKey) {
+    if (sessionReadyKey) {
       pollingInterval = setInterval(async () => {
         try {
-          const r = await fetch(`/api/classroom/ready?uuid=${encodeURIComponent(sessionReadyKey)}`);
+          const r = await fetch(`/api/classroom/ready?uuid=${encodeURIComponent(sessionReadyKey)}`, { cache: 'no-store' });
           if (r.ok) {
             const j = await r.json();
             const parts = j.participants || [];
-            const hasTeacher = parts.some((p: any) => p.role === 'teacher');
-            const hasStudent = parts.some((p: any) => p.role === 'student');
+            const hasTeacher = parts.some((p: any) => p.role === 'teacher' && p.present);
+            const hasStudent = parts.some((p: any) => p.role === 'student' && p.present);
             setCanJoin(hasTeacher && hasStudent);
           }
         } catch (e) {}
-      }, 10000); // Poll every 10 seconds
+      }, 3000); 
     }
 
     // Also respond to storage events from other tabs
@@ -563,21 +601,31 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       const roleName = (urlRole === 'teacher' || computedRole === 'teacher') ? 'teacher' : 'student';
       const userId = storedUser?.email || roleName || 'anonymous';
       
+      // Update local storage first to ensure local consistency
+      markReady(true);
+      
       try {
-        // First, check if we are already in the list to avoid redundant broadcasts
-        const r = await fetch(`/api/classroom/ready?uuid=${encodeURIComponent(sessionReadyKey)}`);
+        const r = await fetch(`/api/classroom/ready?uuid=${encodeURIComponent(sessionReadyKey)}`, { cache: 'no-store' });
         if (!r.ok) return;
         const j = await r.json();
         const parts = j.participants || [];
-        const alreadyReady = parts.some((p: any) => p.role === roleName && p.userId === userId);
+        const selfEntry = parts.find((p: any) => p.role === roleName && p.userId === userId);
         
-        if (!alreadyReady) {
+        // BUG FIX: If even if we are in the list, we might not be marked as 'present'.
+        // We must ensure the server knows we are in the classroom page.
+        if (!selfEntry || !selfEntry.present) {
           await fetch('/api/classroom/ready', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ uuid: sessionReadyKey, role: roleName, userId, action: 'ready' }),
+            body: JSON.stringify({ 
+              uuid: sessionReadyKey, 
+              role: roleName, 
+              userId, 
+              action: 'ready',
+              present: true 
+            }),
           });
-          console.log(`[ClientClassroom] Reported ${roleName} as ready to server`);
+          console.log(`[ClientClassroom] Force reported ${roleName} as PRESENT to server (previous state: ${selfEntry ? 'ready only' : 'not found'})`);
         }
       } catch (e) {
         console.warn('[ClientClassroom] Failed to report ready to server', e);
@@ -588,7 +636,20 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     
     // Periodic heartbeat to keep the ready status alive while on this page
     const interval = setInterval(reportReady, 10000);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      // Optional: Mark as not present when leaving the page (best-effort)
+      const roleName = (urlRole === 'teacher' || computedRole === 'teacher') ? 'teacher' : 'student';
+      const userId = storedUser?.email || roleName || 'anonymous';
+      const params = new URLSearchParams();
+      params.append('uuid', sessionReadyKey);
+      
+      // Use sendBeacon for more reliable delivery during unload
+      if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
+        const blob = new Blob([JSON.stringify({ uuid: sessionReadyKey, role: roleName, userId, action: 'ready', present: false })], { type: 'application/json' });
+        navigator.sendBeacon('/api/classroom/ready', blob);
+      }
+    };
   }, [mounted, sessionReadyKey, urlRole, computedRole, storedUser]);
 
   const endSession = async () => {
@@ -683,13 +744,15 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     setReady(flag);
     try {
       const raw = localStorage.getItem(sessionReadyKey);
-      const arr = raw ? JSON.parse(raw) as Array<{ role: string; email?: string }> : [];
-      const email = (getStoredUser && typeof getStoredUser === 'function') ? (getStoredUser()?.email ?? undefined) : undefined;
+      const arr = raw ? JSON.parse(raw) as Array<{ role: string; userId?: string; email?: string; present?: boolean }> : [];
+      const user = (getStoredUser && typeof getStoredUser === 'function') ? getStoredUser() : null;
       const roleName = (urlRole === 'teacher' || computedRole === 'teacher') ? 'teacher' : 'student';
-      // remove existing entry for this role/email
-      const filtered = arr.filter((p) => !(p.role === roleName && p.email === email));
+      const userId = user?.email || roleName || 'anonymous';
+      
+      // remove existing entry for this role/userId
+      const filtered = arr.filter((p) => !(p.role === roleName && (p.userId === userId || p.email === user?.email)));
       if (flag) {
-        filtered.push({ role: roleName, email });
+        filtered.push({ role: roleName, userId, email: user?.email, present: true }); // We are in classroom, so mark as present
       }
       localStorage.setItem(sessionReadyKey, JSON.stringify(filtered));
       try { window.dispatchEvent(new StorageEvent('storage', { key: sessionReadyKey, newValue: JSON.stringify(filtered) })); } catch (e) {}

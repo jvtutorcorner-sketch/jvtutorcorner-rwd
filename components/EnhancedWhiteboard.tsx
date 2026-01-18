@@ -126,11 +126,19 @@ export default function EnhancedWhiteboard({
       return;
     }
     let attempts = 0;
-    const maxAttempts = 30; // 200ms * 30 = 6 seconds (合理的等待時間)
-    const intervalMs = 200; // 增加間隔減少請求頻率: 200ms (5x/sec)
+    const maxAttempts = 80; // Total ~15 seconds with backoff
+    
+    // Adaptive backoff: start fast for UX, slow down for server health
+    const getNextInterval = (currentAttempts: number) => {
+      if (currentAttempts < 20) return 150;  // Initial 3s: fast (6.6x/sec)
+      if (currentAttempts < 50) return 300;  // Up to 12s: balanced (3.3x/sec)
+      return 600;                           // Final few seconds: slow
+    };
 
     const check = async () => {
+      if (!strokeId) return;
       attempts += 1;
+      
       try {
         const resp = await fetch(`/api/whiteboard/state?uuid=${encodeURIComponent(uuid)}`);
         if (resp.ok) {
@@ -139,9 +147,12 @@ export default function EnhancedWhiteboard({
           if (s && Array.isArray(s.strokes)) {
             const found = s.strokes.some((st: any) => (st as any).id === strokeId);
             if (found) {
-              // ack received, clear timer
-              const t = pendingAckRef.current.get(strokeId);
-              if (t) { try { window.clearInterval(t); } catch (e) {} }
+              const timerId = pendingAckRef.current.get(strokeId);
+              if (timerId) {
+                // Clear the correct timer handle
+                if (attempts === 1) clearTimeout(timerId);
+                else clearTimeout(timerId);
+              }
               pendingAckRef.current.delete(strokeId);
               if (verboseLogging) console.log('[WB ACK] ✓ Stroke ACK confirmed:', strokeId, `(attempt ${attempts})`);
               return;
@@ -152,26 +163,28 @@ export default function EnhancedWhiteboard({
         // ignore transient fetch errors
       }
 
+      const currentTimerId = pendingAckRef.current.get(strokeId);
+
       if (attempts >= maxAttempts) {
         // not found after retries -> error
-        const timerId = pendingAckRef.current.get(strokeId);
-        if (timerId) {
-          try { window.clearInterval(timerId); } catch (e) { console.warn('[WB ACK] clearInterval failed', e); }
-        }
+        if (currentTimerId) clearTimeout(currentTimerId);
         pendingAckRef.current.delete(strokeId);
+        
         const msg = `Canvas sync not confirmed for stroke ${strokeId}`;
         console.warn('[WB ACK] ✗ Timeout after', attempts, 'attempts:', strokeId);
-        logAnomaly('Ack timeout for stroke', { strokeId, attempts, courseIdFromChannel });
+        logAnomaly(`Ack timeout for stroke ${strokeId}`, { attempts, courseIdFromChannel });
         pushError(msg);
-        return;
+      } else {
+        // Schedule next check with adaptive delay
+        const nextInterval = getNextInterval(attempts);
+        const nextTimerId = setTimeout(check, nextInterval) as unknown as number;
+        pendingAckRef.current.set(strokeId, nextTimerId);
       }
     };
 
-    // schedule repeated checks
-    const timerId = window.setInterval(check, intervalMs) as unknown as number;
-    pendingAckRef.current.set(strokeId, timerId);
-    // run first check immediately
-    void check();
+    // Initial check after a short initial delay
+    const initialTimerId = setTimeout(check, 150) as unknown as number;
+    pendingAckRef.current.set(strokeId, initialTimerId);
   }, [pushError]);
 
   // Buffer/high-frequency update batching for stroke-update events

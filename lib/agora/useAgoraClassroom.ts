@@ -1,7 +1,7 @@
 // lib/agora/useAgoraClassroom.ts
 "use client";
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import type {
   IAgoraRTCClient,
   ICameraVideoTrack,
@@ -177,7 +177,7 @@ export function useAgoraClassroom({
   };
 
   // join with options: whether to publish audio/video
-  const joinWithOptions = async (opts?: { publishAudio?: boolean; publishVideo?: boolean; audioDeviceId?: string; videoDeviceId?: string; }) => {
+  const joinWithOptions = useCallback(async (opts?: { publishAudio?: boolean; publishVideo?: boolean; audioDeviceId?: string; videoDeviceId?: string; }) => {
     const { publishAudio = true, publishVideo = true, audioDeviceId, videoDeviceId } = opts || {};
     if (joined || loading) return;
 
@@ -648,12 +648,12 @@ export function useAgoraClassroom({
     } finally {
       setLoading(false);
     }
-  };
+  }, [joined, loading, role, channelName, audioOutputDeviceId, currentQuality, isOneOnOne]);
 
   // expose a convenience join that uses defaults (audio+video)
-  const join = async (opts?: { publishAudio?: boolean; publishVideo?: boolean; audioDeviceId?: string; videoDeviceId?: string; }) => {
+  const join = useCallback(async (opts?: { publishAudio?: boolean; publishVideo?: boolean; audioDeviceId?: string; videoDeviceId?: string; }) => {
     return joinWithOptions(opts);
-  };
+  }, [joinWithOptions]);
 
   // Attempt to enable audio playback by re-playing remote audio tracks.
   const requestEnableSound = async () => {
@@ -870,7 +870,7 @@ export function useAgoraClassroom({
     }
   };
 
-  const leave = async () => {
+  const leave = useCallback(async () => {
     try {
       localCamTrackRef.current?.stop();
       localCamTrackRef.current?.close();
@@ -906,7 +906,7 @@ export function useAgoraClassroom({
         setJoined(false);
         setRemoteUsers([]);
     }
-  };
+  }, [joined]);
 
   // Listen for whiteboard room UUID from other tabs
   useEffect(() => {
