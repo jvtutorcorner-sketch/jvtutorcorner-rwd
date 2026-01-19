@@ -54,6 +54,8 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   const storedUser = typeof window !== 'undefined' ? getStoredUser() : null;
   // allow overriding role via URL parameter `role=teacher|student` for testing
   const urlRole = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('role') : null;
+  const forceJoin = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('forceJoin') === 'true';
+
   const isAdmin = storedUser?.role === 'admin';
   let computedRole: Role = 'student';
   if (storedUser?.role === 'teacher' || isAdmin) {
@@ -99,6 +101,13 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   const firstRemote = useMemo(() => remoteUsers?.[0] ?? null, [remoteUsers]);
 
   const isTeacher = (urlRole === 'teacher' || computedRole === 'teacher');
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      (window as any).__classroom_role = isTeacher ? 'teacher' : 'student';
+      (window as any).__classroom_is_teacher = isTeacher;
+    }
+  }, [isTeacher]);
 
   useEffect(() => {
     console.log('[ClientClassroom] remoteUsers changed:', remoteUsers.length);
@@ -388,9 +397,9 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
         }
 
         // 2. 只有當雙方都在教室內 (canJoin=true 或 qResp 返回雙方都 present) 才觸發啟動
-        if (canJoin || bothPresent) {
-          if (bothPresent && !canJoin) setCanJoin(true);
-          console.log(`[AutoJoin] 雙方都已進入教室，${roleName} 自動加入...`);
+        if (canJoin || bothPresent || forceJoin) {
+          if ((bothPresent && !canJoin) || forceJoin) setCanJoin(true);
+          console.log(`[AutoJoin] 雙方都已進入教室 (or forceJoin)，${roleName} 自動加入...`);
           join({ 
             publishAudio: micEnabled, 
             publishVideo: wantPublishVideo, 
