@@ -43,19 +43,15 @@ export default function EnhancedWhiteboard({
   const applyingRemoteRef = useRef(false);
   const verboseLogging = typeof window !== 'undefined' && window.location.pathname === '/classroom/test';
 
+  const logToWindow = (msg: string) => {
+    if (typeof window === 'undefined') return;
+    if (!(window as any).__whiteboard_logs) (window as any).__whiteboard_logs = [];
+    (window as any).__whiteboard_logs.push(`[${new Date().toISOString()}] ${msg}`);
+    if ((window as any).__whiteboard_logs.length > 50) (window as any).__whiteboard_logs.shift();
+  };
+
   const logAnomaly = (title: string, info?: any) => {
-    try {
-      const snapshot = {
-        time: Date.now(),
-        page: typeof window !== 'undefined' ? window.location.pathname : 'unknown',
-        clientId: clientIdRef.current,
-        strokesCount: strokesRef.current.length,
-        recentStrokes: strokesRef.current.slice(-10).map((s) => ({ id: (s as any).id, len: s.points.length }))
-      };
-      console.error(`[WB-ANOMALY] ${title}`, { info, snapshot });
-    } catch (e) {
-      console.error('[WB-ANOMALY] Failed to log anomaly', e);
-    }
+    logToWindow(`ANOMALY: ${title} ${info ? JSON.stringify(info) : ''}`);
   };
 
   // helper to POST events to server relay
@@ -542,10 +538,23 @@ export default function EnhancedWhiteboard({
   const drawAll = useCallback(() => {
     const el = canvasRef.current;
     if (!el) return;
+
+    // Ensure internal resolution matches CSS width/height to avoid blurriness and sync issues
+    const dpr = window.devicePixelRatio || 1;
+    const rect = el.getBoundingClientRect();
+    const targetInternalW = Math.round(rect.width * dpr);
+    const targetInternalH = Math.round(rect.height * dpr);
+    
+    if (el.width !== targetInternalW || el.height !== targetInternalH) {
+      if (verboseLogging) logToWindow(`Resizing canvas internal buffer to ${targetInternalW}x${targetInternalH}`);
+      el.width = targetInternalW;
+      el.height = targetInternalH;
+    }
+
     const ctx = el.getContext('2d');
     if (!ctx) return;
 
-    const dpr = window.devicePixelRatio || 1;
+    if (verboseLogging) logToWindow(`drawAll called with ${strokes.length} strokes`);
 
     // Reset transform and clear full pixel buffer, then scale to CSS pixels
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -600,6 +609,9 @@ export default function EnhancedWhiteboard({
     isDrawingRef.current = true;
     const pos = getPointerPos(e);
     const newStroke: Stroke & { id?: string; origin?: string } = { points: [pos.x, pos.y], stroke: color, strokeWidth, mode: tool === 'eraser' ? 'erase' : 'draw', id: `${clientIdRef.current}_${Date.now()}` , origin: clientIdRef.current };
+    
+    if (verboseLogging) logToWindow(`Local stroke start: ${newStroke.id}`);
+    
     setStrokes((s) => [...s, newStroke]);
     setUndone([]);
     currentStrokeIdRef.current = newStroke.id as string;
@@ -956,6 +968,10 @@ export default function EnhancedWhiteboard({
   // redraw when strokes change
   useEffect(() => {
     drawAll();
+    // Expose strokes to window for E2E testing
+    if (typeof window !== 'undefined') {
+      (window as any).__whiteboard_strokes = strokes;
+    }
   }, [strokes, drawAll]);
 
   // Server-side SSE subscription for cross-device sync

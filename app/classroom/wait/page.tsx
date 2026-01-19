@@ -331,7 +331,9 @@ export default function ClassroomWaitPage() {
   const handleDeviceStatusChange = React.useCallback((audio: boolean, video: boolean) => {
     setAudioOk(audio);
     setVideoOk(video);
-    setDeviceCheckPassed(audio && video);
+    // Allow E2E bypass to make it easier for headless/CI tests to proceed
+    const e2eBypass = typeof window !== 'undefined' && (window as any).__E2E_BYPASS_DEVICE_CHECK__;
+    setDeviceCheckPassed(audio && video || !!e2eBypass);
   }, []);
 
   if (!isClient) return null;
