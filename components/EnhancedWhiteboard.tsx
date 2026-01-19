@@ -986,10 +986,14 @@ export default function EnhancedWhiteboard({
       const params = new URLSearchParams(window.location.search);
       const courseParam = params.get('courseId') || 'classroom';
       const uuid = `course_${courseParam}`;
-      // In production (Amplify) long-lived SSE often fails; skip SSE there.
-      const isProduction = window.location.hostname === 'www.jvtutorcorner.com' || window.location.hostname === 'jvtutorcorner.com';
+      // In production (Amplify/CloudFront) long-lived SSE often fails or is buffered; use polling there.
+      // Must match server-side logic in app/api/whiteboard/stream/route.ts
+      const isProduction = window.location.hostname.includes('jvtutorcorner.com') || 
+                           window.location.hostname.includes('amplifyapp.com') || 
+                           window.location.hostname.includes('cloudfront.net');
+
       if (isProduction) {
-        console.log('[WB SSE] Production detected - skipping SSE. Falling back to /api/whiteboard/state polling.');
+        console.log('[WB SSE] Production/Amplify detected - skipping SSE. Falling back to /api/whiteboard/state polling.');
         console.log('[WB POLL] Using uuid:', uuid, 'from courseId:', courseParam);
         // Try fetching persisted state immediately and then poll periodically
         let pollId: number | null = null;
