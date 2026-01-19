@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { getWhiteboardState } from '@/lib/whiteboardService';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -8,15 +9,28 @@ const clients: Map<string, Set<any>> = new Map();
 
 // Store full state per uuid so new clients can catch up
 // state: { strokes: any[], pdf: any | null }
-const roomStates: Map<string, { strokes: any[], pdf: any | null }> = new Map();
+export const roomStates: Map<string, { strokes: any[], pdf: any | null, updatedAt?: number, lastEvent?: any }> = new Map();
 
-function normalizeUuid(raw?: string | null) {
+function encodeSSE(obj: any) {
+  try {
+    return new TextEncoder().encode(`data: ${JSON.stringify(obj)}\n\n`);
+  } catch (e) {
+    return new TextEncoder().encode(`data: {}\n\n`);
+  }
+}
+
+export function normalizeUuid(raw?: string | null) {
   if (!raw) return 'default';
   try {
     const dec = decodeURIComponent(raw);
     if (dec.startsWith('course_')) return dec;
+    // If it looks like a simple ID, and doesn't have course_ prefix, add it.
     const m = dec.match(/[?&]courseId=([^&]+)/);
     if (m) return `course_${m[1]}`;
+    // Fallback: if it's a simple string like 'c1', prepend 'course_'
+    if (dec.length < 50 && !dec.includes('/') && !dec.includes(' ')) {
+      return `course_${dec}`;
+    }
     return dec;
   } catch (e) {
     return raw || 'default';
@@ -63,10 +77,6 @@ export async function GET(req: NextRequest) {
       'Access-Control-Allow-Origin': '*',
     });
 
-    function encodeSSE(obj: any) {
-      try { return new TextEncoder().encode(`data: ${JSON.stringify(obj)}\n\n`); } catch (e) { return new TextEncoder().encode(`data: {}\n\n`); }
-    }
-
     const stream = new ReadableStream({
       start(controller) {
         // send connected ping
@@ -89,11 +99,30 @@ export async function GET(req: NextRequest) {
         set.add(client);
         try { console.log(`[WB SSE Server] Client registered. UUID: ${uuid}, Total clients: ${set.size}`, client.meta); } catch (e) {}
 
-        // Send full initial state to the new client
+        // Send full initial state to the new client (prefer in-memory, but fetch from DynamoDB if missed)
         try {
-          const state = roomStates.get(uuid);
-          if (state) {
-            controller.enqueue(encodeSSE({ type: 'init-state', strokes: state.strokes, pdf: state.pdf }));
+          const inMemoryState = roomStates.get(uuid);
+          if (inMemoryState) {
+            console.log('[WB SSE Server] Sending in-memory initial state:', { uuid, strokes: inMemoryState.strokes?.length });
+            controller.enqueue(encodeSSE({ type: 'init-state', strokes: inMemoryState.strokes, pdf: inMemoryState.pdf }));
+          } else {
+            // Fallback: fetch from DynamoDB since this might be a new Lambda instance
+            getWhiteboardState(uuid).then(dbState => {
+              if (dbState) {
+                console.log('[WB SSE Server] Sending DynamoDB initial state (fallback):', { uuid, strokes: dbState.strokes?.length });
+                // Also update in-memory cache so subsequent updates match correctly
+                if (!roomStates.has(uuid)) {
+                   roomStates.set(uuid, { strokes: dbState.strokes || [], pdf: dbState.pdf || null });
+                }
+                controller.enqueue(encodeSSE({ type: 'init-state', strokes: dbState.strokes, pdf: dbState.pdf }));
+              } else {
+                console.log('[WB SSE Server] No initial state found in memory or DynamoDB for', uuid);
+                controller.enqueue(encodeSSE({ type: 'init-state', strokes: [], pdf: null }));
+              }
+            }).catch(e => {
+              console.warn('[WB SSE Server] Failed to fetch fallback DynamoDB state during SSE connect:', e);
+              controller.enqueue(encodeSSE({ type: 'init-state', strokes: [], pdf: null }));
+            });
           }
         } catch (e) {
           console.error('[WB SSE Server] Failed to send initial state:', e);
@@ -124,9 +153,6 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  function encodeSSE(obj: any) {
-    try { return new TextEncoder().encode(`data: ${JSON.stringify(obj)}\n\n`); } catch (e) { return new TextEncoder().encode(`data: {}\n\n`); }
-  }
 }
 
 // Helper used by POST route to broadcast

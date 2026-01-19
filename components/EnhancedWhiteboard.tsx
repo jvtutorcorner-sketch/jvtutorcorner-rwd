@@ -60,7 +60,11 @@ export default function EnhancedWhiteboard({
       // Use courseId from URL parameter directly (or fallback to 'classroom' if not present).
       // This ensures POST and GET use the SAME uuid for server state consistency.
       const params = new URLSearchParams(window.location.search);
-      const courseParam = params.get('courseId') || 'classroom';
+      let courseParam = params.get('courseId') || 'classroom';
+      // Normalize to avoid double course_ prefix
+      while (courseParam.startsWith('course_')) {
+        courseParam = courseParam.replace(/^course_/, '');
+      }
       const uuid = `course_${courseParam}`;
       console.log('[WB POST] Sending event to server:', event.type, 'uuid:', uuid);
       const response = await fetch('/api/whiteboard/event', {
@@ -227,7 +231,24 @@ export default function EnhancedWhiteboard({
   const [tool, setTool] = useState<'pencil' | 'eraser'>('pencil');
   const [color, setColor] = useState('#000000');
   const [strokeWidth, setStrokeWidth] = useState(2);
-  const [strokes, setStrokes] = useState<Stroke[]>([]);
+  const [strokes, setStrokesRaw] = useState<Stroke[]>([]);
+  
+  const setStrokes = useCallback((val: Stroke[] | ((prev: Stroke[]) => Stroke[]), source: string = 'unknown') => {
+    if (verboseLogging) {
+      if (typeof val === 'function') {
+        setStrokesRaw((prev) => {
+          const next = (val as any)(prev);
+          console.log(`[WB STATE] setStrokes via ${source}: ${prev.length} -> ${next.length}`);
+          return next;
+        });
+      } else {
+        console.log(`[WB STATE] setStrokes via ${source}: to ${val.length}`);
+        setStrokesRaw(val);
+      }
+    } else {
+      setStrokesRaw(val);
+    }
+  }, [verboseLogging]);
   const [undone, setUndone] = useState<Stroke[]>([]);
   const isDrawingRef = useRef(false);
   const [mounted, setMounted] = useState(false);
@@ -612,7 +633,7 @@ export default function EnhancedWhiteboard({
     
     if (verboseLogging) logToWindow(`Local stroke start: ${newStroke.id}`);
     
-    setStrokes((s) => [...s, newStroke]);
+    setStrokes((s) => [...s, newStroke], 'local-down');
     setUndone([]);
     currentStrokeIdRef.current = newStroke.id as string;
     try {
@@ -648,7 +669,7 @@ export default function EnhancedWhiteboard({
         }
       } catch (e) {}
       return out;
-    });
+    }, 'local-move');
   }, [enqueueStrokeUpdate, useNetlessWhiteboard]);
 
   const handlePointerUp = useCallback(() => {
@@ -705,12 +726,25 @@ export default function EnhancedWhiteboard({
     if (useNetlessWhiteboard) return;
     if (typeof window === 'undefined') return;
     try {
+      // use normalized uuid for broadcast channel to avoid double-prefix issues
+      // Ensure we have courseParam (may be undefined in this scope) - derive from URL
       const params = new URLSearchParams(window.location.search);
-      const courseParam = params.get('courseId') || 'default';
-      const courseIdFromChannel = (channelName ? (channelName.startsWith('course_') ? channelName.replace(/^course_/, '').split('_')[0] : channelName.split('_')[0]) : courseParam) || 'default';
+      let courseParam = params.get('courseId') || 'default';
+      while (courseParam.startsWith('course_')) {
+        courseParam = courseParam.replace(/^course_/, '');
+      }
+      const courseIdFromChannel = (() => {
+        if (!channelName) return courseParam;
+        let clean = channelName;
+        while (clean.startsWith('course_')) {
+          clean = clean.replace(/^course_/, '');
+        }
+        return clean.split('_')[0] || courseParam;
+      })();
       const bcName = `whiteboard_course_${courseIdFromChannel}`;
       const ch = new BroadcastChannel(bcName);
       bcRef.current = ch;
+      console.log('[WB BC] Created channel:', bcName, 'clientId:', clientIdRef.current);
       ch.onmessage = (ev: MessageEvent) => {
         const data = ev.data as any;
         if (!data || data.clientId === clientIdRef.current) return; // ignore our own
@@ -984,94 +1018,52 @@ export default function EnhancedWhiteboard({
     try {
       // Use courseId from URL parameter directly to ensure POST and GET use same uuid
       const params = new URLSearchParams(window.location.search);
-      const courseParam = params.get('courseId') || 'classroom';
+      let courseParam = params.get('courseId') || 'classroom';
+      while (courseParam.startsWith('course_')) {
+        courseParam = courseParam.replace(/^course_/, '');
+      }
       const uuid = `course_${courseParam}`;
       // In production (Amplify/CloudFront) long-lived SSE often fails or is buffered; use polling there.
       // Must match server-side logic in app/api/whiteboard/stream/route.ts
       const isProduction = window.location.hostname.includes('jvtutorcorner.com') || 
                            window.location.hostname.includes('amplifyapp.com') || 
+                           window.location.hostname.includes('amplifyapp') || 
                            window.location.hostname.includes('cloudfront.net');
 
-      if (isProduction) {
-        console.log('[WB SSE] Production/Amplify detected - skipping SSE. Falling back to /api/whiteboard/state polling.');
-        console.log('[WB POLL] Using uuid:', uuid, 'from courseId:', courseParam);
-        // Try fetching persisted state immediately and then poll periodically
-        let pollId: number | null = null;
-        let lastRemoteHash = '';
-        const fetchAndApply = async () => {
-          try {
-            const resp = await fetch(`/api/whiteboard/state?uuid=${encodeURIComponent(uuid)}`);
-              if (!resp.ok) {
-                const txt = await resp.text().catch(() => '(no body)');
-                console.warn('[WB POLL] /api/whiteboard/state returned non-ok', resp.status, txt.slice(0, 200));
-                if (verboseLogging) {
-                  pushError(`[WB POLL] /api/whiteboard/state returned non-ok ${resp.status}`);
-                  logAnomaly('Production /state returned non-ok', { status: resp.status, bodyPreview: txt?.slice(0,200) });
-                }
-                return;
-              }
-            const j = await resp.json();
-            const s = j?.state;
-            if (s && Array.isArray(s.strokes)) {
-              // Compare both count and content to detect updates (not just count changes)
-              const remoteCount = s.strokes.length;
-              const localCount = strokesRef.current.length;
-              const remoteHash = remoteCount > 0 ? JSON.stringify(s.strokes.map((st: any) => st.id)).slice(0, 100) : '';
-              const localHash = localCount > 0 ? JSON.stringify(strokesRef.current.map((st: any) => st.id)).slice(0, 100) : '';
-              
-              // Detect missing strokes: if remote has more or different content
-              const isMismatch = remoteCount !== localCount || remoteHash !== localHash;
-              const isNewUpdate = remoteHash !== lastRemoteHash; // content actually changed since last sync
-              
-              if (isMismatch && isNewUpdate) {
-                console.log('[WB POLL] ✓ Sync update detected: local=', localCount, 'remote=', remoteCount, 'mismatch=', isMismatch);
-                setStrokes(s.strokes);
-                lastRemoteHash = remoteHash; // track this update
-                  if (verboseLogging) {
-                    console.log('[WB POLL] Applied remote strokes in production poll');
-                  }
-              } else if (isMismatch && !isNewUpdate) {
-                // Same data as before (server didn't change), but we mismatch.
-                // If local > remote, it means we have pending strokes that server hasn't seen yet.
-                // DO NOT overwrite local state with stale remote state.
-                if (localCount > remoteCount) {
-                  if (verboseLogging) console.log('[WB POLL] Local ahead of server (pending sync), ignoring stale remote state');
-                  return;
-                }
-
-                // Only force resync if we are truly behind (remote > local) or same count but diff hash (rare collision/corruption)
-                console.warn('[WB POLL] ⚠ Client behind server by', remoteCount - localCount, 'strokes - forcing resync');
-                setStrokes(s.strokes);
-                lastRemoteHash = remoteHash;
-              }
-              if (s.pdf && s.pdf.dataUrl && s.pdf.dataUrl !== '(large-data-url)' && !localPdfFile) {
-                try {
-                  const r = await fetch(s.pdf.dataUrl);
-                  const blob = await r.blob();
-                  const file = new File([blob], s.pdf.name || 'remote.pdf', { type: blob.type });
-                  setSelectedFileName(file.name);
-                  setLocalPdfFile(file);
-                } catch (e) { console.warn('[WB POLL] Failed to fetch remote PDF', e); }
+      let pollId: number | null = null;
+      let lastRemoteHash = '';
+      
+      const fetchAndApply = async () => {
+        try {
+          const resp = await fetch(`/api/whiteboard/state?uuid=${encodeURIComponent(uuid)}`);
+          if (!resp.ok) return;
+          const j = await resp.json();
+          const s = j?.state;
+          if (s && Array.isArray(s.strokes)) {
+            const remoteHash = s.strokes.length > 0 ? JSON.stringify(s.strokes.map((st: any) => st.id)).slice(0, 100) : '';
+            if (remoteHash !== lastRemoteHash || s.strokes.length !== strokesRef.current.length) {
+              // Only overwrite if remote count >= local count to avoid killing local pen strokes
+              // that are still being sent.
+              if (s.strokes.length >= strokesRef.current.length || s.strokes.length === 0) {
+                 setStrokes(s.strokes, 'poll-sync');
+                 lastRemoteHash = remoteHash;
               }
             }
-          } catch (e) {
-              const errStack = e && (e as Error).stack ? (e as Error).stack : e;
-              console.warn('[WB POLL] Failed to fetch /state in production fallback', errStack);
-              if (verboseLogging) {
-                pushError('[WB POLL] Failed to fetch /state in production fallback');
-                logAnomaly('Production /state fetch failed', { error: errStack });
-              }
           }
-        };
+        } catch (e) {}
+      };
 
-        // initial fetch
+      const startPolling = (interval: number = 2000) => {
+        if (pollId) return;
+        console.log('[WB Sync] Starting polling fallback, interval:', interval);
         fetchAndApply();
-        // Two-tier polling: fast ACK (80ms) for stroke confirmation + balanced main polling (300ms) to avoid overload
-        try { pollId = window.setInterval(fetchAndApply, 300) as unknown as number; } catch (e) { pollId = null; } // 300ms = 3x per second (sustainable)
+        pollId = window.setInterval(fetchAndApply, interval) as any;
+      };
 
-        return () => {
-          try { if (pollId) window.clearInterval(pollId); } catch (e) {}
-        };
+      if (isProduction || process.env.NEXT_PUBLIC_FORCE_POLLING === 'true') {
+        console.log('[WB SSE] Production/Amplify detected - skipping SSE. Using polling.');
+        startPolling(500); // Production polling
+        return () => { if (pollId) window.clearInterval(pollId); };
       }
 
       console.log('[WB SSE] Connecting to SSE stream:', `/api/whiteboard/stream?uuid=${uuid}`);
@@ -1079,33 +1071,7 @@ export default function EnhancedWhiteboard({
       
       es.onopen = () => {
         console.log('[WB SSE] Connection opened successfully');
-        // Try fetching persisted state as a fallback in case any messages were missed
-        (async () => {
-          try {
-            const resp = await fetch(`/api/whiteboard/state?uuid=${encodeURIComponent(uuid)}`);
-            if (resp.ok) {
-              const j = await resp.json();
-              const s = j?.state;
-              if (s && Array.isArray(s.strokes) && strokesRef.current.length === 0) {
-                console.log('[WB SSE] Applying fallback state from /state:', s.strokes.length, 'strokes');
-                setStrokes(s.strokes);
-                if (s.pdf && s.pdf.dataUrl && s.pdf.dataUrl !== '(large-data-url)') {
-                  try {
-                    const r = await fetch(s.pdf.dataUrl);
-                    const blob = await r.blob();
-                    const file = new File([blob], s.pdf.name || 'remote.pdf', { type: blob.type });
-                    setSelectedFileName(file.name);
-                    setLocalPdfFile(file);
-                  } catch (e) {
-                    // ignore
-                  }
-                }
-              }
-            }
-          } catch (e) {
-            // ignore fallback errors
-          }
-        })();
+        fetchAndApply(); // Sync once on open
       };
       
       es.onmessage = (ev) => {
@@ -1128,10 +1094,6 @@ export default function EnhancedWhiteboard({
           if (data.type === 'init-state') {
             console.log('[WB SSE] Applying initial state:', data.strokes?.length, 'strokes');
             if (Array.isArray(data.strokes)) {
-              // Only apply initial state if local is empty to avoid wiping
-              // a locally drawn stroke that may have happened just before
-              // the server's init-state arrives (common race condition).
-              // This prevents stale init-state from overwriting fresh strokes.
               setStrokes((local) => {
                 if (local.length === 0) {
                   console.log('[WB SSE] Accepted init-state with', data.strokes.length, 'strokes');
@@ -1141,7 +1103,7 @@ export default function EnhancedWhiteboard({
                   console.log('[WB SSE] init-state ignored because local strokes exist:', local.length);
                   return local;
                 }
-              });
+              }, 'sse-init');
             }
             if (data.pdf) {
               // Restore PDF if available
@@ -1193,7 +1155,7 @@ export default function EnhancedWhiteboard({
               }
               console.log('[WB SSE] Adding new stroke:', strokeId);
               return [...s, data.stroke];
-            });
+            }, 'sse-start');
             applyingRemoteRef.current = false;
           } else if (data.type === 'stroke-update') {
             console.log('[WB SSE] Applying stroke-update:', data.strokeId);
@@ -1216,7 +1178,7 @@ export default function EnhancedWhiteboard({
               if (verboseLogging) logAnomaly('SSE received stroke-update for unknown strokeId (appending)', { strokeId: data.strokeId, pointsLen: Array.isArray(data.points) ? data.points.length : null });
               console.warn('[WB SSE] stroke-update for unknown strokeId, creating new:', data.strokeId);
               return [...s, { points: data.points, stroke: '#000', strokeWidth: 2, mode: 'draw', id: data.strokeId } as any];
-            });
+            }, 'sse-update');
             applyingRemoteRef.current = false;
           } else if (data.type === 'undo') {
             setStrokes((s) => s.filter((st) => (st as any).id !== data.strokeId));
@@ -1244,23 +1206,14 @@ export default function EnhancedWhiteboard({
         }
       };
       es.onerror = (err) => { 
-        console.error('[WB SSE] Connection error:', err);
-        if (verboseLogging) {
-          pushError('[WB SSE] Connection error - check server or network');
-          (async () => {
-            try {
-              const resp = await fetch(`/api/whiteboard/state?uuid=${encodeURIComponent(uuid)}`);
-              const txt = await resp.text().catch(() => '(no body)');
-              console.error('[WB SSE] Diagnostic /api/whiteboard/state response:', { status: resp.status, bodyPreview: txt.slice(0, 200) });
-            } catch (e) {
-              console.error('[WB SSE] Diagnostic fetch /state failed', e);
-              logAnomaly('SSE diagnostic fetch failed', e);
-            }
-          })();
-        }
-        try { es.close(); } catch (e) { console.warn('[WB SSE] Error closing EventSource after error', e); } 
+        console.error('[WB SSE] Connection error, falling back to polling:', err);
+        startPolling(2000); // Slower polling if SSE fails
+        try { es.close(); } catch (e) {} 
       };
-      return () => { try { es.close(); } catch (e) {} };
+      return () => { 
+        try { es.close(); } catch (e) {}
+        try { if (pollId) window.clearInterval(pollId); } catch (e) {}
+      };
     } catch (e) {
       console.error('[WB SSE] Setup failed:', e && (e as Error).stack ? (e as Error).stack : e);
     }
