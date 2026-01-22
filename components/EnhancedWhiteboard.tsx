@@ -1071,52 +1071,49 @@ export default function EnhancedWhiteboard({
       let lastAppliedLength = 0;
       
       const fetchAndApply = async () => {
-        console.log('[WB POLL] Fetching whiteboard state...');
         try {
           const resp = await fetch(`/api/whiteboard/state?uuid=${encodeURIComponent(uuid)}`);
-          if (!resp.ok) return;
+          if (!resp.ok) {
+            if (verboseLogging) console.log('[WB POLL] Fetch failed:', resp.status);
+            return;
+          }
           const j = await resp.json();
           const s = j?.state;
-          if (s && Array.isArray(s.strokes)) {
-            const remoteUpdatedAt = Number(s.updatedAt || 0);
-            console.log(`[WB POLL] Timestamp: remote=${remoteUpdatedAt} lastApplied=${lastAppliedAtRef.current}`);
-            if (remoteUpdatedAt && remoteUpdatedAt <= lastAppliedAtRef.current) {
-              if (verboseLogging) console.log('[WB Poll] Skipping stale state. remoteUpdatedAt=', remoteUpdatedAt, 'lastAppliedAt=', lastAppliedAtRef.current);
-              return;
-            }
-
-            const localLength = strokesRef.current.length;
-            const remoteLength = s.strokes.length;
-            
-            // Always apply if remote has more strokes
-            if (remoteLength > localLength) {
-              console.log(`[WB POLL] Applying remote (more): remote=${remoteLength} > local=${localLength}`);
-              setStrokes(s.strokes, 'poll-sync-more');
-              lastAppliedLength = remoteLength;
-              lastAppliedAtRef.current = remoteUpdatedAt || Date.now();
-              if (verboseLogging) console.log('[WB Poll] Applied remote state (more strokes):', remoteLength);
-            } 
-            // If same length but not empty, check if content differs
-            else if (remoteLength === localLength && remoteLength > 0) {
-              const localLast = strokesRef.current.slice(-5);
-              const remoteLast = s.strokes.slice(-5);
-              const contentChanged = JSON.stringify(localLast) !== JSON.stringify(remoteLast);
-              console.log(`[WB POLL] Same length check: contentChanged=${contentChanged}`);
-              if (contentChanged) {
-                setStrokes(s.strokes, 'poll-sync-content');
-                lastAppliedAtRef.current = remoteUpdatedAt || Date.now();
-                if (verboseLogging) console.log('[WB Poll] Applied remote state (content changed)');
-              }
-            }
-            // If remote is empty and local is also empty, apply (initial sync)
-            else if (remoteLength === 0 && localLength === 0) {
-              setStrokes(s.strokes, 'poll-sync-empty');
+          if (!s || !Array.isArray(s.strokes)) return;
+          
+          const remoteLen = s.strokes.length;
+          const localLen = strokesRef.current.length;
+          const remoteUpdatedAt = Number(s.updatedAt || 0);
+          
+          if (verboseLogging || remoteLen !== lastAppliedLength) {
+            console.log(`[WB POLL] remote=${remoteLen} local=${localLen} lastApplied=${lastAppliedLength} ts=${remoteUpdatedAt}`);
+          }
+          
+          // KEY: Always apply if we have NEW strokes (by count, not timestamp)
+          if (remoteLen > lastAppliedLength) {
+            console.log(`[WB POLL] APPLY: remote=${remoteLen} > lastApplied=${lastAppliedLength}`);
+            applyingRemoteRef.current = true;
+            setStrokes(s.strokes, 'poll-sync-new');
+            applyingRemoteRef.current = false;
+            lastAppliedLength = remoteLen;
+            lastAppliedAtRef.current = remoteUpdatedAt || Date.now();
+            return;
+          }
+          
+          // If count same but content different, apply
+          if (remoteLen === lastAppliedLength && remoteLen > 0) {
+            const localLast = JSON.stringify(strokesRef.current.slice(-2));
+            const remoteLast = JSON.stringify(s.strokes.slice(-2));
+            if (localLast !== remoteLast) {
+              console.log('[WB POLL] APPLY: content updated at same count');
+              applyingRemoteRef.current = true;
+              setStrokes(s.strokes, 'poll-sync-content');
+              applyingRemoteRef.current = false;
               lastAppliedAtRef.current = remoteUpdatedAt || Date.now();
             }
-            // Never apply empty remote state if local has strokes (protect against stale DB)
           }
         } catch (e) {
-          if (verboseLogging) console.log('[WB Poll] Fetch error:', e);
+          console.warn('[WB POLL] Error:', e);
         }
       };
 
