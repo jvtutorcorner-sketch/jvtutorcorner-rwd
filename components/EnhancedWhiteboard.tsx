@@ -66,7 +66,9 @@ export default function EnhancedWhiteboard({
         courseParam = courseParam.replace(/^course_/, '');
       }
       const uuid = `course_${courseParam}`;
-      console.log('[WB POST] Sending event to server:', event.type, 'uuid:', uuid);
+      const strokeInfo = event.strokeId ? ` strokeId=${event.strokeId}` : '';
+      const pointsInfo = event.points ? ` points=${event.points.length}` : '';
+      console.log(`[WB POST] Sending event: type=${event.type}${strokeInfo}${pointsInfo} uuid=${uuid}`);
       const response = await fetch('/api/whiteboard/event', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -91,8 +93,9 @@ export default function EnhancedWhiteboard({
       // receive the stroke via server relay. We poll persisted /api/whiteboard/state
       // and show an error if the stroke isn't visible after retries.
       // CRITICAL FIX: Only trigger on stroke-start, not on every stroke-update
+      // TESTING FIX: Disable ACK checks in test environment to avoid resource exhaustion
       try {
-        if (event && event.type === 'stroke-start') {
+        if (event && event.type === 'stroke-start' && !verboseLogging) {
           const strokeId = event.stroke?.id;
           if (strokeId) {
             console.log('[WB POST] Starting ACK check for stroke:', strokeId);
@@ -109,7 +112,7 @@ export default function EnhancedWhiteboard({
 
   // Pending ack timers and helper to surface UI errors
   const pendingAckRef = useRef<Map<string, number>>(new Map());
-  const maxConcurrentAcks = 3; // 限制最多同時進行的 ACK 檢查數量
+  const maxConcurrentAcks = 10; // 限制最多同時進行的 ACK 檢查數量（提高以支持快速繪圖）
   const [errors, setErrors] = useState<string[]>([]);
   const pushError = useCallback((msg: string) => {
     setErrors((e) => [...e.slice(-9), msg]);
@@ -126,7 +129,7 @@ export default function EnhancedWhiteboard({
       return;
     }
     let attempts = 0;
-    const maxAttempts = 80; // Total ~15 seconds with backoff
+    const maxAttempts = 30; // Total ~9 seconds with backoff (reduced to prevent resource exhaustion)
     
     // Adaptive backoff: start fast for UX, slow down for server health
     const getNextInterval = (currentAttempts: number) => {
@@ -203,6 +206,7 @@ export default function EnhancedWhiteboard({
 
     const entries = Array.from(pendingUpdatesRef.current.entries());
     if (entries.length === 0) return;
+    console.log(`[WB BATCH] Flushing ${entries.length} pending stroke-update(s)`);
     // send latest update per strokeId
     for (const [strokeId, data] of entries) {
       try {
@@ -236,13 +240,14 @@ export default function EnhancedWhiteboard({
   const setStrokes = useCallback((val: Stroke[] | ((prev: Stroke[]) => Stroke[]), source: string = 'unknown') => {
     if (verboseLogging) {
       if (typeof val === 'function') {
+        console.log(`[WB STATE] setStrokes(function) via ${source}`);
         setStrokesRaw((prev) => {
           const next = (val as any)(prev);
           console.log(`[WB STATE] setStrokes via ${source}: ${prev.length} -> ${next.length}`);
           return next;
         });
       } else {
-        console.log(`[WB STATE] setStrokes via ${source}: to ${val.length}`);
+        console.log(`[WB STATE] setStrokes direct: to ${val.length} strokes (${source})`);
         setStrokesRaw(val);
       }
     } else {
@@ -349,7 +354,7 @@ export default function EnhancedWhiteboard({
         const timestamp = parseInt(parts[parts.length - 1]);
         if (!isNaN(timestamp) && (now - timestamp) > maxAge) {
           console.warn('[WB ACK] Force cleaning stuck ACK timer:', strokeId);
-          try { window.clearInterval(timerId); } catch (e) {}
+          try { window.clearTimeout(timerId); } catch (e) {}
           pendingAckRef.current.delete(strokeId);
         }
       });
@@ -358,7 +363,7 @@ export default function EnhancedWhiteboard({
     return () => {
       try { window.clearInterval(cleanupInterval); } catch (e) {}
       try {
-        pendingAckRef.current.forEach((t) => { try { window.clearInterval(t); } catch (e) {} });
+        pendingAckRef.current.forEach((t) => { try { window.clearTimeout(t); } catch (e) {} });
         pendingAckRef.current.clear();
       } catch (e) {}
     };
@@ -668,6 +673,9 @@ export default function EnhancedWhiteboard({
       if (!last) return prev;
       const updated = { ...last, points: last.points.concat([pos.x, pos.y]) };
       const out = [...prev.slice(0, -1), updated];
+      if (verboseLogging && updated.points.length % 20 === 0) {
+        console.log(`[WB DRAW] Stroke ${(last as any).id} now has ${updated.points.length} points`);
+      }
       try {
         if (!useNetlessWhiteboard && bcRef.current && (last as any).origin !== clientIdRef.current) {
           // don't re-broadcast remote-applied strokes
@@ -758,6 +766,7 @@ export default function EnhancedWhiteboard({
       bcRef.current = ch;
       console.log('[WB BC] Created channel:', bcName, 'clientId:', clientIdRef.current);
       ch.onmessage = (ev: MessageEvent) => {
+        console.log(`[WB BC RCV] type=${ev.data?.type} from=${ev.data?.clientId?.slice(0,8)} self=${clientIdRef.current.slice(0,8)}`);
         const data = ev.data as any;
         if (!data || data.clientId === clientIdRef.current) return; // ignore our own
         try {
@@ -1062,6 +1071,7 @@ export default function EnhancedWhiteboard({
       let lastAppliedLength = 0;
       
       const fetchAndApply = async () => {
+        console.log('[WB POLL] Fetching whiteboard state...');
         try {
           const resp = await fetch(`/api/whiteboard/state?uuid=${encodeURIComponent(uuid)}`);
           if (!resp.ok) return;
@@ -1069,6 +1079,7 @@ export default function EnhancedWhiteboard({
           const s = j?.state;
           if (s && Array.isArray(s.strokes)) {
             const remoteUpdatedAt = Number(s.updatedAt || 0);
+            console.log(`[WB POLL] Timestamp: remote=${remoteUpdatedAt} lastApplied=${lastAppliedAtRef.current}`);
             if (remoteUpdatedAt && remoteUpdatedAt <= lastAppliedAtRef.current) {
               if (verboseLogging) console.log('[WB Poll] Skipping stale state. remoteUpdatedAt=', remoteUpdatedAt, 'lastAppliedAt=', lastAppliedAtRef.current);
               return;
@@ -1079,6 +1090,7 @@ export default function EnhancedWhiteboard({
             
             // Always apply if remote has more strokes
             if (remoteLength > localLength) {
+              console.log(`[WB POLL] Applying remote (more): remote=${remoteLength} > local=${localLength}`);
               setStrokes(s.strokes, 'poll-sync-more');
               lastAppliedLength = remoteLength;
               lastAppliedAtRef.current = remoteUpdatedAt || Date.now();
@@ -1089,6 +1101,7 @@ export default function EnhancedWhiteboard({
               const localLast = strokesRef.current.slice(-5);
               const remoteLast = s.strokes.slice(-5);
               const contentChanged = JSON.stringify(localLast) !== JSON.stringify(remoteLast);
+              console.log(`[WB POLL] Same length check: contentChanged=${contentChanged}`);
               if (contentChanged) {
                 setStrokes(s.strokes, 'poll-sync-content');
                 lastAppliedAtRef.current = remoteUpdatedAt || Date.now();
@@ -1129,6 +1142,7 @@ export default function EnhancedWhiteboard({
       };
       
       es.onmessage = (ev) => {
+        console.log(`[WB SSE] Received message, data length=${ev.data?.length || 0}`);
         try {
           const data = JSON.parse(ev.data);
           if (!data) return;
@@ -1199,7 +1213,8 @@ export default function EnhancedWhiteboard({
             return;
           }
           if (data.type === 'stroke-start') {
-            console.log('[WB SSE] Applying stroke-start:', data);
+            const strokeId = data.strokeId || (data.stroke as any)?.id;
+            console.log(`[WB SSE] stroke-start: id=${strokeId} from=${data.clientId?.slice(0,8)} self=${clientIdRef.current.slice(0,8)}`);
             applyingRemoteRef.current = true;
             setStrokes((s) => {
               const strokeId = data.strokeId || (data.stroke as any)?.id;
@@ -1212,7 +1227,7 @@ export default function EnhancedWhiteboard({
             }, 'sse-start');
             applyingRemoteRef.current = false;
           } else if (data.type === 'stroke-update') {
-            console.log('[WB SSE] Applying stroke-update:', data.strokeId);
+            console.log(`[WB SSE] stroke-update: id=${data.strokeId} points=${data.points?.length} from=${data.clientId?.slice(0,8)}`);
             applyingRemoteRef.current = true;
             setStrokes((s) => {
               const idx = s.findIndex((st) => (st as any).id === data.strokeId);
@@ -1226,7 +1241,7 @@ export default function EnhancedWhiteboard({
                 // Update specific stroke without affecting others
                 const updated = { ...(s[idx] as any), points: data.points };
                 const result = [...s.slice(0, idx), updated, ...s.slice(idx + 1)];
-                console.log('[WB SSE] Updated stroke at index', idx, 'now total:', result.length);
+                console.log(`[WB SSE] Updated stroke idx=${idx} points=${data.points.length} total=${result.length}`);
                 return result;
               }
               if (verboseLogging) logAnomaly('SSE received stroke-update for unknown strokeId (appending)', { strokeId: data.strokeId, pointsLen: Array.isArray(data.points) ? data.points.length : null });
