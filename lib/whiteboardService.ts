@@ -94,12 +94,37 @@ export async function addStrokeAtomic(uuid: string, stroke: any): Promise<void> 
 export async function updateStrokeInList(uuid: string, strokeId: string, points: number[]): Promise<void> {
   try {
     const state = await getWhiteboardState(uuid);
-    if (!state) return;
-    const strokes = [...(state.strokes || [])];
-    const idx = strokes.findIndex((s: any) => s.id === strokeId);
+    if (!state || !state.strokes) return;
+    
+    const idx = state.strokes.findIndex((s: any) => s.id === strokeId);
+    
     if (idx >= 0) {
-      strokes[idx].points = points;
-      await saveWhiteboardState(uuid, strokes, state.pdf);
+      // ATOMIC UPDATE: Modify only the specific stroke to prevent overwriting concurrent additions
+      // This solves the race condition where reading the full list and writing it back 
+      // wipes out strokes added by addStrokeAtomic() in the interim.
+      const now = Date.now();
+      const params = {
+        TableName: TABLE_NAME,
+        Key: { id: uuid },
+        UpdateExpression: `SET strokes[${idx}].points = :points, updatedAt = :now`,
+        ConditionExpression: `strokes[${idx}].id = :strokeId`,
+        ExpressionAttributeValues: {
+          ':points': points,
+          ':now': now,
+          ':strokeId': strokeId
+        }
+      };
+
+      try {
+        await ddbDocClient.send(new UpdateCommand(params));
+      } catch (err: any) {
+        if (err.name === 'ConditionalCheckFailedException') {
+          // If index shifted (rare), we could retry, but for high-freq updates we can skip
+          console.warn('[WhiteboardService] Stroke update condition failed (index shift?), skipping', { uuid, strokeId, idx });
+        } else {
+          throw err;
+        }
+      }
     }
   } catch (error) {
     console.error('[WhiteboardService] Error in updateStrokeInList:', error);
