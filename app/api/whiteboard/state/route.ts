@@ -8,30 +8,39 @@ export async function GET(req: NextRequest) {
     const rawUuid = searchParams.get('uuid') || 'default';
     const uuid = normalizeUuid(rawUuid);
     
-    // 1. Try fetching from in-memory state FIRST (for fastest sync and resilient to DynamoDB failure)
-    const memState = roomStates.get(uuid);
-    if (memState && memState.strokes && memState.strokes.length > 0) {
-      console.log(`[WB State] Found in-memory state for ${uuid}: ${memState.strokes.length} strokes`);
-      return new Response(JSON.stringify({ ok: true, state: memState, source: 'memory' }), { status: 200 });
-    }
+    // In serverless (Amplify/Lambda), roomStates is not shared across instances.
+    // We MUST use DynamoDB as the source of truth for full state sync.
+    // memory state is still useful as a cache or for local dev.
+    
+    let state: any = { strokes: [], pdf: null };
+    let source = 'none';
 
-    // 2. Fetch state from DynamoDB as fallback
+    // 1. Fetch state from DynamoDB first (Strongly Consistent Read)
     try {
       const dbState = await getWhiteboardState(uuid);
       if (dbState) {
-        // Cache back to memory for next poll
-        if (!roomStates.has(uuid)) {
-           roomStates.set(uuid, { strokes: dbState.strokes || [], pdf: dbState.pdf || null });
+        state = dbState;
+        source = 'dynamodb';
+        // Hydrate memory cache for this specific instance
+        roomStates.set(uuid, { strokes: dbState.strokes || [], pdf: dbState.pdf || null });
+      } else {
+        // 2. Fallback to memory if DB is empty/fails
+        const memState = roomStates.get(uuid);
+        if (memState) {
+          state = memState;
+          source = 'memory';
         }
-        return new Response(JSON.stringify({ ok: true, state: dbState, source: 'dynamodb' }), { status: 200 });
       }
-    } catch (dbErr) {
-      console.warn('[WB State] DynamoDB fetch failed:', dbErr);
-      // continue to return empty instead of 500
+    } catch (e) {
+      console.warn('[WB State] DB Fetch error, falling back to memory:', e);
+      const memState = roomStates.get(uuid);
+      if (memState) {
+        state = memState;
+        source = 'memory';
+      }
     }
-    
-    // Return empty state if nothing found
-    return new Response(JSON.stringify({ ok: true, state: memState || { strokes: [], pdf: null }, source: 'empty' }), { status: 200 });
+
+    return new Response(JSON.stringify({ ok: true, state, source }), { status: 200 });
   } catch (e) {
     console.error('[WB State] Unexpected Error:', e);
     return new Response(JSON.stringify({ ok: false, error: String(e) }), { status: 500 });

@@ -254,6 +254,8 @@ export default function EnhancedWhiteboard({
   const [mounted, setMounted] = useState(false);
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
   const [whiteboardPermissions, setWhiteboardPermissions] = useState<Record<string, string[] | undefined> | null>(null);
+  const drawDirtyRef = useRef(false);
+  const rafIdRef = useRef<number | null>(null);
   const [currentUserRoleId, setCurrentUserRoleId] = useState<string | null>(() => {
     if (typeof window === 'undefined') return null;
     const params = new URLSearchParams(window.location.search);
@@ -274,6 +276,7 @@ export default function EnhancedWhiteboard({
   useEffect(() => {
     strokesRef.current = strokes;
   }, [strokes]);
+  const lastAppliedAtRef = useRef<number>(0);
   
   // PDF state
   const [pdfLib, setPdfLib] = useState<any | null>(null);
@@ -603,6 +606,15 @@ export default function EnhancedWhiteboard({
     });
   }, [strokes]);
 
+  const scheduleDraw = useCallback(() => {
+    if (drawDirtyRef.current) return;
+    drawDirtyRef.current = true;
+    rafIdRef.current = window.requestAnimationFrame(() => {
+      drawDirtyRef.current = false;
+      drawAll();
+    });
+  }, [drawAll]);
+
   // Attach non-passive touch listeners to prevent page scroll while drawing on mobile
   
 
@@ -892,6 +904,13 @@ export default function EnhancedWhiteboard({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [useNetlessWhiteboard, setStrokes, setUndone]);
 
+  // Expose flush for testing
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      (window as any).__wb_flushPending = flushPendingUpdates;
+    }
+  }, [flushPendingUpdates]);
+
   // Attach non-passive touch listeners to prevent page scroll while drawing on mobile
   useEffect(() => {
     const el = canvasRef.current;
@@ -1001,12 +1020,21 @@ export default function EnhancedWhiteboard({
 
   // redraw when strokes change
   useEffect(() => {
-    drawAll();
+    scheduleDraw();
     // Expose strokes to window for E2E testing
     if (typeof window !== 'undefined') {
       (window as any).__whiteboard_strokes = strokes;
     }
-  }, [strokes, drawAll]);
+  }, [strokes, scheduleDraw]);
+
+  // cleanup any pending RAF on unmount
+  useEffect(() => {
+    return () => {
+      if (rafIdRef.current) {
+        cancelAnimationFrame(rafIdRef.current);
+      }
+    };
+  }, []);
 
   // Server-side SSE subscription for cross-device sync
   useEffect(() => {
@@ -1031,7 +1059,7 @@ export default function EnhancedWhiteboard({
                            window.location.hostname.includes('cloudfront.net');
 
       let pollId: number | null = null;
-      let lastRemoteHash = '';
+      let lastAppliedLength = 0;
       
       const fetchAndApply = async () => {
         try {
@@ -1040,17 +1068,43 @@ export default function EnhancedWhiteboard({
           const j = await resp.json();
           const s = j?.state;
           if (s && Array.isArray(s.strokes)) {
-            const remoteHash = s.strokes.length > 0 ? JSON.stringify(s.strokes.map((st: any) => st.id)).slice(0, 100) : '';
-            if (remoteHash !== lastRemoteHash || s.strokes.length !== strokesRef.current.length) {
-              // Only overwrite if remote count >= local count to avoid killing local pen strokes
-              // that are still being sent.
-              if (s.strokes.length >= strokesRef.current.length || s.strokes.length === 0) {
-                 setStrokes(s.strokes, 'poll-sync');
-                 lastRemoteHash = remoteHash;
+            const remoteUpdatedAt = Number(s.updatedAt || 0);
+            if (remoteUpdatedAt && remoteUpdatedAt <= lastAppliedAtRef.current) {
+              if (verboseLogging) console.log('[WB Poll] Skipping stale state. remoteUpdatedAt=', remoteUpdatedAt, 'lastAppliedAt=', lastAppliedAtRef.current);
+              return;
+            }
+
+            const localLength = strokesRef.current.length;
+            const remoteLength = s.strokes.length;
+            
+            // Always apply if remote has more strokes
+            if (remoteLength > localLength) {
+              setStrokes(s.strokes, 'poll-sync-more');
+              lastAppliedLength = remoteLength;
+              lastAppliedAtRef.current = remoteUpdatedAt || Date.now();
+              if (verboseLogging) console.log('[WB Poll] Applied remote state (more strokes):', remoteLength);
+            } 
+            // If same length but not empty, check if content differs
+            else if (remoteLength === localLength && remoteLength > 0) {
+              const localLast = strokesRef.current.slice(-5);
+              const remoteLast = s.strokes.slice(-5);
+              const contentChanged = JSON.stringify(localLast) !== JSON.stringify(remoteLast);
+              if (contentChanged) {
+                setStrokes(s.strokes, 'poll-sync-content');
+                lastAppliedAtRef.current = remoteUpdatedAt || Date.now();
+                if (verboseLogging) console.log('[WB Poll] Applied remote state (content changed)');
               }
             }
+            // If remote is empty and local is also empty, apply (initial sync)
+            else if (remoteLength === 0 && localLength === 0) {
+              setStrokes(s.strokes, 'poll-sync-empty');
+              lastAppliedAtRef.current = remoteUpdatedAt || Date.now();
+            }
+            // Never apply empty remote state if local has strokes (protect against stale DB)
           }
-        } catch (e) {}
+        } catch (e) {
+          if (verboseLogging) console.log('[WB Poll] Fetch error:', e);
+        }
       };
 
       const startPolling = (interval: number = 2000) => {
