@@ -36,39 +36,38 @@ export async function POST(req: NextRequest) {
       return new Response(JSON.stringify({ ok: false, error: 'no event' }), { status: 400 });
     }
     
-    // 1. IMPORTANT: Broadcast FIRST (this updates in-memory roomStates)
+    // 1. IMPORTANT: Broadcast FIRST (this updates in-memory roomStates for THIS instance)
     try {
       broadcastToUuid(uuid, event);
     } catch (e) {
       console.warn('[WB Event Server] Broadcast failed:', e);
     }
 
-    // 2. Update DynamoDB asynchronously/best-effort (don't block for long if possible)
+    // 2. Update DynamoDB using Atomic Operations to prevent race conditions in Lambda
     try {
-      // Fetching current state from DynamoDB can be slow. 
-      // Ideally we would use the in-memory state if we are the primary node.
-      const currentState = await getWhiteboardState(uuid) || { strokes: [], pdf: null, updatedAt: 0 };
-      let newStrokes = [...(currentState.strokes || [])];
-      let newPdf = currentState.pdf || null;
-      
       if (event.type === 'stroke-start') {
-        if (event.stroke && event.stroke.id) newStrokes.push(event.stroke);
-      } else if (event.type === 'stroke-update') {
-        const idx = newStrokes.findIndex((s: any) => s.id === event.strokeId);
-        if (idx >= 0) {
-          newStrokes[idx] = { ...newStrokes[idx], points: event.points };
-        } else {
-          newStrokes.push({ id: event.strokeId, points: event.points, stroke: '#000', strokeWidth: 2, mode: 'draw' });
+        if (event.stroke && event.stroke.id) {
+          const { addStrokeAtomic } = await import('@/lib/whiteboardService');
+          await addStrokeAtomic(uuid, event.stroke);
         }
-      } else if (event.type === 'undo') {
-        newStrokes = newStrokes.filter((s: any) => s.id !== event.strokeId);
-      } else if (event.type === 'clear') {
-        newStrokes = [];
-      } else if (event.type === 'pdf-set') {
-        newPdf = event.pdf || event;
+      } else if (event.type === 'stroke-update') {
+        const { updateStrokeInList } = await import('@/lib/whiteboardService');
+        await updateStrokeInList(uuid, event.strokeId, event.points);
+      } else if (event.type === 'undo' || event.type === 'clear' || event.type === 'pdf-set') {
+        // These are less frequent or require full state context, use the safer read-modify-write for now
+        const currentState = await getWhiteboardState(uuid) || { strokes: [], pdf: null, updatedAt: 0 };
+        let newStrokes = [...(currentState.strokes || [])];
+        let newPdf = currentState.pdf || null;
+        
+        if (event.type === 'undo') {
+          newStrokes = newStrokes.filter((s: any) => s.id !== event.strokeId);
+        } else if (event.type === 'clear') {
+          newStrokes = [];
+        } else if (event.type === 'pdf-set') {
+          newPdf = event.pdf || event;
+        }
+        await saveWhiteboardState(uuid, newStrokes, newPdf);
       }
-      
-      await saveWhiteboardState(uuid, newStrokes, newPdf);
     } catch (e) {
       console.error('[WB Event Server] DynamoDB update failed:', { uuid, error: String(e) });
     }
