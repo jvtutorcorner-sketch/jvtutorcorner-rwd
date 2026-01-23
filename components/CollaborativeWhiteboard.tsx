@@ -1,13 +1,14 @@
 "use client";
 
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import throttle from 'lodash/throttle';
+// import throttle from 'lodash/throttle'; // Removed to prevent data loss
 
 /**
  * Spec compliance:
  * 1. Dual-layer Canvas: TopCanvas (Local active) & BottomCanvas (History/Remote)
- * 2. Payload Optimization: Math.round coords, Batching (20 points), Throttle (30ms)
- * 3. Flicker Prevention: Direct canvas drawing, no clearRect on stream, no React state for sync
+ * 2. Payload Optimization: Math.round coords, Batching (Time-based + Count-based)
+ * 3. Flicker Prevention: Direct canvas drawing, no clearRect on stream
+ * 4. Fix: Removed throttling on sender to prevent missing strokes (data loss).
  */
 
 interface CollaborativeWhiteboardProps {
@@ -132,6 +133,7 @@ export default function CollaborativeWhiteboard({
     ctx.beginPath();
     
     // Draw the segment received
+    let hasMoved = false;
     for (let i = 0; i < data.points.length; i += 2) {
       const x = data.points[i];
       const y = data.points[i + 1];
@@ -139,21 +141,56 @@ export default function CollaborativeWhiteboard({
         ctx.moveTo(x, y);
       } else {
         ctx.lineTo(x, y);
+        hasMoved = true;
       }
     }
+    
+    // Support Dots (single point click)
+    if (!hasMoved && data.points.length === 2) {
+       ctx.lineTo(data.points[0], data.points[1]); // Zero-length line to create a dot with round cap
+    }
+
     ctx.stroke();
   };
 
-  // Spec: Throttle frequency (approx 30ms)
-  const sendDrawPacket = useCallback(
-    throttle((packet: DrawPacket) => {
-      if (rtmClientRef.current) {
-        rtmClientRef.current.publish(channelName, JSON.stringify(packet))
-          .catch((err: any) => console.error('RTM Send Error', err));
+  // Spec: Send immediately without throttling to prevent data loss
+  const sendDrawPacket = useCallback((packet: DrawPacket) => {
+    if (rtmClientRef.current) {
+      rtmClientRef.current.publish(channelName, JSON.stringify(packet))
+        .catch((err: any) => console.error('RTM Send Error', err));
+    }
+  }, [channelName]);
+
+  // Flush buffer helper
+  const flushBuffer = useCallback(() => {
+    if (pointsBufferRef.current.length < 4) return; // Need at least 2 points (4 coords) to draw a segment
+
+    const packetPoints = [...pointsBufferRef.current];
+    const lastX = packetPoints[packetPoints.length - 2];
+    const lastY = packetPoints[packetPoints.length - 1];
+
+    sendDrawPacket({
+      type: 'draw_stream',
+      points: packetPoints,
+      color,
+      lineWidth,
+      isEnd: false,
+      strokeId: currentStrokeIdRef.current || '',
+    });
+
+    // Keep the last point as the start of the next segment to ensure continuity
+    pointsBufferRef.current = [lastX, lastY];
+  }, [sendDrawPacket, color, lineWidth]);
+
+  // Time-based flush (every 50ms) to ensure smooth updates even when drawing slowly
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      if (isDrawingRef.current) {
+        flushBuffer();
       }
-    }, 30),
-    [channelName]
-  );
+    }, 50);
+    return () => clearInterval(intervalId);
+  }, [flushBuffer]);
 
   const startDrawing = (e: React.MouseEvent | React.TouchEvent) => {
     if (!editable) return;
@@ -194,19 +231,9 @@ export default function CollaborativeWhiteboard({
     // 2. Add to buffer
     pointsBufferRef.current.push(rx, ry);
     
-    // 3. Spec: Send every 20 points
-    if (pointsBufferRef.current.length >= 40) { // 20 pairs of (x,y)
-      sendDrawPacket({
-        type: 'draw_stream',
-        points: [...pointsBufferRef.current],
-        color,
-        lineWidth,
-        isEnd: false,
-        strokeId: currentStrokeIdRef.current || '',
-      });
-      
-      // Start next batch from current point to maintain continuity
-      pointsBufferRef.current = [rx, ry];
+    // 3. Optional: Cap buffer size to avoid huge packets if interval is delayed
+    if (pointsBufferRef.current.length >= 80) { // 40 points
+      flushBuffer();
     }
   };
 
