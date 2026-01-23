@@ -10,7 +10,7 @@ const WhiteboardPage = () => {
       </div>
       <p style={{ marginTop: '10px', color: '#666' }}>
         Dual-layer canvas used to prevent flickering. 
-        Points are synced with a robust queue to prevent packet loss (0% drop).
+        Points are synced with a robust queue (30ms interval) to prevent packet loss and smooth rendering.
       </p>
     </div>
   );
