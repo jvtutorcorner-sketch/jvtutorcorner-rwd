@@ -28,14 +28,8 @@ export async function detectProducts(buffer: Buffer): Promise<{ products: Detect
 
   // Try to load onnxruntime dynamically to avoid import errors when not installed
   try {
-    if (typeof window !== 'undefined') {
-      // ONNX runtime only runs on Node — in browser we fallback
-      throw new Error('onnxruntime not available in browser');
-    }
-    const modName = 'onnxruntime-node';
-    // dynamic import using a variable to avoid bundlers trying to resolve it at build time
     // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const ort = await import(modName).then((m) => (m as any).default ?? m);
+    const ort = require('onnxruntime-node');
 
     // Very small example: user must implement a proper preprocessing matching the model
     // This code demonstrates the flow but may require adjustments per model (input shape, normalization, postprocessing)
