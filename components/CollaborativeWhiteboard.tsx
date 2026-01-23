@@ -64,6 +64,10 @@ export default function CollaborativeWhiteboard({
   
   // RTM Client Ref
   const rtmClientRef = useRef<any>(null);
+  
+  // Message Queue for RTM to prevent rate-limit dropping and ensure ordering
+  const messageQueueRef = useRef<DrawPacket[]>([]);
+  const isSendingRef = useRef(false);
 
   // Initialize Canvas Contexts
   useEffect(() => {
@@ -153,13 +157,41 @@ export default function CollaborativeWhiteboard({
     ctx.stroke();
   };
 
-  // Spec: Send immediately without throttling to prevent data loss
-  const sendDrawPacket = useCallback((packet: DrawPacket) => {
-    if (rtmClientRef.current) {
-      rtmClientRef.current.publish(channelName, JSON.stringify(packet))
-        .catch((err: any) => console.error('RTM Send Error', err));
+  // Spec: Robust Queue-based sending to prevent RTM 429/Busy errors and dropped frames.
+  const processQueue = useCallback(async () => {
+    if (isSendingRef.current || messageQueueRef.current.length === 0 || !rtmClientRef.current) {
+      return;
+    }
+
+    isSendingRef.current = true;
+    const packet = messageQueueRef.current[0]; // Peek
+
+    try {
+      await rtmClientRef.current.publish(channelName, JSON.stringify(packet));
+      // On success, dequeue
+      messageQueueRef.current.shift();
+    } catch (err: any) {
+      console.error('RTM Send Error, Will Retry', err);
+      // Wait a bit before retry to let rate limit cool down
+      await new Promise(resolve => setTimeout(resolve, 200));
+    } finally {
+      isSendingRef.current = false;
+      // Continue processing if there are more
+      if (messageQueueRef.current.length > 0) {
+         // Using setTimeout to break stack and avoid recursion limits, though await above handles it mostly
+         // If we are "backed up", we proceed immediately?
+         // Let's add slight delay if we want to be nice, but for real-time we want to drain fast
+         processQueue();
+      }
     }
   }, [channelName]);
+
+  const sendDrawPacket = useCallback((packet: DrawPacket) => {
+    // 1. Enqueue
+    messageQueueRef.current.push(packet);
+    // 2. Trigger processor
+    processQueue();
+  }, [processQueue]);
 
   // Flush buffer helper
   const flushBuffer = useCallback(() => {
@@ -178,7 +210,8 @@ export default function CollaborativeWhiteboard({
       strokeId: currentStrokeIdRef.current || '',
     });
 
-    // Keep the last point as the start of the next segment to ensure continuity
+    // Important: We keep the LAST point as the START of the next segment.
+    // This ensures that even if packets arrive late, the segments visually connect.
     pointsBufferRef.current = [lastX, lastY];
   }, [sendDrawPacket, color, lineWidth]);
 
