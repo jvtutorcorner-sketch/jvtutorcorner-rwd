@@ -299,6 +299,9 @@ export default function EnhancedWhiteboard({
   const [whiteboardWidth, setWhiteboardWidth] = useState(width);
   const [whiteboardHeight, setWhiteboardHeight] = useState(height);
   const [canvasHeight, setCanvasHeight] = useState(height - 48);
+  // Eraser cursor position
+  const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
+  const [showCursor, setShowCursor] = useState(false);
   
   // Use Netless whiteboard if room is provided
   const useNetlessWhiteboard = Boolean(room && whiteboardRef);
@@ -849,6 +852,33 @@ export default function EnhancedWhiteboard({
       console.error('[WB] Failed to sync PDF page change:', e);
     }
   }, [pdf, numPages, currentUserRoleId]);
+
+  const handleCanvasMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (tool === 'eraser') {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const rect = canvas.getBoundingClientRect();
+      setCursorPos({
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top
+      });
+      setShowCursor(true);
+    } else {
+      setShowCursor(false);
+    }
+    handlePointerMove(e);
+  }, [tool, handlePointerMove]);
+
+  const handleCanvasMouseEnter = useCallback(() => {
+    if (tool === 'eraser') {
+      setShowCursor(true);
+    }
+  }, [tool]);
+
+  const handleCanvasMouseLeave = useCallback(() => {
+    setShowCursor(false);
+    handlePointerUp();
+  }, [handlePointerUp]);
 
   // BroadcastChannel setup for canvas sync (per-page channel)
   useEffect(() => {
@@ -1539,11 +1569,29 @@ export default function EnhancedWhiteboard({
               ref={canvasRef}
               {...(autoFit ? {} : { width: whiteboardWidth, height: whiteboardHeight - 48 })}
               onMouseDown={handlePointerDown}
-              onMouseMove={handlePointerMove}
+              onMouseMove={handleCanvasMouseMove}
               onMouseUp={handlePointerUp}
-              onMouseLeave={handlePointerUp}
-              style={{ position: 'absolute', top: 0, left: 0, display: 'block', cursor: editable ? 'crosshair' : 'default', width: '100%', height: '100%', pointerEvents: editable ? 'auto' : 'none' }}
+              onMouseEnter={handleCanvasMouseEnter}
+              onMouseLeave={handleCanvasMouseLeave}
+              style={{ position: 'absolute', top: 0, left: 0, display: 'block', cursor: editable && tool === 'eraser' ? 'none' : (editable ? 'crosshair' : 'default'), width: '100%', height: '100%', pointerEvents: editable ? 'auto' : 'none' }}
             />
+            {/* Eraser cursor */}
+            {showCursor && tool === 'eraser' && cursorPos && editable && (
+              <div
+                style={{
+                  position: 'absolute',
+                  left: cursorPos.x,
+                  top: cursorPos.y,
+                  width: strokeWidth,
+                  height: strokeWidth,
+                  border: '2px solid #333',
+                  backgroundColor: 'rgba(255, 255, 255, 0.3)',
+                  transform: 'translate(-50%, -50%)',
+                  pointerEvents: 'none',
+                  zIndex: 1000
+                }}
+              />
+            )}
           </>
         )}
       </div>
