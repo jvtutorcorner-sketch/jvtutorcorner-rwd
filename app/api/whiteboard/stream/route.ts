@@ -198,6 +198,22 @@ export function broadcastToUuid(uuid: string, payload: any): number {
       } else {
         state.pdf = payload;
       }
+    } else if (payload.type === 'pdf-uploaded') {
+      // Store PDF metadata (without the base64 data to save memory)
+      state.pdf = {
+        name: payload.pdf?.name,
+        size: payload.pdf?.size,
+        type: payload.pdf?.type,
+        currentPage: payload.pdf?.currentPage || 1,
+        uploadedAt: payload.pdf?.uploadedAt
+      };
+      console.log('[WB SSE Server] PDF uploaded event stored:', state.pdf);
+    } else if (payload.type === 'pdf-page-change') {
+      // Update current page in PDF state
+      if (state.pdf) {
+        state.pdf.currentPage = payload.page;
+        console.log('[WB SSE Server] PDF page updated to:', payload.page);
+      }
     }
 
     // attach lastEvent metadata for debugging (small summary only)

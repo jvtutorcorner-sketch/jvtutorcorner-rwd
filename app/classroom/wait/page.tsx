@@ -41,6 +41,8 @@ export default function ClassroomWaitPage() {
   const [deviceCheckPassed, setDeviceCheckPassed] = useState(false);
   const [audioOk, setAudioOk] = useState(false);
   const [videoOk, setVideoOk] = useState(false);
+  const [selectedPdf, setSelectedPdf] = useState<File | null>(null);
+  const [uploadingPdf, setUploadingPdf] = useState(false);
   const t = useT();
 
   
@@ -336,6 +338,57 @@ export default function ClassroomWaitPage() {
     setDeviceCheckPassed(audio && video || !!e2eBypass);
   }, []);
 
+  const handlePdfUpload = React.useCallback(async (file: File) => {
+    if (role !== 'teacher') {
+      alert('只有老師可以上傳PDF');
+      return;
+    }
+    
+    setUploadingPdf(true);
+    try {
+      // Read file as base64
+      const reader = new FileReader();
+      const base64Promise = new Promise<string>((resolve, reject) => {
+        reader.onload = () => {
+          const result = reader.result as string;
+          // Extract base64 data (remove data:application/pdf;base64, prefix)
+          const base64 = result.split(',')[1];
+          resolve(base64);
+        };
+        reader.onerror = reject;
+      });
+      reader.readAsDataURL(file);
+      const base64Data = await base64Promise;
+
+      // Upload PDF to server
+      const response = await fetch('/api/whiteboard/pdf', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          uuid: sessionReadyKey,
+          pdf: {
+            name: file.name,
+            data: base64Data,
+            size: file.size,
+            type: file.type
+          }
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('PDF upload failed');
+      }
+
+      setSelectedPdf(file);
+      alert('PDF 上傳成功！');
+    } catch (error) {
+      console.error('Failed to upload PDF:', error);
+      alert('PDF 上傳失敗，請重試');
+    } finally {
+      setUploadingPdf(false);
+    }
+  }, [role, sessionReadyKey]);
+
   if (!isClient) return null;
 
   return (
@@ -401,6 +454,53 @@ export default function ClassroomWaitPage() {
           </div>
         )}
       </div>
+
+      {/* PDF Upload for Teachers */}
+      {role === 'teacher' && (
+        <div style={{ marginTop: 20, padding: 20, border: '2px solid #e0e0e0', borderRadius: 12, background: '#fafafa' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+            <div style={{ width: 32, height: 32, borderRadius: '50%', background: selectedPdf ? '#4caf50' : '#2196f3', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 'bold', fontSize: 18 }}>
+              📄
+            </div>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 16 }}>PDF 課程教材</div>
+              <div style={{ fontSize: 13, color: '#666', marginTop: 2 }}>上傳 PDF 檔案，將在課堂中顯示</div>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+            <label style={{ 
+              padding: '10px 20px', 
+              background: uploadingPdf ? '#ccc' : '#2196f3', 
+              color: 'white', 
+              border: 'none', 
+              borderRadius: 6,
+              fontSize: 14,
+              fontWeight: 600,
+              cursor: uploadingPdf ? 'not-allowed' : 'pointer',
+              display: 'inline-block'
+            }}>
+              {uploadingPdf ? '上傳中...' : '選擇 PDF 檔案'}
+              <input 
+                type="file" 
+                accept="application/pdf"
+                disabled={uploadingPdf}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    handlePdfUpload(file);
+                  }
+                }}
+                style={{ display: 'none' }}
+              />
+            </label>
+            {selectedPdf && (
+              <div style={{ fontSize: 14, color: '#333' }}>
+                ✓ 已選擇: {selectedPdf.name}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       <div style={{ marginTop: 24 }}>
         <div style={{ marginBottom: 12, fontWeight: 600, fontSize: 15 }}>{t('wait.waiting_participants_title')}</div>

@@ -290,6 +290,7 @@ export default function EnhancedWhiteboard({
   const [currentPage, setCurrentPage] = useState<number>(1);
   // local copy of selected PDF file so remote events can update it
   const [localPdfFile, setLocalPdfFile] = useState<File | null>(pdfFile ?? null);
+  const [remotePdfData, setRemotePdfData] = useState<any | null>(null);
 
   useEffect(() => {
     // if parent passes a pdfFile prop update local copy
@@ -425,10 +426,42 @@ export default function EnhancedWhiteboard({
     })();
   }, [mounted]);
 
+  // Load PDF from server on mount
+  useEffect(() => {
+    if (!mounted || !channelName) return;
+    
+    const loadPdfFromServer = async () => {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        let courseParam = params.get('courseId') || params.get('session') || 'classroom';
+        while (courseParam.startsWith('course_')) {
+          courseParam = courseParam.replace(/^course_/, '');
+        }
+        const uuid = `course_${courseParam}`;
+        
+        const response = await fetch(`/api/whiteboard/pdf?uuid=${encodeURIComponent(uuid)}`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.pdf) {
+            console.log('[WB] Loading PDF from server:', data.pdf.name);
+            setRemotePdfData(data.pdf);
+            setCurrentPage(data.pdf.currentPage || 1);
+          }
+        }
+      } catch (e) {
+        console.warn('[WB] Failed to load PDF from server:', e);
+      }
+    };
+    
+    loadPdfFromServer();
+  }, [mounted, channelName]);
+
   // Load PDF file
   useEffect(() => {
     const activePdfFile = localPdfFile ?? pdfFile;
-    if (!pdfLib || !activePdfFile) {
+    
+    // Check if we have remote PDF data
+    if (!pdfLib) {
       setPdf(null);
       setNumPages(0);
       setCurrentPage(1);
@@ -437,6 +470,50 @@ export default function EnhancedWhiteboard({
       setCanvasHeight(height - 48);
       return;
     }
+
+    if (remotePdfData && !activePdfFile) {
+      // Load PDF from remote data (base64)
+      (async () => {
+        try {
+          const base64Data = remotePdfData.data;
+          const binaryString = atob(base64Data);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+          
+          const loadingTask = (pdfLib as any).getDocument({ data: bytes });
+          const loadedPdf = await loadingTask.promise;
+          setPdf(loadedPdf);
+          setNumPages(loadedPdf.numPages);
+          setCurrentPage(remotePdfData.currentPage || 1);
+          
+          // Calculate whiteboard size based on PDF
+          const page = await loadedPdf.getPage(1);
+          const scale = 1.5;
+          const viewport = page.getViewport({ scale });
+          const logicalWidth = viewport.width;
+          const logicalHeight = viewport.height;
+          setWhiteboardWidth(logicalWidth);
+          setWhiteboardHeight(logicalHeight + 48);
+          setCanvasHeight(logicalHeight);
+        } catch (e) {
+          console.error('Failed to load remote PDF', e);
+        }
+      })();
+      return;
+    }
+
+    if (!activePdfFile) {
+      setPdf(null);
+      setNumPages(0);
+      setCurrentPage(1);
+      setWhiteboardWidth(width);
+      setWhiteboardHeight(height);
+      setCanvasHeight(height - 48);
+      return;
+    }
+    
     const reader = new FileReader();
     reader.onload = async () => {
       try {
@@ -460,7 +537,7 @@ export default function EnhancedWhiteboard({
       }
     };
     reader.readAsArrayBuffer(activePdfFile as File);
-  }, [pdfLib, pdfFile, localPdfFile]);
+  }, [pdfLib, pdfFile, localPdfFile, remotePdfData]);
 
   // Render current PDF page to background canvas
   useEffect(() => {
@@ -740,6 +817,38 @@ export default function EnhancedWhiteboard({
     try { if (!useNetlessWhiteboard && bcRef.current) bcRef.current.postMessage({ type: 'clear', clientId: clientIdRef.current }); } catch (e) {}
     try { if (!useNetlessWhiteboard) postEventToServer({ type: 'clear' }); } catch (e) {}
   }, [isActionAllowed, useNetlessWhiteboard, postEventToServer]);
+
+  const changePdfPage = useCallback(async (newPage: number) => {
+    if (!pdf || newPage < 1 || newPage > numPages) return;
+    
+    // Only teachers can change pages
+    if (currentUserRoleId !== 'teacher' && currentUserRoleId !== 'admin') {
+      console.log('[WB] Only teachers can change PDF pages');
+      return;
+    }
+    
+    setCurrentPage(newPage);
+    
+    // Sync page change to server
+    try {
+      const params = new URLSearchParams(window.location.search);
+      let courseParam = params.get('courseId') || params.get('session') || 'classroom';
+      while (courseParam.startsWith('course_')) {
+        courseParam = courseParam.replace(/^course_/, '');
+      }
+      const uuid = `course_${courseParam}`;
+      
+      await fetch('/api/whiteboard/pdf-page', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ uuid, page: newPage })
+      });
+      
+      console.log('[WB] PDF page changed to:', newPage);
+    } catch (e) {
+      console.error('[WB] Failed to sync PDF page change:', e);
+    }
+  }, [pdf, numPages, currentUserRoleId]);
 
   // BroadcastChannel setup for canvas sync (per-page channel)
   useEffect(() => {
@@ -1266,6 +1375,17 @@ export default function EnhancedWhiteboard({
                 console.error('[WB SSE] Failed to apply remote pdf-set', e);
               }
             })();
+          } else if (data.type === 'pdf-uploaded') {
+            console.log('[WB SSE] PDF uploaded event received:', data.pdf?.name);
+            if (data.pdf) {
+              setRemotePdfData(data.pdf);
+              setCurrentPage(data.pdf.currentPage || 1);
+            }
+          } else if (data.type === 'pdf-page-change') {
+            console.log('[WB SSE] PDF page change event received:', data.page);
+            if (typeof data.page === 'number') {
+              setCurrentPage(data.page);
+            }
           }
         } catch (e) {
           console.error('[WB SSE] Error parsing message:', e);
@@ -1348,7 +1468,50 @@ export default function EnhancedWhiteboard({
           {/* onLeave is handled by the classroom controls; no leave button in the whiteboard toolbar. */}
         </div>
 
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }} />
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+          {/* PDF Page Controls */}
+          {pdf && numPages > 0 && (
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '4px 8px', background: 'white', border: '1px solid #ddd', borderRadius: 4 }}>
+              <button 
+                onClick={() => changePdfPage(currentPage - 1)}
+                disabled={currentPage <= 1 || (currentUserRoleId !== 'teacher' && currentUserRoleId !== 'admin')}
+                style={{ 
+                  padding: '4px 8px', 
+                  border: 'none', 
+                  background: currentPage <= 1 || (currentUserRoleId !== 'teacher' && currentUserRoleId !== 'admin') ? '#e0e0e0' : '#2196f3',
+                  color: currentPage <= 1 || (currentUserRoleId !== 'teacher' && currentUserRoleId !== 'admin') ? '#999' : 'white',
+                  borderRadius: 4, 
+                  cursor: currentPage <= 1 || (currentUserRoleId !== 'teacher' && currentUserRoleId !== 'admin') ? 'not-allowed' : 'pointer',
+                  fontSize: 12,
+                  fontWeight: 600
+                }}
+                title={currentUserRoleId !== 'teacher' && currentUserRoleId !== 'admin' ? '只有老師可以切換頁面' : '上一頁'}
+              >
+                ◀
+              </button>
+              <span style={{ fontSize: 13, fontWeight: 500, minWidth: 80, textAlign: 'center' }}>
+                第 {currentPage} / {numPages} 頁
+              </span>
+              <button 
+                onClick={() => changePdfPage(currentPage + 1)}
+                disabled={currentPage >= numPages || (currentUserRoleId !== 'teacher' && currentUserRoleId !== 'admin')}
+                style={{ 
+                  padding: '4px 8px', 
+                  border: 'none', 
+                  background: currentPage >= numPages || (currentUserRoleId !== 'teacher' && currentUserRoleId !== 'admin') ? '#e0e0e0' : '#2196f3',
+                  color: currentPage >= numPages || (currentUserRoleId !== 'teacher' && currentUserRoleId !== 'admin') ? '#999' : 'white',
+                  borderRadius: 4, 
+                  cursor: currentPage >= numPages || (currentUserRoleId !== 'teacher' && currentUserRoleId !== 'admin') ? 'not-allowed' : 'pointer',
+                  fontSize: 12,
+                  fontWeight: 600
+                }}
+                title={currentUserRoleId !== 'teacher' && currentUserRoleId !== 'admin' ? '只有老師可以切換頁面' : '下一頁'}
+              >
+                ▶
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       <div style={{ position: 'relative', width: '100%', flex: 1, background: 'white', minHeight: 0 }}>

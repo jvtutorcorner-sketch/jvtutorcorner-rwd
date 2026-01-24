@@ -1,0 +1,94 @@
+{
+  "models": [
+    {
+      "title": "GPT-5 mini (0x)",
+      "provider": "openai",
+      "model": "gpt-5-mini",
+      "description": "優先使用：0x 倍率，適合日常對話與基礎開發。"
+    },
+    {
+      "title": "Grok Code Fast 1 (0x)",
+      "provider": "xai",
+      "model": "grok-code-fast-1",
+      "description": "優先使用：0x 倍率，生成速度極快。"
+    },
+    {
+      "title": "Raptor mini (Preview) (0x)",
+      "provider": "openai",
+      "model": "raptor-mini-preview",
+      "description": "優先使用：0x 倍率，測試版模型。"
+    },
+    {
+      "title": "GPT-5.1-Codex-Max (1x)",
+      "provider": "openai",
+      "model": "gpt-5.1-codex-max",
+      "systemMessage": "DynamoDB ",
+      "description": "核心任務：1x 倍率，專精於 DynamoDB 與複雜邏輯。"
+    },
+    {
+      "title": "Claude Sonnet 4.5 (1x)",
+      "provider": "anthropic",
+      "model": "claude-4.5-sonnet",
+      "description": "核心任務：1x 倍率，具備極強的推理與程式撰寫能力。"
+    },
+    {
+      "title": "Gemini 3 Pro (1x)",
+      "provider": "google-palm",
+      "model": "gemini-3-pro",
+      "description": "核心任務：1x 倍率，穩定的多模態與長文本處理。"
+    },
+    {
+      "title": "Gemini Pro (Personal)",
+      "provider": "google-palm",
+      "model": "gemini-pro",
+      "apiKey": "AIzaSyD2hTBVKH9AicqxCkkF69Y-pDh7cIxX27Y",
+      "description": "個人訂閱：獨立 Provider，節省平台積分。"
+    }
+  ],
+  "tabAutocompleteModel": {
+    "title": "Grok Code Fast 1",
+    "provider": "xai",
+    "model": "grok-code-fast-1"
+  },
+  "contextProviders": [
+    {
+      "name": "codebase",
+      "displayTitle": "Codebase",
+      "description": "掃描整個專案以提供上下文"
+    },
+    {
+      "name": "docs",
+      "displayTitle": "Docs",
+      "description": "參考 AWS 官方文件或其他技術文檔"
+    },
+    {
+      "name": "terminal",
+      "displayTitle": "Terminal",
+      "description": "參考終端機輸出內容"
+    },
+    {
+      "name": "openFiles",
+      "displayTitle": "Open Files"
+    }
+  ],
+  "slashCommands": [
+    {
+      "name": "edit",
+      "description": "編輯選中的程式碼"
+    },
+    {
+      "name": "comment",
+      "description": "為程式碼添加註解"
+    },
+    {
+      "name": "share",
+      "description": "匯出對話紀錄"
+    }
+  ],
+  "customCommands": [
+    {
+      "name": "budget-check",
+      "prompt": "提醒：目前是否處於複雜架構設計階段？若非，請確認已切換至 0x 模型 (GPT-5 mini / Grok) 以優化積分使用。"
+    }
+  ]
+}
