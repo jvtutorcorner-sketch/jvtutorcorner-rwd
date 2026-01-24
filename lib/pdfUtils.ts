@@ -21,7 +21,9 @@ export async function getPdfLib(): Promise<any> {
       // Import only what we need to avoid initialization issues
       const lib = await import('pdfjs-dist');
 
-      // Don't configure worker at all for now
+      // Configure the worker source
+      lib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+
       pdfLib = lib;
       return lib;
     } catch (e) {

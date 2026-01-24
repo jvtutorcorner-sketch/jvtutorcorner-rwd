@@ -20,7 +20,7 @@ export interface WhiteboardProps {
   editable?: boolean; // whether the current client may draw/interact
 }
 
-type Stroke = { points: number[]; stroke: string; strokeWidth: number; mode: 'draw' | 'erase' };
+type Stroke = { points: number[]; stroke: string; strokeWidth: number; mode: 'draw' | 'erase'; page?: number };
 
 export default function EnhancedWhiteboard({ 
   room,
@@ -43,15 +43,19 @@ export default function EnhancedWhiteboard({
   const applyingRemoteRef = useRef(false);
   const verboseLogging = typeof window !== 'undefined' && window.location.pathname === '/classroom/test';
 
-  const logToWindow = (msg: string) => {
-    if (typeof window === 'undefined') return;
-    if (!(window as any).__whiteboard_logs) (window as any).__whiteboard_logs = [];
-    (window as any).__whiteboard_logs.push(`[${new Date().toISOString()}] ${msg}`);
-    if ((window as any).__whiteboard_logs.length > 50) (window as any).__whiteboard_logs.shift();
-  };
-
   const logAnomaly = (title: string, info?: any) => {
-    logToWindow(`ANOMALY: ${title} ${info ? JSON.stringify(info) : ''}`);
+    try {
+      const snapshot = {
+        time: Date.now(),
+        page: typeof window !== 'undefined' ? window.location.pathname : 'unknown',
+        clientId: clientIdRef.current,
+        strokesCount: strokesRef.current.length,
+        recentStrokes: strokesRef.current.slice(-10).map((s) => ({ id: (s as any).id, len: s.points.length }))
+      };
+      console.error(`[WB-ANOMALY] ${title}`, { info, snapshot });
+    } catch (e) {
+      console.error('[WB-ANOMALY] Failed to log anomaly', e);
+    }
   };
 
   // helper to POST events to server relay
@@ -60,15 +64,9 @@ export default function EnhancedWhiteboard({
       // Use courseId from URL parameter directly (or fallback to 'classroom' if not present).
       // This ensures POST and GET use the SAME uuid for server state consistency.
       const params = new URLSearchParams(window.location.search);
-      let courseParam = params.get('courseId') || 'classroom';
-      // Normalize to avoid double course_ prefix
-      while (courseParam.startsWith('course_')) {
-        courseParam = courseParam.replace(/^course_/, '');
-      }
+      const courseParam = params.get('courseId') || 'classroom';
       const uuid = `course_${courseParam}`;
-      const strokeInfo = event.strokeId ? ` strokeId=${event.strokeId}` : '';
-      const pointsInfo = event.points ? ` points=${event.points.length}` : '';
-      console.log(`[WB POST] Sending event: type=${event.type}${strokeInfo}${pointsInfo} uuid=${uuid}`);
+      console.log('[WB POST] Sending event to server:', event.type, 'uuid:', uuid);
       const response = await fetch('/api/whiteboard/event', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -93,9 +91,8 @@ export default function EnhancedWhiteboard({
       // receive the stroke via server relay. We poll persisted /api/whiteboard/state
       // and show an error if the stroke isn't visible after retries.
       // CRITICAL FIX: Only trigger on stroke-start, not on every stroke-update
-      // TESTING FIX: Disable ACK checks in test environment to avoid resource exhaustion
       try {
-        if (event && event.type === 'stroke-start' && !verboseLogging) {
+        if (event && event.type === 'stroke-start') {
           const strokeId = event.stroke?.id;
           if (strokeId) {
             console.log('[WB POST] Starting ACK check for stroke:', strokeId);
@@ -112,7 +109,7 @@ export default function EnhancedWhiteboard({
 
   // Pending ack timers and helper to surface UI errors
   const pendingAckRef = useRef<Map<string, number>>(new Map());
-  const maxConcurrentAcks = 10; // 限制最多同時進行的 ACK 檢查數量（提高以支持快速繪圖）
+  const maxConcurrentAcks = 3; // 限制最多同時進行的 ACK 檢查數量
   const [errors, setErrors] = useState<string[]>([]);
   const pushError = useCallback((msg: string) => {
     setErrors((e) => [...e.slice(-9), msg]);
@@ -129,19 +126,11 @@ export default function EnhancedWhiteboard({
       return;
     }
     let attempts = 0;
-    const maxAttempts = 30; // Total ~9 seconds with backoff (reduced to prevent resource exhaustion)
-    
-    // Adaptive backoff: start fast for UX, slow down for server health
-    const getNextInterval = (currentAttempts: number) => {
-      if (currentAttempts < 20) return 150;  // Initial 3s: fast (6.6x/sec)
-      if (currentAttempts < 50) return 300;  // Up to 12s: balanced (3.3x/sec)
-      return 600;                           // Final few seconds: slow
-    };
+    const maxAttempts = 30; // 200ms * 30 = 6 seconds (合理的等待時間)
+    const intervalMs = 200; // 增加間隔減少請求頻率: 200ms (5x/sec)
 
     const check = async () => {
-      if (!strokeId) return;
       attempts += 1;
-      
       try {
         const resp = await fetch(`/api/whiteboard/state?uuid=${encodeURIComponent(uuid)}`);
         if (resp.ok) {
@@ -150,12 +139,9 @@ export default function EnhancedWhiteboard({
           if (s && Array.isArray(s.strokes)) {
             const found = s.strokes.some((st: any) => (st as any).id === strokeId);
             if (found) {
-              const timerId = pendingAckRef.current.get(strokeId);
-              if (timerId) {
-                // Clear the correct timer handle
-                if (attempts === 1) clearTimeout(timerId);
-                else clearTimeout(timerId);
-              }
+              // ack received, clear timer
+              const t = pendingAckRef.current.get(strokeId);
+              if (t) { try { window.clearInterval(t); } catch (e) {} }
               pendingAckRef.current.delete(strokeId);
               if (verboseLogging) console.log('[WB ACK] ✓ Stroke ACK confirmed:', strokeId, `(attempt ${attempts})`);
               return;
@@ -166,28 +152,26 @@ export default function EnhancedWhiteboard({
         // ignore transient fetch errors
       }
 
-      const currentTimerId = pendingAckRef.current.get(strokeId);
-
       if (attempts >= maxAttempts) {
         // not found after retries -> error
-        if (currentTimerId) clearTimeout(currentTimerId);
+        const timerId = pendingAckRef.current.get(strokeId);
+        if (timerId) {
+          try { window.clearInterval(timerId); } catch (e) { console.warn('[WB ACK] clearInterval failed', e); }
+        }
         pendingAckRef.current.delete(strokeId);
-        
         const msg = `Canvas sync not confirmed for stroke ${strokeId}`;
         console.warn('[WB ACK] ✗ Timeout after', attempts, 'attempts:', strokeId);
-        logAnomaly(`Ack timeout for stroke ${strokeId}`, { attempts, courseIdFromChannel });
+        logAnomaly('Ack timeout for stroke', { strokeId, attempts, courseIdFromChannel });
         pushError(msg);
-      } else {
-        // Schedule next check with adaptive delay
-        const nextInterval = getNextInterval(attempts);
-        const nextTimerId = setTimeout(check, nextInterval) as unknown as number;
-        pendingAckRef.current.set(strokeId, nextTimerId);
+        return;
       }
     };
 
-    // Initial check after a short initial delay
-    const initialTimerId = setTimeout(check, 150) as unknown as number;
-    pendingAckRef.current.set(strokeId, initialTimerId);
+    // schedule repeated checks
+    const timerId = window.setInterval(check, intervalMs) as unknown as number;
+    pendingAckRef.current.set(strokeId, timerId);
+    // run first check immediately
+    void check();
   }, [pushError]);
 
   // Buffer/high-frequency update batching for stroke-update events
@@ -206,7 +190,6 @@ export default function EnhancedWhiteboard({
 
     const entries = Array.from(pendingUpdatesRef.current.entries());
     if (entries.length === 0) return;
-    console.log(`[WB BATCH] Flushing ${entries.length} pending stroke-update(s)`);
     // send latest update per strokeId
     for (const [strokeId, data] of entries) {
       try {
@@ -235,32 +218,12 @@ export default function EnhancedWhiteboard({
   const [tool, setTool] = useState<'pencil' | 'eraser'>('pencil');
   const [color, setColor] = useState('#000000');
   const [strokeWidth, setStrokeWidth] = useState(2);
-  const [strokes, setStrokesRaw] = useState<Stroke[]>([]);
-  
-  const setStrokes = useCallback((val: Stroke[] | ((prev: Stroke[]) => Stroke[]), source: string = 'unknown') => {
-    if (verboseLogging) {
-      if (typeof val === 'function') {
-        console.log(`[WB STATE] setStrokes(function) via ${source}`);
-        setStrokesRaw((prev) => {
-          const next = (val as any)(prev);
-          console.log(`[WB STATE] setStrokes via ${source}: ${prev.length} -> ${next.length}`);
-          return next;
-        });
-      } else {
-        console.log(`[WB STATE] setStrokes direct: to ${val.length} strokes (${source})`);
-        setStrokesRaw(val);
-      }
-    } else {
-      setStrokesRaw(val);
-    }
-  }, [verboseLogging]);
+  const [strokes, setStrokes] = useState<Stroke[]>([]);
   const [undone, setUndone] = useState<Stroke[]>([]);
   const isDrawingRef = useRef(false);
   const [mounted, setMounted] = useState(false);
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
   const [whiteboardPermissions, setWhiteboardPermissions] = useState<Record<string, string[] | undefined> | null>(null);
-  const drawDirtyRef = useRef(false);
-  const rafIdRef = useRef<number | null>(null);
   const [currentUserRoleId, setCurrentUserRoleId] = useState<string | null>(() => {
     if (typeof window === 'undefined') return null;
     const params = new URLSearchParams(window.location.search);
@@ -281,7 +244,6 @@ export default function EnhancedWhiteboard({
   useEffect(() => {
     strokesRef.current = strokes;
   }, [strokes]);
-  const lastAppliedAtRef = useRef<number>(0);
   
   // PDF state
   const [pdfLib, setPdfLib] = useState<any | null>(null);
@@ -299,8 +261,8 @@ export default function EnhancedWhiteboard({
   const [whiteboardHeight, setWhiteboardHeight] = useState(height);
   const [canvasHeight, setCanvasHeight] = useState(height - 48);
   
-  // Use Netless whiteboard if room is provided
-  const useNetlessWhiteboard = Boolean(room && whiteboardRef);
+  // Use Netless whiteboard if room is provided and no PDF is loaded
+  const useNetlessWhiteboard = Boolean(room && whiteboardRef && !pdfFile && !localPdfFile);
 
   useEffect(() => { setMounted(true); }, []);
 
@@ -354,7 +316,7 @@ export default function EnhancedWhiteboard({
         const timestamp = parseInt(parts[parts.length - 1]);
         if (!isNaN(timestamp) && (now - timestamp) > maxAge) {
           console.warn('[WB ACK] Force cleaning stuck ACK timer:', strokeId);
-          try { window.clearTimeout(timerId); } catch (e) {}
+          try { window.clearInterval(timerId); } catch (e) {}
           pendingAckRef.current.delete(strokeId);
         }
       });
@@ -363,7 +325,7 @@ export default function EnhancedWhiteboard({
     return () => {
       try { window.clearInterval(cleanupInterval); } catch (e) {}
       try {
-        pendingAckRef.current.forEach((t) => { try { window.clearTimeout(t); } catch (e) {} });
+        pendingAckRef.current.forEach((t) => { try { window.clearInterval(t); } catch (e) {} });
         pendingAckRef.current.clear();
       } catch (e) {}
     };
@@ -514,6 +476,9 @@ export default function EnhancedWhiteboard({
     })();
   }, [pdf, currentPage, numPages]);
 
+  const currentPageRef = useRef(currentPage);
+  useEffect(() => { currentPageRef.current = currentPage; }, [currentPage]);
+
   // expose simple helpers for existing controls that call global __wb_setTool / __wb_setColor
   useEffect(() => {
     if (!mounted) return;
@@ -567,23 +532,10 @@ export default function EnhancedWhiteboard({
   const drawAll = useCallback(() => {
     const el = canvasRef.current;
     if (!el) return;
-
-    // Ensure internal resolution matches CSS width/height to avoid blurriness and sync issues
-    const dpr = window.devicePixelRatio || 1;
-    const rect = el.getBoundingClientRect();
-    const targetInternalW = Math.round(rect.width * dpr);
-    const targetInternalH = Math.round(rect.height * dpr);
-    
-    if (el.width !== targetInternalW || el.height !== targetInternalH) {
-      if (verboseLogging) logToWindow(`Resizing canvas internal buffer to ${targetInternalW}x${targetInternalH}`);
-      el.width = targetInternalW;
-      el.height = targetInternalH;
-    }
-
     const ctx = el.getContext('2d');
     if (!ctx) return;
 
-    if (verboseLogging) logToWindow(`drawAll called with ${strokes.length} strokes`);
+    const dpr = window.devicePixelRatio || 1;
 
     // Reset transform and clear full pixel buffer, then scale to CSS pixels
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -594,6 +546,8 @@ export default function EnhancedWhiteboard({
     const displayH = el.height / dpr;
 
     strokes.forEach((s) => {
+      // Only draw strokes for current page (default to page 1 for legacy strokes)
+      if ((s.page ?? 1) !== currentPage) return;
       if (s.points.length < 2) return;
       ctx.strokeStyle = s.stroke;
       ctx.lineWidth = s.strokeWidth;
@@ -609,16 +563,7 @@ export default function EnhancedWhiteboard({
       }
       ctx.stroke();
     });
-  }, [strokes]);
-
-  const scheduleDraw = useCallback(() => {
-    if (drawDirtyRef.current) return;
-    drawDirtyRef.current = true;
-    rafIdRef.current = window.requestAnimationFrame(() => {
-      drawDirtyRef.current = false;
-      drawAll();
-    });
-  }, [drawAll]);
+  }, [strokes, currentPage]);
 
   // Attach non-passive touch listeners to prevent page scroll while drawing on mobile
   
@@ -646,11 +591,8 @@ export default function EnhancedWhiteboard({
     if (!isActionAllowed('draw')) return;
     isDrawingRef.current = true;
     const pos = getPointerPos(e);
-    const newStroke: Stroke & { id?: string; origin?: string } = { points: [pos.x, pos.y], stroke: color, strokeWidth, mode: tool === 'eraser' ? 'erase' : 'draw', id: `${clientIdRef.current}_${Date.now()}` , origin: clientIdRef.current };
-    
-    if (verboseLogging) logToWindow(`Local stroke start: ${newStroke.id}`);
-    
-    setStrokes((s) => [...s, newStroke], 'local-down');
+    const newStroke: Stroke & { id?: string; origin?: string } = { page: currentPage, points: [pos.x, pos.y], stroke: color, strokeWidth, mode: tool === 'eraser' ? 'erase' : 'draw', id: `${clientIdRef.current}_${Date.now()}` , origin: clientIdRef.current };
+    setStrokes((s) => [...s, newStroke]);
     setUndone([]);
     currentStrokeIdRef.current = newStroke.id as string;
     try {
@@ -663,7 +605,7 @@ export default function EnhancedWhiteboard({
         postEventToServer({ type: 'stroke-start', stroke: newStroke });
       }
     } catch (e) { console.error('[WB] Error in handlePointerDown:', e); }
-  }, [tool, color, strokeWidth, postEventToServer, isActionAllowed, useNetlessWhiteboard]);
+  }, [tool, color, strokeWidth, currentPage, postEventToServer, isActionAllowed, useNetlessWhiteboard]);
 
   const handlePointerMove = useCallback((e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
     if (!isDrawingRef.current) return;
@@ -673,9 +615,6 @@ export default function EnhancedWhiteboard({
       if (!last) return prev;
       const updated = { ...last, points: last.points.concat([pos.x, pos.y]) };
       const out = [...prev.slice(0, -1), updated];
-      if (verboseLogging && updated.points.length % 20 === 0) {
-        console.log(`[WB DRAW] Stroke ${(last as any).id} now has ${updated.points.length} points`);
-      }
       try {
         if (!useNetlessWhiteboard && bcRef.current && (last as any).origin !== clientIdRef.current) {
           // don't re-broadcast remote-applied strokes
@@ -689,7 +628,7 @@ export default function EnhancedWhiteboard({
         }
       } catch (e) {}
       return out;
-    }, 'local-move');
+    });
   }, [enqueueStrokeUpdate, useNetlessWhiteboard]);
 
   const handlePointerUp = useCallback(() => {
@@ -741,32 +680,34 @@ export default function EnhancedWhiteboard({
     try { if (!useNetlessWhiteboard) postEventToServer({ type: 'clear' }); } catch (e) {}
   }, [isActionAllowed, useNetlessWhiteboard, postEventToServer]);
 
+  const changePage = useCallback((newPage: number) => {
+    // Only teacher can change page
+    if (currentUserRoleId !== 'teacher') return;
+    if (newPage < 1 || newPage > numPages) return;
+    
+    setCurrentPage(newPage);
+    try { 
+      if (!useNetlessWhiteboard && bcRef.current) 
+        bcRef.current.postMessage({ type: 'set-page', page: newPage, clientId: clientIdRef.current }); 
+    } catch (e) {}
+    try { 
+      if (!useNetlessWhiteboard) 
+        postEventToServer({ type: 'set-page', page: newPage });
+    } catch (e) {}
+  }, [numPages, currentUserRoleId, useNetlessWhiteboard, postEventToServer]);
+
   // BroadcastChannel setup for canvas sync (per-page channel)
   useEffect(() => {
     if (useNetlessWhiteboard) return;
     if (typeof window === 'undefined') return;
     try {
-      // use normalized uuid for broadcast channel to avoid double-prefix issues
-      // Ensure we have courseParam (may be undefined in this scope) - derive from URL
       const params = new URLSearchParams(window.location.search);
-      let courseParam = params.get('courseId') || 'default';
-      while (courseParam.startsWith('course_')) {
-        courseParam = courseParam.replace(/^course_/, '');
-      }
-      const courseIdFromChannel = (() => {
-        if (!channelName) return courseParam;
-        let clean = channelName;
-        while (clean.startsWith('course_')) {
-          clean = clean.replace(/^course_/, '');
-        }
-        return clean.split('_')[0] || courseParam;
-      })();
+      const courseParam = params.get('courseId') || 'default';
+      const courseIdFromChannel = (channelName ? (channelName.startsWith('course_') ? channelName.replace(/^course_/, '').split('_')[0] : channelName.split('_')[0]) : courseParam) || 'default';
       const bcName = `whiteboard_course_${courseIdFromChannel}`;
       const ch = new BroadcastChannel(bcName);
       bcRef.current = ch;
-      console.log('[WB BC] Created channel:', bcName, 'clientId:', clientIdRef.current);
       ch.onmessage = (ev: MessageEvent) => {
-        console.log(`[WB BC RCV] type=${ev.data?.type} from=${ev.data?.clientId?.slice(0,8)} self=${clientIdRef.current.slice(0,8)}`);
         const data = ev.data as any;
         if (!data || data.clientId === clientIdRef.current) return; // ignore our own
         try {
@@ -790,6 +731,10 @@ export default function EnhancedWhiteboard({
           }
           if (data.type === 'setWidth') {
             try { if (typeof data.width === 'number') setStrokeWidth(Number(data.width)); } catch (e) {}
+            return;
+          }
+          if (data.type === 'set-page') {
+            if (typeof data.page === 'number') setCurrentPage(data.page);
             return;
           }
           if (data.type === 'pdf-set') {
@@ -859,8 +804,9 @@ export default function EnhancedWhiteboard({
             applyingRemoteRef.current = false;
           } else if (data.type === 'request-state') {
             // reply with full state
-            try { ch.postMessage({ type: 'state', strokes: strokesRef.current, clientId: clientIdRef.current }); } catch (e) {}
+            try { ch.postMessage({ type: 'state', strokes: strokesRef.current, page: currentPageRef.current, clientId: clientIdRef.current }); } catch (e) {}
           } else if (data.type === 'state') {
+            if (typeof data.page === 'number') setCurrentPage(data.page);
             // Avoid applying stale state that would overwrite recent local strokes.
             // Only apply if local is empty AND we're not currently applying remote events.
             // This prevents old state snapshots from overwriting newly drawn strokes.
@@ -912,13 +858,6 @@ export default function EnhancedWhiteboard({
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [useNetlessWhiteboard, setStrokes, setUndone]);
-
-  // Expose flush for testing
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      (window as any).__wb_flushPending = flushPendingUpdates;
-    }
-  }, [flushPendingUpdates]);
 
   // Attach non-passive touch listeners to prevent page scroll while drawing on mobile
   useEffect(() => {
@@ -1029,21 +968,8 @@ export default function EnhancedWhiteboard({
 
   // redraw when strokes change
   useEffect(() => {
-    scheduleDraw();
-    // Expose strokes to window for E2E testing
-    if (typeof window !== 'undefined') {
-      (window as any).__whiteboard_strokes = strokes;
-    }
-  }, [strokes, scheduleDraw]);
-
-  // cleanup any pending RAF on unmount
-  useEffect(() => {
-    return () => {
-      if (rafIdRef.current) {
-        cancelAnimationFrame(rafIdRef.current);
-      }
-    };
-  }, []);
+    drawAll();
+  }, [strokes, drawAll]);
 
   // Server-side SSE subscription for cross-device sync
   useEffect(() => {
@@ -1055,79 +981,90 @@ export default function EnhancedWhiteboard({
     try {
       // Use courseId from URL parameter directly to ensure POST and GET use same uuid
       const params = new URLSearchParams(window.location.search);
-      let courseParam = params.get('courseId') || 'classroom';
-      while (courseParam.startsWith('course_')) {
-        courseParam = courseParam.replace(/^course_/, '');
-      }
+      const courseParam = params.get('courseId') || 'classroom';
       const uuid = `course_${courseParam}`;
-      // In production (Amplify/CloudFront) long-lived SSE often fails or is buffered; use polling there.
-      // Must match server-side logic in app/api/whiteboard/stream/route.ts
-      const isProduction = window.location.hostname.includes('jvtutorcorner.com') || 
-                           window.location.hostname.includes('amplifyapp.com') || 
-                           window.location.hostname.includes('amplifyapp') || 
-                           window.location.hostname.includes('cloudfront.net');
+      // In production (Amplify) long-lived SSE often fails; skip SSE there.
+      const isProduction = window.location.hostname === 'www.jvtutorcorner.com' || window.location.hostname === 'jvtutorcorner.com';
+      if (isProduction) {
+        console.log('[WB SSE] Production detected - skipping SSE. Falling back to /api/whiteboard/state polling.');
+        console.log('[WB POLL] Using uuid:', uuid, 'from courseId:', courseParam);
+        // Try fetching persisted state immediately and then poll periodically
+        let pollId: number | null = null;
+        let lastRemoteHash = '';
+        const fetchAndApply = async () => {
+          try {
+            const resp = await fetch(`/api/whiteboard/state?uuid=${encodeURIComponent(uuid)}`);
+              if (!resp.ok) {
+                const txt = await resp.text().catch(() => '(no body)');
+                console.warn('[WB POLL] /api/whiteboard/state returned non-ok', resp.status, txt.slice(0, 200));
+                if (verboseLogging) {
+                  pushError(`[WB POLL] /api/whiteboard/state returned non-ok ${resp.status}`);
+                  logAnomaly('Production /state returned non-ok', { status: resp.status, bodyPreview: txt?.slice(0,200) });
+                }
+                return;
+              }
+            const j = await resp.json();
+            const s = j?.state;
+            if (s && Array.isArray(s.strokes)) {
+              // Compare both count and content to detect updates (not just count changes)
+              const remoteCount = s.strokes.length;
+              const localCount = strokesRef.current.length;
+              const remoteHash = remoteCount > 0 ? JSON.stringify(s.strokes.map((st: any) => st.id)).slice(0, 100) : '';
+              const localHash = localCount > 0 ? JSON.stringify(strokesRef.current.map((st: any) => st.id)).slice(0, 100) : '';
+              
+              // Detect missing strokes: if remote has more or different content
+              const isMismatch = remoteCount !== localCount || remoteHash !== localHash;
+              const isNewUpdate = remoteHash !== lastRemoteHash; // content actually changed since last sync
+              
+              if (isMismatch && isNewUpdate) {
+                console.log('[WB POLL] ✓ Sync update detected: local=', localCount, 'remote=', remoteCount, 'mismatch=', isMismatch);
+                setStrokes(s.strokes);
+                lastRemoteHash = remoteHash; // track this update
+                  if (verboseLogging) {
+                    console.log('[WB POLL] Applied remote strokes in production poll');
+                  }
+              } else if (isMismatch && !isNewUpdate) {
+                // Same data as before (server didn't change), but we mismatch.
+                // If local > remote, it means we have pending strokes that server hasn't seen yet.
+                // DO NOT overwrite local state with stale remote state.
+                if (localCount > remoteCount) {
+                  if (verboseLogging) console.log('[WB POLL] Local ahead of server (pending sync), ignoring stale remote state');
+                  return;
+                }
 
-      let pollId: number | null = null;
-      let lastAppliedLength = 0;
-      
-      const fetchAndApply = async () => {
-        try {
-          const resp = await fetch(`/api/whiteboard/state?uuid=${encodeURIComponent(uuid)}`);
-          if (!resp.ok) {
-            if (verboseLogging) console.log('[WB POLL] Fetch failed:', resp.status);
-            return;
-          }
-          const j = await resp.json();
-          const s = j?.state;
-          if (!s || !Array.isArray(s.strokes)) return;
-          
-          const remoteLen = s.strokes.length;
-          const localLen = strokesRef.current.length;
-          const remoteUpdatedAt = Number(s.updatedAt || 0);
-          
-          if (verboseLogging || remoteLen !== lastAppliedLength) {
-            console.log(`[WB POLL] remote=${remoteLen} local=${localLen} lastApplied=${lastAppliedLength} ts=${remoteUpdatedAt}`);
-          }
-          
-          // KEY: Always apply if we have NEW strokes (by count, not timestamp)
-          if (remoteLen > lastAppliedLength) {
-            console.log(`[WB POLL] APPLY: remote=${remoteLen} > lastApplied=${lastAppliedLength}`);
-            applyingRemoteRef.current = true;
-            setStrokes(s.strokes, 'poll-sync-new');
-            applyingRemoteRef.current = false;
-            lastAppliedLength = remoteLen;
-            lastAppliedAtRef.current = remoteUpdatedAt || Date.now();
-            return;
-          }
-          
-          // If count same but content different, apply
-          if (remoteLen === lastAppliedLength && remoteLen > 0) {
-            const localLast = JSON.stringify(strokesRef.current.slice(-2));
-            const remoteLast = JSON.stringify(s.strokes.slice(-2));
-            if (localLast !== remoteLast) {
-              console.log('[WB POLL] APPLY: content updated at same count');
-              applyingRemoteRef.current = true;
-              setStrokes(s.strokes, 'poll-sync-content');
-              applyingRemoteRef.current = false;
-              lastAppliedAtRef.current = remoteUpdatedAt || Date.now();
+                // Only force resync if we are truly behind (remote > local) or same count but diff hash (rare collision/corruption)
+                console.warn('[WB POLL] ⚠ Client behind server by', remoteCount - localCount, 'strokes - forcing resync');
+                setStrokes(s.strokes);
+                lastRemoteHash = remoteHash;
+              }
+              if (s.pdf && s.pdf.dataUrl && s.pdf.dataUrl !== '(large-data-url)' && !localPdfFile) {
+                try {
+                  const r = await fetch(s.pdf.dataUrl);
+                  const blob = await r.blob();
+                  const file = new File([blob], s.pdf.name || 'remote.pdf', { type: blob.type });
+                  setSelectedFileName(file.name);
+                  setLocalPdfFile(file);
+                } catch (e) { console.warn('[WB POLL] Failed to fetch remote PDF', e); }
+              }
             }
+          } catch (e) {
+              const errStack = e && (e as Error).stack ? (e as Error).stack : e;
+              console.warn('[WB POLL] Failed to fetch /state in production fallback', errStack);
+              if (verboseLogging) {
+                pushError('[WB POLL] Failed to fetch /state in production fallback');
+                logAnomaly('Production /state fetch failed', { error: errStack });
+              }
           }
-        } catch (e) {
-          console.warn('[WB POLL] Error:', e);
-        }
-      };
+        };
 
-      const startPolling = (interval: number = 2000) => {
-        if (pollId) return;
-        console.log('[WB Sync] Starting polling fallback, interval:', interval);
+        // initial fetch
         fetchAndApply();
-        pollId = window.setInterval(fetchAndApply, interval) as any;
-      };
+        // Two-tier polling: fast ACK (80ms) for stroke confirmation + balanced main polling (300ms) to avoid overload
+        try { pollId = window.setInterval(fetchAndApply, 300) as unknown as number; } catch (e) { pollId = null; } // 300ms = 3x per second (sustainable)
 
-      if (isProduction || process.env.NEXT_PUBLIC_FORCE_POLLING === 'true') {
-        console.log('[WB SSE] Production/Amplify detected - skipping SSE. Using polling.');
-        startPolling(500); // Production polling
-        return () => { if (pollId) window.clearInterval(pollId); };
+        return () => {
+          try { if (pollId) window.clearInterval(pollId); } catch (e) {}
+        };
       }
 
       console.log('[WB SSE] Connecting to SSE stream:', `/api/whiteboard/stream?uuid=${uuid}`);
@@ -1135,11 +1072,36 @@ export default function EnhancedWhiteboard({
       
       es.onopen = () => {
         console.log('[WB SSE] Connection opened successfully');
-        fetchAndApply(); // Sync once on open
+        // Try fetching persisted state as a fallback in case any messages were missed
+        (async () => {
+          try {
+            const resp = await fetch(`/api/whiteboard/state?uuid=${encodeURIComponent(uuid)}`);
+            if (resp.ok) {
+              const j = await resp.json();
+              const s = j?.state;
+              if (s && Array.isArray(s.strokes) && strokesRef.current.length === 0) {
+                console.log('[WB SSE] Applying fallback state from /state:', s.strokes.length, 'strokes');
+                setStrokes(s.strokes);
+                if (s.pdf && s.pdf.dataUrl && s.pdf.dataUrl !== '(large-data-url)') {
+                  try {
+                    const r = await fetch(s.pdf.dataUrl);
+                    const blob = await r.blob();
+                    const file = new File([blob], s.pdf.name || 'remote.pdf', { type: blob.type });
+                    setSelectedFileName(file.name);
+                    setLocalPdfFile(file);
+                  } catch (e) {
+                    // ignore
+                  }
+                }
+              }
+            }
+          } catch (e) {
+            // ignore fallback errors
+          }
+        })();
       };
       
       es.onmessage = (ev) => {
-        console.log(`[WB SSE] Received message, data length=${ev.data?.length || 0}`);
         try {
           const data = JSON.parse(ev.data);
           if (!data) return;
@@ -1157,8 +1119,13 @@ export default function EnhancedWhiteboard({
           console.log('[WB SSE] Received event:', data.type, data);
 
           if (data.type === 'init-state') {
+            if (typeof data.page === 'number') setCurrentPage(data.page);
             console.log('[WB SSE] Applying initial state:', data.strokes?.length, 'strokes');
             if (Array.isArray(data.strokes)) {
+              // Only apply initial state if local is empty to avoid wiping
+              // a locally drawn stroke that may have happened just before
+              // the server's init-state arrives (common race condition).
+              // This prevents stale init-state from overwriting fresh strokes.
               setStrokes((local) => {
                 if (local.length === 0) {
                   console.log('[WB SSE] Accepted init-state with', data.strokes.length, 'strokes');
@@ -1168,7 +1135,7 @@ export default function EnhancedWhiteboard({
                   console.log('[WB SSE] init-state ignored because local strokes exist:', local.length);
                   return local;
                 }
-              }, 'sse-init');
+              });
             }
             if (data.pdf) {
               // Restore PDF if available
@@ -1188,6 +1155,10 @@ export default function EnhancedWhiteboard({
           }
 
           // apply same handlers as BroadcastChannel messages
+          if (data.type === 'set-page') {
+            if (typeof data.page === 'number') setCurrentPage(data.page);
+            return;
+          }
           if (data.type === 'setColor') {
             try {
               if (data.color) {
@@ -1210,8 +1181,7 @@ export default function EnhancedWhiteboard({
             return;
           }
           if (data.type === 'stroke-start') {
-            const strokeId = data.strokeId || (data.stroke as any)?.id;
-            console.log(`[WB SSE] stroke-start: id=${strokeId} from=${data.clientId?.slice(0,8)} self=${clientIdRef.current.slice(0,8)}`);
+            console.log('[WB SSE] Applying stroke-start:', data);
             applyingRemoteRef.current = true;
             setStrokes((s) => {
               const strokeId = data.strokeId || (data.stroke as any)?.id;
@@ -1221,10 +1191,10 @@ export default function EnhancedWhiteboard({
               }
               console.log('[WB SSE] Adding new stroke:', strokeId);
               return [...s, data.stroke];
-            }, 'sse-start');
+            });
             applyingRemoteRef.current = false;
           } else if (data.type === 'stroke-update') {
-            console.log(`[WB SSE] stroke-update: id=${data.strokeId} points=${data.points?.length} from=${data.clientId?.slice(0,8)}`);
+            console.log('[WB SSE] Applying stroke-update:', data.strokeId);
             applyingRemoteRef.current = true;
             setStrokes((s) => {
               const idx = s.findIndex((st) => (st as any).id === data.strokeId);
@@ -1238,13 +1208,12 @@ export default function EnhancedWhiteboard({
                 // Update specific stroke without affecting others
                 const updated = { ...(s[idx] as any), points: data.points };
                 const result = [...s.slice(0, idx), updated, ...s.slice(idx + 1)];
-                console.log(`[WB SSE] Updated stroke idx=${idx} points=${data.points.length} total=${result.length}`);
+                console.log('[WB SSE] Updated stroke at index', idx, 'now total:', result.length);
                 return result;
               }
-              if (verboseLogging) logAnomaly('SSE received stroke-update for unknown strokeId (appending)', { strokeId: data.strokeId, pointsLen: Array.isArray(data.points) ? data.points.length : null });
               console.warn('[WB SSE] stroke-update for unknown strokeId, creating new:', data.strokeId);
               return [...s, { points: data.points, stroke: '#000', strokeWidth: 2, mode: 'draw', id: data.strokeId } as any];
-            }, 'sse-update');
+            });
             applyingRemoteRef.current = false;
           } else if (data.type === 'undo') {
             setStrokes((s) => s.filter((st) => (st as any).id !== data.strokeId));
@@ -1272,14 +1241,23 @@ export default function EnhancedWhiteboard({
         }
       };
       es.onerror = (err) => { 
-        console.error('[WB SSE] Connection error, falling back to polling:', err);
-        startPolling(2000); // Slower polling if SSE fails
-        try { es.close(); } catch (e) {} 
+        console.error('[WB SSE] Connection error:', err);
+        if (verboseLogging) {
+          pushError('[WB SSE] Connection error - check server or network');
+          (async () => {
+            try {
+              const resp = await fetch(`/api/whiteboard/state?uuid=${encodeURIComponent(uuid)}`);
+              const txt = await resp.text().catch(() => '(no body)');
+              console.error('[WB SSE] Diagnostic /api/whiteboard/state response:', { status: resp.status, bodyPreview: txt.slice(0, 200) });
+            } catch (e) {
+              console.error('[WB SSE] Diagnostic fetch /state failed', e);
+              logAnomaly('SSE diagnostic fetch failed', e);
+            }
+          })();
+        }
+        try { es.close(); } catch (e) { console.warn('[WB SSE] Error closing EventSource after error', e); } 
       };
-      return () => { 
-        try { es.close(); } catch (e) {}
-        try { if (pollId) window.clearInterval(pollId); } catch (e) {}
-      };
+      return () => { try { es.close(); } catch (e) {} };
     } catch (e) {
       console.error('[WB SSE] Setup failed:', e && (e as Error).stack ? (e as Error).stack : e);
     }
@@ -1292,6 +1270,35 @@ export default function EnhancedWhiteboard({
         {errors.length > 0 && (
           <div style={{ background: 'rgba(244, 67, 54, 0.08)', color: '#c62828', padding: '6px 8px', borderRadius: 4, marginRight: 8, fontSize: 12 }}>
             <strong>Canvas Sync Error:</strong> {errors[errors.length - 1]}
+          </div>
+        )}
+        {numPages > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginRight: 8, borderRight: '1px solid #ccc', paddingRight: 8 }}>
+            {(currentUserRoleId === 'teacher') ? (
+              <>
+                <button 
+                  onClick={() => changePage(currentPage - 1)} 
+                  disabled={currentPage <= 1}
+                  style={{ padding: '4px 8px', cursor: currentPage <= 1 ? 'not-allowed' : 'pointer' }}
+                >
+                  &lt;
+                </button>
+                <span style={{ fontSize: 13, userSelect: 'none', minWidth: 40, textAlign: 'center' }}>
+                  {currentPage} / {numPages}
+                </span>
+                <button 
+                  onClick={() => changePage(currentPage + 1)} 
+                  disabled={currentPage >= numPages}
+                  style={{ padding: '4px 8px', cursor: currentPage >= numPages ? 'not-allowed' : 'pointer' }}
+                >
+                  &gt;
+                </button>
+              </>
+            ) : (
+              <span style={{ fontSize: 13, userSelect: 'none' }}>
+                Page {currentPage} / {numPages}
+              </span>
+            )}
           </div>
         )}
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>

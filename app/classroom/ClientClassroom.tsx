@@ -125,6 +125,35 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   // PDF viewer state
   const [selectedPdf, setSelectedPdf] = useState<File | null>(null);
   const [showPdf, setShowPdf] = useState(false);
+
+  // Load PDF from server if available (synced from wait page)
+  useEffect(() => {
+    if (!mounted || !sessionReadyKey) return;
+    
+    const checkPdf = async () => {
+      try {
+        const resp = await fetch(`/api/whiteboard/pdf?uuid=${encodeURIComponent(sessionReadyKey)}&check=true`);
+        if (resp.ok) {
+           const json = await resp.json();
+           if (json.found) {
+             console.log('[ClientClassroom] Found existing PDF for session');
+             const fileResp = await fetch(`/api/whiteboard/pdf?uuid=${encodeURIComponent(sessionReadyKey)}`);
+             const blob = await fileResp.blob();
+             // Get filename from json meta if possible
+             const fileName = json.meta?.name || 'course.pdf';
+             const fileType = json.meta?.type || 'application/pdf';
+             const file = new File([blob], fileName, { type: fileType });
+             setSelectedPdf(file);
+             setShowPdf(true); 
+           }
+        }
+      } catch (e) {
+        console.warn('Failed to check for PDF', e);
+      }
+    };
+    
+    checkPdf();
+  }, [mounted, sessionReadyKey]);
   // session countdown - default to 5 minutes
   const [sessionDurationMinutes, setSessionDurationMinutes] = useState<number>(5); // 5 minutes
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
