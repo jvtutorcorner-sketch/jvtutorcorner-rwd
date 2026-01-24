@@ -1,0 +1,145 @@
+
+Running 1 test using 1 worker
+
+
+[0] 設定 Mock User 資訊...
+
+📌 測試：Classroom 白板同步（帶延遲）
+👨‍🏫 Teacher Wait URL: https://www.jvtutorcorner.com/classroom/wait?courseId=c1&role=teacher&session=classroom_session_ready_c1&forceJoin=true
+👩‍🎓 Student Wait URL: https://www.jvtutorcorner.com/classroom/wait?courseId=c1&role=student&session=classroom_session_ready_c1&forceJoin=true
+
+[1] 設定網路延遲 (100-500ms 隨機)...
+
+[2] 兩個客戶端進行完整的準備流程...
+
+[準備流程] 👨‍🏫 TEACHER 開始準備流程
+  [1/7] 訪問 https://www.jvtutorcorner.com/classroom/wait?courseId=c1&role=teacher&session=classroom_session_ready_c1&forceJoin=true
+
+[準備流程] 👩‍🎓 STUDENT 開始準備流程
+  [1/7] 訪問 https://www.jvtutorcorner.com/classroom/wait?courseId=c1&role=student&session=classroom_session_ready_c1&forceJoin=true
+  [DEBUG] 頁面中找到的所有按鈕：
+    • 1. "" [enabled: true]
+    • 2. "T" [enabled: true]
+    • 3. "TW繁體中文▾" [enabled: true]
+    • 4. "TW繁體中文▾" [enabled: true]
+    • 5. "🎤 測試麥克風" [enabled: true]
+    • 6. "🔊 🔊 測試聲音" [enabled: true]
+    • 7. "📹 預覽攝影機" [enabled: true]
+    • 8. "🔐 授予麥克風、聲音和攝影機權限" [enabled: true]
+    • 9. "✓ 已準備好，點擊取消" [enabled: false]
+    • 10. "✓ 立即進入教室" [enabled: true]
+    • 11. "📋 複製等待室連結" [enabled: true]
+  [2/7] 點擊授予權限按鈕（麥克風/聲音/攝影機）...
+    ℹ️  找到 1 個授予按鈕
+    ✓ 點擊第 1 個授予按鈕
+  [DEBUG] 頁面中找到的所有按鈕：
+    • 1. "" [enabled: true]
+    • 2. "S" [enabled: true]
+    • 3. "TW繁體中文▾" [enabled: true]
+    • 4. "TW繁體中文▾" [enabled: true]
+    • 5. "🎤 測試麥克風" [enabled: true]
+    • 6. "🔊 🔊 測試聲音" [enabled: true]
+    • 7. "📹 預覽攝影機" [enabled: true]
+    • 8. "🔐 授予麥克風、聲音和攝影機權限" [enabled: true]
+    • 9. "✓ 已準備好，點擊取消" [enabled: false]
+    • 10. "✓ 立即進入教室" [enabled: true]
+    • 11. "📋 複製等待室連結" [enabled: true]
+  [2/7] 點擊授予權限按鈕（麥克風/聲音/攝影機）...
+    ℹ️  找到 1 個授予按鈕
+    ✓ 點擊第 1 個授予按鈕
+  [3/7] 點擊「測試麥克風」按鈕...
+    ✓ 找到測試麥克風按鈕，正在點擊...
+  [3/7] 點擊「測試麥克風」按鈕...
+    ✓ 找到測試麥克風按鈕，正在點擊...
+    ✓ 麥克風測試完成
+  [4/7] 點擊「測試聲音」按鈕...
+    ✓ 找到測試聲音按鈕，正在點擊...
+    ✓ 麥克風測試完成
+  [4/7] 點擊「測試聲音」按鈕...
+    ✓ 找到測試聲音按鈕，正在點擊...
+    ✓ 聲音測試完成
+  [5/7] 點擊「預覽攝影機」按鈕...
+    ℹ️  「預覽攝影機」按鈕未找到或不可見
+  [6/7] 檢查「準備好」按鈕...
+    ✓ 聲音測試完成
+  [5/7] 點擊「預覽攝影機」按鈕...
+    ℹ️  該客戶端已處於「準備好」狀態
+  [7/7] 等待並點擊「立即進入教室」按鈕...
+    ℹ️  「預覽攝影機」按鈕未找到或不可見
+  [6/7] 檢查「準備好」按鈕...
+    ✓ 「立即進入教室」按鈕已出現，正在點擊...
+    ℹ️  該客戶端已處於「準備好」狀態
+  [7/7] 等待並點擊「立即進入教室」按鈕...
+    ✓ 「立即進入教室」按鈕已出現，正在點擊...
+    ✓ TEACHER 已進入教室（https://www.jvtutorcorner.com/classroom/test?courseId=c1&role=teacher&session=classroom_session_ready_c1&forceJoin=true）
+  ✓ TEACHER 準備流程完成
+
+    ✓ STUDENT 已進入教室（https://www.jvtutorcorner.com/classroom/test?courseId=c1&role=student&session=classroom_session_ready_c1&forceJoin=true）
+  ✓ STUDENT 準備流程完成
+
+  ✓ Student 已進入 /classroom/test
+
+[3] 等待雙方 Agora 連接與白板初始化 (最多等待 30 秒)...
+    ⏳ 檢查 TEACHER 連接狀態...
+    ⏳ 檢查 STUDENT 連接狀態...
+    ✅ TEACHER 已就緒 (於 5 秒)
+    ✅ STUDENT 已就緒 (於 5.5 秒)
+  • Teacher 連接狀態: 已連接
+  • Student 連接狀態: 已連接
+
+[4] 在 Teacher 白板上繪圖...
+  • 找到 2 個 Canvas 元素
+  ✓ 繪圖 Canvas 已找到
+  • Canvas 大小: 531x241，位置: (27, 160)
+  • Teacher 狀態已確認並強制切換至畫筆工具
+  • 開始繪製 60 個隨機線條進行壓力測試（正常人繪圖頻率）...
+  ✓ 繪製完成: 60/60 條線條成功
+  • Teacher 狀態: 109 條筆劃, 31471 像素
+
+[5] 等待同步到 Student (最多 30 秒)...
+  • 目標筆劃數: 109
+  ⏳ 等待中... (100ms) | Ready: true | Strokes: 93/109 | Pixels: 28518 | Canvases: 2
+  ⏳ 等待中... (3100ms) | Ready: false | Strokes: 93/109 | Pixels: 29634 | Canvases: 2
+  ⏳ 等待中... (6100ms) | Ready: undefined | Strokes: 0/109 | Pixels: 0 | Canvases: 0
+  ⏳ 等待中... (9100ms) | Ready: undefined | Strokes: 0/109 | Pixels: 0 | Canvases: 0
+  ⏳ 等待中... (12100ms) | Ready: undefined | Strokes: 0/109 | Pixels: 0 | Canvases: 0
+  ⏳ 等待中... (15100ms) | Ready: undefined | Strokes: 0/109 | Pixels: 0 | Canvases: 0
+  ⏳ 等待中... (18100ms) | Ready: undefined | Strokes: 0/109 | Pixels: 0 | Canvases: 0
+  ⏳ 等待中... (21100ms) | Ready: undefined | Strokes: 0/109 | Pixels: 0 | Canvases: 0
+  ⏳ 等待中... (24100ms) | Ready: undefined | Strokes: 0/109 | Pixels: 0 | Canvases: 0
+  ⏳ 等待中... (27100ms) | Ready: undefined | Strokes: 0/109 | Pixels: 0 | Canvases: 0
+  ❌ 30 秒後仍未同步
+  Teacher 最後日誌軌跡:
+  📸 已保存失敗截圖: student-sync-failure.png, teacher-sync-failure.png
+  ✘  1 [classroom-sync-test] › e2e\quick-sync-test.spec.ts:230:5 › Classroom Whiteboard Sync - Teacher to Student (2.3m)
+
+
+  1) [classroom-sync-test] › e2e\quick-sync-test.spec.ts:230:5 › Classroom Whiteboard Sync - Teacher to Student 
+
+    Error: [2mexpect([22m[31mreceived[39m[2m).[22mtoBe[2m([22m[32mexpected[39m[2m) // Object.is equality[22m
+
+    Expected: [32mtrue[39m
+    Received: [31mfalse[39m
+
+      527 |         console.log('  📸 已保存失敗截圖: student-sync-failure.png, teacher-sync-failure.png');
+      528 |         
+    > 529 |         expect(found).toBe(true);
+          |                       ^
+      530 |       }
+      531 |     } else {
+      532 |       console.log('  ⚠️  無法進行繪圖測試（Canvas 未找到或無邊界）');
+        at D:\jvtutorcorner-rwd\e2e\quick-sync-test.spec.ts:529:23
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\quick-sync-test-Classroom--87234-d-Sync---Teacher-to-Student-classroom-sync-test\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    test-results\quick-sync-test-Classroom--87234-d-Sync---Teacher-to-Student-classroom-sync-test\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  1 failed
+    [classroom-sync-test] › e2e\quick-sync-test.spec.ts:230:5 › Classroom Whiteboard Sync - Teacher to Student 
+
+[36m  Serving HTML report at http://localhost:9323. Press Ctrl+C to quit.[39m
+Terminate batch job (Y/N)? Terminate batch job (Y/N)? 

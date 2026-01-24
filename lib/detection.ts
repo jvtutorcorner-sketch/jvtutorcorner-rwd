@@ -28,8 +28,12 @@ export async function detectProducts(buffer: Buffer): Promise<{ products: Detect
 
   // Try to load onnxruntime dynamically to avoid import errors when not installed
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const ort = require('onnxruntime-node');
+    // Use indirect require to avoid bundlers (Turbopack/Webpack) statically resolving this
+    // and causing build failures when running client-side bundling. This ensures the
+    // module is only attempted to be loaded at runtime on the server.
+    // eslint-disable-next-line no-eval
+    const req: any = eval('require');
+    const ort = req('onnxruntime-node');
 
     // Very small example: user must implement a proper preprocessing matching the model
     // This code demonstrates the flow but may require adjustments per model (input shape, normalization, postprocessing)

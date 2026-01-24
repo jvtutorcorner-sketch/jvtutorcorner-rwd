@@ -68,6 +68,10 @@ export default function CollaborativeWhiteboard({
   // Message Queue for RTM to prevent rate-limit dropping and ensure ordering
   const messageQueueRef = useRef<DrawPacket[]>([]);
   const isSendingRef = useRef(false);
+  
+  // Remote draw queue for smooth rendering
+  const remoteDrawQueueRef = useRef<DrawPacket[]>([]);
+  const isRemoteDrawingRef = useRef(false);
 
   // Initialize Canvas Contexts
   useEffect(() => {
@@ -105,7 +109,15 @@ export default function CollaborativeWhiteboard({
             try {
               const data = JSON.parse(event.message) as DrawPacket;
               if (data.type === 'draw_stream') {
-                handleRemoteDraw(data);
+                // Debounce remote draws to prevent excessive updates during rapid drawing
+                if (!isRemoteDrawingRef.current) {
+                  handleRemoteDraw(data);
+                } else {
+                  // If already processing, queue it (but limit queue size to prevent backlog)
+                  if (remoteDrawQueueRef.current.length < 10) {
+                    remoteDrawQueueRef.current.push(data);
+                  }
+                }
               }
             } catch (e) {
               console.error('Failed to parse RTM message', e);
@@ -127,34 +139,60 @@ export default function CollaborativeWhiteboard({
     };
   }, [appId, token, channelName, userId]);
 
-  // Spec: Direct drawing for remote data
+  // Spec: Queue remote draws for smooth rendering to prevent flickering
   const handleRemoteDraw = (data: DrawPacket) => {
+    remoteDrawQueueRef.current.push(data);
+    if (!isRemoteDrawingRef.current) {
+      isRemoteDrawingRef.current = true;
+      requestAnimationFrame(processRemoteDrawQueue);
+    }
+  };
+
+  // Process remote draw queue in animation frame
+  const processRemoteDrawQueue = () => {
     const ctx = bottomCtxRef.current;
-    if (!ctx) return;
+    if (!ctx) {
+      isRemoteDrawingRef.current = false;
+      return;
+    }
 
-    ctx.strokeStyle = data.color;
-    ctx.lineWidth = data.lineWidth;
-    ctx.beginPath();
-    
-    // Draw the segment received
-    let hasMoved = false;
-    for (let i = 0; i < data.points.length; i += 2) {
-      const x = data.points[i];
-      const y = data.points[i + 1];
-      if (i === 0) {
-        ctx.moveTo(x, y);
-      } else {
-        ctx.lineTo(x, y);
-        hasMoved = true;
+    // Process up to 5 remote draws per frame to prevent overwhelming
+    let processed = 0;
+    while (remoteDrawQueueRef.current.length > 0 && processed < 5) {
+      const data = remoteDrawQueueRef.current.shift()!;
+      
+      ctx.strokeStyle = data.color;
+      ctx.lineWidth = data.lineWidth;
+      ctx.beginPath();
+      
+      // Draw the segment received
+      let hasMoved = false;
+      for (let i = 0; i < data.points.length; i += 2) {
+        const x = data.points[i];
+        const y = data.points[i + 1];
+        if (i === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+          hasMoved = true;
+        }
       }
-    }
-    
-    // Support Dots (single point click)
-    if (!hasMoved && data.points.length === 2) {
-       ctx.lineTo(data.points[0], data.points[1]); // Zero-length line to create a dot with round cap
+      
+      // Support Dots (single point click)
+      if (!hasMoved && data.points.length === 2) {
+         ctx.lineTo(data.points[0], data.points[1]); // Zero-length line to create a dot with round cap
+      }
+
+      ctx.stroke();
+      processed++;
     }
 
-    ctx.stroke();
+    // If more items remain, schedule next frame
+    if (remoteDrawQueueRef.current.length > 0) {
+      requestAnimationFrame(processRemoteDrawQueue);
+    } else {
+      isRemoteDrawingRef.current = false;
+    }
   };
 
   // Spec: Robust Queue-based sending to prevent RTM 429/Busy errors and dropped frames.
@@ -215,13 +253,13 @@ export default function CollaborativeWhiteboard({
     pointsBufferRef.current = [lastX, lastY];
   }, [sendDrawPacket, color, lineWidth]);
 
-  // Time-based flush (every 50ms) to ensure smooth updates even when drawing slowly
+  // Time-based flush (every 30ms) to ensure smooth updates even when drawing slowly
   useEffect(() => {
     const intervalId = setInterval(() => {
       if (isDrawingRef.current) {
         flushBuffer();
       }
-    }, 50);
+    }, 30);
     return () => clearInterval(intervalId);
   }, [flushBuffer]);
 

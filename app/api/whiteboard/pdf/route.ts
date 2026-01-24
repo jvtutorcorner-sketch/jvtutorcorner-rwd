@@ -1,4 +1,3 @@
-
 import { NextRequest, NextResponse } from 'next/server';
 import { resolveDataFile } from '@/lib/localData';
 import fs from 'fs/promises';
