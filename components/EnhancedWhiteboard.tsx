@@ -42,6 +42,19 @@ export default function EnhancedWhiteboard({
   const clientIdRef = useRef<string>(`c_${Math.random().toString(36).slice(2)}`);
   const applyingRemoteRef = useRef(false);
   const verboseLogging = typeof window !== 'undefined' && window.location.pathname === '/classroom/test';
+  
+  // Debounced state sync for incremental updates (prevents flickering)
+  const stateSyncTimerRef = useRef<number | null>(null);
+  const syncStateDebounced = useCallback(() => {
+    if (stateSyncTimerRef.current) {
+      window.clearTimeout(stateSyncTimerRef.current);
+    }
+    stateSyncTimerRef.current = window.setTimeout(() => {
+      // Sync React state with ref (for undo/redo and other features)
+      setStrokes([...strokesRef.current]);
+      stateSyncTimerRef.current = null;
+    }, 500) as unknown as number; // Sync after 500ms of no updates
+  }, []);
 
   const logAnomaly = (title: string, info?: any) => {
     try {
@@ -300,6 +313,14 @@ export default function EnhancedWhiteboard({
   // Cleanup render task on unmount
   useEffect(() => {
     return () => {
+      // Cleanup state sync timer
+      if (stateSyncTimerRef.current) {
+        try {
+          window.clearTimeout(stateSyncTimerRef.current);
+          stateSyncTimerRef.current = null;
+        } catch (e) {}
+      }
+      
       if (currentRenderTask.current) {
         try {
           currentRenderTask.current.cancel();
@@ -743,11 +764,21 @@ export default function EnhancedWhiteboard({
     if (!last) return;
     
     // Direct update to Ref
+    const oldLength = last.points.length;
     const updated = { ...last, points: last.points.concat([pos.x, pos.y]) };
     strokes[lastIndex] = updated;
     
-    // Sync UI
-    setStrokes([...strokes]);
+    // CRITICAL FIX: Draw incrementally immediately for local user
+    // This ensures the teacher sees their own drawing in real-time
+    const strokeId = (updated as any).id;
+    const lastDrawnCount = lastDrawnPointMapRef.current.get(strokeId) || 0;
+    if (updated.points.length > lastDrawnCount) {
+      drawIncremental(updated, lastDrawnCount);
+      lastDrawnPointMapRef.current.set(strokeId, updated.points.length);
+    }
+    
+    // Debounced state sync (for undo/redo)
+    syncStateDebounced();
     
     try {
         if (!useNetlessWhiteboard && bcRef.current && (last as any).origin !== clientIdRef.current) {
@@ -761,7 +792,7 @@ export default function EnhancedWhiteboard({
           enqueueStrokeUpdate((updated as any).id, updated.points);
         }
     } catch (e) {}
-  }, [enqueueStrokeUpdate, useNetlessWhiteboard]);
+  }, [enqueueStrokeUpdate, useNetlessWhiteboard, drawIncremental, syncStateDebounced]);
 
   const handlePointerUp = useCallback(() => {
     isDrawingRef.current = false;
@@ -952,7 +983,6 @@ export default function EnhancedWhiteboard({
                if (idx >= 0) {
                    const stroke = strokes[idx];
                    stroke.points = points; // in-place update of ref content
-                   // We DO NOT call setStrokes here to avoid re-render loop
                    
                    // Incremental draw
                    const lastCount = lastDrawnPointMapRef.current.get(strokeId) || 0;
@@ -960,6 +990,9 @@ export default function EnhancedWhiteboard({
                        drawIncremental(stroke, lastCount);
                        lastDrawnPointMapRef.current.set(strokeId, points.length);
                    }
+                   
+                   // Debounced state sync (prevents flickering)
+                   syncStateDebounced();
                } else {
                    // Unknown stroke (handle elegantly)
                    if (verboseLogging) logAnomaly('BC received stroke-update for unknown strokeId', { strokeId });
@@ -967,6 +1000,7 @@ export default function EnhancedWhiteboard({
                    strokes.push(newStroke);
                    drawIncremental(newStroke, 0);
                    lastDrawnPointMapRef.current.set(strokeId, points.length);
+                   syncStateDebounced();
                }
             }
             applyingRemoteRef.current = false;
@@ -1151,9 +1185,11 @@ export default function EnhancedWhiteboard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [drawAll, pdf, autoFit]);
 
-  // redraw when strokes change
+  // redraw when strokes change (but skip if applying remote updates)
   useEffect(() => {
-    drawAll();
+    if (!applyingRemoteRef.current) {
+      drawAll();
+    }
   }, [strokes, drawAll]);
 
   // Server-side SSE subscription for cross-device sync
@@ -1234,16 +1270,38 @@ export default function EnhancedWhiteboard({
                 return remoteMap.has(st.id) || st.origin === clientIdRef.current;
               });
               
-              // Check if we actually need to update
-              const hasChanged = finalStrokes.length !== localStrokes.length ||
-                finalStrokes.some((st: any, idx: number) => {
-                  const local = localStrokes[idx];
-                  return !local || st.id !== local.id || st.points?.length !== local.points?.length;
-                });
+              // Deep comparison: check both structure and content changes
+              let hasStructuralChange = finalStrokes.length !== localStrokes.length;
+              let strokesWithUpdatedPoints: Array<{stroke: any, oldLength: number}> = [];
               
-              if (hasChanged) {
+              if (!hasStructuralChange) {
+                // Check for strokes with updated points (incremental drawing candidates)
+                for (let i = 0; i < finalStrokes.length; i++) {
+                  const finalStroke = finalStrokes[i];
+                  const localStroke = localStrokes[i];
+                  
+                  if (!localStroke || finalStroke.id !== localStroke.id) {
+                    hasStructuralChange = true;
+                    break;
+                  }
+                  
+                  const finalLen = finalStroke.points?.length || 0;
+                  const localLen = localStroke.points?.length || 0;
+                  
+                  if (finalLen > localLen) {
+                    strokesWithUpdatedPoints.push({ stroke: finalStroke, oldLength: localLen });
+                  } else if (finalLen < localLen) {
+                    hasStructuralChange = true;
+                    break;
+                  }
+                }
+              }
+              
+              // Apply changes efficiently
+              if (hasStructuralChange) {
+                // Major change: full update needed
                 if (verboseLogging) {
-                  console.log('[WB POLL] ✓ Merged sync:', {
+                  console.log('[WB POLL] ✓ Structural change detected, full sync:', {
                     local: localStrokes.length,
                     remote: remoteStrokes.length,
                     final: finalStrokes.length
@@ -1253,6 +1311,35 @@ export default function EnhancedWhiteboard({
                 applyingRemoteRef.current = true;
                 strokesRef.current = finalStrokes;
                 setStrokes(finalStrokes);
+                applyingRemoteRef.current = false;
+              } else if (strokesWithUpdatedPoints.length > 0) {
+                // Minor change: only points updated, use incremental drawing
+                if (verboseLogging) {
+                  console.log('[WB POLL] ✓ Incremental update for', strokesWithUpdatedPoints.length, 'strokes');
+                }
+                
+                applyingRemoteRef.current = true;
+                
+                // Update refs and draw incrementally
+                for (const { stroke, oldLength } of strokesWithUpdatedPoints) {
+                  const idx = strokesRef.current.findIndex((st: any) => st.id === stroke.id);
+                  if (idx >= 0) {
+                    const lastDrawnCount = lastDrawnPointMapRef.current.get(stroke.id) || 0;
+                    strokesRef.current[idx] = stroke;
+                    
+                    // Draw only new points
+                    const newLen = stroke.points.length;
+                    if (newLen > lastDrawnCount) {
+                      drawIncremental(stroke, lastDrawnCount);
+                      lastDrawnPointMapRef.current.set(stroke.id, newLen);
+                    }
+                  }
+                }
+                
+                // CRITICAL FIX: Use debounced state sync to avoid flickering
+                // Only sync React state after drawing stops (500ms delay)
+                syncStateDebounced();
+                
                 applyingRemoteRef.current = false;
               }
               if (s.pdf) {
@@ -1442,19 +1529,22 @@ export default function EnhancedWhiteboard({
                 if (idx >= 0) {
                     const stroke = strokes[idx];
                     stroke.points = points; 
-                    // NO setStrokes
 
                     const lastCount = lastDrawnPointMapRef.current.get(strokeId) || 0;
                     if (points.length > lastCount) {
                         drawIncremental(stroke, lastCount);
                         lastDrawnPointMapRef.current.set(strokeId, points.length);
                     }
+                    
+                    // Debounced state sync
+                    syncStateDebounced();
                 } else {
                     console.warn('[WB SSE] stroke-update for unknown strokeId, creating new:', strokeId);
                     const newStroke = { points: points, stroke: '#000', strokeWidth: 2, mode: 'draw', id: strokeId, page: currentPage } as any;
                     strokes.push(newStroke);
                     drawIncremental(newStroke, 0);
                     lastDrawnPointMapRef.current.set(strokeId, points.length);
+                    syncStateDebounced();
                 }
             }
             applyingRemoteRef.current = false;
