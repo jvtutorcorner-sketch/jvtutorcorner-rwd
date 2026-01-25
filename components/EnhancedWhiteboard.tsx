@@ -819,6 +819,15 @@ export default function EnhancedWhiteboard({
     // Sync Ref
     const nextStrokes = strokes.slice(0, -1);
     strokesRef.current = nextStrokes;
+    
+    // Remove from tracking map
+    const strokeId = (last as any).id;
+    if (strokeId) {
+      lastDrawnPointMapRef.current.delete(strokeId);
+    }
+    
+    // Force full redraw (necessary for erase mode strokes)
+    lastDrawnStrokeCountRef.current = 0;
     setStrokes(nextStrokes);
     
     setUndone((u) => [...u, last]);
@@ -835,6 +844,9 @@ export default function EnhancedWhiteboard({
       
       // Sync Ref
       strokesRef.current.push(last);
+      
+      // Force full redraw
+      lastDrawnStrokeCountRef.current = 0;
       setStrokes([...strokesRef.current]);
       
       try { if (!useNetlessWhiteboard && bcRef.current) bcRef.current.postMessage({ type: 'redo', stroke: last, clientId: clientIdRef.current }); } catch (e) {}
@@ -848,8 +860,21 @@ export default function EnhancedWhiteboard({
     
     strokesRef.current = [];
     setStrokes([]);
+    lastDrawnPointMapRef.current.clear();
+    lastDrawnStrokeCountRef.current = 0;
     
     setUndone([]);
+    
+    // Immediate full canvas clear
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+    }
+    
     try { if (!useNetlessWhiteboard && bcRef.current) bcRef.current.postMessage({ type: 'clear', clientId: clientIdRef.current }); } catch (e) {}
     try { if (!useNetlessWhiteboard) postEventToServer({ type: 'clear' }); } catch (e) {}
   }, [isActionAllowed, useNetlessWhiteboard, postEventToServer]);
@@ -1008,18 +1033,33 @@ export default function EnhancedWhiteboard({
             applyingRemoteRef.current = true;
             const next = strokesRef.current.filter((st) => (st as any).id !== data.strokeId);
             strokesRef.current = next;
+            lastDrawnPointMapRef.current.delete(data.strokeId);
+            lastDrawnStrokeCountRef.current = 0; // Force full redraw
             setStrokes(next);
             applyingRemoteRef.current = false;
           } else if (data.type === 'redo') {
             applyingRemoteRef.current = true;
             strokesRef.current.push(data.stroke);
+            lastDrawnStrokeCountRef.current = 0; // Force full redraw
             setStrokes([...strokesRef.current]);
             applyingRemoteRef.current = false;
           } else if (data.type === 'clear') {
             applyingRemoteRef.current = true;
             strokesRef.current = [];
+            lastDrawnPointMapRef.current.clear();
+            lastDrawnStrokeCountRef.current = 0;
             setStrokes([]);
             setUndone([]);
+            
+            // Clear canvas immediately
+            const canvas = canvasRef.current;
+            if (canvas) {
+              const ctx = canvas.getContext('2d');
+              if (ctx) {
+                ctx.setTransform(1, 0, 0, 1, 0, 0);
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+              }
+            }
             applyingRemoteRef.current = false;
           } else if (data.type === 'request-state') {
             // reply with full state
@@ -1225,50 +1265,34 @@ export default function EnhancedWhiteboard({
             const j = await resp.json();
             const s = j?.state;
             if (s && Array.isArray(s.strokes)) {
-              // CRITICAL FIX: Use merge strategy instead of overwriting
+              // SIMPLIFIED MERGE STRATEGY: Use remote as source of truth
+              // Only protect the currently drawing stroke (if any)
               const localStrokes = strokesRef.current;
               const remoteStrokes = s.strokes;
               
-              // Create maps for efficient lookup
-              const localMap = new Map(localStrokes.map((st: any) => [st.id, st]));
+              // Find currently drawing stroke (last stroke if we're drawing)
+              const isDrawing = isDrawingRef.current;
+              const currentStroke = isDrawing && localStrokes.length > 0 ? localStrokes[localStrokes.length - 1] : null;
+              const currentStrokeId = (currentStroke as any)?.id;
+              
+              // Start with remote strokes as base
               const remoteMap = new Map(remoteStrokes.map((st: any) => [st.id, st]));
+              const finalStrokes: any[] = [...remoteStrokes];
               
-              // Build merged array preserving newer/longer strokes
-              const mergedMap = new Map();
-              
-              // Add all local strokes first
-              for (const stroke of localStrokes) {
-                if (stroke.id) {
-                  mergedMap.set(stroke.id, stroke);
-                }
-              }
-              
-              // Merge remote strokes: add new ones or update with more points
-              for (const remoteStroke of remoteStrokes) {
-                if (!remoteStroke.id) continue;
-                
-                const localStroke = mergedMap.get(remoteStroke.id);
-                
-                if (!localStroke) {
-                  // New stroke from remote
-                  mergedMap.set(remoteStroke.id, remoteStroke);
-                } else {
-                  // Compare point counts - keep the one with more points
-                  const remotePoints = remoteStroke.points?.length || 0;
-                  const localPoints = localStroke.points?.length || 0;
-                  
-                  if (remotePoints > localPoints) {
-                    // Remote has more complete stroke
-                    mergedMap.set(remoteStroke.id, remoteStroke);
+              // If we're actively drawing, preserve the current stroke if it's newer than remote
+              if (currentStroke && currentStrokeId) {
+                const remoteVersion = remoteMap.get(currentStrokeId);
+                if (!remoteVersion) {
+                  // Brand new stroke not yet on server - add it
+                  finalStrokes.push(currentStroke);
+                } else if (currentStroke.points.length > (remoteVersion as any).points?.length) {
+                  // Local has more points - replace remote version
+                  const idx = finalStrokes.findIndex((st: any) => st.id === currentStrokeId);
+                  if (idx >= 0) {
+                    finalStrokes[idx] = currentStroke;
                   }
                 }
               }
-              
-              // Remove strokes that don't exist remotely (deleted by other clients)
-              // But only if they're not from current client (to preserve pending uploads)
-              const finalStrokes = Array.from(mergedMap.values()).filter((st: any) => {
-                return remoteMap.has(st.id) || st.origin === clientIdRef.current;
-              });
               
               // Deep comparison: check both structure and content changes
               let hasStructuralChange = finalStrokes.length !== localStrokes.length;
@@ -1551,14 +1575,29 @@ export default function EnhancedWhiteboard({
           } else if (data.type === 'undo') {
             const next = strokesRef.current.filter((st) => (st as any).id !== data.strokeId);
             strokesRef.current = next;
+            lastDrawnPointMapRef.current.delete(data.strokeId);
+            lastDrawnStrokeCountRef.current = 0;
             setStrokes(next);
           } else if (data.type === 'redo') {
             strokesRef.current.push(data.stroke);
+            lastDrawnStrokeCountRef.current = 0;
             setStrokes([...strokesRef.current]);
           } else if (data.type === 'clear') {
             strokesRef.current = [];
+            lastDrawnPointMapRef.current.clear();
+            lastDrawnStrokeCountRef.current = 0;
             setStrokes([]);
             setUndone([]);
+            
+            // Clear canvas immediately
+            const canvas = canvasRef.current;
+            if (canvas) {
+              const ctx = canvas.getContext('2d');
+              if (ctx) {
+                ctx.setTransform(1, 0, 0, 1, 0, 0);
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+              }
+            }
           } else if (data.type === 'pdf-set') {
             (async () => {
               try {
