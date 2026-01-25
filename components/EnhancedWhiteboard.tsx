@@ -1265,13 +1265,43 @@ export default function EnhancedWhiteboard({
             const j = await resp.json();
             const s = j?.state;
             if (s && Array.isArray(s.strokes)) {
-              // SIMPLIFIED MERGE STRATEGY: Use remote as source of truth
-              // Only protect the currently drawing stroke (if any)
+              // INTELLIGENT MERGE STRATEGY: Avoid mutual overwrite cycles
               const localStrokes = strokesRef.current;
               const remoteStrokes = s.strokes;
+              const isDrawing = isDrawingRef.current;
+              
+              // Quick check: if counts match, check content changes
+              if (localStrokes.length === remoteStrokes.length && !isDrawing) {
+                // Same count and not drawing - check if any stroke actually changed
+                let hasContentChange = false;
+                for (let i = 0; i < localStrokes.length; i++) {
+                  const local = localStrokes[i];
+                  const remote = remoteStrokes[i];
+                  if ((local as any).id !== (remote as any).id || 
+                      local.points?.length !== remote.points?.length) {
+                    hasContentChange = true;
+                    break;
+                  }
+                }
+                if (!hasContentChange) {
+                  // No actual changes, skip update to avoid flickering
+                  return;
+                }
+              }
+              
+              // If not drawing and remote has FEWER strokes, this might be stale data
+              // Skip update to avoid deleting local strokes incorrectly
+              if (!isDrawing && remoteStrokes.length < localStrokes.length) {
+                if (verboseLogging) {
+                  console.log('[WB POLL] Skipping update: remote has fewer strokes and not drawing', {
+                    local: localStrokes.length,
+                    remote: remoteStrokes.length
+                  });
+                }
+                return;
+              }
               
               // Find currently drawing stroke (last stroke if we're drawing)
-              const isDrawing = isDrawingRef.current;
               const currentStroke = isDrawing && localStrokes.length > 0 ? localStrokes[localStrokes.length - 1] : null;
               const currentStrokeId = (currentStroke as any)?.id;
               
