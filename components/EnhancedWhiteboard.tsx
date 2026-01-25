@@ -1265,10 +1265,33 @@ export default function EnhancedWhiteboard({
             const j = await resp.json();
             const s = j?.state;
             if (s && Array.isArray(s.strokes)) {
-              // INTELLIGENT MERGE STRATEGY: Avoid mutual overwrite cycles
+              // INTELLIGENT MERGE STRATEGY: Use timestamps to avoid stale data
               const localStrokes = strokesRef.current;
               const remoteStrokes = s.strokes;
               const isDrawing = isDrawingRef.current;
+              
+              // Calculate most recent timestamp in both local and remote
+              const getLatestTimestamp = (strokes: any[]) => {
+                if (strokes.length === 0) return 0;
+                return Math.max(...strokes.map((st: any) => st.timestamp || 0));
+              };
+              
+              const localLatestTs = getLatestTimestamp(localStrokes);
+              const remoteLatestTs = getLatestTimestamp(remoteStrokes);
+              
+              // If remote data is older than local, skip to avoid overwriting with stale data
+              // Allow 100ms tolerance for network delay
+              if (remoteLatestTs < localLatestTs - 100 && !isDrawing) {
+                if (verboseLogging) {
+                  console.log('[WB POLL] Skipping update: remote data is older', {
+                    localTs: localLatestTs,
+                    remoteTs: remoteLatestTs,
+                    localCount: localStrokes.length,
+                    remoteCount: remoteStrokes.length
+                  });
+                }
+                return;
+              }
               
               // Quick check: if counts match, check content changes
               if (localStrokes.length === remoteStrokes.length && !isDrawing) {
@@ -1287,18 +1310,6 @@ export default function EnhancedWhiteboard({
                   // No actual changes, skip update to avoid flickering
                   return;
                 }
-              }
-              
-              // If not drawing and remote has FEWER strokes, this might be stale data
-              // Skip update to avoid deleting local strokes incorrectly
-              if (!isDrawing && remoteStrokes.length < localStrokes.length) {
-                if (verboseLogging) {
-                  console.log('[WB POLL] Skipping update: remote has fewer strokes and not drawing', {
-                    local: localStrokes.length,
-                    remote: remoteStrokes.length
-                  });
-                }
-                return;
               }
               
               // Find currently drawing stroke (last stroke if we're drawing)
