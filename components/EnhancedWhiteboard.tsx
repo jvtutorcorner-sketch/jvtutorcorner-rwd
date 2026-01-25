@@ -20,7 +20,7 @@ export interface WhiteboardProps {
   editable?: boolean; // whether the current client may draw/interact
 }
 
-type Stroke = { points: number[]; stroke: string; strokeWidth: number; mode: 'draw' | 'erase'; page?: number };
+type Stroke = { points: number[]; stroke: string; strokeWidth: number; mode: 'draw' | 'erase'; page?: number; id?: string; timestamp?: number };
 
 export default function EnhancedWhiteboard({ 
   room,
@@ -711,7 +711,8 @@ export default function EnhancedWhiteboard({
     if (!isActionAllowed('draw')) return;
     isDrawingRef.current = true;
     const pos = getPointerPos(e);
-    const newStroke: Stroke & { id?: string; origin?: string } = { page: currentPage, points: [pos.x, pos.y], stroke: color, strokeWidth, mode: tool === 'eraser' ? 'erase' : 'draw', id: `${clientIdRef.current}_${Date.now()}` , origin: clientIdRef.current };
+    const timestamp = Date.now();
+    const newStroke: Stroke & { id?: string; origin?: string } = { page: currentPage, points: [pos.x, pos.y], stroke: color, strokeWidth, mode: tool === 'eraser' ? 'erase' : 'draw', id: `${clientIdRef.current}_${timestamp}`, timestamp, origin: clientIdRef.current };
     
     // Sync Ref first (Source of Truth)
     strokesRef.current.push(newStroke);
@@ -1188,43 +1189,71 @@ export default function EnhancedWhiteboard({
             const j = await resp.json();
             const s = j?.state;
             if (s && Array.isArray(s.strokes)) {
-              // Compare both count and content to detect updates (not just count changes)
-              const remoteCount = s.strokes.length;
-              const localCount = strokesRef.current.length;
+              // CRITICAL FIX: Use merge strategy instead of overwriting
+              const localStrokes = strokesRef.current;
+              const remoteStrokes = s.strokes;
               
-              // Use a more comprehensive hash that includes stroke properties
-              const getStrokeHash = (stroke: any) => `${stroke.id || 'no-id'}_${stroke.points?.length || 0}_${stroke.stroke || 'no-color'}_${stroke.strokeWidth || 0}`;
-              const remoteHash = remoteCount > 0 ? s.strokes.map(getStrokeHash).sort().join('|') : '';
-              const localHash = localCount > 0 ? strokesRef.current.map(getStrokeHash).sort().join('|') : '';
+              // Create maps for efficient lookup
+              const localMap = new Map(localStrokes.map((st: any) => [st.id, st]));
+              const remoteMap = new Map(remoteStrokes.map((st: any) => [st.id, st]));
               
-              // Detect missing strokes: if remote has more or different content
+              // Build merged array preserving newer/longer strokes
+              const mergedMap = new Map();
               
-              // Detect missing strokes: if remote has more or different content
-              const isMismatch = remoteCount !== localCount || remoteHash !== localHash;
-              const isNewUpdate = remoteHash !== lastRemoteHash; // content actually changed since last sync
-              
-              if (isMismatch && isNewUpdate) {
-                console.log('[WB POLL] ✓ Sync update detected: local=', localCount, 'remote=', remoteCount, 'mismatch=', isMismatch);
-                strokesRef.current = s.strokes; // Update ref first
-                setStrokes(s.strokes); // This will trigger drawAll() via useEffect
-                lastRemoteHash = remoteHash; // track this update
-                  if (verboseLogging) {
-                    console.log('[WB POLL] Applied remote strokes in production poll');
-                  }
-              } else if (isMismatch && !isNewUpdate) {
-                // Same data as before (server didn't change), but we mismatch.
-                // If local > remote, it means we have pending strokes that server hasn't seen yet.
-                // DO NOT overwrite local state with stale remote state.
-                if (localCount > remoteCount) {
-                  if (verboseLogging) console.log('[WB POLL] Local ahead of server (pending sync), ignoring stale remote state');
-                  return;
+              // Add all local strokes first
+              for (const stroke of localStrokes) {
+                if (stroke.id) {
+                  mergedMap.set(stroke.id, stroke);
                 }
-
-                // Only force resync if we are truly behind (remote > local) or same count but diff hash (rare collision/corruption)
-                console.warn('[WB POLL] ⚠ Client behind server by', remoteCount - localCount, 'strokes - forcing resync');
-                strokesRef.current = s.strokes; // Update ref first
-                setStrokes(s.strokes); // This will trigger drawAll() via useEffect
-                lastRemoteHash = remoteHash;
+              }
+              
+              // Merge remote strokes: add new ones or update with more points
+              for (const remoteStroke of remoteStrokes) {
+                if (!remoteStroke.id) continue;
+                
+                const localStroke = mergedMap.get(remoteStroke.id);
+                
+                if (!localStroke) {
+                  // New stroke from remote
+                  mergedMap.set(remoteStroke.id, remoteStroke);
+                } else {
+                  // Compare point counts - keep the one with more points
+                  const remotePoints = remoteStroke.points?.length || 0;
+                  const localPoints = localStroke.points?.length || 0;
+                  
+                  if (remotePoints > localPoints) {
+                    // Remote has more complete stroke
+                    mergedMap.set(remoteStroke.id, remoteStroke);
+                  }
+                }
+              }
+              
+              // Remove strokes that don't exist remotely (deleted by other clients)
+              // But only if they're not from current client (to preserve pending uploads)
+              const finalStrokes = Array.from(mergedMap.values()).filter((st: any) => {
+                return remoteMap.has(st.id) || st.origin === clientIdRef.current;
+              });
+              
+              // Check if we actually need to update
+              const hasChanged = finalStrokes.length !== localStrokes.length ||
+                finalStrokes.some((st: any, idx: number) => {
+                  const local = localStrokes[idx];
+                  return !local || st.id !== local.id || st.points?.length !== local.points?.length;
+                });
+              
+              if (hasChanged) {
+                if (verboseLogging) {
+                  console.log('[WB POLL] ✓ Merged sync:', {
+                    local: localStrokes.length,
+                    remote: remoteStrokes.length,
+                    final: finalStrokes.length
+                  });
+                }
+                
+                applyingRemoteRef.current = true;
+                strokesRef.current = finalStrokes;
+                setStrokes(finalStrokes);
+                applyingRemoteRef.current = false;
               }
               if (s.pdf) {
                 // Sync PDF page if it differs from local
