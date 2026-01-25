@@ -49,8 +49,8 @@ export default function EnhancedWhiteboard({
         time: Date.now(),
         page: typeof window !== 'undefined' ? window.location.pathname : 'unknown',
         clientId: clientIdRef.current,
-        strokesCount: strokesRef.current.length,
-        recentStrokes: strokesRef.current.slice(-10).map((s) => ({ id: (s as any).id, len: s.points.length }))
+        strokesCount: strokes.length,
+        recentStrokes: strokes.slice(-10).map((s) => ({ id: (s as any).id, len: s.points.length }))
       };
       console.error(`[WB-ANOMALY] ${title}`, { info, snapshot });
     } catch (e) {
@@ -233,13 +233,11 @@ export default function EnhancedWhiteboard({
     }
   });
 
-  // `editable` comes from props; default true
-
-  // Keep a ref of strokes as the Single Source of Truth for drawing to avoid React render cycles
-  // during high-frequency updates. We manually sync this ref.
-  const strokesRef = useRef<Stroke[]>(strokes);
-  // Map to track how many points have been drawn for each stroke (incremental drawing)
-  const lastDrawnPointMapRef = useRef<Map<string, number>>(new Map());
+  // Sync strokesRef with React state for drawAll() to work correctly
+  // This is safe because it's not called during high-frequency updates
+  useEffect(() => {
+    strokesRef.current = strokes;
+  }, [strokes]);
 
   // REMOVED: Automatic sync effect. We now manually update strokesRef when modifying state.
   // useEffect(() => { strokesRef.current = strokes; }, [strokes]);
@@ -266,6 +264,12 @@ export default function EnhancedWhiteboard({
   
   // Use Netless whiteboard if room is provided and no PDF is loaded
   const useNetlessWhiteboard = Boolean(room && whiteboardRef && !pdfFile && !localPdfFile);
+
+  // Keep a ref of strokes as the Single Source of Truth for drawing to avoid React render cycles
+  // during high-frequency updates. We manually sync this ref.
+  const strokesRef = useRef<Stroke[]>(strokes);
+  // Map to track how many points have been drawn for each stroke (incremental drawing)
+  const lastDrawnPointMapRef = useRef<Map<string, number>>(new Map());
 
   useEffect(() => { setMounted(true); }, []);
 
@@ -623,12 +627,26 @@ export default function EnhancedWhiteboard({
     ctx.restore();
   }, [currentPage]);
 
+  // Track last drawn stroke count to avoid unnecessary redraws
+  const lastDrawnStrokeCountRef = useRef<number>(0);
+
   // draw all strokes into the canvas (coordinates are normalized 0..1)
   const drawAll = useCallback(() => {
     const el = canvasRef.current;
     if (!el) return;
     const ctx = el.getContext('2d');
     if (!ctx) return;
+
+    const currentStrokes = strokesRef.current;
+    const currentCount = currentStrokes.length;
+    
+    // If stroke count hasn't changed and we have incremental tracking, skip full redraw
+    if (currentCount === lastDrawnStrokeCountRef.current && lastDrawnPointMapRef.current.size > 0) {
+      console.log('[WB DRAW] Skipping full redraw, stroke count unchanged:', currentCount);
+      return;
+    }
+    
+    lastDrawnStrokeCountRef.current = currentCount;
 
     const dpr = window.devicePixelRatio || 1;
 
@@ -643,7 +661,6 @@ export default function EnhancedWhiteboard({
     // reset incremental map on full redraw
     lastDrawnPointMapRef.current.clear();
 
-    const currentStrokes = strokesRef.current;
     currentStrokes.forEach((s) => {
       // Only draw strokes for current page (default to page 1 for legacy strokes)
       if ((s.page ?? 1) !== currentPage) return;
@@ -1174,8 +1191,13 @@ export default function EnhancedWhiteboard({
               // Compare both count and content to detect updates (not just count changes)
               const remoteCount = s.strokes.length;
               const localCount = strokesRef.current.length;
-              const remoteHash = remoteCount > 0 ? JSON.stringify(s.strokes.map((st: any) => st.id)).slice(0, 100) : '';
-              const localHash = localCount > 0 ? JSON.stringify(strokesRef.current.map((st: any) => st.id)).slice(0, 100) : '';
+              
+              // Use a more comprehensive hash that includes stroke properties
+              const getStrokeHash = (stroke: any) => `${stroke.id || 'no-id'}_${stroke.points?.length || 0}_${stroke.stroke || 'no-color'}_${stroke.strokeWidth || 0}`;
+              const remoteHash = remoteCount > 0 ? s.strokes.map(getStrokeHash).sort().join('|') : '';
+              const localHash = localCount > 0 ? strokesRef.current.map(getStrokeHash).sort().join('|') : '';
+              
+              // Detect missing strokes: if remote has more or different content
               
               // Detect missing strokes: if remote has more or different content
               const isMismatch = remoteCount !== localCount || remoteHash !== localHash;
@@ -1184,8 +1206,7 @@ export default function EnhancedWhiteboard({
               if (isMismatch && isNewUpdate) {
                 console.log('[WB POLL] ✓ Sync update detected: local=', localCount, 'remote=', remoteCount, 'mismatch=', isMismatch);
                 strokesRef.current = s.strokes; // Update ref first
-                setStrokes(s.strokes);
-                drawAll(); // Force redraw after applying remote strokes
+                setStrokes(s.strokes); // This will trigger drawAll() via useEffect
                 lastRemoteHash = remoteHash; // track this update
                   if (verboseLogging) {
                     console.log('[WB POLL] Applied remote strokes in production poll');
@@ -1202,8 +1223,7 @@ export default function EnhancedWhiteboard({
                 // Only force resync if we are truly behind (remote > local) or same count but diff hash (rare collision/corruption)
                 console.warn('[WB POLL] ⚠ Client behind server by', remoteCount - localCount, 'strokes - forcing resync');
                 strokesRef.current = s.strokes; // Update ref first
-                setStrokes(s.strokes);
-                drawAll(); // Force redraw after applying remote strokes
+                setStrokes(s.strokes); // This will trigger drawAll() via useEffect
                 lastRemoteHash = remoteHash;
               }
               if (s.pdf) {
@@ -1259,8 +1279,7 @@ export default function EnhancedWhiteboard({
               if (s && Array.isArray(s.strokes) && strokesRef.current.length === 0) {
                 console.log('[WB SSE] Applying fallback state from /state:', s.strokes.length, 'strokes');
                 strokesRef.current = s.strokes; // Update ref first
-                setStrokes(s.strokes);
-                drawAll(); // Force redraw after applying remote strokes
+                setStrokes(s.strokes); // This will trigger drawAll() via useEffect
                 if (s.pdf && s.pdf.dataUrl && s.pdf.dataUrl !== '(large-data-url)') {
                   try {
                     const r = await fetch(s.pdf.dataUrl);
@@ -1309,8 +1328,7 @@ export default function EnhancedWhiteboard({
                 if (local.length === 0) {
                   console.log('[WB SSE] Accepted init-state with', data.strokes.length, 'strokes');
                   strokesRef.current = data.strokes; // Update ref first
-                  drawAll(); // Force redraw after applying remote strokes
-                  return data.strokes;
+                  return data.strokes; // This will trigger drawAll() via useEffect
                 } else {
                   if (verboseLogging) logAnomaly('SSE init-state ignored due to non-empty local strokes', { localCount: local.length, remoteCount: data.strokes.length });
                   console.log('[WB SSE] init-state ignored because local strokes exist:', local.length);
