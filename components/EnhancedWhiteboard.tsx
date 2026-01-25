@@ -61,11 +61,8 @@ export default function EnhancedWhiteboard({
   // helper to POST events to server relay
   const postEventToServer = useCallback(async (event: any) => {
     try {
-      // Use courseId from URL parameter directly (or fallback to 'classroom' if not present).
-      // This ensures POST and GET use the SAME uuid for server state consistency.
-      const params = new URLSearchParams(window.location.search);
-      const courseParam = params.get('courseId') || 'classroom';
-      const uuid = `course_${courseParam}`;
+      // Use channelName as uuid for consistency with PDF and session
+      const uuid = channelName || 'default';
       console.log('[WB POST] Sending event to server:', event.type, 'uuid:', uuid);
       const response = await fetch('/api/whiteboard/event', {
         method: 'POST',
@@ -96,7 +93,7 @@ export default function EnhancedWhiteboard({
           const strokeId = event.stroke?.id;
           if (strokeId) {
             console.log('[WB POST] Starting ACK check for stroke:', strokeId);
-            try { ensureServerAckForStroke(strokeId, courseParam); } catch (e) { /* ignore */ }
+            try { ensureServerAckForStroke(strokeId, channelName || 'default'); } catch (e) { /* ignore */ }
           } else {
             console.warn('[WB POST] No strokeId found for ACK check - event:', event);
           }
@@ -116,8 +113,7 @@ export default function EnhancedWhiteboard({
     console.error('[WB ERR]', msg);
   }, []);
 
-  const ensureServerAckForStroke = useCallback(async (strokeId: string, courseIdFromChannel: string) => {
-    const uuid = `course_${courseIdFromChannel}`;
+  const ensureServerAckForStroke = useCallback(async (strokeId: string, uuid: string) => {
     // avoid duplicate ack watchers
     if (pendingAckRef.current.has(strokeId)) return;
     // 限制並發數量，防止資源耗盡
@@ -161,7 +157,7 @@ export default function EnhancedWhiteboard({
         pendingAckRef.current.delete(strokeId);
         const msg = `Canvas sync not confirmed for stroke ${strokeId}`;
         console.warn('[WB ACK] ✗ Timeout after', attempts, 'attempts:', strokeId);
-        logAnomaly('Ack timeout for stroke', { strokeId, attempts, courseIdFromChannel });
+        logAnomaly('Ack timeout for stroke', { strokeId, attempts, uuid });
         pushError(msg);
         return;
       }
@@ -239,11 +235,14 @@ export default function EnhancedWhiteboard({
 
   // `editable` comes from props; default true
 
-  // Keep a ref of strokes for BroadcastChannel state requests to avoid effect re-runs
+  // Keep a ref of strokes as the Single Source of Truth for drawing to avoid React render cycles
+  // during high-frequency updates. We manually sync this ref.
   const strokesRef = useRef<Stroke[]>(strokes);
-  useEffect(() => {
-    strokesRef.current = strokes;
-  }, [strokes]);
+  // Map to track how many points have been drawn for each stroke (incremental drawing)
+  const lastDrawnPointMapRef = useRef<Map<string, number>>(new Map());
+
+  // REMOVED: Automatic sync effect. We now manually update strokesRef when modifying state.
+  // useEffect(() => { strokesRef.current = strokes; }, [strokes]);
   
   // PDF state
   const [pdfLib, setPdfLib] = useState<any | null>(null);
@@ -392,35 +391,6 @@ export default function EnhancedWhiteboard({
   }, [mounted]);
 
   // Load PDF from server on mount
-  useEffect(() => {
-    if (!mounted || !channelName) return;
-    
-    const loadPdfFromServer = async () => {
-      try {
-        const params = new URLSearchParams(window.location.search);
-        let courseParam = params.get('courseId') || params.get('session') || 'classroom';
-        while (courseParam.startsWith('course_')) {
-          courseParam = courseParam.replace(/^course_/, '');
-        }
-        const uuid = `course_${courseParam}`;
-        
-        const response = await fetch(`/api/whiteboard/pdf?uuid=${encodeURIComponent(uuid)}`);
-        if (response.ok) {
-          const data = await response.json();
-          if (data.pdf) {
-            console.log('[WB] Loading PDF from server:', data.pdf.name);
-            setRemotePdfData(data.pdf);
-            setCurrentPage(data.pdf.currentPage || 1);
-          }
-        }
-      } catch (e) {
-        console.warn('[WB] Failed to load PDF from server:', e);
-      }
-    };
-    
-    loadPdfFromServer();
-  }, [mounted, channelName]);
-
   // Load PDF file
   useEffect(() => {
     const activePdfFile = localPdfFile ?? pdfFile;
@@ -608,6 +578,51 @@ export default function EnhancedWhiteboard({
     return allowed.includes(currentUserRoleId);
   }, [currentUserRoleId, whiteboardPermissions]);
 
+
+  // Helper for incremental drawing (avoid clearing canvas)
+  const drawIncremental = useCallback((stroke: Stroke, startIndex: number) => {
+    const el = canvasRef.current;
+    if (!el) return;
+    const ctx = el.getContext('2d');
+    if (!ctx) return;
+    // Only draw if on current page
+    if ((stroke.page ?? 1) !== currentPage) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    const displayW = el.width / dpr;
+    const displayH = el.height / dpr;
+
+    ctx.save();
+    ctx.scale(dpr, dpr);
+    ctx.strokeStyle = stroke.stroke;
+    ctx.lineWidth = stroke.strokeWidth;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.globalCompositeOperation = stroke.mode === 'erase' ? 'destination-out' : 'source-over';
+
+    ctx.beginPath();
+    const points = stroke.points;
+    if (points.length <= startIndex) {
+        ctx.restore();
+        return;
+    }
+    
+    let i = startIndex;
+    if (startIndex >= 2) {
+       // connect from last point
+       ctx.moveTo(points[startIndex-2] * displayW, points[startIndex-1] * displayH);
+    } else {
+       ctx.moveTo(points[0] * displayW, points[1] * displayH);
+       i = 2; // start lineTo from 2nd point
+    }
+
+    for (; i < points.length; i += 2) {
+      ctx.lineTo(points[i] * displayW, points[i + 1] * displayH);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }, [currentPage]);
+
   // draw all strokes into the canvas (coordinates are normalized 0..1)
   const drawAll = useCallback(() => {
     const el = canvasRef.current;
@@ -624,10 +639,18 @@ export default function EnhancedWhiteboard({
 
     const displayW = el.width / dpr;
     const displayH = el.height / dpr;
+    
+    // reset incremental map on full redraw
+    lastDrawnPointMapRef.current.clear();
 
-    strokes.forEach((s) => {
+    const currentStrokes = strokesRef.current;
+    currentStrokes.forEach((s) => {
       // Only draw strokes for current page (default to page 1 for legacy strokes)
       if ((s.page ?? 1) !== currentPage) return;
+      
+      // Update map so we don't re-draw these incrementally if we get a partial update later
+      lastDrawnPointMapRef.current.set((s as any).id, s.points.length);
+
       if (s.points.length < 2) return;
       ctx.strokeStyle = s.stroke;
       ctx.lineWidth = s.strokeWidth;
@@ -643,7 +666,7 @@ export default function EnhancedWhiteboard({
       }
       ctx.stroke();
     });
-  }, [strokes, currentPage]);
+  }, [currentPage]);
 
   // Attach non-passive touch listeners to prevent page scroll while drawing on mobile
   
@@ -672,7 +695,11 @@ export default function EnhancedWhiteboard({
     isDrawingRef.current = true;
     const pos = getPointerPos(e);
     const newStroke: Stroke & { id?: string; origin?: string } = { page: currentPage, points: [pos.x, pos.y], stroke: color, strokeWidth, mode: tool === 'eraser' ? 'erase' : 'draw', id: `${clientIdRef.current}_${Date.now()}` , origin: clientIdRef.current };
-    setStrokes((s) => [...s, newStroke]);
+    
+    // Sync Ref first (Source of Truth)
+    strokesRef.current.push(newStroke);
+    setStrokes([...strokesRef.current]);
+    
     setUndone([]);
     currentStrokeIdRef.current = newStroke.id as string;
     try {
@@ -690,12 +717,21 @@ export default function EnhancedWhiteboard({
   const handlePointerMove = useCallback((e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
     if (!isDrawingRef.current) return;
     const pos = getPointerPos(e);
-    setStrokes((prev) => {
-      const last = prev[prev.length - 1];
-      if (!last) return prev;
-      const updated = { ...last, points: last.points.concat([pos.x, pos.y]) };
-      const out = [...prev.slice(0, -1), updated];
-      try {
+    
+    const strokes = strokesRef.current;
+    if (strokes.length === 0) return;
+    const lastIndex = strokes.length - 1;
+    const last = strokes[lastIndex];
+    if (!last) return;
+    
+    // Direct update to Ref
+    const updated = { ...last, points: last.points.concat([pos.x, pos.y]) };
+    strokes[lastIndex] = updated;
+    
+    // Sync UI
+    setStrokes([...strokes]);
+    
+    try {
         if (!useNetlessWhiteboard && bcRef.current && (last as any).origin !== clientIdRef.current) {
           // don't re-broadcast remote-applied strokes
         } else if (!useNetlessWhiteboard && bcRef.current) {
@@ -706,9 +742,7 @@ export default function EnhancedWhiteboard({
           // enqueue high-frequency updates to reduce network/SSE load
           enqueueStrokeUpdate((updated as any).id, updated.points);
         }
-      } catch (e) {}
-      return out;
-    });
+    } catch (e) {}
   }, [enqueueStrokeUpdate, useNetlessWhiteboard]);
 
   const handlePointerUp = useCallback(() => {
@@ -729,15 +763,19 @@ export default function EnhancedWhiteboard({
 
   const undo = useCallback(() => {
     if (!isActionAllowed('undo')) return;
-    setStrokes((s) => {
-      if (s.length === 0) return s;
-      const last = s[s.length - 1];
-      setUndone((u) => [...u, last]);
-      const next = s.slice(0, -1);
-      try { if (!useNetlessWhiteboard && bcRef.current) bcRef.current.postMessage({ type: 'undo', strokeId: (last as any).id, clientId: clientIdRef.current }); } catch (e) {}
-      try { if (!useNetlessWhiteboard) postEventToServer({ type: 'undo', strokeId: (last as any).id }); } catch (e) {}
-      return next;
-    });
+    const strokes = strokesRef.current;
+    if (strokes.length === 0) return;
+    const last = strokes[strokes.length - 1];
+    
+    // Sync Ref
+    const nextStrokes = strokes.slice(0, -1);
+    strokesRef.current = nextStrokes;
+    setStrokes(nextStrokes);
+    
+    setUndone((u) => [...u, last]);
+    
+    try { if (!useNetlessWhiteboard && bcRef.current) bcRef.current.postMessage({ type: 'undo', strokeId: (last as any).id, clientId: clientIdRef.current }); } catch (e) {}
+    try { if (!useNetlessWhiteboard) postEventToServer({ type: 'undo', strokeId: (last as any).id }); } catch (e) {}
   }, [isActionAllowed, useNetlessWhiteboard, postEventToServer]);
 
   const redo = useCallback(() => {
@@ -745,7 +783,11 @@ export default function EnhancedWhiteboard({
     setUndone((u) => {
       if (u.length === 0) return u;
       const last = u[u.length - 1];
-      setStrokes((s) => [...s, last]);
+      
+      // Sync Ref
+      strokesRef.current.push(last);
+      setStrokes([...strokesRef.current]);
+      
       try { if (!useNetlessWhiteboard && bcRef.current) bcRef.current.postMessage({ type: 'redo', stroke: last, clientId: clientIdRef.current }); } catch (e) {}
       try { if (!useNetlessWhiteboard) postEventToServer({ type: 'redo', stroke: last }); } catch (e) {}
       return u.slice(0, -1);
@@ -754,7 +796,10 @@ export default function EnhancedWhiteboard({
 
   const clearAll = useCallback(() => {
     if (!isActionAllowed('clear')) return;
+    
+    strokesRef.current = [];
     setStrokes([]);
+    
     setUndone([]);
     try { if (!useNetlessWhiteboard && bcRef.current) bcRef.current.postMessage({ type: 'clear', clientId: clientIdRef.current }); } catch (e) {}
     try { if (!useNetlessWhiteboard) postEventToServer({ type: 'clear' }); } catch (e) {}
@@ -809,9 +854,7 @@ export default function EnhancedWhiteboard({
     if (typeof window === 'undefined') return;
     try {
       const params = new URLSearchParams(window.location.search);
-      const courseParam = params.get('courseId') || 'default';
-      const courseIdFromChannel = (channelName ? (channelName.startsWith('course_') ? channelName.replace(/^course_/, '').split('_')[0] : channelName.split('_')[0]) : courseParam) || 'default';
-      const bcName = `whiteboard_course_${courseIdFromChannel}`;
+      const bcName = `whiteboard_${channelName || 'default'}`;
       const ch = new BroadcastChannel(bcName);
       bcRef.current = ch;
       ch.onmessage = (ev: MessageEvent) => {
@@ -861,51 +904,68 @@ export default function EnhancedWhiteboard({
           }
           if (data.type === 'stroke-start') {
             applyingRemoteRef.current = true;
-            setStrokes((s) => {
-              const strokeId = data.strokeId || (data.stroke as any)?.id;
-              if (strokeId && s.some(st => (st as any).id === strokeId)) {
-                console.log('[WB BC] Ignoring stroke-start for duplicate strokeId:', strokeId);
-                return s;
-              }
-              console.log('[WB BC] Adding new stroke:', strokeId);
-              return [...s, data.stroke];
-            });
+            // Sync Ref
+            if (data.strokeId || data.stroke?.id) {
+               const id = data.strokeId || data.stroke.id;
+               if (!strokesRef.current.some(st => (st as any).id === id)) {
+                   console.log('[WB BC] Adding new stroke:', id);
+                   strokesRef.current.push(data.stroke);
+                   setStrokes([...strokesRef.current]);
+               }
+            } else {
+               strokesRef.current.push(data.stroke);
+               setStrokes([...strokesRef.current]);
+            }
             applyingRemoteRef.current = false;
           } else if (data.type === 'stroke-update') {
             applyingRemoteRef.current = true;
-            setStrokes((s) => {
-              const idx = s.findIndex((st) => (st as any).id === data.strokeId);
-              // Validate points
-              const malformed = !Array.isArray(data.points) || data.points.some((p: any) => typeof p !== 'number' || Number.isNaN(p));
-              if (malformed) {
-                if (verboseLogging) logAnomaly('BC received malformed stroke-update (points invalid)', { strokeId: data.strokeId, points: data.points });
-                console.warn('[WB BC] Malformed stroke-update, ignoring:', data.strokeId);
-                // still try to ignore the malformed update
-                return s;
-              }
-              if (idx >= 0) {
-                // Update specific stroke without affecting others
-                const updated = { ...(s[idx] as any), points: data.points };
-                const result = [...s.slice(0, idx), updated, ...s.slice(idx + 1)];
-                console.log('[WB BC] Updated stroke at index', idx, 'now total:', result.length);
-                return result;
-              }
-              // if not found, append but record anomaly for diagnostics
-              if (verboseLogging) logAnomaly('BC received stroke-update for unknown strokeId (appending)', { strokeId: data.strokeId, pointsLen: Array.isArray(data.points) ? data.points.length : null });
-              console.warn('[WB BC] stroke-update for unknown strokeId, creating new:', data.strokeId);
-              return [...s, { points: data.points, stroke: '#000', strokeWidth: 2, mode: 'draw', id: data.strokeId } as any];
-            });
+            const strokeId = data.strokeId;
+            const points = data.points;
+            
+            // Validate points
+            const malformed = !Array.isArray(points) || points.some((p: any) => typeof p !== 'number' || Number.isNaN(p));
+            if (malformed) {
+               if (verboseLogging) logAnomaly('BC received malformed stroke-update (points invalid)', { strokeId, points });
+               console.warn('[WB BC] Malformed stroke-update, ignoring:', strokeId);
+            } else {
+               const strokes = strokesRef.current;
+               const idx = strokes.findIndex((st) => (st as any).id === strokeId);
+               
+               if (idx >= 0) {
+                   const stroke = strokes[idx];
+                   stroke.points = points; // in-place update of ref content
+                   // We DO NOT call setStrokes here to avoid re-render loop
+                   
+                   // Incremental draw
+                   const lastCount = lastDrawnPointMapRef.current.get(strokeId) || 0;
+                   if (points.length > lastCount) {
+                       drawIncremental(stroke, lastCount);
+                       lastDrawnPointMapRef.current.set(strokeId, points.length);
+                   }
+               } else {
+                   // Unknown stroke (handle elegantly)
+                   if (verboseLogging) logAnomaly('BC received stroke-update for unknown strokeId', { strokeId });
+                   const newStroke = { points: points, stroke: '#000', strokeWidth: 2, mode: 'draw', id: strokeId, page: currentPage } as any;
+                   strokes.push(newStroke);
+                   drawIncremental(newStroke, 0);
+                   lastDrawnPointMapRef.current.set(strokeId, points.length);
+               }
+            }
             applyingRemoteRef.current = false;
           } else if (data.type === 'undo') {
             applyingRemoteRef.current = true;
-            setStrokes((s) => s.filter((st) => (st as any).id !== data.strokeId));
+            const next = strokesRef.current.filter((st) => (st as any).id !== data.strokeId);
+            strokesRef.current = next;
+            setStrokes(next);
             applyingRemoteRef.current = false;
           } else if (data.type === 'redo') {
             applyingRemoteRef.current = true;
-            setStrokes((s) => [...s, data.stroke]);
+            strokesRef.current.push(data.stroke);
+            setStrokes([...strokesRef.current]);
             applyingRemoteRef.current = false;
           } else if (data.type === 'clear') {
             applyingRemoteRef.current = true;
+            strokesRef.current = [];
             setStrokes([]);
             setUndone([]);
             applyingRemoteRef.current = false;
@@ -1086,15 +1146,13 @@ export default function EnhancedWhiteboard({
     }
     if (typeof window === 'undefined') return;
     try {
-      // Use courseId from URL parameter directly to ensure POST and GET use same uuid
-      const params = new URLSearchParams(window.location.search);
-      const courseParam = params.get('courseId') || 'classroom';
-      const uuid = `course_${courseParam}`;
+      // Use channelName as uuid for consistency
+      const uuid = channelName || 'default';
       // In production (Amplify) long-lived SSE often fails; skip SSE there.
       const isProduction = window.location.hostname === 'www.jvtutorcorner.com' || window.location.hostname === 'jvtutorcorner.com';
       if (isProduction) {
         console.log('[WB SSE] Production detected - skipping SSE. Falling back to /api/whiteboard/state polling.');
-        console.log('[WB POLL] Using uuid:', uuid, 'from courseId:', courseParam);
+        console.log('[WB POLL] Using uuid:', uuid);
         // Try fetching persisted state immediately and then poll periodically
         let pollId: number | null = null;
         let lastRemoteHash = '';
@@ -1144,14 +1202,22 @@ export default function EnhancedWhiteboard({
                 setStrokes(s.strokes);
                 lastRemoteHash = remoteHash;
               }
-              if (s.pdf && s.pdf.dataUrl && s.pdf.dataUrl !== '(large-data-url)' && !localPdfFile) {
-                try {
-                  const r = await fetch(s.pdf.dataUrl);
-                  const blob = await r.blob();
-                  const file = new File([blob], s.pdf.name || 'remote.pdf', { type: blob.type });
-                  setSelectedFileName(file.name);
-                  setLocalPdfFile(file);
-                } catch (e) { console.warn('[WB POLL] Failed to fetch remote PDF', e); }
+              if (s.pdf) {
+                // Sync PDF page if it differs from local
+                if (typeof s.pdf.currentPage === 'number' && s.pdf.currentPage !== currentPageRef.current) {
+                  console.log('[WB POLL] Syncing PDF page from server:', s.pdf.currentPage);
+                  setCurrentPage(s.pdf.currentPage);
+                }
+
+                if (s.pdf.dataUrl && s.pdf.dataUrl !== '(large-data-url)' && !localPdfFile) {
+                  try {
+                    const r = await fetch(s.pdf.dataUrl);
+                    const blob = await r.blob();
+                    const file = new File([blob], s.pdf.name || 'remote.pdf', { type: blob.type });
+                    setSelectedFileName(file.name);
+                    setLocalPdfFile(file);
+                  } catch (e) { console.warn('[WB POLL] Failed to fetch remote PDF', e); }
+                }
               }
             }
           } catch (e) {
@@ -1290,43 +1356,62 @@ export default function EnhancedWhiteboard({
           if (data.type === 'stroke-start') {
             console.log('[WB SSE] Applying stroke-start:', data);
             applyingRemoteRef.current = true;
-            setStrokes((s) => {
-              const strokeId = data.strokeId || (data.stroke as any)?.id;
-              if (strokeId && s.some(st => (st as any).id === strokeId)) {
-                console.log('[WB SSE] Ignoring stroke-start for duplicate strokeId:', strokeId);
-                return s;
-              }
-              console.log('[WB SSE] Adding new stroke:', strokeId);
-              return [...s, data.stroke];
-            });
+            // Sync Ref
+            if (data.strokeId || data.stroke?.id) {
+               const id = data.strokeId || data.stroke.id;
+               if (!strokesRef.current.some(st => (st as any).id === id)) {
+                   console.log('[WB SSE] Adding new stroke:', id);
+                   strokesRef.current.push(data.stroke);
+                   setStrokes([...strokesRef.current]);
+               }
+            } else {
+               strokesRef.current.push(data.stroke);
+               setStrokes([...strokesRef.current]);
+            }
             applyingRemoteRef.current = false;
           } else if (data.type === 'stroke-update') {
             console.log('[WB SSE] Applying stroke-update:', data.strokeId);
             applyingRemoteRef.current = true;
-            setStrokes((s) => {
-              const idx = s.findIndex((st) => (st as any).id === data.strokeId);
-              const malformed = !Array.isArray(data.points) || data.points.some((p: any) => typeof p !== 'number' || Number.isNaN(p));
-              if (malformed) {
-                if (verboseLogging) logAnomaly('SSE received malformed stroke-update (points invalid)', { strokeId: data.strokeId, points: data.points });
-                console.warn('[WB SSE] Malformed stroke-update, ignoring:', data.strokeId);
-                return s;
-              }
-              if (idx >= 0) {
-                // Update specific stroke without affecting others
-                const updated = { ...(s[idx] as any), points: data.points };
-                const result = [...s.slice(0, idx), updated, ...s.slice(idx + 1)];
-                console.log('[WB SSE] Updated stroke at index', idx, 'now total:', result.length);
-                return result;
-              }
-              console.warn('[WB SSE] stroke-update for unknown strokeId, creating new:', data.strokeId);
-              return [...s, { points: data.points, stroke: '#000', strokeWidth: 2, mode: 'draw', id: data.strokeId } as any];
-            });
+            const strokeId = data.strokeId;
+            const points = data.points;
+            
+            // Validate points
+            const malformed = !Array.isArray(points) || points.some((p: any) => typeof p !== 'number' || Number.isNaN(p));
+            if (malformed) {
+                if (verboseLogging) logAnomaly('SSE received malformed stroke-update (points invalid)', { strokeId, points });
+                console.warn('[WB SSE] Malformed stroke-update, ignoring:', strokeId);
+            } else {
+                const strokes = strokesRef.current;
+                const idx = strokes.findIndex((st) => (st as any).id === strokeId);
+                
+                if (idx >= 0) {
+                    const stroke = strokes[idx];
+                    stroke.points = points; 
+                    // NO setStrokes
+
+                    const lastCount = lastDrawnPointMapRef.current.get(strokeId) || 0;
+                    if (points.length > lastCount) {
+                        drawIncremental(stroke, lastCount);
+                        lastDrawnPointMapRef.current.set(strokeId, points.length);
+                    }
+                } else {
+                    console.warn('[WB SSE] stroke-update for unknown strokeId, creating new:', strokeId);
+                    const newStroke = { points: points, stroke: '#000', strokeWidth: 2, mode: 'draw', id: strokeId, page: currentPage } as any;
+                    strokes.push(newStroke);
+                    drawIncremental(newStroke, 0);
+                    lastDrawnPointMapRef.current.set(strokeId, points.length);
+                }
+            }
             applyingRemoteRef.current = false;
           } else if (data.type === 'undo') {
-            setStrokes((s) => s.filter((st) => (st as any).id !== data.strokeId));
+            const next = strokesRef.current.filter((st) => (st as any).id !== data.strokeId);
+            strokesRef.current = next;
+            setStrokes(next);
           } else if (data.type === 'redo') {
-            setStrokes((s) => [...s, data.stroke]);
+            strokesRef.current.push(data.stroke);
+            setStrokes([...strokesRef.current]);
           } else if (data.type === 'clear') {
+            strokesRef.current = [];
             setStrokes([]);
             setUndone([]);
           } else if (data.type === 'pdf-set') {
@@ -1348,7 +1433,7 @@ export default function EnhancedWhiteboard({
               setRemotePdfData(data.pdf);
               setCurrentPage(data.pdf.currentPage || 1);
             }
-          } else if (data.type === 'pdf-page-change') {
+          } else if (data.type === 'pdf-page-change' || data.type === 'set-page') {
             console.log('[WB SSE] PDF page change event received:', data.page);
             if (typeof data.page === 'number') {
               setCurrentPage(data.page);
