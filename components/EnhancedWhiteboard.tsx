@@ -287,6 +287,8 @@ export default function EnhancedWhiteboard({
   const strokesRef = useRef<Stroke[]>(strokes);
   // Map to track how many points have been drawn for each stroke (incremental drawing)
   const lastDrawnPointMapRef = useRef<Map<string, number>>(new Map());
+  // Track IDs of strokes that have been confirmed by the server to distinguish "new peer strokes" from "deleted strokes"
+  const syncedStrokeIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => { setMounted(true); }, []);
 
@@ -1297,6 +1299,11 @@ export default function EnhancedWhiteboard({
               // 1. Start with remote strokes (authoritative for others' actions)
               const finalStrokes: any[] = [...remoteStrokes];
               const remoteMap = new Map(remoteStrokes.map((st: any) => [st.id, st]));
+
+              // NEW: Track synced IDs to distinguish "new peer strokes" from "deleted strokes"
+              for (const s of remoteStrokes) {
+                 if (s.id) syncedStrokeIdsRef.current.add(s.id);
+              }
               
               // 2. Remove strokes that we locally UNDID but are still present in remote
               // This prevents undone strokes from flickering back until server proccesses the undo
@@ -1307,20 +1314,27 @@ export default function EnhancedWhiteboard({
                  }
               }
               
-              // 3. Preserve our own strokes that haven't synced to remote yet
-              // (e.g. Eraser strokes, recent drawings, pending uploads)
+              // 3. Preserve strokes that haven't synced to remote yet
+              // This logic now handles both "My strokes" and "Peer strokes from BC"
               for (const localStroke of localStrokes) {
                  const lid = (localStroke as any).id;
                  if (!lid) continue;
                  
                  const inRemote = remoteMap.has(lid);
-                 // Check origin to ensure we only preserve OUR strokes (others' strokes might have been deleted remotely)
                  const isMyStroke = (localStroke as any).origin === clientIdRef.current;
                  const isUndone = undoneIds.has(lid);
+                 const wasSynced = syncedStrokeIdsRef.current.has(lid);
                  
-                 // If it's my stroke, not in remote, and I didn't undo it -> It's a new stroke waiting to sync. KEEP IT.
-                 if (!inRemote && isMyStroke && !isUndone) {
-                     finalStrokes.push(localStroke);
+                 if (!inRemote && !isUndone) {
+                     // Case A: My stroke, pending upload. KEEP.
+                     if (isMyStroke) {
+                        finalStrokes.push(localStroke);
+                     }
+                     // Case B: Peer stroke (BC), never seen in remote. Optimistically KEEP.
+                     // (If it WAS seen in remote before, and is not there now, it means peer deleted it. DROP).
+                     else if (!wasSynced) {
+                        finalStrokes.push(localStroke);
+                     }
                  }
                  
                  // 4. Update points for existing strokes if local has more data (Incremental update)
