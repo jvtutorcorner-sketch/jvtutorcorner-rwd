@@ -229,6 +229,10 @@ export default function EnhancedWhiteboard({
   const [strokeWidth, setStrokeWidth] = useState(2);
   const [strokes, setStrokes] = useState<Stroke[]>([]);
   const [undone, setUndone] = useState<Stroke[]>([]);
+  
+  // Make undone available in closures/callbacks via Ref to support correct merging
+  const undoneRef = useRef<Stroke[]>([]);
+  useEffect(() => { undoneRef.current = undone; }, [undone]);
   const isDrawingRef = useRef(false);
   const [mounted, setMounted] = useState(false);
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
@@ -1265,33 +1269,10 @@ export default function EnhancedWhiteboard({
             const j = await resp.json();
             const s = j?.state;
             if (s && Array.isArray(s.strokes)) {
-              // INTELLIGENT MERGE STRATEGY: Use timestamps to avoid stale data
+              // INTELLIGENT MERGE STRATEGY: Avoid mutual overwrite cycles
               const localStrokes = strokesRef.current;
               const remoteStrokes = s.strokes;
               const isDrawing = isDrawingRef.current;
-              
-              // Calculate most recent timestamp in both local and remote
-              const getLatestTimestamp = (strokes: any[]) => {
-                if (strokes.length === 0) return 0;
-                return Math.max(...strokes.map((st: any) => st.timestamp || 0));
-              };
-              
-              const localLatestTs = getLatestTimestamp(localStrokes);
-              const remoteLatestTs = getLatestTimestamp(remoteStrokes);
-              
-              // If remote data is older than local, skip to avoid overwriting with stale data
-              // Allow 100ms tolerance for network delay
-              if (remoteLatestTs < localLatestTs - 100 && !isDrawing) {
-                if (verboseLogging) {
-                  console.log('[WB POLL] Skipping update: remote data is older', {
-                    localTs: localLatestTs,
-                    remoteTs: remoteLatestTs,
-                    localCount: localStrokes.length,
-                    remoteCount: remoteStrokes.length
-                  });
-                }
-                return;
-              }
               
               // Quick check: if counts match, check content changes
               if (localStrokes.length === remoteStrokes.length && !isDrawing) {
@@ -1312,27 +1293,46 @@ export default function EnhancedWhiteboard({
                 }
               }
               
-              // Find currently drawing stroke (last stroke if we're drawing)
-              const currentStroke = isDrawing && localStrokes.length > 0 ? localStrokes[localStrokes.length - 1] : null;
-              const currentStrokeId = (currentStroke as any)?.id;
-              
-              // Start with remote strokes as base
-              const remoteMap = new Map(remoteStrokes.map((st: any) => [st.id, st]));
+              // INTELLIGENT MERGE (PREVENTS FLICKERING & SUPPORTS UNDO)
+              // 1. Start with remote strokes (authoritative for others' actions)
               const finalStrokes: any[] = [...remoteStrokes];
+              const remoteMap = new Map(remoteStrokes.map((st: any) => [st.id, st]));
               
-              // If we're actively drawing, preserve the current stroke if it's newer than remote
-              if (currentStroke && currentStrokeId) {
-                const remoteVersion = remoteMap.get(currentStrokeId);
-                if (!remoteVersion) {
-                  // Brand new stroke not yet on server - add it
-                  finalStrokes.push(currentStroke);
-                } else if (currentStroke.points.length > (remoteVersion as any).points?.length) {
-                  // Local has more points - replace remote version
-                  const idx = finalStrokes.findIndex((st: any) => st.id === currentStrokeId);
-                  if (idx >= 0) {
-                    finalStrokes[idx] = currentStroke;
-                  }
-                }
+              // 2. Remove strokes that we locally UNDID but are still present in remote
+              // This prevents undone strokes from flickering back until server proccesses the undo
+              const undoneIds = new Set(undoneRef.current.map((u: any) => u.id));
+              for (let i = finalStrokes.length - 1; i >= 0; i--) {
+                 if (undoneIds.has(finalStrokes[i].id) && finalStrokes[i].origin === clientIdRef.current) {
+                     finalStrokes.splice(i, 1);
+                 }
+              }
+              
+              // 3. Preserve our own strokes that haven't synced to remote yet
+              // (e.g. Eraser strokes, recent drawings, pending uploads)
+              for (const localStroke of localStrokes) {
+                 const lid = (localStroke as any).id;
+                 if (!lid) continue;
+                 
+                 const inRemote = remoteMap.has(lid);
+                 // Check origin to ensure we only preserve OUR strokes (others' strokes might have been deleted remotely)
+                 const isMyStroke = (localStroke as any).origin === clientIdRef.current;
+                 const isUndone = undoneIds.has(lid);
+                 
+                 // If it's my stroke, not in remote, and I didn't undo it -> It's a new stroke waiting to sync. KEEP IT.
+                 if (!inRemote && isMyStroke && !isUndone) {
+                     finalStrokes.push(localStroke);
+                 }
+                 
+                 // 4. Update points for existing strokes if local has more data (Incremental update)
+                 if (inRemote) {
+                     const remoteStroke = remoteMap.get(lid);
+                     if (remoteStroke && localStroke.points.length > (remoteStroke as any).points?.length) {
+                         const idx = finalStrokes.findIndex((s) => s.id === lid);
+                         if (idx !== -1) {
+                             finalStrokes[idx] = localStroke;
+                         }
+                     }
+                 }
               }
               
               // Deep comparison: check both structure and content changes
