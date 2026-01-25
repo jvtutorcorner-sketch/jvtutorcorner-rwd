@@ -1183,7 +1183,9 @@ export default function EnhancedWhiteboard({
               
               if (isMismatch && isNewUpdate) {
                 console.log('[WB POLL] ✓ Sync update detected: local=', localCount, 'remote=', remoteCount, 'mismatch=', isMismatch);
+                strokesRef.current = s.strokes; // Update ref first
                 setStrokes(s.strokes);
+                drawAll(); // Force redraw after applying remote strokes
                 lastRemoteHash = remoteHash; // track this update
                   if (verboseLogging) {
                     console.log('[WB POLL] Applied remote strokes in production poll');
@@ -1199,7 +1201,9 @@ export default function EnhancedWhiteboard({
 
                 // Only force resync if we are truly behind (remote > local) or same count but diff hash (rare collision/corruption)
                 console.warn('[WB POLL] ⚠ Client behind server by', remoteCount - localCount, 'strokes - forcing resync');
+                strokesRef.current = s.strokes; // Update ref first
                 setStrokes(s.strokes);
+                drawAll(); // Force redraw after applying remote strokes
                 lastRemoteHash = remoteHash;
               }
               if (s.pdf) {
@@ -1254,7 +1258,9 @@ export default function EnhancedWhiteboard({
               const s = j?.state;
               if (s && Array.isArray(s.strokes) && strokesRef.current.length === 0) {
                 console.log('[WB SSE] Applying fallback state from /state:', s.strokes.length, 'strokes');
+                strokesRef.current = s.strokes; // Update ref first
                 setStrokes(s.strokes);
+                drawAll(); // Force redraw after applying remote strokes
                 if (s.pdf && s.pdf.dataUrl && s.pdf.dataUrl !== '(large-data-url)') {
                   try {
                     const r = await fetch(s.pdf.dataUrl);
@@ -1302,6 +1308,8 @@ export default function EnhancedWhiteboard({
               setStrokes((local) => {
                 if (local.length === 0) {
                   console.log('[WB SSE] Accepted init-state with', data.strokes.length, 'strokes');
+                  strokesRef.current = data.strokes; // Update ref first
+                  drawAll(); // Force redraw after applying remote strokes
                   return data.strokes;
                 } else {
                   if (verboseLogging) logAnomaly('SSE init-state ignored due to non-empty local strokes', { localCount: local.length, remoteCount: data.strokes.length });

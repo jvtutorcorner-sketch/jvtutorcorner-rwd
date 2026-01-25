@@ -4,10 +4,22 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 
 type Annotation = { points: number[]; color: string; width: number };
 
-export default function PdfViewer({ file, onClose }: { file: File | null; onClose: () => void }) {
+export default function PdfViewer({ 
+  file, 
+  onClose,
+  currentPage: externalPage,
+  onPageChange: externalOnPageChange
+}: { 
+  file: File | null; 
+  onClose: () => void;
+  currentPage?: number;
+  onPageChange?: (page: number) => void;
+}) {
   const [pdfLib, setPdfLib] = useState<any | null>(null);
   const [numPages, setNumPages] = useState<number>(0);
-  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [internalPage, setInternalPage] = useState<number>(1);
+  const currentPage = externalPage !== undefined ? externalPage : internalPage;
+
   const [error, setError] = useState<string | null>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -63,16 +75,17 @@ export default function PdfViewer({ file, onClose }: { file: File | null; onClos
         const pdf = await loadingTask.promise;
         pdfDocumentRef.current = pdf;
         setNumPages(pdf.numPages);
-        setCurrentPage(1);
-        // render first page
-        renderPage(pdf, 1);
+        
+        // Use the current page (external or internal)
+        const startPage = currentPage || 1;
+        renderPage(pdf, startPage);
       } catch (e) {
         console.error(e);
         setError('Failed to load PDF');
       }
     };
     reader.readAsArrayBuffer(file);
-  }, [pdfLib, file]);
+  }, [pdfLib, file]); // Removed currentPage from deps here to avoid re-rendering on every page change if not needed, renderPage handles it
 
   const renderPage = useCallback(async (pdf: any, pageNum: number) => {
     try {
@@ -115,10 +128,21 @@ export default function PdfViewer({ file, onClose }: { file: File | null; onClos
     }
   }, []);
 
+  // Re-render when external or internal page changes
+  useEffect(() => {
+    if (pdfDocumentRef.current) {
+      renderPage(pdfDocumentRef.current, currentPage);
+    }
+  }, [currentPage, renderPage]);
+
   const handlePageChange = async (pageNum: number) => {
     if (!pdfDocumentRef.current) return;
-    setCurrentPage(pageNum);
-    await renderPage(pdfDocumentRef.current, pageNum);
+    if (externalOnPageChange) {
+      externalOnPageChange(pageNum);
+    } else {
+      setInternalPage(pageNum);
+      // Actual rendering is handled by the useEffect above
+    }
   };
 
   // annotation helpers
@@ -280,7 +304,18 @@ export default function PdfViewer({ file, onClose }: { file: File | null; onClos
               <label>Page:</label>
               <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
                 <button onClick={() => currentPage > 1 && handlePageChange(currentPage - 1)} disabled={currentPage <= 1}>Prev</button>
-                <input value={currentPage} onChange={(e) => { let v = Number(e.target.value); if (isNaN(v) || v < 1) v = 1; if (v > numPages) v = numPages; setCurrentPage(v); }} style={{ width: 60 }} />
+                <input 
+                  type="number"
+                  value={currentPage} 
+                  onChange={(e) => { 
+                    let v = Number(e.target.value); 
+                    if (isNaN(v)) return;
+                    if (v < 1) v = 1; 
+                    if (v > numPages) v = numPages; 
+                    handlePageChange(v);
+                  }} 
+                  style={{ width: 60 }} 
+                />
                 <button onClick={() => currentPage < numPages && handlePageChange(currentPage + 1)} disabled={currentPage >= numPages}>Next</button>
               </div>
             </div>
