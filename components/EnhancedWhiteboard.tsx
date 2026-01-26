@@ -97,97 +97,27 @@ export default function EnhancedWhiteboard({
       if (!response.ok) {
         console.error('[WB POST] Non-OK response from /api/whiteboard/event', { status: response.status, bodyPreview: resultText?.slice(0, 200) });
       }
-      // If this is a stroke event, start ack polling to ensure other clients (students)
-      // receive the stroke via server relay. We poll persisted /api/whiteboard/state
-      // and show an error if the stroke isn't visible after retries.
-      // CRITICAL FIX: Only trigger on stroke-start, not on every stroke-update
-      try {
-        if (event && event.type === 'stroke-start') {
-          const strokeId = event.stroke?.id;
-          if (strokeId) {
-            console.log('[WB POST] Starting ACK check for stroke:', strokeId);
-            try { ensureServerAckForStroke(strokeId, channelName || 'default'); } catch (e) { /* ignore */ }
-          } else {
-            console.warn('[WB POST] No strokeId found for ACK check - event:', event);
-          }
-        }
-      } catch (e) {}
+      // ACK mechanism removed: production polling at 500ms interval is sufficient for sync verification
     } catch (e) {
       console.error('[WB POST] Error posting event:', e && (e as Error).stack ? (e as Error).stack : e);
     }
   }, [channelName]);
 
-  // Pending ack timers and helper to surface UI errors
-  const pendingAckRef = useRef<Map<string, number>>(new Map());
-  const maxConcurrentAcks = 3; // 限制最多同時進行的 ACK 檢查數量
+  // Error display for user feedback
   const [errors, setErrors] = useState<string[]>([]);
   const pushError = useCallback((msg: string) => {
     setErrors((e) => [...e.slice(-9), msg]);
     console.error('[WB ERR]', msg);
   }, []);
 
-  const ensureServerAckForStroke = useCallback(async (strokeId: string, uuid: string) => {
-    // avoid duplicate ack watchers
-    if (pendingAckRef.current.has(strokeId)) return;
-    // 限制並發數量，防止資源耗盡
-    if (pendingAckRef.current.size >= maxConcurrentAcks) {
-      console.warn('[WB ACK] Too many concurrent ACK checks, skipping:', strokeId);
-      return;
-    }
-    let attempts = 0;
-    const maxAttempts = 30; // 200ms * 30 = 6 seconds (合理的等待時間)
-    const intervalMs = 200; // 增加間隔減少請求頻率: 200ms (5x/sec)
-
-    const check = async () => {
-      attempts += 1;
-      try {
-        const resp = await fetch(`/api/whiteboard/state?uuid=${encodeURIComponent(uuid)}`);
-        if (resp.ok) {
-          const j = await resp.json();
-          const s = j?.state;
-          if (s && Array.isArray(s.strokes)) {
-            const found = s.strokes.some((st: any) => (st as any).id === strokeId);
-            if (found) {
-              // ack received, clear timer
-              const t = pendingAckRef.current.get(strokeId);
-              if (t) { try { window.clearInterval(t); } catch (e) {} }
-              pendingAckRef.current.delete(strokeId);
-              if (verboseLogging) console.log('[WB ACK] ✓ Stroke ACK confirmed:', strokeId, `(attempt ${attempts})`);
-              return;
-            }
-          }
-        }
-      } catch (e) {
-        // ignore transient fetch errors
-      }
-
-      if (attempts >= maxAttempts) {
-        // not found after retries -> error
-        const timerId = pendingAckRef.current.get(strokeId);
-        if (timerId) {
-          try { window.clearInterval(timerId); } catch (e) { console.warn('[WB ACK] clearInterval failed', e); }
-        }
-        pendingAckRef.current.delete(strokeId);
-        const msg = `Canvas sync not confirmed for stroke ${strokeId}`;
-        console.warn('[WB ACK] ✗ Timeout after', attempts, 'attempts:', strokeId);
-        logAnomaly('Ack timeout for stroke', { strokeId, attempts, uuid });
-        pushError(msg);
-        return;
-      }
-    };
-
-    // schedule repeated checks
-    const timerId = window.setInterval(check, intervalMs) as unknown as number;
-    pendingAckRef.current.set(strokeId, timerId);
-    // run first check immediately
-    void check();
-  }, [pushError]);
-
+  // Removed: ensureServerAckForStroke function and pendingAckRef
+  // Production polling at 500ms interval is sufficient for sync verification
+  
   // Buffer/high-frequency update batching for stroke-update events
   const pendingUpdatesRef = useRef<Map<string, { points: number[] }>>(new Map());
   const flushTimerRef = useRef<number | null>(null);
   const currentStrokeIdRef = useRef<string | null>(null);
-  const FLUSH_INTERVAL = 100; // ms
+  const FLUSH_INTERVAL = 200; // ms - Reduced frequency to avoid overwhelming server
 
   const flushPendingUpdates = useCallback(() => {
     try {
@@ -338,32 +268,8 @@ export default function EnhancedWhiteboard({
     };
   }, []);
 
-  // Cleanup pending ack timers on unmount AND periodically check for stuck timers
-  useEffect(() => {
-    // 定期清理超時的 ACK 檢查（每 10 秒檢查一次）
-    const cleanupInterval = window.setInterval(() => {
-      const now = Date.now();
-      const maxAge = 15000; // 15 秒
-      pendingAckRef.current.forEach((timerId, strokeId) => {
-        // 假設 strokeId 格式為: c_xxxxx_timestamp
-        const parts = strokeId.split('_');
-        const timestamp = parseInt(parts[parts.length - 1]);
-        if (!isNaN(timestamp) && (now - timestamp) > maxAge) {
-          console.warn('[WB ACK] Force cleaning stuck ACK timer:', strokeId);
-          try { window.clearInterval(timerId); } catch (e) {}
-          pendingAckRef.current.delete(strokeId);
-        }
-      });
-    }, 10000);
-
-    return () => {
-      try { window.clearInterval(cleanupInterval); } catch (e) {}
-      try {
-        pendingAckRef.current.forEach((t) => { try { window.clearInterval(t); } catch (e) {} });
-        pendingAckRef.current.clear();
-      } catch (e) {}
-    };
-  }, []);
+  // Removed: Cleanup pending ack timers useEffect
+  // ACK mechanism has been removed in favor of production polling
   
   // Debug: log whiteboard mode
   useEffect(() => {
@@ -1346,6 +1252,13 @@ export default function EnhancedWhiteboard({
               }
               
               // INTELLIGENT MERGE (PREVENTS FLICKERING & SUPPORTS UNDO)
+              // CRITICAL: Only apply merge if we're not currently drawing
+              // This prevents remote updates from interfering with active local strokes
+              if (isDrawing) {
+                // Skip merge while drawing to avoid disrupting user experience
+                return;
+              }
+              
               // 1. Start with remote strokes (authoritative for others' actions)
               const finalStrokes: any[] = [...remoteStrokes];
               const remoteMap = new Map(remoteStrokes.map((st: any) => [st.id, st]));
@@ -1429,7 +1342,9 @@ export default function EnhancedWhiteboard({
               // Apply changes efficiently
               if (hasStructuralChange) {
                 // Major change: full update needed
-                if (verboseLogging) {
+                // Log only significant changes (> 3 strokes difference)
+                const diff = Math.abs(finalStrokes.length - localStrokes.length);
+                if (diff > 3 || verboseLogging) {
                   console.log('[WB POLL] ✓ Structural change detected, full sync:', {
                     local: localStrokes.length,
                     remote: remoteStrokes.length,
@@ -1501,8 +1416,8 @@ export default function EnhancedWhiteboard({
 
         // initial fetch
         fetchAndApply();
-        // Two-tier polling: fast ACK (80ms) for stroke confirmation + balanced main polling (300ms) to avoid overload
-        try { pollId = window.setInterval(fetchAndApply, 300) as unknown as number; } catch (e) { pollId = null; } // 300ms = 3x per second (sustainable)
+        // Balanced polling (500ms = 2x per second) sufficient for smooth sync without server overload
+        try { pollId = window.setInterval(fetchAndApply, 500) as unknown as number; } catch (e) { pollId = null; }
 
         return () => {
           try { if (pollId) window.clearInterval(pollId); } catch (e) {}
