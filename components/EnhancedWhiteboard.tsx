@@ -611,6 +611,8 @@ export default function EnhancedWhiteboard({
 
 
   // Helper for incremental drawing (avoid clearing canvas)
+  // CRITICAL: This is the core drawing method used for both pen and eraser.
+  // It uses canvas composite operations to layer strokes correctly.
   const drawIncremental = useCallback((stroke: Stroke, startIndex: number) => {
     const el = canvasRef.current;
     if (!el) return;
@@ -625,11 +627,22 @@ export default function EnhancedWhiteboard({
 
     ctx.save();
     ctx.scale(dpr, dpr);
-    ctx.strokeStyle = stroke.stroke;
-    ctx.lineWidth = stroke.strokeWidth;
+    
+    // CRITICAL: Eraser uses 'destination-out' to actually remove pixels (not draw white/black)
+    // This ensures eraser works transparently and doesn't create colored artifacts
+    if (stroke.mode === 'erase') {
+      ctx.globalCompositeOperation = 'destination-out';
+      // For eraser, strokeStyle doesn't matter (we're removing pixels)
+      // but lineWidth determines eraser size
+      ctx.lineWidth = stroke.strokeWidth;
+    } else {
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.strokeStyle = stroke.stroke;
+      ctx.lineWidth = stroke.strokeWidth;
+    }
+    
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    ctx.globalCompositeOperation = stroke.mode === 'erase' ? 'destination-out' : 'source-over';
 
     ctx.beginPath();
     const points = stroke.points;
@@ -696,11 +709,20 @@ export default function EnhancedWhiteboard({
       lastDrawnPointMapRef.current.set((s as any).id, s.points.length);
 
       if (s.points.length < 2) return;
-      ctx.strokeStyle = s.stroke;
-      ctx.lineWidth = s.strokeWidth;
+      
+      // CRITICAL: Set composite operation BEFORE setting stroke styles
+      ctx.globalCompositeOperation = s.mode === 'erase' ? 'destination-out' : 'source-over';
+      
+      if (s.mode === 'erase') {
+        // For eraser, strokeStyle doesn't matter (removing pixels)
+        ctx.lineWidth = s.strokeWidth;
+      } else {
+        ctx.strokeStyle = s.stroke;
+        ctx.lineWidth = s.strokeWidth;
+      }
+      
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
-      ctx.globalCompositeOperation = s.mode === 'erase' ? 'destination-out' : 'source-over';
 
       ctx.beginPath();
       // Scale normalized coordinates back to display pixels
@@ -868,26 +890,45 @@ export default function EnhancedWhiteboard({
   const clearAll = useCallback(() => {
     if (!isActionAllowed('clear')) return;
     
+    // CRITICAL: Clear all state immediately
     strokesRef.current = [];
     setStrokes([]);
     lastDrawnPointMapRef.current.clear();
     lastDrawnStrokeCountRef.current = 0;
-    
+    syncedStrokeIdsRef.current.clear();
     setUndone([]);
     
-    // Immediate full canvas clear
+    // Immediate full canvas clear with proper transform reset
     const canvas = canvasRef.current;
     if (canvas) {
       const ctx = canvas.getContext('2d');
       if (ctx) {
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.clearRect(0, 0, canvas.width, canvas.height);
+        // Reset composite operation to default
+        ctx.globalCompositeOperation = 'source-over';
       }
     }
     
-    try { if (!useNetlessWhiteboard && bcRef.current) bcRef.current.postMessage({ type: 'clear', clientId: clientIdRef.current }); } catch (e) {}
-    try { if (!useNetlessWhiteboard) postEventToServer({ type: 'clear' }); } catch (e) {}
-  }, [isActionAllowed, useNetlessWhiteboard, postEventToServer]);
+    // Broadcast to local tabs
+    try { 
+      if (!useNetlessWhiteboard && bcRef.current) {
+        bcRef.current.postMessage({ type: 'clear', clientId: clientIdRef.current }); 
+      }
+    } catch (e) { console.error('[WB] BC clear failed:', e); }
+    
+    // Send to server for persistence (ensures production polling won't restore old state)
+    try { 
+      if (!useNetlessWhiteboard) {
+        postEventToServer({ type: 'clear' }).then(() => {
+          console.log('[WB] Clear event persisted to server');
+        }).catch((e) => {
+          console.error('[WB] Failed to persist clear event:', e);
+          pushError('清除同步失敗，請重試');
+        });
+      }
+    } catch (e) { console.error('[WB] Clear server sync failed:', e); }
+  }, [isActionAllowed, useNetlessWhiteboard, postEventToServer, pushError]);
 
   const changePage = useCallback((newPage: number) => {
     // Only teacher can change page
@@ -988,17 +1029,22 @@ export default function EnhancedWhiteboard({
           }
           if (data.type === 'stroke-start') {
             applyingRemoteRef.current = true;
-            // Sync Ref
-            if (data.strokeId || data.stroke?.id) {
-               const id = data.strokeId || data.stroke.id;
-               if (!strokesRef.current.some(st => (st as any).id === id)) {
-                   console.log('[WB BC] Adding new stroke:', id);
-                   strokesRef.current.push(data.stroke);
-                   setStrokes([...strokesRef.current]);
-               }
-            } else {
-               strokesRef.current.push(data.stroke);
-               setStrokes([...strokesRef.current]);
+            const stroke = data.stroke;
+            const id = data.strokeId || stroke.id;
+            
+            // Sync Ref - Avoid duplicates
+            if (!strokesRef.current.some(st => (st as any).id === id)) {
+                strokesRef.current.push(stroke);
+                
+                // CRITICAL FIX: Draw incrementally immediately to avoid full redraw (flicker)
+                drawIncremental(stroke, 0);
+                if (id) lastDrawnPointMapRef.current.set(id, stroke.points.length);
+                
+                // Update tracking ref to prevent drawAll from running needlessly when state syncs
+                lastDrawnStrokeCountRef.current = strokesRef.current.length;
+                
+                // Use debounced sync instead of immediate setStrokes
+                syncStateDebounced();
             }
             applyingRemoteRef.current = false;
           } else if (data.type === 'stroke-update') {
@@ -1029,13 +1075,11 @@ export default function EnhancedWhiteboard({
                    // Debounced state sync (prevents flickering)
                    syncStateDebounced();
                } else {
-                   // Unknown stroke (handle elegantly)
-                   if (verboseLogging) logAnomaly('BC received stroke-update for unknown strokeId', { strokeId });
-                   const newStroke = { points: points, stroke: '#000', strokeWidth: 2, mode: 'draw', id: strokeId, page: currentPage } as any;
-                   strokes.push(newStroke);
-                   drawIncremental(newStroke, 0);
-                   lastDrawnPointMapRef.current.set(strokeId, points.length);
-                   syncStateDebounced();
+                   // CRITICAL FIX: Do NOT create default black stroke for unknown IDs.
+                   // This causes "eraser turns into black line" bugs if stroke-start is missed.
+                   // Ignoring the orphan update is safer than drawing incorrect artifacts.
+                   console.warn('[WB BC] Ignored orphan stroke-update (missing start):', strokeId);
+                   if (verboseLogging) logAnomaly('BC orphaned stroke-update ignored', { strokeId });
                }
             }
             applyingRemoteRef.current = false;
@@ -1058,16 +1102,18 @@ export default function EnhancedWhiteboard({
             strokesRef.current = [];
             lastDrawnPointMapRef.current.clear();
             lastDrawnStrokeCountRef.current = 0;
+            syncedStrokeIdsRef.current.clear();
             setStrokes([]);
             setUndone([]);
             
-            // Clear canvas immediately
+            // Clear canvas immediately with proper reset
             const canvas = canvasRef.current;
             if (canvas) {
               const ctx = canvas.getContext('2d');
               if (ctx) {
                 ctx.setTransform(1, 0, 0, 1, 0, 0);
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.globalCompositeOperation = 'source-over';
               }
             }
             applyingRemoteRef.current = false;
@@ -1649,16 +1695,18 @@ export default function EnhancedWhiteboard({
             strokesRef.current = [];
             lastDrawnPointMapRef.current.clear();
             lastDrawnStrokeCountRef.current = 0;
+            syncedStrokeIdsRef.current.clear();
             setStrokes([]);
             setUndone([]);
             
-            // Clear canvas immediately
+            // Clear canvas immediately with proper reset
             const canvas = canvasRef.current;
             if (canvas) {
               const ctx = canvas.getContext('2d');
               if (ctx) {
                 ctx.setTransform(1, 0, 0, 1, 0, 0);
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.globalCompositeOperation = 'source-over';
               }
             }
           } else if (data.type === 'pdf-set') {
