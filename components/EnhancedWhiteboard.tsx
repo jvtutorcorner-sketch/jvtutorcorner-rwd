@@ -43,18 +43,8 @@ export default function EnhancedWhiteboard({
   const applyingRemoteRef = useRef(false);
   const verboseLogging = typeof window !== 'undefined' && window.location.pathname === '/classroom/test';
   
-  // Debounced state sync for incremental updates (prevents flickering)
-  const stateSyncTimerRef = useRef<number | null>(null);
-  const syncStateDebounced = useCallback(() => {
-    if (stateSyncTimerRef.current) {
-      window.clearTimeout(stateSyncTimerRef.current);
-    }
-    stateSyncTimerRef.current = window.setTimeout(() => {
-      // Sync React state with ref (for undo/redo and other features)
-      setStrokes([...strokesRef.current]);
-      stateSyncTimerRef.current = null;
-    }, 500) as unknown as number; // Sync after 500ms of no updates
-  }, []);
+  // REMOVED: Debounced state sync - causes flickering and lag
+  // We now only sync state when necessary (undo/redo/clear) to avoid triggering drawAll useEffect
 
   const logAnomaly = (title: string, info?: any) => {
     try {
@@ -249,14 +239,6 @@ export default function EnhancedWhiteboard({
   // Cleanup render task on unmount
   useEffect(() => {
     return () => {
-      // Cleanup state sync timer
-      if (stateSyncTimerRef.current) {
-        try {
-          window.clearTimeout(stateSyncTimerRef.current);
-          stateSyncTimerRef.current = null;
-        } catch (e) {}
-      }
-      
       if (currentRenderTask.current) {
         try {
           currentRenderTask.current.cancel();
@@ -671,11 +653,10 @@ export default function EnhancedWhiteboard({
     
     // Sync Ref first (Source of Truth)
     strokesRef.current.push(newStroke);
-    // OPTIMIZED: Draw locally and debounce state update to prevent flicker
+    // OPTIMIZED: Draw locally immediately, NO state sync to avoid triggering drawAll
     drawIncremental(newStroke, 0);
     if (newStroke.id) lastDrawnPointMapRef.current.set(newStroke.id, newStroke.points.length);
     lastDrawnStrokeCountRef.current = strokesRef.current.length;
-    syncStateDebounced();
     
     setUndone([]);
     currentStrokeIdRef.current = newStroke.id as string;
@@ -715,8 +696,7 @@ export default function EnhancedWhiteboard({
       lastDrawnPointMapRef.current.set(strokeId, updated.points.length);
     }
     
-    // Debounced state sync (for undo/redo)
-    syncStateDebounced();
+    // NO state sync here - only ref updates to avoid flickering
     
     try {
         if (!useNetlessWhiteboard && bcRef.current && (last as any).origin !== clientIdRef.current) {
@@ -730,7 +710,7 @@ export default function EnhancedWhiteboard({
           enqueueStrokeUpdate((updated as any).id, updated.points);
         }
     } catch (e) {}
-  }, [enqueueStrokeUpdate, useNetlessWhiteboard, drawIncremental, syncStateDebounced]);
+  }, [enqueueStrokeUpdate, useNetlessWhiteboard, drawIncremental]);
 
   const handlePointerUp = useCallback(() => {
     isDrawingRef.current = false;
@@ -949,8 +929,7 @@ export default function EnhancedWhiteboard({
                 // Update tracking ref to prevent drawAll from running needlessly when state syncs
                 lastDrawnStrokeCountRef.current = strokesRef.current.length;
                 
-                // Use debounced sync instead of immediate setStrokes
-                syncStateDebounced();
+                // NO state sync - only draw incrementally to avoid triggering useEffect
             }
             applyingRemoteRef.current = false;
           } else if (data.type === 'stroke-update') {
@@ -978,8 +957,7 @@ export default function EnhancedWhiteboard({
                        lastDrawnPointMapRef.current.set(strokeId, points.length);
                    }
                    
-                   // Debounced state sync (prevents flickering)
-                   syncStateDebounced();
+                   // NO state sync - only draw incrementally to avoid flickering
                } else {
                    // CRITICAL FIX: Do NOT create default black stroke for unknown IDs.
                    // This causes "eraser turns into black line" bugs if stroke-start is missed.
@@ -1380,9 +1358,7 @@ export default function EnhancedWhiteboard({
                   }
                 }
                 
-                // CRITICAL FIX: Use debounced state sync to avoid flickering
-                // Only sync React state after drawing stops (500ms delay)
-                syncStateDebounced();
+                // NO state sync for incremental updates - only draw to avoid flickering
                 
                 applyingRemoteRef.current = false;
               }
@@ -1556,8 +1532,7 @@ export default function EnhancedWhiteboard({
                 // Update tracking ref to prevent drawAll from running needlessly when state syncs
                 lastDrawnStrokeCountRef.current = strokesRef.current.length;
                 
-                // Use debounced sync instead of immediate setStrokes
-                syncStateDebounced();
+                // NO state sync - only draw incrementally to avoid triggering useEffect
             }
             applyingRemoteRef.current = false;
           } else if (data.type === 'stroke-update') {
@@ -1585,8 +1560,7 @@ export default function EnhancedWhiteboard({
                         lastDrawnPointMapRef.current.set(strokeId, points.length);
                     }
                     
-                    // Debounced state sync
-                    syncStateDebounced();
+                    // NO state sync - only draw incrementally to avoid flickering
                 } else {
                     // CRITICAL FIX: Do NOT create a default black stroke for unknown IDs.
                     // This causes "eraser turns into black line" bugs if stroke-start is missed.
@@ -1720,15 +1694,40 @@ export default function EnhancedWhiteboard({
           {/* Microphone and leave controls moved to the classroom sidebar; toolbar keeps drawing tools only. */}
 
           {isActionAllowed('setTool:pencil') && (
-            <button onClick={() => setTool('pencil')} style={{ padding: '6px 10px', background: tool === 'pencil' ? '#e3f2fd' : 'white', border: '1px solid #ddd', borderRadius: 4, cursor: 'pointer' }}>✏️</button>
+            <button onClick={() => {
+              setTool('pencil');
+              try {
+                if (bcRef.current) bcRef.current.postMessage({ type: 'setTool', tool: 'pencil', clientId: clientIdRef.current });
+                postEventToServer({ type: 'setTool', tool: 'pencil' });
+              } catch (e) {}
+            }} style={{ padding: '6px 10px', background: tool === 'pencil' ? '#e3f2fd' : 'white', border: '1px solid #ddd', borderRadius: 4, cursor: 'pointer' }}>✏️</button>
           )}
           {isActionAllowed('setTool:eraser') && (
-            <button onClick={() => setTool('eraser')} style={{ padding: '6px 10px', background: tool === 'eraser' ? '#e3f2fd' : 'white', border: '1px solid #ddd', borderRadius: 4, cursor: 'pointer' }}>🧽</button>
+            <button onClick={() => {
+              setTool('eraser');
+              try {
+                if (bcRef.current) bcRef.current.postMessage({ type: 'setTool', tool: 'eraser', clientId: clientIdRef.current });
+                postEventToServer({ type: 'setTool', tool: 'eraser' });
+              } catch (e) {}
+            }} style={{ padding: '6px 10px', background: tool === 'eraser' ? '#e3f2fd' : 'white', border: '1px solid #ddd', borderRadius: 4, cursor: 'pointer' }}>🧽</button>
           )}
         </div>
         <div>
           {isActionAllowed('setColor') && (
-            <input aria-label="Pen color" type="color" value={color} onChange={(e) => setColor(e.target.value)} style={{ width: 36, height: 32, padding: 0, border: 'none' }} />
+            <input 
+              aria-label="Pen color" 
+              type="color" 
+              value={color} 
+              onChange={(e) => {
+                const newColor = e.target.value;
+                setColor(newColor);
+                try {
+                  if (bcRef.current) bcRef.current.postMessage({ type: 'setColor', color: newColor, clientId: clientIdRef.current });
+                  postEventToServer({ type: 'setColor', color: newColor });
+                } catch (err) {}
+              }} 
+              style={{ width: 36, height: 32, padding: 0, border: 'none' }} 
+            />
           )}
         </div>
         {isActionAllowed('setWidth') && (
