@@ -9,6 +9,8 @@ import dynamic from 'next/dynamic';
 import { useT } from '@/components/IntlProvider';
 
 const PdfViewer = dynamic(() => import('@/components/PdfViewer'), { ssr: false });
+const ConsoleLogViewer = dynamic(() => import('@/components/ConsoleLogViewer'), { ssr: false });
+const NetworkSpeedMonitor = dynamic(() => import('@/components/NetworkSpeedMonitor'), { ssr: false });
 
 type Role = 'teacher' | 'student';
 
@@ -138,13 +140,17 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
            if (json.found) {
              console.log('[ClientClassroom] Found existing PDF for session');
              const fileResp = await fetch(`/api/whiteboard/pdf?uuid=${encodeURIComponent(sessionReadyKey)}`);
-             const blob = await fileResp.blob();
-             // Get filename from json meta if possible
-             const fileName = json.meta?.name || 'course.pdf';
-             const fileType = json.meta?.type || 'application/pdf';
-             const file = new File([blob], fileName, { type: fileType });
-             setSelectedPdf(file);
-             setShowPdf(true); 
+             if (fileResp.ok) {
+               const blob = await fileResp.blob();
+               // Get filename from json meta if possible
+               const fileName = json.meta?.name || 'course.pdf';
+               const fileType = json.meta?.type || 'application/pdf';
+               const file = new File([blob], fileName, { type: fileType });
+               setSelectedPdf(file);
+               setShowPdf(true); 
+             } else {
+               console.warn('[ClientClassroom] PDF file download failed:', fileResp.status);
+             }
            }
         }
       } catch (e) {
@@ -1299,6 +1305,15 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
 
                   {/* Mic toggle and Leave placed below the Join button */}
                 </div>
+
+                {/* Console Log Viewers for debugging */}
+                {typeof window !== 'undefined' && window.location.pathname === '/classroom/test' && (
+                  <>
+                    <ConsoleLogViewer title={`${(urlRole === 'teacher' || computedRole === 'teacher') ? '老師' : '學生'} Console Log`} />
+                    <ConsoleLogViewer title={`${(urlRole === 'teacher' || computedRole === 'teacher') ? '學生' : '老師'} Console Log`} />
+                    <NetworkSpeedMonitor title="網路速度監控" />
+                  </>
+                )}
 
                   <div style={{ marginTop: 8, display: 'flex', gap: 8, flexDirection: 'column', alignItems: 'stretch' }}>
                     {!joined ? (
