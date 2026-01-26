@@ -25,8 +25,8 @@ export async function getWhiteboardState(uuid: string): Promise<WhiteboardState 
     }
     return Item as WhiteboardState | null;
   } catch (error) {
-    console.error('[WhiteboardService] Error getting state:', { uuid, error: String(error), errorStack: (error as any)?.stack });
-    return null;
+    console.error('[WhiteboardService] Error getting state:', { uuid, error: String(error) });
+    throw error; // Throw error so API knows it failed, rather than returning null (empty)
   }
 }
 

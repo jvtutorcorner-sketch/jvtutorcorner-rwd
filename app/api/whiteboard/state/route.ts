@@ -32,12 +32,10 @@ export async function GET(req: NextRequest) {
         }
       }
     } catch (e) {
-      console.warn('[WB State] DB Fetch error, falling back to memory:', e);
-      const memState = roomStates.get(uuid);
-      if (memState) {
-        state = memState;
-        source = 'memory';
-      }
+      console.warn('[WB State] DB Fetch error:', e);
+      // In serverless, memory fallback is unreliable (empty or stale). 
+      // It is safer to return 500 than to return an empty/stale state that causes the client to wipe the board.
+      return new Response(JSON.stringify({ ok: false, error: 'DB Fetch Failed' }), { status: 500 });
     }
 
     return new Response(JSON.stringify({ ok: true, state, source }), { status: 200 });
