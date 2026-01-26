@@ -743,7 +743,11 @@ export default function EnhancedWhiteboard({
     
     // Sync Ref first (Source of Truth)
     strokesRef.current.push(newStroke);
-    setStrokes([...strokesRef.current]);
+    // OPTIMIZED: Draw locally and debounce state update to prevent flicker
+    drawIncremental(newStroke, 0);
+    if (newStroke.id) lastDrawnPointMapRef.current.set(newStroke.id, newStroke.points.length);
+    lastDrawnStrokeCountRef.current = strokesRef.current.length;
+    syncStateDebounced();
     
     setUndone([]);
     currentStrokeIdRef.current = newStroke.id as string;
@@ -1575,23 +1579,28 @@ export default function EnhancedWhiteboard({
             return;
           }
           if (data.type === 'stroke-start') {
-            console.log('[WB SSE] Applying stroke-start:', data);
             applyingRemoteRef.current = true;
-            // Sync Ref
-            if (data.strokeId || data.stroke?.id) {
-               const id = data.strokeId || data.stroke.id;
-               if (!strokesRef.current.some(st => (st as any).id === id)) {
-                   console.log('[WB SSE] Adding new stroke:', id);
-                   strokesRef.current.push(data.stroke);
-                   setStrokes([...strokesRef.current]);
-               }
-            } else {
-               strokesRef.current.push(data.stroke);
-               setStrokes([...strokesRef.current]);
+            const stroke = data.stroke;
+            const id = data.strokeId || stroke.id;
+            
+            // Sync Ref - Avoid duplicates
+            if (!strokesRef.current.some(st => (st as any).id === id)) {
+                // console.log('[WB SSE] Adding new stroke:', id);
+                strokesRef.current.push(stroke);
+                
+                // CRITICAL FIX: Draw incrementally immediately to avoid full redraw (flicker)
+                drawIncremental(stroke, 0);
+                if (id) lastDrawnPointMapRef.current.set(id, stroke.points.length);
+                
+                // Update tracking ref to prevent drawAll from running needlessly when state syncs
+                lastDrawnStrokeCountRef.current = strokesRef.current.length;
+                
+                // Use debounced sync instead of immediate setStrokes
+                syncStateDebounced();
             }
             applyingRemoteRef.current = false;
           } else if (data.type === 'stroke-update') {
-            console.log('[WB SSE] Applying stroke-update:', data.strokeId);
+            // console.log('[WB SSE] Applying stroke-update:', data.strokeId);
             applyingRemoteRef.current = true;
             const strokeId = data.strokeId;
             const points = data.points;
@@ -1618,12 +1627,11 @@ export default function EnhancedWhiteboard({
                     // Debounced state sync
                     syncStateDebounced();
                 } else {
-                    console.warn('[WB SSE] stroke-update for unknown strokeId, creating new:', strokeId);
-                    const newStroke = { points: points, stroke: '#000', strokeWidth: 2, mode: 'draw', id: strokeId, page: currentPage } as any;
-                    strokes.push(newStroke);
-                    drawIncremental(newStroke, 0);
-                    lastDrawnPointMapRef.current.set(strokeId, points.length);
-                    syncStateDebounced();
+                    // CRITICAL FIX: Do NOT create a default black stroke for unknown IDs.
+                    // This causes "eraser turns into black line" bugs if stroke-start is missed.
+                    // Ignoring the orphan update is safer than drawing incorrect artifacts.
+                    console.warn('[WB SSE] Ignored orphan stroke-update (missing start):', strokeId);
+                    if (verboseLogging) logAnomaly('Orphaned stroke-update ignored', { strokeId });
                 }
             }
             applyingRemoteRef.current = false;
