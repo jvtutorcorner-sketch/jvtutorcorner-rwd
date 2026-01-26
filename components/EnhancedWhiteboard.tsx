@@ -568,9 +568,10 @@ export default function EnhancedWhiteboard({
     const currentStrokes = strokesRef.current;
     const currentCount = currentStrokes.length;
     
-    // If stroke count hasn't changed and we have incremental tracking, skip full redraw
-    if (currentCount === lastDrawnStrokeCountRef.current && lastDrawnPointMapRef.current.size > 0) {
-      console.log('[WB DRAW] Skipping full redraw, stroke count unchanged:', currentCount);
+    // Skip full redraw ONLY if applying remote updates incrementally
+    // This prevents unnecessary redraws while still allowing state-triggered redraws
+    if (currentCount === lastDrawnStrokeCountRef.current && lastDrawnPointMapRef.current.size > 0 && applyingRemoteRef.current) {
+      console.log('[WB DRAW] Skipping full redraw during incremental remote update');
       return;
     }
     
@@ -650,6 +651,9 @@ export default function EnhancedWhiteboard({
     const pos = getPointerPos(e);
     const timestamp = Date.now();
     const newStroke: Stroke & { id?: string; origin?: string } = { page: currentPage, points: [pos.x, pos.y], stroke: color, strokeWidth, mode: tool === 'eraser' ? 'erase' : 'draw', id: `${clientIdRef.current}_${timestamp}`, timestamp, origin: clientIdRef.current };
+    
+    // DEBUG: Log created stroke
+    console.log('[WB] Creating stroke:', { id: newStroke.id, mode: newStroke.mode, tool, strokeWidth: newStroke.strokeWidth });
     
     // Sync Ref first (Source of Truth)
     strokesRef.current.push(newStroke);
@@ -918,6 +922,9 @@ export default function EnhancedWhiteboard({
             const stroke = data.stroke;
             const id = data.strokeId || stroke.id;
             
+            // DEBUG: Log received stroke
+            console.log('[WB BC] stroke-start:', { id, mode: stroke.mode, strokeWidth: stroke.strokeWidth });
+            
             // Sync Ref - Avoid duplicates
             if (!strokesRef.current.some(st => (st as any).id === id)) {
                 strokesRef.current.push(stroke);
@@ -929,7 +936,8 @@ export default function EnhancedWhiteboard({
                 // Update tracking ref to prevent drawAll from running needlessly when state syncs
                 lastDrawnStrokeCountRef.current = strokesRef.current.length;
                 
-                // NO state sync - only draw incrementally to avoid triggering useEffect
+                // REMOTE UPDATE: Must sync state to trigger student-side redraw
+                setStrokes([...strokesRef.current]);
             }
             applyingRemoteRef.current = false;
           } else if (data.type === 'stroke-update') {
@@ -1358,7 +1366,8 @@ export default function EnhancedWhiteboard({
                   }
                 }
                 
-                // NO state sync for incremental updates - only draw to avoid flickering
+                // REMOTE UPDATE: Sync state to ensure visibility
+                setStrokes([...strokesRef.current]);
                 
                 applyingRemoteRef.current = false;
               }
@@ -1520,6 +1529,9 @@ export default function EnhancedWhiteboard({
             const stroke = data.stroke;
             const id = data.strokeId || stroke.id;
             
+            // DEBUG: Log received stroke
+            console.log('[WB SSE] stroke-start:', { id, mode: stroke.mode, strokeWidth: stroke.strokeWidth });
+            
             // Sync Ref - Avoid duplicates
             if (!strokesRef.current.some(st => (st as any).id === id)) {
                 // console.log('[WB SSE] Adding new stroke:', id);
@@ -1532,7 +1544,8 @@ export default function EnhancedWhiteboard({
                 // Update tracking ref to prevent drawAll from running needlessly when state syncs
                 lastDrawnStrokeCountRef.current = strokesRef.current.length;
                 
-                // NO state sync - only draw incrementally to avoid triggering useEffect
+                // REMOTE UPDATE: Must sync state to trigger student-side redraw
+                setStrokes([...strokesRef.current]);
             }
             applyingRemoteRef.current = false;
           } else if (data.type === 'stroke-update') {
