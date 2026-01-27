@@ -32,13 +32,32 @@ export async function GET(req: NextRequest) {
         }
       }
     } catch (e) {
-      console.warn('[WB State] DB Fetch error:', e);
-      // In serverless, memory fallback is unreliable (empty or stale). 
-      // It is safer to return 500 than to return an empty/stale state that causes the client to wipe the board.
-      return new Response(JSON.stringify({ ok: false, error: 'DB Fetch Failed' }), { status: 500 });
+      console.warn('[WB State] DB Fetch error, falling back to memory:', e);
+      const memState = roomStates.get(uuid);
+      if (memState) {
+        state = memState;
+        source = 'memory';
+      }
     }
 
-    return new Response(JSON.stringify({ ok: true, state, source }), { status: 200 });
+    // Safely serialize state to avoid throwing on circular references or huge data URLs.
+    try {
+      const MAX_STRING = 50000; // truncate extremely large strings (pdf dataUrls etc.)
+      const seen = new WeakSet();
+      const bodyText = JSON.stringify({ ok: true, state, source }, function (k, v) {
+        if (typeof v === 'string' && v.length > MAX_STRING) return '(large-string)';
+        if (v && typeof v === 'object') {
+          if (seen.has(v)) return '[Circular]';
+          seen.add(v);
+        }
+        return v;
+      });
+      return new Response(bodyText, { status: 200, headers: { 'Content-Type': 'application/json' } });
+    } catch (e) {
+      console.error('[WB State] Serialization failed for uuid=', uuid, e);
+      // Fallback: return minimal safe state
+      return new Response(JSON.stringify({ ok: true, state: { strokes: [], pdf: null }, source }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
   } catch (e) {
     console.error('[WB State] Unexpected Error:', e);
     return new Response(JSON.stringify({ ok: false, error: String(e) }), { status: 500 });
