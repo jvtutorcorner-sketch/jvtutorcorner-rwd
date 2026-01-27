@@ -631,28 +631,16 @@ export default function CollaborativeWhiteboard({
     // Spec: Transfer TopCanvas to BottomCanvas and clear TopCanvas
     // We use the same dimensions for clearRect as the canvas logical size
     if (bottomCtxRef.current && topCanvasRef.current && topCtxRef.current) {
-<<<<<<< HEAD
-      bottomCtxRef.current.drawImage(topCanvasRef.current, 0, 0);
-      
-      // Clear using a safe large region or calculate exact
-      // Since context is scaled, we clear in logical pixels.
-      // We can just use the canvas.width since clearing larger is fine.
-      // But accurate is: canvas.width / dpr
-=======
->>>>>>> 53fd144 (feat(whiteboard): virtual coord + DPI & responsive lineWidth)
       const dpr = window.devicePixelRatio || 1;
       const logicalW = topCanvasRef.current.width / dpr;
       const logicalH = topCanvasRef.current.height / dpr;
       
-<<<<<<< HEAD
-=======
       // Fix: Draw with explicit logical dimensions to account for context scaling (DPI)
       // Destination Context is scaled by DPR, Source Image (Canvas) is physical size.
       // We want to draw the physical pixels 1:1, so we draw into the logical area.
       bottomCtxRef.current.drawImage(topCanvasRef.current, 0, 0, logicalW, logicalH);
       
       // Clear local stroke
->>>>>>> 53fd144 (feat(whiteboard): virtual coord + DPI & responsive lineWidth)
       topCtxRef.current.clearRect(0, 0, logicalW, logicalH);
     }
     
