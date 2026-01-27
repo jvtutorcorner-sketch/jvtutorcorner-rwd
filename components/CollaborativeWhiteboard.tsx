@@ -11,13 +11,15 @@ import React, { useRef, useEffect, useState, useCallback } from 'react';
  * 4. Fix: Removed throttling on sender to prevent missing strokes (data loss).
  */
 
+const VIRTUAL_WIDTH = 1920;
+const VIRTUAL_HEIGHT = 1080;
+
 interface CollaborativeWhiteboardProps {
   appId?: string;
   token?: string;
   channelName?: string;
   userId?: string;
-  width?: number;
-  height?: number;
+  className?: string; // Add className support for external styling
   color?: string;
   lineWidth?: number;
   editable?: boolean;
@@ -25,7 +27,7 @@ interface CollaborativeWhiteboardProps {
 
 interface DrawPacket {
   type: 'draw_stream';
-  points: number[]; // [x1, y1, x2, y2, ...]
+  points: number[]; // [x1, y1, x2, y2, ...] (Virtual Coordinates)
   color: string;
   lineWidth: number;
   isEnd: boolean;
@@ -42,15 +44,19 @@ export default function CollaborativeWhiteboard({
   token,
   channelName = 'test-channel',
   userId = `user_${Math.floor(Math.random() * 10000)}`,
-  width = 800,
-  height = 600,
+  className = '',
   color = '#000000',
   lineWidth = 3,
   editable = true,
 }: CollaborativeWhiteboardProps) {
-  // Dual Canvas Refs
+  // Container & Canvas Refs
+  const containerRef = useRef<HTMLDivElement>(null);
   const bottomCanvasRef = useRef<HTMLCanvasElement>(null);
   const topCanvasRef = useRef<HTMLCanvasElement>(null);
+  
+  // Scale Refs (Virtual -> Screen)
+  const scaleRef = useRef({ x: 1, y: 1 });
+
   
   // Context Refs (to avoid re-renders)
   const bottomCtxRef = useRef<CanvasRenderingContext2D | null>(null);
@@ -73,19 +79,83 @@ export default function CollaborativeWhiteboard({
   const remoteDrawQueueRef = useRef<DrawPacket[]>([]);
   const isRemoteDrawingRef = useRef(false);
 
-  // Initialize Canvas Contexts
+  // Coordinate System Helpers
+  const toVirtual = useCallback((clientX: number, clientY: number) => {
+    if (!containerRef.current) return { x: 0, y: 0 };
+    const rect = containerRef.current.getBoundingClientRect();
+    
+    // Relative position in the container
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+
+    // Convert to Virtual Space (1920x1080)
+    // Formula: (CurrentPos / CurrentWidth) * VirtualWidth
+    const vx = Math.round((x / rect.width) * VIRTUAL_WIDTH);
+    const vy = Math.round((y / rect.height) * VIRTUAL_HEIGHT);
+    
+    return { x: vx, y: vy };
+  }, []);
+
+  const toScreen = useCallback((vx: number, vy: number) => {
+    // Convert Virtual Space to LOCAL CSS Pixels for Drawing logic
+    // We do NOT multiply by DPR here because we use ctx.scale(dpr, dpr)
+    // So the drawing context expects CSS pixel coordinates.
+    return {
+      x: vx * scaleRef.current.x,
+      y: vy * scaleRef.current.y
+    };
+  }, []);
+
+  // Initialize Canvas & Handle Resize (DPI + Aspect Ratio)
   useEffect(() => {
-    if (bottomCanvasRef.current && topCanvasRef.current) {
-      bottomCtxRef.current = bottomCanvasRef.current.getContext('2d');
-      topCtxRef.current = topCanvasRef.current.getContext('2d');
+    const handleResize = () => {
+      const container = containerRef.current;
+      const bottomCvs = bottomCanvasRef.current;
+      const topCvs = topCanvasRef.current;
       
-      [bottomCtxRef.current, topCtxRef.current].forEach(ctx => {
+      if (!container || !bottomCvs || !topCvs) return;
+
+      const rect = container.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+
+      // 1. Calculate Scale Factors (Screen CSS w / Virtual w)
+      scaleRef.current = {
+        x: rect.width / VIRTUAL_WIDTH,
+        y: rect.height / VIRTUAL_HEIGHT
+      };
+
+      // 2. Setup Canvases with DPI correction
+      [bottomCvs, topCvs].forEach(canvas => {
+        // Set physical pixel size (buffer size)
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+        
+        // Set CSS display size (already handled by container layout usually, but good to ensure matches)
+        canvas.style.width = `${rect.width}px`;
+        canvas.style.height = `${rect.height}px`;
+
+        // Scale context
+        const ctx = canvas.getContext('2d');
         if (ctx) {
+          // Reset transform to avoid accumulation if called multiple times (though width reset does it technically)
+          ctx.setTransform(1, 0, 0, 1, 0, 0); 
+          ctx.scale(dpr, dpr);
           ctx.lineCap = 'round';
           ctx.lineJoin = 'round';
         }
       });
-    }
+      
+      // Update refs
+      bottomCtxRef.current = bottomCvs.getContext('2d');
+      topCtxRef.current = topCvs.getContext('2d');
+    };
+
+    // Initial setup
+    handleResize();
+
+    // Listen
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   // Initialize Agora RTM
@@ -162,14 +232,21 @@ export default function CollaborativeWhiteboard({
       const data = remoteDrawQueueRef.current.shift()!;
       
       ctx.strokeStyle = data.color;
-      ctx.lineWidth = data.lineWidth;
+      // Responsive Line Width: Scale based on width ratio
+      // data.lineWidth is the Virtual Width
+      ctx.lineWidth = data.lineWidth * (scaleRef.current.x || 1);
       ctx.beginPath();
       
       // Draw the segment received
       let hasMoved = false;
       for (let i = 0; i < data.points.length; i += 2) {
-        const x = data.points[i];
-        const y = data.points[i + 1];
+        // Points are in Virtual Coords
+        const vx = data.points[i];
+        const vy = data.points[i + 1];
+        
+        // Convert to Screen
+        const { x, y } = toScreen(vx, vy);
+
         if (i === 0) {
           ctx.moveTo(x, y);
         } else {
@@ -180,7 +257,8 @@ export default function CollaborativeWhiteboard({
       
       // Support Dots (single point click)
       if (!hasMoved && data.points.length === 2) {
-         ctx.lineTo(data.points[0], data.points[1]); // Zero-length line to create a dot with round cap
+         const { x: x1, y: y1 } = toScreen(data.points[0], data.points[1]);
+         ctx.lineTo(x1, y1); // Zero-length line to create a dot with round cap
       }
 
       ctx.stroke();
@@ -263,46 +341,62 @@ export default function CollaborativeWhiteboard({
     return () => clearInterval(intervalId);
   }, [flushBuffer]);
 
+  const getClientPos = (e: React.MouseEvent | React.TouchEvent | MouseEvent | TouchEvent) => {
+    if ('touches' in e && e.touches.length > 0) {
+      return { clientX: e.touches[0].clientX, clientY: e.touches[0].clientY };
+    } else if ('changedTouches' in e && (e as any).changedTouches.length > 0) {
+        // Handle touch end case where touches is empty but changedTouches has the point
+        return { clientX: (e as any).changedTouches[0].clientX, clientY: (e as any).changedTouches[0].clientY };
+    } else {
+      return { clientX: (e as React.MouseEvent).clientX, clientY: (e as React.MouseEvent).clientY };
+    }
+  };
+
   const startDrawing = (e: React.MouseEvent | React.TouchEvent) => {
     if (!editable) return;
     isDrawingRef.current = true;
     currentStrokeIdRef.current = `${userId}_${Date.now()}`;
     
-    const { x, y } = getCoordinates(e);
-    const rx = Math.round(x);
-    const ry = Math.round(y);
+    // 1. Get Virtual Coords
+    const { clientX, clientY } = getClientPos(e);
+    const { x: vx, y: vy } = toVirtual(clientX, clientY);
     
-    lastPointRef.current = { x: rx, y: ry };
-    pointsBufferRef.current = [rx, ry];
+    // Store Virtual
+    lastPointRef.current = { x: vx, y: vy };
+    pointsBufferRef.current = [vx, vy];
     
-    // Start local drawing on TopCanvas
+    // 2. Local Drawing (Convert to Screen)
     const ctx = topCtxRef.current;
     if (ctx) {
+      const { x: sx, y: sy } = toScreen(vx, vy);
       ctx.strokeStyle = color;
-      ctx.lineWidth = lineWidth;
+      // Responsive Line Width: Scale based on width ratio
+      // lineWidth is the Virtual Width
+      ctx.lineWidth = lineWidth * (scaleRef.current.x || 1);
       ctx.beginPath();
-      ctx.moveTo(rx, ry);
+      ctx.moveTo(sx, sy);
     }
   };
 
   const draw = (e: React.MouseEvent | React.TouchEvent) => {
     if (!isDrawingRef.current || !editable) return;
     
-    const { x, y } = getCoordinates(e);
-    const rx = Math.round(x);
-    const ry = Math.round(y);
+    // 1. Get Virtual Coords
+    const { clientX, clientY } = getClientPos(e);
+    const { x: vx, y: vy } = toVirtual(clientX, clientY);
     
-    // 1. Local Draw on TopLayer
+    // 2. Local Draw (Convert to Screen)
     const ctx = topCtxRef.current;
     if (ctx) {
-      ctx.lineTo(rx, ry);
+      const { x: sx, y: sy } = toScreen(vx, vy);
+      ctx.lineTo(sx, sy);
       ctx.stroke();
     }
     
-    // 2. Add to buffer
-    pointsBufferRef.current.push(rx, ry);
+    // 3. Add Virtual Point to buffer
+    pointsBufferRef.current.push(vx, vy);
     
-    // 3. Optional: Cap buffer size to avoid huge packets if interval is delayed
+    // 4. Cap buffer size
     if (pointsBufferRef.current.length >= 80) { // 40 points
       flushBuffer();
     }
@@ -325,12 +419,19 @@ export default function CollaborativeWhiteboard({
     }
     
     // Spec: Transfer TopCanvas to BottomCanvas and clear TopCanvas
-    if (bottomCtxRef.current && topCanvasRef.current) {
+    // We use the same dimensions for clearRect as the canvas logical size
+    if (bottomCtxRef.current && topCanvasRef.current && topCtxRef.current) {
       bottomCtxRef.current.drawImage(topCanvasRef.current, 0, 0);
-      const topCtx = topCtxRef.current;
-      if (topCtx) {
-        topCtx.clearRect(0, 0, width, height);
-      }
+      
+      // Clear using a safe large region or calculate exact
+      // Since context is scaled, we clear in logical pixels.
+      // We can just use the canvas.width since clearing larger is fine.
+      // But accurate is: canvas.width / dpr
+      const dpr = window.devicePixelRatio || 1;
+      const logicalW = topCanvasRef.current.width / dpr;
+      const logicalH = topCanvasRef.current.height / dpr;
+      
+      topCtxRef.current.clearRect(0, 0, logicalW, logicalH);
     }
     
     pointsBufferRef.current = [];
@@ -338,40 +439,26 @@ export default function CollaborativeWhiteboard({
     lastPointRef.current = null;
   };
 
-  const getCoordinates = (e: React.MouseEvent | React.TouchEvent): Point => {
-    let clientX, clientY;
-    if ('touches' in e.nativeEvent) {
-      clientX = e.nativeEvent.touches[0].clientX;
-      clientY = e.nativeEvent.touches[0].clientY;
-    } else {
-      clientX = (e as React.MouseEvent).clientX;
-      clientY = (e as React.MouseEvent).clientY;
-    }
-    
-    const rect = topCanvasRef.current?.getBoundingClientRect();
-    if (!rect) return { x: 0, y: 0 };
-    
-    return {
-      x: clientX - rect.left,
-      y: clientY - rect.top
-    };
-  };
-
   return (
-    <div className="relative border border-gray-400 overflow-hidden" style={{ width, height }}>
+    <div 
+      ref={containerRef}
+      className={`relative border border-gray-400 overflow-hidden ${className}`}
+      style={{ 
+        width: '100%', 
+        maxWidth: '100%',
+        aspectRatio: '16 / 9',
+        touchAction: 'none' // Prevent scrolling on touch devices
+      }}
+    >
       {/* Bottom Layer: Persistence / History / Remote */}
       <canvas
         ref={bottomCanvasRef}
-        width={width}
-        height={height}
-        className="absolute top-0 left-0 bg-white"
+        className="absolute top-0 left-0 w-full h-full bg-white block"
       />
       
       {/* Top Layer: Local Real-time Active Stroke */}
       <canvas
         ref={topCanvasRef}
-        width={width}
-        height={height}
         onMouseDown={startDrawing}
         onMouseMove={draw}
         onMouseUp={stopDrawing}
@@ -379,7 +466,7 @@ export default function CollaborativeWhiteboard({
         onTouchStart={startDrawing}
         onTouchMove={draw}
         onTouchEnd={stopDrawing}
-        className="absolute top-0 left-0 cursor-crosshair touch-none"
+        className="absolute top-0 left-0 w-full h-full cursor-crosshair touch-none block"
       />
     </div>
   );
