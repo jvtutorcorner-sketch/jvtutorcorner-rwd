@@ -81,6 +81,8 @@ interface CollaborativeWhiteboardProps {
   color?: string;
   lineWidth?: number;
   editable?: boolean;
+  itemUrl?: string; // PDF Background URL
+  onItemChange?: (page: number) => void;
 }
 
 interface DrawPacket {
@@ -106,11 +108,14 @@ export default function CollaborativeWhiteboard({
   color = '#000000',
   lineWidth = 3,
   editable = true,
+  itemUrl,
 }: CollaborativeWhiteboardProps) {
   // Container & Canvas Refs
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomCanvasRef = useRef<HTMLCanvasElement>(null);
   const topCanvasRef = useRef<HTMLCanvasElement>(null);
+  const pdfImageRef = useRef<HTMLImageElement>(null); // Layer 1: PDF Background
+
   
   // Scale Refs (Virtual -> Screen)
   const scaleRef = useRef({ x: 1, y: 1 });
@@ -218,7 +223,7 @@ export default function CollaborativeWhiteboard({
 
   }, []);
 
-  const redrawAll = () => {
+  const redrawAll = useCallback(() => {
     if (!bottomCtxRef.current) return;
     const ctx = bottomCtxRef.current;
 
@@ -229,12 +234,13 @@ export default function CollaborativeWhiteboard({
         ctx.clearRect(0, 0, bottomCanvasRef.current.width / dpr, bottomCanvasRef.current.height / dpr);
     }
 
-    // 1. Draw Snapshot
+    // 1. Draw Transparent Stroke Snapshot (Layer 2)
+    // NOTE: Layer 1 is the PDF <img> which handles itself. We ONLY draw strokes here.
     if (snapshotUrlRef.current) {
         const img = new Image();
         img.src = snapshotUrlRef.current;
         img.onload = () => {
-            // Draw image covering full logic canvas
+            // Draw stroke-only snapshot covering full logic canvas
              if (bottomCanvasRef.current) {
                  ctx.drawImage(img, 0, 0, bottomCanvasRef.current.width / dpr, bottomCanvasRef.current.height / dpr);
                  // 2. Draw History Stacks existing on top of snapshot
@@ -245,7 +251,7 @@ export default function CollaborativeWhiteboard({
         // 2. Draw History only
         drawHistory(ctx);
     }
-  };
+  }, []); // Added deps
 
   const drawHistory = (ctx: CanvasRenderingContext2D) => {
       historyRef.current.forEach(packet => {
@@ -265,6 +271,29 @@ export default function CollaborativeWhiteboard({
           ctx.stroke();
       });
   };
+
+  // Page Change Logic (Reset Canvas)
+  useEffect(() => {
+    // When itemUrl (PDF page) changes
+    if (itemUrl) {
+        console.log('PDF Page Changed:', itemUrl);
+        // 1. Clear Canvas
+        if (bottomCtxRef.current && bottomCanvasRef.current) {
+            const dpr = window.devicePixelRatio || 1;
+            bottomCtxRef.current.clearRect(0, 0, bottomCanvasRef.current.width / dpr, bottomCanvasRef.current.height / dpr);
+        }
+        
+        // 2. Load Snapshot for *this new page* if exists
+        // In a real app, this would be `fetch('/api/snapshot?page=...')`
+        // For now, we just reset state for the new page
+        snapshotUrlRef.current = null;
+        historyRef.current = [];
+        strokeCountRef.current = 0;
+        
+        // 3. Trigger Redraw (which will be empty initially)
+        redrawAll();
+    }
+  }, [itemUrl, redrawAll]);
 
   // Initialize Canvas & Handle Resize (DPI + Aspect Ratio)
   useEffect(() => {
@@ -643,13 +672,24 @@ export default function CollaborativeWhiteboard({
         touchAction: 'none' // Prevent scrolling on touch devices
       }}
     >
-      {/* Bottom Layer: Persistence / History / Remote */}
+      {/* Layer 1: PDF Background (Sandwich Bottom) */}
+      {itemUrl && (
+          <img 
+            ref={pdfImageRef}
+            src={itemUrl}
+            alt="Presentation Slide"
+            className="absolute top-0 left-0 w-full h-full object-contain pointer-events-none select-none z-0"
+          />
+      )}
+
+      {/* Layer 2: Persistence / History / Remote (Sandwich Middle) */}
+      {/* Transparent background so PDF shows through */}
       <canvas
         ref={bottomCanvasRef}
-        className="absolute top-0 left-0 w-full h-full bg-white block"
+        className="absolute top-0 left-0 w-full h-full bg-transparent block z-10 pointer-events-none"
       />
       
-      {/* Top Layer: Local Real-time Active Stroke */}
+      {/* Layer 3: Local Real-time Active Stroke (Sandwich Top) */}
       <canvas
         ref={topCanvasRef}
         onMouseDown={startDrawing}
@@ -659,7 +699,7 @@ export default function CollaborativeWhiteboard({
         onTouchStart={startDrawing}
         onTouchMove={draw}
         onTouchEnd={stopDrawing}
-        className="absolute top-0 left-0 w-full h-full cursor-crosshair touch-none block"
+        className="absolute top-0 left-0 w-full h-full cursor-crosshair touch-none block z-20"
       />
     </div>
   );
