@@ -1084,16 +1084,25 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
               </div>
           </div>
           <div className="whiteboard-container">
-            {useAgoraWhiteboard && agoraRoomData ? (
-              <AgoraWhiteboard
-                ref={agoraWhiteboardRef}
-                roomUuid={agoraRoomData.uuid}
-                roomToken={agoraRoomData.roomToken}
-                appIdentifier={agoraRoomData.appIdentifier}
-                userId={agoraRoomData.userId}
-                region={agoraRoomData.region}
-                className="w-full h-full"
-              />
+            {useAgoraWhiteboard ? (
+              agoraRoomData ? (
+                <AgoraWhiteboard
+                  ref={agoraWhiteboardRef}
+                  roomUuid={agoraRoomData.uuid}
+                  roomToken={agoraRoomData.roomToken}
+                  appIdentifier={agoraRoomData.appIdentifier}
+                  userId={agoraRoomData.userId}
+                  region={agoraRoomData.region}
+                  className="w-full h-full"
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center bg-slate-50">
+                  <div className="text-center">
+                    <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-300 border-t-blue-600 mx-auto mb-2" />
+                    <div className="text-sm text-slate-600">初始化白板中...</div>
+                  </div>
+                </div>
+              )
             ) : (
               <EnhancedWhiteboard 
                 channelName={effectiveChannelName}
