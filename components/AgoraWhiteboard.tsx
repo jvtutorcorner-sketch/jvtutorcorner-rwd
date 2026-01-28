@@ -86,26 +86,37 @@ const AgoraWhiteboard = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((pr
 
     return (
         <div 
-             className={`w-full h-full relative overflow-hidden ${className || ''}`}
+             className={`w-full h-full relative ${className || ''}`}
              style={{ 
                  // Fallback inline styles to ensure full filling if Tailwind missing
                  minHeight: '400px',
-                 flexGrow: 1
+                 flexGrow: 1,
+                 display: 'flex',
+                 flexDirection: 'column'
              }}
         >
             {app ? (
                 <Fastboard 
                     app={app} 
-                    language="en" 
+                    language="zh-CN"
                     theme="light"
-                    // Fastboard comes with default UI (Toolbar, PageControl, Zoom)
-                    // We can customize the config if needed via `app` instance methods
+                    config={{
+                        toolbar: {
+                            enable: true,
+                        },
+                        redo_undo: {
+                            enable: true,
+                        },
+                        page_control: {
+                            enable: true,
+                        },
+                    }}
                 />
             ) : (
                 <div className="absolute inset-0 flex items-center justify-center bg-slate-50 text-slate-400">
                     <div className="flex flex-col items-center gap-2">
                         <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-300 border-t-blue-600" />
-                        <p>Connecting to Whiteboard...</p>
+                        <p>正在連接白板...</p>
                     </div>
                 </div>
             )}
