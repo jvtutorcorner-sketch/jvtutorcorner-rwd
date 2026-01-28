@@ -22,10 +22,13 @@ const ConsoleLogViewer: React.FC<ConsoleLogViewerProps> = ({ title, maxLines = 5
         typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
       ).join(' ');
 
-      setLogs(prevLogs => {
-        const newLogs = [...prevLogs, `[${new Date().toLocaleTimeString()}] ${message}`];
-        return newLogs.slice(-maxLines); // Keep only the last maxLines entries
-      });
+      // Use setTimeout to make the state update asynchronous
+      setTimeout(() => {
+        setLogs(prevLogs => {
+          const newLogs = [...prevLogs, `[${new Date().toLocaleTimeString()}] ${message}`];
+          return newLogs.slice(-maxLines); // Keep only the last maxLines entries
+        });
+      }, 0);
 
       // Still call the original console.log
       originalConsoleLog.current?.apply(console, args);
