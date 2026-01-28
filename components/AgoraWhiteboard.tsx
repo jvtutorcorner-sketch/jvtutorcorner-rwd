@@ -27,6 +27,8 @@ const AgoraWhiteboard = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((pr
         className 
     } = props;
 
+    console.log('[AgoraWhiteboard] Props received:', { roomUuid, roomToken: roomToken ? '***' : null, appIdentifier, userId, region });
+
     // Initialize Fastboard
     // Documentation: https://github.com/netless-io/fastboard/tree/master/packages/fastboard-react
     const app = useFastboard(() => ({
@@ -44,6 +46,8 @@ const AgoraWhiteboard = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((pr
             cursor: true,
         },
     }));
+
+    console.log('[AgoraWhiteboard] Fastboard app initialized:', !!app);
 
     useImperativeHandle(ref, () => ({
         /**

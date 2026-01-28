@@ -154,18 +154,23 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     
     const initAgoraWhiteboard = async () => {
       try {
+        console.log('[ClientClassroom] Initializing Agora Whiteboard room for user:', userId);
         const res = await fetch('/api/whiteboard/room', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId })
         });
         
+        console.log('[ClientClassroom] API response status:', res.status);
+        
         if (res.ok) {
           const data = await res.json();
+          console.log('[ClientClassroom] API response data:', data);
           setAgoraRoomData(data);
           console.log('[ClientClassroom] Agora Whiteboard room initialized:', data.uuid);
         } else {
-          console.error('[ClientClassroom] Failed to initialize Agora Whiteboard room');
+          const errorText = await res.text();
+          console.error('[ClientClassroom] Failed to initialize Agora Whiteboard room:', res.status, errorText);
         }
       } catch (error) {
         console.error('[ClientClassroom] Error initializing Agora Whiteboard:', error);
