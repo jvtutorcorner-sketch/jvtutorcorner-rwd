@@ -212,119 +212,18 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
   const timerRef = useRef<number | null>(null);
 
+  // DISABLED: Old canvas whiteboard initialization (conflicts with Agora whiteboard)
   // Initialize whiteboard room BEFORE joining Agora session
-  const [whiteboardMetaBeforeJoin, setWhiteboardMetaBeforeJoin] = useState<any>(null);
+  // const [whiteboardMetaBeforeJoin, setWhiteboardMetaBeforeJoin] = useState<any>(null);
 
-  // Initialize whiteboard independently of Agora join
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    const initializeWhiteboard = async () => {
-      try {
-        console.log('[Pre-join] Initializing whiteboard room...');
-
-        // Use localStorage to share the same whiteboard room UUID across participants
-        const whiteboardRoomKey = `whiteboard_room_${effectiveChannelName}`;
-        const cachedUuid = localStorage.getItem(whiteboardRoomKey);
-
-        // If we already have a cached UUID that is NOT a course-scoped fallback,
-        // attempt to request a token for it from the server. If the cached UUID
-        // is a local `course_` fallback we should not call the server.
-        if (cachedUuid && !cachedUuid.startsWith('course_')) {
-          try {
-            const wbResp = await fetch('/api/agora/whiteboard', {
-              method: 'POST',
-              headers: { 'content-type': 'application/json' },
-              body: JSON.stringify({ uuid: cachedUuid, name: effectiveChannelName, role: 'admin' }),
-            });
-            if (wbResp.ok) {
-              const wbJson = await wbResp.json();
-              const wbAppId = wbJson.whiteboardAppId ?? null;
-              const wbUuid = wbJson.uuid ?? null;
-              const wbRegion = wbJson.region ?? null;
-              localStorage.setItem(whiteboardRoomKey, wbUuid ?? cachedUuid);
-              setWhiteboardMetaBeforeJoin({ uuid: wbUuid ?? cachedUuid, appId: wbAppId ?? undefined, region: wbRegion ?? undefined });
-              console.log('[Pre-join] Obtained whiteboard token for cached uuid');
-            } else {
-              const txt = await wbResp.text();
-              console.warn('[Pre-join] Whiteboard API returned non-OK for cached uuid:', wbResp.status, txt);
-            }
-          } catch (err) {
-            console.warn('[Pre-join] Failed to request whiteboard token for cached uuid:', err);
-          }
-        } else if (cachedUuid && cachedUuid.startsWith('course_')) {
-          // Cached course-scoped uuid — use as fallback without contacting server
-          setWhiteboardMetaBeforeJoin({ uuid: cachedUuid, appId: undefined, region: undefined });
-          console.log('[Pre-join] Using cached course-scoped whiteboard UUID, skipping server call');
-        }
-
-        // If no cached UUID or server token not available, decide strategy based on environment.
-        // In production we must NOT use a course-scoped local fallback to avoid inconsistent
-        // in-memory states across serverless instances / CDN. Instead, try to request a
-        // server-backed whiteboard room/token. Only fall back to course-scoped locally in
-        // non-production (local dev) environments.
-        if (!localStorage.getItem(whiteboardRoomKey)) {
-          const host = window.location.hostname || '';
-          const isProductionHost = host.endsWith('jvtutorcorner.com') || host.includes('amplifyapp.com') || host.includes('cloudfront.net');
-          if (isProductionHost) {
-            let serverSuccess = false;
-            try {
-              const wbResp = await fetch('/api/agora/whiteboard', {
-                method: 'POST',
-                headers: { 'content-type': 'application/json' },
-                body: JSON.stringify({ name: effectiveChannelName, role: 'admin' }),
-              });
-              if (wbResp.ok) {
-                const wbJson = await wbResp.json();
-                const wbAppId = wbJson.whiteboardAppId ?? null;
-                const wbUuid = wbJson.uuid ?? null;
-                const wbRegion = wbJson.region ?? null;
-                if (wbUuid) {
-                  localStorage.setItem(whiteboardRoomKey, wbUuid);
-                  setWhiteboardMetaBeforeJoin({ uuid: wbUuid, appId: wbAppId ?? undefined, region: wbRegion ?? undefined });
-                  console.log('[Pre-join] Obtained whiteboard room from server (production)');
-                  serverSuccess = true;
-                } else {
-                  console.warn('[Pre-join] Server returned no uuid; falling back to course-scoped UUID');
-                }
-              } else {
-                const txt = await wbResp.text().catch(() => '(no body)');
-                console.warn('[Pre-join] Whiteboard API returned non-OK in production:', wbResp.status, txt);
-              }
-            } catch (e) {
-              console.warn('[Pre-join] Failed to request whiteboard token in production:', e);
-            }
-
-            if (!serverSuccess) {
-              // If server-side whiteboard fails (e.g. missing tokens, 400/500 errors),
-              // fall back to the course-scoped deterministic UUID so polling/canvas sync still works.
-              const courseScoped = `course_${courseId}`;
-              localStorage.setItem(whiteboardRoomKey, courseScoped);
-              setWhiteboardMetaBeforeJoin({ uuid: courseScoped, appId: undefined, region: undefined });
-              console.log('[Pre-join] Server whiteboard failed in production, falling back to course-scoped UUID for polling/canvas sync.');
-            }
-          } else {
-            // non-production: use course-scoped fallback so local dev works without server
-            const courseScoped = `course_${courseId}`;
-            localStorage.setItem(whiteboardRoomKey, courseScoped);
-            try {
-              const bc = new BroadcastChannel(`whiteboard_course_${courseId}`);
-              bc.postMessage({ type: 'whiteboard_room_created', uuid: courseScoped, timestamp: Date.now() });
-              setTimeout(() => bc.close(), 100);
-            } catch (e) {
-              console.warn('BroadcastChannel not available:', e);
-            }
-            setWhiteboardMetaBeforeJoin({ uuid: courseScoped, appId: undefined, region: undefined });
-            console.log('[Pre-join] Using course-scoped whiteboard UUID (canvas fallback, non-production)');
-          }
-        }
-      } catch (err) {
-        console.warn('[Pre-join] Failed to initialize whiteboard:', err);
-      }
-    };
-
-    initializeWhiteboard();
-  }, [effectiveChannelName]);
+  // DISABLED: Canvas whiteboard init - now using Agora whiteboard by default
+  // useEffect(() => {
+  //   if (typeof window === 'undefined') return;
+  //   if (!useAgoraWhiteboard) { // Only init canvas whiteboard if Agora is disabled
+  //     const initializeWhiteboard = async () => { ... }
+  //     initializeWhiteboard();
+  //   }
+  // }, [effectiveChannelName, useAgoraWhiteboard]);
 
   // Device lists and selections (Google Meet-like UI)
   const [audioInputs, setAudioInputs] = useState<MediaDeviceInfo[]>([]);

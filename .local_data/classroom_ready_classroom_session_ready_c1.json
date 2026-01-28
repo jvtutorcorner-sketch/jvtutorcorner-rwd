@@ -1,1 +1,1 @@
-[{"role":"student","userId":"student"},{"role":"teacher","userId":"teacher"}]
+[{"role":"teacher","userId":"teacher","present":false},{"role":"student","userId":"student","present":false}]
