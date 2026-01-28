@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
 
     // Broadcast page change to all connected clients
     broadcastToUuid(uuid, {
-      type: 'pdf-page-change',
+      type: 'set-page',
       page: page
     });
 

@@ -7,10 +7,21 @@ import { COURSES } from '@/data/courses';
 import EnhancedWhiteboard from '@/components/EnhancedWhiteboard';
 import dynamic from 'next/dynamic';
 import { useT } from '@/components/IntlProvider';
+import type { AgoraWhiteboardRef } from '@/components/AgoraWhiteboard';
 
 const PdfViewer = dynamic(() => import('@/components/PdfViewer'), { ssr: false });
 const ConsoleLogViewer = dynamic(() => import('@/components/ConsoleLogViewer'), { ssr: false });
 const NetworkSpeedMonitor = dynamic(() => import('@/components/NetworkSpeedMonitor'), { ssr: false });
+
+// Agora Whiteboard (Feature Flag)
+const AgoraWhiteboard = dynamic(() => import('@/components/AgoraWhiteboard'), { 
+  ssr: false,
+  loading: () => (
+    <div className="absolute inset-0 flex items-center justify-center bg-slate-50">
+      <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-300 border-t-blue-600" />
+    </div>
+  )
+});
 
 type Role = 'teacher' | 'student';
 
@@ -41,6 +52,12 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   const sessionParam = searchParams?.get('session');
   const sessionReadyKey = sessionParam || channelName || `classroom_session_ready_${courseId}`;
   const t = useT();
+  
+  // Feature Flag: Agora Whiteboard vs Canvas Whiteboard
+  // Default to using Agora whiteboard unless explicitly disabled with NEXT_PUBLIC_USE_AGORA_WHITEBOARD='false'
+  const useAgoraWhiteboard = process.env.NEXT_PUBLIC_USE_AGORA_WHITEBOARD !== 'false';
+  const agoraWhiteboardRef = useRef<AgoraWhiteboardRef>(null);
+  const [agoraRoomData, setAgoraRoomData] = useState<{ uuid: string; roomToken: string; appIdentifier: string; region: string; userId: string } | null>(null);
   // determine courseId from query string (e.g. ?courseId=c1)
   const course = COURSES.find((c) => c.id === courseId) || null;
   
@@ -127,6 +144,36 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   // PDF viewer state
   const [selectedPdf, setSelectedPdf] = useState<File | null>(null);
   const [showPdf, setShowPdf] = useState(false);
+
+  // Define userId for Agora whiteboard
+  const userId = storedUser?.email || (urlRole === 'teacher' || computedRole === 'teacher' ? 'teacher' : 'student') || 'anonymous';
+
+  // Initialize Agora Whiteboard Room (if feature flag enabled)
+  useEffect(() => {
+    if (!useAgoraWhiteboard || !mounted || !userId) return;
+    
+    const initAgoraWhiteboard = async () => {
+      try {
+        const res = await fetch('/api/whiteboard/room', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId })
+        });
+        
+        if (res.ok) {
+          const data = await res.json();
+          setAgoraRoomData(data);
+          console.log('[ClientClassroom] Agora Whiteboard room initialized:', data.uuid);
+        } else {
+          console.error('[ClientClassroom] Failed to initialize Agora Whiteboard room');
+        }
+      } catch (error) {
+        console.error('[ClientClassroom] Error initializing Agora Whiteboard:', error);
+      }
+    };
+    
+    initAgoraWhiteboard();
+  }, [useAgoraWhiteboard, mounted, userId]);
 
   // Load PDF from server if available (synced from wait page)
   useEffect(() => {
@@ -1138,20 +1185,32 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
               </div>
           </div>
           <div className="whiteboard-container">
-            <EnhancedWhiteboard 
-              channelName={effectiveChannelName}
-              room={undefined} // Using canvas fallback instead of Netless SDK
-              whiteboardRef={whiteboardRef}
-              editable={isTeacher}
-              autoFit={true}
-              className="flex-1" 
-              onPdfSelected={(f) => { setSelectedPdf(f); }}
-              pdfFile={selectedPdf}
-              micEnabled={micEnabled}
-              onToggleMic={toggleMic}
-              hasMic={hasAudioInput !== false}
-              onLeave={() => leave()}
-            />
+            {useAgoraWhiteboard && agoraRoomData ? (
+              <AgoraWhiteboard
+                ref={agoraWhiteboardRef}
+                roomUuid={agoraRoomData.uuid}
+                roomToken={agoraRoomData.roomToken}
+                appIdentifier={agoraRoomData.appIdentifier}
+                userId={agoraRoomData.userId}
+                region={agoraRoomData.region}
+                className="w-full h-full"
+              />
+            ) : (
+              <EnhancedWhiteboard 
+                channelName={effectiveChannelName}
+                room={undefined} // Using canvas fallback instead of Netless SDK
+                whiteboardRef={whiteboardRef}
+                editable={isTeacher}
+                autoFit={true}
+                className="flex-1" 
+                onPdfSelected={(f) => { setSelectedPdf(f); }}
+                pdfFile={selectedPdf}
+                micEnabled={micEnabled}
+                onToggleMic={toggleMic}
+                hasMic={hasAudioInput !== false}
+                onLeave={() => leave()}
+              />
+            )}
           </div>
         </div>
       </div>
@@ -1212,8 +1271,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                         } catch (e) {
                           console.warn('Preview toggle failed', e);
                         }
-                      }
-                      }
+                      }}
                       style={{
                           flex: 1,
                           minWidth: 0,

@@ -354,29 +354,23 @@ export default function ClassroomWaitPage() {
     
     setUploadingPdf(true);
     try {
-      // Read file as base64
+      // Read file as ArrayBuffer
       const reader = new FileReader();
-      const base64Promise = new Promise<string>((resolve, reject) => {
+      const arrayBufferPromise = new Promise<ArrayBuffer>((resolve, reject) => {
         reader.onload = () => {
-          const result = reader.result as string;
-          // Extract base64 data (remove data:application/pdf;base64, prefix)
-          const base64 = result.split(',')[1];
-          // Clean base64 data - remove any non-base64 characters and ensure proper padding
-          let cleanBase64 = base64.replace(/[^A-Za-z0-9+/=]/g, '');
-          while (cleanBase64.length % 4 !== 0) {
-            cleanBase64 += '=';
-          }
-          resolve(cleanBase64);
+          const result = reader.result as ArrayBuffer;
+          resolve(result);
         };
         reader.onerror = reject;
       });
-      reader.readAsDataURL(file);
-      const base64Data = await base64Promise;
+      reader.readAsArrayBuffer(file);
+      const arrayBuffer = await arrayBufferPromise;
+      const buffer = Buffer.from(arrayBuffer);
 
       console.log('PDF Upload - Preparing to upload:', {
         fileName: file.name,
         fileSize: file.size,
-        base64Length: base64Data.length,
+        bufferSize: buffer.length,
         uuid: sessionReadyKey
       });
 
@@ -388,7 +382,7 @@ export default function ClassroomWaitPage() {
           uuid: sessionReadyKey,
           pdf: {
             name: file.name,
-            data: base64Data,
+            data: buffer.toString('base64'),
             size: file.size,
             type: file.type
           }

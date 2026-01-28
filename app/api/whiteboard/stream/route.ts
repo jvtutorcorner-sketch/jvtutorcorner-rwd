@@ -208,7 +208,7 @@ export function broadcastToUuid(uuid: string, payload: any): number {
         uploadedAt: payload.pdf?.uploadedAt
       };
       console.log('[WB SSE Server] PDF uploaded event stored:', state.pdf);
-    } else if (payload.type === 'pdf-page-change') {
+    } else if (payload.type === 'pdf-page-change' || payload.type === 'set-page') {
       // Update current page in PDF state
       if (state.pdf) {
         state.pdf.currentPage = payload.page;

@@ -17,10 +17,12 @@ export async function POST(req: NextRequest) {
     
     // Save to local data
     const filePath = await resolveDataFile(`session_${uuid}.pdf`);
+    console.log('[PDF POST] uuid:', uuid, 'filePath:', filePath, 'buffer size:', buffer.length);
     await fs.writeFile(filePath, buffer);
     
     // Also save metadata
     const metaPath = await resolveDataFile(`session_${uuid}_meta.json`);
+    console.log('[PDF POST] metaPath:', metaPath);
     await fs.writeFile(metaPath, JSON.stringify({ 
       name: pdf.name,
       uploadedAt: Date.now(),
@@ -48,20 +50,36 @@ export async function GET(req: NextRequest) {
     const filePath = await resolveDataFile(`session_${uuid}.pdf`);
     const metaPath = await resolveDataFile(`session_${uuid}_meta.json`);
     
+    console.log('[PDF GET] uuid:', uuid, 'check:', check, 'filePath:', filePath, 'metaPath:', metaPath);
+    console.log('[PDF GET] process.cwd():', process.cwd());
+    
     // Check if file exists
     try {
       await fs.access(filePath);
+      console.log('[PDF GET] File exists at:', filePath);
+      const stats = await fs.stat(filePath);
+      console.log('[PDF GET] File stats:', { size: stats.size, mtime: stats.mtime });
     } catch (e) {
+      console.log('[PDF GET] File does not exist at:', filePath, 'error:', e);
       return NextResponse.json({ found: false }, { status: 404 });
     }
     
     if (check) {
-      const meta = JSON.parse(await fs.readFile(metaPath, 'utf8'));
-      return NextResponse.json({ found: true, meta });
+      try {
+        const meta = JSON.parse(await fs.readFile(metaPath, 'utf8'));
+        console.log('[PDF GET] Meta exists:', meta);
+        return NextResponse.json({ found: true, meta });
+      } catch (e) {
+        console.log('[PDF GET] Meta does not exist or invalid:', e);
+        // Meta file missing or invalid, treat as not found
+        return NextResponse.json({ found: false }, { status: 404 });
+      }
     }
     
     // Return file
+    console.log('[PDF GET] Reading file');
     const fileBuffer = await fs.readFile(filePath);
+    console.log('[PDF GET] File read successfully, size:', fileBuffer.length);
     
     return new NextResponse(fileBuffer, {
       headers: {

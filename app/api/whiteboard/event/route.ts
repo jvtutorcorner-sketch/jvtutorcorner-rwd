@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
       } else if (event.type === 'stroke-update') {
         const { updateStrokeInList } = await import('@/lib/whiteboardService');
         await updateStrokeInList(uuid, event.strokeId, event.points);
-      } else if (event.type === 'undo' || event.type === 'clear' || event.type === 'pdf-set') {
+      } else if (event.type === 'undo' || event.type === 'clear' || event.type === 'pdf-set' || event.type === 'set-page') {
         // These are less frequent or require full state context, use the safer read-modify-write for now
         const currentState = await getWhiteboardState(uuid) || { strokes: [], pdf: null, updatedAt: 0 };
         let newStrokes = [...(currentState.strokes || [])];
@@ -65,6 +65,10 @@ export async function POST(req: NextRequest) {
           newStrokes = [];
         } else if (event.type === 'pdf-set') {
           newPdf = event.pdf || event;
+        } else if (event.type === 'set-page') {
+          if (newPdf) {
+            newPdf.currentPage = event.page;
+          }
         }
         await saveWhiteboardState(uuid, newStrokes, newPdf);
       }
