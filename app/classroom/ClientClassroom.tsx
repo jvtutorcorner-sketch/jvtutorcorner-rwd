@@ -275,6 +275,8 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   // Debug whiteboard state
   useEffect(() => {
     console.log('Whiteboard state:', {
+      useAgoraWhiteboard,
+      hasAgoraRoomData: !!agoraRoomData,
       hasWhiteboardRef: !!whiteboardRef,
       whiteboardMeta,
       joined
@@ -283,10 +285,10 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     // 為 E2E 測試暴露狀態
     if (typeof window !== 'undefined') {
       (window as any).__classroom_joined = joined;
-      (window as any).__classroom_whiteboard_ready = !!whiteboardMeta;
-      (window as any).__classroom_ready = joined && !!whiteboardMeta;
+      (window as any).__classroom_whiteboard_ready = useAgoraWhiteboard ? !!agoraRoomData : !!whiteboardMeta;
+      (window as any).__classroom_ready = joined && (useAgoraWhiteboard ? !!agoraRoomData : !!whiteboardMeta);
     }
-  }, [whiteboardRef, whiteboardMeta, joined]);
+  }, [whiteboardRef, whiteboardMeta, joined, useAgoraWhiteboard, agoraRoomData]);
 
   // 跨标签页同步：老師開始上課時通知學生
   useEffect(() => {
@@ -657,7 +659,18 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       
       await leave();
       try { (window as any).__wbRoom = null; } catch (e) {}
-        if (whiteboardMeta?.uuid) {
+      
+      // Clean up whiteboard room
+      if (useAgoraWhiteboard && agoraRoomData?.uuid) {
+        try {
+          await fetch('/api/whiteboard/room', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ uuid: agoraRoomData.uuid }),
+            keepalive: true,
+          });
+        } catch (e) { console.warn('Agora whiteboard cleanup failed (ignored)', e); }
+      } else if (whiteboardMeta?.uuid) {
         try {
           await fetch('/api/agora/whiteboard/close', {
             method: 'POST',
@@ -665,7 +678,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
             body: JSON.stringify({ uuid: whiteboardMeta.uuid }),
             keepalive: true,
           });
-        } catch (e) { console.warn('whiteboard close request failed (ignored)', e); }
+        } catch (e) { console.warn('canvas whiteboard close request failed (ignored)', e); }
       }
       
       // 返回到等待页面，保持相应的 role 参数
