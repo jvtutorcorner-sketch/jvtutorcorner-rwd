@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useImperativeHandle, forwardRef } from 'react';
+import React, { useImperativeHandle, forwardRef, useEffect } from 'react';
 import { useFastboard, Fastboard, FastboardApp } from '@netless/fastboard-react';
 
 export interface AgoraWhiteboardRef {
@@ -27,8 +27,6 @@ const AgoraWhiteboard = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((pr
         className 
     } = props;
 
-    console.log('[AgoraWhiteboard] Props received:', { roomUuid, roomToken: roomToken ? '***' : null, appIdentifier, userId, region });
-
     // Initialize Fastboard
     // Documentation: https://github.com/netless-io/fastboard/tree/master/packages/fastboard-react
     const app = useFastboard(() => ({
@@ -47,7 +45,11 @@ const AgoraWhiteboard = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((pr
         },
     }));
 
-    console.log('[AgoraWhiteboard] Fastboard app initialized:', !!app);
+    // Log props and app state only after initial render
+    useEffect(() => {
+        console.log('[AgoraWhiteboard] Props received:', { roomUuid, roomToken: roomToken ? '***' : null, appIdentifier, userId, region });
+        console.log('[AgoraWhiteboard] Fastboard app initialized:', !!app);
+    }, [roomUuid, roomToken, appIdentifier, userId, region, app]);
 
     useImperativeHandle(ref, () => ({
         /**
