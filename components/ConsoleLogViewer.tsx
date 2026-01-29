@@ -14,7 +14,7 @@ const ConsoleLogViewer: React.FC<ConsoleLogViewerProps> = ({ title, maxLines = 5
 
   useEffect(() => {
     // Store original console.log
-    originalConsoleLog.current = console.log;
+    const originalLog = console.log;
 
     // Override console.log to capture messages
     console.log = (...args: any[]) => {
@@ -30,15 +30,13 @@ const ConsoleLogViewer: React.FC<ConsoleLogViewerProps> = ({ title, maxLines = 5
         });
       }, 0);
 
-      // Still call the original console.log
-      originalConsoleLog.current?.apply(console, args);
+      // Call the original console.log directly (not through the overridden one)
+      originalLog.apply(console, args);
     };
 
     // Cleanup on unmount
     return () => {
-      if (originalConsoleLog.current) {
-        console.log = originalConsoleLog.current;
-      }
+      console.log = originalLog;
     };
   }, [maxLines]);
 

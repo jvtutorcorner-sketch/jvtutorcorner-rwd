@@ -1,8 +1,15 @@
 /* app/globals.css */
 @import "tailwindcss";
 
+html {
+  width: 100%;
+  height: 100%;
+}
+
 body {
   margin: 0;
+  width: 100%;
+  height: 100%;
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
     sans-serif;
   background: #f9fafb;
@@ -724,6 +731,85 @@ h1 + h2, h1 + h3, h2 + h3, h2 + h1, h3 + h1, h3 + h2 {
   height: 100% !important;
   display: block;
   touch-action: none;
+}
+
+/* Fastboard (Agora Whiteboard) specific styles */
+.fastboard-container {
+  width: 100% !important;
+  height: 100% !important;
+  position: relative;
+  overflow: visible !important; /* Allow popups like color picker to show */
+  pointer-events: auto !important;
+  background: white;
+}
+
+/* Ensure Fastboard internal layers are interactive */
+.fastboard-container .netless-whiteboard,
+.fastboard-container canvas,
+.fastboard-container svg {
+  pointer-events: auto !important;
+  touch-action: none !important;
+}
+
+/* Fastboard toolbar - must be on top and clickable */
+.fastboard-toolbar,
+[class*="fastboard"][class*="toolbar"],
+[class*="Toolbar"],
+.fastboard-container [role="toolbar"] {
+  z-index: 1000 !important;
+  pointer-events: auto !important;
+  /* Improve contrast for light theme */
+  background-color: #ffffff !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+  border: 1px solid #e5e7eb !important;
+  border-radius: 8px !important;
+}
+
+/* Ensure buttons in toolbar are clickable and have clear icons */
+.fastboard-toolbar button,
+[class*="fastboard"][class*="toolbar"] button,
+[class*="Toolbar"] button,
+[class*="toolbar"] *,
+.netless-whiteboard-toolbar * {
+  pointer-events: auto !important;
+  cursor: pointer !important;
+  color: #374151 !important; /* Dark gray for better visibility of icons */
+  background: transparent !important; /* Don't let global button styles interfere */
+}
+
+/* Hover state for toolbar buttons */
+.fastboard-toolbar button:hover,
+[class*="toolbar"] button:hover {
+  background-color: #f3f4f6 !important;
+}
+
+/* Active/Selected tool state */
+.fastboard-toolbar button[class*="active"],
+[class*="toolbar"] button[aria-checked="true"],
+[class*="toolbar"] button[data-active="true"] {
+  background-color: #eff6ff !important;
+  color: #2563eb !important;
+}
+
+/* Specific fix for iconic buttons that might be too dark */
+.fastboard-toolbar button svg,
+[class*="toolbar"] svg {
+  fill: currentColor !important;
+}
+
+/* Ensure secondary menus (like color picker) are also visible */
+[class*="fastboard-popover"],
+[class*="fastboard-menu"] {
+  background-color: #ffffff !important;
+  color: #374151 !important;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1) !important;
+}
+
+/* Fixed container size issues */
+.fastboard-container > div {
+  width: 100% !important;
+  height: 100% !important;
+  pointer-events: auto !important;
 }
 
 .client-classroom .client-right {

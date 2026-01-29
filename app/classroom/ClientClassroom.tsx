@@ -7,7 +7,13 @@ import { COURSES } from '@/data/courses';
 import EnhancedWhiteboard from '@/components/EnhancedWhiteboard';
 import dynamic from 'next/dynamic';
 import { useT } from '@/components/IntlProvider';
-import type { AgoraWhiteboardRef } from '@/components/AgoraWhiteboard';
+
+// Define Interface locally to avoid importing the module during SSR which causes runtime errors
+// because fastboard-react relies on browser APIs (window/document) on import.
+interface AgoraWhiteboardRef {
+    insertPDF: (url: string, title?: string) => Promise<void>;
+    leave: () => Promise<void>;
+}
 
 const PdfViewer = dynamic(() => import('@/components/PdfViewer'), { ssr: false });
 const ConsoleLogViewer = dynamic(() => import('@/components/ConsoleLogViewer'), { ssr: false });
@@ -17,8 +23,9 @@ const NetworkSpeedMonitor = dynamic(() => import('@/components/NetworkSpeedMonit
 const AgoraWhiteboard = dynamic(() => import('@/components/AgoraWhiteboard'), { 
   ssr: false,
   loading: () => (
-    <div className="absolute inset-0 flex items-center justify-center bg-slate-50">
+    <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-50 gap-2">
       <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-300 border-t-blue-600" />
+      <span className="text-sm text-slate-500">Loading Whiteboard...</span>
     </div>
   )
 });
@@ -56,6 +63,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   // Feature Flag: Agora Whiteboard vs Canvas Whiteboard
   // Default to using Agora whiteboard unless explicitly disabled with NEXT_PUBLIC_USE_AGORA_WHITEBOARD='false'
   const useAgoraWhiteboard = process.env.NEXT_PUBLIC_USE_AGORA_WHITEBOARD !== 'false';
+  console.log('[ClientClassroom] useAgoraWhiteboard:', useAgoraWhiteboard, 'NEXT_PUBLIC_USE_AGORA_WHITEBOARD:', process.env.NEXT_PUBLIC_USE_AGORA_WHITEBOARD);
   const agoraWhiteboardRef = useRef<AgoraWhiteboardRef>(null);
   const [agoraRoomData, setAgoraRoomData] = useState<{ uuid: string; roomToken: string; appIdentifier: string; region: string; userId: string } | null>(null);
   // determine courseId from query string (e.g. ?courseId=c1)
@@ -67,6 +75,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
     setMounted(true);
+    console.log('[ClientClassroom] setMounted called');
   }, []);
 
   // determine role from stored user + course mapping
@@ -147,33 +156,66 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
 
   // Define userId for Agora whiteboard
   const userId = storedUser?.email || (urlRole === 'teacher' || computedRole === 'teacher' ? 'teacher' : 'student') || 'anonymous';
+  console.log('[ClientClassroom] userId calculation', { storedUser: !!storedUser, storedUserEmail: storedUser?.email, urlRole, computedRole, userId });
 
   // Initialize Agora Whiteboard Room (if feature flag enabled)
   useEffect(() => {
-    if (!useAgoraWhiteboard || !mounted || !userId) return;
+    console.log('[ClientClassroom] Agora Whiteboard init effect triggered', { useAgoraWhiteboard, mounted, userId, urlRole, computedRole });
+    console.log('[ClientClassroom] useEffect running for Agora init at', new Date().toISOString());
+    // Always run for debugging
+    // if (!useAgoraWhiteboard || !mounted || !userId) {
+    //   console.log('[ClientClassroom] Skipping Agora Whiteboard init', { useAgoraWhiteboard, mounted, userId: !!userId });
+    //   return;
+    // }
     
     const initAgoraWhiteboard = async () => {
+      console.log('[ClientClassroom] initAgoraWhiteboard function called');
       try {
         console.log('[ClientClassroom] Initializing Agora Whiteboard room for user:', userId);
+        const requestBody = { userId };
+        console.log('[ClientClassroom] API request body:', requestBody);
+        
         const res = await fetch('/api/whiteboard/room', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId })
+          body: JSON.stringify(requestBody)
         });
         
         console.log('[ClientClassroom] API response status:', res.status);
+        console.log('[ClientClassroom] API response headers:', Object.fromEntries(res.headers.entries()));
         
         if (res.ok) {
           const data = await res.json();
           console.log('[ClientClassroom] API response data:', data);
+          console.log('[ClientClassroom] Setting agoraRoomData to:', data);
           setAgoraRoomData(data);
           console.log('[ClientClassroom] Agora Whiteboard room initialized:', data.uuid);
         } else {
           const errorText = await res.text();
           console.error('[ClientClassroom] Failed to initialize Agora Whiteboard room:', res.status, errorText);
+          
+          // TEMPORARY: Use dummy data for testing
+          console.log('[ClientClassroom] Using dummy room data for testing');
+          setAgoraRoomData({
+            uuid: 'dummy-room-uuid',
+            roomToken: 'dummy-token',
+            appIdentifier: 'C2iYoNf8EfCXgP0Hg5ZziQ/4VjkszScIFeCBw',
+            region: 'sg',
+            userId: userId
+          });
         }
       } catch (error) {
         console.error('[ClientClassroom] Error initializing Agora Whiteboard:', error);
+        
+        // TEMPORARY: Use dummy data for testing
+        console.log('[ClientClassroom] Using dummy room data for testing (catch)');
+        setAgoraRoomData({
+          uuid: 'dummy-room-uuid',
+          roomToken: 'dummy-token',
+          appIdentifier: 'C2iYoNf8EfCXgP0Hg5ZziQ/4VjkszScIFeCBw',
+          region: 'sg',
+          userId: userId
+        });
       }
     };
     
@@ -212,6 +254,43 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     
     checkPdf();
   }, [mounted, sessionReadyKey]);
+
+  // ★★★ Auto-insert PDF into Agora Whiteboard when ready ★★★
+  useEffect(() => {
+    // Only proceed if we have a file, room data, and the whiteboard reference
+    if (useAgoraWhiteboard && selectedPdf && agoraRoomData && agoraWhiteboardRef.current) {
+         console.log('[ClientClassroom] Attempting to auto-insert PDF into Agora Whiteboard:', selectedPdf.name);
+         
+         const insert = async () => {
+             try {
+                // Since selectedPdf is a File object, we need to upload it or make it accessible.
+                // However, based on the previous logic, we fetched it from /api/whiteboard/pdf.
+                // We can use the URL we fetched from directly if we had it, but here we have the Blob/File.
+                // Better approach: Use the URL we know works for the PDF API.
+                
+                // Construct the URL directly.  
+                // NOTE: Fastboard usually expects a public URL or a conversion task result for PPTX.
+                // For PDF, simple insertion might require a web-accessible URL or object URL.
+                // If the backend /api/whiteboard/pdf streams the file, we can use that URL.
+                const pdfUrl = `${window.location.origin}/api/whiteboard/pdf?uuid=${encodeURIComponent(sessionReadyKey)}`;
+                
+                console.log('[ClientClassroom] Inserting PDF via URL:', pdfUrl);
+                await agoraWhiteboardRef.current?.insertPDF(pdfUrl, selectedPdf.name);
+                console.log('[ClientClassroom] PDF inserted successfully');
+                
+                // Optional: Clear selection so we don't try to insert again? 
+                // Alternatively, component logic inside insertPDF could prevent duplicate insertion.
+                // For now, we leave it as is, or we could set a flag "inserted".
+             } catch (e) {
+                 console.error('[ClientClassroom] Failed to insert PDF:', e);
+             }
+         };
+         
+         // Give a small delay to ensure the board is fully initialized inside the ref
+         setTimeout(insert, 2000);
+    }
+  }, [useAgoraWhiteboard, selectedPdf, agoraRoomData, sessionReadyKey]);
+
   // session countdown - default to 5 minutes
   const [sessionDurationMinutes, setSessionDurationMinutes] = useState<number>(5); // 5 minutes
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
@@ -1092,19 +1171,20 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   return (
     <div className="client-classroom">
       {/* Left: Whiteboard (flexible) */}
-      <div className="client-left">
-        <div className="client-left-inner">
-          <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div className="client-left" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', height: '100%' }}>
+        <div className="client-left-inner" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', height: '100%' }}>
+          <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
               <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 12 }}>
                 {remainingSeconds !== null && (
                   <div style={{ color: 'red', fontWeight: 600 }}>{Math.floor((remainingSeconds || 0) / 60)}:{String((remainingSeconds || 0) % 60).padStart(2, '0')}</div>
                 )}
               </div>
           </div>
-          <div className="whiteboard-container">
+          <div className="whiteboard-container" style={{ width: '100%', flex: 1, position: 'relative', minHeight: 0, isolation: 'isolate' }}>
             {useAgoraWhiteboard ? (
               agoraRoomData ? (
                 <AgoraWhiteboard
+                  key={agoraRoomData.uuid}
                   ref={agoraWhiteboardRef}
                   roomUuid={agoraRoomData.uuid}
                   roomToken={agoraRoomData.roomToken}
@@ -1122,9 +1202,10 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                 </div>
               )
             ) : (
+              // Legacy whiteboard fallback - rendered only if Agora is disabled
               <EnhancedWhiteboard 
                 channelName={effectiveChannelName}
-                room={undefined} // Using canvas fallback instead of Netless SDK
+                room={undefined} 
                 whiteboardRef={whiteboardRef}
                 editable={isTeacher}
                 autoFit={true}

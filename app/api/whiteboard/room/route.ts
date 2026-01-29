@@ -32,7 +32,7 @@ function generateRoomToken(roomUuid: string) {
     sk, 
     1000 * 60 * 60 * 24, // 24 hours
     { 
-      role: TokenRole.Admin, 
+      role: TokenRole.Admin, // Use Admin role to ensure full control for the room creator (teacher)
       uuid: roomUuid 
     }
   );

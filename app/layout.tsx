@@ -1,6 +1,7 @@
 // app/layout.tsx
 import type { Metadata } from 'next';
 import './globals.css';
+import "@netless/window-manager/dist/style.css";
 import Script from 'next/script';
 import { GA_MEASUREMENT_ID } from '@/lib/gtag';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
