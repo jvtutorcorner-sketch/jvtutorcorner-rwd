@@ -8,27 +8,12 @@ import EnhancedWhiteboard from '@/components/EnhancedWhiteboard';
 import dynamic from 'next/dynamic';
 import { useT } from '@/components/IntlProvider';
 
-// Define Interface locally to avoid importing the module during SSR which causes runtime errors
-// because fastboard-react relies on browser APIs (window/document) on import.
-interface AgoraWhiteboardRef {
-    insertPDF: (url: string, title?: string) => Promise<void>;
-    leave: () => Promise<void>;
-}
+// 1. 修改 Import: 指向資料夾 (會自動抓 index.tsx)
+import AgoraWhiteboard, { AgoraWhiteboardRef } from '@/components/AgoraWhiteboard';
 
 const PdfViewer = dynamic(() => import('@/components/PdfViewer'), { ssr: false });
 const ConsoleLogViewer = dynamic(() => import('@/components/ConsoleLogViewer'), { ssr: false });
 const NetworkSpeedMonitor = dynamic(() => import('@/components/NetworkSpeedMonitor'), { ssr: false });
-
-// Agora Whiteboard (Feature Flag)
-const AgoraWhiteboard = dynamic(() => import('@/components/AgoraWhiteboard'), { 
-  ssr: false,
-  loading: () => (
-    <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-50 gap-2">
-      <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-300 border-t-blue-600" />
-      <span className="text-sm text-slate-500">Loading Whiteboard...</span>
-    </div>
-  )
-});
 
 type Role = 'teacher' | 'student';
 
@@ -1180,7 +1165,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                 )}
               </div>
           </div>
-          <div className="whiteboard-container" style={{ width: '100%', flex: 1, position: 'relative', minHeight: 0, isolation: 'isolate' }}>
+          <div className="whiteboard-container" style={{ width: '100%', flex: 1, position: 'relative', minHeight: '500px', isolation: 'isolate' }}>
             {useAgoraWhiteboard ? (
               agoraRoomData ? (
                 <AgoraWhiteboard
