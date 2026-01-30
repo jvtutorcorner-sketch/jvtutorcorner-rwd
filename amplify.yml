@@ -14,7 +14,6 @@ applications:
             - npm ci
         build:
           commands:
-            - rm -rf node_modules package-lock.json
             - npm run build
       artifacts:
         baseDirectory: .next
