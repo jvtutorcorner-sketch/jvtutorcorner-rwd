@@ -179,28 +179,13 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           const errorText = await res.text();
           console.error('[ClientClassroom] Failed to initialize Agora Whiteboard room:', res.status, errorText);
           
-          // TEMPORARY: Use dummy data for testing
-          console.log('[ClientClassroom] Using dummy room data for testing');
-          setAgoraRoomData({
-            uuid: 'dummy-room-uuid',
-            roomToken: 'dummy-token',
-            appIdentifier: 'C2iYoNf8EfCXgP0Hg5ZziQ/4VjkszScIFeCBw',
-            region: 'sg',
-            userId: userId
-          });
+          // REMOVED: Dummy data fallback - we want to fail gracefully instead of connecting with invalid tokens
+          // setAgoraRoomData(null); 
         }
       } catch (error) {
         console.error('[ClientClassroom] Error initializing Agora Whiteboard:', error);
-        
-        // TEMPORARY: Use dummy data for testing
-        console.log('[ClientClassroom] Using dummy room data for testing (catch)');
-        setAgoraRoomData({
-          uuid: 'dummy-room-uuid',
-          roomToken: 'dummy-token',
-          appIdentifier: 'C2iYoNf8EfCXgP0Hg5ZziQ/4VjkszScIFeCBw',
-          region: 'sg',
-          userId: userId
-        });
+        // REMOVED: Dummy data fallback
+        // setAgoraRoomData(null);
       }
     };
     

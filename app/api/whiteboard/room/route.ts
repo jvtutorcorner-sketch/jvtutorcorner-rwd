@@ -44,7 +44,7 @@ const ROOM_CACHE = new Map<string, string>();
 
 export async function POST(req: NextRequest) {
   try {
-    const { userId, channelName } = await req.json();
+    const { userId, channelName, roomUuid: requestedRoomUuid } = await req.json();
 
     const appId = process.env.AGORA_WHITEBOARD_APP_ID;
     const region = "sg"; // Singapore region as requested
@@ -58,12 +58,17 @@ export async function POST(req: NextRequest) {
 
     let roomUuid: string;
 
-    // 1. Check Cache: If channelName is provided and room exists, reuse it.
-    if (channelName && ROOM_CACHE.has(channelName)) {
+    // 1. If uuid is provided by the client, use it directly (Student joining existing room)
+    if (requestedRoomUuid) {
+        roomUuid = requestedRoomUuid;
+        console.log(`[WhiteboardAPI] Using requested room UUID: ${roomUuid}`);
+    } 
+    // 2. Check Cache: If channelName is provided and room exists, reuse it.
+    else if (channelName && ROOM_CACHE.has(channelName)) {
         roomUuid = ROOM_CACHE.get(channelName)!;
         console.log(`[WhiteboardAPI] Reusing existing room for channel: ${channelName} -> ${roomUuid}`);
     } else {
-        // 2. Create a new Room via Agora/Netless REST API
+        // 3. Create a new Room via Agora/Netless REST API
         const adminToken = generateSdkToken();
         const createRoomRes = await fetch('https://api.netless.link/v5/rooms', {
             method: 'POST',
