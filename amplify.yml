@@ -11,8 +11,7 @@ applications:
       phases:
         preBuild:
           commands:
-            - rm -rf node_modules package-lock.json tsconfig.tsbuildinfo .next
-            - npm ci
+            - npm install
         build:
           commands:
             - npm run build
@@ -36,3 +35,7 @@ applications:
       - DYNAMODB_TABLE_COURSES: jvtutorcorner-courses
       - DYNAMODB_TABLE_TEACHERS: jvtutorcorner-teachers
       - DYNAMODB_TABLE_CAROUSEL: jvtutorcorner-carousel
+      - AGORA_WHITEBOARD_APP_ID: C2iYoNf8EfCXgP0Hg5ZziQ/4VjkszScIFeCBw
+      - AGORA_WHITEBOARD_AK: ByMpZIif0VnfCFgu
+      - AGORA_WHITEBOARD_SK: UWKI2cXUU5GK03b_8WJDevMsrEAQChG1
+      - NEXT_PUBLIC_USE_AGORA_WHITEBOARD: true
