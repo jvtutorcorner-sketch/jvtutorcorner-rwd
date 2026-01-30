@@ -157,7 +157,14 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       console.log('[ClientClassroom] initAgoraWhiteboard function called');
       try {
         console.log('[ClientClassroom] Initializing Agora Whiteboard room for user:', userId);
-        const requestBody = { userId, channelName: sessionReadyKey };
+        // If a room UUID was previously published by the teacher (or stored), prefer reusing it
+        const storedRoomKey = `whiteboard_room_${effectiveChannelName}`;
+        const storedRoomUuid = typeof window !== 'undefined' ? localStorage.getItem(storedRoomKey) : null;
+        const requestBody: any = { userId, channelName: sessionReadyKey };
+        if (storedRoomUuid) {
+          requestBody.roomUuid = storedRoomUuid;
+          console.log('[ClientClassroom] Found stored room UUID, requesting token for existing room:', storedRoomUuid);
+        }
         console.log('[ClientClassroom] API request body:', requestBody);
         
         const res = await fetch('/api/whiteboard/room', {
@@ -175,6 +182,27 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           console.log('[ClientClassroom] Setting agoraRoomData to:', data);
           setAgoraRoomData(data);
           console.log('[ClientClassroom] Agora Whiteboard room initialized:', data.uuid);
+
+          // If this client is the teacher, persist and broadcast the canonical room UUID
+          if (isTeacher && data?.uuid) {
+            try {
+              // Persist for other tabs/clients to pick up
+              localStorage.setItem(storedRoomKey, data.uuid);
+            } catch (e) {
+              console.warn('[ClientClassroom] Failed to write whiteboard uuid to localStorage', e);
+            }
+
+            try {
+              const courseBroadcast = `whiteboard_course_${courseId}`;
+              const bc = new BroadcastChannel(courseBroadcast);
+              bc.postMessage({ type: 'whiteboard_room_created', uuid: data.uuid, channel: effectiveChannelName });
+              // close after short delay to avoid blocking
+              setTimeout(() => { try { bc.close(); } catch {} }, 100);
+              console.log('[ClientClassroom] Broadcasted whiteboard_room_created ->', courseBroadcast, data.uuid);
+            } catch (e) {
+              console.warn('[ClientClassroom] Failed to broadcast whiteboard UUID', e);
+            }
+          }
         } else {
           const errorText = await res.text();
           console.error('[ClientClassroom] Failed to initialize Agora Whiteboard room:', res.status, errorText);
