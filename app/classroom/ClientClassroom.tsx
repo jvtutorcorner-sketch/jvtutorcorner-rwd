@@ -157,7 +157,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       console.log('[ClientClassroom] initAgoraWhiteboard function called');
       try {
         console.log('[ClientClassroom] Initializing Agora Whiteboard room for user:', userId);
-        const requestBody = { userId };
+        const requestBody = { userId, channelName: sessionReadyKey };
         console.log('[ClientClassroom] API request body:', requestBody);
         
         const res = await fetch('/api/whiteboard/room', {
@@ -1177,6 +1177,9 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                   userId={agoraRoomData.userId}
                   region={agoraRoomData.region}
                   className="w-full h-full"
+
+                  // ★★★ 關鍵修復：必須明確傳入 role ★★★
+                  role={(urlRole === 'teacher' || computedRole === 'teacher') ? 'teacher' : 'student'}
                 />
               ) : (
                 <div className="w-full h-full flex items-center justify-center bg-slate-50">
