@@ -22,20 +22,3 @@ applications:
       cache:
         paths:
           - node_modules/**/*
-    environmentVariables:
-      - AGORA_APP_ID: 5cbf2f6128cf4e5ea92e046e3c161621
-      - AGORA_APP_CERTIFICATE: 3f9ea1c4321646e0a38d634505806bd7
-      - AWS_REGION: us-east-1
-      - NETLESS_SDK_TOKEN: NETLESSSDK_YWs9QnlNcFpJaWYwVm5mQ0ZndSZub25jZT03YjFlNGY0MC1kODA3LTExZjAtOTc4MC1mZDA3ODM5NjczODkmcm9sZT0wJnNpZz1iYzllMzFmZGFmZThiMzQ2M2I1MTdlOWRkMTdkZWJmMDIxY2IzNjcwZTVhYzI1N2I1NDdiYTdiMDljNDJiNDE5
-      - AGORA_WB_AK: ByMpZIif0VnfCFgu
-      - AGORA_WB_SK: UWKI2cXUU5GK03b_8WJDevMsrEAQChG1
-      - NETLESS_APP_ID: 7b1e4f40-d807-11f0-9780-fd0783967389
-      - DYNAMODB_TABLE_ORDERS: jvtutorcorner-orders
-      - DYNAMODB_TABLE_ENROLLMENTS: jvtutorcorner-enrollments
-      - DYNAMODB_TABLE_COURSES: jvtutorcorner-courses
-      - DYNAMODB_TABLE_TEACHERS: jvtutorcorner-teachers
-      - DYNAMODB_TABLE_CAROUSEL: jvtutorcorner-carousel
-      - AGORA_WHITEBOARD_APP_ID: C2iYoNf8EfCXgP0Hg5ZziQ/4VjkszScIFeCBw
-      - AGORA_WHITEBOARD_AK: ByMpZIif0VnfCFgu
-      - AGORA_WHITEBOARD_SK: UWKI2cXUU5GK03b_8WJDevMsrEAQChG1
-      - NEXT_PUBLIC_USE_AGORA_WHITEBOARD: true
