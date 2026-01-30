@@ -38,9 +38,13 @@ function generateRoomToken(roomUuid: string) {
   );
 }
 
+// Global in-memory cache for Room UUIDs (Mapped by Channel Name)
+// In production, use Redis or a Database.
+const ROOM_CACHE = new Map<string, string>();
+
 export async function POST(req: NextRequest) {
   try {
-    const { userId } = await req.json();
+    const { userId, channelName } = await req.json();
 
     const appId = process.env.AGORA_WHITEBOARD_APP_ID;
     const region = "sg"; // Singapore region as requested
@@ -52,31 +56,43 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 1. Generate SDK Token to authorize Room Creation
-    const adminToken = generateSdkToken();
+    let roomUuid: string;
 
-    // 2. Create a new Room via Agora/Netless REST API
-    const createRoomRes = await fetch('https://api.netless.link/v5/rooms', {
-        method: 'POST',
-        headers: {
-            'token': adminToken,
-            'Content-Type': 'application/json',
-            'region': region
-        },
-        body: JSON.stringify({
-            isRecord: false,
-            limit: 0 // unlimited
-        })
-    });
+    // 1. Check Cache: If channelName is provided and room exists, reuse it.
+    if (channelName && ROOM_CACHE.has(channelName)) {
+        roomUuid = ROOM_CACHE.get(channelName)!;
+        console.log(`[WhiteboardAPI] Reusing existing room for channel: ${channelName} -> ${roomUuid}`);
+    } else {
+        // 2. Create a new Room via Agora/Netless REST API
+        const adminToken = generateSdkToken();
+        const createRoomRes = await fetch('https://api.netless.link/v5/rooms', {
+            method: 'POST',
+            headers: {
+                'token': adminToken,
+                'Content-Type': 'application/json',
+                'region': region
+            },
+            body: JSON.stringify({
+                isRecord: false,
+                limit: 0 // unlimited
+            })
+        });
 
-    if (!createRoomRes.ok) {
-        throw new Error(`Failed to create room: ${createRoomRes.statusText}`);
+        if (!createRoomRes.ok) {
+            throw new Error(`Failed to create room: ${createRoomRes.statusText}`);
+        }
+
+        const roomData = await createRoomRes.json();
+        roomUuid = roomData.uuid;
+        
+        // Save to Cache
+        if (channelName) {
+            ROOM_CACHE.set(channelName, roomUuid);
+            console.log(`[WhiteboardAPI] Created NEW room for channel: ${channelName} -> ${roomUuid}`);
+        }
     }
 
-    const roomData = await createRoomRes.json();
-    const roomUuid = roomData.uuid;
-
-    // 3. Generate Room Token for the Client
+    // 3. Generate Room Token for the Client (Must be fresh for every specific room UUID)
     const clientRoomToken = generateRoomToken(roomUuid);
 
     return NextResponse.json({
