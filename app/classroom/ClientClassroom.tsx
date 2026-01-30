@@ -157,14 +157,18 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       console.log('[ClientClassroom] initAgoraWhiteboard function called');
       try {
         console.log('[ClientClassroom] Initializing Agora Whiteboard room for user:', userId);
-        // If a room UUID was previously published by the teacher (or stored), prefer reusing it
-        const storedRoomKey = `whiteboard_room_${effectiveChannelName}`;
-        const storedRoomUuid = typeof window !== 'undefined' ? localStorage.getItem(storedRoomKey) : null;
+        
+        // Remove localStorage dependency for the source of truth, but keep using it ONLY if explicitly debugging or fallback needed.
+        // Actually, user requested to REMOVE logic relying solely on localStorage.
+        // The authoritative source is now the API which checks DynamoDB.
+        // However, we still send sessionReadyKey (channelName) to the API.
+        
         const requestBody: any = { userId, channelName: sessionReadyKey };
-        if (storedRoomUuid) {
-          requestBody.roomUuid = storedRoomUuid;
-          console.log('[ClientClassroom] Found stored room UUID, requesting token for existing room:', storedRoomUuid);
-        }
+        
+        // Optional: If we have a specific UUID broadcasted via other means (not localStorage), we could attach it.
+        // But for "Split Room" fix, trusting the API's DynamoDB lookup is better than local storage which might be stale or specific to one device.
+        // So we deliberately DO NOT read from localStorage to force the API to resolve the canonical room.
+        
         console.log('[ClientClassroom] API request body:', requestBody);
         
         const res = await fetch('/api/whiteboard/room', {
@@ -183,37 +187,15 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           setAgoraRoomData(data);
           console.log('[ClientClassroom] Agora Whiteboard room initialized:', data.uuid);
 
-          // If this client is the teacher, persist and broadcast the canonical room UUID
-          if (isTeacher && data?.uuid) {
-            try {
-              // Persist for other tabs/clients to pick up
-              localStorage.setItem(storedRoomKey, data.uuid);
-            } catch (e) {
-              console.warn('[ClientClassroom] Failed to write whiteboard uuid to localStorage', e);
-            }
-
-            try {
-              const courseBroadcast = `whiteboard_course_${courseId}`;
-              const bc = new BroadcastChannel(courseBroadcast);
-              bc.postMessage({ type: 'whiteboard_room_created', uuid: data.uuid, channel: effectiveChannelName });
-              // close after short delay to avoid blocking
-              setTimeout(() => { try { bc.close(); } catch {} }, 100);
-              console.log('[ClientClassroom] Broadcasted whiteboard_room_created ->', courseBroadcast, data.uuid);
-            } catch (e) {
-              console.warn('[ClientClassroom] Failed to broadcast whiteboard UUID', e);
-            }
-          }
+          // If this client is the teacher, we technically don't need to broadcast via localStorage anymore 
+          // because every other client hitting the API will get the same UUID from DynamoDB.
+          // But we can keep the BroadcastChannel if it's used for other real-time sync (like triggering reload).
         } else {
           const errorText = await res.text();
           console.error('[ClientClassroom] Failed to initialize Agora Whiteboard room:', res.status, errorText);
-          
-          // REMOVED: Dummy data fallback - we want to fail gracefully instead of connecting with invalid tokens
-          // setAgoraRoomData(null); 
         }
       } catch (error) {
         console.error('[ClientClassroom] Error initializing Agora Whiteboard:', error);
-        // REMOVED: Dummy data fallback
-        // setAgoraRoomData(null);
       }
     };
     

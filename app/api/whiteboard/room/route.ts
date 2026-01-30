@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sdkToken, roomToken, TokenRole } from 'netless-token';
+import { DynamoDBClient, GetItemCommand, UpdateItemCommand } from '@aws-sdk/client-dynamodb';
+
+// Initialize DynamoDB Client
+const client = new DynamoDBClient({
+  region: process.env.AWS_REGION || 'us-east-1', // Default to us-east-1 or your aggregate region
+});
 
 // Helper to generate SDK Token (for Admin operations like creating rooms)
 function generateSdkToken() {
@@ -38,8 +44,7 @@ function generateRoomToken(roomUuid: string) {
   );
 }
 
-// Global in-memory cache for Room UUIDs (Mapped by Channel Name)
-// In production, use Redis or a Database.
+// Global in-memory cache as a short-term fallback (optional)
 const ROOM_CACHE = new Map<string, string>();
 
 export async function POST(req: NextRequest) {
@@ -56,48 +61,119 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    let roomUuid: string;
+    let roomUuid: string | undefined;
 
-    // 1. If uuid is provided by the client, use it directly (Student joining existing room)
+    // 1. If uuid is provided explicitly (e.g. forced via URL or debug), use it.
     if (requestedRoomUuid) {
-        roomUuid = requestedRoomUuid;
-        console.log(`[WhiteboardAPI] Using requested room UUID: ${roomUuid}`);
-    } 
-    // 2. Check Cache: If channelName is provided and room exists, reuse it.
-    else if (channelName && ROOM_CACHE.has(channelName)) {
-        roomUuid = ROOM_CACHE.get(channelName)!;
-        console.log(`[WhiteboardAPI] Reusing existing room for channel: ${channelName} -> ${roomUuid}`);
+      roomUuid = requestedRoomUuid;
+      console.log(`[WhiteboardAPI] Using requested room UUID: ${roomUuid}`);
     } else {
-        // 3. Create a new Room via Agora/Netless REST API
-        const adminToken = generateSdkToken();
-        const createRoomRes = await fetch('https://api.netless.link/v5/rooms', {
-            method: 'POST',
-            headers: {
-                'token': adminToken,
-                'Content-Type': 'application/json',
-                'region': region
+      // 2. DynamoDB "Get-or-Create" Logic
+      // Attempt to retrieve existing whiteboardUuid from DynamoDB
+      const tableName = process.env.DYNAMODB_TABLE_COURSES;
+      
+      if (tableName && channelName) {
+        try {
+          // Check DB for existing mapping
+          // Assuming the table uses 'id' as the Partition Key.
+          // We use channelName as the ID for the session record.
+          const getParams = {
+            TableName: tableName,
+            Key: {
+              id: { S: `session_${channelName}` }
             },
-            body: JSON.stringify({
-                isRecord: false,
-                limit: 0 // unlimited
-            })
-        });
-
-        if (!createRoomRes.ok) {
-            throw new Error(`Failed to create room: ${createRoomRes.statusText}`);
-        }
-
-        const roomData = await createRoomRes.json();
-        roomUuid = roomData.uuid;
-        
-        // Save to Cache
-        if (channelName) {
+            ProjectionExpression: 'whiteboardUuid'
+          };
+          
+          const getCommand = new GetItemCommand(getParams);
+          const getResult = await client.send(getCommand);
+          
+          if (getResult.Item && getResult.Item.whiteboardUuid && getResult.Item.whiteboardUuid.S) {
+            roomUuid = getResult.Item.whiteboardUuid.S;
+            console.log(`[WhiteboardAPI] Found persistent room in DB for ${channelName}: ${roomUuid}`);
+            // Update in-memory cache for speed
             ROOM_CACHE.set(channelName, roomUuid);
-            console.log(`[WhiteboardAPI] Created NEW room for channel: ${channelName} -> ${roomUuid}`);
+          }
+        } catch (dbError) {
+          console.error('[WhiteboardAPI] DynamoDB Read Error:', dbError);
+          // Fallback to cache or create if DB fails? 
+          // For now, proceed to act as if not found (or fail if critical)
         }
+      }
+
+      // If still not found in DB...
+      if (!roomUuid) {
+        // Double check in-memory cache (stateless/cold start risk, but useful if same instance)
+        if (channelName && ROOM_CACHE.has(channelName)) {
+           roomUuid = ROOM_CACHE.get(channelName);
+           console.log(`[WhiteboardAPI] Found room in memory cache for ${channelName}: ${roomUuid}`);
+        }
+      }
+
+      // 3. Create New Room if needed
+      if (!roomUuid) {
+          console.log(`[WhiteboardAPI] Creating NEW room for channel: ${channelName}`);
+          
+          const adminToken = generateSdkToken();
+          const createRoomRes = await fetch('https://api.netless.link/v5/rooms', {
+              method: 'POST',
+              headers: {
+                  'token': adminToken,
+                  'Content-Type': 'application/json',
+                  'region': region
+              },
+              body: JSON.stringify({
+                  isRecord: false,
+                  limit: 0 // unlimited
+              })
+          });
+
+          if (!createRoomRes.ok) {
+              const errorText = await createRoomRes.text();
+              throw new Error(`Failed to create room: ${createRoomRes.status} ${errorText}`);
+          }
+
+          const roomData = await createRoomRes.json();
+          roomUuid = roomData.uuid;
+
+          // 4. Persist to DynamoDB
+          if (tableName && channelName && roomUuid) {
+             try {
+                // We store it as a separate item to avoid overwriting actual Course data if IDs conflict.
+                // Key: session_{channelName}
+                const updateParams = {
+                    TableName: tableName,
+                    Key: {
+                        id: { S: `session_${channelName}` }
+                    },
+                    UpdateExpression: "SET whiteboardUuid = :w, updatedAt = :t",
+                    ExpressionAttributeValues: {
+                        ":w": { S: roomUuid },
+                        ":t": { S: new Date().toISOString() }
+                    }
+                };
+                
+                // Using UpdateItem behaves like "Upsert"
+                const updateCommand = new UpdateItemCommand(updateParams);
+                await client.send(updateCommand);
+                console.log(`[WhiteboardAPI] Persisted room ${roomUuid} to DB for channel ${channelName}`);
+             } catch (persistError) {
+                 console.error('[WhiteboardAPI] Failed to persist room to DB:', persistError);
+             }
+          }
+          
+          // Update Cache
+          if (channelName && roomUuid) {
+              ROOM_CACHE.set(channelName, roomUuid);
+          }
+      }
     }
 
-    // 3. Generate Room Token for the Client (Must be fresh for every specific room UUID)
+    if (!roomUuid) {
+        throw new Error('Failed to determine or create roomUuid');
+    }
+
+    // 5. Generate Room Token for the Client
     const clientRoomToken = generateRoomToken(roomUuid);
 
     return NextResponse.json({
