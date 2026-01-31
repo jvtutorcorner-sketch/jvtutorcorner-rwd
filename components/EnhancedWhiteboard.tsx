@@ -198,6 +198,27 @@ export default function EnhancedWhiteboard({
   // Eraser cursor position
   const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
   const [showCursor, setShowCursor] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+
+  const handleToggleRecording = useCallback(async () => {
+    try {
+      if (isRecording) {
+        if (confirm('確定要停止錄影嗎？\n(Stop Recording?)')) {
+          setIsRecording(false);
+          // In a real implementation, call: await fetch('/api/agora/recording/stop', ...);
+          alert('錄影已停止，影片處理中...');
+        }
+      } else {
+        if (confirm('確定要開始錄影嗎？\n(Start Recording?)')) {
+          setIsRecording(true);
+          // In a real implementation, call: await fetch('/api/agora/recording/start', ...);
+        }
+      }
+    } catch (e) {
+      console.error('Recording toggle failed', e);
+      setIsRecording(false);
+    }
+  }, [isRecording]);
   
   // Use Netless whiteboard if room is provided and no PDF is loaded
   const useNetlessWhiteboard = Boolean(room && whiteboardRef && !pdfFile && !localPdfFile);
@@ -1781,6 +1802,34 @@ export default function EnhancedWhiteboard({
         </div>
 
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+          {/* Recording Control (Agora) */}
+          {(currentUserRoleId === 'teacher' || currentUserRoleId === 'admin') && useNetlessWhiteboard && (
+             <button
+              onClick={handleToggleRecording}
+              style={{
+                padding: '4px 12px',
+                background: isRecording ? '#ffebee' : 'white',
+                color: isRecording ? '#d32f2f' : '#555',
+                border: isRecording ? '1px solid #ff1744' : '1px solid #ddd',
+                borderRadius: 4,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                fontWeight: 500,
+                fontSize: 13,
+                boxShadow: isRecording ? '0 0 5px rgba(211, 47, 47, 0.3)' : 'none'
+              }}
+              title={isRecording ? "點擊停止錄影 (Stop Recording)" : "點擊開始雲端錄影 (Start Cloud Recording)"}
+            >
+              <div style={{
+                width: 8, height: 8, borderRadius: '50%',
+                background: isRecording ? '#ff1744' : '#999',
+              }} />
+              {isRecording ? 'REC' : '錄影'}
+            </button>
+          )}
+
           {/* PDF Page Controls */}
           {pdf && numPages > 0 && (
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '4px 8px', background: 'white', border: '1px solid #ddd', borderRadius: 4 }}>

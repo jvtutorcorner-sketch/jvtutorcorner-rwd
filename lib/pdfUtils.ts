@@ -22,7 +22,8 @@ export async function getPdfLib(): Promise<any> {
       const lib = await import('pdfjs-dist');
 
       // Configure the worker source
-      lib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+      // Use CDN to ensure worker version matches the installed library version exactly
+      lib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${lib.version}/build/pdf.worker.min.mjs`;
 
       pdfLib = lib;
       return lib;

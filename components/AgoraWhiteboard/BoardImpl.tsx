@@ -1,10 +1,26 @@
 "use client";
 
 import React, { useImperativeHandle, forwardRef, useEffect, useRef, useState } from 'react';
+import { v4 as uuidv4 } from 'uuid';
+import { getPdfLib } from '@/lib/pdfUtils';
 
 export interface AgoraWhiteboardRef {
     insertPDF: (url: string, title?: string) => Promise<void>;
     leave: () => Promise<void>;
+    getState: () => {
+        activeTool: string;
+        activeColor: number[];
+        currentPage: number;
+        totalPages: number;
+        phase: string;
+        viewMode: string;
+    };
+    setTool: (tool: 'pencil' | 'eraser' | 'selector') => void;
+    setColor: (color: number[]) => void;
+    clearScene: () => void;
+    forceFix: () => void;
+    prevPage: () => void;
+    nextPage: () => void;
 }
 
 interface AgoraWhiteboardProps {
@@ -15,13 +31,14 @@ interface AgoraWhiteboardProps {
     region?: string;
     className?: string;
     role?: 'teacher' | 'student';
+    courseId?: string;
 }
 
 type ToolType = "pencil" | "eraser" | "selector";
 
 const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, ref) => {
     // 1. 使用動態 Region，預設為 sg
-    const { roomUuid, roomToken, appIdentifier, userId, className, role = 'student', region = 'sg' } = props;
+    const { roomUuid, roomToken, appIdentifier, userId, className, role = 'student', region = 'sg', courseId } = props;
 
     // Hooks
     const containerRef = useRef<HTMLDivElement>(null);
@@ -29,7 +46,7 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
     
     // Debug UI
     const [viewMode, setViewMode] = useState<string>("-"); 
-    const [cameraState, setCameraState] = useState<string>("X:0 Y:0 S:1");
+    // const [cameraState, setCameraState] = useState<string>("X:0 Y:0 S:1"); 
     const [status, setStatus] = useState("載入 SDK...");
     const [phase, setPhase] = useState("Init");
     const [sdkLoaded, setSdkLoaded] = useState(false);
@@ -38,6 +55,8 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
     // UI State
     const [activeTool, setActiveTool] = useState<ToolType>("pencil");
     const [activeColor, setActiveColor] = useState<number[]>([220, 38, 38]);
+    const [currentPage, setCurrentPage] = useState(1);
+    const [totalPages, setTotalPages] = useState(1);
 
     // 1. Mount Check
     useEffect(() => {
@@ -115,9 +134,19 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
                 // Improvement: Delayed initialization to ensure DOM is painted
                 setTimeout(() => {
                     if (isAborted || !targetDiv) return;
+                    
+                    // Check if element is still in DOM
+                    if (!targetDiv.isConnected) {
+                        console.warn("[CoreSDK] Target div detached from DOM, aborting bind");
+                        return;
+                    }
 
                     console.log("[CoreSDK] Binding HTML Element (Delayed)");
-                    room.bindHtmlElement(targetDiv);
+                    try {
+                        room.bindHtmlElement(targetDiv);
+                    } catch(e) {
+                         console.error("[CoreSDK] Bind failed:", e);
+                    }
                     
                     // ★★★ 視覺除錯：將背景設為淺藍色 (只限老師) ★★★
                     // 如果畫面變藍，代表渲染成功；如果還是白，代表高度是 0
@@ -167,9 +196,19 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
                     }, 600);
                 }
 
+                /*
                 // 監聽相機變化 (Debug 用)
                 room.callbacks.on("onCameraUpdated", (camera: any) => {
                    setCameraState(`X:${Math.round(camera.centerX)} Y:${Math.round(camera.centerY)} S:${camera.scale.toFixed(1)}`);
+                });
+                */
+
+                // 監聽頁面變換
+                room.callbacks.on("onRoomStateChanged", (modifyState: any) => {
+                    if (modifyState.sceneState) {
+                         setTotalPages(modifyState.sceneState.scenes.length);
+                         setCurrentPage(modifyState.sceneState.index + 1);
+                    }
                 });
                 
                 room.callbacks.on("onPhaseChanged", (p: string) => {
@@ -189,6 +228,10 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
                     const { currentApplianceName, strokeColor } = room.state.memberState;
                     if (currentApplianceName) setActiveTool(currentApplianceName as any);
                     if (strokeColor) setActiveColor(strokeColor);
+                }
+                if (room.state?.sceneState) {
+                    setTotalPages(room.state.sceneState.scenes.length);
+                    setCurrentPage(room.state.sceneState.index + 1);
                 }
 
                 (window as any).__fastboard_ready = true;
@@ -218,15 +261,120 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
 
     // 4. Methods
     useImperativeHandle(ref, () => ({
+        getState: () => ({
+            activeTool,
+            activeColor,
+            currentPage,
+            totalPages,
+            phase,
+            viewMode
+        }),
+        setTool,
+        setColor,
+        clearScene,
+        forceFix,
+        prevPage,
+        nextPage,
         insertPDF: async (url, title) => {
             if (!roomRef.current || !roomRef.current.isWritable) return;
             try {
-                await roomRef.current.insertImage({
-                    uuid: roomRef.current.uuid,
-                    centerX: 0, centerY: 0, width: 800, height: 600, locked: false,
-                });
-                roomRef.current.moveCamera({ centerX: 0, centerY: 0, scale: 1 });
-            } catch (e) { console.error(e); }
+                console.log("[BoardImpl] Converting PDF to Scenes:", url);
+                setStatus("處理 PDF 中...");
+                
+                // 1. Load PDF Library & Document
+                const pdfjs = await getPdfLib();
+                const loadingTask = pdfjs.getDocument(url);
+                const pdf = await loadingTask.promise;
+                const pageCount = pdf.numPages;
+                console.log("[BoardImpl] PDF Pages:", pageCount);
+
+                // 2. Render pages to images (Scenes) - Sequential & Compressed to avoid socket crash
+                const dir = `/pdf/${uuidv4()}`;
+                
+                for (let i = 1; i <= pageCount; i++) {
+                    const page = await pdf.getPage(i);
+                    // Optimized: Reduced scale from 1.5 to 1.2 for balance between quality and size
+                    const viewport = page.getViewport({ scale: 1.2 });
+                    
+                    const canvas = document.createElement('canvas');
+                    const context = canvas.getContext('2d');
+                    canvas.height = viewport.height;
+                    canvas.width = viewport.width;
+
+                    await page.render({ canvasContext: context!, viewport }).promise;
+                    
+                    // Critical Fix: Use JPEG (0.6) instead of PNG to stay under WebSocket message limit (512KB)
+                    const imgData = canvas.toDataURL('image/jpeg', 0.6);
+                    
+                    const scene = {
+                        name: `${i}`,
+                        ppt: {
+                            src: imgData,
+                            width: viewport.width,
+                            height: viewport.height,
+                        },
+                    };
+                    
+                    // Insert scenes ONE BY ONE to avoid large payload
+                    roomRef.current.putScenes(dir, [scene]);
+                    
+                    // Update status for UX
+                    if (i % 2 === 0 || i === pageCount) setStatus(`轉換中: ${i}/${pageCount}`);
+                }
+                
+                // Switch to the first page of the new doc
+                // IMPORTANT: Ensure directory exists and switched correctly
+                console.log("[BoardImpl] Switching to scene path:", `${dir}/1`);
+                roomRef.current.setScenePath(`${dir}/1`);
+                
+                // Force camera reset to center and fit the new slide
+                setTimeout(() => {
+                    if (!roomRef.current) return;
+                    
+                    // Get current scene to calculate optimal scale
+                    const sceneState = roomRef.current.state.sceneState;
+                    if (sceneState && sceneState.scenes && sceneState.scenes.length > 0) {
+                        const currentScene = sceneState.scenes[sceneState.index];
+                        if (currentScene?.ppt) {
+                            const pptWidth = currentScene.ppt.width;
+                            const pptHeight = currentScene.ppt.height;
+                            
+                            // Get container dimensions
+                            if (containerRef.current) {
+                                const containerWidth = containerRef.current.clientWidth;
+                                const containerHeight = containerRef.current.clientHeight;
+                                
+                                // Calculate scale to fit (with padding based on screen size)
+                                // Mobile/small screens: 95% to maximize space
+                                // Desktop: 90% for comfortable viewing
+                                const isMobile = containerWidth < 768;
+                                const padding = isMobile ? 0.95 : 0.9;
+                                
+                                const scaleX = (containerWidth * padding) / pptWidth;
+                                const scaleY = (containerHeight * padding) / pptHeight;
+                                
+                                // Use the smaller scale to ensure entire PDF fits
+                                // No upper limit cap - allow scaling up for small PDFs on large screens
+                                // But set minimum to prevent too small display on mobile
+                                const optimalScale = Math.max(Math.min(scaleX, scaleY), 0.2);
+                                
+                                console.log("[BoardImpl] Auto-fit scale:", optimalScale, "Container:", containerWidth, "x", containerHeight, "PPT:", pptWidth, "x", pptHeight, "Mobile:", isMobile);
+                                roomRef.current.moveCamera({ centerX: 0, centerY: 0, scale: optimalScale });
+                            } else {
+                                roomRef.current.moveCamera({ centerX: 0, centerY: 0, scale: 0.8 });
+                            }
+                        }
+                    }
+                    roomRef.current?.refreshViewSize();
+                }, 500);
+
+                setStatus(`PDF 已載入 (${pageCount} 頁)`);
+                setTimeout(() => setStatus(""), 3000);
+
+            } catch (e: any) { 
+                console.error("[BoardImpl] insertPDF Error:", e);
+                setStatus(`PDF 錯誤: ${e.message}`);
+            }
         },
         leave: async () => { if (roomRef.current) await roomRef.current.disconnect(); }
     }));
@@ -281,6 +429,18 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
 
     const isColorActive = (c: number[]) => activeColor[0] === c[0] && activeColor[1] === c[1] && activeColor[2] === c[2];
 
+    const prevPage = () => {
+        if (!roomRef.current) return;
+        const { index } = roomRef.current.state.sceneState;
+        if (index > 0) roomRef.current.setSceneIndex(index - 1);
+    };
+
+    const nextPage = () => {
+        if (!roomRef.current) return;
+        const { index, scenes } = roomRef.current.state.sceneState;
+        if (index < scenes.length - 1) roomRef.current.setSceneIndex(index + 1);
+    };
+
     // Loading
     if (!isMounted || !sdkLoaded) {
         return (
@@ -296,13 +456,7 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
     // Main Render
     return (
         <div className={className} style={{ width: '100%', height: '100%', position: 'relative', backgroundColor: '#f1f2f6', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-            
-            {/* 1. 狀態顯示 (Debug: 顯示所有關鍵同步資訊) */}
-            <div style={{ position: 'absolute', top: 0, left: 0, zIndex: 999, background: 'rgba(0,0,0,0.7)', color: 'white', fontSize: '11px', padding: '4px 8px', pointerEvents: 'none', borderRadius: '0 0 8px 0' }}>
-                <span style={{ color: role==='teacher'?'#4ade80':'#fbbf24', fontWeight: 'bold' }}>{role?.toUpperCase()}</span> | {region} | {phase} | {viewMode} | {cameraState} | ID:..{roomUuid.slice(-6)}
-            </div>
-
-            {/* 2. 白板 (Canvas) - Added Green Border for Visibility Check */}
+            {/* 白板 (Canvas) */}
             <div 
                 ref={containerRef} 
                 style={{ 
@@ -311,11 +465,12 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
                     height: '100%', 
                     minHeight: '400px', 
                     touchAction: 'none',
-                    border: '4px solid #10b981' // Green Border for Visual Proof
+                    position: 'relative',
+                    zIndex: 1
                 }} 
             />
 
-            {/* 3. 學生專用透明遮罩 (Physical Guard) - 防止學生手動亂動，但允許 SDK 同步 */}
+            {/* 學生專用透明遮罩 (Physical Guard) - 防止學生手動亂動，但允許 SDK 同步 */}
             {role !== 'teacher' && (
                 <div 
                     style={{
@@ -325,49 +480,46 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
                 />
             )}
 
-            {/* 4. 老師工具欄 */}
-            {role === 'teacher' && (
-                <div style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', zIndex: 100, display: 'flex', flexDirection: 'column', gap: '10px', padding: '10px', backgroundColor: 'white', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', borderBottom: '1px solid #eee', paddingBottom: '5px' }}>
-                        <ToolButton active={activeTool === 'pencil'} onClick={() => setTool('pencil')} icon="✏️" />
-                        <ToolButton active={activeTool === 'eraser'} onClick={() => setTool('eraser')} icon="🧹" />
-                        <ToolButton active={activeTool === 'selector'} onClick={() => setTool('selector')} icon="✋" />
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', alignItems: 'center', borderBottom: '1px solid #eee', paddingBottom: '5px' }}>
-                        <ColorDot color="#DC2626" active={isColorActive([220, 38, 38])} onClick={() => setColor([220, 38, 38])} />
-                        <ColorDot color="#2563EB" active={isColorActive([37, 99, 235])} onClick={() => setColor([37, 99, 235])} />
-                        <ColorDot color="#000000" active={isColorActive([0, 0, 0])} onClick={() => setColor([0, 0, 0])} />
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                        <ToolButton active={false} onClick={clearScene} icon="🗑️" />
-                        <ToolButton active={false} onClick={forceFix} icon="🎯" />
-                    </div>
-                </div>
-            )}
-
-            {/* 5. 學生專用：萬用修復按鈕 - Updated to "Nuclear Re-Bind" */}
-            {role !== 'teacher' && (
-                 <button 
-                    onClick={forceFix}
-                    style={{
-                        position: 'absolute', bottom: '20px', right: '20px', zIndex: 100,
-                        padding: '8px 16px', background: '#3b82f6', color: 'white', border: 'none',
-                        borderRadius: '20px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
-                        fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 'bold'
-                    }}
-                 >
-                    🛠️ 畫面空白/跑掉請點我
-                 </button>
-            )}
         </div>
     );
 });
 
-const ToolButton = ({ active, onClick, icon }: any) => (
-    <button onClick={onClick} style={{ padding: '8px', borderRadius: '4px', background: active ? '#e0f2fe' : 'transparent', border: active ? '1px solid #0ea5e9' : '1px solid transparent', cursor: 'pointer', fontSize: '18px' }}>{icon}</button>
+const ToolButton = ({ active, onClick, icon, title }: any) => (
+    <button 
+        onClick={onClick} 
+        title={title}
+        style={{ 
+            padding: '10px', 
+            borderRadius: '12px', 
+            background: active ? '#eff6ff' : 'transparent', 
+            border: active ? '2px solid #000000' : '2px solid transparent', 
+            cursor: 'pointer', 
+            fontSize: '22px',
+            transition: 'all 0.2s ease',
+            filter: active ? 'none' : 'grayscale(100%)',
+            opacity: active ? 1 : 0.5,
+            boxShadow: active ? '0 2px 5px rgba(0, 0, 0, 0.15)' : 'none'
+        }}
+    >
+        {icon}
+    </button>
 );
 const ColorDot = ({ color, active, onClick }: any) => (
-    <button onClick={onClick} style={{ width: '20px', height: '20px', borderRadius: '50%', background: color, border: active ? '2px solid #333' : '2px solid transparent', cursor: 'pointer' }} />
+    <div 
+        onClick={onClick} 
+        style={{ 
+            width: '28px', 
+            height: '28px', 
+            borderRadius: '50%', 
+            backgroundColor: color,
+            border: active ? '3px solid #000000' : '2px solid #d1d5db', 
+            boxShadow: active ? '0 0 0 2px white inset, 0 2px 6px rgba(0,0,0,0.2)' : '0 1px 3px rgba(0,0,0,0.1)',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+            transform: active ? 'scale(1.15)' : 'scale(1)',
+            opacity: active ? 1 : 0.7
+        }} 
+    />
 );
 
 BoardImpl.displayName = "BoardImpl";

@@ -51,6 +51,23 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   console.log('[ClientClassroom] useAgoraWhiteboard:', useAgoraWhiteboard, 'NEXT_PUBLIC_USE_AGORA_WHITEBOARD:', process.env.NEXT_PUBLIC_USE_AGORA_WHITEBOARD);
   const agoraWhiteboardRef = useRef<AgoraWhiteboardRef>(null);
   const [agoraRoomData, setAgoraRoomData] = useState<{ uuid: string; roomToken: string; appIdentifier: string; region: string; userId: string } | null>(null);
+  const [whiteboardState, setWhiteboardState] = useState<any>(null);
+  
+  // Poll whiteboard state for toolbar display
+  useEffect(() => {
+    const interval = setInterval(() => {
+      try {
+        if (agoraWhiteboardRef.current) {
+          const state = agoraWhiteboardRef.current.getState();
+          if (state) setWhiteboardState(state);
+        }
+      } catch (e) {
+        // Silently ignore errors during polling
+      }
+    }, 300); // Poll more frequently for better responsiveness
+    return () => clearInterval(interval);
+  }, []); // Run continuously, not dependent on agoraRoomData
+  
   // determine courseId from query string (e.g. ?courseId=c1)
   const course = COURSES.find((c) => c.id === courseId) || null;
   
@@ -209,12 +226,13 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     
     const checkPdf = async () => {
       try {
-        const resp = await fetch(`/api/whiteboard/pdf?uuid=${encodeURIComponent(sessionReadyKey)}&check=true`);
+        const timestamp = Date.now();
+        const resp = await fetch(`/api/whiteboard/pdf?uuid=${encodeURIComponent(sessionReadyKey)}&check=true&t=${timestamp}`);
         if (resp.ok) {
            const json = await resp.json();
            if (json.found) {
              console.log('[ClientClassroom] Found existing PDF for session');
-             const fileResp = await fetch(`/api/whiteboard/pdf?uuid=${encodeURIComponent(sessionReadyKey)}`);
+             const fileResp = await fetch(`/api/whiteboard/pdf?uuid=${encodeURIComponent(sessionReadyKey)}&t=${timestamp}`);
              if (fileResp.ok) {
                const blob = await fileResp.blob();
                // Get filename from json meta if possible
@@ -253,7 +271,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                 // NOTE: Fastboard usually expects a public URL or a conversion task result for PPTX.
                 // For PDF, simple insertion might require a web-accessible URL or object URL.
                 // If the backend /api/whiteboard/pdf streams the file, we can use that URL.
-                const pdfUrl = `${window.location.origin}/api/whiteboard/pdf?uuid=${encodeURIComponent(sessionReadyKey)}`;
+                const pdfUrl = `${window.location.origin}/api/whiteboard/pdf?uuid=${encodeURIComponent(sessionReadyKey)}&t=${Date.now()}`;
                 
                 console.log('[ClientClassroom] Inserting PDF via URL:', pdfUrl);
                 await agoraWhiteboardRef.current?.insertPDF(pdfUrl, selectedPdf.name);
@@ -1148,8 +1166,69 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  
+  // Helper functions for color checking
+  const isColorActive = (c: number[]) => {
+    if (!whiteboardState?.activeColor) return false;
+    const active = whiteboardState.activeColor;
+    return active[0] === c[0] && active[1] === c[1] && active[2] === c[2];
+  };
 
   return (
+    <>
+      {/* Status Bar - Above everything */}
+      {useAgoraWhiteboard && agoraRoomData && whiteboardState && (
+        <div style={{ background: 'rgba(0,0,0,0.7)', color: 'white', fontSize: '11px', padding: '4px 12px', textAlign: 'center' }}>
+          <span style={{ color: isTeacher ? '#4ade80' : '#fbbf24', fontWeight: 'bold' }}>{isTeacher ? 'TEACHER' : 'STUDENT'}</span> | {agoraRoomData.region} | {whiteboardState.phase} | {whiteboardState.viewMode} | Course: {courseId} | UUID: {agoraRoomData.uuid}
+        </div>
+      )}
+      
+      {/* Teacher Toolbar - Below status bar */}
+      {useAgoraWhiteboard && isTeacher && agoraWhiteboardRef.current && whiteboardState && (
+        <div style={{ padding: '8px 0', display: 'flex', justifyContent: 'center', background: '#f8f9fa', borderBottom: '1px solid #e5e7eb' }}>
+          <div style={{ 
+            display: 'flex', 
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: '8px', 
+            padding: '8px 16px', 
+            backgroundColor: '#ffffff', 
+            borderRadius: '12px', 
+            boxShadow: '0 4px 12px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.05)',
+            border: '1px solid #e5e7eb'
+          }}>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', paddingRight: '8px', borderRight: '2px solid #f3f4f6' }}>
+              <ToolButton active={whiteboardState.activeTool === 'pencil'} onClick={() => agoraWhiteboardRef.current?.setTool('pencil')} icon="✏️" title="畫筆" />
+              <ToolButton active={whiteboardState.activeTool === 'eraser'} onClick={() => agoraWhiteboardRef.current?.setTool('eraser')} icon="🧹" title="橡皮擦" />
+              <ToolButton active={whiteboardState.activeTool === 'selector'} onClick={() => agoraWhiteboardRef.current?.setTool('selector')} icon="✋" title="移動畫布" />
+            </div>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', paddingRight: '8px', borderRight: '2px solid #f3f4f6' }}>
+              <ColorDot color="#DC2626" active={isColorActive([220, 38, 38])} onClick={() => agoraWhiteboardRef.current?.setColor([220, 38, 38])} />
+              <ColorDot color="#2563EB" active={isColorActive([37, 99, 235])} onClick={() => agoraWhiteboardRef.current?.setColor([37, 99, 235])} />
+              <ColorDot color="#000000" active={isColorActive([0, 0, 0])} onClick={() => agoraWhiteboardRef.current?.setColor([0, 0, 0])} />
+            </div>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <ToolButton active={false} onClick={() => agoraWhiteboardRef.current?.clearScene()} icon="🗑️" title="清空畫布" />
+              <ToolButton active={false} onClick={() => agoraWhiteboardRef.current?.forceFix()} icon="🎯" title="重置視角" />
+            </div>
+
+            {whiteboardState.totalPages > 1 && (
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', paddingLeft: '8px', borderLeft: '2px solid #f3f4f6' }}>
+                <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#64748b', whiteSpace: 'nowrap' }}>
+                  {whiteboardState.currentPage} / {whiteboardState.totalPages}
+                </span>
+                <button onClick={() => agoraWhiteboardRef.current?.prevPage()} title="上一頁" disabled={whiteboardState.currentPage <= 1} style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid #e2e8f0', background: whiteboardState.currentPage <= 1 ? '#f1f5f9' : 'white', cursor: whiteboardState.currentPage <= 1 ? 'not-allowed' : 'pointer', fontSize: '14px' }}>
+                  ◀️
+                </button>
+                <button onClick={() => agoraWhiteboardRef.current?.nextPage()} title="下一頁" disabled={whiteboardState.currentPage >= whiteboardState.totalPages} style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid #e2e8f0', background: whiteboardState.currentPage >= whiteboardState.totalPages ? '#f1f5f9' : 'white', cursor: whiteboardState.currentPage >= whiteboardState.totalPages ? 'not-allowed' : 'pointer', fontSize: '14px' }}>
+                  ▶️
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+      
     <div className="client-classroom">
       {/* Left: Whiteboard (flexible) */}
       <div className="client-left" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', height: '100%' }}>
@@ -1172,6 +1251,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                   appIdentifier={agoraRoomData.appIdentifier}
                   userId={agoraRoomData.userId}
                   region={agoraRoomData.region}
+                  courseId={courseId}
                   className="w-full h-full"
 
                   // ★★★ 關鍵修復：必須明確傳入 role ★★★
@@ -1210,7 +1290,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       <div className="client-right">
         <div className="client-right-inner">
           <div className="video-container">
-            <video ref={localVideoRef} autoPlay muted playsInline />
+            <video ref={localVideoRef} autoPlay muted playsInline style={{ transform: 'scaleX(-1)' }} />
             <div className="video-label">
               {mounted && (urlRole === 'teacher' || computedRole === 'teacher') ? t('teacher_you') : t('student_you')}
             </div>
@@ -1453,7 +1533,80 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
 
       </div>
     </div>
+    </>
   );
 };
+
+// Helper components for toolbar
+const ToolButton = ({ active, onClick, icon, title }: any) => {
+    const [isPressed, setIsPressed] = React.useState(false);
+    const timeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+
+    const press = () => {
+        setIsPressed(true);
+    };
+
+    const release = () => {
+        if (timeoutRef.current) clearTimeout(timeoutRef.current);
+        timeoutRef.current = setTimeout(() => {
+            setIsPressed(false);
+        }, 300);
+    };
+    
+    // Explicit click handler to ensure feedback even if mouse events are messy
+    const handleClick = (e: any) => {
+        // Force press state visually
+        setIsPressed(true);
+        // Execute actual action
+        if (onClick) onClick(e);
+        // Schedule release
+        release();
+    };
+
+    return (
+        <button 
+            onClick={handleClick}
+            onMouseDown={press}
+            onMouseUp={release}
+            onMouseLeave={release}
+            onTouchStart={press}
+            onTouchEnd={release}
+            title={title}
+            style={{ 
+                padding: '10px', 
+                borderRadius: '12px', 
+                background: (active || isPressed) ? '#eff6ff' : 'transparent', 
+                border: (active || isPressed) ? '2px solid #000000' : '2px solid transparent', 
+                cursor: 'pointer', 
+                fontSize: '22px',
+                transition: 'all 0.1s ease', // Faster transition for snappier feel
+                filter: (active || isPressed) ? 'none' : 'grayscale(100%)',
+                opacity: (active || isPressed) ? 1 : 0.5,
+                boxShadow: (active || isPressed) ? '0 2px 5px rgba(0, 0, 0, 0.15)' : 'none',
+                transform: isPressed ? 'scale(0.95)' : 'scale(1)'
+            }}
+        >
+            {icon}
+        </button>
+    );
+};
+
+const ColorDot = ({ color, active, onClick }: any) => (
+    <div 
+        onClick={onClick} 
+        style={{ 
+            width: '28px', 
+            height: '28px', 
+            borderRadius: '50%', 
+            backgroundColor: color,
+            border: active ? '3px solid #000000' : '2px solid #d1d5db', 
+            boxShadow: active ? '0 0 0 2px white inset, 0 2px 6px rgba(0,0,0,0.2)' : '0 1px 3px rgba(0,0,0,0.1)',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+            transform: active ? 'scale(1.15)' : 'scale(1)',
+            opacity: active ? 1 : 0.7
+        }} 
+    />
+);
 
 export default ClientClassroom;
