@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { uploadToS3, getObjectBuffer, getSignedUrlForKey } from '@/lib/s3';
 import { resolveDataFile } from '@/lib/localData';
 import fs from 'fs/promises';
 import path from 'path';
@@ -15,22 +16,17 @@ export async function POST(req: NextRequest) {
     // Decode base64
     const buffer = Buffer.from(pdf.data, 'base64');
     
-    // Save to local data
-    const filePath = await resolveDataFile(`session_${uuid}.pdf`);
-    console.log('[PDF POST] uuid:', uuid, 'filePath:', filePath, 'buffer size:', buffer.length);
-    await fs.writeFile(filePath, buffer);
-    
-    // Also save metadata
-    const metaPath = await resolveDataFile(`session_${uuid}_meta.json`);
-    console.log('[PDF POST] metaPath:', metaPath);
-    await fs.writeFile(metaPath, JSON.stringify({ 
-      name: pdf.name,
-      uploadedAt: Date.now(),
-      size: pdf.size,
-      type: pdf.type
-    }));
-    
-    return NextResponse.json({ success: true, message: 'PDF uploaded' });
+    // Upload PDF to S3
+    const key = `whiteboard/session_${uuid}.pdf`;
+    console.log('[PDF POST] uploading to S3 key:', key, 'buffer size:', buffer.length);
+    const uploaded = await uploadToS3(buffer, `whiteboard/session_${uuid}.pdf`, pdf.type || 'application/pdf');
+
+    // Save metadata as small JSON object in S3
+    const meta = { name: pdf.name, uploadedAt: Date.now(), size: pdf.size, type: pdf.type };
+    const metaKey = `whiteboard/session_${uuid}_meta.json`;
+    await uploadToS3(Buffer.from(JSON.stringify(meta)), metaKey, 'application/json');
+
+    return NextResponse.json({ success: true, message: 'PDF uploaded', key: uploaded.key, url: uploaded.url });
   } catch (error) {
     console.error('PDF upload failed:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -47,46 +43,38 @@ export async function GET(req: NextRequest) {
   }
   
   try {
-    const filePath = await resolveDataFile(`session_${uuid}.pdf`);
-    const metaPath = await resolveDataFile(`session_${uuid}_meta.json`);
-    
-    console.log('[PDF GET] uuid:', uuid, 'check:', check, 'filePath:', filePath, 'metaPath:', metaPath);
-    console.log('[PDF GET] process.cwd():', process.cwd());
-    
-    // Check if file exists
-    try {
-      await fs.access(filePath);
-      console.log('[PDF GET] File exists at:', filePath);
-      const stats = await fs.stat(filePath);
-      console.log('[PDF GET] File stats:', { size: stats.size, mtime: stats.mtime });
-    } catch (e) {
-      console.log('[PDF GET] File does not exist at:', filePath, 'error:', e);
-      return NextResponse.json({ found: false }, { status: 404 });
-    }
-    
+    const key = `whiteboard/session_${uuid}.pdf`;
+    const metaKey = `whiteboard/session_${uuid}_meta.json`;
+
+    console.log('[PDF GET] uuid:', uuid, 'check:', check, 's3Key:', key, 'metaKey:', metaKey);
+
+    // If just checking existence/meta
     if (check) {
       try {
-        const meta = JSON.parse(await fs.readFile(metaPath, 'utf8'));
-        console.log('[PDF GET] Meta exists:', meta);
+        const metaBuf = await getObjectBuffer(metaKey);
+        const meta = JSON.parse(metaBuf.toString('utf8'));
+        console.log('[PDF GET] Meta exists in S3:', meta);
         return NextResponse.json({ found: true, meta });
       } catch (e) {
-        console.log('[PDF GET] Meta does not exist or invalid:', e);
-        // Meta file missing or invalid, treat as not found
+        console.log('[PDF GET] Meta not found in S3:', e);
         return NextResponse.json({ found: false }, { status: 404 });
       }
     }
-    
-    // Return file
-    console.log('[PDF GET] Reading file');
-    const fileBuffer = await fs.readFile(filePath);
-    console.log('[PDF GET] File read successfully, size:', fileBuffer.length);
-    
-    return new NextResponse(fileBuffer, {
-      headers: {
-        'Content-Type': 'application/pdf',
-        // 'Content-Disposition': `attachment; filename="session.pdf"`,
-      },
-    });
+
+    // Return the PDF bytes proxied from S3
+    try {
+      const fileBuf = await getObjectBuffer(key);
+      console.log('[PDF GET] Retrieved PDF from S3, size:', fileBuf.length);
+      return new NextResponse(new Uint8Array(fileBuf), {
+        headers: {
+          'Content-Type': 'application/pdf',
+          'Content-Length': String(fileBuf.length),
+        },
+      });
+    } catch (e) {
+      console.log('[PDF GET] PDF not found in S3:', e);
+      return NextResponse.json({ found: false }, { status: 404 });
+    }
   } catch (error) {
     console.error('PDF get failed:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

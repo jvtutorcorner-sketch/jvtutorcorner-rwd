@@ -14,6 +14,8 @@ const nextConfig = {
     // 其他需要的後端變數...
     AGORA_APP_ID: process.env.AGORA_APP_ID,
     AGORA_APP_CERTIFICATE: process.env.AGORA_APP_CERTIFICATE,
+    // Feature Flag default to true (Amplify might miss .env.local)
+    NEXT_PUBLIC_USE_AGORA_WHITEBOARD: process.env.NEXT_PUBLIC_USE_AGORA_WHITEBOARD || 'true',
   },
 };
 
