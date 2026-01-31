@@ -1,3 +1,5 @@
+import crypto from 'crypto';
+
 function randomString(len = 24) {
   const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   let s = '';
@@ -30,55 +32,75 @@ function makeSvg(text: string) {
   return `<?xml version="1.0" encoding="UTF-8"?><svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect width="100%" height="100%" fill="${bg}"/><g>${parts.join('')}</g></svg>`;
 }
 
-type Entry = { value: string; expires: number };
+const SECRET = process.env.CAPTCHA_SECRET || process.env.AWS_SECRET_ACCESS_KEY || 'jvtutor-fallback-secret-key-2024';
 
-// Use globalThis to persist store across hot reloads in dev mode and ensure singleton
-function getStore(): Map<string, Entry> {
-  const g = globalThis as any;
-  if (!g._captchaStore) {
-    g._captchaStore = new Map<string, Entry>();
-  }
-  return g._captchaStore;
+function sign(text: string): string {
+  return crypto.createHmac('sha256', SECRET).update(text).digest('hex');
 }
 
-const store = getStore();
-
-export function generateCaptcha(ttlMs = 3 * 60 * 1000) {
+export function generateCaptcha(ttlMs = 5 * 60 * 1000) {
   const value = randomAlpha(5);
-  const token = (typeof (globalThis as any).crypto?.randomUUID === 'function') ? (globalThis as any).crypto.randomUUID() : randomString(32);
   const expires = Date.now() + ttlMs;
-  store.set(token, { value, expires });
+  
+  // Create a stateless payload
+  const payload = JSON.stringify({ v: value, e: expires });
+  const signature = sign(payload);
+  
+  // Token = base64(payload) + '.' + signature
+  const token = Buffer.from(payload).toString('base64') + '.' + signature;
+  
   const svg = makeSvg(value);
   const image = 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
-  console.log('[captcha] generated', { token, value, expires, storeSize: store.size });
+  
+  // Debug log (can remove sensitive info in prod)
+  console.log('[captcha] generated stateless', { value, expires });
+  
   return { token, image };
 }
 
 export function verifyCaptcha(token: string | undefined, value: string | undefined) {
-  console.log('[captcha] verifying', { token, value, storeSize: store.size });
   if (!token || !value) {
     console.log('[captcha] missing token or value');
     return false;
   }
-  const entry = store.get(token);
-  if (!entry) {
-    // If not found, log some existing tokens to see if there is a mismatch
-    const tokens = Array.from(store.keys()).slice(0, 5);
-    console.log('[captcha] token not found. existing tokens:', tokens);
+  
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 2) {
+      console.log('[captcha] invalid token format');
+      return false;
+    }
+    
+    const [b64, signature] = parts;
+    const payloadStr = Buffer.from(b64, 'base64').toString('utf8');
+    
+    // Verify signature first
+    const expectedSig = sign(payloadStr);
+    if (signature !== expectedSig) {
+      console.log('[captcha] signature mismatch');
+      return false;
+    }
+    
+    const payload = JSON.parse(payloadStr);
+    
+    // Check expiration
+    if (Date.now() > payload.e) {
+      console.log('[captcha] token expired');
+      return false;
+    }
+    
+    // Check value
+    const expectedValue = payload.v;
+    const ok = String(expectedValue).toLowerCase() === String(value).trim().toLowerCase();
+    
+    console.log('[captcha] verify result', { ok });
+    return ok;
+  } catch (e) {
+    console.error('[captcha] verify error', e);
     return false;
   }
-  if (entry.expires < Date.now()) {
-    console.log('[captcha] token expired');
-    store.delete(token);
-    return false;
-  }
-  const ok = entry.value.toLowerCase() === String(value).trim().toLowerCase();
-  console.log('[captcha] verify result', { ok, expected: entry.value, received: value });
-  if (ok) store.delete(token);
-  return ok;
 }
 
 export function clearExpired() {
-  const now = Date.now();
-  for (const [k, v] of store.entries()) if (v.expires < now) store.delete(k);
+  // No-op for stateless
 }

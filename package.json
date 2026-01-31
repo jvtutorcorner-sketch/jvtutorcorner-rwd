@@ -22,6 +22,7 @@
     "@aws-sdk/lib-dynamodb": "^3.940.0",
     "@aws-sdk/lib-storage": "^3.956.0",
     "@aws-sdk/s3-request-presigner": "^3.980.0",
+    "@google/generative-ai": "^0.24.1",
     "@paypal/react-paypal-js": "^8.9.2",
     "agora-access-token": "^2.0.4",
     "agora-rtc-sdk-ng": "^4.23.0",
