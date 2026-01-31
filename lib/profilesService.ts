@@ -8,7 +8,7 @@ const PROFILES_TABLE = process.env.DYNAMODB_TABLE_PROFILES || process.env.PROFIL
 const PROFILES_LAMBDA = process.env.PROFILES_LAMBDA_NAME || process.env.PROFILES_FUNCTION_NAME || '';
 const PROFILES_API = process.env.PROFILES_API_URL || process.env.PROFILES_ENDPOINT || '';
 
-const lambdaClient = PROFILES_LAMBDA ? new LambdaClient({ region: process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'ap-northeast-1' }) : null;
+const lambdaClient = PROFILES_LAMBDA ? new LambdaClient({ region: process.env.AWS_REGION || process.env.CI_AWS_REGION || process.env.AWS_DEFAULT_REGION || process.env.CI_AWS_DEFAULT_REGION || 'ap-northeast-1' }) : null;
 
 async function readProfilesFile() {
   try {

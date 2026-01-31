@@ -2,12 +2,13 @@
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 
+const awsRegion = process.env.AWS_REGION || process.env.CI_AWS_REGION || 'ap-northeast-1';
+const accessKey = process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID;
+const secretKey = process.env.AWS_SECRET_ACCESS_KEY || process.env.CI_AWS_SECRET_ACCESS_KEY;
+
 const s3Client = new S3Client({
-  region: process.env.AWS_REGION || 'ap-northeast-1',
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || '',
-  },
+  region: awsRegion,
+  credentials: accessKey && secretKey ? { accessKeyId: accessKey, secretAccessKey: secretKey } : undefined,
 });
 
 const BUCKET_NAME = process.env.AWS_S3_BUCKET_NAME || 'jvtutorcorner-images';
@@ -37,7 +38,7 @@ export async function uploadToS3(file: File | Buffer, fileName: string, mimeType
 
     await upload.done();
 
-    const url = `https://${BUCKET_NAME}.s3.${process.env.AWS_REGION || 'ap-northeast-1'}.amazonaws.com/${key}`;
+      const url = `https://${BUCKET_NAME}.s3.${awsRegion}.amazonaws.com/${key}`;
 
     return { url, key };
   } catch (error) {

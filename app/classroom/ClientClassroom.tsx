@@ -162,8 +162,9 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
         // Actually, user requested to REMOVE logic relying solely on localStorage.
         // The authoritative source is now the API which checks DynamoDB.
         // However, we still send sessionReadyKey (channelName) to the API.
+        // Crucial Fix: Send courseId so backend can perform strict DB lookup
         
-        const requestBody: any = { userId, channelName: sessionReadyKey };
+        const requestBody: any = { userId, channelName: sessionReadyKey, courseId };
         
         // Optional: If we have a specific UUID broadcasted via other means (not localStorage), we could attach it.
         // But for "Split Room" fix, trusting the API's DynamoDB lookup is better than local storage which might be stale or specific to one device.

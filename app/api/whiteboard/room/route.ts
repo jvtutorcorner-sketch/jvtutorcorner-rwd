@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sdkToken, roomToken, TokenRole } from 'netless-token';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, GetCommand, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 
 // --- Configuration & Initialization ---
 
 // 1. Initialize DynamoDB Client with logging
 // We prioritize the environment region, but default to 'ap-northeast-1' to match lib/dynamo.ts
-const region = process.env.AWS_REGION || 'ap-northeast-1';
+// Support CI_AWS_REGION as a fallback for CI/Amplify environment variables (avoid using reserved AWS_* names in envs)
+const region = process.env.AWS_REGION || process.env.CI_AWS_REGION || 'ap-northeast-1';
 console.log(`[WhiteboardAPI] Initializing DynamoDB Client in region: ${region}`);
 
 const client = new DynamoDBClient({ region });
@@ -60,9 +61,9 @@ const ROOM_CACHE = new Map<string, string>();
 
 export async function POST(req: NextRequest) {
   try {
-    const { userId, channelName, roomUuid: requestedRoomUuid } = await req.json();
+    const { userId, channelName, roomUuid: requestedRoomUuid, courseId } = await req.json();
 
-    console.log('[WhiteboardAPI] Request received:', { userId, channelName, requestedRoomUuid });
+    console.log('[WhiteboardAPI] Request received:', { userId, channelName, requestedRoomUuid, courseId });
 
     const appId = process.env.AGORA_WHITEBOARD_APP_ID;
     const regionAgora = "sg"; // Singapore (Agora region)
@@ -72,8 +73,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing AGORA_WHITEBOARD_APP_ID' }, { status: 500 });
     }
 
-    if (!channelName) {
-      return NextResponse.json({ error: 'Missing channelName' }, { status: 400 });
+    if (!channelName && !courseId) {
+      return NextResponse.json({ error: 'Missing channelName or courseId' }, { status: 400 });
     }
 
     let roomUuid: string | undefined;
@@ -90,8 +91,15 @@ export async function POST(req: NextRequest) {
         console.warn(`[WhiteboardAPI] WARNING: DYNAMODB_TABLE_COURSES env var is missing. Falling back to hardcoded: ${tableName}`);
       }
 
-      // We validly assume partition key is 'id' and usage pattern 'session_{channelName}'
-      const dbKey = `session_${channelName}`;
+      // Priority: use courseId if available (most reliable), fallback to session_{channelName}
+      // If courseId is provided, we query the course directly to find its attached whiteboard
+      let dbKey = `session_${channelName}`;
+      let isCourseRec = false;
+
+      if (courseId) {
+        dbKey = courseId;
+        isCourseRec = true;
+      }
 
       console.log(`[WhiteboardAPI] Querying DynamoDB Table: ${tableName}, Key: ${dbKey}`);
 
@@ -103,11 +111,12 @@ export async function POST(req: NextRequest) {
         });
 
         const getResult = await docClient.send(getCmd);
+        console.log(`[WhiteboardAPI] DB Lookup Result for ${dbKey}:`, getResult.Item);
         
         if (getResult.Item && getResult.Item.whiteboardUuid) {
           roomUuid = getResult.Item.whiteboardUuid as string;
           console.log(`[WhiteboardAPI] FOUND persistent room in DB: ${roomUuid}`);
-          ROOM_CACHE.set(channelName, roomUuid);
+          if (channelName) ROOM_CACHE.set(channelName, roomUuid);
         } else {
           console.log(`[WhiteboardAPI] No existing room found in DB for key: ${dbKey}`);
         }
@@ -116,15 +125,15 @@ export async function POST(req: NextRequest) {
         // Do not crash; proceed to try creating a room
       }
 
-      // If failed to read from DB, check cache as fallback
-      if (!roomUuid && ROOM_CACHE.has(channelName)) {
+      // If failed to read from DB, check cache as fallback (only if we didn't find it in DB)
+      if (!roomUuid && channelName && ROOM_CACHE.has(channelName)) {
         roomUuid = ROOM_CACHE.get(channelName) as string;
         console.log(`[WhiteboardAPI] Found room in memory cache: ${roomUuid}`);
       }
       
       // 3. Create New Room if not found
       if (!roomUuid) {
-        console.log(`[WhiteboardAPI] Creating NEW Whiteboard Room for channel: ${channelName}`);
+        console.log(`[WhiteboardAPI] Creating NEW Whiteboard Room. Reason: Not found in DB or Cache.`);
         
         const adminToken = generateSdkToken();
         const createRoomRes = await fetch('https://api.netless.link/v5/rooms', {
@@ -148,25 +157,29 @@ export async function POST(req: NextRequest) {
         console.log(`[WhiteboardAPI] NEW Room Created. UUID: ${roomUuid}`);
 
         // 4. Save to DynamoDB
-        console.log(`[WhiteboardAPI] Saving room UUID to DynamoDB... Table: ${tableName}`);
+        console.log(`[WhiteboardAPI] Saving room UUID to DynamoDB... Table: ${tableName}, Key: ${dbKey}`);
         
         try {
-            // Using PutCommand to ensure the item is created/updated
-            const putCmd = new PutCommand({
+            // Using UpdateCommand to "Upsert" the session record or course record
+            // If it's a course record, we only update whiteboardUuid field
+            const updateParams = {
                 TableName: tableName,
-                Item: {
-                    id: dbKey,
-                    whiteboardUuid: roomUuid,
-                    updatedAt: new Date().toISOString()
+                Key: { id: dbKey },
+                UpdateExpression: "SET whiteboardUuid = :w, updatedAt = :t",
+                ExpressionAttributeValues: {
+                    ":w": roomUuid,
+                    ":t": new Date().toISOString()
                 },
-                ReturnValues: "ALL_OLD" // Returns the old item if it existed
-            });
+                ReturnValues: "ALL_NEW" as const 
+            };
+            
+            const updateCmd = new UpdateCommand(updateParams);
 
-            const putResult = await docClient.send(putCmd);
-            console.log(`[WhiteboardAPI] DynamoDB Write SUCCESS. Old Item:`, putResult.Attributes);
+            const updateResult = await docClient.send(updateCmd);
+            console.log(`[WhiteboardAPI] DynamoDB Write SUCCESS. Attributes:`, updateResult.Attributes);
             
             // Update Cache
-            ROOM_CACHE.set(channelName, roomUuid as string);
+            if (channelName) ROOM_CACHE.set(channelName, roomUuid as string);
 
         } catch (dbWriteError) {
             console.error('[WhiteboardAPI] CRITICAL: DynamoDB Write FAILED:', dbWriteError);
