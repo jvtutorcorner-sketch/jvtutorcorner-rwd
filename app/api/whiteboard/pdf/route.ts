@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { uploadToS3, getObjectBuffer, getSignedUrlForKey } from '@/lib/s3';
-import { resolveDataFile } from '@/lib/localData';
-import fs from 'fs/promises';
-import path from 'path';
+import { uploadToS3, getObjectBuffer } from '@/lib/s3';
 
 export async function POST(req: NextRequest) {
   try {
@@ -10,6 +7,7 @@ export async function POST(req: NextRequest) {
     const { uuid, pdf } = body;
     
     if (!uuid || !pdf || !pdf.data) {
+      console.error('[PDF POST] Validation failed: Missing uuid or pdf data');
       return NextResponse.json({ error: 'Missing uuid or pdf data' }, { status: 400 });
     }
     
@@ -18,18 +16,39 @@ export async function POST(req: NextRequest) {
     
     // Upload PDF to S3
     const key = `whiteboard/session_${uuid}.pdf`;
-    console.log('[PDF POST] uploading to S3 key:', key, 'buffer size:', buffer.length);
-    const uploaded = await uploadToS3(buffer, `whiteboard/session_${uuid}.pdf`, pdf.type || 'application/pdf');
+    console.log('[PDF POST] Start upload to S3. Key:', key, 'Size:', buffer.length, 'Type:', pdf.type);
+    
+    try {
+      const uploaded = await uploadToS3(buffer, key, pdf.type || 'application/pdf');
+      console.log('[PDF POST] PDF upload success:', uploaded.key);
 
-    // Save metadata as small JSON object in S3
-    const meta = { name: pdf.name, uploadedAt: Date.now(), size: pdf.size, type: pdf.type };
-    const metaKey = `whiteboard/session_${uuid}_meta.json`;
-    await uploadToS3(Buffer.from(JSON.stringify(meta)), metaKey, 'application/json');
+      // Save metadata as small JSON object in S3
+      const meta = { name: pdf.name, uploadedAt: Date.now(), size: pdf.size, type: pdf.type };
+      const metaKey = `whiteboard/session_${uuid}_meta.json`;
+      await uploadToS3(Buffer.from(JSON.stringify(meta)), metaKey, 'application/json');
+      console.log('[PDF POST] Metadata upload success:', metaKey);
 
-    return NextResponse.json({ success: true, message: 'PDF uploaded', key: uploaded.key, url: uploaded.url });
-  } catch (error) {
-    console.error('PDF upload failed:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+      return NextResponse.json({ 
+        success: true, 
+        message: 'PDF uploaded', 
+        key: uploaded.key, 
+        url: uploaded.url 
+      });
+    } catch (s3Error: any) {
+      console.error('[PDF POST] S3 Operation FAILED:', {
+        message: s3Error.message,
+        stack: s3Error.stack,
+        code: s3Error.code,
+        requestId: s3Error.$metadata?.requestId
+      });
+      return NextResponse.json({ 
+        error: 'S3 storage error', 
+        details: s3Error.message 
+      }, { status: 500 });
+    }
+  } catch (error: any) {
+    console.error('[PDF POST] Critical error:', error);
+    return NextResponse.json({ error: 'Internal server error', details: error.message }, { status: 500 });
   }
 }
 
@@ -69,14 +88,19 @@ export async function GET(req: NextRequest) {
         headers: {
           'Content-Type': 'application/pdf',
           'Content-Length': String(fileBuf.length),
+          'Cache-Control': 'public, max-age=3600'
         },
       });
-    } catch (e) {
-      console.log('[PDF GET] PDF not found in S3:', e);
-      return NextResponse.json({ found: false }, { status: 404 });
+    } catch (e: any) {
+      if (e.name === 'NoSuchKey' || e.code === 'NoSuchKey') {
+        console.log('[PDF GET] PDF not found in S3 (NoSuchKey):', key);
+        return NextResponse.json({ found: false, error: 'File not found' }, { status: 404 });
+      }
+      console.error('[PDF GET] S3 Error during fetch:', e);
+      return NextResponse.json({ found: false, error: 'S3 read error', details: e.message }, { status: 500 });
     }
-  } catch (error) {
-    console.error('PDF get failed:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  } catch (error: any) {
+    console.error('PDF get critical failure:', error);
+    return NextResponse.json({ error: 'Internal server error', details: error.message }, { status: 500 });
   }
 }

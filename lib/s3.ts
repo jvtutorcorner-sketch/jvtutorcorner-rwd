@@ -7,13 +7,23 @@ const awsRegion = process.env.AWS_REGION || process.env.CI_AWS_REGION || 'ap-nor
 const accessKey = process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID;
 const secretKey = process.env.AWS_SECRET_ACCESS_KEY || process.env.CI_AWS_SECRET_ACCESS_KEY;
 
+// Prefer CI_AWS_S3_BUCKET_NAME (CI / Amplify), then AWS_S3_BUCKET_NAME, fallback to uploads bucket
+const BUCKET_NAME = process.env.CI_AWS_S3_BUCKET_NAME || process.env.AWS_S3_BUCKET_NAME || 'jvtutorcorner-uploads';
+
+console.log('[S3] Initializing with:', {
+  region: awsRegion,
+  hasAccessKey: !!accessKey,
+  hasSecretKey: !!secretKey,
+  bucket: BUCKET_NAME,
+  // Reserved env check
+  isReservedAccessKey: !!process.env.AWS_ACCESS_KEY_ID,
+  isCiAccessKey: !!process.env.CI_AWS_ACCESS_KEY_ID
+});
+
 const s3Client = new S3Client({
   region: awsRegion,
   credentials: accessKey && secretKey ? { accessKeyId: accessKey, secretAccessKey: secretKey } : undefined,
 });
-
-// Prefer CI_AWS_S3_BUCKET_NAME (CI / Amplify), then AWS_S3_BUCKET_NAME, fallback to uploads bucket
-const BUCKET_NAME = process.env.CI_AWS_S3_BUCKET_NAME || process.env.AWS_S3_BUCKET_NAME || 'jvtutorcorner-uploads';
 
 export interface UploadResult {
   url: string;
@@ -32,7 +42,8 @@ export async function uploadToS3(file: File | Buffer, key: string, mimeType?: st
         Key: key,
         Body: file,
         ContentType: mimeType || 'image/jpeg',
-        ACL: 'public-read', // Make images publicly accessible
+        // ACL: 'public-read' is removed to avoid errors when S3 Block Public Access is enabled.
+        // We proxy the content via API or use Presigned URLs instead.
       },
     });
 
@@ -41,9 +52,10 @@ export async function uploadToS3(file: File | Buffer, key: string, mimeType?: st
     const url = `https://${BUCKET_NAME}.s3.${awsRegion}.amazonaws.com/${key}`;
 
     return { url, key };
-  } catch (error) {
-    console.error('S3 upload error:', error);
-    throw new Error('Failed to upload image to S3');
+  } catch (error: any) {
+    console.error('S3 upload error detailed:', error);
+    // Throw descriptive error so API route can catch it
+    throw error;
   }
 }
 
