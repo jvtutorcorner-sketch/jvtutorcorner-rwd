@@ -2,25 +2,49 @@
 
 import { useEffect, useState } from 'react';
 import { useT } from '@/components/IntlProvider';
+import { getStoredUser } from '@/lib/mockAuth';
 
 export default function ProfilePage() {
   const t = useT();
   const [user, setUser] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
 
   // 取得使用者資料
   useEffect(() => {
     const loadUser = async () => {
       try {
-        const res = await fetch('/api/user/me'); // TODO: 換成你的後端 API
+        const stored = getStoredUser();
+        if (!stored?.email) {
+          setError('未登入');
+          return;
+        }
+
+        const res = await fetch(`/api/profile?email=${encodeURIComponent(stored.email)}`);
+        if (!res.ok) {
+          throw new Error(`HTTP error! status: ${res.status}`);
+        }
         const data = await res.json();
-        setUser(data);
+        if (data.ok && data.profile) {
+          setUser(data.profile);
+        } else {
+          setError(data.message || '找不到個人資料');
+        }
       } catch (err) {
         console.error('Failed to load user:', err);
+        setError('載入失敗');
       }
     };
 
     loadUser();
   }, []);
+
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-red-600">
+        {error}
+      </div>
+    );
+  }
 
   if (!user) {
     return (
@@ -53,7 +77,7 @@ export default function ProfilePage() {
             </h2>
             <p className="text-gray-500">{user.nickname}</p>
             <p className="text-blue-600 font-medium">
-              {user.role === 'Teacher' ? t('role_teacher') : t('role_student')}
+              {user.role === 'teacher' ? t('role_teacher') : t('role_student')}
             </p>
           </div>
         </div>
@@ -64,18 +88,18 @@ export default function ProfilePage() {
             <h3 className="text-xl font-semibold mb-3">{t('basic_info')}</h3>
             <div className="space-y-2 text-gray-700">
               <p><strong>{t('email')}：</strong> {user.email}</p>
-              <p><strong>{t('gender')}：</strong> {user.gender}</p>
-              <p><strong>{t('birthday')}：</strong> {user.birthday}</p>
-              <p><strong>{t('country')}：</strong> {user.country}</p>
+              <p><strong>{t('gender')}：</strong> {user.gender || '-'}</p>
+              <p><strong>{t('birthday')}：</strong> {user.birthdate || '-'}</p>
+              <p><strong>{t('country')}：</strong> {user.country || '-'}</p>
             </div>
           </div>
 
           <div>
             <h3 className="text-xl font-semibold mb-3">{t('system_info')}</h3>
             <div className="space-y-2 text-gray-700">
-              <p><strong>{t('account_id')}：</strong> {user.accountId}</p>
-              <p><strong>{t('role')}：</strong> {user.role}</p>
-              <p><strong>{t('created_time')}：</strong> {user.createdAt}</p>
+              <p><strong>{t('account_id')}：</strong> {user.roid_id || user.id || '-'}</p>
+              <p><strong>{t('role')}：</strong> {user.role || '-'}</p>
+              <p><strong>{t('created_time')}：</strong> {user.createdAtUtc ? new Date(user.createdAtUtc).toLocaleString() : '-'}</p>
             </div>
           </div>
         </div>

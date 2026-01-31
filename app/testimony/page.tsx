@@ -78,10 +78,11 @@ export default function TestimonyPage() {
       <div className="mt-16 bg-blue-600 rounded-2xl p-10 text-center text-white">
         <h2 className="text-3xl font-bold mb-4">{t('testimony_cta_title')}</h2>
         <p className="mb-8 text-blue-100">{t('testimony_cta_description')}</p>
-        {/* Navigate to registration page */}
-        <a href="/login/register" className="bg-white text-blue-600 px-8 py-3 rounded-full font-bold hover:bg-blue-50 transition-colors inline-block">
-          {t('testimony_cta_button')}
-        </a>
+        <div className="flex justify-center">
+          <a href="/login/register" className="bg-white text-blue-600 px-8 py-3 rounded-full font-bold hover:bg-blue-50 transition-colors inline-block">
+            {t('testimony_cta_button')}
+          </a>
+        </div>
       </div>
     </div>
   );

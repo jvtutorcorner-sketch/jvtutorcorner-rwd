@@ -60,6 +60,8 @@ export default async function CourseDetailPage({ params }: { params: Promise<{ i
     mode,
     description,
     nextStartDate,
+    startDate,
+    endDate,
     totalSessions,
     seatsLeft,
     currency = 'TWD',
@@ -116,16 +118,17 @@ export default async function CourseDetailPage({ params }: { params: Promise<{ i
               <span>{language}</span>
             </div>
             <div className="info-row">
-              <span>單堂費用</span>
-              <span>
-                {currency === 'TWD' ? 'NT$ ' : ''}
-                {pricePerSession}/堂
-              </span>
-            </div>
-            <div className="info-row">
               <span>單堂時長</span>
               <span>{durationMinutes} 分鐘</span>
             </div>
+            {(startDate || endDate) && (
+              <div className="info-row">
+                <span>開課期間</span>
+                <span>
+                  {startDate || 'TBD'} ~ {endDate || 'TBD'}
+                </span>
+              </div>
+            )}
             {totalSessions && (
               <div className="info-row">
                 <span>總堂數</span>

@@ -20,6 +20,15 @@ async function readSettings() {
     return {
       teacherPage: { showContact: true, showIntro: true, showSubjects: true },
       studentPage: { showGoals: true, showPreferredSubjects: true },
+      classroom: {
+        enableWhiteboard: true,
+        enableMedia: true,
+        enablePdfUpload: true,
+        whiteboardRoles: ['admin', 'teacher'],
+        mediaRoles: ['admin', 'teacher', 'student'],
+        pdfRoles: ['admin', 'teacher'],
+        defaultWhiteboardSystem: 'canvas'
+      },
       defaultPlan: 'basic',
       siteUrl: '',
       roles: [
@@ -88,11 +97,6 @@ async function readSettings() {
           { roleId: 'teacher', roleName: 'Teacher', menuVisible: true, dropdownVisible: true, pageVisible: true },
           { roleId: 'student', roleName: 'Student', menuVisible: true, dropdownVisible: true, pageVisible: true }
         ]},
-        { id: '/students', path: '/students', label: '學生列表', permissions: [
-          { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
-          { roleId: 'teacher', roleName: 'Teacher', menuVisible: true, dropdownVisible: true, pageVisible: true },
-          { roleId: 'student', roleName: 'Student', menuVisible: false, dropdownVisible: false, pageVisible: false }
-        ]},
         { id: '/enrollments', path: '/enrollments', label: '報名記錄', permissions: [
           { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
           { roleId: 'teacher', roleName: 'Teacher', menuVisible: true, dropdownVisible: true, pageVisible: true },
@@ -123,12 +127,12 @@ async function readSettings() {
           { roleId: 'teacher', roleName: 'Teacher', menuVisible: false, dropdownVisible: false, pageVisible: false },
           { roleId: 'student', roleName: 'Student', menuVisible: false, dropdownVisible: false, pageVisible: false }
         ]},
-        { id: '/admin/students', path: '/admin/students', label: '後台：學生管理', permissions: [
+        { id: '/admin/whiteboard_canvas', path: '/admin/whiteboard_canvas', label: '後台：原生白板', permissions: [
           { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
           { roleId: 'teacher', roleName: 'Teacher', menuVisible: false, dropdownVisible: false, pageVisible: false },
           { roleId: 'student', roleName: 'Student', menuVisible: false, dropdownVisible: false, pageVisible: false }
         ]},
-        { id: '/admin/teachers', path: '/admin/teachers', label: '後台：教師管理', permissions: [
+        { id: '/admin/whiteboard_agora', path: '/admin/whiteboard_agora', label: '後台：Agora 設定', permissions: [
           { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
           { roleId: 'teacher', roleName: 'Teacher', menuVisible: false, dropdownVisible: false, pageVisible: false },
           { roleId: 'student', roleName: 'Student', menuVisible: false, dropdownVisible: false, pageVisible: false }
@@ -177,7 +181,14 @@ function convertOldSettingsToNew(oldSettings: any) {
   return {
     ...oldSettings,
     roles,
-    pageConfigs
+    pageConfigs,
+    classroom: oldSettings.classroom || {
+      enableWhiteboard: true,
+      enableMedia: true,
+      whiteboardRoles: ['admin', 'teacher'],
+      mediaRoles: ['admin', 'teacher', 'student'],
+      defaultWhiteboardSystem: 'canvas'
+    }
   };
 }
 

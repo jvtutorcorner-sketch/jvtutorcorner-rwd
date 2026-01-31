@@ -102,30 +102,7 @@ export default function HomePage() {
                   </div>
                 </>
               )
-            },
-            ...(user?.role === 'admin' ? [{
-              key: 'features',
-              title: t('platform_features'),
-              content: (
-                <>
-                  <h2 className="section-title">{t('platform_features')}</h2>
-                  <div className="feature-grid">
-                    <div className="feature-card">
-                      <h3>{t('feature_whiteboard')}</h3>
-                      <p>{t('feature_whiteboard_desc')}</p>
-                    </div>
-                    <div className="feature-card">
-                      <h3>{t('feature_multilingual')}</h3>
-                      <p>{t('feature_multilingual_desc')}</p>
-                    </div>
-                    <div className="feature-card">
-                      <h3>{t('feature_payment')}</h3>
-                      <p>{t('feature_payment_desc')}</p>
-                    </div>
-                  </div>
-                </>
-              )
-            }] : [])
+            }
           ]}
         />
       </section>

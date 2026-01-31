@@ -52,12 +52,6 @@ export const CourseCard: React.FC<CourseCardProps> = ({ course }) => {
         <br />
         {t('course_language_label')}{tt(`courses.${course.id}.language`, course.language)}
       </p>
-      <div className="card-meta">
-        <span>
-          {t('currency')} {course.pricePerSession}/{t('per_session')} · {course.durationMinutes} {t('minutes')}
-        </span>
-        <span>{course.mode === 'online' ? t('online_course') : t('offline_course')}</span>
-      </div>
       <div className="card-tags">
         {course.tags.map((tag, i) => (
           <span key={tag} className="tag">

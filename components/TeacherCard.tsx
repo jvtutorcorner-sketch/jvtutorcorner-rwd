@@ -34,10 +34,6 @@ export const TeacherCard: React.FC<TeacherCardProps> = ({ teacher }) => {
         </div>
       </div>
       <p className="card-intro">{tt(`teachers.${teacher.id}.intro`, teacher.intro)}</p>
-      <div className="card-meta">
-        <span>⭐ {teacher.rating.toFixed(1)}</span>
-        <span>{t('currency')} {teacher.hourlyRate}/{t('per_session')}</span>
-      </div>
       <div className="card-tags">
         {teacher.languages.map((lang) => (
           <span key={lang} className="tag">

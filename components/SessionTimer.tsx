@@ -32,25 +32,39 @@ export default function SessionTimer() {
 
     function tick() {
       const expiry = readExpiry();
-      if (!expiry) {
-        if (mounted) setRemaining(null);
+      const user = getStoredUser();
+
+      if (!expiry || !user) {
+        if (mounted) {
+          setRemaining(null);
+          setShowWarning(false);
+        }
         return;
       }
+
       const r = expiry - Date.now();
       if (mounted) setRemaining(r);
+
       if (r <= 0) {
         // session expired — force logout
         clearStoredUser();
         window.localStorage.removeItem(SESSION_EXPIRY_KEY);
+        if (mounted) setShowWarning(false);
         window.dispatchEvent(new Event('tutor:auth-changed'));
         alert(t('session_expired') || 'Session expired — logged out');
         router.push('/login');
         return;
       }
+
       if (r <= WARNING_MS) {
         if (!showWarning && mounted) {
           setShowWarning(true);
           if (mounted) setModalSeconds(Math.max(0, Math.ceil(r / 1000)));
+        }
+      } else {
+        // Hide warning if session was extended or just started
+        if (showWarning && mounted) {
+          setShowWarning(false);
         }
       }
     }

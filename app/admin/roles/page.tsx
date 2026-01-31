@@ -16,6 +16,9 @@ export default function AdminRolesPage() {
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [newRoleName, setNewRoleName] = useState('');
   const [newRoleDescription, setNewRoleDescription] = useState('');
+  const [editingRoleId, setEditingRoleId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState('');
+  const [editingDescription, setEditingDescription] = useState('');
 
   useEffect(() => {
     loadRoles();
@@ -96,6 +99,42 @@ export default function AdminRolesPage() {
     setRoles(prev => prev.map(r =>
       r.id === roleId ? { ...r, isActive: !r.isActive } : r
     ));
+  }
+
+  function editRole(role: Role) {
+    if (!confirm(`確定要編輯角色「${role.name}」嗎？`)) return;
+    setEditingRoleId(role.id);
+    setEditingName(role.name);
+    setEditingDescription(role.description || '');
+  }
+
+  function saveEdit() {
+    const trimmedName = editingName.trim();
+    if (!trimmedName) {
+      alert('角色名稱不能為空');
+      return;
+    }
+
+    // 檢查名稱衝突 (排除自己)
+    if (roles.some(r => r.id !== editingRoleId && r.name.toLowerCase() === trimmedName.toLowerCase())) {
+      alert('此角色名稱已被使用');
+      return;
+    }
+
+    updateRole(editingRoleId!, {
+      name: trimmedName,
+      description: editingDescription.trim()
+    });
+
+    setEditingRoleId(null);
+    setEditingName('');
+    setEditingDescription('');
+  }
+
+  function cancelEdit() {
+    setEditingRoleId(null);
+    setEditingName('');
+    setEditingDescription('');
   }
 
   function updateRole(roleId: string, updates: Partial<Role>) {
@@ -180,6 +219,7 @@ export default function AdminRolesPage() {
               <tr style={{ background: '#f8f9fa' }}>
                 <th style={{ padding: 12, borderRight: '2px solid #ddd', textAlign: 'left' }}>角色名稱</th>
                 <th style={{ padding: 12, borderRight: '2px solid #ddd', textAlign: 'left' }}>描述</th>
+                <th style={{ padding: 12, borderRight: '2px solid #ddd', textAlign: 'center', width: 80 }}>燈號</th>
                 <th style={{ padding: 12, borderRight: '2px solid #ddd', textAlign: 'center', width: 100 }}>狀態</th>
                 <th style={{ padding: 12, textAlign: 'center', width: 120 }}>操作</th>
               </tr>
@@ -192,7 +232,24 @@ export default function AdminRolesPage() {
                 }}>
                   <td style={{ padding: 12, borderRight: '1px solid #eee' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ fontWeight: 600 }}>{role.name}</span>
+                      {editingRoleId === role.id ? (
+                        <input
+                          type="text"
+                          value={editingName}
+                          onChange={(e) => setEditingName(e.target.value)}
+                          style={{
+                            padding: '6px 8px',
+                            border: '2px solid #0070f3',
+                            borderRadius: 4,
+                            fontSize: '14px',
+                            fontWeight: 600,
+                            flex: 1
+                          }}
+                          autoFocus
+                        />
+                      ) : (
+                        <span style={{ fontWeight: 600 }}>{role.name}</span>
+                      )}
                       {['admin', 'teacher', 'student'].includes(role.id) && (
                         <span style={{
                           padding: '2px 6px',
@@ -208,18 +265,46 @@ export default function AdminRolesPage() {
                     </div>
                   </td>
                   <td style={{ padding: 12, borderRight: '1px solid #eee' }}>
-                    <input
-                      value={role.description || ''}
-                      onChange={(e) => updateRole(role.id, { description: e.target.value })}
-                      placeholder="無描述"
-                      style={{
-                        width: '100%',
-                        padding: 6,
-                        border: '1px solid #ddd',
-                        borderRadius: 3,
-                        fontSize: '14px'
-                      }}
-                    />
+                    {editingRoleId === role.id ? (
+                      <input
+                        type="text"
+                        value={editingDescription}
+                        onChange={(e) => setEditingDescription(e.target.value)}
+                        placeholder="無描述"
+                        style={{
+                          width: '100%',
+                          padding: '6px 8px',
+                          border: '2px solid #0070f3',
+                          borderRadius: 4,
+                          fontSize: '14px'
+                        }}
+                      />
+                    ) : (
+                      <div style={{
+                        padding: '6px 8px',
+                        background: '#f1f5f9',
+                        borderRadius: 4,
+                        fontSize: '14px',
+                        color: role.description ? '#334155' : '#94a3b8',
+                        minHeight: '32px',
+                        display: 'flex',
+                        alignItems: 'center'
+                      }}>
+                        {role.description || '無描述'}
+                      </div>
+                    )}
+                  </td>
+                  <td style={{ padding: 12, borderRight: '1px solid #eee', textAlign: 'center' }}>
+                    <div style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: '24px',
+                      height: '24px',
+                      borderRadius: '50%',
+                      background: role.isActive ? '#28a745' : '#f8d7da',
+                      boxShadow: role.isActive ? 'inset 0 0 0 2px #20c997' : 'inset 0 0 0 2px #f5c6cb'
+                    }} title={role.isActive ? '啟用中' : '停用中'}></div>
                   </td>
                   <td style={{ padding: 12, borderRight: '1px solid #eee', textAlign: 'center' }}>
                     <button
@@ -238,22 +323,75 @@ export default function AdminRolesPage() {
                     </button>
                   </td>
                   <td style={{ padding: 12, textAlign: 'center' }}>
-                    {!['admin', 'teacher', 'student'].includes(role.id) && (
-                      <button
-                        onClick={() => deleteRole(role.id)}
-                        style={{
-                          padding: '4px 8px',
-                          background: '#dc3545',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: 3,
-                          cursor: 'pointer',
-                          fontSize: '12px'
-                        }}
-                      >
-                        刪除
-                      </button>
-                    )}
+                    <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
+                      {editingRoleId === role.id ? (
+                        <>
+                          <button
+                            onClick={saveEdit}
+                            style={{
+                              padding: '4px 8px',
+                              background: '#28a745',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: 3,
+                              cursor: 'pointer',
+                              fontSize: '12px',
+                              fontWeight: 500
+                            }}
+                          >
+                            確認
+                          </button>
+                          <button
+                            onClick={cancelEdit}
+                            style={{
+                              padding: '4px 8px',
+                              background: '#6c757d',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: 3,
+                              cursor: 'pointer',
+                              fontSize: '12px'
+                            }}
+                          >
+                            取消
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => editRole(role)}
+                            style={{
+                              padding: '4px 8px',
+                              background: '#ffc107',
+                              color: '#000',
+                              border: 'none',
+                              borderRadius: 3,
+                              cursor: 'pointer',
+                              fontSize: '12px',
+                              fontWeight: 500
+                            }}
+                          >
+                            編輯
+                          </button>
+                          {!['admin', 'teacher', 'student'].includes(role.id) && (
+                            <button
+                              onClick={() => deleteRole(role.id)}
+                              style={{
+                                padding: '4px 8px',
+                                background: '#dc3545',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: 3,
+                                cursor: 'pointer',
+                                fontSize: '12px'
+                              }}
+                            >
+                              刪除
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}

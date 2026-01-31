@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState, Fragment } from 'react';
 import { useRouter } from 'next/navigation';
 import { getStoredUser, type StoredUser } from '@/lib/mockAuth';
 import Link from 'next/link';
@@ -331,7 +331,7 @@ export default function OrdersPage() {
                       const isExpanded = expandedOrderId === o.orderId;
                       
                       return (
-                        <>
+                        <Fragment key={o.orderId || o.id}>
                           <tr>
                             <td style={{ border: '1px solid #ddd', padding: '6px' }}>{o.userId || user?.email || '-'}</td>
                             <td style={{ border: '1px solid #ddd', padding: '6px' }}>
@@ -451,7 +451,7 @@ export default function OrdersPage() {
                               </td>
                             </tr>
                           )}
-                        </>
+                        </Fragment>
                       );
                     })}
                   </tbody>

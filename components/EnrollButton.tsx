@@ -32,10 +32,12 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
   const [submissions, setSubmissions] = useState<Enrollment[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [storedUser, setStoredUserState] = useState(() => (typeof window !== 'undefined' ? getStoredUser() : null));
+  const [storedUser, setStoredUserState] = useState<any>(null);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    // Set initial user on client
+    setStoredUserState(getStoredUser());
+
     const handler = () => setStoredUserState(getStoredUser());
     window.addEventListener('tutor:auth-changed', handler);
     return () => window.removeEventListener('tutor:auth-changed', handler);
