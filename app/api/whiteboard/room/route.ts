@@ -109,9 +109,14 @@ export async function POST(req: NextRequest) {
           Key: { id: dbKey },
           ProjectionExpression: 'whiteboardUuid'
         });
-
+        console.log('[WhiteboardAPI][DDB][Get] Sending GetCommand with params:', { TableName: tableName, Key: { id: dbKey }, ProjectionExpression: 'whiteboardUuid' });
         const getResult = await docClient.send(getCmd);
-        console.log(`[WhiteboardAPI] DB Lookup Result for ${dbKey}:`, getResult.Item);
+        try {
+          console.log(`[WhiteboardAPI][DDB][Get] Result for ${dbKey}:`, JSON.stringify(getResult));
+        } catch (e) {
+          console.log('[WhiteboardAPI][DDB][Get] Result (non-serializable):', getResult);
+        }
+        console.log(`[WhiteboardAPI] DB Lookup Item for ${dbKey}:`, getResult.Item);
         
         if (getResult.Item && getResult.Item.whiteboardUuid) {
           roomUuid = getResult.Item.whiteboardUuid as string;
@@ -172,14 +177,29 @@ export async function POST(req: NextRequest) {
                 },
                 ReturnValues: "ALL_NEW" as const 
             };
-            
+            console.log('[WhiteboardAPI][DDB][Update] Sending UpdateCommand with params:', updateParams, 'isCourseRecord:', isCourseRec);
             const updateCmd = new UpdateCommand(updateParams);
 
             const updateResult = await docClient.send(updateCmd);
-            console.log(`[WhiteboardAPI] DynamoDB Write SUCCESS. Attributes:`, updateResult.Attributes);
-            
+            try {
+              console.log('[WhiteboardAPI][DDB][Update] UpdateResult:', JSON.stringify(updateResult));
+            } catch (e) {
+              console.log('[WhiteboardAPI][DDB][Update] UpdateResult (non-serializable):', updateResult);
+            }
+            // Log returned attributes if present
+            // @ts-ignore
+            if (updateResult && (updateResult as any).Attributes) {
+              // @ts-ignore
+              console.log('[WhiteboardAPI][DDB][Update] Attributes:', (updateResult as any).Attributes);
+            } else {
+              console.log('[WhiteboardAPI][DDB][Update] No Attributes returned from UpdateCommand');
+            }
+
             // Update Cache
-            if (channelName) ROOM_CACHE.set(channelName, roomUuid as string);
+            if (channelName) {
+              ROOM_CACHE.set(channelName, roomUuid as string);
+              console.log(`[WhiteboardAPI] Updated in-memory cache for channel ${channelName} => ${roomUuid}`);
+            }
 
         } catch (dbWriteError) {
             console.error('[WhiteboardAPI] CRITICAL: DynamoDB Write FAILED:', dbWriteError);
