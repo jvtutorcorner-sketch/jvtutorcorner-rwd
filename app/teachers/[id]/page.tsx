@@ -1,129 +1,54 @@
+"use client";
+
+import React from 'react';
+import { useParams } from 'next/navigation';
+import { TEACHERS } from '@/data/teachers';
+import PageBreadcrumb from '@/components/PageBreadcrumb';
+import { useT } from '@/components/IntlProvider';
 import Link from 'next/link';
-import dynamic from 'next/dynamic';
-import { redirect } from 'next/navigation';
-import { TEACHERS, type Teacher } from '@/data/teachers';
-import { promises as fs } from 'fs';
-import path from 'path';
 
-// Load client-only dashboard component
-const ClientTeacherDashboard = dynamic(() => import('@/components/TeacherDashboard'));
-
-type Props = { params: Promise<{ id: string }> };
-
-export default async function TeacherPage({ params }: Props) {
-  const { id } = await params;
-  const decodedId = id ? decodeURIComponent(id) : '';
-
-  // If no id was provided, avoid rendering an empty-detail page — redirect to the teachers list.
-  if (!decodedId) {
-    redirect('/teachers');
-  }
-
-  // Normalize incoming id/name for robust matching (trim + case-insensitive)
-  const idNorm = String(decodedId).trim().toLowerCase();
-
-  // Try find by id first; if not present try matching by name (case-insensitive, trimmed)
-  let teacher: Teacher | undefined = TEACHERS.find((t) => {
-    const tid = String(t.id || '').trim().toLowerCase();
-    const tname = String(t.name || '').trim().toLowerCase();
-    return tid === idNorm || tname === idNorm;
-  });
-
-  // Fallback: if not found in bundled data, try reading local fallback file (.local_data/teachers.json)
-  if (!teacher) {
-    try {
-      const localPath = path.resolve(process.cwd(), '.local_data/teachers.json');
-      const raw = await fs.readFile(localPath, 'utf8');
-      const arr = JSON.parse(raw) as Array<Record<string, any>>;
-      teacher = arr.find((t) => {
-        const tid = String(t.id || '').trim().toLowerCase();
-        const tname = String(t.name || '').trim().toLowerCase();
-        return tid === idNorm || tname === idNorm;
-      }) as Teacher | undefined;
-      // If found, we can continue rendering with that teacher
-    } catch (e) {
-      // ignore — file not present or parse error
-    }
-  }
+export default function TeacherDetailPage() {
+  const { id } = useParams();
+  const t = useT();
+  const teacher = TEACHERS.find(t => t.id === id);
 
   if (!teacher) {
     return (
-      <div className="page">
-        <h1>找不到老師</h1>
-        <p>抱歉，我們找不到該位老師（ID: {decodedId || '<空>'}）。</p>
-        <p className="muted">請確認網址是否正確，或從下方師資列表選擇老師：</p>
-
-        <div style={{ display: 'grid', gap: 12, marginTop: 12 }}>
-          {TEACHERS.map((t) => (
-            <Link key={t.id} href={`/teachers/${encodeURIComponent(String(t.id))}`} className="card card-link">
-              <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                <img src={t.avatarUrl} alt={t.name} style={{ width: 64, height: 64, borderRadius: 6, objectFit: 'cover' }} />
-                <div>
-                  <strong>{t.name}</strong>
-                  <div className="muted">{t.subjects.join(' · ')} ｜ NT$ {t.hourlyRate}/時</div>
-                </div>
-              </div>
-            </Link>
-          ))}
-        </div>
-
-        <div style={{ marginTop: 16 }}>
-          <Link href="/teachers">回到完整師資列表</Link>
-        </div>
+      <div style={{ padding: 48, textAlign: 'center' }}>
+        <h2>找不到該老師</h2>
+        <Link href="/teachers">回到列表</Link>
       </div>
     );
   }
 
   return (
-    <div className="page">
-      <header className="page-header">
-        <h1>{teacher.name}</h1>
-        <p className="muted">{teacher.subjects.join(' · ')} ｜ {teacher.location}</p>
-      </header>
-
-      <section className="section">
-        <div className="card" style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-          <img src={teacher.avatarUrl} alt={teacher.name} style={{ width: 160, height: 160, borderRadius: 8, objectFit: 'cover' }} />
-
-          <div style={{ flex: 1 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <h2 style={{ margin: 0 }}>{teacher.name}</h2>
-                <div className="muted">⭐ {teacher.rating.toFixed(1)} • NT$ {teacher.hourlyRate}/時</div>
-              </div>
-              <div>
-                <Link
-                  href={
-                    teacher.id
-                      ? `/teachers/${encodeURIComponent(String(teacher.id))}/book`
-                      : `/teachers?teacher=${encodeURIComponent(String(teacher.name))}`
-                  }
-                  className="card-button primary"
-                >預約此老師</Link>
-              </div>
-            </div>
-
-            <div style={{ marginTop: 12 }}>
-              <h3>自我介紹</h3>
-              <p>{teacher.intro}</p>
-
-              <h4>授課科目</h4>
-              <p>{teacher.subjects.join('、')}</p>
-
-              <h4>語言</h4>
-              <p>{teacher.languages.join('、')}</p>
-            </div>
+    <main style={{ padding: '24px', maxWidth: '1000px', margin: '0 auto' }}>
+      <PageBreadcrumb />
+      
+      <div style={{ display: 'flex', gap: '32px', marginTop: '24px', flexWrap: 'wrap' }}>
+        <img 
+          src={teacher.avatarUrl} 
+          alt={teacher.name} 
+          style={{ width: '200px', height: '200px', borderRadius: '50%', objectFit: 'cover' }}
+        />
+        <div style={{ flex: 1 }}>
+          <h1>{teacher.name}</h1>
+          <p style={{ fontSize: '1.2rem', color: '#666' }}>{teacher.subjects.join(' · ')}</p>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', margin: '16px 0' }}>
+            {teacher.languages.map(lang => (
+              <span key={lang} style={{ background: '#f3f4f6', padding: '4px 12px', borderRadius: '16px', fontSize: '14px' }}>
+                {lang}
+              </span>
+            ))}
           </div>
         </div>
-      </section>
+      </div>
 
-      {/* Teacher dashboard (client) — handles permission checks itself using teacherId */}
-      <section className="section">
-        {/* Dynamically load client-only dashboard */}
-        {/* eslint-disable-next-line @next/next/no-ssr-import-in-children */}
-        <ClientTeacherDashboard teacherId={teacher.id} teacherName={teacher.name} />
-      </section>
+      <div style={{ marginTop: '40px', padding: '24px', background: '#f9fafb', borderRadius: '12px' }}>
+        <h3 style={{ fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '16px' }}>關於老師</h3>
+        <p style={{ lineHeight: '1.6', whiteSpace: 'pre-line' }}>{teacher.intro}</p>
+      </div>
 
-    </div>
+    </main>
   );
 }
