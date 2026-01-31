@@ -7,7 +7,19 @@ type PageConfig = { id: string; path: string; label?: string; permissions: PageP
 type Role = { id: string; name: string; description?: string; isActive: boolean };
 type Settings = { pageConfigs: PageConfig[] } & Record<string, any>;
 
-export default function PageSettings({ settings, setSettings, roles }: { settings: any | null; setSettings: React.Dispatch<React.SetStateAction<any | null>>; roles: any[] }) {
+export default function PageSettings({ 
+  settings, 
+  setSettings, 
+  roles,
+  pathFilter,
+  allowAddRemove = true
+}: { 
+  settings: any | null; 
+  setSettings: React.Dispatch<React.SetStateAction<any | null>>; 
+  roles: any[];
+  pathFilter?: (path: string) => boolean;
+  allowAddRemove?: boolean;
+}) {
   const [newPath, setNewPath] = useState('');
   const [newLabel, setNewLabel] = useState('');
   const [editingPath, setEditingPath] = useState<string | null>(null);
@@ -75,15 +87,17 @@ export default function PageSettings({ settings, setSettings, roles }: { setting
 
   return (
     <div style={{ padding: 16 }}>
-      <h2>管理 Pages（僅新增 / 刪除）</h2>
-      <div style={{ marginTop: 12, marginBottom: 16, padding: 8, background: '#f8f9fa', border: '1px solid #ddd' }}>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <input placeholder="/example-path" value={newPath} onChange={(e) => setNewPath(e.target.value)} style={{ padding: 6, minWidth: 180 }} />
-          <input placeholder="Label" value={newLabel} onChange={(e) => setNewLabel(e.target.value)} style={{ padding: 6, minWidth: 140 }} />
-          <button onClick={addPage}>新增 Page</button>
-          <span style={{ marginLeft: 12, color: '#666' }}>使用上方「儲存設定」按鈕儲存變更。</span>
+      <h2>管理 Pages{allowAddRemove ? '（僅新增 / 刪除）' : ''}</h2>
+      {allowAddRemove && (
+        <div style={{ marginTop: 12, marginBottom: 16, padding: 8, background: '#f8f9fa', border: '1px solid #ddd' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input placeholder="/example-path" value={newPath} onChange={(e) => setNewPath(e.target.value)} style={{ padding: 6, minWidth: 180 }} />
+            <input placeholder="Label" value={newLabel} onChange={(e) => setNewLabel(e.target.value)} style={{ padding: 6, minWidth: 140 }} />
+            <button onClick={addPage}>新增 Page</button>
+            <span style={{ marginLeft: 12, color: '#666' }}>使用上方「儲存設定」按鈕儲存變更。</span>
+          </div>
         </div>
-      </div>
+      )}
 
       <div style={{ marginTop: 8 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', border: '2px solid #ccc' }}>
@@ -92,11 +106,13 @@ export default function PageSettings({ settings, setSettings, roles }: { setting
               <th style={{ textAlign: 'left', padding: 8, border: '2px solid #ccc' }}>Label</th>
               <th style={{ textAlign: 'left', padding: 8, border: '2px solid #ccc' }}>Path</th>
               <th style={{ padding: 8, border: '2px solid #ccc' }}>檢查連結</th>
-              <th style={{ padding: 8, border: '2px solid #ccc' }}>操作</th>
+              {allowAddRemove && <th style={{ padding: 8, border: '2px solid #ccc' }}>操作</th>}
             </tr>
           </thead>
           <tbody>
-            {settings.pageConfigs.map((p: PageConfig) => (
+            {settings.pageConfigs
+              .filter((p: PageConfig) => pathFilter ? pathFilter(p.path) : true)
+              .map((p: PageConfig) => (
               <tr key={p.path}>
                 <td style={{ padding: 8, border: '2px solid #ccc' }}>
                   {editingPath === p.path ? (
@@ -111,19 +127,21 @@ export default function PageSettings({ settings, setSettings, roles }: { setting
                     <button onClick={() => checkLink(p.path)} disabled={checkingPath === p.path}>{checkingPath === p.path ? '檢查中…' : '檢查連結'}</button>
                   </div>
                 </td>
-                <td style={{ padding: 8, textAlign: 'center', border: '2px solid #ccc' }}>
-                  {editingPath === p.path ? (
-                    <>
-                      <button onClick={() => saveEdit(p.path)} style={{ marginRight: 8 }}>儲存標籤</button>
-                      <button onClick={cancelEdit}>取消</button>
-                    </>
-                  ) : (
-                    <>
-                      <button onClick={() => startEdit(p)} style={{ marginRight: 8 }}>編輯</button>
-                      <button onClick={() => removePage(p.path)} style={{ color: 'crimson' }}>刪除</button>
-                    </>
-                  )}
-                </td>
+                {allowAddRemove && (
+                  <td style={{ padding: 8, textAlign: 'center', border: '2px solid #ccc' }}>
+                    {editingPath === p.path ? (
+                      <>
+                        <button onClick={() => saveEdit(p.path)} style={{ marginRight: 8 }}>儲存標籤</button>
+                        <button onClick={cancelEdit}>取消</button>
+                      </>
+                    ) : (
+                      <>
+                        <button onClick={() => startEdit(p)} style={{ marginRight: 8 }}>編輯</button>
+                        <button onClick={() => removePage(p.path)} style={{ color: 'crimson' }}>刪除</button>
+                      </>
+                    )}
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>

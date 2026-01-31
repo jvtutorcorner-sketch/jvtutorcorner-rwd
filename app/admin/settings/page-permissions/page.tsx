@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import PageSettings from '../components/PageSettings';
 import MenuSettings from '../components/MenuSettings';
 import DropdownSettings from '../components/DropdownSettings';
+import PageAccessSettings from '../components/PageAccessSettings';
 
 type PagePermission = { roleId: string; roleName: string; menuVisible?: boolean; dropdownVisible?: boolean; pageVisible: boolean };
 type PageConfig = { id: string; path: string; label?: string; permissions: PagePermission[] };
@@ -37,6 +38,11 @@ export default function PagePermissionsPage() {
       <section style={{ marginTop: 12 }}>
         <h2>Page 基本設定</h2>
         <PageSettings settings={settings} setSettings={setSettings} roles={roles} />
+      </section>
+
+      <section style={{ marginTop: 24 }}>
+        <h2>各頁面存取權限設定 (Page Access)</h2>
+        <PageAccessSettings settings={settings} roles={roles} />
       </section>
 
       <section style={{ marginTop: 24 }}>

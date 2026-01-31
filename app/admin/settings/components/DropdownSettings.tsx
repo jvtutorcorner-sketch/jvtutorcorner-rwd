@@ -7,13 +7,29 @@ type PageConfig = { id: string; path: string; label?: string; permissions: PageP
 type Role = { id: string; name: string; description?: string; isActive: boolean };
 type Settings = { pageConfigs: PageConfig[] } & Record<string, any>;
 
-export default function DropdownSettings() {
-  const [settings, setSettings] = useState<Settings | null>(null);
-  const [roles, setRoles] = useState<Role[]>([]);
+export default function DropdownSettings({ 
+  settings: propsSettings, 
+  roles: propsRoles, 
+  pathFilter 
+}: { 
+  settings?: any; 
+  roles?: any[];
+  pathFilter?: (path: string) => boolean;
+} = {}) {
+  const [internalSettings, setInternalSettings] = useState<Settings | null>(null);
+  const [internalRoles, setInternalRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    if (propsSettings && propsRoles) {
+      setInternalSettings(propsSettings);
+      setInternalRoles(propsRoles);
+      setLoading(false);
+    } else {
+      load();
+    }
+  }, [propsSettings, propsRoles]);
 
   async function load() {
     try {
@@ -21,18 +37,18 @@ export default function DropdownSettings() {
       const rs = await s.json();
       const r = await fetch('/api/admin/roles');
       const rr = await r.json();
-      if (s.ok) setSettings(rs.settings || rs);
-      if (r.ok) setRoles(rr.roles || rr);
+      if (s.ok) setInternalSettings(rs.settings || rs);
+      if (r.ok) setInternalRoles(rr.roles || rr);
     } catch (err) {
       console.error(err);
     } finally { setLoading(false); }
   }
 
   async function save() {
-    if (!settings) return;
+    if (!internalSettings) return;
     setSaving(true);
     try {
-      const res = await fetch('/api/admin/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(settings) });
+      const res = await fetch('/api/admin/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(internalSettings) });
       if (res.ok) {
         // notify other parts of the app (Header) to reload admin settings
         if (typeof window !== 'undefined') window.dispatchEvent(new Event('tutor:admin-settings-changed'));
@@ -43,9 +59,9 @@ export default function DropdownSettings() {
     } finally { setSaving(false); }
   }
 
-  if (loading || !settings) return <div style={{ padding: 16 }}>Loading Dropdown settings…</div>;
+  if (loading || !internalSettings) return <div style={{ padding: 16 }}>Loading Dropdown settings…</div>;
 
-  const pages = settings.pageConfigs || [];
+  const pages = internalSettings.pageConfigs || [];
 
   return (
     <div style={{ padding: 16 }}>
@@ -55,14 +71,16 @@ export default function DropdownSettings() {
           <thead>
             <tr style={{ background: '#f7f7f7' }}>
               <th style={{ padding: 8 }}>頁面</th>
-              {roles.filter(r => r.isActive).map(r => <th key={r.id} style={{ padding: 8 }}>{r.name}</th>)}
+              {internalRoles.filter(r => r.isActive).map(r => <th key={r.id} style={{ padding: 8 }}>{r.name}</th>)}
             </tr>
           </thead>
           <tbody>
-            {pages.map(p => (
+            {pages
+              .filter(p => pathFilter ? pathFilter(p.path) : true)
+              .map(p => (
               <tr key={p.path}>
                 <td style={{ padding: 8 }}>{p.label || p.path}</td>
-                {roles.filter(r => r.isActive).map(role => {
+                {internalRoles.filter(r => r.isActive).map(role => {
                   const perm = p.permissions.find((pp: PagePermission) => pp.roleId === role.id);
                   return (
                     <td key={role.id} style={{ padding: 8, textAlign: 'center' }}>
@@ -70,7 +88,7 @@ export default function DropdownSettings() {
                         type="checkbox"
                         checked={!!perm?.dropdownVisible}
                         onChange={(e) => {
-                          setSettings(prev => {
+                          setInternalSettings(prev => {
                             if (!prev) return prev;
                             const updated = prev.pageConfigs.map((pc: PageConfig) => {
                               if (pc.path !== p.path) return pc;
