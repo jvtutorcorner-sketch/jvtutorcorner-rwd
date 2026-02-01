@@ -18,7 +18,7 @@ async function loadLocalCarouselImages() {
       const raw = fs.readFileSync(CAROUSEL_FILE, 'utf8');
       LOCAL_CAROUSEL_IMAGES = JSON.parse(raw || '[]');
     } else {
-      console.log('[carousel API] local file not found, will use hardcoded defaults');
+      console.log('[carousel API] local file not found, will use S3-based defaults');
     }
   } catch (e) {
     console.warn('[carousel API] failed to load local carousel images', (e as any)?.message || e);
@@ -44,44 +44,27 @@ if (!useDynamo) {
 export async function GET() {
   try {
     if (!useDynamo) {
-      // Use local storage in development
+      // Use local storage in development - only return S3-stored images
       let images = [...LOCAL_CAROUSEL_IMAGES];
-      
-      // Fallback for production/Amplify if local file is missing or empty
-      if (images.length === 0) {
-        images = [
-          {
-            id: 'default-1',
-            url: 'https://lh3.googleusercontent.com/d/1ITTpGZ3vq2d9uoMR7ba9lMXX0t7BtvbN',
-            alt: 'Carousel Image 1',
-            order: 0,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          },
-          {
-            id: 'default-2',
-            url: 'https://lh3.googleusercontent.com/d/1LVpLJm_V_PWnBLMV4VaJUosgi366da6S',
-            alt: 'Carousel Image 2',
-            order: 1,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          },
-          {
-            id: 'default-3',
-            url: 'https://lh3.googleusercontent.com/d/1N04ltODJrGMsucgz74yo-dy7cOKtnHAa',
-            alt: 'Carousel Image 3',
-            order: 2,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          }
-        ];
-      }
-      
+
+      // Filter out any non-S3 URLs (shouldn't happen with new implementation)
+      images = images.filter(img => img.url && (
+        img.url.includes('s3.') ||
+        img.url.includes('amazonaws.com') ||
+        img.url.startsWith('data:') // Allow base64 for development
+      ));
+
       return NextResponse.json(images.sort((a, b) => a.order - b.order));
     }
 
     const images = await getCarouselImages();
-    return NextResponse.json(images);
+    // Filter to ensure only S3 URLs are returned
+    const s3Images = images.filter(img => img.url && (
+      img.url.includes('s3.') ||
+      img.url.includes('amazonaws.com')
+    ));
+
+    return NextResponse.json(s3Images);
   } catch (error) {
     console.error('Error fetching carousel images:', error);
     return NextResponse.json({ error: 'Failed to fetch images' }, { status: 500 });
@@ -89,15 +72,21 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  console.log('[Carousel API] POST request received');
+
   try {
     const body = await request.json();
     const { url, alt, order } = body;
 
+    console.log('[Carousel API] Request body:', { url: url?.substring(0, 100), alt, order });
+
     if (!url || !alt) {
+      console.error('[Carousel API] Missing required fields:', { hasUrl: !!url, hasAlt: !!alt });
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
     if (!useDynamo) {
+      console.log('[Carousel API] Using local storage mode');
       // Use local storage in development
       const id = `carousel-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       const now = new Date().toISOString();
@@ -112,18 +101,28 @@ export async function POST(request: NextRequest) {
       };
 
       LOCAL_CAROUSEL_IMAGES.push(newImage);
-      saveLocalCarouselImages().catch(() => {});
+      console.log('[Carousel API] Image added to local storage:', newImage);
+      saveLocalCarouselImages().catch((error) => {
+        console.error('[Carousel API] Failed to save to local file:', error);
+      });
       return NextResponse.json(newImage);
     }
 
+    console.log('[Carousel API] Using DynamoDB mode, calling addCarouselImage...');
     const image = await addCarouselImage({ url, alt, order: order || 0 });
     if (!image) {
+      console.error('[Carousel API] addCarouselImage returned null');
       return NextResponse.json({ error: 'Failed to add image' }, { status: 500 });
     }
 
+    console.log('[Carousel API] Image successfully added to DynamoDB:', image);
     return NextResponse.json(image);
   } catch (error) {
-    console.error('Error adding carousel image:', error);
+    console.error('[Carousel API] Error adding carousel image:', {
+      error: error instanceof Error ? error.message : error,
+      stack: error instanceof Error ? error.stack : undefined,
+      name: error instanceof Error ? error.name : undefined
+    });
     return NextResponse.json({ error: 'Failed to add image' }, { status: 500 });
   }
 }

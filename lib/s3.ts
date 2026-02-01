@@ -34,6 +34,16 @@ export interface UploadResult {
  * Upload a file to S3
  */
 export async function uploadToS3(file: File | Buffer, key: string, mimeType?: string): Promise<UploadResult> {
+  console.log('[S3 Upload] Starting upload:', {
+    bucket: BUCKET_NAME,
+    key: key,
+    region: awsRegion,
+    mimeType: mimeType || 'image/jpeg',
+    fileSize: file instanceof Buffer ? file.length : (file as File).size,
+    fileType: file instanceof Buffer ? 'Buffer' : 'File',
+    hasCredentials: !!(process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID)
+  });
+
   try {
     const upload = new Upload({
       client: s3Client,
@@ -47,13 +57,42 @@ export async function uploadToS3(file: File | Buffer, key: string, mimeType?: st
       },
     });
 
-    await upload.done();
+    console.log('[S3 Upload] Upload instance created, starting upload...');
+    const result = await upload.done();
+    console.log('[S3 Upload] Upload completed successfully:', {
+      location: result.Location,
+      etag: result.ETag,
+      bucket: result.Bucket,
+      key: result.Key
+    });
 
     const url = `https://${BUCKET_NAME}.s3.${awsRegion}.amazonaws.com/${key}`;
+    console.log('[S3 Upload] Generated URL:', url);
 
     return { url, key };
   } catch (error: any) {
-    console.error('S3 upload error detailed:', error);
+    console.error('[S3 Upload] Upload failed with detailed error:', {
+      error: error.message || error,
+      code: error.code,
+      statusCode: error.statusCode,
+      name: error.name,
+      stack: error.stack,
+      requestId: error.requestId,
+      region: awsRegion,
+      bucket: BUCKET_NAME,
+      key: key,
+      credentials: {
+        hasAccessKey: !!process.env.AWS_ACCESS_KEY_ID,
+        hasSecretKey: !!process.env.AWS_SECRET_ACCESS_KEY,
+        hasCiAccessKey: !!process.env.CI_AWS_ACCESS_KEY_ID,
+        hasCiSecretKey: !!process.env.CI_AWS_SECRET_ACCESS_KEY
+      },
+      bucketEnv: {
+        AWS_S3_BUCKET_NAME: process.env.AWS_S3_BUCKET_NAME,
+        CI_AWS_S3_BUCKET_NAME: process.env.CI_AWS_S3_BUCKET_NAME
+      }
+    });
+
     // Throw descriptive error so API route can catch it
     throw error;
   }
@@ -115,8 +154,8 @@ export function getS3KeyFromUrl(url: string): string | null {
   try {
     const urlObj = new URL(url);
     const pathParts = urlObj.pathname.split('/');
-    // Remove empty first part and 'carousel' folder
-    return pathParts.slice(2).join('/');
+    // Remove empty first part, keep the full path including carousel/ folder
+    return pathParts.slice(1).join('/');
   } catch {
     return null;
   }

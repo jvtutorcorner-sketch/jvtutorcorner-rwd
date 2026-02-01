@@ -35,6 +35,11 @@ export async function getCarouselImages(): Promise<CarouselImage[]> {
 }
 
 export async function addCarouselImage(image: Omit<CarouselImage, 'id' | 'createdAt' | 'updatedAt'>): Promise<CarouselImage | null> {
+  console.log('[Carousel DB] Adding image to DynamoDB:', {
+    tableName: TABLE_NAME,
+    imageData: { ...image, url: image.url?.substring(0, 100) + '...' }
+  });
+
   try {
     const id = `carousel-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const now = new Date().toISOString();
@@ -46,15 +51,34 @@ export async function addCarouselImage(image: Omit<CarouselImage, 'id' | 'create
       updatedAt: now,
     };
 
+    console.log('[Carousel DB] Created new image object:', {
+      id: newImage.id,
+      url: newImage.url?.substring(0, 100) + '...',
+      alt: newImage.alt,
+      order: newImage.order
+    });
+
     const command = new PutCommand({
       TableName: TABLE_NAME,
       Item: newImage,
     });
 
+    console.log('[Carousel DB] Executing PutCommand...');
     await docClient.send(command);
+    console.log('[Carousel DB] Successfully added image to DynamoDB');
+
     return newImage;
-  } catch (error) {
-    console.error('Error adding carousel image:', error);
+  } catch (error: any) {
+    console.error('[Carousel DB] Error adding carousel image:', {
+      error: error.message || error,
+      code: error.code,
+      statusCode: error.statusCode,
+      name: error.name,
+      tableName: TABLE_NAME,
+      region: process.env.AWS_REGION,
+      hasCredentials: !!(process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID),
+      imageData: { ...image, url: image.url?.substring(0, 50) + '...' }
+    });
     return null;
   }
 }

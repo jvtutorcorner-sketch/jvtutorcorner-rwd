@@ -111,16 +111,32 @@ export default function AdminCarouselPage() {
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (!file) return;
+    if (!file) {
+      console.log('[Carousel Upload] No file selected');
+      return;
+    }
+
+    console.log('[Carousel Upload] File selected:', {
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      lastModified: new Date(file.lastModified).toISOString()
+    });
 
     // 檢查文件類型
     if (!file.type.startsWith('image/')) {
+      console.warn('[Carousel Upload] Invalid file type:', file.type);
       setMessage('請選擇圖片文件');
       return;
     }
 
     // 檢查文件大小 (20MB 限制)
     if (file.size > 20 * 1024 * 1024) {
+      console.warn('[Carousel Upload] File too large:', {
+        size: file.size,
+        maxSize: 20 * 1024 * 1024,
+        sizeInMB: (file.size / (1024 * 1024)).toFixed(2)
+      });
       setMessage('圖片大小不能超過 20MB');
       return;
     }
@@ -129,25 +145,82 @@ export default function AdminCarouselPage() {
     setMessage(null);
 
     try {
+      console.log('[Carousel Upload] Starting upload process...');
+
       // 使用 FormData 上傳到 S3
       const formData = new FormData();
       formData.append('file', file);
       formData.append('alt', file.name);
 
-      const uploadResponse = await fetch('/api/carousel/upload', {
+      console.log('[Carousel Upload] FormData prepared:', {
+        fileName: file.name,
+        fileSize: file.size,
+        hasFile: formData.has('file'),
+        hasAlt: formData.has('alt')
+      });
+
+      const uploadUrl = '/api/carousel/upload';
+      console.log('[Carousel Upload] Making request to:', uploadUrl);
+
+      const uploadResponse = await fetch(uploadUrl, {
         method: 'POST',
         body: formData,
       });
 
+      console.log('[Carousel Upload] Upload response received:', {
+        status: uploadResponse.status,
+        statusText: uploadResponse.statusText,
+        ok: uploadResponse.ok,
+        headers: Object.fromEntries(uploadResponse.headers.entries())
+      });
+
       if (!uploadResponse.ok) {
-        const error = await uploadResponse.json();
-        throw new Error(error.error || '上傳失敗');
+        let errorMessage = '上傳失敗';
+        let errorDetails = {};
+
+        try {
+          const errorData = await uploadResponse.json();
+          errorMessage = errorData.error || errorMessage;
+          errorDetails = errorData;
+          console.error('[Carousel Upload] Server error response:', errorData);
+        } catch (parseError) {
+          console.error('[Carousel Upload] Failed to parse error response:', parseError);
+          // Try to get text response
+          try {
+            const textResponse = await uploadResponse.text();
+            console.error('[Carousel Upload] Raw error response:', textResponse);
+            errorDetails = { rawResponse: textResponse };
+          } catch (textError) {
+            console.error('[Carousel Upload] Could not read error response');
+          }
+        }
+
+        console.error('[Carousel Upload] Upload failed:', {
+          status: uploadResponse.status,
+          statusText: uploadResponse.statusText,
+          errorMessage,
+          errorDetails,
+          requestInfo: {
+            url: uploadUrl,
+            method: 'POST',
+            fileInfo: {
+              name: file.name,
+              size: file.size,
+              type: file.type
+            }
+          }
+        });
+
+        throw new Error(errorMessage);
       }
 
+      console.log('[Carousel Upload] Upload successful, parsing response...');
       const uploadResult = await uploadResponse.json();
+      console.log('[Carousel Upload] Upload result:', uploadResult);
 
       // 將上傳結果保存到 carousel
-      const response = await fetch('/api/carousel', {
+      console.log('[Carousel Upload] Saving to carousel database...');
+      const saveResponse = await fetch('/api/carousel', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -159,17 +232,47 @@ export default function AdminCarouselPage() {
         }),
       });
 
-      if (response.ok) {
-        const newImage = await response.json();
+      console.log('[Carousel Upload] Save response:', {
+        status: saveResponse.status,
+        statusText: saveResponse.statusText,
+        ok: saveResponse.ok
+      });
+
+      if (saveResponse.ok) {
+        const newImage = await saveResponse.json();
+        console.log('[Carousel Upload] Successfully saved to database:', newImage);
         setImages(prev => [...prev, newImage]);
         setMessage('圖片上傳成功！');
         // 清空文件輸入
         event.target.value = '';
       } else {
-        throw new Error('保存圖片信息失敗');
+        let saveErrorMessage = '保存圖片信息失敗';
+        try {
+          const saveErrorData = await saveResponse.json();
+          saveErrorMessage = saveErrorData.error || saveErrorMessage;
+          console.error('[Carousel Upload] Database save error:', saveErrorData);
+        } catch (saveParseError) {
+          console.error('[Carousel Upload] Failed to parse save error response:', saveParseError);
+        }
+
+        console.error('[Carousel Upload] Save to database failed:', {
+          status: saveResponse.status,
+          statusText: saveResponse.statusText,
+          errorMessage: saveErrorMessage
+        });
+
+        throw new Error(saveErrorMessage);
       }
     } catch (error) {
-      console.error('Upload error:', error);
+      console.error('[Carousel Upload] Upload process failed:', {
+        error: error instanceof Error ? error.message : error,
+        stack: error instanceof Error ? error.stack : undefined,
+        fileInfo: {
+          name: file.name,
+          size: file.size,
+          type: file.type
+        }
+      });
       setMessage(`上傳失敗: ${error instanceof Error ? error.message : '未知錯誤'}`);
     } finally {
       setUploading(false);
@@ -277,14 +380,59 @@ export default function AdminCarouselPage() {
           </ul>
         </div>
 
-        <input
-          type="file"
-          accept="image/*"
-          onChange={handleFileUpload}
-          disabled={uploading}
-          style={{ marginBottom: 8 }}
-        />
-        {uploading && <p>上傳中...</p>}
+        <div style={{ marginBottom: 16 }}>
+          <label style={{
+            display: 'inline-block',
+            padding: '12px 24px',
+            backgroundColor: '#007bff',
+            color: 'white',
+            borderRadius: '6px',
+            cursor: uploading ? 'not-allowed' : 'pointer',
+            fontWeight: 'bold',
+            fontSize: '14px',
+            border: 'none',
+            transition: 'all 0.3s ease',
+            opacity: uploading ? 0.6 : 1
+          }}
+          onMouseOver={(e) => {
+            if (!uploading) {
+              e.currentTarget.style.backgroundColor = '#0056b3';
+            }
+          }}
+          onMouseOut={(e) => {
+            if (!uploading) {
+              e.currentTarget.style.backgroundColor = '#007bff';
+            }
+          }}
+          >
+            選擇檔案
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleFileUpload}
+              disabled={uploading}
+              style={{
+                position: 'absolute',
+                opacity: 0,
+                width: 0,
+                height: 0,
+                overflow: 'hidden'
+              }}
+            />
+          </label>
+          <div style={{
+            marginTop: 8,
+            padding: '8px 12px',
+            backgroundColor: '#f8f9fa',
+            border: '1px solid #dee2e6',
+            borderRadius: '4px',
+            fontSize: '14px',
+            color: '#6c757d',
+            minHeight: '20px'
+          }}>
+            {uploading ? '上傳中...' : '未選擇任何檔案'}
+          </div>
+        </div>
       </div>
 
       {message && (
