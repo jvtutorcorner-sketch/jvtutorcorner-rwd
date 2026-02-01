@@ -50,7 +50,7 @@ export const Carousel: React.FC<CarouselProps> = ({
                 transition: 'opacity 0.5s ease-in-out'
               }}
               priority={index === 0}
-              unoptimized={slides[index].includes('googleusercontent.com') || slides[index].includes('drive.google.com')}
+              unoptimized={slides[index].includes('googleusercontent.com') || slides[index].includes('drive.google.com') || slides[index].includes('s3.') || slides[index].includes('amazonaws.com')}
               onLoad={() => setLoadedImages(prev => ({ ...prev, [index]: true }))}
             />
           </>

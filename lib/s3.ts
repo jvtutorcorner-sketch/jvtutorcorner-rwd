@@ -98,6 +98,28 @@ export async function uploadToS3(file: File | Buffer, key: string, mimeType?: st
   }
 }
 
+/**
+ * Generate a presigned PUT URL for direct client upload to S3.
+ * Returns { url, key, publicUrl }
+ */
+export async function getPresignedPutUrl(key: string, mimeType: string = 'image/jpeg', expiresIn = 900) {
+  if (!BUCKET_NAME) {
+    throw new Error('S3 bucket is not configured (AWS_S3_BUCKET_NAME)');
+  }
+
+  const command = new PutObjectCommand({
+    Bucket: BUCKET_NAME,
+    Key: key,
+    ContentType: mimeType,
+  });
+
+  const url = await getSignedUrl(s3Client, command, { expiresIn });
+
+  const publicUrl = `https://${BUCKET_NAME}.s3.${awsRegion}.amazonaws.com/${key}`;
+
+  return { url, key, publicUrl };
+}
+
 // Read S3 object into a Buffer
 export async function getObjectBuffer(key: string): Promise<Buffer> {
   try {
