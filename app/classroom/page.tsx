@@ -1,8 +1,8 @@
-// Classroom top-level route disabled — return 404 to remove /classroom
-import { notFound } from 'next/navigation';
+// Classroom top-level route: redirect to /classroom/test
+import { redirect } from 'next/navigation';
 
 export default function Page() {
-  notFound();
+  redirect('/classroom/test');
 }
 
 export const dynamic = 'force-dynamic';

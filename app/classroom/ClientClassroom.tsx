@@ -189,6 +189,24 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     userId: '[REDACTED]' 
   });
 
+  // Helper: read-only API call to fetch existing whiteboard uuid for a course or channel
+  async function fetchExistingWhiteboardUuid(courseId?: string, channelName?: string) {
+    try {
+      const body = { courseId, channelName };
+      const res = await fetch('/api/whiteboard/uuid', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      if (!res.ok) return null;
+      const j = await res.json();
+      return j; // {found: true, uuid: '...'} or {found: false}
+    } catch (e) {
+      console.warn('[ClientClassroom] fetchExistingWhiteboardUuid failed:', e);
+      return null;
+    }
+  }
+
   // Initialize Agora Whiteboard Room (if feature flag enabled)
   useEffect(() => {
     // Selection of logs to avoid spam
@@ -206,27 +224,31 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
         const isTeacher = computedRole === 'teacher';
         
         if (isTeacher) {
-          // === TEACHER: First lookup existing room, create only if not found ===
-          console.log('[ClientClassroom] Teacher: Looking up existing whiteboard room...');
-          const lookupBody = { userId, channelName: sessionReadyKey, courseId, lookupOnly: true };
-          
+          // === TEACHER: First lookup existing room via read-only endpoint, create only if not found ===
+          console.log('[ClientClassroom] Teacher: Looking up existing whiteboard room (read-only)...');
           let teacherRoomData: any = null;
-          
+
           try {
-            const lookupRes = await fetch('/api/whiteboard/room', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(lookupBody)
-            });
-            
-            if (lookupRes.ok) {
-              const lookupJson = await lookupRes.json();
-              if (lookupJson.uuid) {
-                console.log('[ClientClassroom] Teacher found existing room via lookup');
-                teacherRoomData = lookupJson;
-              } else if (lookupJson.found === false) {
-                console.log('[ClientClassroom] Teacher: No existing room, will create new one');
+            const lookupJson = await fetchExistingWhiteboardUuid(courseId, sessionReadyKey);
+            if (lookupJson?.uuid) {
+              console.log('[ClientClassroom] Teacher found existing room uuid via read-only API');
+              // Request full room credentials (roomToken, etc.) using the canonical uuid
+              try {
+                const tokenRes = await fetch('/api/whiteboard/room', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ userId, channelName: sessionReadyKey, courseId, roomUuid: lookupJson.uuid })
+                });
+                if (tokenRes.ok) {
+                  teacherRoomData = await tokenRes.json();
+                } else {
+                  console.warn('[ClientClassroom] Teacher: failed to fetch room credentials for existing uuid');
+                }
+              } catch (e) {
+                console.warn('[ClientClassroom] Teacher token fetch failed:', e);
               }
+            } else if (lookupJson && lookupJson.found === false) {
+              console.log('[ClientClassroom] Teacher: No existing room, will create new one');
             }
           } catch (e) {
             console.warn('[ClientClassroom] Teacher lookup failed, will try to create:', e);
@@ -310,28 +332,33 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           } else {
               // Fallback: poll for existing room with lookup-only to avoid creating duplicate
               console.log('[ClientClassroom] Student fallback: polling for existing room via lookupOnly...');
-              const lookupBody = { userId, channelName: sessionReadyKey, courseId, lookupOnly: true };
               let found = false;
               let lookupData: any = null;
-              
-              // Try multiple times to allow teacher's write to propagate
+
+              // Try multiple times to allow teacher's write to propagate using the read-only endpoint
               for (let i = 0; i < 8; i++) { // 8 * 500ms = 4s
                 try {
-                  const r = await fetch('/api/whiteboard/room', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(lookupBody)
-                  });
-                  if (r.ok) {
-                    const j = await r.json();
-                    // API returns {uuid, roomToken, ...} if found, or {found: false} if not
-                    if (j.uuid) {
-                      lookupData = j;
-                      found = true;
-                      console.log(`[ClientClassroom] Student lookup attempt ${i + 1}: room found`);
-                    } else if (j.found === false) {
-                      console.log(`[ClientClassroom] Student lookup attempt ${i + 1}: room not found yet`);
+                  const j = await fetchExistingWhiteboardUuid(courseId, sessionReadyKey);
+                  if (j?.uuid) {
+                    // Fetch full room credentials for the canonical uuid
+                    try {
+                      const tokenRes = await fetch('/api/whiteboard/room', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ userId, channelName: sessionReadyKey, courseId, roomUuid: j.uuid })
+                      });
+                      if (tokenRes.ok) {
+                        lookupData = await tokenRes.json();
+                        found = true;
+                        console.log(`[ClientClassroom] Student lookup attempt ${i + 1}: room found`);
+                      } else {
+                        console.warn(`[ClientClassroom] Student token fetch failed on attempt ${i + 1}`);
+                      }
+                    } catch (e) {
+                      console.warn(`[ClientClassroom] Student token fetch error on attempt ${i + 1}:`, e);
                     }
+                  } else if (j && j.found === false) {
+                    console.log(`[ClientClassroom] Student lookup attempt ${i + 1}: room not found yet`);
                   }
                 } catch (e) {
                   console.warn(`[ClientClassroom] Student lookup attempt ${i + 1} failed:`, e);
