@@ -61,7 +61,7 @@ const ROOM_CACHE = new Map<string, string>();
 
 export async function POST(req: NextRequest) {
   try {
-    const { userId, channelName, roomUuid: requestedRoomUuid, courseId } = await req.json();
+    const { userId, channelName, roomUuid: requestedRoomUuid, courseId, lookupOnly } = await req.json();
 
     console.log('[WhiteboardAPI] Request received:', { userId: '[REDACTED]', channelName, requestedRoomUuid: '[REDACTED]', courseId });
 
@@ -130,7 +130,12 @@ export async function POST(req: NextRequest) {
       }
       
       // 3. Create New Room if not found (with concurrency guard)
-      if (!roomUuid) {
+        if (!roomUuid) {
+          // If caller requested lookup-only, return not found without creating to avoid races
+          if (lookupOnly) {
+            console.log('[WhiteboardAPI] lookupOnly request - no room found, returning not found');
+            return NextResponse.json({ found: false }, { status: 200 });
+          }
         console.log(`[WhiteboardAPI] Creating NEW Whiteboard Room. Reason: Not found in DB or Cache for [REDACTED].`);
         
         const adminToken = generateSdkToken();

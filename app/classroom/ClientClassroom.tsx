@@ -273,24 +273,61 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
             console.log('[ClientClassroom] Student using teacher\'s room uuid');
             setAgoraRoomData(receivedData);
           } else {
-            // Fallback: Call API
-            console.log('[ClientClassroom] Student fallback: Fetching room from API...');
-            const requestBody: any = { userId, channelName: sessionReadyKey, courseId };
-            
-            const res = await fetch('/api/whiteboard/room', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(requestBody)
-            });
-            
-            if (res.ok) {
-              const data = await res.json();
-              console.log('[ClientClassroom] Student received room data from API (fallback)');
-              setAgoraRoomData(data);
-            } else {
-              const errorText = await res.text();
-              console.error('[ClientClassroom] Student failed to fetch room:', res.status, errorText);
-            }
+              // Fallback: first perform lookup-only to avoid creating a duplicate room.
+              console.log('[ClientClassroom] Student fallback: polling for existing room via lookupOnly...');
+              const lookupBody = { userId, channelName: sessionReadyKey, courseId, lookupOnly: true };
+              let found = false;
+              let lookupData: any = null;
+              // Try a few times to allow teacher's write to propagate (short-poll)
+              for (let i = 0; i < 6; i++) { // ~6 * 500ms = 3s
+                try {
+                  const r = await fetch('/api/whiteboard/room', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(lookupBody)
+                  });
+                  if (r.ok) {
+                    const j = await r.json();
+                    if (j.uuid || j.found) {
+                      // API may return data or {found:true, uuid:...}
+                      lookupData = j.uuid ? j : (j.found ? j : null);
+                      found = !!(lookupData && (lookupData.uuid || lookupData.roomUuid));
+                    }
+                  }
+                } catch (e) {
+                  // ignore transient
+                }
+                if (found) break;
+                await new Promise(r => setTimeout(r, 500));
+              }
+
+              if (found && lookupData) {
+                console.log('[ClientClassroom] Student found existing room via lookup, using it');
+                // Normalize to same shape as API create response if necessary
+                const normalized = lookupData.uuid ? lookupData : { uuid: lookupData.uuid || lookupData.roomUuid };
+                setAgoraRoomData(normalized);
+              } else {
+                // No existing room found after polling — perform full API call which may create (teacher absent)
+                console.log('[ClientClassroom] Student no existing room found, calling API to create/join');
+                const requestBody: any = { userId, channelName: sessionReadyKey, courseId };
+                try {
+                  const res = await fetch('/api/whiteboard/room', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(requestBody)
+                  });
+                  if (res.ok) {
+                    const data = await res.json();
+                    console.log('[ClientClassroom] Student received room data from API (create)');
+                    setAgoraRoomData(data);
+                  } else {
+                    const errorText = await res.text();
+                    console.error('[ClientClassroom] Student failed to fetch room:', res.status, errorText);
+                  }
+                } catch (e) {
+                  console.error('[ClientClassroom] Student API create failed:', e);
+                }
+              }
           }
         }
       } catch (error) {
