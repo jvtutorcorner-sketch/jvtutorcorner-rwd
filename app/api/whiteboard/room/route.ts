@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
   try {
     const { userId, channelName, roomUuid: requestedRoomUuid, courseId } = await req.json();
 
-    console.log('[WhiteboardAPI] Request received:', { userId, channelName, requestedRoomUuid, courseId });
+    console.log('[WhiteboardAPI] Request received:', { userId: '[REDACTED]', channelName, requestedRoomUuid: '[REDACTED]', courseId });
 
     const appId = process.env.AGORA_WHITEBOARD_APP_ID;
     const regionAgora = "sg"; // Singapore (Agora region)
@@ -101,7 +101,7 @@ export async function POST(req: NextRequest) {
         isCourseRec = true;
       }
 
-      console.log(`[WhiteboardAPI] Querying DynamoDB Table: ${tableName}, Key: ${dbKey}, Region: ${region}`);
+      console.log(`[WhiteboardAPI] Querying DynamoDB Table: [REDACTED], Key: [REDACTED], Region: ${region}`);
 
       try {
         const getCmd = new GetCommand({
@@ -109,12 +109,12 @@ export async function POST(req: NextRequest) {
           Key: { id: dbKey },
           ConsistentRead: true
         });
-        console.log('[WhiteboardAPI][DDB][Get] Sending GetCommand with params:', { TableName: tableName, Key: { id: dbKey } });
+        console.log('[WhiteboardAPI][DDB][Get] Sending GetCommand with params:', { TableName: tableName, Key: { id: '[REDACTED]' } });
         const getResult = await docClient.send(getCmd);
         
         if (getResult.Item && getResult.Item.whiteboardUuid) {
           roomUuid = getResult.Item.whiteboardUuid as string;
-          console.log(`[WhiteboardAPI] FOUND persistent room in DB: ${roomUuid}`);
+          console.log(`[WhiteboardAPI] FOUND persistent room in DB: [REDACTED]`);
           if (channelName) ROOM_CACHE.set(channelName, roomUuid);
         } else {
           console.log(`[WhiteboardAPI] No existing room found in DB for key: ${dbKey}. Item:`, getResult.Item);
@@ -126,12 +126,12 @@ export async function POST(req: NextRequest) {
       // If failed to read from DB, check cache as fallback (only if we didn't find it in DB)
       if (!roomUuid && channelName && ROOM_CACHE.has(channelName)) {
         roomUuid = ROOM_CACHE.get(channelName) as string;
-        console.log(`[WhiteboardAPI] Found room in memory cache: ${roomUuid}`);
+        console.log(`[WhiteboardAPI] Found room in memory cache: [REDACTED]`);
       }
       
       // 3. Create New Room if not found (with concurrency guard)
       if (!roomUuid) {
-        console.log(`[WhiteboardAPI] Creating NEW Whiteboard Room. Reason: Not found in DB or Cache for ${dbKey}.`);
+        console.log(`[WhiteboardAPI] Creating NEW Whiteboard Room. Reason: Not found in DB or Cache for [REDACTED].`);
         
         const adminToken = generateSdkToken();
         const createRoomRes = await fetch('https://api.netless.link/v5/rooms', {
@@ -152,10 +152,10 @@ export async function POST(req: NextRequest) {
 
         const roomData = await createRoomRes.json();
         const newRoomUuid = roomData.uuid;
-        console.log(`[WhiteboardAPI] NEW Room Created in Agora. UUID: ${newRoomUuid}`);
+        console.log(`[WhiteboardAPI] NEW Room Created in Agora. UUID: [REDACTED]`);
 
         // 4. Atomic Save to DynamoDB
-        console.log(`[WhiteboardAPI] Attempting ATOMIC save to DynamoDB... Table: ${tableName}, Key: ${dbKey}`);
+        console.log(`[WhiteboardAPI] Attempting ATOMIC save to DynamoDB... Table: [REDACTED], Key: [REDACTED]`);
         
         try {
             // Use UpdateCommand with ConditionExpression to ensure we don't overwrite if someone else created one simultaneously
@@ -175,17 +175,17 @@ export async function POST(req: NextRequest) {
             const updateCmd = new UpdateCommand(updateParams);
             await docClient.send(updateCmd);
             roomUuid = newRoomUuid;
-            console.log(`[WhiteboardAPI] Successfully saved new room ${roomUuid} to DB for key ${dbKey}`);
+            console.log(`[WhiteboardAPI] Successfully saved new room [REDACTED] to DB for key [REDACTED]`);
 
             // Update Cache
             if (channelName) {
               ROOM_CACHE.set(channelName, roomUuid as string);
-              console.log(`[WhiteboardAPI] Updated in-memory cache for channel ${channelName} => ${roomUuid}`);
+              console.log(`[WhiteboardAPI] Updated in-memory cache for channel [REDACTED] => [REDACTED]`);
             }
 
         } catch (dbWriteError: any) {
             if (dbWriteError.name === 'ConditionalCheckFailedException' || dbWriteError.__type === 'ConditionalCheckFailedException') {
-                console.log(`[WhiteboardAPI] Concurrency detected! Someone else saved a whiteboardUuid for ${dbKey} just now.`);
+                console.log(`[WhiteboardAPI] Concurrency detected! Someone else saved a whiteboardUuid for [REDACTED] just now.`);
                 // Fetch the one that was just saved by the other process
                 const finalGetCmd = new GetCommand({
                     TableName: tableName,
@@ -194,8 +194,8 @@ export async function POST(req: NextRequest) {
                 });
                 const finalGetResult = await docClient.send(finalGetCmd);
                 if (finalGetResult.Item && finalGetResult.Item.whiteboardUuid) {
-                    roomUuid = finalGetResult.Item.whiteboardUuid;
-                    console.log(`[WhiteboardAPI] Recovered from race condition. Using uuid from DB: ${roomUuid}`);
+                    roomUuid = finalGetResult.Item.whiteboardUuid as string;
+                    console.log(`[WhiteboardAPI] Recovered from race condition. Using uuid from DB: [REDACTED]`);
                     if (channelName) ROOM_CACHE.set(channelName, roomUuid);
                 } else {
                     console.error('[WhiteboardAPI] Race condition occurred but still couldn\'t find whiteboardUuid in DB!');
@@ -216,7 +216,7 @@ export async function POST(req: NextRequest) {
 
     // 5. Return Credentials
     const clientRoomToken = generateRoomToken(roomUuid);
-    console.log(`[WhiteboardAPI] Returning success for room: ${roomUuid}`);
+    console.log(`[WhiteboardAPI] Returning success for room: [REDACTED]`);
 
     return NextResponse.json({
       uuid: roomUuid,

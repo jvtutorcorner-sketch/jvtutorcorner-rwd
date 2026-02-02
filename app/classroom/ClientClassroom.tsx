@@ -183,10 +183,10 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
 
   console.log('[ClientClassroom] userId calculation', { 
     storedUser: !!storedUser, 
-    storedUserEmail: storedUser?.email, 
+    storedUserEmail: storedUser?.email ? '[REDACTED]' : undefined, 
     urlRole, 
     computedRole, 
-    userId 
+    userId: '[REDACTED]' 
   });
 
   // Initialize Agora Whiteboard Room (if feature flag enabled)
@@ -200,12 +200,12 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       return;
     }
 
-    console.log('[ClientClassroom] Initializing Agora Whiteboard room for user:', userId, 'at', new Date().toISOString());
+console.log('[ClientClassroom] Initializing Agora Whiteboard room for user: [REDACTED] at', new Date().toISOString());
     
     const initAgoraWhiteboard = async () => {
       console.log('[ClientClassroom] initAgoraWhiteboard function called');
       try {
-        console.log('[ClientClassroom] Initializing Agora Whiteboard room for user:', userId);
+        console.log('[ClientClassroom] Initializing Agora Whiteboard room for user: [REDACTED]');
         
         // Remove localStorage dependency for the source of truth, but keep using it ONLY if explicitly debugging or fallback needed.
         // Actually, user requested to REMOVE logic relying solely on localStorage.
@@ -219,7 +219,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
         // But for "Split Room" fix, trusting the API's DynamoDB lookup is better than local storage which might be stale or specific to one device.
         // So we deliberately DO NOT read from localStorage to force the API to resolve the canonical room.
         
-        console.log('[ClientClassroom] API request body:', requestBody);
+        console.log('[ClientClassroom] API request body:', { userId: '[REDACTED]', channelName, courseId });
         
         const res = await fetch('/api/whiteboard/room', {
           method: 'POST',
@@ -232,10 +232,10 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
         
         if (res.ok) {
           const data = await res.json();
-          console.log('[ClientClassroom] API response data:', data);
-          console.log('[ClientClassroom] Setting agoraRoomData to:', data);
+          console.log('[ClientClassroom] API response data: [REDACTED]');
+          console.log('[ClientClassroom] Setting agoraRoomData to: [REDACTED]');
           setAgoraRoomData(data);
-          console.log('[ClientClassroom] Agora Whiteboard room initialized:', data.uuid);
+          console.log('[ClientClassroom] Agora Whiteboard room initialized: [REDACTED]');
 
           // If this client is the teacher, we technically don't need to broadcast via localStorage anymore 
           // because every other client hitting the API will get the same UUID from DynamoDB.
