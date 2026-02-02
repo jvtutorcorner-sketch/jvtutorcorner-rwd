@@ -42,7 +42,10 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   const courseId = searchParams?.get('courseId') ?? 'c1';
   const orderId = searchParams?.get('orderId') ?? null;
   const sessionParam = searchParams?.get('session');
-  const sessionReadyKey = sessionParam || channelName || `classroom_session_ready_${courseId}`;
+  const sessionReadyKey = useMemo(() => 
+    sessionParam || channelName || `classroom_session_ready_${courseId}`,
+    [sessionParam, channelName, courseId]
+  );
   const t = useT();
   
   // Feature Flag: Agora Whiteboard vs Canvas Whiteboard
@@ -54,6 +57,8 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   const [whiteboardState, setWhiteboardState] = useState<any>(null);
   
   // Poll whiteboard state for toolbar display
+  // Reduced from 300ms to 1000ms since this is only used for UI display (tool buttons, page info)
+  // not for real-time drawing synchronization (which happens via Agora WebSocket)
   useEffect(() => {
     const interval = setInterval(() => {
       try {
@@ -64,7 +69,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       } catch (e) {
         // Silently ignore errors during polling
       }
-    }, 300); // Poll more frequently for better responsiveness
+    }, 1000); // Poll every 1s - sufficient for UI updates, tool state tracking
     return () => clearInterval(interval);
   }, []); // Run continuously, not dependent on agoraRoomData
   
@@ -157,12 +162,26 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   const [showPdf, setShowPdf] = useState(false);
 
   // Define userId for Agora whiteboard
-  const userId = storedUser?.email || (urlRole === 'teacher' || computedRole === 'teacher' ? 'teacher' : 'student') || 'anonymous';
-  console.log('[ClientClassroom] userId calculation', { storedUser: !!storedUser, storedUserEmail: storedUser?.email, urlRole, computedRole, userId });
+  // Optimization: ensure unique IDs for multiple anonymous students to avoid cursor/sync collisions
+  const userId = useMemo(() => {
+    if (storedUser?.email) return storedUser.email;
+    const base = (urlRole === 'teacher' || computedRole === 'teacher' ? 'teacher' : 'student');
+    // For development/anonymous testing, append a small random string if no email is found
+    // This allows multiple browser tabs to act as different users
+    return `${base}_${Math.random().toString(36).substring(7)}`;
+  }, [storedUser, urlRole, computedRole]);
+
+  console.log('[ClientClassroom] userId calculation', { 
+    storedUser: !!storedUser, 
+    storedUserEmail: storedUser?.email, 
+    urlRole, 
+    computedRole, 
+    userId 
+  });
 
   // Initialize Agora Whiteboard Room (if feature flag enabled)
   useEffect(() => {
-    console.log('[ClientClassroom] Agora Whiteboard init effect triggered', { useAgoraWhiteboard, mounted, userId, urlRole, computedRole });
+    console.log('[ClientClassroom] Agora Whiteboard init effect triggered', { useAgoraWhiteboard, mounted, userId, urlRole, computedRole, sessionReadyKey, courseId });
     console.log('[ClientClassroom] useEffect running for Agora init at', new Date().toISOString());
     // Always run for debugging
     // if (!useAgoraWhiteboard || !mounted || !userId) {
@@ -218,7 +237,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     };
     
     initAgoraWhiteboard();
-  }, [useAgoraWhiteboard, mounted, userId]);
+  }, [useAgoraWhiteboard, mounted, userId, sessionReadyKey]);
 
   // Load PDF from server if available (synced from wait page)
   useEffect(() => {
