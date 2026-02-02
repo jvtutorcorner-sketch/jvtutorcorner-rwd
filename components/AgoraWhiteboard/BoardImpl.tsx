@@ -66,7 +66,11 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
     // 2. Load SDK
     useEffect(() => {
         if (!isMounted) return;
+        
+        let mounted = true;
+        
         const checkSdkLoaded = () => {
+            if (!mounted) return false;
             const sdk = (window as any).WhiteWebSdk;
             if (sdk && sdk.WhiteWebSdk) {
                 setSdkLoaded(true);
@@ -74,7 +78,29 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
             }
             return false;
         };
+
         if (checkSdkLoaded()) return;
+
+        // Check if script is already present/loading
+        const existingScript = document.querySelector('script[src*="white-web-sdk"]');
+        if (existingScript) {
+            console.log("[CoreSDK] Script already loading or present, waiting...");
+            const handleLoad = () => {
+                if (mounted) setTimeout(checkSdkLoaded, 200);
+            };
+            existingScript.addEventListener('load', handleLoad);
+            
+            // Still check periodically in case it was already loaded
+            const interval = setInterval(() => {
+                if (checkSdkLoaded()) clearInterval(interval);
+            }, 500);
+
+            return () => {
+                mounted = false;
+                existingScript.removeEventListener('load', handleLoad);
+                clearInterval(interval);
+            };
+        }
 
         console.log("[CoreSDK] Loading script...");
         const script = document.createElement('script');
@@ -82,10 +108,14 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
         script.async = true;
         script.onload = () => {
             console.log("[CoreSDK] Script loaded");
-            setTimeout(checkSdkLoaded, 100);
+            if (mounted) setTimeout(checkSdkLoaded, 100);
         };
-        script.onerror = () => setStatus("載入 SDK 失敗");
+        script.onerror = () => {
+            if (mounted) setStatus("載入 SDK 失敗");
+        };
         document.head.appendChild(script);
+
+        return () => { mounted = false; };
     }, [isMounted]);
 
     // 3. Init Room

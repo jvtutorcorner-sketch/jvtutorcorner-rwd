@@ -163,13 +163,23 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
 
   // Define userId for Agora whiteboard
   // Optimization: ensure unique IDs for multiple anonymous students to avoid cursor/sync collisions
+  // Use a ref to keep the ID stable across re-renders for the same component instance
+  const userIdRef = useRef<string | null>(null);
   const userId = useMemo(() => {
-    if (storedUser?.email) return storedUser.email;
-    const base = (urlRole === 'teacher' || computedRole === 'teacher' ? 'teacher' : 'student');
-    // For development/anonymous testing, append a small random string if no email is found
-    // This allows multiple browser tabs to act as different users
-    return `${base}_${Math.random().toString(36).substring(7)}`;
-  }, [storedUser, urlRole, computedRole]);
+    if (userIdRef.current) return userIdRef.current;
+    
+    let id: string;
+    if (storedUser?.email) {
+      id = storedUser.email;
+    } else {
+      const base = (urlRole === 'teacher' || computedRole === 'teacher' ? 'teacher' : 'student');
+      // For development/anonymous testing, append a small random string if no email is found
+      // This allows multiple browser tabs to act as different users
+      id = `${base}_${Math.random().toString(36).substring(7)}`;
+    }
+    userIdRef.current = id;
+    return id;
+  }, [storedUser?.email, urlRole, computedRole]);
 
   console.log('[ClientClassroom] userId calculation', { 
     storedUser: !!storedUser, 
@@ -181,13 +191,16 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
 
   // Initialize Agora Whiteboard Room (if feature flag enabled)
   useEffect(() => {
-    console.log('[ClientClassroom] Agora Whiteboard init effect triggered', { useAgoraWhiteboard, mounted, userId, urlRole, computedRole, sessionReadyKey, courseId });
-    console.log('[ClientClassroom] useEffect running for Agora init at', new Date().toISOString());
-    // Always run for debugging
-    // if (!useAgoraWhiteboard || !mounted || !userId) {
-    //   console.log('[ClientClassroom] Skipping Agora Whiteboard init', { useAgoraWhiteboard, mounted, userId: !!userId });
-    //   return;
-    // }
+    // Selection of logs to avoid spam
+    if (!useAgoraWhiteboard || !mounted || !userId) return;
+
+    // Guard: Prevent multiple initializations or initializing when not ready
+    if (agoraRoomData) {
+      // console.log('[ClientClassroom] Agora Whiteboard already initialized, skipping.');
+      return;
+    }
+
+    console.log('[ClientClassroom] Initializing Agora Whiteboard room for user:', userId, 'at', new Date().toISOString());
     
     const initAgoraWhiteboard = async () => {
       console.log('[ClientClassroom] initAgoraWhiteboard function called');
@@ -237,7 +250,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     };
     
     initAgoraWhiteboard();
-  }, [useAgoraWhiteboard, mounted, userId, sessionReadyKey]);
+  }, [useAgoraWhiteboard, mounted, userId, courseId, sessionReadyKey]); // Added courseId back to dependencies for sync stability
 
   // Load PDF from server if available (synced from wait page)
   useEffect(() => {

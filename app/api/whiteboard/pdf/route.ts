@@ -74,9 +74,10 @@ export async function GET(req: NextRequest) {
         const meta = JSON.parse(metaBuf.toString('utf8'));
         console.log('[PDF GET] Meta exists in S3:', meta);
         return NextResponse.json({ found: true, meta });
-      } catch (e) {
-        console.log('[PDF GET] Meta not found in S3:', e);
-        return NextResponse.json({ found: false }, { status: 404 });
+      } catch (e: any) {
+        console.log('[PDF GET] Meta not found in S3:', e.message);
+        // Use 200 instead of 404 to avoid console errors for expected "not found" state
+        return NextResponse.json({ found: false }, { status: 200 });
       }
     }
 
