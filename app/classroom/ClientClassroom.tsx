@@ -200,49 +200,98 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       return;
     }
 
-console.log('[ClientClassroom] Initializing Agora Whiteboard room for user: [REDACTED] at', new Date().toISOString());
-    
     const initAgoraWhiteboard = async () => {
       console.log('[ClientClassroom] initAgoraWhiteboard function called');
       try {
-        console.log('[ClientClassroom] Initializing Agora Whiteboard room for user: [REDACTED]');
+        const isTeacher = computedRole === 'teacher';
         
-        // Remove localStorage dependency for the source of truth, but keep using it ONLY if explicitly debugging or fallback needed.
-        // Actually, user requested to REMOVE logic relying solely on localStorage.
-        // The authoritative source is now the API which checks DynamoDB.
-        // However, we still send sessionReadyKey (channelName) to the API.
-        // Crucial Fix: Send courseId so backend can perform strict DB lookup
-        
-        const requestBody: any = { userId, channelName: sessionReadyKey, courseId };
-        
-        // Optional: If we have a specific UUID broadcasted via other means (not localStorage), we could attach it.
-        // But for "Split Room" fix, trusting the API's DynamoDB lookup is better than local storage which might be stale or specific to one device.
-        // So we deliberately DO NOT read from localStorage to force the API to resolve the canonical room.
-        
-        console.log('[ClientClassroom] API request body:', { userId: '[REDACTED]', channelName, courseId });
-        
-        const res = await fetch('/api/whiteboard/room', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(requestBody)
-        });
-        
-        console.log('[ClientClassroom] API response status:', res.status);
-        console.log('[ClientClassroom] API response headers:', Object.fromEntries(res.headers.entries()));
-        
-        if (res.ok) {
-          const data = await res.json();
-          console.log('[ClientClassroom] API response data: [REDACTED]');
-          console.log('[ClientClassroom] Setting agoraRoomData to: [REDACTED]');
-          setAgoraRoomData(data);
-          console.log('[ClientClassroom] Agora Whiteboard room initialized: [REDACTED]');
-
-          // If this client is the teacher, we technically don't need to broadcast via localStorage anymore 
-          // because every other client hitting the API will get the same UUID from DynamoDB.
-          // But we can keep the BroadcastChannel if it's used for other real-time sync (like triggering reload).
+        if (isTeacher) {
+          // === TEACHER: Call API to create/fetch room, then broadcast uuid ===
+          console.log('[ClientClassroom] Teacher: Fetching whiteboard room from API...');
+          const requestBody: any = { userId, channelName: sessionReadyKey, courseId };
+          
+          const res = await fetch('/api/whiteboard/room', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestBody)
+          });
+          
+          if (res.ok) {
+            const data = await res.json();
+            console.log('[ClientClassroom] Teacher received room data from API');
+            setAgoraRoomData(data);
+            
+            // Broadcast uuid to student(s) via BroadcastChannel
+            try {
+              const bc = new BroadcastChannel(sessionReadyKey);
+              bc.postMessage({
+                type: 'whiteboard-uuid-sync',
+                uuid: data.uuid,
+                roomToken: data.roomToken,
+                appIdentifier: data.appIdentifier,
+                region: data.region,
+                userId: data.userId
+              });
+              console.log('[ClientClassroom] Teacher broadcasted whiteboard uuid to channel');
+              bc.close();
+            } catch (bcErr) {
+              console.warn('[ClientClassroom] BroadcastChannel failed (may not be supported):', bcErr);
+            }
+          } else {
+            const errorText = await res.text();
+            console.error('[ClientClassroom] Teacher failed to fetch room:', res.status, errorText);
+          }
         } else {
-          const errorText = await res.text();
-          console.error('[ClientClassroom] Failed to initialize Agora Whiteboard room:', res.status, errorText);
+          // === STUDENT: Wait for teacher's broadcast, fallback to API if timeout ===
+          console.log('[ClientClassroom] Student: Waiting for teacher to broadcast uuid (timeout: 10s)...');
+          
+          let receivedData: any = null;
+          try {
+            const bc = new BroadcastChannel(sessionReadyKey);
+            receivedData = await new Promise<any>((resolve) => {
+              const timer = setTimeout(() => {
+                console.log('[ClientClassroom] Student broadcast timeout, will fallback to API');
+                bc.close();
+                resolve(null);
+              }, 10000);
+              
+              bc.onmessage = (event) => {
+                if (event.data?.type === 'whiteboard-uuid-sync') {
+                  console.log('[ClientClassroom] Student received uuid from teacher via broadcast');
+                  clearTimeout(timer);
+                  bc.close();
+                  resolve(event.data);
+                }
+              };
+            });
+          } catch (bcErr) {
+            console.warn('[ClientClassroom] BroadcastChannel not available, fallback to API:', bcErr);
+          }
+          
+          if (receivedData) {
+            // Use teacher's room directly
+            console.log('[ClientClassroom] Student using teacher\'s room uuid');
+            setAgoraRoomData(receivedData);
+          } else {
+            // Fallback: Call API
+            console.log('[ClientClassroom] Student fallback: Fetching room from API...');
+            const requestBody: any = { userId, channelName: sessionReadyKey, courseId };
+            
+            const res = await fetch('/api/whiteboard/room', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(requestBody)
+            });
+            
+            if (res.ok) {
+              const data = await res.json();
+              console.log('[ClientClassroom] Student received room data from API (fallback)');
+              setAgoraRoomData(data);
+            } else {
+              const errorText = await res.text();
+              console.error('[ClientClassroom] Student failed to fetch room:', res.status, errorText);
+            }
+          }
         }
       } catch (error) {
         console.error('[ClientClassroom] Error initializing Agora Whiteboard:', error);
@@ -250,7 +299,7 @@ console.log('[ClientClassroom] Initializing Agora Whiteboard room for user: [RED
     };
     
     initAgoraWhiteboard();
-  }, [useAgoraWhiteboard, mounted, userId, courseId, sessionReadyKey]); // Added courseId back to dependencies for sync stability
+  }, [useAgoraWhiteboard, mounted, userId, courseId, sessionReadyKey, computedRole]); // Added courseId back to dependencies for sync stability
 
   // Load PDF from server if available (synced from wait page)
   useEffect(() => {

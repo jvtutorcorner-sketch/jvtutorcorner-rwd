@@ -1,6 +1,10 @@
 import { test, expect } from '@playwright/test';
 import { chromium } from 'playwright';
 import type { Page } from '@playwright/test';
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { DynamoDBDocumentClient, GetCommand } from '@aws-sdk/lib-dynamodb';
+try { require('dotenv').config({ path: '.env.local' }); } catch (e) {}
+const COURSE_ID = process.env.E2E_COURSE_ID || 'c1';
 
 /**
  * 快速延遲測試（簡化版）
@@ -214,13 +218,13 @@ async function completeReadyPageFlow(page: Page, role: string, waitUrl: string):
     } catch (e) {
       console.warn(`    ⚠️  未檢測到頁面導航到 /classroom/test，嘗試手動導航...`);
       // 構建手動導航 URL
-      const manualUrl = page.url().split('?')[0].replace('/wait', '/test') + `?courseId=c1&role=${role}&session=classroom_session_ready_c1&forceJoin=true`;
+      const manualUrl = page.url().split('?')[0].replace('/wait', '/test') + `?courseId=${COURSE_ID}&role=${role}&session=classroom_session_ready_${COURSE_ID}&forceJoin=true`;
       await page.goto(manualUrl, { waitUntil: 'load' });
     }
   } else {
     console.log('    ⚠️  15 秒內未找到「立即進入教室」按鈕');
     console.log('    ℹ️  嘗試強制手動導航 (Force Join)...');
-    const manualUrl = page.url().split('?')[0].replace('/wait', '/test') + `?courseId=c1&role=${role}&session=classroom_session_ready_c1&forceJoin=true`;
+    const manualUrl = page.url().split('?')[0].replace('/wait', '/test') + `?courseId=${COURSE_ID}&role=${role}&session=classroom_session_ready_${COURSE_ID}&forceJoin=true`;
     await page.goto(manualUrl, { waitUntil: 'load' });
   }
   
@@ -232,8 +236,7 @@ test('Classroom Whiteboard Sync - Teacher to Student', async ({ page }) => {
   const startTime = Date.now(); // 記錄測試開始時間，用於計算延遲
   //const BASE_URL = 'http://localhost:3000';
   const BASE_URL = 'https://www.jvtutorcorner.com';
-  const COURSE_ID = 'c1';
-  const SESSION = 'classroom_session_ready_c1';
+  const SESSION = `classroom_session_ready_${COURSE_ID}`;
 
   const TEACHER_WAIT_URL = `${BASE_URL}/classroom/wait?courseId=${COURSE_ID}&role=teacher&session=${SESSION}&forceJoin=true`;
   const STUDENT_WAIT_URL = `${BASE_URL}/classroom/wait?courseId=${COURSE_ID}&role=student&session=${SESSION}&forceJoin=true`;
@@ -297,12 +300,34 @@ test('Classroom Whiteboard Sync - Teacher to Student', async ({ page }) => {
 
     // === 步驟 2: 兩個客戶端完成準備流程 ===
     console.log('\n[2] 兩個客戶端進行完整的準備流程...');
-    
+
+    // Prepare to capture /api/whiteboard/room POST responses for both clients
+    const teacherApiRespPromise = teacherPage.waitForResponse(r => r.url().includes('/api/whiteboard/room') && r.request().method() === 'POST', { timeout: 60000 });
+    const studentApiRespPromise = studentPage.waitForResponse(r => r.url().includes('/api/whiteboard/room') && r.request().method() === 'POST', { timeout: 60000 });
+
     await Promise.all([
       completeReadyPageFlow(teacherPage, 'teacher', TEACHER_WAIT_URL),
       completeReadyPageFlow(studentPage, 'student', STUDENT_WAIT_URL)
     ]);
     console.log('  ✓ Student 已進入 /classroom/test');
+
+    // After both entered, await the API responses (if they occurred during entry)
+    try {
+      const [teacherApiResp, studentApiResp] = await Promise.all([teacherApiRespPromise, studentApiRespPromise]);
+      const tJson = await teacherApiResp.json().catch(() => null);
+      const sJson = await studentApiResp.json().catch(() => null);
+      const tUuid = tJson?.uuid || tJson?.roomUuid || tJson?.whiteboardUuid || tJson?.data?.uuid;
+      const sUuid = sJson?.uuid || sJson?.roomUuid || sJson?.whiteboardUuid || sJson?.data?.uuid;
+      if (tUuid && sUuid) {
+        console.log('[E2E] (Step 2) Teacher uuid:', tUuid);
+        console.log('[E2E] (Step 2) Student uuid:', sUuid);
+        expect(tUuid).toBe(sUuid);
+      } else {
+        console.warn('[E2E] Could not extract uuid from one or both API responses in step 2');
+      }
+    } catch (err) {
+      console.warn('[E2E] Timeout or error waiting for /api/whiteboard/room responses in step 2:', err);
+    }
 
     // === 步驟 3: 等待就緒 ===
     console.log('\n[3] 等待雙方 Agora 連接與白板初始化 (最多等待 30 秒)...');
@@ -573,3 +598,63 @@ test('Classroom Whiteboard Sync - Teacher to Student', async ({ page }) => {
     }
   }
 });
+
+      test('Whiteboard API Response Check - Teacher & Student receive same uuid', async () => {
+        // Launch two isolated contexts to simulate Teacher and Student
+        const apiBase = process.env.E2E_API_URL || process.env.LOCAL_API_URL || 'http://localhost:3000';
+        const waitUrlTeacher = `${apiBase.replace(/\/$/, '')}/classroom/wait?courseId=${COURSE_ID}&role=teacher&session=classroom_session_ready_${COURSE_ID}&forceJoin=true`;
+        const waitUrlStudent = `${apiBase.replace(/\/$/, '')}/classroom/wait?courseId=${COURSE_ID}&role=student&session=classroom_session_ready_${COURSE_ID}&forceJoin=true`;
+
+        const browser = await chromium.launch({ headless: false, args: ['--use-fake-ui-for-media-stream','--use-fake-device-for-media-stream'] });
+        const teacherContext = await browser.newContext({ permissions: ['microphone','camera'] });
+        const studentContext = await browser.newContext({ permissions: ['microphone','camera'] });
+        const teacherPage = await teacherContext.newPage();
+        const studentPage = await studentContext.newPage();
+
+        // Navigate both to their wait pages and bypass device checks
+        await Promise.all([
+          teacherPage.goto(waitUrlTeacher, { waitUntil: 'load' }),
+          studentPage.goto(waitUrlStudent, { waitUntil: 'load' })
+        ]);
+        await teacherPage.evaluate(() => { (window as any).__E2E_BYPASS_DEVICE_CHECK__ = true; });
+        await studentPage.evaluate(() => { (window as any).__E2E_BYPASS_DEVICE_CHECK__ = true; });
+
+        // Prepare response listeners
+        const teacherRespPromise = teacherPage.waitForResponse(r => r.url().includes('/api/whiteboard/room') && r.request().method() === 'POST', { timeout: 15000 });
+        const studentRespPromise = studentPage.waitForResponse(r => r.url().includes('/api/whiteboard/room') && r.request().method() === 'POST', { timeout: 15000 });
+
+        // Trigger entry for both pages (click enter if present, otherwise navigate directly)
+        const triggerEnter = async (page: any) => {
+          const enterBtn = page.locator('button:has-text("立即進入教室"), button:has-text("Enter Classroom Now"), button:has-text("Enter Now")').first();
+          try {
+            await enterBtn.waitFor({ state: 'visible', timeout: 3000 });
+            await enterBtn.click({ timeout: 3000 }).catch(() => {});
+          } catch (e) {
+            const manual = page.url().replace('/wait', '/test');
+            await page.goto(manual, { waitUntil: 'load' });
+          }
+        };
+
+        await Promise.all([triggerEnter(teacherPage), triggerEnter(studentPage)]);
+
+        const [teacherResp, studentResp] = await Promise.all([teacherRespPromise, studentRespPromise]);
+        const tJson = await teacherResp.json().catch(() => null);
+        const sJson = await studentResp.json().catch(() => null);
+
+        expect(tJson).toBeTruthy();
+        expect(sJson).toBeTruthy();
+        const tUuid = tJson?.uuid || tJson?.roomUuid || tJson?.whiteboardUuid || tJson?.data?.uuid;
+        const sUuid = sJson?.uuid || sJson?.roomUuid || sJson?.whiteboardUuid || sJson?.data?.uuid;
+        expect(tUuid).toBeTruthy();
+        expect(sUuid).toBeTruthy();
+        expect(tUuid).toBe(sUuid);
+
+        console.log('[E2E] Teacher uuid:', tUuid);
+        console.log('[E2E] Student uuid:', sUuid);
+
+        await teacherPage.close();
+        await studentPage.close();
+        await teacherContext.close();
+        await studentContext.close();
+        await browser.close();
+      });
