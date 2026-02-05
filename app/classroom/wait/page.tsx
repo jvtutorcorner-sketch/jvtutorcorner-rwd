@@ -518,6 +518,9 @@ export default function ClassroomWaitPage() {
               </div>
             )}
           </div>
+          <div style={{ marginTop: 12, fontSize: 13, color: '#666' }}>
+            ℹ️ 上傳的 PDF 將在進入課堂後顯示。如果沒有上傳 PDF，進入課堂時將不顯示任何 PDF 相關內容。
+          </div>
         </div>
       )}
 

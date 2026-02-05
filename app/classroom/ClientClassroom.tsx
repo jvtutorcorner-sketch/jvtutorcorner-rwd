@@ -403,17 +403,23 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   }, [useAgoraWhiteboard, mounted, userId, courseId, sessionReadyKey, computedRole]); // Added courseId back to dependencies for sync stability
 
   // Load PDF from server if available (synced from wait page)
+  // ★ Improved: Clear old PDF when sessionReadyKey changes, then check for new one
   useEffect(() => {
-    if (!mounted || !sessionReadyKey) return;
+    if (!mounted || !sessionReadyKey) {
+      setSelectedPdf(null);
+      setShowPdf(false);
+      return;
+    }
     
     const checkPdf = async () => {
       try {
+        // Always use fresh cache-busting timestamp for each check
         const timestamp = Date.now();
         const resp = await fetch(`/api/whiteboard/pdf?uuid=${encodeURIComponent(sessionReadyKey)}&check=true&t=${timestamp}`);
         if (resp.ok) {
            const json = await resp.json();
            if (json.found) {
-             console.log('[ClientClassroom] Found existing PDF for session');
+             console.log('[ClientClassroom] Found existing PDF for session:', sessionReadyKey);
              const fileResp = await fetch(`/api/whiteboard/pdf?uuid=${encodeURIComponent(sessionReadyKey)}&t=${timestamp}`);
              if (fileResp.ok) {
                const blob = await fileResp.blob();
@@ -425,11 +431,24 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                setShowPdf(true); 
              } else {
                console.warn('[ClientClassroom] PDF file download failed:', fileResp.status);
+               setSelectedPdf(null);
+               setShowPdf(false);
              }
+           } else {
+             // No PDF found for this session
+             console.log('[ClientClassroom] No PDF found for session:', sessionReadyKey);
+             setSelectedPdf(null);
+             setShowPdf(false);
            }
+        } else {
+          console.warn('[ClientClassroom] PDF check failed:', resp.status);
+          setSelectedPdf(null);
+          setShowPdf(false);
         }
       } catch (e) {
-        console.warn('Failed to check for PDF', e);
+        console.warn('[ClientClassroom] Failed to check for PDF', e);
+        setSelectedPdf(null);
+        setShowPdf(false);
       }
     };
     
