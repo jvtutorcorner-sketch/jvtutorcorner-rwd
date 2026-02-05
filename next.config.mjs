@@ -28,7 +28,6 @@ const nextConfig = {
     DYNAMODB_TABLE_ENROLLMENTS: process.env.DYNAMODB_TABLE_ENROLLMENTS || 'jvtutorcorner-enrollments',
     DYNAMODB_TABLE_ORDERS: process.env.DYNAMODB_TABLE_ORDERS || 'jvtutorcorner-orders',
     AMPLIFY_REGION: process.env.AMPLIFY_REGION,
-    NODE_ENV: process.env.NODE_ENV,
   },
 };
 
