@@ -3,12 +3,13 @@ import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } fro
 import { Upload } from '@aws-sdk/lib-storage';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
-const awsRegion = process.env.AWS_REGION || process.env.CI_AWS_REGION || 'ap-northeast-1';
+const awsRegion = process.env.AWS_REGION || process.env.CI_AWS_REGION ;
 const accessKey = process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID;
 const secretKey = process.env.AWS_SECRET_ACCESS_KEY || process.env.CI_AWS_SECRET_ACCESS_KEY;
 
 // Prefer CI_AWS_S3_BUCKET_NAME (CI / Amplify), then AWS_S3_BUCKET_NAME, fallback to uploads bucket
-const BUCKET_NAME = process.env.CI_AWS_S3_BUCKET_NAME || process.env.AWS_S3_BUCKET_NAME || 'jvtutorcorner-uploads';
+//jvtutorcorner-uploads
+const BUCKET_NAME = process.env.CI_AWS_S3_BUCKET_NAME || process.env.AWS_S3_BUCKET_NAME ;
 
 console.log('[S3] Initializing with:', {
   region: awsRegion,

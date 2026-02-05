@@ -12,8 +12,21 @@ export const dynamic = 'force-dynamic';
 // Support CI_AWS_REGION as a fallback for CI/Amplify environment variables (avoid using reserved AWS_* names in envs)
 const region = process.env.AWS_REGION || process.env.CI_AWS_REGION || 'ap-northeast-1';
 console.log(`[WhiteboardAPI] Initializing DynamoDB Client in region: ${region}`);
+// Prefer explicit credentials when provided in local/dev environments (mirrors scripts/seed-data.js)
+// Support CI_ prefixed variables used in CI environments.
+const explicitAccessKey = process.env.CI_AWS_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID;
+const explicitSecretKey = process.env.CI_AWS_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY;
+const explicitSessionToken = process.env.CI_AWS_SESSION_TOKEN || process.env.AWS_SESSION_TOKEN;
+const explicitCredentials = explicitAccessKey && explicitSecretKey ? {
+  accessKeyId: explicitAccessKey as string,
+  secretAccessKey: explicitSecretKey as string,
+  ...(explicitSessionToken ? { sessionToken: explicitSessionToken as string } : {})
+} : undefined;
 
-const client = new DynamoDBClient({ region });
+console.log(`[WhiteboardAPI] AWS creds present: ${explicitAccessKey ? (String(explicitAccessKey).substring(0,5) + '...') : 'no'}`);
+
+const client = new DynamoDBClient({ region, credentials: explicitCredentials });
+
 const docClient = DynamoDBDocumentClient.from(client, {
   marshallOptions: {
     removeUndefinedValues: true,
@@ -111,18 +124,22 @@ export async function POST(req: NextRequest) {
           Key: { id: dbKey },
           ConsistentRead: true
         });
-        console.log('[WhiteboardAPI][DDB][Get] Sending GetCommand with params:', { TableName: tableName, Key: { id: '[REDACTED]' } });
+        console.log('[WhiteboardAPI] Attempting DynamoDB GetCommand:', { tableName, dbKey: dbKey.substring(0, 10) + '...' });
         const getResult = await docClient.send(getCmd);
         
         if (getResult.Item && getResult.Item.whiteboardUuid) {
           roomUuid = getResult.Item.whiteboardUuid as string;
-          console.log(`[WhiteboardAPI] FOUND persistent room in DB: [REDACTED]`);
+          console.log(`[WhiteboardAPI] ✅ FOUND persistent room in DB for key ${dbKey}`);
           if (channelName) ROOM_CACHE.set(channelName, roomUuid);
         } else {
-          console.log(`[WhiteboardAPI] No existing room found in DB for key: ${dbKey}. Item:`, getResult.Item);
+          console.log(`[WhiteboardAPI] ℹ️ No existing room found in DB for key ${dbKey}`);
         }
-      } catch (dbReadError) {
-        console.error('[WhiteboardAPI] DynamoDB GetCommand FAILED:', dbReadError);
+      } catch (dbReadError: any) {
+        console.error('[WhiteboardAPI] ❌ DynamoDB GetCommand FAILED for key:', dbKey.substring(0, 10));
+        console.error('  Error name:', dbReadError?.name);
+        console.error('  Error code:', dbReadError?.$metadata?.httpStatusCode);
+        console.error('  Error message:', dbReadError?.message);
+        console.error('  RequestId:', dbReadError?.$metadata?.requestId);
       }
 
       // If failed to read from DB, check cache as fallback (only if we didn't find it in DB)

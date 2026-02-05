@@ -7,7 +7,21 @@ import fs from 'fs';
 import path from 'path';
 import resolveDataFile from '@/lib/localData';
 
-const client = new DynamoDBClient({});
+// DynamoDB client initialization: prefer explicit credentials when provided (local/dev),
+// otherwise fall back to SDK default chain (IAM role in prod).
+const ddbRegion = process.env.CI_AWS_REGION || process.env.AWS_REGION;
+const ddbExplicitAccessKey = process.env.CI_AWS_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID;
+const ddbExplicitSecretKey = process.env.CI_AWS_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY;
+const ddbExplicitSessionToken = process.env.CI_AWS_SESSION_TOKEN || process.env.AWS_SESSION_TOKEN;
+const ddbExplicitCreds = ddbExplicitAccessKey && ddbExplicitSecretKey ? {
+  accessKeyId: ddbExplicitAccessKey as string,
+  secretAccessKey: ddbExplicitSecretKey as string,
+  ...(ddbExplicitSessionToken ? { sessionToken: ddbExplicitSessionToken as string } : {})
+} : undefined;
+
+console.log(`[orders API] DynamoDB region: ${ddbRegion}, AWS creds present: ${ddbExplicitAccessKey ? 'yes' : 'no'}`);
+
+const client = new DynamoDBClient({ region: ddbRegion, credentials: ddbExplicitCreds });
 const docClient = DynamoDBDocumentClient.from(client);
 
 // Placeholder for real user session check
@@ -18,8 +32,12 @@ const getUserId = async (): Promise<string | null> => {
 // Development fallback: keep orders in memory when DynamoDB isn't configured
 let LOCAL_ORDERS: any[] = [];
 const ORDERS_TABLE = process.env.DYNAMODB_TABLE_ORDERS;
+// Enable DynamoDB when a table name is provided and either running in production
+// or explicit AWS credentials are available in env (useful for local dev).
 const useDynamo =
-  process.env.NODE_ENV === 'production' && typeof ORDERS_TABLE === 'string' && ORDERS_TABLE.length > 0;
+  typeof ORDERS_TABLE === 'string' && ORDERS_TABLE.length > 0 && (
+    process.env.NODE_ENV === 'production' || (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY)
+  );
 
 async function loadLocalOrders() {
   try {
@@ -235,6 +253,11 @@ export async function GET(request: Request) {
       } catch (e) {
         encodedLastKey = null;
       }
+    }
+
+    // If filtering by specific orderId and no results found, return 404
+    if (orderIdFilter && items.length === 0) {
+      return NextResponse.json({ ok: false, error: `Order with ID ${orderIdFilter} not found` }, { status: 404 });
     }
 
     return NextResponse.json(
