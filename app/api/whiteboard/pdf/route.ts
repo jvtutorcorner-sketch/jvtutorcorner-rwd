@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { uploadToS3, getObjectBuffer } from '@/lib/s3';
+import { saveWhiteboardState, getWhiteboardState } from '@/lib/whiteboardService';
+import { broadcastToUuid } from '../stream/route';
 
 export async function POST(req: NextRequest) {
   try {
@@ -27,6 +29,33 @@ export async function POST(req: NextRequest) {
       const metaKey = `whiteboard/session_${uuid}_meta.json`;
       await uploadToS3(Buffer.from(JSON.stringify(meta)), metaKey, 'application/json');
       console.log('[PDF POST] Metadata upload success:', metaKey);
+
+      // Persist PDF metadata into the whiteboard state (DynamoDB) so the classroom
+      // page can pick it up when participants join the session.
+      try {
+        // Preserve existing strokes if any
+        const existing = await getWhiteboardState(uuid);
+        const strokes = existing?.strokes || [];
+        const pdfState = {
+          name: pdf.name,
+          s3Key: uploaded.key,
+          url: uploaded.url,
+          size: pdf.size,
+          type: pdf.type,
+          uploadedAt: Date.now(),
+          currentPage: 1
+        };
+        await saveWhiteboardState(uuid, strokes, pdfState as any);
+        console.log('[PDF POST] Saved whiteboard state with PDF metadata for uuid:', uuid);
+        try {
+          broadcastToUuid(uuid, { type: 'pdf-uploaded', pdf: pdfState, clientId: pdf.uploadedBy || null });
+          console.log('[PDF POST] broadcasted pdf-uploaded event for uuid:', uuid);
+        } catch (bErr) {
+          console.warn('[PDF POST] broadcasting pdf-uploaded failed:', bErr);
+        }
+      } catch (e) {
+        console.error('[PDF POST] Failed to save whiteboard state metadata:', e);
+      }
 
       return NextResponse.json({ 
         success: true, 

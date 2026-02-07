@@ -51,7 +51,10 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   // Feature Flag: Agora Whiteboard vs Canvas Whiteboard
   // Default to using Agora whiteboard unless explicitly disabled with NEXT_PUBLIC_USE_AGORA_WHITEBOARD='false'
   const useAgoraWhiteboard = process.env.NEXT_PUBLIC_USE_AGORA_WHITEBOARD !== 'false';
-  console.log('[ClientClassroom] useAgoraWhiteboard:', useAgoraWhiteboard, 'NEXT_PUBLIC_USE_AGORA_WHITEBOARD:', process.env.NEXT_PUBLIC_USE_AGORA_WHITEBOARD);
+  // Avoid noisy logs in production. Use debug logging during development only.
+  if (process.env.NODE_ENV !== 'production') {
+    console.debug('[ClientClassroom] useAgoraWhiteboard:', useAgoraWhiteboard, 'NEXT_PUBLIC_USE_AGORA_WHITEBOARD:', process.env.NEXT_PUBLIC_USE_AGORA_WHITEBOARD);
+  }
   const agoraWhiteboardRef = useRef<AgoraWhiteboardRef>(null);
   const [agoraRoomData, setAgoraRoomData] = useState<{ uuid: string; roomToken: string; appIdentifier: string; region: string; userId: string } | null>(null);
   const [whiteboardState, setWhiteboardState] = useState<any>(null);
@@ -136,6 +139,8 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   const firstRemote = useMemo(() => remoteUsers?.[0] ?? null, [remoteUsers]);
 
   const isTeacher = (urlRole === 'teacher' || computedRole === 'teacher');
+
+  const isTestPath = typeof window !== 'undefined' && window.location.pathname === '/classroom/test';
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -410,49 +415,72 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       setShowPdf(false);
       return;
     }
-    
-    const checkPdf = async () => {
+
+    const fetchPdfForSession = async () => {
       try {
-        // Always use fresh cache-busting timestamp for each check
         const timestamp = Date.now();
         const resp = await fetch(`/api/whiteboard/pdf?uuid=${encodeURIComponent(sessionReadyKey)}&check=true&t=${timestamp}`);
-        if (resp.ok) {
-           const json = await resp.json();
-           if (json.found) {
-             console.log('[ClientClassroom] Found existing PDF for session:', sessionReadyKey);
-             const fileResp = await fetch(`/api/whiteboard/pdf?uuid=${encodeURIComponent(sessionReadyKey)}&t=${timestamp}`);
-             if (fileResp.ok) {
-               const blob = await fileResp.blob();
-               // Get filename from json meta if possible
-               const fileName = json.meta?.name || 'course.pdf';
-               const fileType = json.meta?.type || 'application/pdf';
-               const file = new File([blob], fileName, { type: fileType });
-               setSelectedPdf(file);
-               setShowPdf(true); 
-             } else {
-               console.warn('[ClientClassroom] PDF file download failed:', fileResp.status);
-               setSelectedPdf(null);
-               setShowPdf(false);
-             }
-           } else {
-             // No PDF found for this session
-             console.log('[ClientClassroom] No PDF found for session:', sessionReadyKey);
-             setSelectedPdf(null);
-             setShowPdf(false);
-           }
-        } else {
+        if (!resp.ok) {
           console.warn('[ClientClassroom] PDF check failed:', resp.status);
           setSelectedPdf(null);
           setShowPdf(false);
+          return;
         }
+        const json = await resp.json();
+        if (!json.found) {
+          console.log('[ClientClassroom] No PDF found for session:', sessionReadyKey);
+          setSelectedPdf(null);
+          setShowPdf(false);
+          return;
+        }
+
+        console.log('[ClientClassroom] Found existing PDF for session:', sessionReadyKey);
+        const fileResp = await fetch(`/api/whiteboard/pdf?uuid=${encodeURIComponent(sessionReadyKey)}&t=${timestamp}`);
+        if (!fileResp.ok) {
+          console.warn('[ClientClassroom] PDF file download failed:', fileResp.status);
+          setSelectedPdf(null);
+          setShowPdf(false);
+          return;
+        }
+        const blob = await fileResp.blob();
+        const fileName = json.meta?.name || 'course.pdf';
+        const fileType = json.meta?.type || 'application/pdf';
+        const file = new File([blob], fileName, { type: fileType });
+        setSelectedPdf(file);
+        setShowPdf(true);
       } catch (e) {
         console.warn('[ClientClassroom] Failed to check for PDF', e);
         setSelectedPdf(null);
         setShowPdf(false);
       }
     };
-    
-    checkPdf();
+
+    fetchPdfForSession();
+
+    // Subscribe to server-sent events to react to PDF uploads while inside classroom
+    let es: EventSource | null = null;
+    try {
+      es = new EventSource(`/api/whiteboard/stream?uuid=${encodeURIComponent(sessionReadyKey)}`);
+      es.onmessage = (ev) => {
+        try {
+          const data = JSON.parse(ev.data || '{}');
+          if (data?.type === 'pdf-uploaded' || data?.type === 'pdf-set') {
+            console.log('[ClientClassroom] Received pdf-upload event, refetching PDF for session');
+            fetchPdfForSession();
+          }
+        } catch (e) { /* ignore parse errors */ }
+      };
+      es.onerror = (err) => {
+        try { es?.close(); } catch (e) {}
+        es = null;
+      };
+    } catch (e) {
+      es = null;
+    }
+
+    return () => {
+      try { if (es) es.close(); } catch (e) {}
+    };
   }, [mounted, sessionReadyKey]);
 
   // ★★★ Auto-insert PDF into Agora Whiteboard when ready ★★★
@@ -1418,6 +1446,13 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
 
   return (
     <>
+      {/* Course Title (only on /classroom/test) */}
+      {isTestPath && (
+        <div style={{ background: '#fff', color: '#111827', fontSize: '18px', padding: '10px 12px', textAlign: 'center', fontWeight: 700, borderBottom: '1px solid #e5e7eb' }}>
+          {course?.title ?? '課程'}
+        </div>
+      )}
+
       {/* Status Bar - Above everything */}
       {useAgoraWhiteboard && agoraRoomData && whiteboardState && (
         <div style={{ background: 'rgba(0,0,0,0.7)', color: 'white', fontSize: '11px', padding: '4px 12px', textAlign: 'center' }}>
@@ -1678,7 +1713,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                 </div>
 
                 {/* Console Log Viewers for debugging */}
-                {typeof window !== 'undefined' && window.location.pathname === '/classroom/test' && (
+                {typeof window !== 'undefined' && window.location.pathname !== '/classroom/test' && (
                   <>
                     <ConsoleLogViewer title={`${(urlRole === 'teacher' || computedRole === 'teacher') ? '老師' : '學生'} Console Log`} />
                     <ConsoleLogViewer title={`${(urlRole === 'teacher' || computedRole === 'teacher') ? '學生' : '老師'} Console Log`} />
@@ -1726,9 +1761,11 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                     )}
 
                     {/* Moved ready status message below Join button */}
-                    <div style={{ marginTop: 8, color: canJoin ? '#10b981' : '#666', fontSize: 13, textAlign: 'center' }}>
-                      {canJoin ? t('ready_complete') : t('ready_incomplete')}
-                    </div>
+                    {!isTestPath && (
+                      <div style={{ marginTop: 8, color: canJoin ? '#10b981' : '#666', fontSize: 13, textAlign: 'center' }}>
+                        {canJoin ? t('ready_complete') : t('ready_incomplete')}
+                      </div>
+                    )}
 
                     <button
                       onClick={() => { try { handleLeave(); } catch (e) { console.error('Leave click error', e); } }}
@@ -1749,17 +1786,21 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                     </button>
                   </div>
 
-                {joined && (
-                  <div style={{ marginTop: 6, fontSize: 11, color: '#ffeb3b', background: 'rgba(255,235,59,0.1)', padding: 4, borderRadius: 4 }}>
-                    {t('started_billing')}
-                  </div>
+                {typeof window !== 'undefined' && window.location.pathname !== '/classroom/test' && (
+                  <>
+                    {joined && (
+                      <div style={{ marginTop: 6, fontSize: 11, color: '#ffeb3b', background: 'rgba(255,235,59,0.1)', padding: 4, borderRadius: 4 }}>
+                        {t('started_billing')}
+                      </div>
+                    )}
+
+                    <div style={{ marginTop: 6, fontSize: 12, color: '#666' }}>
+                      <div><strong>{t('join')}</strong>: {t('join_desc')}</div>
+                      <div><strong>{t('leave')}</strong>: {t('leave_desc')}</div>
+                      <div><strong>{t('end_session')}</strong>: {t('end_session_desc')}</div>
+                    </div>
+                  </>
                 )}
-                
-                <div style={{ marginTop: 6, fontSize: 12, color: '#666' }}>
-                  <div><strong>{t('join')}</strong>: {t('join_desc')}</div>
-                  <div><strong>{t('leave')}</strong>: {t('leave_desc')}</div>
-                  <div><strong>{t('end_session')}</strong>: {t('end_session_desc')}</div>
-                </div>
                 
                 {remainingSeconds !== null && (
                   <div style={{ marginTop: 6 }}>

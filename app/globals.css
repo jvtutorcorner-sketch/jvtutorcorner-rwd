@@ -878,7 +878,9 @@ h1 + h2, h1 + h3, h2 + h3, h2 + h1, h3 + h1, h3 + h2 {
   }
   .client-classroom .client-left {
     width: 100%;
-    height: 70%; /* Increased from 50% to 70% for better whiteboard visibility */
+    /* Let the whiteboard container control its own height via aspect-ratio
+       so it scales proportionally on narrow viewports. */
+    height: auto;
     flex: none;
   }
   .client-classroom .client-left-inner {
@@ -887,8 +889,13 @@ h1 + h2, h1 + h3, h2 + h3, h2 + h1, h3 + h1, h3 + h2 {
     flex-direction: column;
   }
   .client-classroom .whiteboard-container {
-    flex: 1;
-    min-height: 300px; /* Added minimum height to ensure whiteboard is usable */
+    width: 100%;
+    /* Maintain a 16:9 ratio on mobile so the board is fully visible and not cropped.
+       Limit the max height to the available viewport space minus chrome/controls. */
+    aspect-ratio: 16 / 9;
+    height: auto;
+    max-height: calc(100dvh - 220px);
+    flex: none;
     overflow: hidden;
   }
   .client-classroom .client-right {

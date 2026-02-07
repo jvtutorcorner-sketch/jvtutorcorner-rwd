@@ -374,28 +374,82 @@ export default function ClassroomWaitPage() {
         uuid: sessionReadyKey
       });
 
-      // Upload PDF to server
-      const response = await fetch('/api/whiteboard/pdf', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          uuid: sessionReadyKey,
-          pdf: {
-            name: file.name,
-            data: buffer.toString('base64'),
-            size: file.size,
-            type: file.type
-          }
-        })
-      });
+      // Upload strategy can be switched via environment variable.
+      // When NEXT_PUBLIC_WHITEBOARD_PDF_UPLOAD=presign the client will request
+      // a presigned PUT URL from the server and upload the file directly.
+      // Otherwise it falls back to the base64-POST behavior.
+      const uploadMode = (typeof process !== 'undefined' && process.env && process.env.NEXT_PUBLIC_WHITEBOARD_PDF_UPLOAD) || '';
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('PDF Upload - Server error:', response.status, errorText);
-        throw new Error('PDF upload failed');
+      let result: any = null;
+
+      if (uploadMode === 'presign') {
+        console.log('PDF Upload - Using presigned upload flow');
+        // Request presigned URL from server
+        const presignResp = await fetch('/api/whiteboard/presign', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ uuid: sessionReadyKey, fileName: file.name, contentType: file.type })
+        });
+        if (!presignResp.ok) {
+          const errorText = await presignResp.text().catch(() => 'Unknown presign error');
+          console.error('PDF Upload - Presign API failed:', { status: presignResp.status, statusText: presignResp.statusText, errorText });
+          throw new Error('Presign request failed');
+        }
+        const presignJson = await presignResp.json();
+        const { url, key } = presignJson;
+        if (!url) throw new Error('Presign response missing url');
+
+        // PUT file bytes directly to storage
+        const putResp = await fetch(url, {
+          method: 'PUT',
+          headers: { 'Content-Type': file.type },
+          body: arrayBuffer
+        });
+        if (!putResp.ok) {
+          const putText = await putResp.text().catch(() => 'Unknown PUT error');
+          console.error('PDF Upload - PUT to presigned URL failed:', { status: putResp.status, statusText: putResp.statusText, putText });
+          throw new Error('Upload to storage failed');
+        }
+
+        // Notify server about the uploaded file (so server can record the key)
+        const notifyResp = await fetch('/api/whiteboard/pdf', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            uuid: sessionReadyKey,
+            pdf: { name: file.name, s3Key: key, size: file.size, type: file.type }
+          })
+        });
+        if (!notifyResp.ok) {
+          const errText = await notifyResp.text().catch(() => 'Unknown notify error');
+          console.error('PDF Upload - Notification to server failed:', { status: notifyResp.status, statusText: notifyResp.statusText, errText });
+          throw new Error('Server notify failed');
+        }
+        result = await notifyResp.json();
+      } else {
+        // Fallback: post base64 PDF payload to the existing API
+        const response = await fetch('/api/whiteboard/pdf', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            uuid: sessionReadyKey,
+            pdf: {
+              name: file.name,
+              data: buffer.toString('base64'),
+              size: file.size,
+              type: file.type
+            }
+          })
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('PDF Upload - Server error:', response.status, errorText);
+          throw new Error('PDF upload failed');
+        }
+
+        result = await response.json();
       }
-
-      const result = await response.json();
       console.log('PDF Upload - Success:', result);
 
       setSelectedPdf(file);
@@ -415,13 +469,30 @@ export default function ClassroomWaitPage() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <h2>{t('wait.title')}</h2>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button
+            onClick={() => router.push('/')}
+            style={{ padding: '8px 12px', background: '#ffffff', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer' }}
+          >
+            返回首頁
+          </button>
+          <button
+            onClick={() => {
+              try {
+                if (role === 'teacher') router.push('/teacher_courses');
+                else if (role === 'student') router.push('/student_courses');
+                else router.push('/courses');
+              } catch (e) { router.push('/courses'); }
+            }}
+            style={{ padding: '8px 12px', background: '#ffffff', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer' }}
+          >
+            回課程清單
+          </button>
           <LanguageSwitcher />
         </div>
       </div>
       <div style={{ marginTop: 12 }}>
-        <div style={{ fontWeight: 600, fontSize: 18 }}>{course?.title ?? '課程'}</div>
-        <div style={{ marginTop: 8, color: '#666' }}>{t('wait.course_id_label')} {courseId}</div>
-        {orderId && <div style={{ color: '#666' }}>{t('wait.order_id_label')} {orderId}</div>}
+      <div style={{ fontWeight: 600, fontSize: 18 }}>{course?.title ?? '課程'}</div>
+      {orderId && <div style={{ color: '#666' }}>{t('wait.order_id_label')} {orderId}</div>}
         <div style={{ marginTop: 4, color: '#666' }}>
           {t('wait.role_label')} {role ? (role === 'teacher' ? `${t('role_teacher')} (Teacher)` : `${t('role_student')} (Student)`) : '—'}
         </div>
@@ -766,9 +837,30 @@ function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, vi
       if (selectedVideoDeviceId && selectedVideoDeviceId !== '') {
         constraints.video = { deviceId: { ideal: selectedVideoDeviceId } };
       }
-      const s = await navigator.mediaDevices.getUserMedia(constraints);
+      let s: MediaStream | null = null;
+      try {
+        s = await navigator.mediaDevices.getUserMedia(constraints);
+      } catch (err) {
+        console.warn('startCameraPreview: getUserMedia with deviceId failed, retrying without deviceId/facingMode', err);
+        // Retry without deviceId constraint — iOS often does not support deviceId until after permissions
+        try {
+          const isIos = /iPhone|iPad|iPod/.test(navigator.userAgent);
+          if (isIos) {
+            s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+          } else {
+            s = await navigator.mediaDevices.getUserMedia({ video: true });
+          }
+        } catch (err2) {
+          console.warn('startCameraPreview: retry without deviceId also failed', err2);
+          throw err2;
+        }
+      }
+
       previewStreamRef.current = s;
-      if (localVideoRef.current) try { localVideoRef.current.srcObject = s; } catch (e) {}
+      if (localVideoRef.current) {
+        try { localVideoRef.current.srcObject = s; } catch (e) {}
+        try { await localVideoRef.current.play(); } catch (e) { console.warn('startCameraPreview: video.play() failed', e); }
+      }
       setPreviewingCamera(true);
       setVideoTested(true);
     } catch (e) {

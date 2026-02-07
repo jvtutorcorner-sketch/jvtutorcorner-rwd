@@ -21,6 +21,10 @@ console.log('[S3] Initializing with:', {
   isCiAccessKey: !!process.env.CI_AWS_ACCESS_KEY_ID
 });
 
+if (!BUCKET_NAME) {
+  console.error('[S3] WARNING: No S3 bucket configured. Set CI_AWS_S3_BUCKET_NAME or AWS_S3_BUCKET_NAME.');
+}
+
 const s3Client = new S3Client({
   region: awsRegion,
   credentials: accessKey && secretKey ? { accessKeyId: accessKey, secretAccessKey: secretKey } : undefined,
@@ -35,6 +39,11 @@ export interface UploadResult {
  * Upload a file to S3
  */
 export async function uploadToS3(file: File | Buffer, key: string, mimeType?: string): Promise<UploadResult> {
+  if (!BUCKET_NAME) {
+    const err = new Error('S3 bucket is not configured. Set AWS_S3_BUCKET_NAME or CI_AWS_S3_BUCKET_NAME');
+    console.error('[S3 Upload] Aborting upload - bucket not configured');
+    throw err;
+  }
   console.log('[S3 Upload] Starting upload:', {
     bucket: BUCKET_NAME,
     key: key,
