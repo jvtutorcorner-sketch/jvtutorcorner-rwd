@@ -18,6 +18,7 @@ export interface AgoraWhiteboardRef {
     setTool: (tool: 'pencil' | 'eraser' | 'selector') => void;
     setColor: (color: number[]) => void;
     clearScene: () => void;
+    clearPDF: () => void;
     forceFix: () => void;
     prevPage: () => void;
     nextPage: () => void;
@@ -302,6 +303,20 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
         setTool,
         setColor,
         clearScene,
+        // Clear PDF by switching back to a blank/root scene and refreshing view.
+        clearPDF: () => {
+            try {
+                if (!roomRef.current) return;
+                try {
+                    roomRef.current.setScenePath('/');
+                } catch (e) {
+                    try { roomRef.current.setScenePath(''); } catch (ee) { /* ignore */ }
+                }
+                try { roomRef.current.refreshViewSize(); } catch (e) {}
+            } catch (e) {
+                console.warn('[BoardImpl] clearPDF failed', e);
+            }
+        },
         forceFix,
         prevPage,
         nextPage,

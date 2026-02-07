@@ -583,6 +583,27 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     
     bc.onmessage = (event) => {
       console.log('[BroadcastChannel] Received message:', event.data);
+      // Support clearing whiteboard when another participant requests it
+      if (event.data?.type === 'whiteboard_clear') {
+        console.log('[BroadcastChannel] Received whiteboard_clear -> clearing local PDF/whiteboard');
+        try {
+          if (useAgoraWhiteboard) {
+            // Prefer clearing PDF content specifically when available
+            try { agoraWhiteboardRef.current?.clearPDF(); } catch (e) { /* fallback */ }
+            // Also clear drawings on current scene
+            try { agoraWhiteboardRef.current?.clearScene(); } catch (e) { /* ignore */ }
+          } else {
+            // Post to the canvas BroadcastChannel so EnhancedWhiteboard instances will clear
+            try {
+              const ch = new BroadcastChannel(`whiteboard_${sessionReadyKey}`);
+              ch.postMessage({ type: 'clear' });
+              ch.close();
+            } catch (e) { /* ignore BC errors */ }
+          }
+        } catch (e) { console.warn('whiteboard_clear handler failed', e); }
+        return;
+      }
+
       if (event.data?.type === 'class_started' && !joined && !loading) {
         // New: Student saves the authoritative endTs from teacher
         if (event.data.endTs) {
@@ -1150,11 +1171,31 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           setRemainingSeconds((prev) => {
             if (prev === null) return prev;
             if (prev <= 1) {
-              // time's up
-              console.log('時間到！自動結束課程並返回等待頁');
+              // time's up -> clear whiteboard for both sides, then end session
+              console.log('時間到！廣播清空白板並在本地清空');
+              try {
+                // Broadcast a session-level message so other tabs can respond
+                const sessionBroadcastName = sessionParam || channelName || `classroom_session_ready_${courseId}`;
+                try {
+                  const bc2 = new BroadcastChannel(sessionBroadcastName);
+                  bc2.postMessage({ type: 'whiteboard_clear', timestamp: Date.now() });
+                  setTimeout(() => { try { bc2.close(); } catch (e) {} }, 50);
+                } catch (e) { /* ignore BC failures */ }
+
+                // Also post to the per-whiteboard BroadcastChannel used by EnhancedWhiteboard
+                try {
+                  const ch = new BroadcastChannel(`whiteboard_${sessionReadyKey}`);
+                  ch.postMessage({ type: 'clear' });
+                  setTimeout(() => { try { ch.close(); } catch (e) {} }, 50);
+                } catch (e) {}
+
+                // Locally clear Agora whiteboard if present
+                try { if (useAgoraWhiteboard) agoraWhiteboardRef.current?.clearScene(); } catch (e) {}
+              } catch (e) { console.warn('Failed to broadcast/clear whiteboard on timeout', e); }
+
               try { if (timerRef.current) { window.clearInterval(timerRef.current); timerRef.current = null; } } catch (e) {}
-              // trigger endSession
-              endSession();
+              // after short delay, trigger endSession to leave and cleanup
+              setTimeout(() => { try { endSession(); } catch (e) { console.warn('endSession failed', e); } }, 800);
               return 0;
             }
             return prev - 1;
