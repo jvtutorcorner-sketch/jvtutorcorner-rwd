@@ -4,6 +4,8 @@ import path from 'path';
 import { randomUUID } from 'crypto';
 import resolveDataFile from '@/lib/localData';
 import { COURSES as BUNDLED_COURSES } from '@/data/courses';
+import { PutCommand, ScanCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
+import { ddbDocClient } from '@/lib/dynamo';
 
 async function readCourses(): Promise<any[]> {
   try {
@@ -31,11 +33,43 @@ export async function GET(req: Request) {
     const teacherId = url.searchParams.get('teacherId');
     const id = url.searchParams.get('id');
     let courses = await readCourses();
+    const COURSES_TABLE = process.env.DYNAMODB_TABLE_COURSES || 'jvtutorcorner-courses';
+    const ddbRegion = process.env.CI_AWS_REGION || process.env.AWS_REGION;
+    const hasCreds = !!(process.env.CI_AWS_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID) && !!(process.env.CI_AWS_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY);
+    const useDynamo = typeof COURSES_TABLE === 'string' && COURSES_TABLE.length > 0 && (process.env.NODE_ENV === 'production' || hasCreds);
     // If there are no persisted courses available (e.g. in Amplify deployments
     // where `.local_data` is ignored), fall back to bundled sample data.
     if ((!courses || courses.length === 0) && Array.isArray(BUNDLED_COURSES) && BUNDLED_COURSES.length > 0) {
       courses = BUNDLED_COURSES as any[];
     }
+
+    if (useDynamo) {
+      try {
+        if (id) {
+          const getCmd = new GetCommand({ TableName: COURSES_TABLE, Key: { id } });
+          const res = await ddbDocClient.send(getCmd);
+          if (!res || !res.Item) return NextResponse.json({ ok: false, message: 'Course not found' }, { status: 404 });
+          return NextResponse.json({ ok: true, course: res.Item });
+        }
+
+        const params: any = { TableName: COURSES_TABLE };
+        if (teacherId) {
+          params.FilterExpression = 'teacherId = :tid';
+          params.ExpressionAttributeValues = { ':tid': teacherId };
+        } else if (teacher) {
+          params.FilterExpression = 'teacherName = :tname';
+          params.ExpressionAttributeValues = { ':tname': teacher };
+        }
+        const scanCmd = new ScanCommand(params);
+        const result = await ddbDocClient.send(scanCmd);
+        const items = result.Items || [];
+        return NextResponse.json({ ok: true, data: items });
+      } catch (err: any) {
+        console.error('[courses GET Dynamo] error', err?.message || err);
+        // fallback to local file behavior below
+      }
+    }
+
     if (id) {
       const idNorm = String(id).trim();
       // try exact match in persisted courses
@@ -93,6 +127,8 @@ export async function POST(req: Request) {
       tags: body.tags || [],
       mode: body.mode || 'online',
       description: body.description || '',
+    // status: '上架' or '下架'
+    status: body.status || '上架',
       // scheduling fields
       nextStartDate: body.nextStartDate || null,
       startDate: body.startDate || null,

@@ -35,12 +35,34 @@ export default function TeacherDashboard({ teacherId, teacherName }: Props) {
       }
 
       const s = getStoredUser();
-      if (s && (s.role === 'admin' || (s.teacherId && s.teacherId === teacherId) || (profile && s.email === profile.email))) setCanEdit(true);
+      // Allow admins and demo teachers to edit. Also allow any stored user with role 'teacher' to edit their courses.
+      if (s && (s.role === 'admin' || s.role === 'teacher' || (s.teacherId && s.teacherId === teacherId) || (profile && s.email === profile.email))) setCanEdit(true);
       if (s && s.email === 'teacher@test.com') setCanEdit(true);
       loadCourses();
+      // In local development, if no stored user exists, enable edit actions for convenience
+      // This keeps the demo editable without forcing login. Only enable in non-production builds.
+      if (!s && process.env.NODE_ENV !== 'production') {
+        setCanEdit(true);
+      }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [teacherId, teacherName, profile?.email]);
+
+  useEffect(() => {
+    // listen for external course updates (e.g., modal create)
+    const handler = () => {
+      loadCourses();
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('courses:updated', handler as EventListener);
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('courses:updated', handler as EventListener);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function loadCourses() {
     setLoading(true);
@@ -125,7 +147,7 @@ export default function TeacherDashboard({ teacherId, teacherName }: Props) {
   function handleEditCourse(id: string) {
     const ok = confirm(t('confirm_edit_course') || 'Confirm edit this course?');
     if (!ok) return;
-    router.push(`/my-courses/${encodeURIComponent(id)}/edit`);
+    router.push(`/courses_manage/${encodeURIComponent(id)}/edit`);
   }
 
   async function handlePatchCourse(id: string, updates: any) {
@@ -171,13 +193,13 @@ export default function TeacherDashboard({ teacherId, teacherName }: Props) {
             <table style={{ width: '100%', borderCollapse: 'collapse', border: '2px solid #ccc' }}>
               <thead>
                 <tr>
-                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left', backgroundColor: '#f3f4f6', fontWeight: 600 }}>{t('course_title') || 'Title'}</th>
+                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left', backgroundColor: '#f3f4f6', fontWeight: 600 }}>課程名稱</th>
                   <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left', backgroundColor: '#f3f4f6', fontWeight: 600 }}>{t('teacher') || 'Teacher'}</th>
-                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left', backgroundColor: '#f3f4f6', fontWeight: 600 }}>{t('subject') || 'Subject'}</th>
-                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left', backgroundColor: '#f3f4f6', fontWeight: 600 }}>{t('price') || 'Price'}</th>
+                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left', backgroundColor: '#f3f4f6', fontWeight: 600 }}>時長</th>
                   <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left', backgroundColor: '#f3f4f6', fontWeight: 600 }}>{t('start_date') || 'Start Date'}</th>
-                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left', backgroundColor: '#f3f4f6', fontWeight: 600 }}>{t('end_date') || 'End Date'}</th>
+                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left', backgroundColor: '#f3f4f6', fontWeight: 600 }}>結束時間</th>
                   <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left', backgroundColor: '#f3f4f6', fontWeight: 600 }}>{t('membership_plan') || 'Plan'}</th>
+                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left', backgroundColor: '#f3f4f6', fontWeight: 600 }}>狀態</th>
                   <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left', backgroundColor: '#f3f4f6', fontWeight: 600 }}>{t('actions') || 'Actions'}</th>
                 </tr>
               </thead>
@@ -190,11 +212,11 @@ export default function TeacherDashboard({ teacherId, teacherName }: Props) {
                       </Link>
                     </td>
                     <td style={{ border: '2px solid #ccc', padding: '8px' }}>{c.teacherName || c.teacher || '-'}</td>
-                    <td style={{ border: '2px solid #ccc', padding: '8px' }}>{c.subject}</td>
-                    <td style={{ border: '2px solid #ccc', padding: '8px' }}>NT$ {c.pricePerSession}</td>
+                    <td style={{ border: '2px solid #ccc', padding: '8px' }}>{c.durationMinutes ? `${c.durationMinutes} 分鐘` : '-'}</td>
                     <td style={{ border: '2px solid #ccc', padding: '8px' }}>{formatDateTime(c.nextStartDate || c.startDate)}</td>
                     <td style={{ border: '2px solid #ccc', padding: '8px' }}>{formatDateTime(c.endDate)}</td>
                     <td style={{ border: '2px solid #ccc', padding: '8px' }}>{c.membershipPlan || '-'}</td>
+                    <td style={{ border: '2px solid #ccc', padding: '8px' }}>{c.status || '-'}</td>
                     <td style={{ border: '2px solid #ccc', padding: '8px' }}>
                       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                         <Button
@@ -205,44 +227,10 @@ export default function TeacherDashboard({ teacherId, teacherName }: Props) {
                             }
                             handleEditCourse(c.id);
                           }}
-                          disabled={!canEdit}
                           variant="primary"
                         >
                           {t('edit') || 'Edit'}
                         </Button>
-
-                        <Button
-                          onClick={() => {
-                            if (!canEdit) {
-                              alert(t('no_permission') || 'You do not have permission');
-                              return;
-                            }
-                            const input = prompt(t('prompt_start_date'), c.nextStartDate || '');
-                            if (input === null) return;
-                            handlePatchCourse(c.id, { nextStartDate: input || null });
-                          }}
-                          disabled={!canEdit}
-                          variant="secondary"
-                        >
-                          {t('set_start_date')}
-                        </Button>
-
-                        <Button
-                          onClick={() => {
-                            if (!canEdit) {
-                              alert(t('no_permission') || 'You do not have permission');
-                              return;
-                            }
-                            const mp = prompt(t('prompt_membership_plan'), c.membershipPlan || '');
-                            if (mp === null) return;
-                            handlePatchCourse(c.id, { membershipPlan: mp || null });
-                          }}
-                          disabled={!canEdit}
-                          variant="muted"
-                        >
-                          {t('set_plan')}
-                        </Button>
-
                         <Button
                           onClick={() => {
                             if (!canEdit) {
@@ -252,7 +240,6 @@ export default function TeacherDashboard({ teacherId, teacherName }: Props) {
                             if (!confirm(t('confirm_delete_course'))) return;
                             handleDeleteCourse(c.id);
                           }}
-                          disabled={!canEdit}
                           variant="danger"
                         >
                           {t('delete')}

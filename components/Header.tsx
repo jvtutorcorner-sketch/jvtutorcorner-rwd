@@ -320,7 +320,7 @@ export default function Header() {
                                               // fixed items for students and teachers
                                               (user ? (() => {
                                                 const fixed = user.role === 'teacher'
-                                                  ? ['/teacher_courses', '/my-courses', '/calendar', '/settings']
+                                                  ? ['/teacher_courses', '/courses_manage', '/calendar', '/settings']
                                                   : ['/student_courses', '/calendar', '/settings'];
                                                 return fixed.map((p) => {
                                                   // ensure student orders always available to authenticated users
@@ -329,7 +329,7 @@ export default function Header() {
                                                   const label = pc?.label || (
                                                     p === '/student_courses' ? t('orders_my_orders') :
                                                     p === '/teacher_courses' ? t('course_orders') :
-                                                    p === '/my-courses' ? t('my_courses') :
+                                                    p === '/courses_manage' ? t('my_courses') :
                                                     p === '/calendar' ? t('calendar_label') : t('settings_label')
                                                   ) || p;
                                                   return (
@@ -346,7 +346,7 @@ export default function Header() {
                                               user?.role === 'teacher' ? null : (
                                                 // otherwise (e.g. student), render other admin-configured dropdown items, excluding the fixed ones and page-permissions
                                                 (adminSettings?.pageConfigs || [])
-                                                  .filter((pc: any) => !!pc.path && pc.path !== '/admin/settings/page-permissions' && !['/student_courses', '/calendar', '/settings', '/my-courses'].includes(pc.path))
+                                                  .filter((pc: any) => !!pc.path && pc.path !== '/admin/settings/page-permissions' && !['/student_courses', '/calendar', '/settings', '/courses_manage'].includes(pc.path))
                                                   .map((pc: any) => {
                                                     const roleKey = user?.role || 'user';
                                                     const perm = (pc.permissions || []).find((p: any) => p.roleId === roleKey);
@@ -461,14 +461,14 @@ export default function Header() {
                       ) : (
                         // fixed items for authenticated non-admin users
                         user ? (
-                          (user.role === 'teacher' ? ['/teacher_courses', '/my-courses', '/calendar', '/settings'] : ['/student_courses', '/calendar', '/settings'])
+                          (user.role === 'teacher' ? ['/teacher_courses', '/courses_manage', '/calendar', '/settings'] : ['/student_courses', '/calendar', '/settings'])
                           .map((p) => {
                             if (p === '/student_courses' && !user) return null;
                             const pc = (adminSettings?.pageConfigs || []).find((x: any) => x.path === p);
                             const label = pc?.label || (
                               p === '/student_courses' ? t('orders_my_orders') :
                               p === '/teacher_courses' ? t('course_orders') :
-                              p === '/my-courses' ? t('my_courses') :
+                              p === '/courses_manage' ? t('my_courses') :
                               p === '/calendar' ? t('calendar_label') : t('settings_label')
                             ) || p;
                             return (

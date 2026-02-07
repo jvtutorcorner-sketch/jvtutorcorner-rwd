@@ -134,8 +134,8 @@ export default function MenuBar() {
                               role="menuitem"
                               tabIndex={0}
                               className="menu-link"
-                              onClick={() => { setMenuOpen(false); router.push('/my-courses'); }}
-                              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { setMenuOpen(false); router.push('/my-courses'); } }}
+                              onClick={() => { setMenuOpen(false); router.push('/courses_manage'); }}
+                              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { setMenuOpen(false); router.push('/courses_manage'); } }}
                             >
                               {t('my_courses')}
                             </span>
