@@ -38,14 +38,18 @@ const docClient = DynamoDBDocumentClient.from(client, {
 function generateSdkToken() {
   const ak = process.env.AGORA_WHITEBOARD_AK;
   const sk = process.env.AGORA_WHITEBOARD_SK;
-  
+
   if (!ak || !sk) {
-    throw new Error('Missing Agora Whiteboard credentials (AK/SK)');
+    console.error('[WhiteboardAPI] Error: Missing Agora Whiteboard credentials (AK/SK)');
+    console.error('[WhiteboardAPI] Please set AGORA_WHITEBOARD_AK and AGORA_WHITEBOARD_SK in your environment variables');
+    console.error('[WhiteboardAPI] For local development, create a .env.local file with your Agora credentials');
+    console.error('[WhiteboardAPI] See .env.local.example for the required format');
+    throw new Error('Missing Agora Whiteboard credentials (AK/SK). Please configure your environment variables.');
   }
 
   return sdkToken(
-    ak, 
-    sk, 
+    ak,
+    sk,
     1000 * 60 * 10, // 10 minutes lifespan
     { role: TokenRole.Admin }
   );
@@ -85,7 +89,13 @@ export async function POST(req: NextRequest) {
 
     if (!appId) {
       console.error('[WhiteboardAPI] Error: Missing AGORA_WHITEBOARD_APP_ID');
-      return NextResponse.json({ error: 'Missing AGORA_WHITEBOARD_APP_ID' }, { status: 500 });
+      console.error('[WhiteboardAPI] Please set AGORA_WHITEBOARD_APP_ID in your environment variables');
+      console.error('[WhiteboardAPI] For local development, create a .env.local file with your Agora credentials');
+      console.error('[WhiteboardAPI] See .env.local.example for the required format');
+      return NextResponse.json({
+        error: 'Missing AGORA_WHITEBOARD_APP_ID',
+        message: 'Please configure your Agora Whiteboard credentials in environment variables'
+      }, { status: 500 });
     }
 
     if (!channelName && !courseId) {
