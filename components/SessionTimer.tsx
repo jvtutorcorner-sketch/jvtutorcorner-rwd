@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useT } from './IntlProvider';
 import { getStoredUser, clearStoredUser } from '@/lib/mockAuth';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import WaitCountdownModal from './WaitCountdownModal';
 
 const SESSION_EXPIRY_KEY = 'tutor_session_expiry';
@@ -12,11 +12,17 @@ const WARNING_MS = 60 * 1000; // 1 minute
 export default function SessionTimer() {
   const t = useT();
   const router = useRouter();
+  const pathname = usePathname();
   const [remaining, setRemaining] = useState<number | null>(null);
   const [showWarning, setShowWarning] = useState(false);
   const [modalSeconds, setModalSeconds] = useState<number>(0);
 
   useEffect(() => {
+    // Skip session timer for /classroom/test page
+    if (pathname === '/classroom/test') {
+      return;
+    }
+
     let mounted = true;
     function readExpiry() {
       try {
@@ -78,7 +84,12 @@ export default function SessionTimer() {
       window.clearInterval(id);
       window.removeEventListener('tutor:auth-changed', onAuth);
     };
-  }, [router, t, showWarning]);
+  }, [router, t, showWarning, pathname]);
+
+  // Skip rendering for /classroom/test page
+  if (pathname === '/classroom/test') {
+    return null;
+  }
 
   if (!remaining || remaining <= 0) return null;
 

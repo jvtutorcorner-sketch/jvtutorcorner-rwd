@@ -64,14 +64,24 @@ export default function LoginPage() {
             window.localStorage.setItem('tutor_session_expiry', String(Date.now() + 30 * 60 * 1000));
           } catch {}
           window.dispatchEvent(new Event('tutor:auth-changed'));
+          
+          // Check for redirect parameter
+          try {
+            const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+            const redirect = params?.get('redirect');
+            if (redirect) {
+              router.push(decodeURIComponent(redirect));
+              return;
+            }
+          } catch (e) { /* ignore */ }
+          
           if (role === 'admin') {
             alert(t('login_admin_success'));
             router.push('/');
             return;
           }
           alert(`${t('login_success')}\n${t('current_plan')}: ${PLAN_LABELS[user.plan]}\n${t('redirecting_home')}`);
-          router.push('/');
-          return;
+          router.push('/');          return;
         }
 
         // If API failed...
@@ -119,6 +129,17 @@ export default function LoginPage() {
           window.localStorage.setItem('tutor_session_expiry', String(Date.now() + 30 * 60 * 1000));
         } catch {}
         window.dispatchEvent(new Event('tutor:auth-changed'));
+        
+        // Check for redirect parameter
+        try {
+          const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+          const redirect = params?.get('redirect');
+          if (redirect) {
+            router.push(decodeURIComponent(redirect));
+            return;
+          }
+        } catch (e) { /* ignore */ }
+        
         alert(`${t('login_success')}\n${t('current_plan')}: ${PLAN_LABELS[user.plan]}(${t('test_account')})\n${t('redirecting_home')}`);
         router.push('/');
       } catch (err) {

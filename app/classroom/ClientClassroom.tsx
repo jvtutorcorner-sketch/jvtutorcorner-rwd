@@ -226,7 +226,8 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     const initAgoraWhiteboard = async () => {
       console.log('[ClientClassroom] initAgoraWhiteboard function called');
       try {
-        const isTeacher = computedRole === 'teacher';
+        const finalRole = (urlRole === 'teacher' || urlRole === 'student') ? (urlRole as Role) : computedRole;
+        const isTeacher = finalRole === 'teacher';
         
         if (isTeacher) {
           // === TEACHER: First lookup existing room via read-only endpoint, create only if not found ===
@@ -417,41 +418,71 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     }
 
     const fetchPdfForSession = async () => {
-      try {
-        const timestamp = Date.now();
-        const resp = await fetch(`/api/whiteboard/pdf?uuid=${encodeURIComponent(sessionReadyKey)}&check=true&t=${timestamp}`);
-        if (!resp.ok) {
-          console.warn('[ClientClassroom] PDF check failed:', resp.status);
-          setSelectedPdf(null);
-          setShowPdf(false);
-          return;
-        }
-        const json = await resp.json();
-        if (!json.found) {
-          console.log('[ClientClassroom] No PDF found for session:', sessionReadyKey);
-          setSelectedPdf(null);
-          setShowPdf(false);
-          return;
-        }
+      const maxRetries = 8;
+      // Initial delay to give DynamoDB time to sync from upload
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          // Exponential backoff: 500ms, 750ms, 1125ms, ~1700ms, ~2500ms...
+          const retryDelay = Math.min(500 * Math.pow(1.5, attempt - 1), 3000);
+          
+          const timestamp = Date.now();
+          console.log(`[ClientClassroom] Checking for PDF (attempt ${attempt}/${maxRetries})...`);
+          const resp = await fetch(`/api/whiteboard/pdf?uuid=${encodeURIComponent(sessionReadyKey)}&check=true&t=${timestamp}`);
+          
+          if (!resp.ok) {
+            console.warn(`[ClientClassroom] PDF check failed (attempt ${attempt}/${maxRetries}):`, resp.status);
+            if (attempt === maxRetries) {
+              console.error('[ClientClassroom] Max retries reached, giving up on PDF');
+              setSelectedPdf(null);
+              setShowPdf(false);
+              return;
+            }
+            await new Promise(resolve => setTimeout(resolve, retryDelay));
+            continue;
+          }
+          
+          const json = await resp.json();
+          if (!json.found) {
+            console.log(`[ClientClassroom] No PDF found for session (attempt ${attempt}/${maxRetries}):`, sessionReadyKey);
+            if (attempt === maxRetries) {
+              console.log('[ClientClassroom] No PDF uploaded for this session');
+              setSelectedPdf(null);
+              setShowPdf(false);
+              return;
+            }
+            await new Promise(resolve => setTimeout(resolve, retryDelay));
+            continue;
+          }
 
-        console.log('[ClientClassroom] Found existing PDF for session:', sessionReadyKey);
-        const fileResp = await fetch(`/api/whiteboard/pdf?uuid=${encodeURIComponent(sessionReadyKey)}&t=${timestamp}`);
-        if (!fileResp.ok) {
-          console.warn('[ClientClassroom] PDF file download failed:', fileResp.status);
-          setSelectedPdf(null);
-          setShowPdf(false);
-          return;
+          console.log('[ClientClassroom] ✓ Found existing PDF for session:', sessionReadyKey, json.meta);
+          const fileResp = await fetch(`/api/whiteboard/pdf?uuid=${encodeURIComponent(sessionReadyKey)}&t=${timestamp}`);
+          if (!fileResp.ok) {
+            console.warn('[ClientClassroom] PDF file download failed:', fileResp.status);
+            setSelectedPdf(null);
+            setShowPdf(false);
+            return;
+          }
+          const blob = await fileResp.blob();
+          const fileName = json.meta?.name || 'course.pdf';
+          const fileType = json.meta?.type || 'application/pdf';
+          const file = new File([blob], fileName, { type: fileType });
+          console.log('[ClientClassroom] ✓ PDF loaded successfully:', fileName, 'size:', blob.size);
+          setSelectedPdf(file);
+          setShowPdf(true);
+          return; // Success, exit retry loop
+        } catch (e) {
+          console.warn(`[ClientClassroom] Failed to check for PDF (attempt ${attempt}/${maxRetries}):`, e);
+          if (attempt === maxRetries) {
+            console.error('[ClientClassroom] Max retries reached with errors');
+            setSelectedPdf(null);
+            setShowPdf(false);
+            return;
+          }
+          const retryDelay = Math.min(500 * Math.pow(1.5, attempt - 1), 3000);
+          await new Promise(resolve => setTimeout(resolve, retryDelay));
         }
-        const blob = await fileResp.blob();
-        const fileName = json.meta?.name || 'course.pdf';
-        const fileType = json.meta?.type || 'application/pdf';
-        const file = new File([blob], fileName, { type: fileType });
-        setSelectedPdf(file);
-        setShowPdf(true);
-      } catch (e) {
-        console.warn('[ClientClassroom] Failed to check for PDF', e);
-        setSelectedPdf(null);
-        setShowPdf(false);
       }
     };
 
@@ -919,6 +950,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
 
   // Report current user as ready to the server when entering the classroom page
   // This ensures cross-device synchronization works even if localStorage is not shared.
+  const reportedRef = useRef(false);
   useEffect(() => {
     if (!mounted || !sessionReadyKey) return;
 
@@ -926,7 +958,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       const roleName = (urlRole === 'teacher' || computedRole === 'teacher') ? 'teacher' : 'student';
       const userId = storedUser?.email || roleName || 'anonymous';
       
-      // Update local storage first to ensure local consistency
+      // Update local storage first to ensure local consistency (will skip if no change)
       markReady(true);
       
       try {
@@ -950,7 +982,10 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
               present: true 
             }),
           });
-          console.log(`[ClientClassroom] Force reported ${roleName} as PRESENT to server (previous state: ${selfEntry ? 'ready only' : 'not found'})`);
+          if (!reportedRef.current) {
+            console.log(`[ClientClassroom] Reported ${roleName} as PRESENT to server`);
+            reportedRef.current = true;
+          }
         }
       } catch (e) {
         console.warn('[ClientClassroom] Failed to report ready to server', e);
@@ -960,9 +995,11 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     reportReady();
     
     // Periodic heartbeat to keep the ready status alive while on this page
-    const interval = setInterval(reportReady, 10000);
+    // Increased interval to reduce unnecessary API calls
+    const interval = setInterval(reportReady, 30000); // Changed from 10s to 30s
     return () => {
       clearInterval(interval);
+      reportedRef.current = false;
       // Optional: Mark as not present when leaving the page (best-effort)
       const roleName = (urlRole === 'teacher' || computedRole === 'teacher') ? 'teacher' : 'student';
       const userId = storedUser?.email || roleName || 'anonymous';
@@ -1084,6 +1121,15 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       const user = (getStoredUser && typeof getStoredUser === 'function') ? getStoredUser() : null;
       const roleName = (urlRole === 'teacher' || computedRole === 'teacher') ? 'teacher' : 'student';
       const userId = user?.email || roleName || 'anonymous';
+      
+      // Check if state actually changed before updating
+      const existingEntry = arr.find((p) => p.role === roleName && (p.userId === userId || p.email === user?.email));
+      const hasChanged = flag ? (!existingEntry || !existingEntry.present) : (existingEntry && existingEntry.present);
+      
+      // Only update if state actually changed
+      if (!hasChanged) {
+        return; // No change needed, avoid unnecessary updates
+      }
       
       // remove existing entry for this role/userId
       const filtered = arr.filter((p) => !(p.role === roleName && (p.userId === userId || p.email === user?.email)));
