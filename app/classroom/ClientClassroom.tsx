@@ -58,6 +58,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   const agoraWhiteboardRef = useRef<AgoraWhiteboardRef>(null);
   const [agoraRoomData, setAgoraRoomData] = useState<{ uuid: string; roomToken: string; appIdentifier: string; region: string; userId: string } | null>(null);
   const [whiteboardState, setWhiteboardState] = useState<any>(null);
+  const [whiteboardError, setWhiteboardError] = useState<string | null>(null);
   
   // Poll whiteboard state for toolbar display
   // Reduced from 300ms to 1000ms since this is only used for UI display (tool buttons, page info)
@@ -393,15 +394,29 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                   } else {
                     const errorText = await res.text();
                     console.error('[ClientClassroom] Student failed to create room:', res.status, errorText);
+                    if (process.env.NODE_ENV !== 'production') {
+                      try {
+                        const errorData = JSON.parse(errorText);
+                        setWhiteboardError(errorData.error || errorData.message || 'Failed to create whiteboard room');
+                      } catch {
+                        setWhiteboardError(`Failed to create whiteboard room: ${errorText}`);
+                      }
+                    }
                   }
                 } catch (e) {
                   console.error('[ClientClassroom] Student API create failed:', e);
+                  if (process.env.NODE_ENV !== 'production') {
+                    setWhiteboardError(`Failed to create whiteboard room: ${e instanceof Error ? e.message : 'Unknown error'}`);
+                  }
                 }
               }
           }
         }
       } catch (error) {
         console.error('[ClientClassroom] Error initializing Agora Whiteboard:', error);
+        if (process.env.NODE_ENV !== 'production') {
+          setWhiteboardError(`Failed to initialize whiteboard: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
       }
     };
     
@@ -554,6 +569,15 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   const [sessionDurationMinutes, setSessionDurationMinutes] = useState<number>(5); // 5 minutes
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
   const timerRef = useRef<number | null>(null);
+  // Delay before countdown starts (1 hour)
+  const INITIAL_COUNTDOWN_DELAY_MS = 60 * 60 * 1000; // 1 hour
+  const [fullyInitialized, setFullyInitialized] = useState(false);
+  const [classFullyLoadedAt, setClassFullyLoadedAt] = useState<number | null>(null);
+  const [bootSteps, setBootSteps] = useState<Array<{ name: string; done: boolean }>>([
+    { name: 'Initializing Agora connection', done: false },
+    { name: 'Preparing whiteboard', done: false },
+    { name: 'Syncing session state', done: false },
+  ]);
 
   // DISABLED: Old canvas whiteboard initialization (conflicts with Agora whiteboard)
   // Initialize whiteboard room BEFORE joining Agora session
@@ -614,6 +638,35 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       computedRole 
     });
   }, []); // Empty deps = run once on mount
+
+  // Track boot step progress: update when agoraRoomData or whiteboardMeta become available
+  useEffect(() => {
+    setBootSteps((prev) => prev.map(s => ({ ...s })));
+    setBootSteps((prev) => prev.map((s) => {
+      if (s.name === 'Initializing Agora connection') {
+        return { ...s, done: !!agoraRoomData };
+      }
+      if (s.name === 'Preparing whiteboard') {
+        return { ...s, done: useAgoraWhiteboard ? !!agoraRoomData && !!agoraWhiteboardRef.current : !!whiteboardMeta };
+      }
+      if (s.name === 'Syncing session state') {
+        return { ...s, done: !!sessionReadyKey };
+      }
+      return s;
+    }));
+
+    const agoraReady = useAgoraWhiteboard ? !!agoraRoomData && !!agoraWhiteboardRef.current : !!whiteboardMeta;
+    const allDone = agoraReady && !!sessionReadyKey;
+    if (allDone && joined && !fullyInitialized) {
+      setFullyInitialized(true);
+      setClassFullyLoadedAt(Date.now());
+      console.log('[ClientClassroom] Fully initialized at', Date.now());
+    }
+    if (!allDone && fullyInitialized) {
+      setFullyInitialized(false);
+      setClassFullyLoadedAt(null);
+    }
+  }, [agoraRoomData, whiteboardMeta, agoraWhiteboardRef.current, sessionReadyKey, joined]);
   
   // Debug whiteboard state
   useEffect(() => {
@@ -1175,7 +1228,8 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       timerRef.current = null;
     }
 
-    if (joined) {
+    // Only start countdown when joined AND fully initialized (and after optional initial delay)
+    if (joined && fullyInitialized) {
       (async () => {
         // 老师开始上课时，广播通知学生 and persist end timestamp
         const isTeacher = (urlRole === 'teacher' || urlRole === 'student') ? urlRole === 'teacher' : computedRole === 'teacher';
@@ -1207,8 +1261,11 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           } catch (e) { /* ignore fetch errors */ }
         }
 
+        // If no endTs and teacher, create one that includes the initial delay
         if (!endTs && isTeacher) {
-          endTs = Date.now() + secs * 1000;
+          const baseEnd = Date.now() + secs * 1000;
+          const delayedEnd = (classFullyLoadedAt ? Math.max(baseEnd, classFullyLoadedAt + INITIAL_COUNTDOWN_DELAY_MS + secs * 1000) : baseEnd + INITIAL_COUNTDOWN_DELAY_MS);
+          endTs = delayedEnd;
           try { localStorage.setItem(endKey, String(endTs)); } catch (e) {}
         }
 
@@ -1236,8 +1293,17 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           }
         }
 
-        // initialize remaining seconds from endTs if available, otherwise fallback to secs
-        const initialRemaining = endTs ? Math.max(0, Math.ceil((endTs - Date.now()) / 1000)) : secs;
+        // initialize remaining seconds from endTs if available, otherwise fallback to secs.
+        // Ensure countdown doesn't start before classFullyLoadedAt + INITIAL_COUNTDOWN_DELAY_MS
+        let initialRemaining = endTs ? Math.max(0, Math.ceil((endTs - Date.now()) / 1000)) : secs;
+        if (classFullyLoadedAt) {
+          const earliestStart = Math.max(0, Math.ceil(((classFullyLoadedAt + INITIAL_COUNTDOWN_DELAY_MS) - Date.now()) / 1000));
+          // If earliestStart > 0, we should show the full delay before reducing remainingSeconds
+          if (earliestStart > 0) {
+            initialRemaining = (endTs ? Math.max(0, Math.ceil((endTs - (Date.now() + earliestStart * 1000)) / 1000)) + earliestStart : secs + earliestStart);
+          }
+        }
+        initialRemaining = Math.max(0, initialRemaining);
         setRemainingSeconds(initialRemaining);
         console.log(`開始倒計時, remainingSeconds=${initialRemaining}`);
 
@@ -1492,6 +1558,21 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
 
   return (
     <>
+      {/* Error Display - Only show in development mode */}
+      {process.env.NODE_ENV !== 'production' && whiteboardError && (
+        <div style={{
+          background: '#fee2e2',
+          color: '#dc2626',
+          fontSize: '14px',
+          padding: '12px 16px',
+          textAlign: 'center',
+          borderBottom: '1px solid #fecaca',
+          fontWeight: '500'
+        }}>
+          <strong>錯誤：</strong>{whiteboardError}
+        </div>
+      )}
+
       {/* Course Title (only on /classroom/test) */}
       {isTestPath && (
         <div style={{ background: '#fff', color: '#111827', fontSize: '18px', padding: '10px 12px', textAlign: 'center', fontWeight: 700, borderBottom: '1px solid #e5e7eb' }}>
@@ -1581,12 +1662,12 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                   role={(urlRole === 'teacher' || computedRole === 'teacher') ? 'teacher' : 'student'}
                 />
               ) : (
-                <div className="w-full h-full flex items-center justify-center bg-slate-50">
-                  <div className="text-center">
-                    <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-300 border-t-blue-600 mx-auto mb-2" />
-                    <div className="text-sm text-slate-600">初始化白板中...</div>
-                  </div>
-                </div>
+                    <div className="w-full h-full flex items-center justify-center bg-slate-50">
+                      <div className="text-center">
+                        <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-300 border-t-blue-600 mx-auto mb-2" />
+                        <div className="text-sm text-slate-600">初始化白板中...</div>
+                      </div>
+                    </div>
               )
             ) : (
               // Legacy whiteboard fallback - rendered only if Agora is disabled
@@ -1604,6 +1685,22 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                 hasMic={hasAudioInput !== false}
                 onLeave={() => leave()}
               />
+            )}
+            {/* Boot-style overlay while not fullyInitialized */}
+            {joined && !fullyInitialized && (
+              <div style={{ position: 'absolute', inset: 0, background: 'rgba(8,8,10,0.85)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 60 }}>
+                <div style={{ width: 520, padding: 24 }}>
+                  <div style={{ fontFamily: 'monospace', fontSize: 14, marginBottom: 12 }}>systemd [classroom@{effectiveChannelName}] booting...</div>
+                  <div style={{ background: '#0b1220', padding: 12, borderRadius: 6, maxHeight: 240, overflow: 'auto', fontFamily: 'monospace', fontSize: 13 }}>
+                    {bootSteps.map((s, idx) => (
+                      <div key={s.name} style={{ color: s.done ? '#90ee90' : '#888', marginBottom: 6 }}>
+                        {s.done ? '●' : '○'} {s.name}
+                      </div>
+                    ))}
+                    <div style={{ marginTop: 8, color: '#aaa', fontSize: 12 }}>Waiting for all services to be ready. Countdown will start after full load + 1 hour.</div>
+                  </div>
+                </div>
+              </div>
             )}
           </div>
         </div>

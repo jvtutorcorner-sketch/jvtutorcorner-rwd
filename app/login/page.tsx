@@ -64,17 +64,16 @@ export default function LoginPage() {
             window.localStorage.setItem('tutor_session_expiry', String(Date.now() + 30 * 60 * 1000));
           } catch {}
           window.dispatchEvent(new Event('tutor:auth-changed'));
-          
-          // Check for redirect parameter
+          // If a redirect query param is present, send user there after login
           try {
             const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
             const redirect = params?.get('redirect');
             if (redirect) {
+              // prefer full-path redirect
               router.push(decodeURIComponent(redirect));
               return;
             }
           } catch (e) { /* ignore */ }
-          
           if (role === 'admin') {
             alert(t('login_admin_success'));
             router.push('/');

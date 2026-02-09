@@ -64,44 +64,77 @@ export default function ClassroomWaitPage() {
       const newUrl = `${window.location.pathname}?${params.toString()}`;
       try { window.history.replaceState({}, '', newUrl); } catch (e) {}
     }
+
     const urlRole = params.get('role');
     const su = getStoredUser();
     setStoredUserState(su || null);
 
-    // Authentication check: redirect to login if not logged in or session expired
-    const checkAuth = () => {
-      let sessionValid = false;
-      try {
-        const expiry = window.localStorage.getItem('tutor_session_expiry');
-        if (!expiry) {
-          sessionValid = !!su;
-        } else {
-          sessionValid = Number(expiry) > Date.now() && !!su;
-        }
-      } catch (e) {
-        sessionValid = !!su;
-      }
-
-      if (!sessionValid) {
-        // Redirect to login with current URL as redirect parameter
-        const redirect = encodeURIComponent(window.location.pathname + window.location.search);
-        router.replace(`/login?redirect=${redirect}`);
-        return false;
-      }
-      return true;
-    };
-
-    if (!checkAuth()) return;
-
+    // compute final role early
     let computedRole: 'teacher' | 'student' = 'student';
     const isAdmin = su?.role === 'admin';
     if (su?.role === 'teacher' || isAdmin) computedRole = 'teacher';
     else if (su?.displayName && course?.teacherName) {
       if (su.displayName.includes(course.teacherName) || course.teacherName.includes(su.displayName)) computedRole = 'teacher';
     }
-
     const finalRole = (urlRole === 'teacher' || urlRole === 'student') ? (urlRole as 'teacher' | 'student') : computedRole;
     setRole(finalRole);
+
+    // Role-based authorization: if the URL requests a role, enforce it unless user is admin
+    if (urlRole && su?.role && su.role !== urlRole && su.role !== 'admin') {
+      try {
+        console.warn('[Auth] User role mismatch, redirecting to home');
+        router.replace('/');
+        return;
+      } catch (e) { console.warn('Failed to redirect unauthorized user', e); }
+    }
+
+    // Require login: redirect to login page if no stored user OR session expired
+    const checkSessionAndMaybeRedirect = () => {
+      let sessionValid = false;
+      try {
+        const expiry = window.localStorage.getItem('tutor_session_expiry');
+        if (!expiry) sessionValid = !!getStoredUser();
+        else sessionValid = Number(expiry) > Date.now() && !!getStoredUser();
+      } catch (e) {
+        sessionValid = !!getStoredUser();
+      }
+
+      console.log('[AuthCheck][wait] storedUser:', getStoredUser(), 'expiry:', window.localStorage.getItem('tutor_session_expiry'), 'sessionValid:', sessionValid);
+
+      if (!sessionValid) {
+        try {
+          const redirect = encodeURIComponent(window.location.pathname + window.location.search);
+          router.replace(`/login?redirect=${redirect}`);
+          return;
+        } catch (e) {
+          console.warn('Failed to redirect to login:', e);
+        }
+      }
+    };
+
+    // Defer check slightly to allow storage events/auth changes to propagate
+    const recheckTimer = window.setTimeout(checkSessionAndMaybeRedirect, 300);
+    const onAuthChanged = () => {
+      // If auth changed, cancel pending redirect and re-evaluate
+      try { window.clearTimeout(recheckTimer); } catch (e) {}
+      checkSessionAndMaybeRedirect();
+    };
+    const onStorageChanged = (e: StorageEvent) => {
+      // If storage changed (cross-tab sync), re-evaluate auth
+      if (e.key === 'tutor_mock_user' || e.key === 'tutor_session_expiry') {
+        try { window.clearTimeout(recheckTimer); } catch (e) {}
+        checkSessionAndMaybeRedirect();
+      }
+    };
+    window.addEventListener('tutor:auth-changed', onAuthChanged);
+    window.addEventListener('storage', onStorageChanged);
+
+    // cleanup listener on unmount
+    return () => {
+      try { window.removeEventListener('tutor:auth-changed', onAuthChanged); } catch (e) {}
+      try { window.removeEventListener('storage', onStorageChanged); } catch (e) {}
+      try { window.clearTimeout(recheckTimer); } catch (e) {}
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -571,6 +604,36 @@ export default function ClassroomWaitPage() {
     <div className="wait-page-container">
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <h2>{t('wait.title')}</h2>
+<<<<<<< HEAD
+=======
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button
+            onClick={() => router.push('/')}
+            style={{ padding: '8px 12px', background: '#ffffff', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer' }}
+          >
+            返回首頁
+          </button>
+          <button
+            onClick={() => {
+              try {
+                if (role === 'teacher') router.push('/teacher_courses');
+                else if (role === 'student') router.push('/student_courses');
+                else router.push('/courses');
+              } catch (e) { router.push('/courses'); }
+            }}
+            style={{ padding: '8px 12px', background: '#ffffff', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer' }}
+          >
+            回課程清單
+          </button>
+          <LanguageSwitcher />
+          {storedUserState && (
+            <div style={{ marginLeft: 12, padding: '6px 10px', borderRadius: 8, background: '#f8fafc', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ fontSize: 13, color: '#111', fontWeight: 600 }}>{storedUserState.displayName || storedUserState.email}</div>
+              <div style={{ fontSize: 12, color: '#666' }}>({storedUserState.role || 'user'})</div>
+            </div>
+          )}
+        </div>
+>>>>>>> origin/main
       </div>
       <div style={{ marginTop: 12 }}>
       <div style={{ fontWeight: 600, fontSize: 18 }}>{course?.title ?? '課程'}</div>
