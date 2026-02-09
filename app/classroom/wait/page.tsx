@@ -8,7 +8,6 @@ import { COURSES } from '@/data/courses';
 import { getStoredUser } from '@/lib/mockAuth';
 import VideoControls from '@/components/VideoControls';
 import { VideoQuality } from '@/lib/agora/useAgoraClassroom';
-import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { useT } from '@/components/IntlProvider';
 
 export default function ClassroomWaitPage() {
@@ -38,6 +37,8 @@ export default function ClassroomWaitPage() {
   const sseDisabledRef = useRef(false);
   const bcRef = useRef<BroadcastChannel | null>(null);
   const isUpdatingRef = useRef(false);
+  const lastSyncDataRef = useRef<{ participantsCount: number; selfIsReady: boolean } | null>(null);
+  const syncDebounceRef = useRef<number | null>(null);
   const [deviceCheckPassed, setDeviceCheckPassed] = useState(false);
   const [audioOk, setAudioOk] = useState(false);
   const [videoOk, setVideoOk] = useState(false);
@@ -140,27 +141,44 @@ export default function ClassroomWaitPage() {
   const syncStateFromServer = React.useCallback(() => {
     if (!sessionReadyKey || !role) return;
 
-    fetch(`/api/classroom/ready?uuid=${encodeURIComponent(sessionReadyKey)}`)
-      .then((r) => {
-        if (!r.ok) throw new Error(`Server responded with ${r.status}`);
-        return r.json();
-      })
-      .then((j) => {
-        const serverParticipants = j.participants || [];
-        setParticipants(serverParticipants);
-        
-        const email = storedUserState?.email;
-        const userId = email || role || 'anonymous';
-        const selfIsReady = serverParticipants.some((p: { role: string; userId: string }) => p.role === role && p.userId === userId);
-        setReady(selfIsReady);
-        console.log('Synced state from server:', { participants: serverParticipants.length, selfIsReady });
-      })
-      .catch((e) => {
-        console.warn('Failed to sync state from server:', e);
-        // On failure, reset to a safe state
-        setParticipants([]);
-        setReady(false);
-      });
+    // Debounce: clear previous pending sync
+    if (syncDebounceRef.current) {
+      clearTimeout(syncDebounceRef.current);
+    }
+
+    // Wait 100ms before syncing to batch multiple rapid sync requests
+    syncDebounceRef.current = window.setTimeout(() => {
+      fetch(`/api/classroom/ready?uuid=${encodeURIComponent(sessionReadyKey)}`)
+        .then((r) => {
+          if (!r.ok) throw new Error(`Server responded with ${r.status}`);
+          return r.json();
+        })
+        .then((j) => {
+          const serverParticipants = j.participants || [];
+          const email = storedUserState?.email;
+          const userId = email || role || 'anonymous';
+          const selfIsReady = serverParticipants.some((p: { role: string; userId: string }) => p.role === role && p.userId === userId);
+          
+          // Check if data actually changed before updating state
+          const currentData = { participantsCount: serverParticipants.length, selfIsReady };
+          const lastData = lastSyncDataRef.current;
+          
+          if (!lastData || lastData.participantsCount !== currentData.participantsCount || lastData.selfIsReady !== currentData.selfIsReady) {
+            setParticipants(serverParticipants);
+            setReady(selfIsReady);
+            lastSyncDataRef.current = currentData;
+            console.log('Synced state from server:', currentData);
+          }
+          // If no change, skip state update to prevent re-render
+        })
+        .catch((e) => {
+          console.warn('Failed to sync state from server:', e);
+          // On failure, reset to a safe state
+          setParticipants([]);
+          setReady(false);
+          lastSyncDataRef.current = null;
+        });
+    }, 100);
   }, [sessionReadyKey, role, storedUserState]);
 
   const toggleReady = () => {
@@ -346,6 +364,10 @@ export default function ClassroomWaitPage() {
       console.log('SYNC: Cleaning up all synchronization listeners.');
       window.removeEventListener('storage', onStorage);
       clearInterval(pollingTimer);
+      if (syncDebounceRef.current) {
+        clearTimeout(syncDebounceRef.current);
+        syncDebounceRef.current = null;
+      }
       if (bcRef.current) {
         bcRef.current.close();
         bcRef.current = null;
@@ -360,6 +382,46 @@ export default function ClassroomWaitPage() {
       }
     };
   }, [sessionReadyKey, syncStateFromServer]);
+
+  // Initialize session end time if not set
+  useEffect(() => {
+    if (!sessionReadyKey || !course) return;
+
+    async function initSessionTime() {
+      // At this point we know sessionReadyKey and course are not null due to the outer check
+      const uuid = sessionReadyKey!;
+      const courseData = course!;
+      
+      try {
+        // Check if session time is already set
+        const response = await fetch(`/api/classroom/session?uuid=${encodeURIComponent(uuid)}`);
+        if (response.ok) {
+          const data = await response.json();
+          if (!data.endTs) {
+            // No end time set, initialize it based on course duration
+            const sessionDurationMinutes = courseData.sessionDurationMinutes || 50; // Default 50 minutes
+            const endTs = Date.now() + (sessionDurationMinutes * 60 * 1000);
+            
+            const setResponse = await fetch('/api/classroom/session', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ uuid, endTs })
+            });
+            
+            if (setResponse.ok) {
+              console.log('[WaitPage] Initialized session end time:', new Date(endTs).toISOString(), 'duration:', sessionDurationMinutes, 'minutes');
+            } else {
+              console.warn('[WaitPage] Failed to set session end time');
+            }
+          }
+        }
+      } catch (error) {
+        console.error('[WaitPage] Error initializing session time:', error);
+      }
+    }
+
+    initSessionTime();
+  }, [sessionReadyKey, course]);
 
   const hasTeacher = participants.some((p: { role: string; userId: string }) => p.role === 'teacher');
   const hasStudent = participants.some((p: { role: string; userId: string }) => p.role === 'student');
@@ -439,53 +501,68 @@ export default function ClassroomWaitPage() {
       const uploadMode = (typeof process !== 'undefined' && process.env && process.env.NEXT_PUBLIC_WHITEBOARD_PDF_UPLOAD) || '';
 
       let result: any = null;
+      let usePresign = uploadMode === 'presign';
 
-      if (uploadMode === 'presign') {
-        console.log('PDF Upload - Using presigned upload flow');
-        // Request presigned URL from server
-        const presignResp = await fetch('/api/whiteboard/presign', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ uuid: sessionReadyKey, fileName: file.name, contentType: file.type })
-        });
-        if (!presignResp.ok) {
-          const errorText = await presignResp.text().catch(() => 'Unknown presign error');
-          console.error('PDF Upload - Presign API failed:', { status: presignResp.status, statusText: presignResp.statusText, errorText });
-          throw new Error('Presign request failed');
-        }
-        const presignJson = await presignResp.json();
-        const { url, key } = presignJson;
-        if (!url) throw new Error('Presign response missing url');
+      if (usePresign) {
+        try {
+          console.log('PDF Upload - Attempting presigned upload flow');
+          // Request presigned URL from server
+          const presignResp = await fetch('/api/whiteboard/presign', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ uuid: sessionReadyKey, fileName: file.name, contentType: file.type })
+          });
+          
+          if (!presignResp.ok) {
+            const errorText = await presignResp.text().catch(() => 'Unknown presign error');
+            console.warn('PDF Upload - Presign API not available, falling back to base64 upload:', { status: presignResp.status, statusText: presignResp.statusText, errorText });
+            usePresign = false; // Fall back to base64
+          } else {
+            const presignJson = await presignResp.json();
+            const { url, key } = presignJson;
+            if (!url) {
+              console.warn('PDF Upload - Presign response missing url, falling back to base64 upload');
+              usePresign = false; // Fall back to base64
+            } else {
+              // PUT file bytes directly to storage
+              const putResp = await fetch(url, {
+                method: 'PUT',
+                headers: { 'Content-Type': file.type },
+                body: arrayBuffer
+              });
+              if (!putResp.ok) {
+                const putText = await putResp.text().catch(() => 'Unknown PUT error');
+                console.error('PDF Upload - PUT to presigned URL failed:', { status: putResp.status, statusText: putResp.statusText, putText });
+                throw new Error('Upload to storage failed');
+              }
 
-        // PUT file bytes directly to storage
-        const putResp = await fetch(url, {
-          method: 'PUT',
-          headers: { 'Content-Type': file.type },
-          body: arrayBuffer
-        });
-        if (!putResp.ok) {
-          const putText = await putResp.text().catch(() => 'Unknown PUT error');
-          console.error('PDF Upload - PUT to presigned URL failed:', { status: putResp.status, statusText: putResp.statusText, putText });
-          throw new Error('Upload to storage failed');
+              // Notify server about the uploaded file (so server can record the key)
+              const notifyResp = await fetch('/api/whiteboard/pdf', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({
+                  uuid: sessionReadyKey,
+                  pdf: { name: file.name, s3Key: key, size: file.size, type: file.type }
+                })
+              });
+              if (!notifyResp.ok) {
+                const errText = await notifyResp.text().catch(() => 'Unknown notify error');
+                console.error('PDF Upload - Notification to server failed:', { status: notifyResp.status, statusText: notifyResp.statusText, errText });
+                throw new Error('Server notify failed');
+              }
+              result = await notifyResp.json();
+              console.log('PDF Upload - Presign upload success');
+            }
+          }
+        } catch (presignError) {
+          console.warn('PDF Upload - Presign upload failed, falling back to base64 upload:', presignError);
+          usePresign = false; // Fall back to base64
         }
+      }
 
-        // Notify server about the uploaded file (so server can record the key)
-        const notifyResp = await fetch('/api/whiteboard/pdf', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            uuid: sessionReadyKey,
-            pdf: { name: file.name, s3Key: key, size: file.size, type: file.type }
-          })
-        });
-        if (!notifyResp.ok) {
-          const errText = await notifyResp.text().catch(() => 'Unknown notify error');
-          console.error('PDF Upload - Notification to server failed:', { status: notifyResp.status, statusText: notifyResp.statusText, errText });
-          throw new Error('Server notify failed');
-        }
-        result = await notifyResp.json();
-      } else {
+      if (!usePresign) {
         // Fallback: post base64 PDF payload to the existing API
+        console.log('PDF Upload - Using base64 upload flow');
         const response = await fetch('/api/whiteboard/pdf', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
@@ -507,6 +584,7 @@ export default function ClassroomWaitPage() {
         }
 
         result = await response.json();
+        console.log('PDF Upload - Base64 upload success');
       }
       console.log('PDF Upload - Success:', result);
 
@@ -526,6 +604,8 @@ export default function ClassroomWaitPage() {
     <div className="wait-page-container">
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <h2>{t('wait.title')}</h2>
+<<<<<<< HEAD
+=======
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <button
             onClick={() => router.push('/')}
@@ -553,6 +633,7 @@ export default function ClassroomWaitPage() {
             </div>
           )}
         </div>
+>>>>>>> origin/main
       </div>
       <div style={{ marginTop: 12 }}>
       <div style={{ fontWeight: 600, fontSize: 18 }}>{course?.title ?? '課程'}</div>
@@ -736,7 +817,7 @@ export default function ClassroomWaitPage() {
       )}
     {/* Place countdown manager at the end of the page content so it flows with scroll */}
     <div style={{ marginTop: 24 }}>
-      <WaitCountdownManager />
+      <WaitCountdownManager sessionReadyKey={sessionReadyKey} />
     </div>
     </div>
   );

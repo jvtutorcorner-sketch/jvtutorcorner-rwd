@@ -17,7 +17,7 @@ export default function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
-  const hideHeader = typeof pathname === 'string' && pathname.startsWith('/classroom');
+  const hideHeader = typeof pathname === 'string' && pathname.startsWith('/classroom') && pathname !== '/classroom/wait';
 
   const MENU_ITEMS = [
     { href: '/teachers', titleKey: 'menu_teachers_title', labelKey: 'menu_teachers', defaultLabel: '專業師資' },
