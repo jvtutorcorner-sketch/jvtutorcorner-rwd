@@ -32,28 +32,36 @@ export default function WaitCountdownManager({ sessionReadyKey }: WaitCountdownM
           if (data.endTs) {
             const now = Date.now();
             const remainingMs = data.endTs - now;
-            const remainingSeconds = Math.max(0, Math.floor(remainingMs / 1000));
+            let remainingSeconds = Math.max(0, Math.floor(remainingMs / 1000));
             
-            console.log('[WaitCountdownManager] Session end time loaded:', {
-              endTs: new Date(data.endTs).toISOString(),
-              remainingSeconds,
-              remainingMinutes: Math.floor(remainingSeconds / 60)
-            });
+            // Grace period logic: if session is expired or expiring soon,
+            // don't force immediate redirect. Instead, give a grace period (e.g. 10 mins)
+            // so the user isn't kicked out immediately upon entry.
+            if (remainingSeconds <= 0) {
+               console.log(`[WaitCountdownManager] ${new Date().toISOString()} - Session expired for ${sessionReadyKey}, applying 10-minute grace period.`);
+               remainingSeconds = 600;
+            }
+
+            console.log(`[WaitCountdownManager] ${new Date().toISOString()} - Session end time loaded for ${sessionReadyKey}:`, {
+                  endTs: new Date(data.endTs).toISOString(),
+                  remainingSeconds,
+                  remainingMinutes: Math.floor(remainingSeconds / 60)
+                });
             
             setSeconds(remainingSeconds);
             setShow(false);
           } else {
-            console.log('[WaitCountdownManager] No end time set, using default 10 minutes');
+            console.log(`[WaitCountdownManager] ${new Date().toISOString()} - No end time set for ${sessionReadyKey}, using default 10 minutes`);
             setSeconds(600);
             setShow(false);
           }
         } else {
-          console.warn('[WaitCountdownManager] Failed to load session time, using default 10 minutes');
+          console.warn(`[WaitCountdownManager] ${new Date().toISOString()} - Failed to load session time for ${sessionReadyKey}, using default 10 minutes`);
           setSeconds(600);
           setShow(false);
         }
       } catch (error) {
-        console.error('[WaitCountdownManager] Error loading session time:', error);
+        console.error(`[WaitCountdownManager] ${new Date().toISOString()} - Error loading session time for ${sessionReadyKey}:`, error);
         setSeconds(600);
         setShow(false);
       }
@@ -66,13 +74,15 @@ export default function WaitCountdownManager({ sessionReadyKey }: WaitCountdownM
       clearInterval(ref.current);
       ref.current = null;
     }
-    
+
     // Start countdown
+    console.log(`[WaitCountdownManager] ${new Date().toISOString()} - Starting countdown for ${sessionReadyKey} at ${seconds}s`);
     ref.current = window.setInterval(() => {
       setSeconds((s) => {
         const next = s - 1;
         if (next <= 60) setShow(true);
         if (next <= 0) {
+          console.warn(`[WaitCountdownManager] ${new Date().toISOString()} - Countdown reached zero for ${sessionReadyKey}, redirecting to home immediately`);
           try { window.location.href = '/'; } catch (e) {}
           return 0;
         }
@@ -81,16 +91,18 @@ export default function WaitCountdownManager({ sessionReadyKey }: WaitCountdownM
     }, 1000);
     
     return () => {
-      if (ref.current) { clearInterval(ref.current); ref.current = null; }
+      if (ref.current) { console.log(`[WaitCountdownManager] ${new Date().toISOString()} - Clearing countdown interval for ${sessionReadyKey}`); clearInterval(ref.current); ref.current = null; }
     };
   }, [sessionReadyKey]);
 
   const handleStay = () => {
+    console.log(`[WaitCountdownManager] ${new Date().toISOString()} - User chose to stay on wait page, resetting countdown for ${sessionReadyKey}`);
     setSeconds(90);
     setShow(false);
   };
 
   const handleLeave = () => {
+    console.log(`[WaitCountdownManager] ${new Date().toISOString()} - User chose to leave wait page for ${sessionReadyKey}`);
     try { window.location.href = '/'; } catch (e) {}
   };
 

@@ -17,16 +17,57 @@ export async function getWhiteboardState(uuid: string): Promise<WhiteboardState 
       Key: { id: uuid },
       ConsistentRead: true, // CRITICAL: Force strongly consistent read to see recent writes immediately
     };
+    console.log('[WhiteboardService] ===== QUERYING DYNAMODB =====');
+    console.log('[WhiteboardService] Table:', TABLE_NAME);
+    console.log('[WhiteboardService] ID (uuid):', uuid);
     const startTime = Date.now();
     const { Item } = await ddbDocClient.send(new GetCommand(params));
     const duration = Date.now() - startTime;
     if (Item) {
-      console.log('[WhiteboardService] Retrieved state from DynamoDB:', { uuid, strokeCount: (Item as any).strokes?.length || 0, duration: `${duration}ms` });
+      console.log('[WhiteboardService] ✓ Item FOUND:', { uuid, strokeCount: (Item as any).strokes?.length || 0, hasPdf: !!(Item as any).pdf, duration: `${duration}ms` });
+      if ((Item as any).pdf) {
+        console.log('[WhiteboardService] PDF in item:', { name: (Item as any).pdf.name, s3Key: (Item as any).pdf.s3Key });
+      }
+    } else {
+      console.log('[WhiteboardService] ✗ Item NOT FOUND for uuid:', uuid, `(query took ${duration}ms)`);
     }
     return Item as WhiteboardState | null;
   } catch (error) {
     console.error('[WhiteboardService] Error getting state:', { uuid, error: String(error), errorStack: (error as any)?.stack });
     return null;
+  }
+}
+
+export function normalizeUuid(raw?: string | null) {
+  if (!raw) return 'default';
+  try {
+    // 1. Trim and decode
+    let dec = decodeURIComponent(raw).trim();
+    
+    // 2. Extract base ID by stripping common prefixes to ensure idempotency
+    let baseId = dec;
+    if (baseId.startsWith('course_')) {
+      baseId = baseId.slice(7);
+    }
+    
+    // 3. Special cases for session/classroom IDs - DO NOT prepend 'course_'
+    // These are often already long and specific enough to be keys.
+    if (baseId.startsWith('session_') || baseId.startsWith('classroom_') || baseId.includes('session_ready')) {
+      return baseId;
+    }
+    
+    // 4. Look for courseId in a query-string-like raw input
+    const m = baseId.match(/[?&]courseId=([^&]+)/);
+    if (m) return `course_${m[1]}`;
+    
+    // 5. Default: prefix short IDs to avoid collisions in DynamoDB
+    if (baseId.length < 50 && !baseId.includes('/') && !baseId.includes(' ') && !baseId.includes('-')) {
+      return `course_${baseId}`;
+    }
+    
+    return baseId;
+  } catch (e) {
+    return (raw || 'default').trim();
   }
 }
 
@@ -44,7 +85,14 @@ export async function saveWhiteboardState(uuid: string, strokes: any[], pdf: any
         ttl,
       },
     };
-    console.log('[WhiteboardService] Saving state to DynamoDB (Put):', { uuid, strokeCount: strokes.length, hasPdf: !!pdf });
+    console.log('[WhiteboardService] ===== SAVING TO DYNAMODB =====');
+    console.log('[WhiteboardService] Table:', TABLE_NAME);
+    console.log('[WhiteboardService] ID (uuid):', uuid);
+    console.log('[WhiteboardService] Stroke count:', strokes.length);
+    console.log('[WhiteboardService] Has PDF:', !!pdf);
+    if (pdf) {
+      console.log('[WhiteboardService] PDF details:', { name: pdf.name, s3Key: pdf.s3Key, url: pdf.url });
+    }
     const startTime = Date.now();
     await ddbDocClient.send(new PutCommand(params));
     const duration = Date.now() - startTime;

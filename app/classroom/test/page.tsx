@@ -22,13 +22,31 @@ export default function TestPage() {
     // compute session validity and defer redirect slightly to allow auth events to propagate
     const checkSession = () => {
       let sessionValid = false;
+      const su = getStoredUser();
+      setStoredUser(su); // Sync state with storage
+
+      // Skip detailed checks if just mounted / fast refresh to avoid flicker
+      if (!mounted) return false;
+
       try {
         const expiry = window.localStorage.getItem('tutor_session_expiry');
-        if (!expiry) sessionValid = !!getStoredUser();
-        else sessionValid = Number(expiry) > Date.now() && !!getStoredUser();
-      } catch (e) { sessionValid = !!getStoredUser(); }
-      console.log('[AuthCheck][test] storedUser:', getStoredUser(), 'expiry:', window.localStorage.getItem('tutor_session_expiry'), 'sessionValid:', sessionValid);
+        if (!expiry) sessionValid = !!su;
+        else sessionValid = Number(expiry) > Date.now() && !!su;
+      } catch (e) { sessionValid = !!su; }
+
+      console.log('[AuthCheck][test] storedUser:', su, 'expiry:', window.localStorage.getItem('tutor_session_expiry'), 'sessionValid:', sessionValid);
+      
       if (!sessionValid) {
+        // Skip redirect if recently logged in (last 15s)
+        const lastLoginTime = window.sessionStorage.getItem('tutor_last_login_time') || window.localStorage.getItem('tutor_last_login_time');
+        const loginComplete = window.sessionStorage.getItem('tutor_login_complete');
+        const timeSinceLogin = lastLoginTime ? Date.now() - Number(lastLoginTime) : Infinity;
+        
+        if ((timeSinceLogin < 15000 && timeSinceLogin >= 0) || loginComplete === 'true') {
+           console.log('[AuthCheck][test] Skipping redirect - recently logged in or login complete flag set');
+           return false;
+        }
+
         try {
           const redirect = encodeURIComponent(window.location.pathname + window.location.search);
           router.replace(`/login?redirect=${redirect}`);
@@ -40,8 +58,13 @@ export default function TestPage() {
       return false;
     };
 
-    const recheckTimer = window.setTimeout(() => { if (checkSession()) return; }, 300);
-    const onAuthChanged = () => { try { window.clearTimeout(recheckTimer); } catch (e) {} ; checkSession(); };
+    // Use a slightly longer delay (1.5s) to allow storage/auth state to settle after page transition
+    const recheckTimer = window.setTimeout(() => { if (checkSession()) return; }, 1500);
+    const onAuthChanged = () => { 
+      try { window.clearTimeout(recheckTimer); } catch (e) {} ; 
+      // Re-check after 500ms when auth changes
+      window.setTimeout(checkSession, 500); 
+    };
     const onStorageChanged = (e: StorageEvent) => {
       // If storage changed (cross-tab sync), re-evaluate auth
       if (e.key === 'tutor_mock_user' || e.key === 'tutor_session_expiry') {
@@ -52,13 +75,53 @@ export default function TestPage() {
     window.addEventListener('tutor:auth-changed', onAuthChanged);
     window.addEventListener('storage', onStorageChanged);
 
+    // Ensure we have courseId and session params from URL
+    // This is called from /classroom/wait with these params already set
+    // If not present (direct access), set defaults
+    const setupParams = () => {
+      if (typeof window === 'undefined') return;
+      
+      const params = new URLSearchParams(window.location.search);
+      let changed = false;
+      
+      // If courseId is missing, add it
+      if (!params.has('courseId')) {
+        params.set('courseId', 'c1');
+        changed = true;
+      }
+      
+      // If session is missing, generate one from courseId
+      if (!params.has('session')) {
+        const cId = params.get('courseId') || 'c1';
+        params.set('session', `classroom_session_ready_${cId}`);
+        changed = true;
+      }
+      
+      // Only update URL if we added params
+      if (changed) {
+        const newUrl = `${window.location.pathname}?${params.toString()}`;
+        try {
+          window.history.replaceState({}, '', newUrl);
+        } catch (e) {
+          // Silently ignore history API errors
+        }
+      }
+    };
+    setupParams();
+
     // Role-based authorization: if role param exists, enforce match unless admin
     try {
       const params = new URLSearchParams(window.location.search);
       const urlRole = params.get('role');
-      if (urlRole && su?.role && su.role !== urlRole && su.role !== 'admin') {
-        router.replace('/');
-        return;
+      const currentSu = getStoredUser(); // Use fresh user data
+      if (urlRole && currentSu?.role && currentSu.role !== 'admin') {
+        const isStudentMatch = urlRole === 'student' && currentSu.role === 'user';
+        const isExactMatch = currentSu.role === urlRole;
+        if (!isStudentMatch && !isExactMatch) {
+          console.warn('[AuthCheck][test] Role mismatch detected:', { urlRole, userRole: currentSu.role });
+          router.replace('/');
+          return;
+        }
       }
     } catch (e) { /* ignore */ }
 
@@ -67,35 +130,7 @@ export default function TestPage() {
       try { window.removeEventListener('storage', onStorageChanged); } catch (e) {} 
       try { window.clearTimeout(recheckTimer); } catch (e) {} 
     };
-
-    // Ensure we have courseId and session params from URL
-    // This is called from /classroom/wait with these params already set
-    // If not present (direct access), set defaults
-    if (typeof window === 'undefined') return;
-    
-    const params = new URLSearchParams(window.location.search);
-    
-    // If courseId is missing, add it
-    if (!params.has('courseId')) {
-      params.set('courseId', 'c1');
-    }
-    
-    // If session is missing, generate one from courseId
-    if (!params.has('session')) {
-      const courseId = params.get('courseId') || 'c1';
-      params.set('session', `classroom_session_ready_${courseId}`);
-    }
-    
-    // Only update URL if we added params
-    if (!window.location.search.includes('session')) {
-      const newUrl = `${window.location.pathname}?${params.toString()}`;
-      try {
-        window.history.replaceState({}, '', newUrl);
-      } catch (e) {
-        // Silently ignore history API errors
-      }
-    }
-  }, []);
+  }, [mounted, router]);
 
   const channel = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('channel') || 'testroom' : 'testroom';
 
@@ -105,7 +140,7 @@ export default function TestPage() {
         <LanguageSwitcher />
         {mounted && storedUser ? (
           <div style={{ padding: '6px 10px', borderRadius: 8, background: '#f8fafc', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{ fontSize: 13, color: '#111', fontWeight: 600 }}>{storedUser.displayName || storedUser.email}</div>
+            <div style={{ fontSize: 13, color: '#111', fontWeight: 600 }}>{`${storedUser.lastName || ''} ${storedUser.firstName || ''}`.trim() || storedUser.displayName || ''}</div>
             <div style={{ fontSize: 12, color: '#666' }}>({storedUser.role || 'user'})</div>
           </div>
         ) : null}

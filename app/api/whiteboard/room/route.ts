@@ -80,7 +80,12 @@ const ROOM_CACHE = new Map<string, string>();
 
 export async function POST(req: NextRequest) {
   try {
-    const { userId, channelName, roomUuid: requestedRoomUuid, courseId, lookupOnly } = await req.json();
+    const body = await req.json();
+    const userId = body.userId?.trim();
+    const channelName = body.channelName?.trim();
+    const requestedRoomUuid = body.roomUuid?.trim();
+    const courseId = body.courseId?.trim();
+    const lookupOnly = body.lookupOnly;
 
     console.log('[WhiteboardAPI] Request received:', { userId: '[REDACTED]', channelName, requestedRoomUuid: '[REDACTED]', courseId });
 

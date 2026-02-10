@@ -62,13 +62,22 @@ export default function LoginPage() {
           // set 30-minute session expiry (client-side)
           try {
             window.localStorage.setItem('tutor_session_expiry', String(Date.now() + 30 * 60 * 1000));
+            window.sessionStorage.setItem('tutor_last_login_time', String(Date.now()));
+            // Mark that we just logged in successfully
+            window.sessionStorage.setItem('tutor_login_complete', 'true');
           } catch {}
+          // Dispatch auth changed event
           window.dispatchEvent(new Event('tutor:auth-changed'));
+          
+          // Add a small delay to ensure storage events propagate
+          await new Promise(r => setTimeout(r, 100));
+          
           // If a redirect query param is present, send user there after login
           try {
             const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
             const redirect = params?.get('redirect');
             if (redirect) {
+              console.log('[Login] Redirecting to:', redirect);
               // prefer full-path redirect
               router.push(decodeURIComponent(redirect));
               return;
@@ -80,7 +89,8 @@ export default function LoginPage() {
             return;
           }
           alert(`${t('login_success')}\n${t('current_plan')}: ${PLAN_LABELS[user.plan]}\n${t('redirecting_home')}`);
-          router.push('/');          return;
+          router.push('/');
+          return;
         }
 
         // If API failed...
@@ -125,15 +135,27 @@ export default function LoginPage() {
         setStoredUser(user);
         setCurrentUser(user);
         try {
+          const nowRef = String(Date.now());
           window.localStorage.setItem('tutor_session_expiry', String(Date.now() + 30 * 60 * 1000));
+          
+          // Save to both session and local storage for reliability
+          window.sessionStorage.setItem('tutor_last_login_time', nowRef);
+          window.localStorage.setItem('tutor_last_login_time', nowRef);
+          
+          // Mark that we just logged in successfully
+          window.sessionStorage.setItem('tutor_login_complete', 'true');
         } catch {}
         window.dispatchEvent(new Event('tutor:auth-changed'));
+        
+        // Add a small delay to ensure storage events propagate
+        await new Promise(r => setTimeout(r, 100));
         
         // Check for redirect parameter
         try {
           const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
           const redirect = params?.get('redirect');
           if (redirect) {
+            console.log('[Login Mock] Redirecting to:', redirect);
             router.push(decodeURIComponent(redirect));
             return;
           }
