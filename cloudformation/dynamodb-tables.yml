@@ -27,6 +27,11 @@ Parameters:
     Default: jvtutorcorner-carousel
     Description: DynamoDB table name for carousel images
 
+  WhiteboardTableName:
+    Type: String
+    Default: jvtutorcorner-whiteboard
+    Description: DynamoDB table name for whiteboard state
+
 Resources:
   TeachersTable:
     Type: AWS::DynamoDB::Table
@@ -190,6 +195,24 @@ Resources:
         - Key: Project
           Value: jvtutorcorner
 
+  WhiteboardTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref WhiteboardTableName
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: false
+      Tags:
+        - Key: Project
+          Value: jvtutorcorner
+
 Outputs:
   TeachersTableName:
     Description: Name of teachers DynamoDB table
@@ -225,3 +248,10 @@ Outputs:
   CarouselTableArn:
     Description: ARN of carousel DynamoDB table
     Value: !GetAtt CarouselTable.Arn
+
+  WhiteboardTableName:
+    Description: Name of whiteboard DynamoDB table
+    Value: !Ref WhiteboardTableName
+  WhiteboardTableArn:
+    Description: ARN of whiteboard DynamoDB table
+    Value: !GetAtt WhiteboardTable.Arn

@@ -51,14 +51,13 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   // Feature Flag: Agora Whiteboard vs Canvas Whiteboard
   // Default to using Agora whiteboard unless explicitly disabled with NEXT_PUBLIC_USE_AGORA_WHITEBOARD='false'
   const useAgoraWhiteboard = process.env.NEXT_PUBLIC_USE_AGORA_WHITEBOARD !== 'false';
-  // Avoid noisy logs in production. Use debug logging during development only.
-  if (process.env.NODE_ENV !== 'production') {
-    console.debug('[ClientClassroom] useAgoraWhiteboard:', useAgoraWhiteboard, 'NEXT_PUBLIC_USE_AGORA_WHITEBOARD:', process.env.NEXT_PUBLIC_USE_AGORA_WHITEBOARD);
-  }
+  
   const agoraWhiteboardRef = useRef<AgoraWhiteboardRef>(null);
   const [agoraRoomData, setAgoraRoomData] = useState<{ uuid: string; roomToken: string; appIdentifier: string; region: string; userId: string } | null>(null);
   const [whiteboardState, setWhiteboardState] = useState<any>(null);
   const [whiteboardError, setWhiteboardError] = useState<string | null>(null);
+  const [joinAttemptCount, setJoinAttemptCount] = useState(0);
+  const lastJoinTimeRef = useRef<number>(0);
   
   // Poll whiteboard state for toolbar display
   // Reduced from 300ms to 1000ms since this is only used for UI display (tool buttons, page info)
@@ -107,6 +106,13 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     }
   }
 
+  const agoraConfig = useMemo(() => ({
+    channelName: effectiveChannelName,
+    role: (urlRole === 'teacher' || urlRole === 'student') ? (urlRole as Role) : computedRole,
+    isOneOnOne: true, // 启用1对1优化
+    defaultQuality: 'high' as const // 默认高质量
+  }), [effectiveChannelName, urlRole, computedRole]);
+
   const {
     joined,
     loading,
@@ -129,12 +135,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     // Troubleshoot helpers
     fixStatus,
     triggerFix,
-  } = useAgoraClassroom({
-    channelName: effectiveChannelName,
-    role: (urlRole === 'teacher' || urlRole === 'student') ? (urlRole as Role) : computedRole,
-    isOneOnOne: true, // 启用1对1优化
-    defaultQuality: 'high' // 默认高质量
-  });
+  } = useAgoraClassroom(agoraConfig);
   
 
   const firstRemote = useMemo(() => remoteUsers?.[0] ?? null, [remoteUsers]);
@@ -187,13 +188,48 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     return id;
   }, [storedUser?.email, urlRole, computedRole]);
 
-  console.log('[ClientClassroom] userId calculation', { 
-    storedUser: !!storedUser, 
-    storedUserEmail: storedUser?.email ? '[REDACTED]' : undefined, 
-    urlRole, 
-    computedRole, 
-    userId: '[REDACTED]' 
-  });
+  // Remote name resolution for test path: cache + single fetch per uid
+  const [remoteName, setRemoteName] = useState<string | null>(null);
+  const remoteNameCacheRef = useRef<Record<string, string>>({});
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const isTestPath = window.location.pathname === '/classroom/test';
+    if (!isTestPath) return;
+    const r = firstRemote;
+    if (!r || !r.uid) {
+      setRemoteName(null);
+      return;
+    }
+    const uid = String(r.uid);
+    // If remote uid equals local user id, skip
+    if (uid === (storedUser?.email || '')) {
+      setRemoteName(`${storedUser?.lastName || ''} ${storedUser?.firstName || ''}`.trim() || storedUser?.displayName || null);
+      return;
+    }
+    if (remoteNameCacheRef.current[uid]) {
+      setRemoteName(remoteNameCacheRef.current[uid]);
+      return;
+    }
+    // fetch profile once
+    (async () => {
+      try {
+        const res = await fetch(`/api/profile?email=${encodeURIComponent(uid)}`);
+        if (!res.ok) {
+          // fallback: show uid
+          remoteNameCacheRef.current[uid] = uid;
+          setRemoteName(uid);
+          return;
+        }
+        const j = await res.json();
+        const name = j?.profile ? `${j.profile.lastName || ''} ${j.profile.firstName || ''}`.trim() || j.profile.nickname || uid : uid;
+        remoteNameCacheRef.current[uid] = name;
+        setRemoteName(name);
+      } catch (e) {
+        remoteNameCacheRef.current[uid] = uid;
+        setRemoteName(uid);
+      }
+    })();
+  }, [firstRemote, storedUser?.email]);
 
   // Helper: read-only API call to fetch existing whiteboard uuid for a course or channel
   async function fetchExistingWhiteboardUuid(courseId?: string, channelName?: string) {
@@ -437,21 +473,28 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       // Initial delay to give DynamoDB time to sync from upload
       await new Promise(resolve => setTimeout(resolve, 500));
       
+      console.log('[ClientClassroom] === PDF FETCH START ===');
+      console.log('[ClientClassroom] Session Key:', sessionReadyKey);
+      console.log('[ClientClassroom] Course ID:', courseId);
+      console.log('[ClientClassroom] Is Test Path:', isTestPath);
+      
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout per request
         try {
-          // Exponential backoff: 500ms, 750ms, 1125ms, ~1700ms, ~2500ms...
           const retryDelay = Math.min(500 * Math.pow(1.5, attempt - 1), 3000);
-          
           const timestamp = Date.now();
-          console.log(`[ClientClassroom] Checking for PDF (attempt ${attempt}/${maxRetries})...`);
-          const resp = await fetch(`/api/whiteboard/pdf?uuid=${encodeURIComponent(sessionReadyKey)}&check=true&t=${timestamp}`);
+          console.log(`[ClientClassroom] Checking for PDF metadata (attempt ${attempt}/${maxRetries})... UUID: ${sessionReadyKey}`);
+          
+          const resp = await fetch(`/api/whiteboard/pdf?uuid=${encodeURIComponent(sessionReadyKey)}&check=true&t=${timestamp}`, {
+            signal: controller.signal
+          });
+          clearTimeout(timeoutId);
           
           if (!resp.ok) {
-            console.warn(`[ClientClassroom] PDF check failed (attempt ${attempt}/${maxRetries}):`, resp.status);
+            console.warn(`[ClientClassroom] PDF metadata check failed (attempt ${attempt}/${maxRetries}): status ${resp.status}`);
             if (attempt === maxRetries) {
-              console.error('[ClientClassroom] Max retries reached, giving up on PDF');
-              setSelectedPdf(null);
-              setShowPdf(false);
+              console.error('[ClientClassroom] Max retries reached for PDF metadata');
               return;
             }
             await new Promise(resolve => setTimeout(resolve, retryDelay));
@@ -460,9 +503,9 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           
           const json = await resp.json();
           if (!json.found) {
-            console.log(`[ClientClassroom] No PDF found for session (attempt ${attempt}/${maxRetries}):`, sessionReadyKey);
+            console.log(`[ClientClassroom] PDF not found on server yet (attempt ${attempt}/${maxRetries})`);
             if (attempt === maxRetries) {
-              console.log('[ClientClassroom] No PDF uploaded for this session');
+              console.log('[ClientClassroom] No PDF found after all retries');
               setSelectedPdf(null);
               setShowPdf(false);
               return;
@@ -471,32 +514,40 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
             continue;
           }
 
-          console.log('[ClientClassroom] ✓ Found existing PDF for session:', sessionReadyKey, json.meta);
-          const fileResp = await fetch(`/api/whiteboard/pdf?uuid=${encodeURIComponent(sessionReadyKey)}&t=${timestamp}`);
+          console.log('[ClientClassroom] ✓ PDF metadata found!', json.meta);
+          
+          // Now fetch the actual file
+          const fileTimeoutId = setTimeout(() => controller.abort(), 20000); // longer timeout for file download
+          const fileResp = await fetch(`/api/whiteboard/pdf?uuid=${encodeURIComponent(sessionReadyKey)}&t=${timestamp}`, {
+            signal: controller.signal
+          });
+          clearTimeout(fileTimeoutId);
+
           if (!fileResp.ok) {
-            console.warn('[ClientClassroom] PDF file download failed:', fileResp.status);
-            setSelectedPdf(null);
-            setShowPdf(false);
+            console.error('[ClientClassroom] PDF file download failed:', fileResp.status);
             return;
           }
+          
           const blob = await fileResp.blob();
           const fileName = json.meta?.name || 'course.pdf';
           const fileType = json.meta?.type || 'application/pdf';
           const file = new File([blob], fileName, { type: fileType });
+          
           console.log('[ClientClassroom] ✓ PDF loaded successfully:', fileName, 'size:', blob.size);
           setSelectedPdf(file);
           setShowPdf(true);
-          return; // Success, exit retry loop
-        } catch (e) {
-          console.warn(`[ClientClassroom] Failed to check for PDF (attempt ${attempt}/${maxRetries}):`, e);
+          return; // Success!
+          
+        } catch (e: any) {
+          clearTimeout(timeoutId);
+          const isAbort = e.name === 'AbortError';
+          console.warn(`[ClientClassroom] PDF check error (attempt ${attempt}/${maxRetries}):`, isAbort ? 'Timed out' : e.message);
+          
           if (attempt === maxRetries) {
-            console.error('[ClientClassroom] Max retries reached with errors');
-            setSelectedPdf(null);
-            setShowPdf(false);
+            console.error('[ClientClassroom] Giving up on PDF after multiple errors');
             return;
           }
-          const retryDelay = Math.min(500 * Math.pow(1.5, attempt - 1), 3000);
-          await new Promise(resolve => setTimeout(resolve, retryDelay));
+          await new Promise(resolve => setTimeout(resolve, 2000));
         }
       }
     };
@@ -529,41 +580,40 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     };
   }, [mounted, sessionReadyKey]);
 
+  // Track if PDF has been auto-inserted to avoid duplicates
+  const pdfInsertedRef = useRef<string | null>(null);
+
   // ★★★ Auto-insert PDF into Agora Whiteboard when ready ★★★
   useEffect(() => {
-    // Only proceed if we have a file, room data, and the whiteboard reference
-    if (useAgoraWhiteboard && selectedPdf && agoraRoomData && agoraWhiteboardRef.current) {
-         console.log('[ClientClassroom] Attempting to auto-insert PDF into Agora Whiteboard:', selectedPdf.name);
+    // Only proceed if we are a teacher, have a file, room data, and the whiteboard reference
+    if (isTeacher && useAgoraWhiteboard && selectedPdf && agoraRoomData && agoraWhiteboardRef.current) {
+         // Avoid double insertion if same PDF and same session
+         const pdfIdentifier = `${sessionReadyKey}_${selectedPdf.name}_${selectedPdf.size}`;
+         if (pdfInsertedRef.current === pdfIdentifier) return;
+
+         console.log('[ClientClassroom] PDF auto-insert condition met:', selectedPdf.name);
          
          const insert = async () => {
+             // Second check inside async to handle race conditions
+             if (!agoraWhiteboardRef.current || pdfInsertedRef.current === pdfIdentifier) return;
+
              try {
-                // Since selectedPdf is a File object, we need to upload it or make it accessible.
-                // However, based on the previous logic, we fetched it from /api/whiteboard/pdf.
-                // We can use the URL we fetched from directly if we had it, but here we have the Blob/File.
-                // Better approach: Use the URL we know works for the PDF API.
-                
-                // Construct the URL directly.  
-                // NOTE: Fastboard usually expects a public URL or a conversion task result for PPTX.
-                // For PDF, simple insertion might require a web-accessible URL or object URL.
-                // If the backend /api/whiteboard/pdf streams the file, we can use that URL.
                 const pdfUrl = `${window.location.origin}/api/whiteboard/pdf?uuid=${encodeURIComponent(sessionReadyKey)}&t=${Date.now()}`;
                 
-                console.log('[ClientClassroom] Inserting PDF via URL:', pdfUrl);
-                await agoraWhiteboardRef.current?.insertPDF(pdfUrl, selectedPdf.name);
-                console.log('[ClientClassroom] PDF inserted successfully');
-                
-                // Optional: Clear selection so we don't try to insert again? 
-                // Alternatively, component logic inside insertPDF could prevent duplicate insertion.
-                // For now, we leave it as is, or we could set a flag "inserted".
+                console.log('[ClientClassroom] Attempting to auto-insert PDF:', selectedPdf.name, 'URL:', pdfUrl);
+                await agoraWhiteboardRef.current.insertPDF(pdfUrl, selectedPdf.name);
+                console.log('[ClientClassroom] PDF auto-insert request sent');
+                pdfInsertedRef.current = pdfIdentifier;
              } catch (e) {
-                 console.error('[ClientClassroom] Failed to insert PDF:', e);
+                 console.error('[ClientClassroom] Failed to auto-insert PDF:', e);
              }
          };
          
-         // Give a small delay to ensure the board is fully initialized inside the ref
-         setTimeout(insert, 2000);
+         // Give board time to connect and become writable
+         const timer = setTimeout(insert, 3000);
+         return () => clearTimeout(timer);
     }
-  }, [useAgoraWhiteboard, selectedPdf, agoraRoomData, sessionReadyKey]);
+  }, [useAgoraWhiteboard, selectedPdf, agoraRoomData, sessionReadyKey, isTeacher]);
 
   // session countdown - default to 5 minutes
   const [sessionDurationMinutes, setSessionDurationMinutes] = useState<number>(5); // 5 minutes
@@ -605,12 +655,27 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       if (typeof window === 'undefined') return;
       const sa = window.localStorage.getItem('tutor_selected_audio');
       const sv = window.localStorage.getItem('tutor_selected_video');
+      console.log('[ClientClassroom] Restoring saved devices from localStorage:', { audio: sa, video: sv });
       if (sa) setSelectedAudioDeviceId(sa);
       if (sv) setSelectedVideoDeviceId(sv);
-    } catch (e) {}
+    } catch (e) {
+      console.warn('[ClientClassroom] Failed to restore device selections:', e);
+    }
     // run once on mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Save device selections to localStorage when they change
+  useEffect(() => {
+    try {
+      if (typeof window === 'undefined' || !selectedAudioDeviceId || !selectedVideoDeviceId) return;
+      console.log('[ClientClassroom] Saving device selections to localStorage:', { audio: selectedAudioDeviceId, video: selectedVideoDeviceId });
+      window.localStorage.setItem('tutor_selected_audio', selectedAudioDeviceId);
+      window.localStorage.setItem('tutor_selected_video', selectedVideoDeviceId);
+    } catch (e) {
+      console.warn('[ClientClassroom] Failed to save device selections:', e);
+    }
+  }, [selectedAudioDeviceId, selectedVideoDeviceId]);
 
   // pre-join waiting / readiness state (require same course + order)
   const [ready, setReady] = useState(false);
@@ -641,19 +706,28 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
 
   // Track boot step progress: update when agoraRoomData or whiteboardMeta become available
   useEffect(() => {
-    setBootSteps((prev) => prev.map(s => ({ ...s })));
-    setBootSteps((prev) => prev.map((s) => {
-      if (s.name === 'Initializing Agora connection') {
-        return { ...s, done: !!agoraRoomData };
-      }
-      if (s.name === 'Preparing whiteboard') {
-        return { ...s, done: useAgoraWhiteboard ? !!agoraRoomData && !!agoraWhiteboardRef.current : !!whiteboardMeta };
-      }
-      if (s.name === 'Syncing session state') {
-        return { ...s, done: !!sessionReadyKey };
-      }
-      return s;
-    }));
+    // Only update if state actually changed to avoid infinite loops
+    setBootSteps((prev) => {
+      let changed = false;
+      const next = prev.map((s) => {
+        let done = s.done;
+        if (s.name === 'Initializing Agora connection') {
+          done = !!agoraRoomData;
+        } else if (s.name === 'Preparing whiteboard') {
+          done = useAgoraWhiteboard ? !!agoraRoomData && !!agoraWhiteboardRef.current : !!whiteboardMeta;
+        } else if (s.name === 'Syncing session state') {
+          done = !!sessionReadyKey;
+        }
+        
+        if (done !== s.done) {
+          changed = true;
+          return { ...s, done };
+        }
+        return s;
+      });
+
+      return changed ? next : prev;
+    });
 
     const agoraReady = useAgoraWhiteboard ? !!agoraRoomData && !!agoraWhiteboardRef.current : !!whiteboardMeta;
     const allDone = agoraReady && !!sessionReadyKey;
@@ -786,7 +860,19 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
         }
 
         if (hasActiveSession) {
-          console.log(`[AutoJoin] ${roleName} 檢測到進行中會話，正在自動加入...`);
+          if (joinAttemptCount >= 3) {
+            console.warn('[AutoJoin] Too many failures, stopping auto-join for 10s');
+            // Reset count after 10s to allow manual retry or delayed retry
+            setTimeout(() => setJoinAttemptCount(0), 10000);
+            return;
+          }
+          
+          const now = Date.now();
+          if (now - lastJoinTimeRef.current < 5000) return; // Throttle joins to every 5s
+          lastJoinTimeRef.current = now;
+          
+          console.log(`[AutoJoin] ${roleName} 檢測到進行中會話，正在自動加入... (Attempt ${joinAttemptCount + 1})`);
+          setJoinAttemptCount(prev => prev + 1);
           join({ 
             publishAudio: micEnabled, 
             publishVideo: wantPublishVideo, 
@@ -798,8 +884,25 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
 
         // 2. 只有當雙方都在教室內 (canJoin=true 或 qResp 返回雙方都 present) 才觸發啟動
         if (canJoin || bothPresent || forceJoin) {
+          if (joinAttemptCount >= 3) {
+            console.warn('[AutoJoin] Too many failures, stopping auto-join for 10s');
+            setTimeout(() => setJoinAttemptCount(0), 10000);
+            return;
+          }
+
+          const now = Date.now();
+          if (now - lastJoinTimeRef.current < 3000) return;
+          lastJoinTimeRef.current = now;
+
           if ((bothPresent && !canJoin) || forceJoin) setCanJoin(true);
-          console.log(`[AutoJoin] 雙方都已進入教室 (or forceJoin)，${roleName} 自動加入...`);
+          console.log(`[AutoJoin] Attempting auto-join...`, {
+            roleName,
+            attempt: joinAttemptCount + 1,
+            publishAudio: micEnabled,
+            publishVideo: wantPublishVideo,
+            audioDeviceId: selectedAudioDeviceId,
+            videoDeviceId: selectedVideoDeviceId
+          });
           join({ 
             publishAudio: micEnabled, 
             publishVideo: wantPublishVideo, 
@@ -846,17 +949,29 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
 
     const updateDevices = async () => {
       try {
-        if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+        if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+          console.warn('[ClientClassroom] mediaDevices.enumerateDevices not available');
+          return;
+        }
         const list = await navigator.mediaDevices.enumerateDevices();
         if (!mountedFlag) return;
         const ais = list.filter((d) => d.kind === 'audioinput');
         const vis = list.filter((d) => d.kind === 'videoinput');
+        console.log('[ClientClassroom] Devices enumerated:', { audioCount: ais.length, videoCount: vis.length, devices: list.map(d => ({ kind: d.kind, label: d.label || '(no label)', deviceId: d.deviceId })) });
         setAudioInputs(ais);
         setVideoInputs(vis);
-        if (!selectedAudioDeviceId && ais.length) setSelectedAudioDeviceId(ais[0].deviceId);
-        if (!selectedVideoDeviceId && vis.length) setSelectedVideoDeviceId(vis[0].deviceId);
+        
+        // Auto-select first device if not already selected
+        if (!selectedAudioDeviceId && ais.length) {
+          console.log('[ClientClassroom] Auto-selecting first audio device:', ais[0].deviceId);
+          setSelectedAudioDeviceId(ais[0].deviceId);
+        }
+        if (!selectedVideoDeviceId && vis.length) {
+          console.log('[ClientClassroom] Auto-selecting first video device:', vis[0].deviceId);
+          setSelectedVideoDeviceId(vis[0].deviceId);
+        }
       } catch (e) {
-        // ignore
+        console.error('[ClientClassroom] Error enumerating devices:', e);
       }
     };
 
@@ -873,28 +988,45 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   useEffect(() => {
     if (!mounted) return;
     let ignore = false;
+    console.log('[ClientClassroom] Attempting to request media permissions on mount...');
     (async () => {
       try {
         // Check if we already have permission by trying to get a minimal stream
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
         if (!ignore) {
+          console.log('[ClientClassroom] ✓ Permissions granted and stream obtained');
           setPermissionGranted(true);
           // Stop the stream immediately
           stream.getTracks().forEach(t => t.stop());
           // Re-enumerate to get device labels
           const list = await navigator.mediaDevices.enumerateDevices();
-          setAudioInputs(list.filter((d) => d.kind === 'audioinput'));
-          setVideoInputs(list.filter((d) => d.kind === 'videoinput'));
-          setHasAudioInput(list.some((d) => d.kind === 'audioinput'));
-          setHasVideoInput(list.some((d) => d.kind === 'videoinput'));
+          const audioDevices = list.filter((d) => d.kind === 'audioinput');
+          const videoDevices = list.filter((d) => d.kind === 'videoinput');
+          console.log('[ClientClassroom] ✓ Re-enumerated after permission:', { audio: audioDevices.length, video: videoDevices.length });
+          setAudioInputs(audioDevices);
+          setVideoInputs(videoDevices);
+          setHasAudioInput(audioDevices.length > 0);
+          setHasVideoInput(videoDevices.length > 0);
+          // Auto-select if not already selected
+          if (!selectedAudioDeviceId && audioDevices.length) {
+            console.log('[ClientClassroom] Auto-selecting first audio:', audioDevices[0].deviceId);
+            setSelectedAudioDeviceId(audioDevices[0].deviceId);
+          }
+          if (!selectedVideoDeviceId && videoDevices.length) {
+            console.log('[ClientClassroom] Auto-selecting first video:', videoDevices[0].deviceId);
+            setSelectedVideoDeviceId(videoDevices[0].deviceId);
+          }
         }
       } catch (e) {
         // Permission denied or not yet granted - that's ok, user can click Request Permissions
-        if (!ignore) setPermissionGranted(false);
+        if (!ignore) {
+          console.warn('[ClientClassroom] Permission request failed (this is normal on first load):', (e as any)?.message ?? e);
+          setPermissionGranted(false);
+        }
       }
     })();
     return () => { ignore = true; };
-  }, [mounted]);
+  }, [mounted, selectedAudioDeviceId, selectedVideoDeviceId]);
 
   const requestPermissions = async () => {
     try {
@@ -1065,7 +1197,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
         navigator.sendBeacon('/api/classroom/ready', blob);
       }
     };
-  }, [mounted, sessionReadyKey, urlRole, computedRole, storedUser]);
+  }, [mounted, sessionReadyKey, urlRole, computedRole, storedUser?.email]);
 
   const endSession = async () => {
     try {
@@ -1712,14 +1844,14 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           <div className="video-container">
             <video ref={localVideoRef} autoPlay muted playsInline style={{ transform: 'scaleX(-1)' }} />
             <div className="video-label">
-              {mounted && (urlRole === 'teacher' || computedRole === 'teacher') ? t('teacher_you') : t('student_you')}
+              {isTestPath ? `${storedUser?.lastName || ''} ${storedUser?.firstName || ''}`.trim() || storedUser?.displayName || (mounted && (urlRole === 'teacher' || computedRole === 'teacher') ? t('teacher_you') : t('student_you')) : (mounted && (urlRole === 'teacher' || computedRole === 'teacher') ? t('teacher_you') : t('student_you'))}
             </div>
           </div>
 
           <div className="video-container">
             <video ref={remoteVideoRef} autoPlay playsInline />
             <div className="video-label">
-              {firstRemote ? `${mounted && (urlRole === 'teacher' || computedRole === 'teacher') ? t('student') : t('teacher')}` : (mounted && (urlRole === 'teacher' || computedRole === 'teacher') ? t('student') : t('teacher'))}
+              {isTestPath ? (remoteName || (firstRemote && String(firstRemote.uid))) : (firstRemote ? `${mounted && (urlRole === 'teacher' || computedRole === 'teacher') ? t('student') : t('teacher')}` : (mounted && (urlRole === 'teacher' || computedRole === 'teacher') ? t('student') : t('teacher')))}
             </div>
             {/* Controls moved: mic and leave are shown under the Join button in the controls area. */}
           </div>

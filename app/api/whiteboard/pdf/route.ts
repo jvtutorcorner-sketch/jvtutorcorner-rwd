@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { uploadToS3, getObjectBuffer } from '@/lib/s3';
-import { saveWhiteboardState, getWhiteboardState } from '@/lib/whiteboardService';
+import { saveWhiteboardState, getWhiteboardState, normalizeUuid } from '@/lib/whiteboardService';
 import { broadcastToUuid } from '../stream/route';
 import path from 'path';
 import fs from 'fs';
@@ -8,60 +8,99 @@ import fs from 'fs';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { uuid, pdf } = body;
+    const { uuid: rawUuid, pdf } = body;
+    const uuid = normalizeUuid(rawUuid);
     
-    if (!uuid || !pdf || !pdf.data) {
-      console.error('[PDF POST] Validation failed: Missing uuid or pdf data');
-      return NextResponse.json({ error: 'Missing uuid or pdf data' }, { status: 400 });
+    console.log('[PDF POST] ===== PDF UPLOAD REQUEST =====');
+    console.log('[PDF POST] Raw UUID received:', rawUuid);
+    console.log('[PDF POST] Normalized UUID:', uuid);
+    console.log('[PDF POST] PDF name:', pdf?.name);
+    
+    if (!uuid || !pdf) {
+      console.error('[PDF POST] Validation failed: Missing uuid or pdf object');
+      return NextResponse.json({ error: 'Missing uuid or pdf metadata' }, { status: 400 });
     }
-    
-    // Decode base64
-    const buffer = Buffer.from(pdf.data, 'base64');
-    
-    // Check if S3 credentials are available
-    let useS3 = !!(process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID || process.env.AWS_S3_BUCKET_NAME);
     
     let uploaded: { url: string; key: string } | null = null;
+    let useS3 = !!(process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID || process.env.AWS_S3_BUCKET_NAME);
     
-    // Try S3 upload first if credentials available
-    if (useS3) {
-      try {
-        const key = `whiteboard/session_${uuid}.pdf`;
-        console.log('[PDF POST] Attempting S3 upload. Key:', key, 'Size:', buffer.length, 'Type:', pdf.type);
+    console.log('[PDF POST] S3 Configuration check:', {
+      hasAccessKey: !!process.env.AWS_ACCESS_KEY_ID,
+      hasCiAccessKey: !!process.env.CI_AWS_ACCESS_KEY_ID,
+      hasBucket: !!process.env.AWS_S3_BUCKET_NAME,
+      useS3: useS3,
+      bucket: process.env.AWS_S3_BUCKET_NAME || process.env.CI_AWS_S3_BUCKET_NAME
+    });
+
+    // Case 1: PDF already uploaded (e.g., via presigned URL)
+    if (pdf.s3Key) {
+       console.log('[PDF POST] PDF already uploaded to storage. Key:', pdf.s3Key);
+       uploaded = { 
+         url: pdf.url || `/api/whiteboard/pdf?uuid=${encodeURIComponent(rawUuid || 'default')}`, 
+         key: pdf.s3Key 
+       };
+    } 
+    // Case 2: PDF provided as base64 data to be uploaded by the server
+    else if (pdf.data) {
+      // Decode base64
+      const buffer = Buffer.from(pdf.data, 'base64');
+      
+      // Try S3 upload first if credentials available
+      if (useS3) {
+        try {
+          const key = `whiteboard/session_${uuid}.pdf`;
+          console.log('[PDF POST] Attempting S3 upload. Key:', key, 'Size:', buffer.length, 'Type:', pdf.type);
+          
+          uploaded = await uploadToS3(buffer, key, pdf.type || 'application/pdf');
+          console.log('[PDF POST] ✓ PDF upload to S3 success:', { key: uploaded.key, url: uploaded.url });
+        } catch (s3Error: any) {
+          console.error('[PDF POST] ✗ S3 upload failed:', { error: s3Error.message, code: (s3Error as any).code, details: (s3Error as any).$metadata });
+          console.warn('[PDF POST] Falling back to local storage');
+          useS3 = false;
+          uploaded = null;
+        }
+      }
+      
+      // Fall back to local storage if S3 failed or not configured
+      if (!uploaded) {
+        if (useS3) {
+          console.log('[PDF POST] S3 was enabled but upload failed, using local storage');
+        } else {
+          console.log('[PDF POST] S3 not configured, using local storage');
+        }
         
-        uploaded = await uploadToS3(buffer, key, pdf.type || 'application/pdf');
-        console.log('[PDF POST] PDF upload to S3 success:', uploaded.key);
-      } catch (s3Error: any) {
-        console.warn('[PDF POST] S3 upload failed, falling back to local storage:', s3Error.message);
-        useS3 = false;
-        uploaded = null;
+        const timestamp = Date.now();
+        const randomId = Math.random().toString(36).substr(2, 9);
+        const fileExtension = pdf.name.split('.').pop() || 'pdf';
+        const key = `whiteboard/session_${uuid}_${timestamp}_${randomId}.${fileExtension}`;
+        
+        const uploadsDir = path.join(process.cwd(), '.uploads', 'whiteboard');
+        if (!fs.existsSync(uploadsDir)) {
+          fs.mkdirSync(uploadsDir, { recursive: true });
+        }
+        
+        const localPath = path.join(uploadsDir, `session_${uuid}_${timestamp}_${randomId}.${fileExtension}`);
+        
+        try {
+          // Write file to local storage (instead of using bypass)
+          fs.writeFileSync(localPath, buffer);
+          console.log('[PDF POST] ✓ PDF written to local storage:', { localPath, size: buffer.length });
+          
+          const url = `/api/uploads/whiteboard/session_${uuid}_${timestamp}_${randomId}.${fileExtension}`;
+          uploaded = { url, key };
+          console.log('[PDF POST] ✓ PDF record prepared (local storage):', { url, key });
+        } catch (writeError: any) {
+          console.error('[PDF POST] ✗ Failed to write PDF to local storage:', { error: writeError.message, path: localPath });
+          throw new Error(`Failed to write PDF file: ${writeError.message}`);
+        }
       }
+    } else {
+      console.error('[PDF POST] Validation failed: Missing pdf data or s3Key');
+      return NextResponse.json({ error: 'Missing pdf data or s3Key' }, { status: 400 });
     }
     
-    // Fall back to local storage if S3 failed or not configured
     if (!uploaded) {
-      console.log('[PDF POST] Using local storage for PDF upload');
-      
-      const timestamp = Date.now();
-      const randomId = Math.random().toString(36).substr(2, 9);
-      const fileExtension = pdf.name.split('.').pop() || 'pdf';
-      const key = `whiteboard/session_${uuid}_${timestamp}_${randomId}.${fileExtension}`;
-      
-      const uploadsDir = path.join(process.cwd(), '.uploads', 'whiteboard');
-      if (!fs.existsSync(uploadsDir)) {
-        fs.mkdirSync(uploadsDir, { recursive: true });
-      }
-      
-      const localPath = path.join(uploadsDir, `session_${uuid}_${timestamp}_${randomId}.${fileExtension}`);
-      fs.writeFileSync(localPath, buffer);
-      
-      const url = `/api/uploads/whiteboard/session_${uuid}_${timestamp}_${randomId}.${fileExtension}`;
-      uploaded = { url, key };
-      console.log('[PDF POST] PDF saved locally:', { url, key });
-    }
-    
-    if (!uploaded) {
-      throw new Error('Failed to upload PDF to both S3 and local storage');
+      throw new Error('Failed to prepare PDF upload');
     }
     
     // Save metadata
@@ -77,12 +116,12 @@ export async function POST(req: NextRequest) {
       }
     } else {
       try {
-        const uploadsDir = path.join(process.cwd(), '.uploads', 'whiteboard');
-        const metaPath = path.join(uploadsDir, `session_${uuid}_meta.json`);
-        fs.writeFileSync(metaPath, JSON.stringify(meta));
-        console.log('[PDF POST] Metadata saved locally:', metaPath);
+        // const uploadsDir = path.join(process.cwd(), '.uploads', 'whiteboard');
+        // const metaPath = path.join(uploadsDir, `session_${uuid}_meta.json`);
+        // fs.writeFileSync(metaPath, JSON.stringify(meta));
+        console.log('[PDF POST] Metadata local save bypassed to prevent server refresh');
       } catch (metaError) {
-        console.warn('[PDF POST] Failed to save metadata locally:', metaError);
+        console.warn('[PDF POST] Failed to save metadata logic:', metaError);
       }
     }
 
@@ -157,16 +196,22 @@ export async function POST(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const uuid = searchParams.get('uuid');
+  const rawUuid = searchParams.get('uuid');
+  const uuid = normalizeUuid(rawUuid);
   const check = searchParams.get('check'); // if true, just return metadata
   
-  if (!uuid) {
+  console.log('[PDF GET] ===== PDF RETRIEVAL REQUEST =====');
+  console.log('[PDF GET] Raw UUID received:', rawUuid);
+  console.log('[PDF GET] Normalized UUID:', uuid);
+  console.log('[PDF GET] Check mode:', !!check);
+  
+  if (!uuid || uuid === 'default') {
     return NextResponse.json({ error: 'Missing uuid' }, { status: 400 });
   }
   
   try {
     // Get PDF info from whiteboard state instead of assuming fixed key
-    console.log('[PDF GET] Getting whiteboard state for uuid:', uuid);
+    console.log('[PDF GET] Querying DynamoDB for uuid:', uuid);
     
     // Retry logic for eventual consistency - more aggressive
     let state = null;
@@ -176,6 +221,13 @@ export async function GET(req: NextRequest) {
     while (!state?.pdf && attempts < maxAttempts) {
       attempts++;
       state = await getWhiteboardState(uuid);
+      
+      // Fallback: Try prefixed version if not found (legacy data fallback)
+      if (!state?.pdf && !uuid.startsWith('course_')) {
+        const fallbackUuid = `course_${uuid}`;
+        console.log(`[PDF GET] PDF not found for ${uuid}, trying fallback ${fallbackUuid}...`);
+        state = await getWhiteboardState(fallbackUuid);
+      }
       
       if (state?.pdf) {
         console.log(`[PDF GET] ✓ PDF found on attempt ${attempts}/${maxAttempts}`);
@@ -221,32 +273,65 @@ export async function GET(req: NextRequest) {
     const s3Key = pdf.s3Key;
     const url = pdf.url;
     
-    // If it's a local file (starts with /api/uploads)
-    if (url && url.startsWith('/api/uploads/')) {
-      console.log('[PDF GET] Serving local PDF file:', url);
-      // The file is served via the uploads API, so redirect or proxy
-      const localPath = path.join(process.cwd(), '.uploads', 'whiteboard', s3Key.split('/').pop()!);
-      
-      if (!fs.existsSync(localPath)) {
-        console.log('[PDF GET] Local PDF file not found:', localPath);
-        return NextResponse.json({ found: false, error: 'File not found' }, { status: 404 });
+    console.log('[PDF GET] Attempting to serve PDF bytes:', {
+      hasS3Key: !!s3Key,
+      s3Key: s3Key,
+      hasUrl: !!url,
+      url: url,
+      isLocalFile: url?.startsWith('/api/uploads/'),
+      isS3: !url?.startsWith('/api/uploads/')
+    });
+    
+    // PRIORITY: If s3Key is present (even if url starts with /api/uploads), try S3 first
+    if (s3Key) {
+      try {
+        console.log('[PDF GET] PRIORITY: Attempting to retrieve from S3 first (since s3Key is present):', { s3Key, bucket: process.env.AWS_S3_BUCKET_NAME });
+        const fileBuf = await getObjectBuffer(s3Key);
+        console.log('[PDF GET] ✓ Success: Retrieved PDF from S3, size:', fileBuf.length);
+        return new NextResponse(new Uint8Array(fileBuf), {
+          headers: {
+            'Content-Type': 'application/pdf',
+            'Content-Length': String(fileBuf.length),
+            'Cache-Control': 'public, max-age=3600'
+          },
+        });
+      } catch (e: any) {
+        console.warn(`[PDF GET] S3 retrieval failed, checking fallback options. Error: ${e.message}`);
+        // If S3 fail, fall through to check local storage
       }
-      
-      const fileBuffer = fs.readFileSync(localPath);
-      console.log('[PDF GET] Retrieved local PDF, size:', fileBuffer.length);
-      return new NextResponse(fileBuffer, {
-        headers: {
-          'Content-Type': 'application/pdf',
-          'Content-Length': String(fileBuffer.length),
-          'Cache-Control': 'public, max-age=3600'
-        },
-      });
     }
     
-    // Otherwise, it's S3
+    // FALLBACK 1: If it's a local file (starts with /api/uploads)
+    if (url && url.startsWith('/api/uploads/')) {
+      console.log('[PDF GET] ⚠️ Serving local PDF file:', url);
+      // The file is served via the uploads API, so redirect or proxy
+      const localPath = path.join(process.cwd(), '.uploads', 'whiteboard', s3Key?.split('/').pop() || 'file.pdf');
+      
+      if (!fs.existsSync(localPath)) {
+        console.log('[PDF GET] ✗ Local PDF file not found:', { path: localPath, expectedFile: s3Key?.split('/').pop() });
+        // Instead of returning 404 immediately, we'll try S3 in the next block if not already tried
+      } else {
+        try {
+          const fileBuffer = fs.readFileSync(localPath);
+          console.log('[PDF GET] ✓ Retrieved local PDF, size:', fileBuffer.length);
+          return new NextResponse(fileBuffer, {
+            headers: {
+              'Content-Type': 'application/pdf',
+              'Content-Length': String(fileBuffer.length),
+              'Cache-Control': 'public, max-age=3600'
+            },
+          });
+        } catch (e) {
+          console.error('[PDF GET] Error reading local file:', e);
+        }
+      }
+    }
+    
+    // Otherwise, try S3 (if not already tried or if local failed)
     try {
+      console.log('[PDF GET] Final attempt: Retrieving from S3:', { s3Key, bucket: process.env.AWS_S3_BUCKET_NAME });
       const fileBuf = await getObjectBuffer(s3Key);
-      console.log('[PDF GET] Retrieved PDF from S3, size:', fileBuf.length);
+      console.log('[PDF GET] ✓ Retrieved PDF from S3, size:', fileBuf.length);
       return new NextResponse(new Uint8Array(fileBuf), {
         headers: {
           'Content-Type': 'application/pdf',
@@ -256,10 +341,10 @@ export async function GET(req: NextRequest) {
       });
     } catch (e: any) {
       if (e.name === 'NoSuchKey' || e.code === 'NoSuchKey') {
-        console.log('[PDF GET] PDF not found in S3 (NoSuchKey):', s3Key);
+        console.log('[PDF GET] ✗ PDF not found in S3 (NoSuchKey):', { s3Key, error: e.message });
         return NextResponse.json({ found: false, error: 'File not found' }, { status: 404 });
       }
-      console.error('[PDF GET] S3 Error during fetch:', e);
+      console.error('[PDF GET] ✗ S3 Error during fetch:', { error: e.message, code: (e as any).code, s3Key });
       return NextResponse.json({ found: false, error: 'S3 read error', details: e.message }, { status: 500 });
     }
   } catch (error: any) {

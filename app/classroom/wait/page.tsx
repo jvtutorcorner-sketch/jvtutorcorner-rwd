@@ -79,31 +79,82 @@ export default function ClassroomWaitPage() {
     const finalRole = (urlRole === 'teacher' || urlRole === 'student') ? (urlRole as 'teacher' | 'student') : computedRole;
     setRole(finalRole);
 
-    // Role-based authorization: if the URL requests a role, enforce it unless user is admin
-    if (urlRole && su?.role && su.role !== urlRole && su.role !== 'admin') {
-      try {
-        console.warn('[Auth] User role mismatch, redirecting to home');
-        router.replace('/');
-        return;
-      } catch (e) { console.warn('Failed to redirect unauthorized user', e); }
-    }
-
     // Require login: redirect to login page if no stored user OR session expired
+    let isInLoginRedirectFlow = false;
     const checkSessionAndMaybeRedirect = () => {
       let sessionValid = false;
+      let storedUser: any = null;
       try {
         const expiry = window.localStorage.getItem('tutor_session_expiry');
-        if (!expiry) sessionValid = !!getStoredUser();
-        else sessionValid = Number(expiry) > Date.now() && !!getStoredUser();
+        storedUser = getStoredUser();
+        if (!expiry) sessionValid = !!storedUser;
+        else sessionValid = Number(expiry) > Date.now() && !!storedUser;
+        
+        // Update state if we found a user during this check (to fix race condition)
+        if (storedUser && !storedUserState) {
+           setStoredUserState(storedUser);
+           // Re-calculate role if needed
+           if (!role) {
+             let cRole: 'teacher' | 'student' = 'student';
+             if (storedUser.role === 'teacher' || storedUser.role === 'admin') cRole = 'teacher';
+             // ... other logic ...
+             setRole(cRole);
+           }
+        }
       } catch (e) {
-        sessionValid = !!getStoredUser();
+        storedUser = getStoredUser();
+        sessionValid = !!storedUser;
       }
 
-      console.log('[AuthCheck][wait] storedUser:', getStoredUser(), 'expiry:', window.localStorage.getItem('tutor_session_expiry'), 'sessionValid:', sessionValid);
+        console.log(`[AuthCheck][wait] ${new Date().toISOString()} - storedUser:`, storedUser, 'expiry:', window.localStorage.getItem('tutor_session_expiry'), 'sessionValid:', sessionValid, 'isInLoginFlow:', isInLoginRedirectFlow, 'sessionKey:', key);
+
+      // Check for role mismatches if session is valid
+      if (sessionValid) {
+        const curRole = storedUser?.role;
+        const curIsTeacherOrAdmin = curRole === 'teacher' || curRole === 'admin';
+        const strictTeacherMismatch = urlRole === 'teacher' && !curIsTeacherOrAdmin;
+        const strictStudentMismatch = urlRole === 'student' && curIsTeacherOrAdmin;
+
+        if (strictTeacherMismatch || strictStudentMismatch) {
+          console.warn(`[AuthCheck][wait] ${new Date().toISOString()} - Role mismatch detected after delay (URL: ${urlRole}, User: ${curRole}) - redirecting to home`);
+          router.replace('/');
+          return;
+        }
+      }
 
       if (!sessionValid) {
+        // Clear login complete flag if session has expired (storedUser is null)
+        if (!storedUser) {
+          try {
+            window.sessionStorage.removeItem('tutor_login_complete');
+            window.sessionStorage.removeItem('tutor_last_login_time');
+          } catch {}
+        }
+        
+        // Skip redirect if just logged in (within last 15 seconds) - allow time for state to settle
+        const lastLoginTime = window.sessionStorage.getItem('tutor_last_login_time') || window.localStorage.getItem('tutor_last_login_time');
+        const loginComplete = window.sessionStorage.getItem('tutor_login_complete');
+        const timeSinceLogin = lastLoginTime ? Date.now() - Number(lastLoginTime) : Infinity;
+        
+        if ((timeSinceLogin < 15000 || loginComplete === 'true') && timeSinceLogin < Infinity && storedUser) {
+          console.log(`[AuthCheck][wait] ${new Date().toISOString()} - Skipping redirect - recently logged in or in login process (${timeSinceLogin} ms ago) for session ${key}`);
+          return;
+        }
+
         try {
+          // Don't redirect if we just redirected to login recently
+          const lastRedirectTime = window.sessionStorage.getItem('redirect_to_login_time');
+          const timeSinceRedirect = lastRedirectTime ? Date.now() - Number(lastRedirectTime) : Infinity;
+          
+          if (isInLoginRedirectFlow && timeSinceRedirect < 20000) {
+            console.log('[AuthCheck][wait] Still in login redirect flow, waiting...');
+            return;
+          }
+
           const redirect = encodeURIComponent(window.location.pathname + window.location.search);
+          console.log(`[AuthCheck][wait] ${new Date().toISOString()} - Redirecting to login with redirect:`, redirect, 'sessionKey:', key, 'courseId:', courseFromUrl);
+          window.sessionStorage.setItem('redirect_to_login_time', String(Date.now()));
+          isInLoginRedirectFlow = true;
           router.replace(`/login?redirect=${redirect}`);
           return;
         } catch (e) {
@@ -112,12 +163,19 @@ export default function ClassroomWaitPage() {
       }
     };
 
-    // Defer check slightly to allow storage events/auth changes to propagate
-    const recheckTimer = window.setTimeout(checkSessionAndMaybeRedirect, 300);
+    // Defer check to allow storage events/auth changes to propagate.
+    // "Reasonable check time": If recently logged in, wait 2 seconds. 
+    // If no recent login (cold entry), wait 5 seconds before forcing login redirect. 
+    const lastLoginTimeForDelay = window.sessionStorage.getItem('tutor_last_login_time') || window.localStorage.getItem('tutor_last_login_time');
+    const timeSinceLoginForDelay = lastLoginTimeForDelay ? Date.now() - Number(lastLoginTimeForDelay) : Infinity;
+    const initialDelay = timeSinceLoginForDelay < 15000 ? 2000 : 5000; 
+    const recheckTimer = window.setTimeout(checkSessionAndMaybeRedirect, initialDelay);
     const onAuthChanged = () => {
-      // If auth changed, cancel pending redirect and re-evaluate
+      // If auth changed, cancel pending redirect and re-evaluate after a short delay
       try { window.clearTimeout(recheckTimer); } catch (e) {}
-      checkSessionAndMaybeRedirect();
+      isInLoginRedirectFlow = false;  // Auth changed, so we're out of the redirect flow
+      // Add a small delay to allow authentication state to settle
+      window.setTimeout(checkSessionAndMaybeRedirect, 200);
     };
     const onStorageChanged = (e: StorageEvent) => {
       // If storage changed (cross-tab sync), re-evaluate auth
@@ -146,7 +204,8 @@ export default function ClassroomWaitPage() {
       clearTimeout(syncDebounceRef.current);
     }
 
-    // Wait 100ms before syncing to batch multiple rapid sync requests
+    // Wait 300ms before syncing to batch multiple rapid sync requests (increased from 100ms)
+    // This reduces the frequency of state updates and prevents excessive re-renders
     syncDebounceRef.current = window.setTimeout(() => {
       fetch(`/api/classroom/ready?uuid=${encodeURIComponent(sessionReadyKey)}`)
         .then((r) => {
@@ -304,7 +363,14 @@ export default function ClassroomWaitPage() {
         };
 
         es.onmessage = (ev) => {
-          console.log('SYNC: SSE message received, re-syncing from server.');
+          // Reduce log spam - only log every 5th SSE message
+          const messageCount = (window as any).__sseMessageCount = ((window as any).__sseMessageCount || 0) + 1;
+          if (messageCount % 5 === 0) {
+            console.log(`SYNC: SSE message received (count: ${messageCount}), re-syncing from server.`);
+          }
+          // The syncStateFromServer function includes debouncing (300ms),
+          // so even though SSE can fire rapidly, the actual state update is throttled
+          // This prevents unnecessary rerenders from frequent SSE messages
           syncStateFromServer();
         };
 
@@ -353,8 +419,10 @@ export default function ClassroomWaitPage() {
 
     // 5. Polling Fallback
     // Primary sync method in production. Poll every 5 seconds to keep state updated.
+    // Note: debounce inside syncStateFromServer() will further reduce actual sync frequency
     const pollingTimer = setInterval(() => {
       if (esRef.current === null || esRef.current.readyState !== EventSource.OPEN) {
+        console.log('SYNC: Polling triggered (SSE not active)');
         syncStateFromServer();
       }
     }, 5000);
@@ -604,36 +672,14 @@ export default function ClassroomWaitPage() {
     <div className="wait-page-container">
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <h2>{t('wait.title')}</h2>
-<<<<<<< HEAD
-=======
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button
-            onClick={() => router.push('/')}
-            style={{ padding: '8px 12px', background: '#ffffff', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer' }}
-          >
-            返回首頁
-          </button>
-          <button
-            onClick={() => {
-              try {
-                if (role === 'teacher') router.push('/teacher_courses');
-                else if (role === 'student') router.push('/student_courses');
-                else router.push('/courses');
-              } catch (e) { router.push('/courses'); }
-            }}
-            style={{ padding: '8px 12px', background: '#ffffff', border: '1px solid #e5e7eb', borderRadius: 8, cursor: 'pointer' }}
-          >
-            回課程清單
-          </button>
-          <LanguageSwitcher />
           {storedUserState && (
             <div style={{ marginLeft: 12, padding: '6px 10px', borderRadius: 8, background: '#f8fafc', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <div style={{ fontSize: 13, color: '#111', fontWeight: 600 }}>{storedUserState.displayName || storedUserState.email}</div>
+              <div style={{ fontSize: 13, color: '#111', fontWeight: 600 }}>{((storedUserState.lastName || '') + ' ' + (storedUserState.firstName || '')).trim() || storedUserState.displayName || storedUserState.email}</div>
               <div style={{ fontSize: 12, color: '#666' }}>({storedUserState.role || 'user'})</div>
             </div>
           )}
         </div>
->>>>>>> origin/main
       </div>
       <div style={{ marginTop: 12 }}>
       <div style={{ fontWeight: 600, fontSize: 18 }}>{course?.title ?? '課程'}</div>
@@ -838,6 +884,21 @@ function SyncBadge({ mode }: { mode: 'sse' | 'polling' | 'disconnected' }) {
 function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, videoOk: boolean) => void }) {
   const localVideoRef = React.useRef<HTMLVideoElement | null>(null);
   const previewStreamRef = React.useRef<MediaStream | null>(null);
+
+  // Stop camera preview on unmount to release devices for the next page
+  React.useEffect(() => {
+    return () => {
+      try {
+        if (previewStreamRef.current) {
+          console.log('[WaitPage] Unmounting, stopping camera preview tracks');
+          previewStreamRef.current.getTracks().forEach(t => t.stop());
+          previewStreamRef.current = null;
+        }
+      } catch (e) {
+        console.warn('[WaitPage] Failed to stop preview on unmount', e);
+      }
+    };
+  }, []);
   const audioContextRef = React.useRef<AudioContext | null>(null);
   const analyserRef = React.useRef<AnalyserNode | null>(null);
   const micSourceRef = React.useRef<MediaStreamAudioSourceNode | null>(null);

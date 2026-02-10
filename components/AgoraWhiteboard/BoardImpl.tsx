@@ -321,7 +321,27 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
         prevPage,
         nextPage,
         insertPDF: async (url, title) => {
-            if (!roomRef.current || !roomRef.current.isWritable) return;
+            console.log("[BoardImpl] insertPDF requested:", { url, title, hasRoom: !!roomRef.current, phase });
+            
+            // If room is not ready yet, wait up to 5 seconds
+            if (!roomRef.current) {
+                console.log("[BoardImpl] Room not ready, waiting for connection...");
+                let waitAttempts = 0;
+                while (!roomRef.current && waitAttempts < 10) {
+                    await new Promise(r => setTimeout(r, 500));
+                    waitAttempts++;
+                    if (roomRef.current) break;
+                }
+            }
+
+            if (!roomRef.current) {
+                console.warn("[BoardImpl] Cannot insert PDF: Room still not connected after waiting");
+                return;
+            }
+            if (!roomRef.current.isWritable) {
+                console.warn("[BoardImpl] Cannot insert PDF: Room is read-only for current user. Role:", role);
+                return;
+            }
             try {
                 console.log("[BoardImpl] Converting PDF to Scenes:", url);
                 setStatus("處理 PDF 中...");

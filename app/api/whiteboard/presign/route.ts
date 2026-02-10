@@ -1,16 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPresignedPutUrl } from '@/lib/s3';
+import { normalizeUuid } from '../stream/route';
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { uuid, fileName, contentType } = body;
+    const { uuid: rawUuid, fileName, contentType } = body;
+    const uuid = normalizeUuid(rawUuid);
 
     if (!uuid || !fileName) {
       return NextResponse.json({ error: 'Missing uuid or fileName' }, { status: 400 });
     }
 
     // Generate a unique key for the PDF file
+    // Use the normalized uuid in the key for consistency across tracking systems
     const key = `whiteboard/session_${uuid}_${Date.now()}_${fileName}`;
 
     // Generate presigned PUT URL

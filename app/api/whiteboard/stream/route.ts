@@ -1,5 +1,7 @@
 import { NextRequest } from 'next/server';
-import { getWhiteboardState } from '@/lib/whiteboardService';
+import { getWhiteboardState, normalizeUuid as sharedNormalizeUuid } from '@/lib/whiteboardService';
+
+export const normalizeUuid = sharedNormalizeUuid;
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -16,24 +18,6 @@ function encodeSSE(obj: any) {
     return new TextEncoder().encode(`data: ${JSON.stringify(obj)}\n\n`);
   } catch (e) {
     return new TextEncoder().encode(`data: {}\n\n`);
-  }
-}
-
-export function normalizeUuid(raw?: string | null) {
-  if (!raw) return 'default';
-  try {
-    const dec = decodeURIComponent(raw);
-    if (dec.startsWith('course_')) return dec;
-    // If it looks like a simple ID, and doesn't have course_ prefix, add it.
-    const m = dec.match(/[?&]courseId=([^&]+)/);
-    if (m) return `course_${m[1]}`;
-    // Fallback: if it's a simple string like 'c1', prepend 'course_'
-    if (dec.length < 50 && !dec.includes('/') && !dec.includes(' ')) {
-      return `course_${dec}`;
-    }
-    return dec;
-  } catch (e) {
-    return raw || 'default';
   }
 }
 

@@ -53,6 +53,10 @@ export async function POST(req: NextRequest) {
 
     if (typeof endTs !== 'number') return NextResponse.json({ error: 'endTs required (number) or use action=clear' }, { status: 400 });
 
+    // Allow resetting expired session: if client sends a new endTs, we just overwrite it.
+    // The previous logic allowed this too, but we are making it explicit that overwriting is supported.
+    // If the client logic detects expiration, it can POST a new endTs (extended time).
+    
     await writeSession(uuid, { endTs });
     return NextResponse.json({ endTs });
   } catch (err: any) {

@@ -238,8 +238,18 @@ export function useAgoraClassroom({
         // 監控連線狀態
         client.on('connection-state-change', (curState: string, revState: string, reason?: string) => {
           console.log(`[Agora] Connection state changed from ${revState} to ${curState}. Reason: ${reason}`);
-          if (curState === 'DISCONNECTED' && reason === 'INTERRUPTED') {
-            console.warn('[Agora] Connection interrupted, check your network (UDP ports might be blocked)');
+          if (curState === 'DISCONNECTED') {
+            if (reason === 'INTERRUPTED') {
+              console.warn('[Agora] Connection interrupted, check your network (UDP ports might be blocked)');
+            } else if (reason === 'LEAVE') {
+              console.log('[Agora] User left the channel normally');
+            } else {
+              console.warn('[Agora] Connection disconnected with reason:', reason);
+            }
+          } else if (curState === 'CONNECTING') {
+            console.log('[Agora] Attempting to establish connection...');
+          } else if (curState === 'CONNECTED') {
+            console.log('[Agora] ✓ Successfully connected to Agora');
           }
         });
 
@@ -267,11 +277,27 @@ export function useAgoraClassroom({
       const client = clientRef.current!;
 
       // 監聽遠端使用者 — 定義 handlers 並更新 refs
-      const onUserPublished = async (user: IAgoraRTCRemoteUser, mediaType: 'audio' | 'video') => {
+      const onUserPublished = async (user: IAgoraRTCRemoteUser | undefined, mediaType: 'audio' | 'video') => {
         try {
+          if (!user || (user as any).uid === undefined) {
+            console.warn('[Agora] onUserPublished received invalid user object', user, mediaType);
+            return;
+          }
           console.log('[Agora] user-published handler executing', { uid: user.uid, mediaType });
           console.log('[Agora] Subscribing to user', { uid: user.uid, mediaType });
-          await client.subscribe(user, mediaType);
+          try {
+            await client.subscribe(user, mediaType);
+          } catch (subErr) {
+            console.warn('[Agora] client.subscribe failed for', { uid: user.uid, mediaType, err: subErr });
+            // best-effort retry for transient SDK issues
+            try {
+              await new Promise((res) => setTimeout(res, 150));
+              await client.subscribe(user, mediaType);
+            } catch (secondErr) {
+              console.error('[Agora] subscribe retry also failed, skipping media subscribe for', user.uid, mediaType, secondErr);
+              return;
+            }
+          }
 
           // Log presence of tracks
           console.log('[Agora] After subscribe, tracks:', {
@@ -402,19 +428,17 @@ export function useAgoraClassroom({
       let micTrack: IMicrophoneAudioTrack | null = null;
       let camTrack: ICameraVideoTrack | null = null;
 
-      // New: Prepare device configs
+      // New: Prepare device configs - be careful not to over-constrain
       const micConfig: any = {};
-      if (audioDeviceId) {
+      if (audioDeviceId && audioDeviceId !== 'null' && audioDeviceId !== '') {
         micConfig.microphoneId = audioDeviceId;
       }
 
-      const camConfig: any = {
-        // Prefer front camera for classroom setting on mobile
-        facingMode: 'user',
-      };
-      if (videoDeviceId) {
-        camConfig.cameraId = videoDeviceId;
-      }
+      // If we have a specific cameraId, don't strictly enforce facingMode
+      // as some desktop cameras might fail with 'facingMode: user'
+      const camConfig: any = (videoDeviceId && videoDeviceId !== 'null' && videoDeviceId !== '')
+        ? { cameraId: videoDeviceId } 
+        : { facingMode: 'user' };
 
       try {
         if (!AgoraSDK) {
@@ -423,20 +447,39 @@ export function useAgoraClassroom({
           AgoraSDK = (mod as any).default ?? mod;
         }
 
-        if (publishAudio && publishVideo) {
-          console.log('[Agora] creating microphone and camera tracks with config', { micConfig, camConfig });
-          const tracks = await AgoraSDK.createMicrophoneAndCameraTracks(micConfig, camConfig);
-          micTrack = tracks[0] ?? null;
-          camTrack = tracks[1] ?? null;
-        } else if (publishAudio && !publishVideo) {
-          console.log('[Agora] creating microphone track only with config', { micConfig });
-          micTrack = await AgoraSDK.createMicrophoneAudioTrack(micConfig);
-        } else if (!publishAudio && publishVideo) {
-          console.log('[Agora] creating camera track only with config', { camConfig });
-          camTrack = await AgoraSDK.createCameraVideoTrack(camConfig);
+        // Add a small safety delay to ensure previous page released devices
+        await new Promise(resolve => setTimeout(resolve, 150));
+
+        // Use sequential creation instead of combined createMicrophoneAndCameraTracks
+        // Combined creation is more prone to "can not find stream" errors
+        
+        if (publishAudio) {
+          console.log('[Agora] Creating microphone track', { micConfig });
+          try {
+            micTrack = await AgoraSDK.createMicrophoneAudioTrack(micConfig);
+          } catch (mErr) {
+            console.warn('[Agora] Initial mic creation failed, trying default...', mErr);
+            micTrack = await AgoraSDK.createMicrophoneAudioTrack();
+          }
+          console.log('[Agora] ✓ Created mic track:', { hasMic: !!micTrack });
         }
 
-        console.log('[Agora] tracks created', { hasMic: !!micTrack, hasCam: !!camTrack, currentQuality });
+        if (publishVideo) {
+          console.log('[Agora] Creating camera track', { camConfig });
+          try {
+            camTrack = await AgoraSDK.createCameraVideoTrack(camConfig);
+          } catch (cErr) {
+            console.warn('[Agora] Initial cam creation failed, trying fallbacks...', cErr);
+            try {
+              camTrack = await AgoraSDK.createCameraVideoTrack({ facingMode: 'user' });
+            } catch (cErr2) {
+              camTrack = await AgoraSDK.createCameraVideoTrack();
+            }
+          }
+          console.log('[Agora] ✓ Created cam track:', { hasCam: !!camTrack });
+        }
+
+        console.log('[Agora] Tracks created successfully', { hasMic: !!micTrack, hasCam: !!camTrack, currentQuality });
 
         // 应用视频质量设置
         if (camTrack) {
@@ -447,46 +490,14 @@ export function useAgoraClassroom({
             frameRate: qualityConfig.frameRate,
             bitrateMin: qualityConfig.bitrate * 0.8,
             bitrateMax: qualityConfig.bitrate * 1.2,
-          });
+          }).catch(e => console.warn('setEncoderConfiguration failed', e));
         }
       } catch (err) {
-        console.warn('create tracks failed, attempting fallbacks', (err as any)?.message ?? err);
-        // individual fallbacks
-        if (!micTrack && publishAudio) {
-          try {
-            if (!AgoraSDK) {
-              const mod = await import('agora-rtc-sdk-ng');
-              AgoraSDK = (mod as any).default ?? mod;
-            }
-            micTrack = await AgoraSDK.createMicrophoneAudioTrack(micConfig);
-          } catch (mErr) {
-            console.warn('createMicrophoneAudioTrack failed', (mErr as any)?.message ?? mErr);
-            micTrack = null;
-          }
-        }
-        if (!camTrack && publishVideo) {
-          try {
-            if (!AgoraSDK) {
-              const mod = await import('agora-rtc-sdk-ng');
-              AgoraSDK = (mod as any).default ?? mod;
-            }
-            camTrack = await AgoraSDK.createCameraVideoTrack(camConfig);
-            // 即使是fallback也要應用質量設置
-            if (camTrack) {
-              const qualityConfig = VIDEO_QUALITY_PRESETS[currentQuality];
-              await camTrack.setEncoderConfiguration({
-                width: qualityConfig.width,
-                height: qualityConfig.height,
-                frameRate: qualityConfig.frameRate,
-                bitrateMin: qualityConfig.bitrate * 0.8,
-                bitrateMax: qualityConfig.bitrate * 1.2,
-              });
-            }
-          } catch (cErr) {
-            console.warn('createCameraVideoTrack failed', (cErr as any)?.message ?? cErr);
-            camTrack = null;
-          }
-        }
+        const errorMsg = (err as any)?.message ?? String(err);
+        console.error('[Agora] ✗ Track creation failed with fatal error:', errorMsg);
+        
+        // Final fallback: if everything failed but we should have tracks, 
+        // they are already null and will be handled by the publish logic below
       }
 
       localMicTrackRef.current = micTrack;
@@ -519,15 +530,17 @@ export function useAgoraClassroom({
 
       if (publishList.length > 0) {
         try {
-          console.log('[Agora] publishing local tracks', { count: publishList.length });
+          console.log('[Agora] Publishing local tracks', { count: publishList.length, types: publishList.map((t, i) => i === 0 ? 'mic' : 'cam') });
           await client.publish(publishList);
-          console.log('[Agora] publish succeeded');
+          console.log('[Agora] ✓ Publish succeeded');
         } catch (pubErr) {
-          console.warn('[Agora] Failed to publish local tracks', (pubErr as any)?.message ?? pubErr);
+          console.error('[Agora] ✗ Failed to publish local tracks:', (pubErr as any)?.message ?? pubErr);
         }
       } else {
         // No local tracks available: inform user but continue joined without publishing
-        console.warn('[Agora] No local audio/video tracks available to publish');
+        const errorMsg = '[Agora] No local audio/video tracks available to publish';
+        console.error(errorMsg);
+        console.error('[Agora] Debug info:', { publishAudio, publishVideo, micTrack: !!micTrack, camTrack: !!camTrack, audioDeviceId, videoDeviceId });
         setError((prev) => (prev ? prev + ' | No local devices available' : 'No local devices available'));
       }
 

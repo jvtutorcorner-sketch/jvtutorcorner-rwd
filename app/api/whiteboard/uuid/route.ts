@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, GetCommand } from '@aws-sdk/lib-dynamodb';
+import { normalizeUuid } from '@/lib/whiteboardService';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,7 +25,8 @@ const docClient = DynamoDBDocumentClient.from(client, {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { courseId, channelName } = body || {};
+    const courseId = body?.courseId?.trim();
+    const channelName = body?.channelName?.trim();
 
     console.log('[WhiteboardUUIDAPI] Request received:', { courseId, channelName, region: process.env.AWS_REGION || process.env.CI_AWS_REGION || 'ap-northeast-1' });
 
@@ -34,7 +36,7 @@ export async function POST(req: NextRequest) {
     }
 
     const tableName = process.env.DYNAMODB_TABLE_COURSES ;
-    const dbKey = courseId ? courseId : `session_${channelName}`;
+    const dbKey = normalizeUuid(courseId ? courseId : channelName);
     
     console.log(`[WhiteboardUUIDAPI] Using table: ${tableName}, key: ${dbKey}`);
 
