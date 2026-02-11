@@ -136,7 +136,6 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     fixStatus,
     triggerFix,
   } = useAgoraClassroom(agoraConfig);
-  
 
   const firstRemote = useMemo(() => remoteUsers?.[0] ?? null, [remoteUsers]);
 
@@ -619,8 +618,8 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   const [sessionDurationMinutes, setSessionDurationMinutes] = useState<number>(5); // 5 minutes
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
   const timerRef = useRef<number | null>(null);
-  // Delay before countdown starts (1 hour)
-  const INITIAL_COUNTDOWN_DELAY_MS = 60 * 60 * 1000; // 1 hour
+  // Delay before countdown starts (5 seconds)
+  const INITIAL_COUNTDOWN_DELAY_MS = 5 * 1000; 
   const [fullyInitialized, setFullyInitialized] = useState(false);
   const [classFullyLoadedAt, setClassFullyLoadedAt] = useState<number | null>(null);
   const [bootSteps, setBootSteps] = useState<Array<{ name: string; done: boolean }>>([
@@ -677,6 +676,29 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     }
   }, [selectedAudioDeviceId, selectedVideoDeviceId]);
 
+  // Auto-join for teacher: if whiteboard room is ready but RTC not joined, attempt a single auto-join.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!isTeacher) return; // only auto-join for teacher
+    if (joined || loading) return; // already joined or in progress
+    if (!agoraRoomData) return; // wait for whiteboard room data
+
+    const tryAutoJoin = async () => {
+      try {
+        console.log('[ClientClassroom] Auto-join attempt for teacher: agoraRoomData present, calling join()');
+        // default: publish audio+video based on saved preferences
+        await join({ publishAudio: micEnabled, publishVideo: wantPublishVideo, audioDeviceId: selectedAudioDeviceId ?? undefined, videoDeviceId: selectedVideoDeviceId ?? undefined });
+        console.log('[ClientClassroom] Auto-join invoked');
+      } catch (e) {
+        console.warn('[ClientClassroom] Auto-join failed:', e);
+      }
+    };
+
+    // Small delay to allow other init steps to settle
+    const id = window.setTimeout(tryAutoJoin, 300);
+    return () => clearTimeout(id);
+  }, [isTeacher, joined, loading, agoraRoomData, micEnabled, wantPublishVideo, selectedAudioDeviceId, selectedVideoDeviceId, join]);
+
   // pre-join waiting / readiness state (require same course + order)
   const [ready, setReady] = useState(false);
   const [canJoin, setCanJoin] = useState(false);
@@ -691,6 +713,10 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   const micSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
 
   const [penColor, setPenColor] = useState<string>('#000000');
+
+  // Debug modals for test path
+  const [showDebugModal, setShowDebugModal] = useState(true);
+  const [showControlModal, setShowControlModal] = useState(true);
 
   // Log initialization info once on mount
   useEffect(() => {
@@ -740,7 +766,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       setFullyInitialized(false);
       setClassFullyLoadedAt(null);
     }
-  }, [agoraRoomData, whiteboardMeta, agoraWhiteboardRef.current, sessionReadyKey, joined]);
+  }, [agoraRoomData, whiteboardMeta, sessionReadyKey, joined, whiteboardState]);
   
   // Debug whiteboard state
   useEffect(() => {
@@ -1360,12 +1386,16 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       timerRef.current = null;
     }
 
-    // Only start countdown when joined AND fully initialized (and after optional initial delay)
+    // Only start countdown when joined AND fully initialized
     if (joined && fullyInitialized) {
+      const isTeacher = (urlRole === 'teacher' || urlRole === 'student') ? urlRole === 'teacher' : computedRole === 'teacher';
+      const secs = Math.floor((sessionDurationMinutes || 10) * 60); // Default to 10 mins if 0
+      
+      // Fallback: set initial value immediately before any async calls ensure non-null
+      setRemainingSeconds((prev) => prev !== null ? prev : secs);
+
       (async () => {
-        // 老师开始上课时，广播通知学生 and persist end timestamp
-        const isTeacher = (urlRole === 'teacher' || urlRole === 'student') ? urlRole === 'teacher' : computedRole === 'teacher';
-        const secs = Math.floor((sessionDurationMinutes || 0.5) * 60);
+        console.log('[Timer] Starting initialization logic...', { isTeacher, secs });
         const endKey = `class_end_ts_${sessionReadyKey}`;
 
         // Determine or create authoritative end timestamp
@@ -1374,104 +1404,100 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           const existing = typeof window !== 'undefined' ? localStorage.getItem(endKey) : null;
           if (existing) {
             const parsed = Number(existing || 0);
-            if (!Number.isNaN(parsed) && parsed > Date.now()) endTs = parsed;
+            if (!Number.isNaN(parsed) && parsed > Date.now()) {
+              endTs = parsed;
+              console.log('[Timer] Found existing endTs in localStorage:', endTs);
+            }
           }
         } catch (e) { /* ignore */ }
 
         // If no local endTs, check authoritative server session store
         if (!endTs) {
           try {
+            console.log('[Timer] Checking server for session data...');
             const resp = await fetch(`/api/classroom/session?uuid=${encodeURIComponent(sessionReadyKey)}`);
             if (resp.ok) {
               const j = await resp.json();
               const sEnd = j?.endTs;
               if (typeof sEnd === 'number' && sEnd > Date.now()) {
                 endTs = sEnd;
+                console.log('[Timer] Found endTs from server:', endTs);
                 try { localStorage.setItem(endKey, String(endTs)); } catch (e) {}
               }
             }
-          } catch (e) { /* ignore fetch errors */ }
+          } catch (e) { console.warn('[Timer] Fetch session failed:', e); }
         }
 
-        // If no endTs and teacher, create one that includes the initial delay
+        // If no endTs and teacher, create one
         if (!endTs && isTeacher) {
-          const baseEnd = Date.now() + secs * 1000;
-          const delayedEnd = (classFullyLoadedAt ? Math.max(baseEnd, classFullyLoadedAt + INITIAL_COUNTDOWN_DELAY_MS + secs * 1000) : baseEnd + INITIAL_COUNTDOWN_DELAY_MS);
-          endTs = delayedEnd;
+          const now = Date.now();
+          // The end time is calculated from the moment both joined+whiteboard are ready
+          // We add a small buffer for the initial delay
+          const bufferSecs = Math.ceil(INITIAL_COUNTDOWN_DELAY_MS / 1000);
+          endTs = now + (secs + bufferSecs) * 1000;
+          
+          console.log('[Timer] Teacher creating new authoritative endTs:', endTs);
           try { localStorage.setItem(endKey, String(endTs)); } catch (e) {}
-        }
-
-        // Broadcast class_started with endTs so other tabs can pick it up immediately
-        if (isTeacher) {
+          
+          // Broadcast class_started with endTs
           const sessionBroadcastName = sessionParam || channelName || `classroom_session_ready_${courseId}`;
           try {
             const bc = new BroadcastChannel(sessionBroadcastName);
-            bc.postMessage({ type: 'class_started', timestamp: Date.now(), endTs });
-            console.log('已廣播開始上課通知 ->', sessionBroadcastName, 'endTs=', endTs);
+            bc.postMessage({ type: 'class_started', timestamp: now, endTs });
             setTimeout(() => { try { bc.close(); } catch (e) {} }, 100);
-          } catch (e) {
-            console.warn('Failed to broadcast class_started', e);
-          }
+          } catch (e) {}
 
-          // Persist authoritative endTs on server for rejoining clients
+          // Persist to server
           try {
             await fetch('/api/classroom/session', {
               method: 'POST',
               headers: { 'content-type': 'application/json' },
               body: JSON.stringify({ uuid: sessionReadyKey, endTs }),
             });
-          } catch (e) {
-            console.warn('Failed to persist session endTs to server', e);
-          }
+          } catch (e) {}
         }
 
-        // initialize remaining seconds from endTs if available, otherwise fallback to secs.
-        // Ensure countdown doesn't start before classFullyLoadedAt + INITIAL_COUNTDOWN_DELAY_MS
-        let initialRemaining = endTs ? Math.max(0, Math.ceil((endTs - Date.now()) / 1000)) : secs;
-        if (classFullyLoadedAt) {
-          const earliestStart = Math.max(0, Math.ceil(((classFullyLoadedAt + INITIAL_COUNTDOWN_DELAY_MS) - Date.now()) / 1000));
-          // If earliestStart > 0, we should show the full delay before reducing remainingSeconds
-          if (earliestStart > 0) {
-            initialRemaining = (endTs ? Math.max(0, Math.ceil((endTs - (Date.now() + earliestStart * 1000)) / 1000)) + earliestStart : secs + earliestStart);
+        // Start countdown calculation
+        const updateRemaining = () => {
+          const now = Date.now();
+          let finalRemaining: number;
+
+          if (endTs) {
+            finalRemaining = Math.max(0, Math.ceil((endTs - now) / 1000));
+          } else {
+            // Student who hasn't received endTs yet - show a waiting value
+            finalRemaining = secs;
           }
-        }
-        initialRemaining = Math.max(0, initialRemaining);
-        setRemainingSeconds(initialRemaining);
-        console.log(`開始倒計時, remainingSeconds=${initialRemaining}`);
+          
+          setRemainingSeconds(finalRemaining);
+          return finalRemaining;
+        };
+
+        const initialVal = updateRemaining();
+        console.log(`[Timer] Countdown started at: ${initialVal}s`);
 
         timerRef.current = window.setInterval(() => {
-          setRemainingSeconds((prev) => {
-            if (prev === null) return prev;
-            if (prev <= 1) {
-              // time's up -> clear whiteboard for both sides, then end session
-              console.log('時間到！廣播清空白板並在本地清空');
-              try {
-                // Broadcast a session-level message so other tabs can respond
-                const sessionBroadcastName = sessionParam || channelName || `classroom_session_ready_${courseId}`;
-                try {
-                  const bc2 = new BroadcastChannel(sessionBroadcastName);
-                  bc2.postMessage({ type: 'whiteboard_clear', timestamp: Date.now() });
-                  setTimeout(() => { try { bc2.close(); } catch (e) {} }, 50);
-                } catch (e) { /* ignore BC failures */ }
-
-                // Also post to the per-whiteboard BroadcastChannel used by EnhancedWhiteboard
-                try {
-                  const ch = new BroadcastChannel(`whiteboard_${sessionReadyKey}`);
-                  ch.postMessage({ type: 'clear' });
-                  setTimeout(() => { try { ch.close(); } catch (e) {} }, 50);
-                } catch (e) {}
-
-                // Locally clear Agora whiteboard if present
-                try { if (useAgoraWhiteboard) agoraWhiteboardRef.current?.clearScene(); } catch (e) {}
-              } catch (e) { console.warn('Failed to broadcast/clear whiteboard on timeout', e); }
-
-              try { if (timerRef.current) { window.clearInterval(timerRef.current); timerRef.current = null; } } catch (e) {}
-              // after short delay, trigger endSession to leave and cleanup
-              setTimeout(() => { try { endSession(); } catch (e) { console.warn('endSession failed', e); } }, 800);
-              return 0;
+          const currentRemaining = updateRemaining();
+          
+          if (currentRemaining <= 0) {
+            console.log('[Timer] Time is up!');
+            if (timerRef.current) {
+              window.clearInterval(timerRef.current);
+              timerRef.current = null;
             }
-            return prev - 1;
-          });
+            
+            // Cleanup and end session
+            try {
+              const sessionBroadcastName = sessionParam || channelName || `classroom_session_ready_${courseId}`;
+              const bc2 = new BroadcastChannel(sessionBroadcastName);
+              bc2.postMessage({ type: 'whiteboard_clear', timestamp: Date.now() });
+              setTimeout(() => { try { bc2.close(); } catch (e) {} }, 50);
+
+              if (useAgoraWhiteboard) agoraWhiteboardRef.current?.clearPDF();
+            } catch (e) {}
+
+            setTimeout(() => endSession(), 1000);
+          }
         }, 1000) as unknown as number;
       })();
     } else {
@@ -1484,8 +1510,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
         timerRef.current = null;
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [joined, sessionDurationMinutes]);
+  }, [joined, sessionDurationMinutes, fullyInitialized, classFullyLoadedAt]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -1765,16 +1790,189 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
         </div>
       )}
       
-    {/* Debug overlay for /classroom/test to help diagnose missing countdown in production */}
-    {isTestPath && (
-      <div style={{ position: 'fixed', left: 12, top: 12, background: 'rgba(0,0,0,0.75)', color: 'white', padding: '8px 10px', borderRadius: 8, zIndex: 99999, fontSize: 12, lineHeight: 1.2 }}>
-        <div style={{ fontWeight: 700, marginBottom: 6 }}>DEBUG</div>
-        <div>joined: {String(joined)}</div>
-        <div>fullyInitialized: {String(fullyInitialized)}</div>
-        <div>agoraRoomData: {agoraRoomData ? 'yes' : 'no'}</div>
-        <div>whiteboardRef: {agoraWhiteboardRef.current ? 'yes' : 'no'}</div>
-        <div>remainingSeconds: {remainingSeconds === null ? 'null' : remainingSeconds}</div>
-        <div style={{ marginTop: 6, opacity: 0.95 }}>sessionKey: {String(sessionReadyKey).slice(0, 24)}</div>
+    {/* Debug Modal - Top Right */}
+    {isTestPath && showDebugModal && (
+      <div style={{ 
+        position: 'fixed', 
+        right: 16, 
+        top: 16, 
+        background: 'rgba(15, 23, 42, 0.95)', 
+        color: 'white', 
+        padding: '16px', 
+        borderRadius: 12, 
+        zIndex: 99999, 
+        fontSize: 13, 
+        lineHeight: 1.5,
+        minWidth: 280,
+        boxShadow: '0 8px 32px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.1)',
+        backdropFilter: 'blur(10px)'
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: 8 }}>
+          <div style={{ fontWeight: 700, fontSize: 14, color: '#60a5fa' }}>🔍 DEBUG INFO</div>
+          <button 
+            onClick={() => setShowDebugModal(false)}
+            style={{ 
+              background: 'rgba(239, 68, 68, 0.2)', 
+              border: 'none', 
+              color: '#fca5a5', 
+              cursor: 'pointer', 
+              fontSize: 18, 
+              lineHeight: 1,
+              width: 24,
+              height: 24,
+              borderRadius: 6,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+          >×</button>
+        </div>
+        <div style={{ display: 'grid', gap: 6 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span style={{ opacity: 0.7 }}>joined:</span>
+            <span style={{ fontWeight: 600, color: joined ? '#34d399' : '#fbbf24' }}>{String(joined)}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span style={{ opacity: 0.7 }}>fullyInitialized:</span>
+            <span style={{ fontWeight: 600, color: fullyInitialized ? '#34d399' : '#fbbf24' }}>{String(fullyInitialized)}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span style={{ opacity: 0.7 }}>agoraRoomData:</span>
+            <span style={{ fontWeight: 600, color: agoraRoomData ? '#34d399' : '#ef4444' }}>{agoraRoomData ? 'yes' : 'no'}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span style={{ opacity: 0.7 }}>whiteboardRef:</span>
+            <span style={{ fontWeight: 600, color: agoraWhiteboardRef.current ? '#34d399' : '#ef4444' }}>{agoraWhiteboardRef.current ? 'yes' : 'no'}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span style={{ opacity: 0.7 }}>remainingSeconds:</span>
+            <span style={{ fontWeight: 600, color: remainingSeconds === null ? '#ef4444' : '#34d399' }}>{remainingSeconds === null ? 'null' : remainingSeconds}</span>
+          </div>
+          <div style={{ marginTop: 6, paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+            <div style={{ opacity: 0.5, fontSize: 11, marginBottom: 4 }}>Session Key:</div>
+            <div style={{ fontFamily: 'monospace', fontSize: 11, wordBreak: 'break-all', color: '#94a3b8' }}>{String(sessionReadyKey)}</div>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* Control Modal - Bottom Right */}
+    {isTestPath && showControlModal && (
+      <div style={{ 
+        position: 'fixed', 
+        right: 16, 
+        bottom: 16, 
+        background: 'rgba(15, 23, 42, 0.95)', 
+        color: 'white', 
+        padding: '16px', 
+        borderRadius: 12, 
+        zIndex: 99999, 
+        fontSize: 13, 
+        lineHeight: 1.5,
+        minWidth: 280,
+        boxShadow: '0 8px 32px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.1)',
+        backdropFilter: 'blur(10px)'
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: 8 }}>
+          <div style={{ fontWeight: 700, fontSize: 14, color: '#a78bfa' }}>⚙️ TEST CONTROLS</div>
+          <button 
+            onClick={() => setShowControlModal(false)}
+            style={{ 
+              background: 'rgba(239, 68, 68, 0.2)', 
+              border: 'none', 
+              color: '#fca5a5', 
+              cursor: 'pointer', 
+              fontSize: 18, 
+              lineHeight: 1,
+              width: 24,
+              height: 24,
+              borderRadius: 6,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+          >×</button>
+        </div>
+        <div style={{ display: 'grid', gap: 8 }}>
+          <button
+            onClick={() => setShowDebugModal(true)}
+            style={{
+              background: showDebugModal ? 'rgba(96, 165, 250, 0.2)' : 'rgba(96, 165, 250, 0.4)',
+              border: '1px solid rgba(96, 165, 250, 0.3)',
+              color: '#93c5fd',
+              padding: '8px 12px',
+              borderRadius: 8,
+              cursor: 'pointer',
+              fontSize: 12,
+              fontWeight: 600,
+              transition: 'all 0.2s'
+            }}
+          >
+            {showDebugModal ? '✓ Debug Visible' : 'Show Debug'}
+          </button>
+          <div style={{ padding: '8px 12px', background: 'rgba(59, 130, 246, 0.1)', borderRadius: 8, fontSize: 11 }}>
+            <div style={{ opacity: 0.6, marginBottom: 4 }}>Role:</div>
+            <div style={{ fontWeight: 600, color: '#60a5fa' }}>{isTeacher ? 'Teacher' : 'Student'}</div>
+          </div>
+          <div style={{ padding: '8px 12px', background: 'rgba(168, 85, 247, 0.1)', borderRadius: 8, fontSize: 11 }}>
+            <div style={{ opacity: 0.6, marginBottom: 4 }}>Remote Users:</div>
+            <div style={{ fontWeight: 600, color: '#c084fc' }}>{remoteUsers.length}</div>
+          </div>
+          {error && (
+            <div style={{ padding: '8px 12px', background: 'rgba(239, 68, 68, 0.1)', borderRadius: 8, fontSize: 11 }}>
+              <div style={{ opacity: 0.6, marginBottom: 4 }}>Error:</div>
+              <div style={{ fontWeight: 600, color: '#f87171' }}>{error}</div>
+            </div>
+          )}
+        </div>
+      </div>
+    )}
+
+    {/* Floating toggle buttons when modals are hidden */}
+    {isTestPath && (!showDebugModal || !showControlModal) && (
+      <div style={{ position: 'fixed', right: 16, top: '50%', transform: 'translateY(-50%)', display: 'flex', flexDirection: 'column', gap: 8, zIndex: 99998 }}>
+        {!showDebugModal && (
+          <button
+            onClick={() => setShowDebugModal(true)}
+            style={{
+              background: 'rgba(59, 130, 246, 0.9)',
+              border: 'none',
+              color: 'white',
+              cursor: 'pointer',
+              fontSize: 20,
+              width: 44,
+              height: 44,
+              borderRadius: 22,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 4px 16px rgba(59, 130, 246, 0.4)',
+              transition: 'all 0.2s'
+            }}
+            title="Show Debug Info"
+          >🔍</button>
+        )}
+        {!showControlModal && (
+          <button
+            onClick={() => setShowControlModal(true)}
+            style={{
+              background: 'rgba(168, 85, 247, 0.9)',
+              border: 'none',
+              color: 'white',
+              cursor: 'pointer',
+              fontSize: 20,
+              width: 44,
+              height: 44,
+              borderRadius: 22,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 4px 16px rgba(168, 85, 247, 0.4)',
+              transition: 'all 0.2s'
+            }}
+            title="Show Test Controls"
+          >⚙️</button>
+        )}
       </div>
     )}
 
