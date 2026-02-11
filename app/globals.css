@@ -870,45 +870,52 @@ h1 + h2, h1 + h3, h2 + h3, h2 + h1, h3 + h1, h3 + h2 {
 @media (max-width: 1024px) and (orientation: portrait) {
   .client-classroom {
     flex-direction: column;
-    height: calc(100dvh - 140px);
-    min-height: 0;
+    height: auto;
+    min-height: 100vh;
     padding: 10px;
-    gap: 10px;
-    overflow: hidden;
+    gap: 20px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
   .client-classroom .client-left {
     width: 100%;
-    /* Let the whiteboard container control its own height via aspect-ratio
-       so it scales proportionally on narrow viewports. */
     height: auto;
     flex: none;
+    margin-bottom: 30px;
   }
   .client-classroom .client-left-inner {
-    height: 100%;
+    height: auto;
     display: flex;
     flex-direction: column;
+    overflow: visible;
   }
   .client-classroom .whiteboard-container {
     width: 100%;
-    /* Maintain a 16:9 ratio on mobile so the board is fully visible and not cropped.
-       Limit the max height to the available viewport space minus chrome/controls. */
     aspect-ratio: 16 / 9;
-    height: auto;
-    max-height: calc(100dvh - 220px);
+    height: auto !important;
+    max-height: 70vh;
     flex: none;
-    overflow: hidden;
+    overflow: visible;
+    position: relative;
+    margin-bottom: 0;
+  }
+  .client-classroom .whiteboard-container > * {
+    width: 100% !important;
+    height: 100% !important;
   }
   .client-classroom .client-right {
     width: 100%;
-    flex: 1;
+    flex: none;
     height: auto;
-    overflow-y: auto;
+    overflow: visible;
+    margin-top: 30px;
   }
   .client-classroom .client-right-inner {
     flex-direction: row;
     flex-wrap: wrap;
     gap: 10px;
     padding: 10px;
+    margin-bottom: 40px;
   }
   .client-classroom .video-container {
     width: calc(50% - 5px);

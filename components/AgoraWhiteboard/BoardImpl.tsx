@@ -127,6 +127,7 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
         const targetDiv = containerRef.current;
         let resizeObserver: ResizeObserver | null = null;
         let resizeHandler: (() => void) | null = null;
+        let pointerFixHandler: ((e?: Event) => void) | null = null;
 
         const initSdk = async () => {
             try {
@@ -200,6 +201,36 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
                     forceRefresh();
                     setTimeout(forceRefresh, 500);
                     setTimeout(forceRefresh, 1000);
+
+                    // Pointer/Tap Fix: on mobile browsers the viewport/layout
+                    // can change between paint and the first touch event which
+                    // causes the SDK to compute stale bounding rects. Calling
+                    // refreshViewSize before pointer/touch input helps align
+                    // coordinates with the visual layout.
+                    pointerFixHandler = () => {
+                        try { room.refreshViewSize(); } catch (e) { /* ignore */ }
+                    };
+                    // Attach lightweight handlers to trigger a recalculation
+                    // before the SDK receives input events.
+                    try {
+                        targetDiv.addEventListener('touchstart', pointerFixHandler, { passive: true });
+                        targetDiv.addEventListener('touchmove', pointerFixHandler, { passive: true });
+                        targetDiv.addEventListener('pointerdown', pointerFixHandler as any);
+                        targetDiv.addEventListener('pointermove', pointerFixHandler as any);
+                        // Also listen to window scroll/resize events which shift layout
+                        if (window) {
+                            window.addEventListener('scroll', pointerFixHandler, { capture: true, passive: true });
+                            window.addEventListener('resize', pointerFixHandler, { passive: true });
+                        }
+                    } catch (e) {
+                        // Some older environments may not support options param
+                        try {
+                            targetDiv.addEventListener('touchstart', pointerFixHandler as any);
+                            targetDiv.addEventListener('touchmove', pointerFixHandler as any);
+                            targetDiv.addEventListener('pointerdown', pointerFixHandler as any);
+                            targetDiv.addEventListener('pointermove', pointerFixHandler as any);
+                        } catch (ee) { /* ignore */ }
+                    }
                 }, 100);
 
                 setStatus("連線成功");
@@ -280,6 +311,18 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
             isAborted = true;
             if (resizeHandler) window.removeEventListener('resize', resizeHandler);
             if (resizeObserver) resizeObserver.disconnect();
+            if (pointerFixHandler && containerRef.current) {
+                try {
+                    containerRef.current.removeEventListener('touchstart', pointerFixHandler as any);
+                    containerRef.current.removeEventListener('touchmove', pointerFixHandler as any);
+                    containerRef.current.removeEventListener('pointerdown', pointerFixHandler as any);
+                    containerRef.current.removeEventListener('pointermove', pointerFixHandler as any);
+                    if (window) {
+                        window.removeEventListener('scroll', pointerFixHandler as any, { capture: true });
+                        window.removeEventListener('resize', pointerFixHandler as any);
+                    }
+                } catch (e) { /* ignore */ }
+            }
             if (roomRef.current) {
                 // 嚴格清理，避免 React Strict Mode 殘留
                 roomRef.current.bindHtmlElement(null);

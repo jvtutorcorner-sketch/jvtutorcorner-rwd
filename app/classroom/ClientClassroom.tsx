@@ -88,6 +88,35 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     console.log('[ClientClassroom] setMounted called');
   }, []);
 
+  // Track mobile viewport to adjust whiteboard container height for small screens
+  const [isMobileViewport, setIsMobileViewport] = useState<boolean>(false);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const check = () => setIsMobileViewport(window.innerWidth <= 640);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
+
+  // When viewport changes (mobile <-> desktop) or orientation changes, nudge whiteboard to recalc layout
+  useEffect(() => {
+    if (!agoraWhiteboardRef.current) return;
+    // give layout a moment to settle
+    const id = window.setTimeout(() => {
+      try {
+        // forceFix is exposed by BoardImpl to reset camera/viewport
+        agoraWhiteboardRef.current?.forceFix();
+      } catch (e) {
+        console.warn('[ClientClassroom] forceFix failed', e);
+      }
+    }, 250);
+    // call again after keyboard/toolbar animations
+    const id2 = window.setTimeout(() => {
+      try { agoraWhiteboardRef.current?.forceFix(); } catch (e) {}
+    }, 900);
+    return () => { try { window.clearTimeout(id); window.clearTimeout(id2); } catch (e) {} };
+  }, [isMobileViewport]);
+
   // determine role from stored user + course mapping
   const storedUser = typeof window !== 'undefined' ? getStoredUser() : null;
   // allow overriding role via URL parameter `role=teacher|student` for testing
@@ -1988,66 +2017,74 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       </div>
     )}
 
-    {/* Floating toggle buttons when modals are hidden */}
-    {isTestPath && (!showDebugModal || !showControlModal) && (
-      <div style={{ position: 'fixed', right: 16, top: '50%', transform: 'translateY(-50%)', display: 'flex', flexDirection: 'column', gap: 8, zIndex: 99998 }}>
-        {!showDebugModal && (
-          <button
-            onClick={() => setShowDebugModal(true)}
-            style={{
-              background: 'rgba(59, 130, 246, 0.9)',
-              border: 'none',
-              color: 'white',
-              cursor: 'pointer',
-              fontSize: 20,
-              width: 44,
-              height: 44,
-              borderRadius: 22,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 4px 16px rgba(59, 130, 246, 0.4)',
-              transition: 'all 0.2s'
-            }}
-            title="Show Debug Info"
-          >🔍</button>
-        )}
-        {!showControlModal && (
-          <button
-            onClick={() => setShowControlModal(true)}
-            style={{
-              background: 'rgba(168, 85, 247, 0.9)',
-              border: 'none',
-              color: 'white',
-              cursor: 'pointer',
-              fontSize: 20,
-              width: 44,
-              height: 44,
-              borderRadius: 22,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 4px 16px rgba(168, 85, 247, 0.4)',
-              transition: 'all 0.2s'
-            }}
-            title="Show Test Controls"
-          >⚙️</button>
-        )}
-      </div>
-    )}
+
 
     <div className="client-classroom">
       {/* Left: Whiteboard (flexible) */}
       <div className="client-left" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', height: '100%' }}>
         <div className="client-left-inner" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', height: '100%' }}>
-          <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-              <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, flexWrap: 'nowrap', justifyContent: 'space-between' }}>
+              <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
                 {remainingSeconds !== null && (
-                  <div style={{ color: 'red', fontWeight: 600 }}>{Math.floor((remainingSeconds || 0) / 60)}:{String((remainingSeconds || 0) % 60).padStart(2, '0')}</div>
+                  <div style={{ color: 'red', fontWeight: 600, whiteSpace: 'nowrap' }}>{Math.floor((remainingSeconds || 0) / 60)}:{String((remainingSeconds || 0) % 60).padStart(2, '0')}</div>
                 )}
               </div>
+              {/* Toggle buttons for test page - same row as remaining time */}
+              {isTestPath && (
+                <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                  {!showDebugModal && (
+                    <button
+                      onClick={() => setShowDebugModal(true)}
+                      style={{
+                        background: 'rgba(59, 130, 246, 0.9)',
+                        border: 'none',
+                        color: 'white',
+                        cursor: 'pointer',
+                        fontSize: 12,
+                        padding: '4px 8px',
+                        borderRadius: 6,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        boxShadow: '0 2px 8px rgba(59, 130, 246, 0.3)',
+                        transition: 'all 0.2s',
+                        fontWeight: 600,
+                        whiteSpace: 'nowrap'
+                      }}
+                      title="Show Debug Info"
+                    >
+                      🔍 Debug
+                    </button>
+                  )}
+                  {!showControlModal && (
+                    <button
+                      onClick={() => setShowControlModal(true)}
+                      style={{
+                        background: 'rgba(168, 85, 247, 0.9)',
+                        border: 'none',
+                        color: 'white',
+                        cursor: 'pointer',
+                        fontSize: 12,
+                        padding: '4px 8px',
+                        borderRadius: 6,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        boxShadow: '0 2px 8px rgba(168, 85, 247, 0.3)',
+                        transition: 'all 0.2s',
+                        fontWeight: 600,
+                        whiteSpace: 'nowrap'
+                      }}
+                      title="Show Test Controls"
+                    >
+                      ⚙️ Controls
+                    </button>
+                  )}
+                </div>
+              )}
           </div>
-          <div className="whiteboard-container" style={{ width: '100%', flex: 1, position: 'relative', minHeight: '500px', isolation: 'isolate' }}>
+          {/* Whiteboard container - improved for mobile viewport with dvh */}
+          <div className="whiteboard-container" style={{ width: '100%', flex: isMobileViewport ? 'none' : 1, position: 'relative', height: isMobileViewport ? 'auto' : '100%', minHeight: isMobileViewport ? '320px' : '500px', isolation: 'isolate' }}>
             {useAgoraWhiteboard ? (
               agoraRoomData ? (
                 <AgoraWhiteboard
