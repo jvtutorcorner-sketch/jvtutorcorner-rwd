@@ -1765,6 +1765,19 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
         </div>
       )}
       
+    {/* Debug overlay for /classroom/test to help diagnose missing countdown in production */}
+    {isTestPath && (
+      <div style={{ position: 'fixed', left: 12, top: 12, background: 'rgba(0,0,0,0.75)', color: 'white', padding: '8px 10px', borderRadius: 8, zIndex: 99999, fontSize: 12, lineHeight: 1.2 }}>
+        <div style={{ fontWeight: 700, marginBottom: 6 }}>DEBUG</div>
+        <div>joined: {String(joined)}</div>
+        <div>fullyInitialized: {String(fullyInitialized)}</div>
+        <div>agoraRoomData: {agoraRoomData ? 'yes' : 'no'}</div>
+        <div>whiteboardRef: {agoraWhiteboardRef.current ? 'yes' : 'no'}</div>
+        <div>remainingSeconds: {remainingSeconds === null ? 'null' : remainingSeconds}</div>
+        <div style={{ marginTop: 6, opacity: 0.95 }}>sessionKey: {String(sessionReadyKey).slice(0, 24)}</div>
+      </div>
+    )}
+
     <div className="client-classroom">
       {/* Left: Whiteboard (flexible) */}
       <div className="client-left" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', height: '100%' }}>
