@@ -137,7 +137,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     triggerFix,
   } = useAgoraClassroom(agoraConfig);
 
-  const firstRemote = useMemo(() => remoteUsers?.[0] ?? null, [remoteUsers]);
+
 
   const isTeacher = (urlRole === 'teacher' || computedRole === 'teacher');
 
@@ -186,6 +186,14 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     userIdRef.current = id;
     return id;
   }, [storedUser?.email, urlRole, computedRole]);
+
+  const firstRemote = useMemo(() => {
+    if (!remoteUsers || remoteUsers.length === 0) return null;
+    // Prefer a remote user whose uid does not match the local user identifier
+    const localId = storedUser?.email || userId || null;
+    const other = remoteUsers.find((u: any) => String(u.uid) !== String(localId));
+    return other ?? remoteUsers[0] ?? null;
+  }, [remoteUsers, storedUser?.email, userId]);
 
   // Remote name resolution for test path: cache + single fetch per uid
   const [remoteName, setRemoteName] = useState<string | null>(null);
@@ -702,6 +710,9 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   // pre-join waiting / readiness state (require same course + order)
   const [ready, setReady] = useState(false);
   const [canJoin, setCanJoin] = useState(false);
+  // Prevent duplicate tabs for same user/session (client-side only)
+  const [duplicateDetected, setDuplicateDetected] = useState(false);
+  const [duplicateOverride, setDuplicateOverride] = useState(false);
 
   // Camera preview and mic test
   const previewStreamRef = useRef<MediaStream | null>(null);
@@ -714,9 +725,9 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
 
   const [penColor, setPenColor] = useState<string>('#000000');
 
-  // Debug modals for test path
-  const [showDebugModal, setShowDebugModal] = useState(true);
-  const [showControlModal, setShowControlModal] = useState(true);
+  // Debug modals for test path (start minimized)
+  const [showDebugModal, setShowDebugModal] = useState(false);
+  const [showControlModal, setShowControlModal] = useState(false);
 
   // Log initialization info once on mount
   useEffect(() => {
@@ -1167,20 +1178,35 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
 
     const reportReady = async () => {
       const roleName = (urlRole === 'teacher' || computedRole === 'teacher') ? 'teacher' : 'student';
-      const userId = storedUser?.email || roleName || 'anonymous';
-      
+      const localUserId = storedUser?.email || roleName || 'anonymous';
+
+      // Client-side duplicate detection: check localStorage for existing present entry
+      try {
+        const raw = localStorage.getItem(sessionReadyKey);
+        const arr = raw ? JSON.parse(raw) as Array<any> : [];
+        // Only treat as duplicate if same role (teacher/student) has an entry marked present
+        const exists = arr.some((p) => p.role === roleName && (p.userId === localUserId || p.email === localUserId) && p.present);
+        if (exists && !duplicateOverride) {
+          console.log('[ClientClassroom] Duplicate tab detected for user:', localUserId);
+          setDuplicateDetected(true);
+          return; // do not proceed to mark ready or call server
+        }
+        setDuplicateDetected(false);
+      } catch (e) {
+        // ignore parse errors and continue
+      }
+
       // Update local storage first to ensure local consistency (will skip if no change)
       markReady(true);
-      
+
       try {
         const r = await fetch(`/api/classroom/ready?uuid=${encodeURIComponent(sessionReadyKey)}`, { cache: 'no-store' });
         if (!r.ok) return;
         const j = await r.json();
         const parts = j.participants || [];
-        const selfEntry = parts.find((p: any) => p.role === roleName && p.userId === userId);
-        
-        // BUG FIX: If even if we are in the list, we might not be marked as 'present'.
-        // We must ensure the server knows we are in the classroom page.
+        const selfEntry = parts.find((p: any) => p.role === roleName && p.userId === localUserId);
+
+        // Ensure server marks us present
         if (!selfEntry || !selfEntry.present) {
           await fetch('/api/classroom/ready', {
             method: 'POST',
@@ -1188,7 +1214,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
             body: JSON.stringify({ 
               uuid: sessionReadyKey, 
               role: roleName, 
-              userId, 
+              userId: localUserId, 
               action: 'ready',
               present: true 
             }),
@@ -1223,7 +1249,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
         navigator.sendBeacon('/api/classroom/ready', blob);
       }
     };
-  }, [mounted, sessionReadyKey, urlRole, computedRole, storedUser?.email]);
+  }, [mounted, sessionReadyKey, urlRole, computedRole, storedUser?.email, duplicateOverride]);
 
   const endSession = async () => {
     try {
@@ -1790,6 +1816,40 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
         </div>
       )}
       
+    {/* Duplicate detected modal (prevent same user re-opening same session) */}
+    {duplicateDetected && !duplicateOverride && (
+      <div style={{
+        position: 'fixed',
+        left: '50%',
+        top: '20%',
+        transform: 'translateX(-50%)',
+        background: 'white',
+        color: '#111827',
+        padding: '20px',
+        borderRadius: 12,
+        zIndex: 100000,
+        boxShadow: '0 12px 48px rgba(0,0,0,0.25)',
+        minWidth: 360
+      }}>
+        <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>已在其他分頁開啟此課程</div>
+        <div style={{ color: '#374151', fontSize: 13, lineHeight: 1.4 }}>我們偵測到同一使用者已在另一個分頁或裝置中進入此課程。為避免重複連線，系統暫時停止自動報到。</div>
+        <div style={{ display: 'flex', gap: 10, marginTop: 14, justifyContent: 'flex-end' }}>
+          <button
+            onClick={() => setDuplicateOverride(true)}
+            style={{ padding: '8px 12px', background: '#10b981', color: 'white', borderRadius: 8, border: 'none', cursor: 'pointer' }}
+          >在此繼續 (覆寫)</button>
+          <button
+            onClick={() => {
+              const currentRole = (urlRole === 'teacher' || urlRole === 'student') ? urlRole : computedRole;
+              const waitPageUrl = `/classroom/wait?courseId=${courseId}${orderId ? `&orderId=${orderId}` : ''}&role=${currentRole}`;
+              try { window.location.href = waitPageUrl; } catch (e) { /* ignore */ }
+            }}
+            style={{ padding: '8px 12px', background: '#ef4444', color: 'white', borderRadius: 8, border: 'none', cursor: 'pointer' }}
+          >返回等待頁</button>
+        </div>
+      </div>
+    )}
+
     {/* Debug Modal - Top Right */}
     {isTestPath && showDebugModal && (
       <div style={{ 
