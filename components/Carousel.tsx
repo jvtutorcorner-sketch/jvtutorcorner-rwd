@@ -44,13 +44,19 @@ export const Carousel: React.FC<CarouselProps> = ({
               src={slides[index]}
               alt={`Carousel slide ${index + 1}`}
               fill
-              style={{ 
+              style={{
                 objectFit: 'cover',
                 opacity: loadedImages[index] ? 1 : 0,
                 transition: 'opacity 0.5s ease-in-out'
               }}
               priority={index === 0}
-              unoptimized={slides[index].includes('googleusercontent.com') || slides[index].includes('drive.google.com') || slides[index].includes('s3.') || slides[index].includes('amazonaws.com')}
+              unoptimized={
+                slides[index].includes('googleusercontent.com') ||
+                slides[index].includes('drive.google.com') ||
+                slides[index].includes('s3.') ||
+                slides[index].includes('amazonaws.com') ||
+                slides[index].startsWith('/api/uploads/')
+              }
               onLoad={() => setLoadedImages(prev => ({ ...prev, [index]: true }))}
             />
           </>

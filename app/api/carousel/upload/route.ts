@@ -4,8 +4,31 @@ import { uploadToS3 } from '@/lib/s3';
 import fs from 'fs';
 import path from 'path';
 
+// If process.env lacks AWS creds (dev server started earlier), try loading from .env.local
+function loadAwsEnvFromDotenv() {
+  try {
+    const envFile = path.join(process.cwd(), '.env.local');
+    if (!fs.existsSync(envFile)) return;
+    const content = fs.readFileSync(envFile, 'utf8');
+    content.split(/\r?\n/).forEach((line) => {
+      const m = line.match(/^\s*([A-Za-z0-9_]+)\s*=\s*(.*)\s*$/);
+      if (!m) return;
+      const key = m[1];
+      let val = m[2] || '';
+      if (val.startsWith('"') && val.endsWith('"')) val = val.slice(1, -1);
+      // Overwrite in development to ensure we pick up changes from .env.local
+      process.env[key] = val;
+    });
+  } catch (e) {
+    console.warn('[Carousel Upload API] failed to load .env.local at runtime', (e as any)?.message || e);
+  }
+}
+
 export async function POST(request: NextRequest) {
   console.log('[Carousel Upload API] Request received');
+
+  // Ensure AWS env vars are present when possible (helpful when dev server started earlier)
+  loadAwsEnvFromDotenv();
 
   try {
     const formData = await request.formData();
@@ -98,8 +121,35 @@ export async function POST(request: NextRequest) {
 
     console.log('[Carousel Upload API] S3 upload successful:', uploadResult);
 
+    // Also save locally so the proxy works instantly without slow S3 fetch
+    try {
+      const uploadsDir = path.resolve(process.cwd(), '.uploads', 'carousel');
+      if (!fs.existsSync(uploadsDir)) {
+        fs.mkdirSync(uploadsDir, { recursive: true });
+      }
+      const localPath = path.resolve(uploadsDir, key.replace('carousel/', ''));
+      fs.writeFileSync(localPath, buffer);
+      console.log('[Carousel Upload API] ✓ Cached to local storage for proxy:', localPath);
+    } catch (saveError) {
+      console.warn('[Carousel Upload API] ! Failed to cache locally:', saveError);
+    }
+
+    const s3Url = uploadResult.url;
+    let finalUrl = s3Url;
+
+    // Convert to proxy URL if it's an S3 URL
+    if (s3Url && (s3Url.includes('s3.') || s3Url.includes('amazonaws.com'))) {
+      const urlObj = new URL(s3Url);
+      const pathParts = urlObj.pathname.split('/');
+      const keyFromUrl = pathParts.slice(1).join('/');
+      if (keyFromUrl && keyFromUrl.startsWith('carousel/')) {
+        finalUrl = `/api/uploads/${keyFromUrl}`;
+        console.log('[Carousel Upload API] Proxied S3 URL:', finalUrl);
+      }
+    }
+
     const response = {
-      url: uploadResult.url,
+      url: finalUrl,
       key: uploadResult.key,
       alt: alt || file.name,
     };

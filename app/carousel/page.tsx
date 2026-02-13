@@ -1,6 +1,8 @@
 "use client";
 
+import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { getStoredUser } from '@/lib/mockAuth';
 
 interface CarouselImage {
   id: string;
@@ -12,37 +14,13 @@ interface CarouselImage {
 }
 
 export default function AdminCarouselPage() {
+  const router = useRouter();
   const [images, setImages] = useState<CarouselImage[]>([]);
   const [loading, setLoading] = useState(true);
+  const [authChecking, setAuthChecking] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [imageDetails, setImageDetails] = useState<Record<string, { width: number; height: number; size: number }>>({});
-
-  useEffect(() => {
-    loadImages();
-  }, []);
-
-  // 當圖片列表變化時，重新獲取詳細信息
-  useEffect(() => {
-    if (images.length > 0) {
-      const loadDetails = async () => {
-        const details: Record<string, { width: number; height: number; size: number }> = { ...imageDetails };
-        let hasNewDetails = false;
-
-        for (const image of images) {
-          if (!details[image.id]) { // 只獲取還沒有詳細信息的圖片
-            details[image.id] = await getImageDetails(image.url);
-            hasNewDetails = true;
-          }
-        }
-
-        if (hasNewDetails) {
-          setImageDetails(details);
-        }
-      };
-      loadDetails();
-    }
-  }, [images]);
 
   // 獲取圖片詳細信息（尺寸和檔案大小）
   const getImageDetails = (url: string): Promise<{ width: number; height: number; size: number }> => {
@@ -97,17 +75,52 @@ export default function AdminCarouselPage() {
           details[image.id] = await getImageDetails(image.url);
         }
         setImageDetails(details);
-      } else {
-        console.error('Failed to load carousel images');
-        setImages([]);
       }
     } catch (error) {
-      console.error('Error loading carousel images:', error);
-      setImages([]);
+      console.error('Failed to load images:', error);
+      setMessage('載入圖片失敗');
     } finally {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    // Check authentication
+    const user = getStoredUser();
+    if (!user || !user.email) {
+      router.push('/login');
+      return;
+    }
+    setAuthChecking(false);
+    loadImages();
+  }, [router]);
+
+  // 當圖片列表變化時，重新獲取詳細信息
+  useEffect(() => {
+    if (images.length > 0) {
+      const loadDetails = async () => {
+        const details: Record<string, { width: number; height: number; size: number }> = { ...imageDetails };
+        let hasNewDetails = false;
+
+        for (const image of images) {
+          if (!details[image.id]) { // 只獲取還沒有詳細信息的圖片
+            details[image.id] = await getImageDetails(image.url);
+            hasNewDetails = true;
+          }
+        }
+
+        if (hasNewDetails) {
+          setImageDetails(details);
+        }
+      };
+      loadDetails();
+    }
+  }, [images]);
+
+  if (authChecking) {
+    return <div className="p-8 text-center text-gray-500">Checking authentication...</div>;
+  }
+
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -147,57 +160,120 @@ export default function AdminCarouselPage() {
     try {
       console.log('[Carousel Upload] Starting presigned upload flow...');
 
-      // 1) Request presigned PUT URL from server
       const presignResp = await fetch('/api/carousel/presign', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fileName: file.name, mimeType: file.type, fileSize: file.size }),
       });
 
+      console.log('[Carousel Upload] Presign response status:', presignResp.status, 'ok:', presignResp.ok);
+
       let finalUrl: string | undefined;
       let finalAlt: string | undefined;
 
       if (!presignResp.ok) {
         // Fallback: use existing upload proxy endpoint
-        console.warn('[Carousel Upload] Presign failed, falling back to proxy upload');
+        console.warn('[Carousel Upload] Presign failed (status:', presignResp.status, '), falling back to proxy upload');
+
+        // Try to parse presign error for logging
+        let presignErrorMsg = 'Unknown presign error';
+        try {
+          const presignError = await presignResp.json();
+          presignErrorMsg = presignError.error || presignError.message || JSON.stringify(presignError);
+          console.log('[Carousel Upload] Presign error response:', presignError);
+        } catch (parseErr) {
+          console.log('[Carousel Upload] Could not parse presign error response');
+        }
+
         const formData = new FormData();
         formData.append('file', file);
         formData.append('alt', file.name);
 
-        const uploadResponse = await fetch('/api/carousel/upload', { method: 'POST', body: formData });
+        console.log('[Carousel Upload] Calling /api/carousel/upload with fallback');
+        let uploadResponse;
+        try {
+          uploadResponse = await fetch('/api/carousel/upload', { method: 'POST', body: formData });
+          console.log('[Carousel Upload] Upload response status:', uploadResponse.status);
+        } catch (fetchError) {
+          console.error('[Carousel Upload] Upload fetch failed:', fetchError);
+          throw new Error('Upload API call failed');
+        }
+
         if (!uploadResponse.ok) {
           const errText = await uploadResponse.text().catch(() => 'Unknown error');
+          console.error('[Carousel Upload] Upload API returned error:', uploadResponse.status, errText);
           throw new Error(`Fallback upload failed: ${errText}`);
         }
-        const uploadResult = await uploadResponse.json();
-        console.log('[Carousel Upload] Fallback upload result:', uploadResult);
+
+        let uploadResult;
+        try {
+          uploadResult = await uploadResponse.json();
+          console.log('[Carousel Upload] Fallback upload result parsed:', uploadResult);
+        } catch (jsonError) {
+          console.error('[Carousel Upload] Failed to parse upload response:', jsonError);
+          throw new Error('Failed to parse upload response');
+        }
 
         // proceed to save metadata below using uploadResult.url
         finalUrl = uploadResult.url;
         finalAlt = uploadResult.alt || file.name;
       } else {
-        const presignData = await presignResp.json();
-        console.log('[Carousel Upload] Presign response:', presignData);
+        let presignData;
+        try {
+          presignData = await presignResp.json();
+        } catch (jsonError) {
+          console.error('[Carousel Upload] Failed to parse presign response JSON:', jsonError);
+          throw new Error('Invalid JSON response from presign API');
+        }
+
+        console.log('[Carousel Upload] Presign response parsed');
+        console.log('[Carousel Upload] Has URL:', !!presignData?.url);
+        console.log('[Carousel Upload] URL type:', typeof presignData?.url);
+        console.log('[Carousel Upload] URL length:', presignData?.url?.length);
+
+        // Check if response contains an error
+        if (presignData.error) {
+          console.error('[Carousel Upload] Presign API returned error:', presignData.error);
+          throw new Error(`Presign failed: ${presignData.error}`);
+        }
 
         if (!presignData || !presignData.url || !presignData.key) {
+          console.error('[Carousel Upload] Invalid presign response structure');
           throw new Error('Invalid presign response');
         }
 
+        console.log('[Carousel Upload] Presign data valid, URL is string:', typeof presignData.url === 'string');
+
         // 2) PUT file directly to S3 using presigned URL
-        const putResp = await fetch(presignData.url, {
-          method: 'PUT',
-          headers: { 'Content-Type': file.type },
-          body: file,
-        });
+        console.log('[Carousel Upload] Starting PUT to S3');
+        let putResp;
+        try {
+          console.log('[Carousel Upload] Calling fetch with method PUT');
+          putResp = await fetch(presignData.url, {
+            method: 'PUT',
+            headers: { 'Content-Type': file.type },
+            body: file,
+          });
+          console.log('[Carousel Upload] PUT completed with status:', putResp.status);
+        } catch (putError) {
+          console.error('[Carousel Upload] PUT failed - error name:', (putError as any)?.name);
+          console.error('[Carousel Upload] PUT failed - error constructor:', (putError as any)?.constructor?.name);
+          if (putError instanceof Error) {
+            console.error('[Carousel Upload] PUT failed - error message:', putError.message);
+          } else {
+            console.error('[Carousel Upload] PUT failed - not an Error instance, type:', typeof putError);
+          }
+          throw new Error('Failed to upload to S3: ' + ((putError as any)?.message || 'Unknown error'));
+        }
 
         if (!putResp.ok) {
           const text = await putResp.text().catch(() => 'No response body');
-          console.error('[Carousel Upload] PUT to presigned URL failed:', putResp.status, text);
-          throw new Error('Direct upload to S3 failed');
+          console.error('[Carousel Upload] PUT failed:', putResp.status, text);
+          throw new Error(`Direct upload to S3 failed (status: ${putResp.status})`);
         }
 
         // 3) Build public URL (server also returns publicUrl)
-        const uploadResult = { url: presignData.publicUrl || (`https://${presignData.bucket || ''}.s3.${window.location.hostname.includes('localhost') ? 'ap-northeast-1' : ''}.amazonaws.com/${presignData.key}`), key: presignData.key, alt: file.name };
+        const uploadResult = { url: presignData.publicUrl, key: presignData.key, alt: file.name };
         console.log('[Carousel Upload] Direct upload successful:', uploadResult);
 
         finalUrl = uploadResult.url;
@@ -205,7 +281,8 @@ export default function AdminCarouselPage() {
       }
 
       // 將上傳結果保存到 carousel
-      console.log('[Carousel Upload] Saving to carousel database...');
+      console.log('[Carousel Upload] About to save metadata to /api/carousel');
+      console.log('[Carousel Upload] Payload:', { url: finalUrl, alt: finalAlt, order: images.length });
       const saveResponse = await fetch('/api/carousel', {
         method: 'POST',
         headers: {
@@ -250,16 +327,36 @@ export default function AdminCarouselPage() {
         throw new Error(saveErrorMessage);
       }
     } catch (error) {
-      console.error('[Carousel Upload] Upload process failed:', {
-        error: error instanceof Error ? error.message : error,
-        stack: error instanceof Error ? error.stack : undefined,
-        fileInfo: {
-          name: file.name,
-          size: file.size,
-          type: file.type
+      let errorDetails: Record<string, any> = {
+        type: typeof error,
+        isError: error instanceof Error,
+        isNull: error === null,
+        isUndefined: error === undefined,
+      };
+
+      if (error instanceof Error) {
+        errorDetails.message = error.message;
+        errorDetails.name = error.name;
+        errorDetails.stack = error.stack;
+      } else if (error !== null && typeof error === 'object') {
+        errorDetails.stringified = String(error);
+        errorDetails.keys = Object.keys(error);
+        try {
+          errorDetails.jsonStringifed = JSON.stringify(error);
+        } catch (stringifyError) {
+          errorDetails.cannotStringify = (stringifyError as any)?.message || 'Cannot stringify';
         }
-      });
-      setMessage(`上傳失敗: ${error instanceof Error ? error.message : '未知錯誤'}`);
+        // Try to extract message from various possible properties
+        const hasMessage = (e: any) => e?.message || e?.msg || e?.error || e?.error?.message;
+        errorDetails.possibleMessage = hasMessage(error);
+      } else {
+        errorDetails.valueAsString = String(error);
+      }
+
+      console.error('[Carousel Upload] CAUGHT EXCEPTION:', errorDetails);
+
+      const userMessage = error instanceof Error ? error.message : '未知錯誤';
+      setMessage(`上傳失敗: ${userMessage}`);
     } finally {
       setUploading(false);
     }
@@ -380,16 +477,16 @@ export default function AdminCarouselPage() {
             transition: 'all 0.3s ease',
             opacity: uploading ? 0.6 : 1
           }}
-          onMouseOver={(e) => {
-            if (!uploading) {
-              e.currentTarget.style.backgroundColor = '#0056b3';
-            }
-          }}
-          onMouseOut={(e) => {
-            if (!uploading) {
-              e.currentTarget.style.backgroundColor = '#007bff';
-            }
-          }}
+            onMouseOver={(e) => {
+              if (!uploading) {
+                e.currentTarget.style.backgroundColor = '#0056b3';
+              }
+            }}
+            onMouseOut={(e) => {
+              if (!uploading) {
+                e.currentTarget.style.backgroundColor = '#007bff';
+              }
+            }}
           >
             選擇檔案
             <input

@@ -28,7 +28,7 @@ async function isProjectRoot(dir: string) {
 export async function resolveDataFile(filename: string) {
   const candidates: string[] = [];
   if (process.env.LOCAL_DATA_DIR) candidates.push(path.resolve(process.env.LOCAL_DATA_DIR));
-  
+
   // Try to find project root by looking for package.json
   let currentDir = process.cwd();
   for (let i = 0; i < 10; i++) { // Navigate up to 10 levels
@@ -40,19 +40,18 @@ export async function resolveDataFile(filename: string) {
     if (parent === currentDir) break; // Reached system root
     currentDir = parent;
   }
-  
+
   // fallback candidates if package.json not found...
   candidates.push(path.resolve(process.cwd(), '.local_data'));
   // fallback to OS temp
   candidates.push(path.join(os.tmpdir(), 'jvtutorcorner', '.local_data'));
 
   console.log('[resolveDataFile] cwd:', process.cwd(), 'candidates:', candidates);
-  
+
   for (const dir of candidates) {
-    console.log('[resolveDataFile] trying dir:', dir);
     if (await tryMakeDir(dir)) {
-      const fullPath = path.join(dir, filename);
-      console.log('[resolveDataFile] using dir:', dir, 'fullPath:', fullPath);
+      const fullPath = path.resolve(dir, filename);
+      console.log(`[resolveDataFile] SUCCESS: Resolved '${filename}' to '${fullPath}'`);
       return fullPath;
     }
   }

@@ -3,32 +3,32 @@ import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } fro
 import { Upload } from '@aws-sdk/lib-storage';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
-const awsRegion = process.env.AWS_REGION || process.env.CI_AWS_REGION ;
-const accessKey = process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID;
-const secretKey = process.env.AWS_SECRET_ACCESS_KEY || process.env.CI_AWS_SECRET_ACCESS_KEY;
+const getAwsConfig = () => {
+  // Use a different name for the bucket variable to avoid confusion
+  const envBucket = process.env.CI_AWS_S3_BUCKET_NAME || process.env.AWS_S3_BUCKET_NAME;
+  const awsRegion = process.env.AWS_REGION || process.env.CI_AWS_REGION || 'ap-northeast-1';
 
-// Prefer CI_AWS_S3_BUCKET_NAME (CI / Amplify), then AWS_S3_BUCKET_NAME, fallback to uploads bucket
-//jvtutorcorner-uploads
-const BUCKET_NAME = process.env.CI_AWS_S3_BUCKET_NAME || process.env.AWS_S3_BUCKET_NAME ;
+  // LOG THE EXACT BUCKET BEING USED
+  console.log('[S3 Config] Resolved:', {
+    bucket: envBucket || 'MISSING',
+    region: awsRegion,
+    hasAccessKey: !!(process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID)
+  });
 
-console.log('[S3] Initializing with:', {
-  region: awsRegion,
-  hasAccessKey: !!accessKey,
-  hasSecretKey: !!secretKey,
-  bucket: BUCKET_NAME,
-  // Reserved env check
-  isReservedAccessKey: !!process.env.AWS_ACCESS_KEY_ID,
-  isCiAccessKey: !!process.env.CI_AWS_ACCESS_KEY_ID
-});
+  const accessKey = process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID;
+  const secretKey = process.env.AWS_SECRET_ACCESS_KEY || process.env.CI_AWS_SECRET_ACCESS_KEY;
+  const bucketName = envBucket;
 
-if (!BUCKET_NAME) {
-  console.error('[S3] WARNING: No S3 bucket configured. Set CI_AWS_S3_BUCKET_NAME or AWS_S3_BUCKET_NAME.');
-}
+  return { awsRegion, accessKey, secretKey, bucketName };
+};
 
-const s3Client = new S3Client({
-  region: awsRegion,
-  credentials: accessKey && secretKey ? { accessKeyId: accessKey, secretAccessKey: secretKey } : undefined,
-});
+const getS3Client = () => {
+  const { awsRegion, accessKey, secretKey } = getAwsConfig();
+  return new S3Client({
+    region: awsRegion,
+    credentials: accessKey && secretKey ? { accessKeyId: accessKey, secretAccessKey: secretKey } : undefined,
+  });
+};
 
 export interface UploadResult {
   url: string;
@@ -39,31 +39,32 @@ export interface UploadResult {
  * Upload a file to S3
  */
 export async function uploadToS3(file: File | Buffer, key: string, mimeType?: string): Promise<UploadResult> {
-  if (!BUCKET_NAME) {
+  const { awsRegion, bucketName, accessKey, secretKey } = getAwsConfig();
+
+  if (!bucketName) {
     const err = new Error('S3 bucket is not configured. Set AWS_S3_BUCKET_NAME or CI_AWS_S3_BUCKET_NAME');
     console.error('[S3 Upload] Aborting upload - bucket not configured');
     throw err;
   }
   console.log('[S3 Upload] Starting upload:', {
-    bucket: BUCKET_NAME,
+    bucket: bucketName,
     key: key,
     region: awsRegion,
     mimeType: mimeType || 'image/jpeg',
     fileSize: file instanceof Buffer ? file.length : (file as File).size,
     fileType: file instanceof Buffer ? 'Buffer' : 'File',
-    hasCredentials: !!(process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID)
+    hasCredentials: !!(accessKey && secretKey)
   });
 
   try {
+    const s3Client = getS3Client();
     const upload = new Upload({
       client: s3Client,
       params: {
-        Bucket: BUCKET_NAME,
+        Bucket: bucketName,
         Key: key,
         Body: file,
         ContentType: mimeType || 'image/jpeg',
-        // ACL: 'public-read' is removed to avoid errors when S3 Block Public Access is enabled.
-        // We proxy the content via API or use Presigned URLs instead.
       },
     });
 
@@ -76,7 +77,7 @@ export async function uploadToS3(file: File | Buffer, key: string, mimeType?: st
       key: result.Key
     });
 
-    const url = `https://${BUCKET_NAME}.s3.${awsRegion}.amazonaws.com/${key}`;
+    const url = `https://${bucketName}.s3.${awsRegion}.amazonaws.com/${key}`;
     console.log('[S3 Upload] Generated URL:', url);
 
     return { url, key };
@@ -87,23 +88,11 @@ export async function uploadToS3(file: File | Buffer, key: string, mimeType?: st
       statusCode: error.statusCode,
       name: error.name,
       stack: error.stack,
-      requestId: error.requestId,
       region: awsRegion,
-      bucket: BUCKET_NAME,
+      bucket: bucketName,
       key: key,
-      credentials: {
-        hasAccessKey: !!process.env.AWS_ACCESS_KEY_ID,
-        hasSecretKey: !!process.env.AWS_SECRET_ACCESS_KEY,
-        hasCiAccessKey: !!process.env.CI_AWS_ACCESS_KEY_ID,
-        hasCiSecretKey: !!process.env.CI_AWS_SECRET_ACCESS_KEY
-      },
-      bucketEnv: {
-        AWS_S3_BUCKET_NAME: process.env.AWS_S3_BUCKET_NAME,
-        CI_AWS_S3_BUCKET_NAME: process.env.CI_AWS_S3_BUCKET_NAME
-      }
     });
 
-    // Throw descriptive error so API route can catch it
     throw error;
   }
 }
@@ -113,34 +102,34 @@ export async function uploadToS3(file: File | Buffer, key: string, mimeType?: st
  * Returns { url, key, publicUrl }
  */
 export async function getPresignedPutUrl(key: string, mimeType: string = 'image/jpeg', expiresIn = 900) {
-  if (!BUCKET_NAME) {
+  const { awsRegion, bucketName } = getAwsConfig();
+  if (!bucketName) {
     throw new Error('S3 bucket is not configured (AWS_S3_BUCKET_NAME)');
   }
 
+  const s3Client = getS3Client();
   const command = new PutObjectCommand({
-    Bucket: BUCKET_NAME,
+    Bucket: bucketName,
     Key: key,
     ContentType: mimeType,
   });
 
   const url = await getSignedUrl(s3Client, command, { expiresIn });
 
-  const publicUrl = `https://${BUCKET_NAME}.s3.${awsRegion}.amazonaws.com/${key}`;
+  const publicUrl = `https://${bucketName}.s3.${awsRegion}.amazonaws.com/${key}`;
 
   return { url, key, publicUrl };
 }
 
 // Read S3 object into a Buffer
 export async function getObjectBuffer(key: string): Promise<Buffer> {
+  const { bucketName } = getAwsConfig();
   try {
-    const cmd = new GetObjectCommand({ Bucket: BUCKET_NAME, Key: key });
+    const s3Client = getS3Client();
+    const cmd = new GetObjectCommand({ Bucket: bucketName, Key: key });
     const res = await s3Client.send(cmd);
-    const stream = res.Body as any;
-    const chunks: Buffer[] = [];
-    for await (const chunk of stream) {
-      chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : Buffer.from(chunk));
-    }
-    return Buffer.concat(chunks);
+    const byteArray = await res.Body?.transformToByteArray();
+    return Buffer.from(byteArray || []);
   } catch (error) {
     console.error('S3 getObject error:', error);
     throw error;
@@ -149,13 +138,17 @@ export async function getObjectBuffer(key: string): Promise<Buffer> {
 
 // Generate a presigned GET URL for a key
 export async function getSignedUrlForKey(key: string, expiresIn = 3600): Promise<string> {
-  const cmd = new GetObjectCommand({ Bucket: BUCKET_NAME, Key: key });
+  const { bucketName } = getAwsConfig();
+  const s3Client = getS3Client();
+  const cmd = new GetObjectCommand({ Bucket: bucketName, Key: key });
   return await getSignedUrl(s3Client, cmd, { expiresIn });
 }
 
 export async function deleteObjectKey(key: string) {
+  const { bucketName } = getAwsConfig();
   try {
-    await s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: key }));
+    const s3Client = getS3Client();
+    await s3Client.send(new DeleteObjectCommand({ Bucket: bucketName, Key: key }));
   } catch (error) {
     console.error('S3 deleteObject error:', error);
     throw error;
@@ -166,9 +159,11 @@ export async function deleteObjectKey(key: string) {
  * Delete a file from S3
  */
 export async function deleteFromS3(key: string): Promise<void> {
+  const { bucketName } = getAwsConfig();
   try {
+    const s3Client = getS3Client();
     const command = new DeleteObjectCommand({
-      Bucket: BUCKET_NAME,
+      Bucket: bucketName,
       Key: key,
     });
 
@@ -183,6 +178,13 @@ export async function deleteFromS3(key: string): Promise<void> {
  * Extract S3 key from URL
  */
 export function getS3KeyFromUrl(url: string): string | null {
+  if (!url) return null;
+
+  // Handle local proxy URLs
+  if (url.startsWith('/api/uploads/')) {
+    return url.replace('/api/uploads/', '');
+  }
+
   try {
     const urlObj = new URL(url);
     const pathParts = urlObj.pathname.split('/');

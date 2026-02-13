@@ -1,5 +1,5 @@
 // app/page.tsx
- 'use client';
+'use client';
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -61,7 +61,11 @@ export default function HomePage() {
         <div className="hero-carousel">
           <Carousel
             slides={carouselImages}
-            isImage={carouselImages[0]?.startsWith('data:') || carouselImages[0]?.startsWith('http')}
+            isImage={
+              carouselImages[0]?.startsWith('data:') ||
+              carouselImages[0]?.startsWith('http') ||
+              carouselImages[0]?.startsWith('/')
+            }
           />
         </div>
       </section>
