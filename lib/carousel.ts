@@ -79,7 +79,7 @@ export async function addCarouselImage(image: Omit<CarouselImage, 'id' | 'create
       hasCredentials: !!(process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID),
       imageData: { ...image, url: image.url?.substring(0, 50) + '...' }
     });
-    return null;
+    throw error;
   }
 }
 

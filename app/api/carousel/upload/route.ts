@@ -139,19 +139,7 @@ export async function POST(request: NextRequest) {
       console.warn('[Carousel Upload API] ! Failed to cache locally:', saveError);
     }
 
-    const s3Url = uploadResult.url;
-    let finalUrl = s3Url;
-
-    // Convert to proxy URL if it's an S3 URL
-    if (s3Url && (s3Url.includes('s3.') || s3Url.includes('amazonaws.com'))) {
-      const urlObj = new URL(s3Url);
-      const pathParts = urlObj.pathname.split('/');
-      const keyFromUrl = pathParts.slice(1).join('/');
-      if (keyFromUrl && keyFromUrl.startsWith('carousel/')) {
-        finalUrl = `/api/uploads/${keyFromUrl}`;
-        console.log('[Carousel Upload API] Proxied S3 URL:', finalUrl);
-      }
-    }
+    const finalUrl = uploadResult.url;
 
     const response = {
       url: finalUrl,

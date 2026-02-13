@@ -32,126 +32,172 @@ async function readSettings() {
       defaultPlan: 'basic',
       siteUrl: '',
       roles: [
-        { id: 'admin', name: 'Admin', description: '管理员', isActive: true },
-        { id: 'teacher', name: 'Teacher', description: '教师', isActive: true },
-        { id: 'student', name: 'Student', description: '学生', isActive: true }
+        { id: 'admin', name: 'Admin', description: '管理者', isActive: true },
+        { id: 'teacher', name: 'Teacher', description: '老師', isActive: true },
+        { id: 'student', name: 'Student', description: '學生', isActive: true }
       ],
       pageConfigs: [
-        { id: '/', path: '/', label: '首頁', permissions: [
-          { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
-          { roleId: 'teacher', roleName: 'Teacher', menuVisible: true, dropdownVisible: true, pageVisible: true },
-          { roleId: 'student', roleName: 'Student', menuVisible: true, dropdownVisible: true, pageVisible: true }
-        ]},
-        { id: '/about', path: '/about', label: '關於我們', permissions: [
-          { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
-          { roleId: 'teacher', roleName: 'Teacher', menuVisible: true, dropdownVisible: true, pageVisible: true },
-          { roleId: 'student', roleName: 'Student', menuVisible: true, dropdownVisible: true, pageVisible: true }
-        ]},
-        { id: '/teachers', path: '/teachers', label: '師資', permissions: [
-          { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
-          { roleId: 'teacher', roleName: 'Teacher', menuVisible: true, dropdownVisible: true, pageVisible: true },
-          { roleId: 'student', roleName: 'Student', menuVisible: true, dropdownVisible: true, pageVisible: true }
-        ]},
-        { id: '/courses', path: '/courses', label: '課程總覽', permissions: [
-          { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
-          { roleId: 'teacher', roleName: 'Teacher', menuVisible: true, dropdownVisible: true, pageVisible: true },
-          { roleId: 'student', roleName: 'Student', menuVisible: true, dropdownVisible: true, pageVisible: true }
-        ]},
-        { id: '/calendar', path: '/calendar', label: '課程行事曆', permissions: [
-          { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
-          { roleId: 'teacher', roleName: 'Teacher', menuVisible: true, dropdownVisible: true, pageVisible: true },
-          { roleId: 'student', roleName: 'Student', menuVisible: true, dropdownVisible: true, pageVisible: true }
-        ]},
-        { id: '/pricing', path: '/pricing', label: '方案與價格', permissions: [
-          { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
-          { roleId: 'teacher', roleName: 'Teacher', menuVisible: true, dropdownVisible: true, pageVisible: true },
-          { roleId: 'student', roleName: 'Student', menuVisible: true, dropdownVisible: true, pageVisible: true }
-        ]},
-        { id: '/login', path: '/login', label: '登入', permissions: [
-          { roleId: 'admin', roleName: 'Admin', menuVisible: false, dropdownVisible: false, pageVisible: true },
-          { roleId: 'teacher', roleName: 'Teacher', menuVisible: false, dropdownVisible: false, pageVisible: true },
-          { roleId: 'student', roleName: 'Student', menuVisible: false, dropdownVisible: false, pageVisible: true }
-        ]},
-        { id: '/register', path: '/register', label: '註冊', permissions: [
-          { roleId: 'admin', roleName: 'Admin', menuVisible: false, dropdownVisible: false, pageVisible: true },
-          { roleId: 'teacher', roleName: 'Teacher', menuVisible: false, dropdownVisible: false, pageVisible: true },
-          { roleId: 'student', roleName: 'Student', menuVisible: false, dropdownVisible: false, pageVisible: true }
-        ]},
-        { id: '/profile', path: '/profile', label: '個人資料', permissions: [
-          { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
-          { roleId: 'teacher', roleName: 'Teacher', menuVisible: true, dropdownVisible: true, pageVisible: true },
-          { roleId: 'student', roleName: 'Student', menuVisible: true, dropdownVisible: true, pageVisible: true }
-        ]},
-        { id: '/settings', path: '/settings', label: '個人設定', permissions: [
-          { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
-          { roleId: 'teacher', roleName: 'Teacher', menuVisible: true, dropdownVisible: true, pageVisible: true },
-          { roleId: 'student', roleName: 'Student', menuVisible: true, dropdownVisible: true, pageVisible: true }
-        ]},
-        { id: '/teacher_courses', path: '/teacher_courses', label: '老師的課程訂單', permissions: [
-          { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
-          { roleId: 'teacher', roleName: 'Teacher', menuVisible: true, dropdownVisible: true, pageVisible: true },
-          { roleId: 'student', roleName: 'Student', menuVisible: true, dropdownVisible: true, pageVisible: true }
-        ]},
-        { id: '/student_courses', path: '/student_courses', label: '學生的課程訂單', permissions: [
-          { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
-          { roleId: 'teacher', roleName: 'Teacher', menuVisible: true, dropdownVisible: true, pageVisible: true },
-          { roleId: 'student', roleName: 'Student', menuVisible: true, dropdownVisible: true, pageVisible: true }
-        ]},
-        { id: '/enrollments', path: '/enrollments', label: '報名記錄', permissions: [
-          { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
-          { roleId: 'teacher', roleName: 'Teacher', menuVisible: true, dropdownVisible: true, pageVisible: true },
-          { roleId: 'student', roleName: 'Student', menuVisible: true, dropdownVisible: true, pageVisible: true }
-        ]},
-        { id: '/dashboard/teacher', path: '/dashboard/teacher', label: '教師儀表板', permissions: [
-          { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
-          { roleId: 'teacher', roleName: 'Teacher', menuVisible: true, dropdownVisible: true, pageVisible: true },
-          { roleId: 'student', roleName: 'Student', menuVisible: false, dropdownVisible: false, pageVisible: false }
-        ]},
-        { id: '/classroom', path: '/classroom', label: '教室', permissions: [
-          { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
-          { roleId: 'teacher', roleName: 'Teacher', menuVisible: true, dropdownVisible: true, pageVisible: true },
-          { roleId: 'student', roleName: 'Student', menuVisible: true, dropdownVisible: true, pageVisible: true }
-        ]},
-        { id: '/whiteboard', path: '/whiteboard', label: '白板', permissions: [
-          { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
-          { roleId: 'teacher', roleName: 'Teacher', menuVisible: true, dropdownVisible: true, pageVisible: true },
-          { roleId: 'student', roleName: 'Student', menuVisible: true, dropdownVisible: true, pageVisible: true }
-        ]},
-        { id: '/admin/dashboard', path: '/admin/dashboard', label: '後台：儀表板', permissions: [
-          { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
-          { roleId: 'teacher', roleName: 'Teacher', menuVisible: false, dropdownVisible: false, pageVisible: false },
-          { roleId: 'student', roleName: 'Student', menuVisible: false, dropdownVisible: false, pageVisible: false }
-        ]},
-        { id: '/admin/orders', path: '/admin/orders', label: '後台：訂單管理', permissions: [
-          { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
-          { roleId: 'teacher', roleName: 'Teacher', menuVisible: false, dropdownVisible: false, pageVisible: false },
-          { roleId: 'student', roleName: 'Student', menuVisible: false, dropdownVisible: false, pageVisible: false }
-        ]},
-        { id: '/admin/whiteboard_canvas', path: '/admin/whiteboard_canvas', label: '後台：原生白板', permissions: [
-          { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
-          { roleId: 'teacher', roleName: 'Teacher', menuVisible: false, dropdownVisible: false, pageVisible: false },
-          { roleId: 'student', roleName: 'Student', menuVisible: false, dropdownVisible: false, pageVisible: false }
-        ]},
-        { id: '/admin/whiteboard_agora', path: '/admin/whiteboard_agora', label: '後台：Agora 設定', permissions: [
-          { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
-          { roleId: 'teacher', roleName: 'Teacher', menuVisible: false, dropdownVisible: false, pageVisible: false },
-          { roleId: 'student', roleName: 'Student', menuVisible: false, dropdownVisible: false, pageVisible: false }
-        ]},
-        { id: '/admin/roles', path: '/admin/roles', label: '後台：角色管理', permissions: [
-          { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
-          { roleId: 'teacher', roleName: 'Teacher', menuVisible: false, dropdownVisible: false, pageVisible: false },
-          { roleId: 'student', roleName: 'Student', menuVisible: false, dropdownVisible: false, pageVisible: false }
-        ]},
-        { id: '/admin/settings', path: '/admin/settings', label: '後台：網站設定', permissions: [
-          { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
-          { roleId: 'teacher', roleName: 'Teacher', menuVisible: false, dropdownVisible: false, pageVisible: false },
-          { roleId: 'student', roleName: 'Student', menuVisible: false, dropdownVisible: false, pageVisible: false }
-        ]},
-        { id: '/admin/carousel', path: '/admin/carousel', label: '後台：輪播圖管理', permissions: [
-          { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
-          { roleId: 'teacher', roleName: 'Teacher', menuVisible: false, dropdownVisible: false, pageVisible: false },
-          { roleId: 'student', roleName: 'Student', menuVisible: false, dropdownVisible: false, pageVisible: false }
-        ]}
+        {
+          id: '/', path: '/', label: '首頁', permissions: [
+            { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
+            { roleId: 'teacher', roleName: 'Teacher', menuVisible: true, dropdownVisible: true, pageVisible: true },
+            { roleId: 'student', roleName: 'Student', menuVisible: true, dropdownVisible: true, pageVisible: true }
+          ]
+        },
+        {
+          id: '/about', path: '/about', label: '關於我們', permissions: [
+            { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
+            { roleId: 'teacher', roleName: 'Teacher', menuVisible: true, dropdownVisible: true, pageVisible: true },
+            { roleId: 'student', roleName: 'Student', menuVisible: true, dropdownVisible: true, pageVisible: true }
+          ]
+        },
+        {
+          id: '/teachers', path: '/teachers', label: '師資', permissions: [
+            { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
+            { roleId: 'teacher', roleName: 'Teacher', menuVisible: true, dropdownVisible: true, pageVisible: true },
+            { roleId: 'student', roleName: 'Student', menuVisible: true, dropdownVisible: true, pageVisible: true }
+          ]
+        },
+        {
+          id: '/courses', path: '/courses', label: '課程總覽', permissions: [
+            { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
+            { roleId: 'teacher', roleName: 'Teacher', menuVisible: true, dropdownVisible: true, pageVisible: true },
+            { roleId: 'student', roleName: 'Student', menuVisible: true, dropdownVisible: true, pageVisible: true }
+          ]
+        },
+        {
+          id: '/calendar', path: '/calendar', label: '課程行事曆', permissions: [
+            { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
+            { roleId: 'teacher', roleName: 'Teacher', menuVisible: true, dropdownVisible: true, pageVisible: true },
+            { roleId: 'student', roleName: 'Student', menuVisible: true, dropdownVisible: true, pageVisible: true }
+          ]
+        },
+        {
+          id: '/pricing', path: '/pricing', label: '方案與價格', permissions: [
+            { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
+            { roleId: 'teacher', roleName: 'Teacher', menuVisible: true, dropdownVisible: true, pageVisible: true },
+            { roleId: 'student', roleName: 'Student', menuVisible: true, dropdownVisible: true, pageVisible: true }
+          ]
+        },
+        {
+          id: '/login', path: '/login', label: '登入', permissions: [
+            { roleId: 'admin', roleName: 'Admin', menuVisible: false, dropdownVisible: false, pageVisible: true },
+            { roleId: 'teacher', roleName: 'Teacher', menuVisible: false, dropdownVisible: false, pageVisible: true },
+            { roleId: 'student', roleName: 'Student', menuVisible: false, dropdownVisible: false, pageVisible: true }
+          ]
+        },
+        {
+          id: '/register', path: '/register', label: '註冊', permissions: [
+            { roleId: 'admin', roleName: 'Admin', menuVisible: false, dropdownVisible: false, pageVisible: true },
+            { roleId: 'teacher', roleName: 'Teacher', menuVisible: false, dropdownVisible: false, pageVisible: true },
+            { roleId: 'student', roleName: 'Student', menuVisible: false, dropdownVisible: false, pageVisible: true }
+          ]
+        },
+        {
+          id: '/profile', path: '/profile', label: '個人資料', permissions: [
+            { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
+            { roleId: 'teacher', roleName: 'Teacher', menuVisible: true, dropdownVisible: true, pageVisible: true },
+            { roleId: 'student', roleName: 'Student', menuVisible: true, dropdownVisible: true, pageVisible: true }
+          ]
+        },
+        {
+          id: '/settings', path: '/settings', label: '個人設定', permissions: [
+            { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
+            { roleId: 'teacher', roleName: 'Teacher', menuVisible: true, dropdownVisible: true, pageVisible: true },
+            { roleId: 'student', roleName: 'Student', menuVisible: true, dropdownVisible: true, pageVisible: true }
+          ]
+        },
+        {
+          id: '/teacher_courses', path: '/teacher_courses', label: '老師的課程訂單', permissions: [
+            { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
+            { roleId: 'teacher', roleName: 'Teacher', menuVisible: true, dropdownVisible: true, pageVisible: true },
+            { roleId: 'student', roleName: 'Student', menuVisible: true, dropdownVisible: true, pageVisible: true }
+          ]
+        },
+        {
+          id: '/student_courses', path: '/student_courses', label: '學生的課程訂單', permissions: [
+            { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
+            { roleId: 'teacher', roleName: 'Teacher', menuVisible: true, dropdownVisible: true, pageVisible: true },
+            { roleId: 'student', roleName: 'Student', menuVisible: true, dropdownVisible: true, pageVisible: true }
+          ]
+        },
+        {
+          id: '/enrollments', path: '/enrollments', label: '報名記錄', permissions: [
+            { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
+            { roleId: 'teacher', roleName: 'Teacher', menuVisible: true, dropdownVisible: true, pageVisible: true },
+            { roleId: 'student', roleName: 'Student', menuVisible: true, dropdownVisible: true, pageVisible: true }
+          ]
+        },
+        {
+          id: '/dashboard/teacher', path: '/dashboard/teacher', label: '教師儀表板', permissions: [
+            { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
+            { roleId: 'teacher', roleName: 'Teacher', menuVisible: true, dropdownVisible: true, pageVisible: true },
+            { roleId: 'student', roleName: 'Student', menuVisible: false, dropdownVisible: false, pageVisible: false }
+          ]
+        },
+        {
+          id: '/classroom', path: '/classroom', label: '教室', permissions: [
+            { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
+            { roleId: 'teacher', roleName: 'Teacher', menuVisible: true, dropdownVisible: true, pageVisible: true },
+            { roleId: 'student', roleName: 'Student', menuVisible: true, dropdownVisible: true, pageVisible: true }
+          ]
+        },
+        {
+          id: '/whiteboard', path: '/whiteboard', label: '白板', permissions: [
+            { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
+            { roleId: 'teacher', roleName: 'Teacher', menuVisible: true, dropdownVisible: true, pageVisible: true },
+            { roleId: 'student', roleName: 'Student', menuVisible: true, dropdownVisible: true, pageVisible: true }
+          ]
+        },
+        {
+          id: '/admin/dashboard', path: '/admin/dashboard', label: '後台：儀表板', permissions: [
+            { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
+            { roleId: 'teacher', roleName: 'Teacher', menuVisible: false, dropdownVisible: false, pageVisible: false },
+            { roleId: 'student', roleName: 'Student', menuVisible: false, dropdownVisible: false, pageVisible: false }
+          ]
+        },
+        {
+          id: '/admin/orders', path: '/admin/orders', label: '後台：訂單管理', permissions: [
+            { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
+            { roleId: 'teacher', roleName: 'Teacher', menuVisible: false, dropdownVisible: false, pageVisible: false },
+            { roleId: 'student', roleName: 'Student', menuVisible: false, dropdownVisible: false, pageVisible: false }
+          ]
+        },
+        {
+          id: '/admin/whiteboard_canvas', path: '/admin/whiteboard_canvas', label: '後台：原生白板', permissions: [
+            { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
+            { roleId: 'teacher', roleName: 'Teacher', menuVisible: false, dropdownVisible: false, pageVisible: false },
+            { roleId: 'student', roleName: 'Student', menuVisible: false, dropdownVisible: false, pageVisible: false }
+          ]
+        },
+        {
+          id: '/admin/whiteboard_agora', path: '/admin/whiteboard_agora', label: '後台：Agora 設定', permissions: [
+            { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
+            { roleId: 'teacher', roleName: 'Teacher', menuVisible: false, dropdownVisible: false, pageVisible: false },
+            { roleId: 'student', roleName: 'Student', menuVisible: false, dropdownVisible: false, pageVisible: false }
+          ]
+        },
+        {
+          id: '/admin/roles', path: '/admin/roles', label: '後台：角色管理', permissions: [
+            { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
+            { roleId: 'teacher', roleName: 'Teacher', menuVisible: false, dropdownVisible: false, pageVisible: false },
+            { roleId: 'student', roleName: 'Student', menuVisible: false, dropdownVisible: false, pageVisible: false }
+          ]
+        },
+        {
+          id: '/admin/settings', path: '/admin/settings', label: '後台：網站設定', permissions: [
+            { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
+            { roleId: 'teacher', roleName: 'Teacher', menuVisible: false, dropdownVisible: false, pageVisible: false },
+            { roleId: 'student', roleName: 'Student', menuVisible: false, dropdownVisible: false, pageVisible: false }
+          ]
+        },
+        {
+          id: '/carousel', path: '/carousel', label: '後台：輪播圖管理', permissions: [
+            { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
+            { roleId: 'teacher', roleName: 'Teacher', menuVisible: false, dropdownVisible: false, pageVisible: false },
+            { roleId: 'student', roleName: 'Student', menuVisible: false, dropdownVisible: false, pageVisible: false }
+          ]
+        }
       ]
     };
   }
@@ -160,9 +206,9 @@ async function readSettings() {
 // 转换旧格式到新格式的辅助函数
 function convertOldSettingsToNew(oldSettings: any) {
   const roles = [
-    { id: 'admin', name: 'Admin', description: '管理员', isActive: true },
-    { id: 'teacher', name: 'Teacher', description: '教师', isActive: true },
-    { id: 'student', name: 'Student', description: '学生', isActive: true }
+    { id: 'admin', name: 'Admin', description: '管理者', isActive: true },
+    { id: 'teacher', name: 'Teacher', description: '老師', isActive: true },
+    { id: 'student', name: 'Student', description: '學生', isActive: true }
   ];
 
   const pageConfigs = Object.entries(oldSettings.pageVisibility || {}).map(([path, config]: [string, any]) => ({

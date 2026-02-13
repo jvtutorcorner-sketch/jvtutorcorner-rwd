@@ -9,7 +9,7 @@ import resolveDataFile from '@/lib/localData';
 // Development fallback: keep carousel images in memory when DynamoDB isn't configured
 let LOCAL_CAROUSEL_IMAGES: CarouselImage[] = [];
 const CAROUSEL_TABLE = process.env.DYNAMODB_TABLE_CAROUSEL || 'jvtutorcorner-carousel';
-const useDynamo = process.env.NODE_ENV === 'production' || (!!process.env.DYNAMODB_TABLE_CAROUSEL && process.env.DYNAMODB_TABLE_CAROUSEL !== '');
+const useDynamo = process.env.NODE_ENV === 'production' && !!process.env.DYNAMODB_TABLE_CAROUSEL;
 
 let isInitialized = false;
 let initPromise: Promise<void> | null = null;
@@ -59,7 +59,22 @@ if (!useDynamo) {
   console.log(`[carousel API] Using DynamoDB mode (Table: ${CAROUSEL_TABLE})`);
 }
 
+export async function GET() {
+  try {
+    if (!useDynamo) {
+      await ensureInitialized();
+      // Use local storage in development - only return S3-stored images
+      let images = [...LOCAL_CAROUSEL_IMAGES];
+      return NextResponse.json(images.sort((a, b) => a.order - b.order));
+    }
 
+    const images = await getCarouselImages();
+    return NextResponse.json(images);
+  } catch (error) {
+    console.error('Error fetching carousel images:', error);
+    return NextResponse.json({ error: 'Failed to fetch images' }, { status: 500 });
+  }
+}
 
 export async function POST(request: NextRequest) {
   console.log('[Carousel API] POST request received');
@@ -111,13 +126,16 @@ export async function POST(request: NextRequest) {
 
     console.log('[Carousel API] Image successfully added to DynamoDB:', image);
     return NextResponse.json(image);
-  } catch (error) {
+  } catch (error: any) {
     console.error('[Carousel API] Error adding carousel image:', {
       error: error instanceof Error ? error.message : error,
       stack: error instanceof Error ? error.stack : undefined,
       name: error instanceof Error ? error.name : undefined
     });
-    return NextResponse.json({ error: 'Failed to add image' }, { status: 500 });
+    return NextResponse.json({
+      error: 'Failed to add image',
+      message: error?.message || 'Database error'
+    }, { status: 500 });
   }
 }
 

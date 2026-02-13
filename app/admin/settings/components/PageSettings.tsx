@@ -7,15 +7,15 @@ type PageConfig = { id: string; path: string; label?: string; permissions: PageP
 type Role = { id: string; name: string; description?: string; isActive: boolean };
 type Settings = { pageConfigs: PageConfig[] } & Record<string, any>;
 
-export default function PageSettings({ 
-  settings, 
-  setSettings, 
+export default function PageSettings({
+  settings,
+  setSettings,
   roles,
   pathFilter,
   allowAddRemove = true
-}: { 
-  settings: any | null; 
-  setSettings: React.Dispatch<React.SetStateAction<any | null>>; 
+}: {
+  settings: any | null;
+  setSettings: React.Dispatch<React.SetStateAction<any | null>>;
   roles: any[];
   pathFilter?: (path: string) => boolean;
   allowAddRemove?: boolean;
@@ -24,6 +24,7 @@ export default function PageSettings({
   const [newLabel, setNewLabel] = useState('');
   const [editingPath, setEditingPath] = useState<string | null>(null);
   const [editingLabel, setEditingLabel] = useState('');
+  const [editingPathValue, setEditingPathValue] = useState('');
   const [checkingPath, setCheckingPath] = useState<string | null>(null);
 
   function addPage() {
@@ -45,26 +46,32 @@ export default function PageSettings({
   }
 
   function startEdit(p: PageConfig) {
-    const ok = confirm(`確定要編輯 ${p.path} 的標籤嗎？`);
+    const ok = confirm(`確定要編輯 ${p.path} 的設定嗎？`);
     if (!ok) return;
     setEditingPath(p.path);
     setEditingLabel(p.label || '');
+    setEditingPathValue(p.path);
   }
 
   function cancelEdit() {
     setEditingPath(null);
     setEditingLabel('');
+    setEditingPathValue('');
   }
 
-  function saveEdit(path: string) {
+  function saveEdit(oldPath: string) {
     if (!settings) return;
     const label = (editingLabel || '').trim();
+    const newPath = (editingPathValue || '').trim();
+    if (!newPath) return alert('路徑不能為空');
+
     setSettings((prev: Settings | null) => prev ? {
       ...prev,
-      pageConfigs: prev.pageConfigs.map(pc => pc.path === path ? { ...pc, label: label || pc.path } : pc)
+      pageConfigs: prev.pageConfigs.map(pc => pc.path === oldPath ? { ...pc, label: label || pc.path, path: newPath } : pc)
     } : prev);
     setEditingPath(null);
     setEditingLabel('');
+    setEditingPathValue('');
   }
 
   function checkLink(path: string) {
@@ -113,37 +120,43 @@ export default function PageSettings({
             {settings.pageConfigs
               .filter((p: PageConfig) => pathFilter ? pathFilter(p.path) : true)
               .map((p: PageConfig) => (
-              <tr key={p.path}>
-                <td style={{ padding: 8, border: '2px solid #ccc' }}>
-                  {editingPath === p.path ? (
-                    <input value={editingLabel} onChange={(e) => setEditingLabel(e.target.value)} style={{ padding: 6, minWidth: 180 }} />
-                  ) : (
-                    p.label
-                  )}
-                </td>
-                <td style={{ padding: 8, border: '2px solid #ccc' }}>{p.path}</td>
-                <td style={{ padding: 8, border: '2px solid #ccc', textAlign: 'center' }}>
-                  <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
-                    <button onClick={() => checkLink(p.path)} disabled={checkingPath === p.path}>{checkingPath === p.path ? '檢查中…' : '檢查連結'}</button>
-                  </div>
-                </td>
-                {allowAddRemove && (
-                  <td style={{ padding: 8, textAlign: 'center', border: '2px solid #ccc' }}>
+                <tr key={p.path}>
+                  <td style={{ padding: 8, border: '2px solid #ccc' }}>
                     {editingPath === p.path ? (
-                      <>
-                        <button onClick={() => saveEdit(p.path)} style={{ marginRight: 8 }}>儲存標籤</button>
-                        <button onClick={cancelEdit}>取消</button>
-                      </>
+                      <input value={editingLabel} onChange={(e) => setEditingLabel(e.target.value)} style={{ padding: 6, minWidth: 180 }} />
                     ) : (
-                      <>
-                        <button onClick={() => startEdit(p)} style={{ marginRight: 8 }}>編輯</button>
-                        <button onClick={() => removePage(p.path)} style={{ color: 'crimson' }}>刪除</button>
-                      </>
+                      p.label
                     )}
                   </td>
-                )}
-              </tr>
-            ))}
+                  <td style={{ padding: 8, border: '2px solid #ccc' }}>
+                    {editingPath === p.path ? (
+                      <input value={editingPathValue} onChange={(e) => setEditingPathValue(e.target.value)} style={{ padding: 6, minWidth: 180 }} />
+                    ) : (
+                      p.path
+                    )}
+                  </td>
+                  <td style={{ padding: 8, border: '2px solid #ccc', textAlign: 'center' }}>
+                    <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+                      <button onClick={() => checkLink(p.path)} disabled={checkingPath === p.path}>{checkingPath === p.path ? '檢查中…' : '檢查連結'}</button>
+                    </div>
+                  </td>
+                  {allowAddRemove && (
+                    <td style={{ padding: 8, textAlign: 'center', border: '2px solid #ccc' }}>
+                      {editingPath === p.path ? (
+                        <>
+                          <button onClick={() => saveEdit(p.path)} style={{ marginRight: 8 }}>儲存標籤</button>
+                          <button onClick={cancelEdit}>取消</button>
+                        </>
+                      ) : (
+                        <>
+                          <button onClick={() => startEdit(p)} style={{ marginRight: 8 }}>編輯</button>
+                          <button onClick={() => removePage(p.path)} style={{ color: 'crimson' }}>刪除</button>
+                        </>
+                      )}
+                    </td>
+                  )}
+                </tr>
+              ))}
           </tbody>
         </table>
       </div>
