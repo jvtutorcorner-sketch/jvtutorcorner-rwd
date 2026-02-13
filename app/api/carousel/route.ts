@@ -1,36 +1,36 @@
-// app/api/carousel/route.ts
+
 import { NextRequest, NextResponse } from 'next/server';
-import path from 'path';
-import { getCarouselImages, addCarouselImage, deleteCarouselImage, CarouselImage } from '@/lib/carousel';
-import { deleteFromS3, getS3KeyFromUrl } from '@/lib/s3';
-import fs from 'fs';
-import resolveDataFile from '@/lib/localData';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, PutCommand, DeleteCommand, ScanCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
+import { deleteFromS3, getS3KeyFromUrl } from '@/lib/s3';
+import { CarouselImage } from '@/lib/carousel'; // Type only
+import path from 'path';
+import fs from 'fs';
+import resolveDataFile from '@/lib/localData';
 
 // 強制動態執行，避免被 Next.js 快取
 export const dynamic = 'force-dynamic';
 
-// 檢查所有可能的 Region 變數來源
-const REGION = process.env.CI_AWS_REGION || process.env.AWS_REGION || 'ap-northeast-1';
-// 檢查 Table 名稱變數
-const TABLE_NAME = process.env.DYNAMODB_TABLE_CAROUSEL || 'jvtutorcorner-carousel';
+// Helper to get DB client
+function getDB() {
+  // 檢查所有可能的 Region 變數來源
+  const REGION = process.env.CI_AWS_REGION || process.env.AWS_REGION || 'ap-northeast-1';
+  // 檢查 Table 名稱變數
+  const TABLE_NAME = process.env.DYNAMODB_TABLE_CAROUSEL || 'jvtutorcorner-carousel';
 
-// Development fallback: keep carousel images in memory when DynamoDB isn't configured
-let LOCAL_CAROUSEL_IMAGES: CarouselImage[] = [];
-// Use DynamoDB in production OR if table name is explicitly set
-const useDynamo = process.env.NODE_ENV === 'production' || !!process.env.DYNAMODB_TABLE_CAROUSEL;
+  // Use DynamoDB in production OR if table name is explicitly set
+  const useDynamo = process.env.NODE_ENV === 'production' || !!process.env.DYNAMODB_TABLE_CAROUSEL;
 
-let client: DynamoDBClient;
-let docClient: DynamoDBDocumentClient;
+  if (!useDynamo) return null;
 
-if (useDynamo) {
-  console.log(`[Carousel API] Initializing DynamoDB Client (Region: ${REGION})`);
-  client = new DynamoDBClient({ region: REGION });
-  client = new DynamoDBClient({ region: REGION });
-  docClient = DynamoDBDocumentClient.from(client);
+  const client = new DynamoDBClient({ region: REGION });
+  const docClient = DynamoDBDocumentClient.from(client);
+
+  return { docClient, TABLE_NAME };
 }
 
+// Development fallback globals
+let LOCAL_CAROUSEL_IMAGES: CarouselImage[] = [];
 let isInitialized = false;
 let initPromise: Promise<void> | null = null;
 
@@ -67,33 +67,21 @@ async function saveLocalCarouselImages() {
   }
 }
 
-if (!useDynamo) {
-  console.warn(`[carousel API] Not using DynamoDB (NODE_ENV=${process.env.NODE_ENV}). Using LOCAL_CAROUSEL_IMAGES fallback.`);
-  // load persisted carousel images in dev (non-blocking)
-  loadLocalCarouselImages().then(() => {
-    console.log('[carousel API] Initial load completed, images count:', LOCAL_CAROUSEL_IMAGES.length);
-  }).catch((err) => {
-    console.error('[carousel API] Initial load failed:', err);
-  });
-} else {
-  console.log(`[carousel API] Using DynamoDB mode (Table: ${TABLE_NAME})`);
-}
-
 export async function GET() {
   try {
-    if (!useDynamo) {
+    const db = getDB();
+
+    if (!db) {
       await ensureInitialized();
-      // Use local storage in development - only return S3-stored images
+      // Use local storage in development
       let images = [...LOCAL_CAROUSEL_IMAGES];
       return NextResponse.json(images.sort((a, b) => a.order - b.order));
     }
 
-    // Use direct DynamoDB Client
-    console.log(`[Carousel API] GET Request - Fetching from DynamoDB (Table: ${TABLE_NAME})`);
-    const command = new ScanCommand({
-      TableName: TABLE_NAME,
-    });
+    const { docClient, TABLE_NAME } = db;
 
+    console.log(`[Carousel API] GET Request - Fetching from DynamoDB (Table: ${TABLE_NAME})`);
+    const command = new ScanCommand({ TableName: TABLE_NAME });
     const response = await docClient.send(command);
     const items = response.Items || [];
 
@@ -111,9 +99,11 @@ export async function POST(request: NextRequest) {
   console.log('[Carousel API] POST request received');
 
   try {
-    if (!useDynamo) {
+    const db = getDB();
+    if (!db) {
       await ensureInitialized();
     }
+
     const body = await request.json();
     const { url, alt, order } = body;
 
@@ -124,12 +114,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    if (!useDynamo) {
-      console.log('[Carousel API] Using local storage mode');
-      // Use local storage in development
-      const id = `carousel-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      const now = new Date().toISOString();
+    // Common Item Data
+    const id = `carousel-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const now = new Date().toISOString();
 
+    // Check if using local storage
+    if (!db) {
+      console.log('[Carousel API] Using local storage mode');
       const newImage: CarouselImage = {
         id,
         url,
@@ -140,7 +131,6 @@ export async function POST(request: NextRequest) {
       };
 
       LOCAL_CAROUSEL_IMAGES.push(newImage);
-      console.log('[Carousel API] Image added to local storage:', newImage);
       saveLocalCarouselImages().catch((error) => {
         console.error('[Carousel API] Failed to save to local file:', error);
       });
@@ -148,11 +138,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(newImage);
     }
 
+    // DynamoDB Mode
+    const { docClient, TABLE_NAME } = db;
     console.log('[Carousel API] Using DynamoDB mode, Executing PutCommand...');
-
-    // Prepare Item
-    const id = `carousel-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    const now = new Date().toISOString();
 
     const newItem = {
       id,
@@ -172,6 +160,7 @@ export async function POST(request: NextRequest) {
 
     console.log('[Carousel API] Image successfully added to DynamoDB:', newItem);
     return NextResponse.json(newItem);
+
   } catch (error) {
     console.error('[Carousel API] Error adding carousel image:', {
       error: error instanceof Error ? error.message : error,
@@ -184,9 +173,9 @@ export async function POST(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
-    if (!useDynamo) {
-      await ensureInitialized();
-    }
+    const db = getDB();
+    if (!db) await ensureInitialized();
+
     const body = await request.json();
     const { id, order } = body;
 
@@ -194,8 +183,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    if (!useDynamo) {
-      // Use local storage in development
+    if (!db) {
       const imageIndex = LOCAL_CAROUSEL_IMAGES.findIndex(img => img.id === id);
       if (imageIndex >= 0) {
         LOCAL_CAROUSEL_IMAGES[imageIndex].order = order;
@@ -206,8 +194,8 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Image not found' }, { status: 404 });
     }
 
-    // For DynamoDB, we would need to update the item
-    // Since this is a simple implementation, we'll just return success
+    // For DynamoDB, we would normally update. For now returning success as per previous impl.
+    // In a full implementation, we'd do an UpdateCommand here.
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Error updating carousel image order:', error);
@@ -217,9 +205,9 @@ export async function PATCH(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    if (!useDynamo) {
-      await ensureInitialized();
-    }
+    const db = getDB();
+    if (!db) await ensureInitialized();
+
     const url = new URL(request.url);
     const id = url.searchParams.get('id');
 
@@ -229,8 +217,8 @@ export async function DELETE(request: NextRequest) {
 
     let imageToDelete: CarouselImage | undefined;
 
-    if (!useDynamo) {
-      // Use local storage in development
+    if (!db) {
+      // Local Storage
       const imageIndex = LOCAL_CAROUSEL_IMAGES.findIndex(img => img.id === id);
       if (imageIndex >= 0) {
         imageToDelete = LOCAL_CAROUSEL_IMAGES[imageIndex];
@@ -240,7 +228,10 @@ export async function DELETE(request: NextRequest) {
         return NextResponse.json({ error: 'Image not found' }, { status: 404 });
       }
     } else {
-      // For DynamoDB, we need to get the image first to get the URL for S3 deletion
+      // DynamoDB
+      const { docClient, TABLE_NAME } = db;
+
+      // Get item first to find S3 URL
       const getCommand = new GetCommand({
         TableName: TABLE_NAME,
         Key: { id }
@@ -259,38 +250,24 @@ export async function DELETE(request: NextRequest) {
       }));
     }
 
-    // Delete from S3 and local cache if it's an S3/Proxy URL
+    // Delete S3 Object
     const imageUrl = imageToDelete.url;
     if (imageUrl && !imageUrl.startsWith('data:')) {
       try {
         const s3Key = getS3KeyFromUrl(imageUrl);
         if (s3Key) {
           console.log('[Carousel API] Deleting S3 key:', s3Key);
-
-          // 1. Delete from S3
           await deleteFromS3(s3Key);
-          console.log('[Carousel API] ✓ S3 object deleted');
 
-          // 2. Delete local cache file
-          // The key might be "carousel/filename.ext" or just "filename.ext" depending on how it was stored
-          // Our getS3KeyFromUrl usually returns "carousel/filename.ext"
+          // Try cleanup local cache if exists
           const relativePath = s3Key.replace(/^carousel\//, '');
           const localCachePath = path.resolve(process.cwd(), '.uploads', 'carousel', relativePath);
-
           if (fs.existsSync(localCachePath)) {
-            try {
-              fs.unlinkSync(localCachePath);
-              console.log('[Carousel API] ✓ Local cache file deleted:', localCachePath);
-            } catch (err) {
-              console.warn('[Carousel API] ! Failed to delete local cache file:', err);
-            }
-          } else {
-            console.log('[Carousel API] Local cache file not found:', localCachePath);
+            try { fs.unlinkSync(localCachePath); } catch (e) { }
           }
         }
       } catch (s3Error) {
         console.warn('[Carousel API] ! Failed to delete image from S3/Local:', s3Error);
-        // Don't fail the whole operation if deletion fails, as the DB entry is gone
       }
     }
 
