@@ -2,10 +2,10 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, PutCommand, GetCommand, ScanCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
 
-const client = new DynamoDBClient({ region: process.env.AWS_REGION || 'ap-northeast-1' });
+const client = new DynamoDBClient({ region: process.env.AWS_REGION || process.env.CI_AWS_REGION || 'ap-northeast-1' });
 const docClient = DynamoDBDocumentClient.from(client);
 
-const TABLE_NAME = 'jvtutorcorner-carousel';
+const TABLE_NAME = process.env.DYNAMODB_TABLE_CAROUSEL || 'jvtutorcorner-carousel';
 
 export interface CarouselImage {
   id: string;

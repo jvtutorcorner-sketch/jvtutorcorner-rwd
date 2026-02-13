@@ -69,11 +69,21 @@ export default function AdminCarouselPage() {
         const data = await response.json();
         setImages(data);
 
-        // 獲取每張圖片的詳細信息
+        // 獲取每張圖片的詳細信息 (並行處理以提高速度)
+        const detailsPromises = data.map(async (image: CarouselImage) => {
+          try {
+            const detail = await getImageDetails(image.url);
+            return { id: image.id, detail };
+          } catch (e) {
+            return { id: image.id, detail: { width: 0, height: 0, size: 0 } };
+          }
+        });
+
+        const detailsResults = await Promise.all(detailsPromises);
         const details: Record<string, { width: number; height: number; size: number }> = {};
-        for (const image of data) {
-          details[image.id] = await getImageDetails(image.url);
-        }
+        detailsResults.forEach(res => {
+          details[res.id] = res.detail;
+        });
         setImageDetails(details);
       }
     } catch (error) {

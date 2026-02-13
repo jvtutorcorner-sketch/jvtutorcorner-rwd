@@ -3,10 +3,11 @@ import path from 'path';
 import fs from 'fs';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { Readable } from 'stream';
+import { getSignedUrlForKey } from '@/lib/s3';
 
 // Reuse S3 config logic or just direct client for simplicity here
 const getS3Client = () => {
-  const awsRegion = process.env.AWS_REGION || 'ap-northeast-1';
+  const awsRegion = process.env.AWS_REGION || process.env.CI_AWS_REGION;
   const accessKey = process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID;
   const secretKey = process.env.AWS_SECRET_ACCESS_KEY || process.env.CI_AWS_SECRET_ACCESS_KEY;
 
@@ -65,6 +66,19 @@ export async function GET(
 
     if (!bucketName) {
       return NextResponse.json({ error: 'S3 not configured' }, { status: 500 });
+    }
+
+    // PRODUCTION OPTIMIZATION: Redirect to S3 to bypass 6MB payload limits on Lambda
+    // This is the most robust way to serve large images (>5MB) in Amplify/Vercel
+    if (process.env.NODE_ENV === 'production' || process.env.USE_S3_REDIRECT === 'true') {
+      try {
+        console.log('[Carousel Proxy GET] ➔ Production Redirect to S3:', s3Key);
+        const signedUrl = await getSignedUrlForKey(s3Key, 3600);
+        return NextResponse.redirect(signedUrl);
+      } catch (redirectErr) {
+        console.warn('[Carousel Proxy GET] ! Redirect failed, falling back to proxy:', redirectErr);
+        // Fall through to proxying if redirect generation fails for some reason
+      }
     }
 
     try {
