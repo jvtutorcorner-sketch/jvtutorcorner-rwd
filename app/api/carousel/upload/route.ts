@@ -70,11 +70,16 @@ export async function POST(request: NextRequest) {
 
     console.log('[Carousel Upload API] Buffer created, size:', buffer.length);
 
-    // Check if S3 credentials are available
+    // Check if S3 is configured (favoring Bucket Name for IAM Role support)
+    const hasS3Bucket = !!(process.env.AWS_S3_BUCKET_NAME || process.env.CI_AWS_S3_BUCKET_NAME);
     const hasS3Credentials = !!(process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID);
+    const isProduction = process.env.NODE_ENV === 'production';
 
-    if (!hasS3Credentials) {
-      console.log('[Carousel Upload API] No S3 credentials found, using local storage for development');
+    // In production, we assume S3 is available if a bucket is named (IAM Role will handle creds)
+    const useS3 = hasS3Bucket && (isProduction || hasS3Credentials);
+
+    if (!useS3) {
+      console.log('[Carousel Upload API] S3 not configured or in development without keys, using local storage');
 
       // Generate unique key for local storage
       const timestamp = Date.now();

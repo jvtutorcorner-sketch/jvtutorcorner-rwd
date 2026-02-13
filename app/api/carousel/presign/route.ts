@@ -52,13 +52,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'File size must be less than 20MB' }, { status: 400 });
     }
 
-    // Check if S3 credentials are available
-    const hasS3Credentials = !!(process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID);
+    // Check if S3 is configured (favoring Bucket Name for IAM Role support)
     const hasS3Bucket = !!(process.env.AWS_S3_BUCKET_NAME || process.env.CI_AWS_S3_BUCKET_NAME);
+    const hasS3Credentials = !!(process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID);
     const isProduction = process.env.NODE_ENV === 'production';
 
-    if (!hasS3Credentials || !hasS3Bucket) {
-      console.log('[Carousel Presign API] S3 not configured, returning error to trigger fallback');
+    // In production, we assume S3 is available if a bucket is named (IAM Role will handle creds)
+    const useS3 = hasS3Bucket && (isProduction || hasS3Credentials);
+
+    if (!useS3) {
+      console.log('[Carousel Presign API] S3 not configured or in development without keys, returning error to trigger fallback');
       return NextResponse.json({
         error: 'S3 not configured, use upload API instead'
       }, { status: 400 });
