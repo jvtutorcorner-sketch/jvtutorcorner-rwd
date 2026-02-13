@@ -5,11 +5,31 @@ import { getCarouselImages, addCarouselImage, deleteCarouselImage, CarouselImage
 import { deleteFromS3, getS3KeyFromUrl } from '@/lib/s3';
 import fs from 'fs';
 import resolveDataFile from '@/lib/localData';
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { DynamoDBDocumentClient, PutCommand, DeleteCommand, ScanCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
+
+// 強制動態執行，避免被 Next.js 快取
+export const dynamic = 'force-dynamic';
+
+// 檢查所有可能的 Region 變數來源
+const REGION = process.env.CI_AWS_REGION || process.env.AWS_REGION || 'ap-northeast-1';
+// 檢查 Table 名稱變數
+const TABLE_NAME = process.env.DYNAMODB_TABLE_CAROUSEL || 'jvtutorcorner-carousel';
 
 // Development fallback: keep carousel images in memory when DynamoDB isn't configured
 let LOCAL_CAROUSEL_IMAGES: CarouselImage[] = [];
-const CAROUSEL_TABLE = process.env.DYNAMODB_TABLE_CAROUSEL || 'jvtutorcorner-carousel';
-const useDynamo = process.env.NODE_ENV === 'production' && !!process.env.DYNAMODB_TABLE_CAROUSEL;
+// Use DynamoDB in production OR if table name is explicitly set
+const useDynamo = process.env.NODE_ENV === 'production' || !!process.env.DYNAMODB_TABLE_CAROUSEL;
+
+let client: DynamoDBClient;
+let docClient: DynamoDBDocumentClient;
+
+if (useDynamo) {
+  console.log(`[Carousel API] Initializing DynamoDB Client (Region: ${REGION})`);
+  client = new DynamoDBClient({ region: REGION });
+  client = new DynamoDBClient({ region: REGION });
+  docClient = DynamoDBDocumentClient.from(client);
+}
 
 let isInitialized = false;
 let initPromise: Promise<void> | null = null;
@@ -56,7 +76,7 @@ if (!useDynamo) {
     console.error('[carousel API] Initial load failed:', err);
   });
 } else {
-  console.log(`[carousel API] Using DynamoDB mode (Table: ${CAROUSEL_TABLE})`);
+  console.log(`[carousel API] Using DynamoDB mode (Table: ${TABLE_NAME})`);
 }
 
 export async function GET() {
@@ -68,8 +88,19 @@ export async function GET() {
       return NextResponse.json(images.sort((a, b) => a.order - b.order));
     }
 
-    const images = await getCarouselImages();
-    return NextResponse.json(images);
+    // Use direct DynamoDB Client
+    console.log(`[Carousel API] GET Request - Fetching from DynamoDB (Table: ${TABLE_NAME})`);
+    const command = new ScanCommand({
+      TableName: TABLE_NAME,
+    });
+
+    const response = await docClient.send(command);
+    const items = response.Items || [];
+
+    // Sort by order
+    items.sort((a: any, b: any) => (a.order || 0) - (b.order || 0));
+
+    return NextResponse.json(items);
   } catch (error) {
     console.error('Error fetching carousel images:', error);
     return NextResponse.json({ error: 'Failed to fetch images' }, { status: 500 });
@@ -117,25 +148,37 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(newImage);
     }
 
-    console.log('[Carousel API] Using DynamoDB mode, calling addCarouselImage...');
-    const image = await addCarouselImage({ url, alt, order: order || 0 });
-    if (!image) {
-      console.error('[Carousel API] addCarouselImage returned null');
-      return NextResponse.json({ error: 'Failed to add image' }, { status: 500 });
-    }
+    console.log('[Carousel API] Using DynamoDB mode, Executing PutCommand...');
 
-    console.log('[Carousel API] Image successfully added to DynamoDB:', image);
-    return NextResponse.json(image);
-  } catch (error: any) {
+    // Prepare Item
+    const id = `carousel-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const now = new Date().toISOString();
+
+    const newItem = {
+      id,
+      url,
+      alt,
+      order: typeof order === 'number' ? order : 0,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    const command = new PutCommand({
+      TableName: TABLE_NAME,
+      Item: newItem,
+    });
+
+    await docClient.send(command);
+
+    console.log('[Carousel API] Image successfully added to DynamoDB:', newItem);
+    return NextResponse.json(newItem);
+  } catch (error) {
     console.error('[Carousel API] Error adding carousel image:', {
       error: error instanceof Error ? error.message : error,
       stack: error instanceof Error ? error.stack : undefined,
       name: error instanceof Error ? error.name : undefined
     });
-    return NextResponse.json({
-      error: 'Failed to add image',
-      message: error?.message || 'Database error'
-    }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to add image' }, { status: 500 });
   }
 }
 
@@ -198,16 +241,22 @@ export async function DELETE(request: NextRequest) {
       }
     } else {
       // For DynamoDB, we need to get the image first to get the URL for S3 deletion
-      const images = await getCarouselImages();
-      imageToDelete = images.find(img => img.id === id);
+      const getCommand = new GetCommand({
+        TableName: TABLE_NAME,
+        Key: { id }
+      });
+
+      const getResponse = await docClient.send(getCommand);
+      imageToDelete = getResponse.Item as CarouselImage;
+
       if (!imageToDelete) {
         return NextResponse.json({ error: 'Image not found' }, { status: 404 });
       }
 
-      const success = await deleteCarouselImage(id);
-      if (!success) {
-        return NextResponse.json({ error: 'Failed to delete image from database' }, { status: 500 });
-      }
+      await docClient.send(new DeleteCommand({
+        TableName: TABLE_NAME,
+        Key: { id }
+      }));
     }
 
     // Delete from S3 and local cache if it's an S3/Proxy URL
