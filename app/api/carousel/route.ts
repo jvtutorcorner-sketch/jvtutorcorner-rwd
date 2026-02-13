@@ -6,21 +6,10 @@ import { deleteFromS3, getS3KeyFromUrl } from '@/lib/s3';
 import fs from 'fs';
 import resolveDataFile from '@/lib/localData';
 
-function convertToProxyUrl(url: string): string {
-  if (url && (url.includes('s3.') || url.includes('amazonaws.com'))) {
-    const key = getS3KeyFromUrl(url);
-    if (key && key.startsWith('carousel/')) {
-      return `/api/uploads/${key}`;
-    }
-  }
-  return url;
-}
-
 // Development fallback: keep carousel images in memory when DynamoDB isn't configured
 let LOCAL_CAROUSEL_IMAGES: CarouselImage[] = [];
-const CAROUSEL_TABLE = process.env.DYNAMODB_TABLE_CAROUSEL;
-const useDynamo =
-  process.env.NODE_ENV === 'production' && typeof CAROUSEL_TABLE === 'string' && CAROUSEL_TABLE.length > 0;
+const CAROUSEL_TABLE = process.env.DYNAMODB_TABLE_CAROUSEL || 'jvtutorcorner-carousel';
+const useDynamo = process.env.NODE_ENV === 'production' || (!!process.env.DYNAMODB_TABLE_CAROUSEL && process.env.DYNAMODB_TABLE_CAROUSEL !== '');
 
 let isInitialized = false;
 let initPromise: Promise<void> | null = null;
@@ -59,44 +48,18 @@ async function saveLocalCarouselImages() {
 }
 
 if (!useDynamo) {
-  console.warn(`[carousel API] Not using DynamoDB (NODE_ENV=${process.env.NODE_ENV}, DYNAMODB_TABLE_CAROUSEL=${CAROUSEL_TABLE}). Using LOCAL_CAROUSEL_IMAGES fallback.`);
+  console.warn(`[carousel API] Not using DynamoDB (NODE_ENV=${process.env.NODE_ENV}). Using LOCAL_CAROUSEL_IMAGES fallback.`);
   // load persisted carousel images in dev (non-blocking)
   loadLocalCarouselImages().then(() => {
     console.log('[carousel API] Initial load completed, images count:', LOCAL_CAROUSEL_IMAGES.length);
   }).catch((err) => {
     console.error('[carousel API] Initial load failed:', err);
   });
+} else {
+  console.log(`[carousel API] Using DynamoDB mode (Table: ${CAROUSEL_TABLE})`);
 }
 
-export async function GET() {
-  try {
-    if (!useDynamo) {
-      await ensureInitialized();
-      // Use local storage in development - only return S3-stored images
-      let images = [...LOCAL_CAROUSEL_IMAGES];
 
-      // Proxy S3 images through local API to avoid CORS/access issues
-      const proxiedImages = images.map(img => ({
-        ...img,
-        url: convertToProxyUrl(img.url)
-      }));
-
-      return NextResponse.json(proxiedImages.sort((a, b) => a.order - b.order));
-    }
-
-    const images = await getCarouselImages();
-    // Proxy S3 images through local API to avoid CORS/access issues
-    const proxiedImages = images.map(img => ({
-      ...img,
-      url: convertToProxyUrl(img.url)
-    }));
-
-    return NextResponse.json(proxiedImages);
-  } catch (error) {
-    console.error('Error fetching carousel images:', error);
-    return NextResponse.json({ error: 'Failed to fetch images' }, { status: 500 });
-  }
-}
 
 export async function POST(request: NextRequest) {
   console.log('[Carousel API] POST request received');
@@ -136,10 +99,7 @@ export async function POST(request: NextRequest) {
         console.error('[Carousel API] Failed to save to local file:', error);
       });
 
-      return NextResponse.json({
-        ...newImage,
-        url: convertToProxyUrl(newImage.url)
-      });
+      return NextResponse.json(newImage);
     }
 
     console.log('[Carousel API] Using DynamoDB mode, calling addCarouselImage...');
@@ -150,10 +110,7 @@ export async function POST(request: NextRequest) {
     }
 
     console.log('[Carousel API] Image successfully added to DynamoDB:', image);
-    return NextResponse.json({
-      ...image,
-      url: convertToProxyUrl(image.url)
-    });
+    return NextResponse.json(image);
   } catch (error) {
     console.error('[Carousel API] Error adding carousel image:', {
       error: error instanceof Error ? error.message : error,
