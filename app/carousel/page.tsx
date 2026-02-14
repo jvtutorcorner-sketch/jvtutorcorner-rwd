@@ -154,6 +154,84 @@ export default function AdminCarouselPage() {
     return <div className="p-8 text-center text-gray-500">Checking authentication...</div>;
   }
 
+  // 圖片壓縮函數
+  const compressImage = async (file: File, maxSizeMB: number = 5): Promise<File> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target?.result as string;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+
+          // 如果圖片太大，按比例縮小
+          const MAX_DIMENSION = 1920; // 最大寬度或高度
+          if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
+            if (width > height) {
+              height = (height / width) * MAX_DIMENSION;
+              width = MAX_DIMENSION;
+            } else {
+              width = (width / height) * MAX_DIMENSION;
+              height = MAX_DIMENSION;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            reject(new Error('Failed to get canvas context'));
+            return;
+          }
+          ctx.drawImage(img, 0, 0, width, height);
+
+          // 使用較低的品質進行壓縮
+          let quality = 0.9;
+          const attemptCompress = () => {
+            canvas.toBlob(
+              (blob) => {
+                if (!blob) {
+                  reject(new Error('Failed to compress image'));
+                  return;
+                }
+
+                // 如果壓縮後仍然太大，降低品質重試
+                if (blob.size > maxSizeMB * 1024 * 1024 && quality > 0.5) {
+                  quality -= 0.1;
+                  console.log(`[Carousel Upload] Image still too large (${(blob.size / 1024 / 1024).toFixed(2)}MB), retrying with quality ${quality.toFixed(1)}`);
+                  attemptCompress();
+                  return;
+                }
+
+                const compressedFile = new File([blob], file.name, {
+                  type: 'image/jpeg',
+                  lastModified: Date.now(),
+                });
+
+                console.log('[Carousel Upload] Image compressed:', {
+                  originalSize: file.size,
+                  compressedSize: compressedFile.size,
+                  reduction: ((1 - compressedFile.size / file.size) * 100).toFixed(1) + '%'
+                });
+
+                resolve(compressedFile);
+              },
+              'image/jpeg',
+              quality
+            );
+          };
+
+          attemptCompress();
+        };
+        img.onerror = () => reject(new Error('Failed to load image'));
+      };
+      reader.onerror = () => reject(new Error('Failed to read file'));
+    });
+  };
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -191,6 +269,22 @@ export default function AdminCarouselPage() {
     setMessage(null);
 
     try {
+      // 如果檔案大於 5MB，自動壓縮
+      let fileToUpload = file;
+      if (file.size > 5 * 1024 * 1024) {
+        console.log('[Carousel Upload] File is large, compressing...');
+        setMessage('圖片較大，正在壓縮...');
+        try {
+          fileToUpload = await compressImage(file, 5);
+          console.log('[Carousel Upload] Compression successful');
+          setMessage(null);
+        } catch (compressError) {
+          console.error('[Carousel Upload] Compression failed:', compressError);
+          setMessage('圖片壓縮失敗，嘗試上傳原檔...');
+          fileToUpload = file; // 如果壓縮失敗，使用原檔案
+        }
+      }
+
       let finalUrl: string | undefined;
       let finalAlt: string | undefined;
 
@@ -201,7 +295,7 @@ export default function AdminCarouselPage() {
         console.log('[Carousel Upload] Development mode detected, skipping presign and using server-side upload...');
         
         const formData = new FormData();
-        formData.append('file', file);
+        formData.append('file', fileToUpload);
         formData.append('alt', file.name);
 
         console.log('[Carousel Upload] Calling /api/carousel/upload');
@@ -217,6 +311,11 @@ export default function AdminCarouselPage() {
         if (!uploadResponse.ok) {
           const errText = await uploadResponse.text().catch(() => 'Unknown error');
           console.error('[Carousel Upload] Upload API returned error:', uploadResponse.status, errText);
+          
+          if (uploadResponse.status === 413) {
+            throw new Error('圖片太大，請選擇較小的圖片（建議 5MB 以下）');
+          }
+          
           throw new Error(`Upload failed: ${errText}`);
         }
 
@@ -238,7 +337,7 @@ export default function AdminCarouselPage() {
         const presignResp = await fetch('/api/carousel/presign', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ fileName: file.name, mimeType: file.type, fileSize: file.size }),
+          body: JSON.stringify({ fileName: file.name, mimeType: fileToUpload.type, fileSize: fileToUpload.size }),
         });
 
         console.log('[Carousel Upload] Presign response status:', presignResp.status, 'ok:', presignResp.ok);
@@ -258,7 +357,7 @@ export default function AdminCarouselPage() {
           }
 
           const formData = new FormData();
-          formData.append('file', file);
+          formData.append('file', fileToUpload);
           formData.append('alt', file.name);
 
             console.log('[Carousel Upload] Calling /api/carousel/upload with fallback');
@@ -274,6 +373,11 @@ export default function AdminCarouselPage() {
           if (!uploadResponse.ok) {
             const errText = await uploadResponse.text().catch(() => 'Unknown error');
             console.error('[Carousel Upload] Upload API returned error:', uploadResponse.status, errText);
+            
+            if (uploadResponse.status === 413) {
+              throw new Error('圖片太大，請選擇較小的圖片（建議 5MB 以下）');
+            }
+            
             throw new Error(`Fallback upload failed: ${errText}`);
           }
 
@@ -322,8 +426,8 @@ export default function AdminCarouselPage() {
             console.log('[Carousel Upload] Calling fetch with method PUT');
             putResp = await fetch(presignData.url, {
               method: 'PUT',
-              headers: { 'Content-Type': file.type },
-              body: file,
+              headers: { 'Content-Type': fileToUpload.type },
+              body: fileToUpload,
             });
             console.log('[Carousel Upload] PUT completed with status:', putResp.status);
           } catch (putError) {

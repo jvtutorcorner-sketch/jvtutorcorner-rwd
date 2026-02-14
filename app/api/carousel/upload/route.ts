@@ -4,6 +4,10 @@ import { uploadToS3 } from '@/lib/s3';
 import fs from 'fs';
 import path from 'path';
 
+// Increase body size limit for image uploads
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
 // If process.env lacks AWS creds (dev server started earlier), try loading from .env.local
 function loadAwsEnvFromDotenv() {
   try {
