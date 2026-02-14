@@ -20,45 +20,10 @@ export default function AdminCarouselPage() {
   const [authChecking, setAuthChecking] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [imageDetails, setImageDetails] = useState<Record<string, { width: number; height: number; size: number }>>({});
 
-  // 獲取圖片詳細信息（尺寸和檔案大小）
-  const getImageDetails = (url: string): Promise<{ width: number; height: number; size: number }> => {
-    return new Promise((resolve) => {
-      const img = new Image();
+  // 獲取圖片詳細信息（尺寸和檔案大小） - 已移除以優化效能
+  // const [imageDetails, setImageDetails] = useState<Record<string, { width: number; height: number; size: number }>>({});
 
-      // 確保圖片 URL 正確
-      let imageUrl = url;
-      if (url.startsWith('data:')) {
-        imageUrl = url; // base64 URL
-      }
-
-      img.onload = () => {
-        // 估算檔案大小（base64 編碼約比原始檔案大 33%）
-        let size = 0;
-        if (url.startsWith('data:')) {
-          // base64 編碼的估算大小
-          const base64Data = url.split(',')[1];
-          if (base64Data) {
-            size = Math.round((base64Data.length * 0.75) / 1024); // KB
-          }
-        }
-
-        resolve({
-          width: img.naturalWidth,
-          height: img.naturalHeight,
-          size: size
-        });
-      };
-
-      img.onerror = () => {
-        console.warn('Failed to load image for details:', url.substring(0, 50) + '...');
-        resolve({ width: 0, height: 0, size: 0 });
-      };
-
-      img.src = imageUrl;
-    });
-  };
 
   // 載入圖片時同時獲取詳細信息
   const loadImages = async () => {
@@ -94,26 +59,6 @@ export default function AdminCarouselPage() {
         }
         
         setImages(data);
-
-        // 獲取每張圖片的詳細信息 (並行處理以提高速度)
-        console.log('[Carousel Admin] Fetching image details for', data.length, 'images');
-        const detailsPromises = data.map(async (image: CarouselImage) => {
-          try {
-            const detail = await getImageDetails(image.url);
-            console.log('[Carousel Admin] Image details loaded:', image.id, '- Size:', detail.width, 'x', detail.height);
-            return { id: image.id, detail };
-          } catch (e) {
-            console.warn('[Carousel Admin] Failed to get details for image', image.id, ':', e);
-            return { id: image.id, detail: { width: 0, height: 0, size: 0 } };
-          }
-        });
-
-        const detailsResults = await Promise.all(detailsPromises);
-        const details: Record<string, { width: number; height: number; size: number }> = {};
-        detailsResults.forEach(res => {
-          details[res.id] = res.detail;
-        });
-        setImageDetails(details);
         console.log('[Carousel Admin] All images loaded successfully');
       } else {
         console.error('[Carousel Admin] API returned status:', response.status);
@@ -151,27 +96,6 @@ export default function AdminCarouselPage() {
     loadImages();
   }, [router]);
 
-  // 當圖片列表變化時，重新獲取詳細信息
-  useEffect(() => {
-    if (images.length > 0) {
-      const loadDetails = async () => {
-        const details: Record<string, { width: number; height: number; size: number }> = { ...imageDetails };
-        let hasNewDetails = false;
-
-        for (const image of images) {
-          if (!details[image.id]) { // 只獲取還沒有詳細信息的圖片
-            details[image.id] = await getImageDetails(image.url);
-            hasNewDetails = true;
-          }
-        }
-
-        if (hasNewDetails) {
-          setImageDetails(details);
-        }
-      };
-      loadDetails();
-    }
-  }, [images]);
 
   if (authChecking) {
     return <div className="p-8 text-center text-gray-500">Checking authentication...</div>;
@@ -772,7 +696,7 @@ export default function AdminCarouselPage() {
         ) : (
           <div style={{ display: 'grid', gap: 16 }}>
             {images.map((image, index) => {
-              const details = imageDetails[image.id] || { width: 0, height: 0, size: 0 };
+              // const details = imageDetails[image.id] || { width: 0, height: 0, size: 0 };
               return (
                 <div key={image.id} style={{
                   display: 'flex',
@@ -795,8 +719,6 @@ export default function AdminCarouselPage() {
                   <div style={{ flex: 1 }}>
                     <p><strong>文件名：</strong>{image.alt}</p>
                     <p><strong>順序：</strong>{image.order}</p>
-                    <p><strong>尺寸：</strong>{details.width} × {details.height} px</p>
-                    <p><strong>檔案大小：</strong>{details.size} KB</p>
                     <p><strong>上傳時間：</strong>{new Date(image.createdAt).toLocaleString('zh-TW')}</p>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginRight: 16 }}>
