@@ -7,17 +7,17 @@ const getAwsConfig = () => {
   // Use a different name for the bucket variable to avoid confusion
   const envBucket = process.env.CI_AWS_S3_BUCKET_NAME || process.env.AWS_S3_BUCKET_NAME;
   const awsRegion = process.env.AWS_REGION || process.env.CI_AWS_REGION || 'ap-northeast-1';
-
+  
   // LOG THE EXACT BUCKET BEING USED
-  console.log('[S3 Config] Resolved:', {
-    bucket: envBucket || 'MISSING',
+  console.log('[S3 Config] Resolved:', { 
+    bucket: envBucket || 'MISSING', 
     region: awsRegion,
     hasAccessKey: !!(process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID)
   });
 
   const accessKey = process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID;
   const secretKey = process.env.AWS_SECRET_ACCESS_KEY || process.env.CI_AWS_SECRET_ACCESS_KEY;
-  const bucketName = envBucket;
+  const bucketName = process.env.CI_AWS_S3_BUCKET_NAME || process.env.AWS_S3_BUCKET_NAME;
 
   return { awsRegion, accessKey, secretKey, bucketName };
 };
@@ -128,8 +128,12 @@ export async function getObjectBuffer(key: string): Promise<Buffer> {
     const s3Client = getS3Client();
     const cmd = new GetObjectCommand({ Bucket: bucketName, Key: key });
     const res = await s3Client.send(cmd);
-    const byteArray = await res.Body?.transformToByteArray();
-    return Buffer.from(byteArray || []);
+    const stream = res.Body as any;
+    const chunks: Buffer[] = [];
+    for await (const chunk of stream) {
+      chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : Buffer.from(chunk));
+    }
+    return Buffer.concat(chunks);
   } catch (error) {
     console.error('S3 getObject error:', error);
     throw error;
@@ -178,13 +182,6 @@ export async function deleteFromS3(key: string): Promise<void> {
  * Extract S3 key from URL
  */
 export function getS3KeyFromUrl(url: string): string | null {
-  if (!url) return null;
-
-  // Handle local proxy URLs
-  if (url.startsWith('/api/uploads/')) {
-    return url.replace('/api/uploads/', '');
-  }
-
   try {
     const urlObj = new URL(url);
     const pathParts = urlObj.pathname.split('/');
