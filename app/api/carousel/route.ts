@@ -17,11 +17,17 @@ const TABLE_NAME = process.env.DYNAMODB_TABLE_CAROUSEL || 'jvtutorcorner-carouse
 // - 如果沒有 (Amplify 線上環境)，就用 IAM Role (最安全)
 const clientConfig: any = { region: REGION };
 
-if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
+const accessKeyId = process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID;
+const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY || process.env.CI_AWS_SECRET_ACCESS_KEY;
+
+if (accessKeyId && secretAccessKey) {
+  console.log('[Carousel API] Init: Using explicit credentials from env (AWS_* or CI_AWS_*)');
   clientConfig.credentials = {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+    accessKeyId,
+    secretAccessKey
   };
+} else {
+  console.log('[Carousel API] Init: No explicit keys found, relying on IAM Role / Default Chain');
 }
 
 const client = new DynamoDBClient(clientConfig);
