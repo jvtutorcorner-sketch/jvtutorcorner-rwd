@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, PutCommand, ScanCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, PutCommand, ScanCommand, DeleteCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 // 如果您有實作 S3 刪除邏輯，請保留這行；如果沒有，可以先註解掉
 import { deleteFromS3, getS3KeyFromUrl } from '@/lib/s3'; 
 
@@ -98,7 +98,43 @@ export async function POST(request: Request) {
 }
 
 // ==========================================
-// 🔴 DELETE: 刪除圖片
+// � PATCH: 更新圖片 (例如順序)
+// ==========================================
+export async function PATCH(request: Request) {
+  try {
+    const body = await request.json();
+    const { id, order } = body;
+
+    if (!id || typeof order !== 'number') {
+      return NextResponse.json({ error: 'ID and order (number) required' }, { status: 400 });
+    }
+
+    console.log(`[Carousel API] Updating item ${id} order to ${order}`);
+
+    const command = new UpdateCommand({
+      TableName: TABLE_NAME,
+      Key: { id },
+      UpdateExpression: 'set #order = :order, updatedAt = :updatedAt',
+      ExpressionAttributeNames: {
+        '#order': 'order' // 'order' is reserved keyword in DynamoDB
+      },
+      ExpressionAttributeValues: {
+        ':order': order,
+        ':updatedAt': new Date().toISOString()
+      },
+      ReturnValues: 'ALL_NEW'
+    });
+
+    const response = await docClient.send(command);
+    return NextResponse.json(response.Attributes);
+  } catch (error: any) {
+    console.error('[Carousel API] PATCH Error:', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
+// ==========================================
+// �🔴 DELETE: 刪除圖片
 // ==========================================
 export async function DELETE(request: Request) {
   try {
