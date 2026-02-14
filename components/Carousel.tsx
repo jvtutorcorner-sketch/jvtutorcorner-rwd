@@ -50,11 +50,11 @@ export const Carousel: React.FC<CarouselProps> = ({
                 transition: 'opacity 0.5s ease-in-out'
               }}
               priority={index === 0}
+              // Allow Next.js to optimize S3/CloudFront images. Only mark as unoptimized
+              // for known hosts that block optimization (Google Drive, etc.).
               unoptimized={
                 slides[index].includes('googleusercontent.com') ||
                 slides[index].includes('drive.google.com') ||
-                slides[index].includes('s3.') ||
-                slides[index].includes('amazonaws.com') ||
                 slides[index].startsWith('/api/uploads/')
               }
               onLoad={() => setLoadedImages(prev => ({ ...prev, [index]: true }))}

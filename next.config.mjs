@@ -4,6 +4,15 @@ const nextConfig = {
   // 確保 white-web-sdk 被正確編譯
   transpilePackages: ['white-web-sdk'],
 
+  // Image optimization: allow remote images from AWS S3 and common CDNs
+  images: {
+    remotePatterns: [
+      { protocol: 'https', hostname: '**.amazonaws.com' },
+      { protocol: 'https', hostname: '**.cloudfront.net' },
+      { protocol: 'https', hostname: '**.googleusercontent.com' }
+    ]
+  },
+
   // ★★★ 關鍵修復：強制將 Build Time 的變數注入到 Runtime ★★★
   env: {
     AGORA_WHITEBOARD_APP_ID: process.env.AGORA_WHITEBOARD_APP_ID,
