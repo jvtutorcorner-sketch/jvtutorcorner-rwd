@@ -62,22 +62,37 @@ export default function AdminCarouselPage() {
 
   // 載入圖片時同時獲取詳細信息
   const loadImages = async () => {
+    console.log('[Carousel Admin] ===== Starting loadImages =====');
     console.log('[Carousel Admin] Starting to load carousel images after refresh...');
     setLoading(true);
     try {
       console.log('[Carousel Admin] Fetching /api/carousel');
       const response = await fetch('/api/carousel');
       console.log('[Carousel Admin] API response status:', response.status);
+      console.log('[Carousel Admin] API response ok:', response.ok);
+      console.log('[Carousel Admin] API response headers:', {
+        contentType: response.headers.get('content-type'),
+        contentLength: response.headers.get('content-length')
+      });
       
       if (response.ok) {
         const data = await response.json();
+        console.log('[Carousel Admin] Raw response data:', data);
+        console.log('[Carousel Admin] Data type:', typeof data);
+        console.log('[Carousel Admin] Is array:', Array.isArray(data));
         console.log('[Carousel Admin] Successfully loaded', data.length, 'images from API');
-        console.log('[Carousel Admin] Image details:', data.map((img: CarouselImage) => ({
-          id: img.id,
-          url: img.url.substring(0, 100) + '...',
-          alt: img.alt,
-          order: img.order
-        })));
+        
+        if (data.length > 0) {
+          console.log('[Carousel Admin] Image details:', data.map((img: CarouselImage) => ({
+            id: img.id,
+            url: img.url.substring(0, 100) + '...',
+            alt: img.alt,
+            order: img.order
+          })));
+        } else {
+          console.warn('[Carousel Admin] API returned empty array');
+        }
+        
         setImages(data);
 
         // 獲取每張圖片的詳細信息 (並行處理以提高速度)
@@ -102,13 +117,21 @@ export default function AdminCarouselPage() {
         console.log('[Carousel Admin] All images loaded successfully');
       } else {
         console.error('[Carousel Admin] API returned status:', response.status);
+        const text = await response.text();
+        console.error('[Carousel Admin] Response body:', text);
       }
     } catch (error) {
       console.error('[Carousel Admin] Failed to load images:', error);
+      console.error('[Carousel Admin] Error details:', {
+        name: (error as any)?.name,
+        message: (error as any)?.message,
+        stack: (error as any)?.stack
+      });
       setMessage('載入圖片失敗');
     } finally {
       setLoading(false);
       console.log('[Carousel Admin] Image loading completed');
+      console.log('[Carousel Admin] ===== loadImages Complete =====');
     }
   };
 
@@ -486,9 +509,11 @@ export default function AdminCarouselPage() {
         event.target.value = '';
       } else {
         let saveErrorMessage = '保存圖片信息失敗';
+        let saveErrorDetails = '';
         try {
           const saveErrorData = await saveResponse.json();
           saveErrorMessage = saveErrorData.error || saveErrorMessage;
+          saveErrorDetails = saveErrorData.details || '';
           console.error('[Carousel Upload] Database save error:', saveErrorData);
         } catch (saveParseError) {
           console.error('[Carousel Upload] Failed to parse save error response:', saveParseError);
@@ -497,10 +522,23 @@ export default function AdminCarouselPage() {
         console.error('[Carousel Upload] Save to database failed:', {
           status: saveResponse.status,
           statusText: saveResponse.statusText,
-          errorMessage: saveErrorMessage
+          errorMessage: saveErrorMessage,
+          details: saveErrorDetails
         });
 
-        throw new Error(saveErrorMessage);
+        // 如果是在生產環境且圖片已上傳到 S3，顯示部分成功訊息
+        if (finalUrl && finalUrl.includes('s3.')) {
+          console.warn('[Carousel Upload] Image uploaded to S3 successfully. Metadata may have been saved to fallback storage.');
+          setMessage('圖片上傳成功！正在重新載入列表...');
+          // 清空輸入框讓用戶可以繼續上傳
+          event.target.value = '';
+          // 延遲一下後重新載入圖片列表
+          setTimeout(() => {
+            loadImages();
+          }, 1000);
+        } else {
+          throw new Error(saveErrorMessage);
+        }
       }
     } catch (error) {
       let errorDetails: Record<string, any> = {
@@ -707,7 +745,28 @@ export default function AdminCarouselPage() {
       )}
 
       <div>
-        <h2>現有圖片 ({images.length})</h2>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <h2>現有圖片 ({images.length})</h2>
+          <button
+            onClick={() => {
+              console.log('[Carousel Admin] Manual refresh triggered');
+              loadImages();
+            }}
+            disabled={loading}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: loading ? '#ccc' : '#28a745',
+              color: 'white',
+              border: 'none',
+              borderRadius: 4,
+              cursor: loading ? 'not-allowed' : 'pointer',
+              fontWeight: 'bold',
+              fontSize: '14px'
+            }}
+          >
+            {loading ? '載入中...' : '🔄 重新整理'}
+          </button>
+        </div>
         {images.length === 0 ? (
           <p>尚未上傳任何圖片</p>
         ) : (

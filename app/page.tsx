@@ -30,19 +30,35 @@ export default function HomePage() {
     setUser(u);
 
     // 獲取輪播圖
+    console.log('[HomePage] Fetching carousel images from /api/carousel');
     fetch('/api/carousel')
-      .then(res => res.json())
+      .then(res => {
+        console.log('[HomePage] Carousel API response status:', res.status, res.statusText);
+        return res.json();
+      })
       .then(data => {
+        console.log('[HomePage] Carousel API response data:', data);
+        console.log('[HomePage] Data is array:', Array.isArray(data));
+        console.log('[HomePage] Data length:', data?.length);
+        
         if (Array.isArray(data) && data.length > 0) {
+          console.log('[HomePage] First item:', data[0]);
           const urls = data.map((img: any) => img.url);
+          console.log('[HomePage] Extracted URLs:', urls);
           setCarouselImages(urls);
+          console.log('[HomePage] Successfully set carousel images');
         } else {
           // If API returns empty, keep the default text slides
-          console.log('Carousel API returned no images, using defaults');
+          console.log('[HomePage] Carousel API returned no images, using defaults');
         }
       })
       .catch(err => {
-        console.error('Error loading carousel:', err);
+        console.error('[HomePage] Error loading carousel:', err);
+        console.error('[HomePage] Error details:', {
+          name: err.name,
+          message: err.message,
+          stack: err.stack
+        });
       });
   }, []);
 
