@@ -68,30 +68,60 @@ async function saveLocalCarouselImages() {
 }
 
 export async function GET() {
+  const isProduction = process.env.NODE_ENV === 'production';
+  const envName = isProduction ? 'production' : 'development';
+  
+  console.log(`[Carousel API GET] Request received in ${envName} mode`);
+  
   try {
     const db = getDB();
 
     if (!db) {
+      console.log('[Carousel API GET] DynamoDB not configured, using local storage');
       await ensureInitialized();
       // Use local storage in development
       let images = [...LOCAL_CAROUSEL_IMAGES];
+      console.log(`[Carousel API GET] Returning ${images.length} images from local storage`);
       return NextResponse.json(images.sort((a, b) => a.order - b.order));
     }
 
     const { docClient, TABLE_NAME } = db;
 
-    console.log(`[Carousel API] GET Request - Fetching from DynamoDB (Table: ${TABLE_NAME})`);
-    const command = new ScanCommand({ TableName: TABLE_NAME });
-    const response = await docClient.send(command);
-    const items = response.Items || [];
+    console.log(`[Carousel API GET] Fetching from DynamoDB (Table: ${TABLE_NAME}, Region: ${process.env.CI_AWS_REGION || process.env.AWS_REGION || 'ap-northeast-1'})`);
+    
+    try {
+      const command = new ScanCommand({ TableName: TABLE_NAME });
+      const response = await docClient.send(command);
+      const items = response.Items || [];
 
-    // Sort by order
-    items.sort((a: any, b: any) => (a.order || 0) - (b.order || 0));
+      // Sort by order
+      items.sort((a: any, b: any) => (a.order || 0) - (b.order || 0));
 
-    return NextResponse.json(items);
-  } catch (error) {
-    console.error('Error fetching carousel images:', error);
-    return NextResponse.json({ error: 'Failed to fetch images' }, { status: 500 });
+      console.log(`[Carousel API GET] Successfully fetched ${items.length} images from DynamoDB`);
+      return NextResponse.json(items);
+    } catch (dbError: any) {
+      console.error('[Carousel API GET] DynamoDB error:', {
+        name: dbError.name,
+        message: dbError.message,
+        code: dbError.code,
+        statusCode: dbError.$metadata?.httpStatusCode
+      });
+
+      // Graceful fallback: return empty array instead of 500 error
+      // This allows the frontend to work even if DynamoDB is misconfigured
+      console.log('[Carousel API GET] Falling back to empty array due to DynamoDB error');
+      return NextResponse.json([]);
+    }
+  } catch (error: any) {
+    console.error('[Carousel API GET] Unexpected error:', {
+      name: error?.name,
+      message: error?.message,
+      stack: error?.stack
+    });
+    
+    // Return empty array instead of 500 to prevent frontend breakage
+    console.log('[Carousel API GET] Returning empty array due to unexpected error');
+    return NextResponse.json([]);
   }
 }
 
@@ -156,13 +186,25 @@ export async function POST(request: NextRequest) {
       Item: newItem,
     });
 
-    await docClient.send(command);
+    try {
+      await docClient.send(command);
+      console.log('[Carousel API] Image successfully added to DynamoDB:', newItem);
+      return NextResponse.json(newItem);
+    } catch (dbError: any) {
+      console.error('[Carousel API POST] DynamoDB error:', {
+        name: dbError.name,
+        message: dbError.message,
+        code: dbError.code,
+        statusCode: dbError.$metadata?.httpStatusCode
+      });
+      return NextResponse.json({ 
+        error: 'Failed to add image to database',
+        details: dbError.message 
+      }, { status: 500 });
+    }
 
-    console.log('[Carousel API] Image successfully added to DynamoDB:', newItem);
-    return NextResponse.json(newItem);
-
-  } catch (error) {
-    console.error('[Carousel API] Error adding carousel image:', {
+  } catch (error: any) {
+    console.error('[Carousel API POST] Unexpected error:', {
       error: error instanceof Error ? error.message : error,
       stack: error instanceof Error ? error.stack : undefined,
       name: error instanceof Error ? error.name : undefined
@@ -197,8 +239,12 @@ export async function PATCH(request: NextRequest) {
     // For DynamoDB, we would normally update. For now returning success as per previous impl.
     // In a full implementation, we'd do an UpdateCommand here.
     return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error('Error updating carousel image order:', error);
+  } catch (error: any) {
+    console.error('[Carousel API PATCH] Error updating carousel image order:', {
+      name: error?.name,
+      message: error?.message,
+      stack: error?.stack
+    });
     return NextResponse.json({ error: 'Failed to update image order' }, { status: 500 });
   }
 }
@@ -244,10 +290,22 @@ export async function DELETE(request: NextRequest) {
         return NextResponse.json({ error: 'Image not found' }, { status: 404 });
       }
 
-      await docClient.send(new DeleteCommand({
-        TableName: TABLE_NAME,
-        Key: { id }
-      }));
+      try {
+        await docClient.send(new DeleteCommand({
+          TableName: TABLE_NAME,
+          Key: { id }
+        }));
+      } catch (dbError: any) {
+        console.error('[Carousel API DELETE] DynamoDB delete error:', {
+          name: dbError.name,
+          message: dbError.message,
+          code: dbError.code
+        });
+        return NextResponse.json({ 
+          error: 'Failed to delete from database',
+          details: dbError.message 
+        }, { status: 500 });
+      }
     }
 
     // Delete S3 Object
@@ -272,8 +330,12 @@ export async function DELETE(request: NextRequest) {
     }
 
     return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error('Error deleting carousel image:', error);
+  } catch (error: any) {
+    console.error('[Carousel API DELETE] Unexpected error:', {
+      name: error?.name,
+      message: error?.message,
+      stack: error?.stack
+    });
     return NextResponse.json({ error: 'Failed to delete image' }, { status: 500 });
   }
 }
