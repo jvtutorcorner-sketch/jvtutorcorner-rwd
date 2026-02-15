@@ -58,6 +58,9 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
     const [activeColor, setActiveColor] = useState<number[]>([220, 38, 38]);
     const [currentPage, setCurrentPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
+    
+    // 防护标志：确保清除只在倒计时结束或手动触发时发生
+    const roomInitializedRef = useRef(false);
 
     // 1. Mount Check
     useEffect(() => {

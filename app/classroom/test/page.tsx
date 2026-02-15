@@ -5,10 +5,14 @@ import dynamic from 'next/dynamic';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { useRouter } from 'next/navigation';
 import { getStoredUser, StoredUser } from '@/lib/mockAuth';
+import { useOneTimeEntry } from '@/lib/hooks/useOneTimeEntry';
 
 const ClientClassroom = dynamic(() => import('../ClientClassroom'), { ssr: false });
 
 export default function TestPage() {
+  // 一次性進入控制
+  useOneTimeEntry();
+  
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [storedUser, setStoredUser] = useState<StoredUser | null>(null);

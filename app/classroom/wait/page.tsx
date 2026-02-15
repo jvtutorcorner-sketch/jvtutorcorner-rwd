@@ -9,8 +9,12 @@ import { getStoredUser } from '@/lib/mockAuth';
 import VideoControls from '@/components/VideoControls';
 import { VideoQuality } from '@/lib/agora/useAgoraClassroom';
 import { useT } from '@/components/IntlProvider';
+import { useOneTimeEntry } from '@/lib/hooks/useOneTimeEntry';
 
 export default function ClassroomWaitPage() {
+  // 一次性進入控制
+  useOneTimeEntry();
+  
   const router = useRouter();
 
   const [isClient, setIsClient] = useState(false);

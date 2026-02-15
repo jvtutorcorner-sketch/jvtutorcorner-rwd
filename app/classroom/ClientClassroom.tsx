@@ -48,6 +48,28 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   );
   const t = useT();
   
+  // ★ Helper function to get user display name based on login info
+  const getDisplayName = (user: any, role?: 'teacher' | 'student', suffix?: string): string => {
+    if (!user) {
+      // 如果没有用户信息，根据角色显示
+      if (suffix === 'you') {
+        return role === 'teacher' ? `${t('teacher')} (你)` : `${t('student')} (你)`;
+      }
+      return role === 'teacher' ? t('teacher') : t('student');
+    }
+    
+    // 优先级：lastName + firstName → displayName → role
+    const fullName = `${user.lastName || ''} ${user.firstName || ''}`.trim();
+    if (fullName) return fullName;
+    if (user.displayName) return user.displayName;
+    
+    // Fallback to role
+    if (suffix === 'you') {
+      return role === 'teacher' ? `${t('teacher')} (你)` : `${t('student')} (你)`;
+    }
+    return role === 'teacher' ? t('teacher') : t('student');
+  };
+  
   // Feature Flag: Agora Whiteboard vs Canvas Whiteboard
   // Default to using Agora whiteboard unless explicitly disabled with NEXT_PUBLIC_USE_AGORA_WHITEBOARD='false'
   const useAgoraWhiteboard = process.env.NEXT_PUBLIC_USE_AGORA_WHITEBOARD !== 'false';
@@ -836,6 +858,10 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     bc.onmessage = (event) => {
       console.log('[BroadcastChannel] Received message:', event.data);
       // Support clearing whiteboard when another participant requests it
+      // ⚠️ IMPORTANT: This should ONLY be triggered by:
+      //   1. Countdown timer completion (倒計時結束)
+      //   2. Manual clear canvas button (手動清除)
+      // ❌ DO NOT trigger this when teacher joins or any other event
       if (event.data?.type === 'whiteboard_clear') {
         console.log('[BroadcastChannel] Received whiteboard_clear -> clearing local PDF/whiteboard');
         try {
@@ -1535,13 +1561,14 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           const currentRemaining = updateRemaining();
           
           if (currentRemaining <= 0) {
-            console.log('[Timer] Time is up!');
+            console.log('[Timer] Time is up! Clearing whiteboard as part of session cleanup.');
             if (timerRef.current) {
               window.clearInterval(timerRef.current);
               timerRef.current = null;
             }
             
-            // Cleanup and end session
+            // ✅ TIMING POINT 1: Countdown timer completion
+            // Cleanup and end session - broadcast whiteboard_clear to all participants
             try {
               const sessionBroadcastName = sessionParam || channelName || `classroom_session_ready_${courseId}`;
               const bc2 = new BroadcastChannel(sessionBroadcastName);
@@ -1824,6 +1851,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
               <ColorDot color="#000000" active={isColorActive([0, 0, 0])} onClick={() => agoraWhiteboardRef.current?.setColor([0, 0, 0])} />
             </div>
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              {/* ✅ TIMING POINT 2: Manual trigger by teacher */}
               <ToolButton active={false} onClick={() => agoraWhiteboardRef.current?.clearScene()} icon="🗑️" title="清空畫布" />
               <ToolButton active={false} onClick={() => agoraWhiteboardRef.current?.forceFix()} icon="🎯" title="重置視角" />
             </div>
@@ -2152,14 +2180,17 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           <div className="video-container">
             <video ref={localVideoRef} autoPlay muted playsInline style={{ transform: 'scaleX(-1)' }} />
             <div className="video-label">
-              {isTestPath ? `${storedUser?.lastName || ''} ${storedUser?.firstName || ''}`.trim() || storedUser?.displayName || (mounted && (urlRole === 'teacher' || computedRole === 'teacher') ? t('teacher_you') : t('student_you')) : (mounted && (urlRole === 'teacher' || computedRole === 'teacher') ? t('teacher_you') : t('student_you'))}
+              {mounted ? getDisplayName(storedUser, isTeacher ? 'teacher' : 'student', 'you') : '載入中...'}
             </div>
           </div>
 
           <div className="video-container">
             <video ref={remoteVideoRef} autoPlay playsInline />
             <div className="video-label">
-              {isTestPath ? (remoteName || (firstRemote && String(firstRemote.uid))) : (firstRemote ? `${mounted && (urlRole === 'teacher' || computedRole === 'teacher') ? t('student') : t('teacher')}` : (mounted && (urlRole === 'teacher' || computedRole === 'teacher') ? t('student') : t('teacher')))}
+              {!firstRemote 
+                ? '等待連接...'
+                : (remoteName || getDisplayName(null, isTeacher ? 'student' : 'teacher'))
+              }
             </div>
             {/* Controls moved: mic and leave are shown under the Join button in the controls area. */}
           </div>

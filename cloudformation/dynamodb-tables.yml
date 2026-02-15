@@ -32,6 +32,16 @@ Parameters:
     Default: jvtutorcorner-whiteboard
     Description: DynamoDB table name for whiteboard state
 
+  WhiteboardPermissionsTableName:
+    Type: String
+    Default: jvtutorcorner-whiteboard-permissions
+    Description: DynamoDB table name for whiteboard permissions
+
+  AgoraLogsTableName:
+    Type: String
+    Default: jvtutorcorner-agora-logs
+    Description: DynamoDB table name for Agora SDK debug logs
+
 Resources:
   TeachersTable:
     Type: AWS::DynamoDB::Table
@@ -213,6 +223,46 @@ Resources:
         - Key: Project
           Value: jvtutorcorner
 
+  WhiteboardPermissionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref WhiteboardPermissionsTableName
+      AttributeDefinitions:
+        - AttributeName: roleId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: roleId
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: false
+      Tags:
+        - Key: Project
+          Value: jvtutorcorner
+
+  AgoraLogsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref AgoraLogsTableName
+      AttributeDefinitions:
+        - AttributeName: logType
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: N
+      KeySchema:
+        - AttributeName: logType
+          KeyType: HASH
+        - AttributeName: timestamp
+          KeyType: RANGE
+      BillingMode: PAY_PER_REQUEST
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
+      Tags:
+        - Key: Project
+          Value: jvtutorcorner
+
 Outputs:
   TeachersTableName:
     Description: Name of teachers DynamoDB table
@@ -255,3 +305,15 @@ Outputs:
   WhiteboardTableArn:
     Description: ARN of whiteboard DynamoDB table
     Value: !GetAtt WhiteboardTable.Arn
+  WhiteboardPermissionsTableName:
+    Description: Name of whiteboard permissions DynamoDB table
+    Value: !Ref WhiteboardPermissionsTableName
+  WhiteboardPermissionsTableArn:
+    Description: ARN of whiteboard permissions DynamoDB table
+    Value: !GetAtt WhiteboardPermissionsTable.Arn
+  AgoraLogsTableName:
+    Description: Name of Agora logs DynamoDB table
+    Value: !Ref AgoraLogsTableName
+  AgoraLogsTableArn:
+    Description: ARN of Agora logs DynamoDB table
+    Value: !GetAtt AgoraLogsTable.Arn

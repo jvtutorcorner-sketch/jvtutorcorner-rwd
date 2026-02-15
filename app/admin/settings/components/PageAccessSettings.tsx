@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 
 type PagePermission = { roleId: string; roleName: string; menuVisible?: boolean; dropdownVisible?: boolean; pageVisible?: boolean };
 type PageConfig = { id: string; path: string; label?: string; permissions: PagePermission[] };
@@ -24,6 +24,7 @@ export default function PageAccessSettings({
   const [saving, setSaving] = useState(false);
   const [initialSettings, setInitialSettings] = useState<string>('');
   const [hasChanges, setHasChanges] = useState(false);
+  const isInitializedRef = useRef(false);
 
   // Monitor for changes
   useEffect(() => {
@@ -38,7 +39,12 @@ export default function PageAccessSettings({
       try {
         if (propsSettings) {
           setInternalSettings(propsSettings);
-          setInitialSettings(JSON.stringify(propsSettings));
+          // Only set initialSettings on first initialization
+          if (!isInitializedRef.current) {
+            setInitialSettings(JSON.stringify(propsSettings));
+            setHasChanges(false);
+            isInitializedRef.current = true;
+          }
         }
         else {
           const res = await fetch('/api/admin/settings');
@@ -46,7 +52,12 @@ export default function PageAccessSettings({
           if (res.ok) {
             const settings = data.settings || data;
             setInternalSettings(settings);
-            setInitialSettings(JSON.stringify(settings));
+            // Only set initialSettings on first initialization
+            if (!isInitializedRef.current) {
+              setInitialSettings(JSON.stringify(settings));
+              setHasChanges(false);
+              isInitializedRef.current = true;
+            }
           }
         }
 
@@ -150,7 +161,7 @@ export default function PageAccessSettings({
                         // OR stick to existing pattern. 
                         // Checking `PageSettings.tsx`, default is `pageVisible: true`.
                         onChange={(e) => {
-                          const updateFn = (prev: any) => {
+                          setInternalSettings(prev => {
                             if (!prev) return prev;
                             const updated = prev.pageConfigs.map((pc: PageConfig) => {
                               if (pc.path !== p.path) return pc;
@@ -186,10 +197,7 @@ export default function PageAccessSettings({
                               return { ...pc, permissions: newItemPermissions };
                             });
                             return { ...prev, pageConfigs: updated };
-                          };
-
-                          setInternalSettings(updateFn);
-                          if (propsSetSettings) propsSetSettings(updateFn);
+                          });
                         }}
                         style={{ transform: 'scale(1.2)', cursor: 'pointer' }}
                       />
