@@ -21,17 +21,31 @@ export default function AdminRolesPage() {
   const [editingName, setEditingName] = useState('');
   const [editingDescription, setEditingDescription] = useState('');
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const [hasChanges, setHasChanges] = useState(false);
+  const [initialRoles, setInitialRoles] = useState<string>('');
 
   useEffect(() => {
     loadRoles();
   }, []);
+
+  // 監控 roles 變化
+  useEffect(() => {
+    if (initialRoles && roles.length > 0) {
+      const currentState = JSON.stringify(roles);
+      setHasChanges(currentState !== initialRoles);
+    }
+  }, [roles, initialRoles]);
 
   async function loadRoles() {
     try {
       const res = await fetch('/api/admin/roles');
       const data = await res.json();
       if (res.ok && data.ok) {
-        setRoles(data.roles || []);
+        const loadedRoles = data.roles || [];
+        setRoles(loadedRoles);
+        // 記錄初始狀態
+        setInitialRoles(JSON.stringify(loadedRoles));
+        setHasChanges(false);
       }
     } catch (error) {
       console.error('Failed to load roles:', error);
@@ -60,6 +74,9 @@ export default function AdminRolesPage() {
       const data = await res.json();
       if (res.ok && data.ok) {
         setRoles(data.roles);
+        // 儲存成功後，更新初始狀態
+        setInitialRoles(JSON.stringify(data.roles));
+        setHasChanges(false);
         setSaveMessage('儲存成功');
         console.log('✅ [Roles Page] 儲存成功');
       } else {
@@ -89,7 +106,7 @@ export default function AdminRolesPage() {
       id: newRoleName.toLowerCase().replace(/\s+/g, '_'),
       name: newRoleName.trim(),
       description: newRoleDescription.trim(),
-      isActive: true
+      isActive: false
     };
 
     // 检查角色名是否已存在
@@ -122,6 +139,11 @@ export default function AdminRolesPage() {
 
     console.log('✅ [Roles Page] 刪除角色:', roleId);
     setRoles(prev => prev.filter(r => r.id !== roleId));
+    
+    // 刪除後退出編輯模式
+    setEditingRoleId(null);
+    setEditingName('');
+    setEditingDescription('');
   }
 
   function toggleRoleActive(roleId: string) {
@@ -239,7 +261,21 @@ export default function AdminRolesPage() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
         <h1>角色管理</h1>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button onClick={saveRoles} disabled={saving} style={{ padding: '8px 16px' }}>
+          <button 
+            onClick={saveRoles} 
+            disabled={saving || !hasChanges} 
+            style={{ 
+              padding: '8px 16px',
+              background: !hasChanges ? '#cbd5e1' : '#2563eb',
+              color: 'white',
+              borderRadius: 6,
+              border: 'none',
+              cursor: !hasChanges ? 'not-allowed' : 'pointer',
+              opacity: !hasChanges ? 0.6 : 1,
+              fontWeight: 600
+            }}
+            title={!hasChanges ? '沒有任何更改' : '儲存所有變更'}
+          >
             {saving ? '儲存中…' : '儲存設定'}
           </button>
           {saveMessage && (
@@ -362,7 +398,7 @@ export default function AdminRolesPage() {
                       ) : (
                         <span style={{ fontWeight: 600 }}>{role.name}</span>
                       )}
-                      {role.id === 'admin' && (
+                      {['admin', 'teacher', 'student'].includes(role.id) && (
                         <span style={{
                           padding: '2px 6px',
                           background: '#e3f2fd',
@@ -419,7 +455,7 @@ export default function AdminRolesPage() {
                     }} title={role.isActive ? '啟用中' : '停用中'}></div>
                   </td>
                   <td style={{ padding: 12, borderRight: '1px solid #eee', textAlign: 'center' }}>
-                    {role.id === 'admin' ? (
+                    {['admin', 'teacher', 'student'].includes(role.id) ? (
                       <span style={{
                         padding: '6px 12px',
                         background: '#e8f5e9',
@@ -432,16 +468,25 @@ export default function AdminRolesPage() {
                       </span>
                     ) : (
                       <button
-                        onClick={() => toggleRoleActive(role.id)}
+                        onClick={() => {
+                          if (editingRoleId === role.id) {
+                            toggleRoleActive(role.id);
+                          }
+                        }}
+                        disabled={editingRoleId !== role.id}
                         style={{
                           padding: '6px 12px',
-                          background: role.isActive ? '#28a745' : '#6c757d',
+                          background: editingRoleId === role.id 
+                            ? (role.isActive ? '#28a745' : '#6c757d')
+                            : '#cbd5e1',
                           color: 'white',
                           border: 'none',
                           borderRadius: 4,
-                          cursor: 'pointer',
-                          fontSize: '12px'
+                          cursor: editingRoleId === role.id ? 'pointer' : 'not-allowed',
+                          fontSize: '12px',
+                          opacity: editingRoleId === role.id ? 1 : 0.6
                         }}
+                        title={editingRoleId === role.id ? '點擊切換狀態' : '點擊編輯按鈕才能改變狀態'}
                       >
                         {role.isActive ? '啟用' : '停用'}
                       </button>
@@ -449,7 +494,7 @@ export default function AdminRolesPage() {
                   </td>
                   <td style={{ padding: 12, textAlign: 'center' }}>
                     <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
-                      {role.id === 'admin' ? (
+                      {['admin', 'teacher', 'student'].includes(role.id) ? (
                         <span style={{
                           padding: '6px 12px',
                           background: '#e3f2fd',

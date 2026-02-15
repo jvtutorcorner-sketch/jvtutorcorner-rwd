@@ -38,6 +38,7 @@ const nextConfig = {
     DYNAMODB_TABLE_ORDERS: process.env.DYNAMODB_TABLE_ORDERS || 'jvtutorcorner-orders',
     DYNAMODB_TABLE_ROLES: process.env.DYNAMODB_TABLE_ROLES || 'jvtutorcorner-roles',
     DYNAMODB_TABLE_PAGE_PERMISSIONS: process.env.DYNAMODB_TABLE_PAGE_PERMISSIONS || 'jvtutorcorner-page-permissions',
+    DYNAMODB_TABLE_WHITEBOARD_PERMISSIONS: process.env.DYNAMODB_TABLE_WHITEBOARD_PERMISSIONS || 'jvtutorcorner-whiteboard-permissions',
     AWS_REGION: process.env.AWS_REGION || process.env.CI_AWS_REGION || 'ap-northeast-1',
     AMPLIFY_REGION: process.env.AMPLIFY_REGION,
   },

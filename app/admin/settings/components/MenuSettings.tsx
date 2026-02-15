@@ -20,10 +20,21 @@ export default function MenuSettings({
   const [internalRoles, setInternalRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [initialSettings, setInitialSettings] = useState<string>('');
+  const [hasChanges, setHasChanges] = useState(false);
+
+  // Monitor for changes
+  useEffect(() => {
+    if (initialSettings && internalSettings) {
+      const currentState = JSON.stringify(internalSettings);
+      setHasChanges(currentState !== initialSettings);
+    }
+  }, [internalSettings, initialSettings]);
 
   useEffect(() => {
     if (propsSettings && propsRoles) {
       setInternalSettings(propsSettings);
+      setInitialSettings(JSON.stringify(propsSettings));
       setInternalRoles(propsRoles);
       setLoading(false);
     } else {
@@ -37,7 +48,11 @@ export default function MenuSettings({
       const rs = await s.json();
       const r = await fetch('/api/admin/roles');
       const rr = await r.json();
-      if (s.ok) setInternalSettings(rs.settings || rs);
+      if (s.ok) {
+        const settings = rs.settings || rs;
+        setInternalSettings(settings);
+        setInitialSettings(JSON.stringify(settings));
+      }
       if (r.ok) setInternalRoles(rr.roles || rr);
     } catch (err) {
       console.error(err);
@@ -56,6 +71,11 @@ export default function MenuSettings({
         console.error('[MenuSettings] 儲存失敗:', data);
       } else {
         console.log('[MenuSettings] 儲存成功！', data);
+        // Update initial state after successful save
+        const savedSettings = data.settings || internalSettings;
+        setInternalSettings(savedSettings);
+        setInitialSettings(JSON.stringify(savedSettings));
+        setHasChanges(false);
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new Event('tutor:admin-settings-changed'));
           alert('儲存成功');
@@ -77,7 +97,7 @@ export default function MenuSettings({
     <div style={{ padding: 16, border: '1px solid #eee', borderRadius: 8, background: '#fff' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <h3 style={{ margin: 0, fontSize: 18 }}>Menu 可見性設定</h3>
-        <button onClick={save} disabled={saving} style={{ padding: '6px 16px', background: '#2563eb', color: 'white', borderRadius: 6, border: 'none', cursor: 'pointer' }}>
+        <button onClick={save} disabled={saving || !hasChanges} style={{ padding: '6px 16px', background: !hasChanges ? '#cbd5e1' : '#2563eb', color: 'white', borderRadius: 6, border: 'none', cursor: !hasChanges ? 'not-allowed' : 'pointer', opacity: !hasChanges ? 0.6 : 1 }}>
           {saving ? '儲存中...' : '儲存變更'}
         </button>
       </div>

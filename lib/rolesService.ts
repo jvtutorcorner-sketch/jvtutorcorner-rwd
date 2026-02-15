@@ -1,5 +1,5 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, ScanCommand, BatchWriteCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, ScanCommand, BatchWriteCommand, PutCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
 
 // 1. 確保有表名 (若無則警告)
 const ROLES_TABLE = process.env.DYNAMODB_TABLE_ROLES || 'jvtutorcorner-roles';
@@ -139,6 +139,57 @@ export async function getRoles(): Promise<Role[]> {
 }
 
 /**
+ * Delete roles from DynamoDB that are not in the provided list
+ */
+async function deleteRemovedRoles(roles: Role[]): Promise<boolean> {
+    if (!ROLES_TABLE) {
+        console.log('[rolesService] ⚠️  DYNAMODB_TABLE_ROLES not configured, skipping cleanup');
+        return true;
+    }
+
+    try {
+        // Get all existing roles from DynamoDB
+        const existingRoles = await getRolesFromDynamoDB();
+        
+        // Find roles that are in DynamoDB but not in the new list
+        const roleIdsToKeep = new Set(roles.map(r => r.id));
+        const rolesToDelete = existingRoles.filter(r => !roleIdsToKeep.has(r.id));
+
+        if (rolesToDelete.length === 0) {
+            console.log('[rolesService] ℹ️  No roles to delete');
+            return true;
+        }
+
+        console.log(`[rolesService] 🗑️  Deleting ${rolesToDelete.length} roles from DynamoDB`);
+
+        // Delete roles in batches (BatchWriteCommand supports both PutRequest and DeleteRequest)
+        const chunkSize = 25;
+        for (let i = 0; i < rolesToDelete.length; i += chunkSize) {
+            const chunk = rolesToDelete.slice(i, i + chunkSize);
+            const deleteRequests = chunk.map(role => ({
+                DeleteRequest: { Key: { id: role.id } }
+            }));
+
+            console.log(`[rolesService] 刪除批次 ${Math.floor(i / chunkSize) + 1}，包含 ${chunk.length} 個角色...`);
+
+            await ddbDocClient.send(new BatchWriteCommand({
+                RequestItems: {
+                    [ROLES_TABLE]: deleteRequests
+                }
+            }));
+
+            console.log(`[rolesService] ✅ 成功刪除批次 ${Math.floor(i / chunkSize) + 1} (${chunk.map(r => r.id).join(', ')})`);
+        }
+
+        console.log(`[rolesService] ✅ 成功刪除 ${rolesToDelete.length} 個已移除的角色`);
+        return true;
+    } catch (e: any) {
+        console.error('[rolesService] ❌ Failed to delete removed roles:', e.message);
+        return false;
+    }
+}
+
+/**
  * Save roles to DynamoDB
  */
 export async function saveRoles(roles: Role[]): Promise<boolean> {
@@ -152,6 +203,15 @@ export async function saveRoles(roles: Role[]): Promise<boolean> {
         }
     }
 
+    // First, delete roles that were removed
+    console.log('[rolesService] 🔄 Cleaning up removed roles...');
+    const deleteResult = await deleteRemovedRoles(roles);
+    if (!deleteResult) {
+        console.error('[rolesService] ⚠️  Failed to delete removed roles, but continuing with save...');
+        // Don't fail, continue with the save
+    }
+
+    // Then, write the new roles
     const result = await writeRolesToDynamoDB(roles);
 
     if (result) {

@@ -29,6 +29,23 @@ export default function PageSettings({
   const [saving, setSaving] = useState(false);
   const [draggingPath, setDraggingPath] = useState<string | null>(null);
   const [dragOverPath, setDragOverPath] = useState<string | null>(null);
+  const [hasChanges, setHasChanges] = useState(false);
+  const [initialSettings, setInitialSettings] = useState<string>('');
+
+  // 初始化時記錄原始狀態
+  useEffect(() => {
+    if (settings) {
+      setInitialSettings(JSON.stringify(settings.pageConfigs));
+    }
+  }, []);
+
+  // 監控 settings 變化
+  useEffect(() => {
+    if (settings && initialSettings) {
+      const currentState = JSON.stringify(settings.pageConfigs);
+      setHasChanges(currentState !== initialSettings);
+    }
+  }, [settings, initialSettings]);
 
   async function save() {
     if (!settings) return;
@@ -65,6 +82,11 @@ export default function PageSettings({
         alert('儲存失敗：' + (data?.error || data?.details || '未知錯誤'));
       } else {
         console.log('✅ [PageSettings] 儲存成功！', data);
+        // 儲存成功後，更新初始狀態
+        if (settings) {
+          setInitialSettings(JSON.stringify(settings.pageConfigs));
+          setHasChanges(false);
+        }
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new Event('tutor:admin-settings-changed'));
           alert('儲存成功！');
@@ -95,6 +117,11 @@ export default function PageSettings({
     const ok = confirm(`確定要刪除頁面 ${path} 嗎？此操作無法復原。`);
     if (!ok) return;
     setSettings((prev: Settings | null) => prev ? { ...prev, pageConfigs: prev.pageConfigs.filter((pc: PageConfig) => pc.path !== path) } : prev);
+    
+    // 刪除後退出編輯模式
+    if (editingPath === path) {
+      cancelEdit();
+    }
   }
 
   function startEdit(p: PageConfig) {
@@ -209,7 +236,21 @@ export default function PageSettings({
     <div style={{ padding: 16, border: '1px solid #eee', borderRadius: 8, background: '#fff' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <h3 style={{ margin: 0, fontSize: 18 }}>管理 Pages{allowAddRemove ? '（新增 / 刪除 / 編輯）' : ''}</h3>
-        <button onClick={save} disabled={saving} style={{ padding: '6px 16px', background: '#2563eb', color: 'white', borderRadius: 6, border: 'none', cursor: 'pointer' }}>
+        <button 
+          onClick={save} 
+          disabled={saving || !hasChanges} 
+          style={{ 
+            padding: '6px 16px', 
+            background: !hasChanges ? '#cbd5e1' : '#2563eb', 
+            color: 'white', 
+            borderRadius: 6, 
+            border: 'none', 
+            cursor: !hasChanges ? 'not-allowed' : 'pointer',
+            opacity: !hasChanges ? 0.6 : 1,
+            fontWeight: 600
+          }}
+          title={!hasChanges ? '沒有任何更改' : '儲存所有變更'}
+        >
           {saving ? '儲存中...' : '儲存變更'}
         </button>
       </div>
@@ -399,6 +440,7 @@ export default function PageSettings({
                           <button
                             onClick={cancelEdit}
                             style={{
+                              marginRight: 8,
                               padding: '6px 12px',
                               background: '#ef4444',
                               color: 'white',
@@ -410,41 +452,37 @@ export default function PageSettings({
                           >
                             ✕ 取消
                           </button>
-                        </>
-                      ) : (
-                        <>
-                          <button
-                            onClick={() => startEdit(p)}
-                            style={{
-                              marginRight: 8,
-                              padding: '6px 12px',
-                              background: '#2563eb',
-                              color: 'white',
-                              border: 'none',
-                              borderRadius: 6,
-                              cursor: 'pointer',
-                              fontSize: 13,
-                              fontWeight: 500
-                            }}
-                          >
-                            ✏️ 編輯
-                          </button>
                           <button
                             onClick={() => removePage(p.path)}
                             style={{
                               padding: '6px 12px',
-                              background: '#ef4444',
+                              background: '#dc2626',
                               color: 'white',
                               border: 'none',
-                              borderRadius: 6,
+                              borderRadius: 4,
                               cursor: 'pointer',
-                              fontSize: 13,
-                              fontWeight: 500
+                              fontWeight: 'bold'
                             }}
                           >
                             🗑️ 刪除
                           </button>
                         </>
+                      ) : (
+                        <button
+                          onClick={() => startEdit(p)}
+                          style={{
+                            padding: '6px 12px',
+                            background: '#2563eb',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: 6,
+                            cursor: 'pointer',
+                            fontSize: 13,
+                            fontWeight: 500
+                          }}
+                        >
+                          ✏️ 編輯
+                        </button>
                       )}
                     </td>
                   )}
