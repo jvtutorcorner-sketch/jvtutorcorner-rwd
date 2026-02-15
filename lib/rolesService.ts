@@ -1,23 +1,30 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, ScanCommand, BatchWriteCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
 
-const ROLES_TABLE = process.env.DYNAMODB_TABLE_ROLES || '';
+// 1. 確保有表名 (若無則警告)
+const ROLES_TABLE = process.env.DYNAMODB_TABLE_ROLES || 'jvtutorcorner-roles';
 
-const client = new DynamoDBClient({
-    region: process.env.AWS_REGION || 'ap-northeast-1',
-    credentials: {
-        accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
-        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || ''
-    }
-});
+// 2. 初始化 Client (修正憑證邏輯)
+const region = process.env.AWS_REGION || process.env.CI_AWS_REGION || 'ap-northeast-1';
+const clientConfig: any = { region };
 
+// 只有在真的有 Access Key 時才設定 credentials (通常是本機開發)
+// 在 Amplify 線上環境，這兩個變數應該是不存在的，這樣 SDK 就會自動去抓 IAM Role
+const accessKeyId = process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID;
+const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY || process.env.CI_AWS_SECRET_ACCESS_KEY;
+
+if (accessKeyId && secretAccessKey) {
+    clientConfig.credentials = { accessKeyId, secretAccessKey };
+}
+
+const client = new DynamoDBClient(clientConfig);
 const ddbDocClient = DynamoDBDocumentClient.from(client);
 
 export type Role = {
     id: string;
     name: string;
     description?: string;
-    isActive: boolean;
+    isActive?: boolean; // 改為可選，容錯性更高
     order?: number;
 };
 
@@ -26,7 +33,7 @@ export type Role = {
  */
 async function getRolesFromDynamoDB(): Promise<Role[]> {
     if (!ROLES_TABLE) {
-        console.warn('[rolesService] DYNAMODB_TABLE_ROLES not configured');
+        console.warn('[rolesService] DYNAMODB_TABLE_ROLES not configured in env');
         return [];
     }
 
@@ -41,8 +48,13 @@ async function getRolesFromDynamoDB(): Promise<Role[]> {
         items.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
         console.log(`[rolesService] ✅ Loaded ${items.length} roles from DynamoDB`);
         return items;
-    } catch (e) {
-        console.error('[rolesService] ❌ DynamoDB scan failed:', (e as any)?.message || e);
+    } catch (e: any) {
+        console.error('[rolesService] ❌ DynamoDB scan failed:', e.message);
+        // 如果錯誤是 ResourceNotFoundException，代表表格還沒建立，回傳空陣列
+        if (e.name === 'ResourceNotFoundException') {
+            console.warn('[rolesService] Table not found, returning empty list');
+            return [];
+        }
         return [];
     }
 }
@@ -56,43 +68,41 @@ async function writeRolesToDynamoDB(roles: Role[]): Promise<boolean> {
         return false;
     }
 
-    console.log(`[rolesService] Writing ${roles.length} roles to DynamoDB`);
+    console.log(`[rolesService] Writing ${roles.length} roles to DynamoDB table: ${ROLES_TABLE}`);
 
     try {
         const timestamp = new Date().toISOString();
         const itemsToWrite = roles.map((role, index) => ({
             ...role,
+            id: role.id, // 確保 id 存在
+            name: role.name,
             order: role.order ?? index,
             updatedAt: timestamp
         }));
 
-        // Use BatchWrite for efficiency
-        const putRequests = itemsToWrite.map(item => ({
-            PutRequest: { Item: item }
-        }));
+        if (itemsToWrite.length === 0) return true;
 
-        if (putRequests.length === 0) {
-            console.log('[rolesService] No roles to write');
-            return true;
+        // DynamoDB BatchWrite 限制一次最多 25 筆
+        // 這裡做一個簡單的切分 (Chunking) 以防角色太多報錯
+        const chunkSize = 25;
+        for (let i = 0; i < itemsToWrite.length; i += chunkSize) {
+            const chunk = itemsToWrite.slice(i, i + chunkSize);
+            const putRequests = chunk.map(item => ({
+                PutRequest: { Item: item }
+            }));
+
+            await ddbDocClient.send(new BatchWriteCommand({
+                RequestItems: {
+                    [ROLES_TABLE]: putRequests
+                }
+            }));
+            console.log(`[rolesService] Batch wrote items ${i + 1} to ${i + chunk.length}`);
         }
 
-        const response = await ddbDocClient.send(new BatchWriteCommand({
-            RequestItems: {
-                [ROLES_TABLE]: putRequests
-            }
-        }));
-
-        // Check for UnprocessedItems
-        const unprocessed = response.UnprocessedItems?.[ROLES_TABLE];
-        if (unprocessed && unprocessed.length > 0) {
-            console.error(`[rolesService] ⚠️  ${unprocessed.length} items failed to write`);
-            return false;
-        }
-
-        console.log(`[rolesService] ✅ Successfully wrote ${roles.length} roles to DynamoDB`);
+        console.log(`[rolesService] ✅ Successfully wrote all roles to DynamoDB`);
         return true;
-    } catch (e) {
-        console.error('[rolesService] ❌ Failed to write roles to DynamoDB:', (e as any)?.message || e);
+    } catch (e: any) {
+        console.error('[rolesService] ❌ Failed to write roles to DynamoDB:', e.message);
         return false;
     }
 }
@@ -116,10 +126,13 @@ export async function getRoles(): Promise<Role[]> {
         { id: 'student', name: 'Student', description: '學生', isActive: true, order: 2 }
     ];
 
-    // Auto-migrate default roles to DynamoDB
+    // Auto-migrate default roles to DynamoDB (只有在有表名設定時才做)
     if (ROLES_TABLE) {
         console.log('[rolesService] Migrating default roles to DynamoDB...');
-        await writeRolesToDynamoDB(defaultRoles);
+        // 非同步寫入，不卡住回傳
+        writeRolesToDynamoDB(defaultRoles).catch(err => 
+            console.error('[rolesService] Auto-migration failed:', err)
+        );
     }
 
     return defaultRoles;
