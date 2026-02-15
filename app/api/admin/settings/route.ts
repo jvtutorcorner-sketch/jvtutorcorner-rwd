@@ -268,7 +268,14 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
+    console.log('\n[Admin Settings API] ════════════════════════════════════════');
+    console.log('[Admin Settings API] 🔵 POST 請求開始');
+    console.log('[Admin Settings API] ════════════════════════════════════════\n');
+    
     const body = await req.json();
+    console.log('[Admin Settings API] 📥 接收到的資料大小:', JSON.stringify(body).length, '字節');
+    console.log('[Admin Settings API] 🔍 檢查 pageConfigs:', Array.isArray(body.pageConfigs) ? `✅ 是陣列，${body.pageConfigs.length} 個項目` : '❌ 不是陣列或不存在');
+    
     const current = await readSettings();
     const merged = { ...current, ...body };
 
@@ -431,19 +438,22 @@ export async function POST(req: Request) {
 
     // Save pageConfigs to DynamoDB if present
     if (merged.pageConfigs && Array.isArray(merged.pageConfigs)) {
-      console.log('\\n[Admin Settings API] ═══════════════════════════════════════');
+      console.log('\n[Admin Settings API] ═══════════════════════════════════════');
       console.log('[Admin Settings API] 準備儲存 pageConfigs 到 DynamoDB');
       console.log(`[Admin Settings API] 頁面數量: ${merged.pageConfigs.length}`);
-      console.log('[Admin Settings API] ═══════════════════════════════════════\\n');
+      console.log('[Admin Settings API] ═══════════════════════════════════════\n');
 
       try {
         const saveResult = await savePagePermissions(merged.pageConfigs);
 
         if (!saveResult) {
           console.error('[Admin Settings API] ❌ DynamoDB 儲存失敗');
+          const errorMsg = process.env.DYNAMODB_TABLE_PAGE_PERMISSIONS 
+            ? 'Failed to save page permissions to DynamoDB. Check server logs for details.'
+            : 'DynamoDB table not configured. Environment variable DYNAMODB_TABLE_PAGE_PERMISSIONS is not set.';
           return NextResponse.json({
             ok: false,
-            error: 'Failed to save page permissions to DynamoDB. Please check server logs and ensure DynamoDB table exists.'
+            error: errorMsg
           }, { status: 500 });
         }
 
@@ -451,6 +461,7 @@ export async function POST(req: Request) {
       } catch (e) {
         console.error('[Admin Settings API] ❌ pageConfigs 儲存過程發生異常:', (e as any)?.message || e);
         console.error('[Admin Settings API] 錯誤堆疊:', e);
+        console.error('[Admin Settings API] 環境變數 DYNAMODB_TABLE_PAGE_PERMISSIONS:', process.env.DYNAMODB_TABLE_PAGE_PERMISSIONS);
         return NextResponse.json({
           ok: false,
           error: `DynamoDB save error: ${(e as any)?.message || 'Unknown error'}`
@@ -464,9 +475,23 @@ export async function POST(req: Request) {
     delete settingsForJSON.pageVisibility;  // Also remove legacy pageVisibility
 
     await writeSettings(settingsForJSON);
+    
+    console.log('\n[Admin Settings API] ════════════════════════════════════════');
+    console.log('[Admin Settings API] ✅ POST 請求完成成功');
+    console.log('[Admin Settings API] ════════════════════════════════════════\n');
+    
     return NextResponse.json({ ok: true, settings: merged });
   } catch (err: any) {
-    console.error(err);
-    return NextResponse.json({ ok: false, error: err?.message || 'write error' }, { status: 500 });
+    console.error('\n[Admin Settings API] ════════════════════════════════════════');
+    console.error('[Admin Settings API] ❌ POST 請求發生錯誤');
+    console.error('[Admin Settings API] 錯誤訊息:', err?.message || err);
+    console.error('[Admin Settings API] 錯誤堆疊:', err?.stack || err);
+    console.error('[Admin Settings API] ════════════════════════════════════════\n');
+    
+    return NextResponse.json({ 
+      ok: false, 
+      error: err?.message || 'write error',
+      details: process.env.NODE_ENV === 'development' ? err?.stack : undefined
+    }, { status: 500 });
   }
 }

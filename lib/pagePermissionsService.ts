@@ -97,12 +97,18 @@ async function savePagePermissionsToDynamoDB(pageConfigs: PageConfig[]): Promise
     try {
         // Add updatedAt timestamp and sortOrder to each config
         const timestamp = new Date().toISOString();
-        const itemsToWrite = pageConfigs.map((pc, index) => ({
-            ...pc,
-            id: pc.path, // Ensure id matches path for consistency
-            sortOrder: index, // 🔑 Store the order position
-            updatedAt: timestamp
-        }));
+        const itemsToWrite = pageConfigs.map((pc, index) => {
+            // Ensure all required fields are present
+            if (!pc.path || !pc.id) {
+                console.warn(`[pagePermissionsService] ⚠️  警告: 頁面缺少必要欄位 - path: ${pc.path}, id: ${pc.id}`);
+            }
+            return {
+                ...pc,
+                id: pc.path, // Ensure id matches path for consistency
+                sortOrder: index, // 🔑 Store the order position
+                updatedAt: timestamp
+            };
+        });
 
         console.log('[pagePermissionsService] 📊 Items with sortOrder:', itemsToWrite.map(item => ({ path: item.path, sortOrder: item.sortOrder })));
 
@@ -118,22 +124,27 @@ async function savePagePermissionsToDynamoDB(pageConfigs: PageConfig[]): Promise
 
             console.log(`[pagePermissionsService] 正在寫入批次 ${Math.floor(i / BATCH_SIZE) + 1}，包含 ${batch.length} 個項目...`);
 
-            const response = await ddbDocClient.send(new BatchWriteCommand({
-                RequestItems: {
-                    [PAGE_PERMISSIONS_TABLE]: putRequests
+            try {
+                const response = await ddbDocClient.send(new BatchWriteCommand({
+                    RequestItems: {
+                        [PAGE_PERMISSIONS_TABLE]: putRequests
+                    }
+                }));
+
+                // Check for UnprocessedItems (items that failed to write)
+                const unprocessed = response.UnprocessedItems?.[PAGE_PERMISSIONS_TABLE];
+                if (unprocessed && unprocessed.length > 0) {
+                    console.error(`[pagePermissionsService] ⚠️  批次 ${Math.floor(i / BATCH_SIZE) + 1} 有 ${unprocessed.length} 個項目未成功寫入`);
+                    console.error('[pagePermissionsService] 未處理項目:', JSON.stringify(unprocessed, null, 2));
+                    throw new Error(`Failed to write ${unprocessed.length} items to DynamoDB in batch ${Math.floor(i / BATCH_SIZE) + 1}`);
                 }
-            }));
 
-            // Check for UnprocessedItems (items that failed to write)
-            const unprocessed = response.UnprocessedItems?.[PAGE_PERMISSIONS_TABLE];
-            if (unprocessed && unprocessed.length > 0) {
-                console.error(`[pagePermissionsService] ⚠️  批次 ${Math.floor(i / BATCH_SIZE) + 1} 有 ${unprocessed.length} 個項目未成功寫入`);
-                console.error('[pagePermissionsService] 未處理項目:', JSON.stringify(unprocessed, null, 2));
-                throw new Error(`Failed to write ${unprocessed.length} items to DynamoDB`);
+                totalWritten += batch.length;
+                console.log(`[pagePermissionsService] ✅ 成功儲存批次 ${Math.floor(i / BATCH_SIZE) + 1}：${batch.length} 個項目寫入 DynamoDB`);
+            } catch (batchError) {
+                console.error(`[pagePermissionsService] ❌ 批次 ${Math.floor(i / BATCH_SIZE) + 1} 寫入失敗:`, (batchError as any)?.message || batchError);
+                throw batchError;
             }
-
-            totalWritten += batch.length;
-            console.log(`[pagePermissionsService] ✅ 成功儲存批次 ${Math.floor(i / BATCH_SIZE) + 1}：${batch.length} 個項目寫入 DynamoDB`);
         }
 
         console.log(`[pagePermissionsService] ✅ DynamoDB 儲存完成：共 ${totalWritten} 個頁面設定實際寫入`);
@@ -160,7 +171,7 @@ async function savePagePermissionsToDynamoDB(pageConfigs: PageConfig[]): Promise
 
                 console.log('[pagePermissionsService] ✅ 驗證成功：資料確實存在於 DynamoDB');
             } catch (verifyError) {
-                console.error('[pagePermissionsService] ❌ 驗證過程失敗:', verifyError);
+                console.error('[pagePermissionsService] ❌ 驗證過程失敗:', (verifyError as any)?.message || verifyError);
                 throw new Error(`Verification error: ${(verifyError as any)?.message || 'Unknown verification error'}`);
             }
         }
@@ -169,6 +180,7 @@ async function savePagePermissionsToDynamoDB(pageConfigs: PageConfig[]): Promise
     } catch (e) {
         console.error('[pagePermissionsService] ❌ DynamoDB 批次寫入失敗:', (e as any)?.message || e);
         console.error('[pagePermissionsService] 錯誤詳情:', e);
+        console.error('[pagePermissionsService] 表格名稱:', PAGE_PERMISSIONS_TABLE);
         return false;
     }
 }
@@ -233,25 +245,41 @@ export async function savePagePermissions(pageConfigs: PageConfig[]): Promise<bo
     console.log('\n========================================');
     console.log('[pagePermissionsService] 🚀 開始儲存頁面權限設定到 DynamoDB');
     console.log(`[pagePermissionsService] 要儲存的頁面數量: ${pageConfigs.length}`);
+    console.log('[pagePermissionsService] 環境變數檢查:');
+    console.log(`  - DYNAMODB_TABLE_PAGE_PERMISSIONS: ${PAGE_PERMISSIONS_TABLE ? '✅ 已設定' : '❌ 未設定'}`);
     console.log('========================================\n');
 
     // Check if DynamoDB is configured
     if (!PAGE_PERMISSIONS_TABLE) {
         console.error('[pagePermissionsService] ❌ DynamoDB 未設定！');
         console.error('[pagePermissionsService] 請確認環境變數 DYNAMODB_TABLE_PAGE_PERMISSIONS 已正確設定');
+        console.error('[pagePermissionsService] 當前值:', PAGE_PERMISSIONS_TABLE);
+        return false;
+    }
+
+    // Validate pageConfigs
+    if (!Array.isArray(pageConfigs) || pageConfigs.length === 0) {
+        console.warn('[pagePermissionsService] ⚠️  pageConfigs 為空或無效');
         return false;
     }
 
     // Save to DynamoDB
     console.log('[pagePermissionsService] 📦 儲存到 DynamoDB');
-    const success = await savePagePermissionsToDynamoDB(pageConfigs);
+    try {
+        const success = await savePagePermissionsToDynamoDB(pageConfigs);
 
-    console.log('\n========================================');
-    console.log('[pagePermissionsService] 📊 儲存結果:');
-    console.log(`  - DynamoDB: ${success ? '✅ 成功' : '❌ 失敗'}`);
-    console.log('========================================\n');
+        console.log('\n========================================');
+        console.log('[pagePermissionsService] 📊 儲存結果:');
+        console.log(`  - DynamoDB: ${success ? '✅ 成功' : '❌ 失敗'}`);
+        console.log('========================================\n');
 
-    return success;
+        return success;
+    } catch (e) {
+        console.error('[pagePermissionsService] ❌ savePagePermissions 異常:');
+        console.error('[pagePermissionsService] 錯誤訊息:', (e as any)?.message || e);
+        console.error('[pagePermissionsService] 錯誤堆疊:', e);
+        return false;
+    }
 }
 
 // Get permissions for a specific page

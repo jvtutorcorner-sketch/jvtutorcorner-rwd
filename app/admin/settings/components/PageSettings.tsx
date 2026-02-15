@@ -35,17 +35,34 @@ export default function PageSettings({
     console.log('💾 [PageSettings] 開始儲存頁面設定...');
     console.log('📋 [PageSettings] pageConfigs 順序:', settings.pageConfigs?.map((p: any) => p.path));
     console.log('📦 [PageSettings] 完整儲存資料:', settings);
+    console.log('🔍 [PageSettings] pageConfigs 數量:', settings.pageConfigs?.length || 0);
+    console.log('🔍 [PageSettings] settings 結構:', Object.keys(settings || {}));
+    
+    // Validate data before sending
+    if (!Array.isArray(settings.pageConfigs)) {
+      console.error('❌ [PageSettings] pageConfigs 不是陣列！');
+      alert('錯誤：pageConfigs 資料格式不正確');
+      return;
+    }
+    
+    if (settings.pageConfigs.length === 0) {
+      console.warn('⚠️  [PageSettings] pageConfigs 為空');
+    }
+    
     setSaving(true);
     try {
+      const dataToSend = settings;
+      console.log('📤 [PageSettings] 發送資料大小:', JSON.stringify(dataToSend).length, '字節');
+      
       const res = await fetch('/api/admin/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(settings)
+        body: JSON.stringify(dataToSend)
       });
       const data = await res.json();
       if (!res.ok) {
-        console.error('❌ [PageSettings] 儲存失敗:', data);
-        alert('儲存失敗：' + (data?.error || '未知錯誤'));
+        console.error('❌ [PageSettings] 儲存失敗（HTTP ' + res.status + '）:', data);
+        alert('儲存失敗：' + (data?.error || data?.details || '未知錯誤'));
       } else {
         console.log('✅ [PageSettings] 儲存成功！', data);
         if (typeof window !== 'undefined') {
