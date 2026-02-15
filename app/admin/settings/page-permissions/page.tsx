@@ -14,6 +14,7 @@ type Settings = { pageConfigs: PageConfig[] } & Record<string, any>;
 export default function PagePermissionsPage() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [roles, setRoles] = useState<Role[]>([]);
+  const [activeTab, setActiveTab] = useState<'pages' | 'menus'>('pages');
 
   useEffect(() => { load(); }, []);
 
@@ -33,27 +34,71 @@ export default function PagePermissionsPage() {
   if (!settings) return <main style={{ padding: 24 }}>Loading settings…</main>;
 
   return (
-    <main style={{ padding: 24 }}>
-      <h1>Page 存取權限</h1>
-      <section style={{ marginTop: 12 }}>
-        <h2>Page 基本設定</h2>
-        <PageSettings settings={settings} setSettings={setSettings} roles={roles} />
-      </section>
+    <main style={{ padding: 24, maxWidth: 1400 }}>
+      <h1 style={{ marginBottom: 24 }}>Page 存取權限管理</h1>
 
-      <section style={{ marginTop: 24 }}>
-        <h2>各頁面存取權限設定 (Page Access)</h2>
-        <PageAccessSettings settings={settings} roles={roles} />
-      </section>
+      {/* Tab Navigation */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 24, borderBottom: '2px solid #e5e7eb' }}>
+        <button
+          onClick={() => setActiveTab('pages')}
+          style={{
+            padding: '12px 24px',
+            background: activeTab === 'pages' ? '#2563eb' : 'transparent',
+            color: activeTab === 'pages' ? 'white' : '#64748b',
+            border: 'none',
+            borderBottom: activeTab === 'pages' ? '3px solid #2563eb' : '3px solid transparent',
+            cursor: 'pointer',
+            fontSize: 15,
+            fontWeight: 600,
+            transition: 'all 0.2s',
+            borderRadius: '8px 8px 0 0'
+          }}
+        >
+          📄 頁面管理與存取權限
+        </button>
+        <button
+          onClick={() => setActiveTab('menus')}
+          style={{
+            padding: '12px 24px',
+            background: activeTab === 'menus' ? '#2563eb' : 'transparent',
+            color: activeTab === 'menus' ? 'white' : '#64748b',
+            border: 'none',
+            borderBottom: activeTab === 'menus' ? '3px solid #2563eb' : '3px solid transparent',
+            cursor: 'pointer',
+            fontSize: 15,
+            fontWeight: 600,
+            transition: 'all 0.2s',
+            borderRadius: '8px 8px 0 0'
+          }}
+        >
+          🎯 選單可見性設定
+        </button>
+      </div>
 
-      <section style={{ marginTop: 24 }}>
-        <h2>Menu 存取設定</h2>
-        <MenuSettings />
-      </section>
+      {/* Tab Content */}
+      {activeTab === 'pages' && (
+        <div>
+          <section style={{ marginBottom: 24 }}>
+            <PageSettings settings={settings} setSettings={setSettings} roles={roles} />
+          </section>
 
-      <section style={{ marginTop: 24 }}>
-        <h2>Dropdown Menu 存取設定</h2>
-        <DropdownSettings />
-      </section>
+          <section style={{ marginBottom: 24 }}>
+            <PageAccessSettings settings={settings} setSettings={setSettings} roles={roles} />
+          </section>
+        </div>
+      )}
+
+      {activeTab === 'menus' && (
+        <div>
+          <section style={{ marginBottom: 24 }}>
+            <MenuSettings />
+          </section>
+
+          <section style={{ marginBottom: 24 }}>
+            <DropdownSettings />
+          </section>
+        </div>
+      )}
     </main>
   );
 }

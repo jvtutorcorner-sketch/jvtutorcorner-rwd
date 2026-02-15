@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import fs from 'fs/promises';
 import path from 'path';
 import resolveDataFile from '@/lib/localData';
+import { getPagePermissions, savePagePermissions } from '@/lib/pagePermissionsService';
 
 async function readSettings() {
   try {
@@ -246,6 +247,18 @@ async function writeSettings(obj: any) {
 export async function GET() {
   try {
     const s = await readSettings();
+
+    // Load page permissions from DynamoDB (with automatic migration and fallback)
+    console.log('📖 [Admin Settings API] Loading page permissions...');
+    const pageConfigs = await getPagePermissions();
+    console.log(`📖 [Admin Settings API] Loaded ${pageConfigs.length} pageConfigs`);
+    console.log('📖 [Admin Settings API] pageConfigs order:', pageConfigs.map((pc: any) => ({ path: pc.path, sortOrder: pc.sortOrder })));
+
+    // Merge pageConfigs into settings
+    if (pageConfigs.length > 0) {
+      s.pageConfigs = pageConfigs;
+    }
+
     return NextResponse.json({ ok: true, settings: s });
   } catch (err: any) {
     console.error(err);
@@ -306,17 +319,20 @@ export async function POST(req: Request) {
         mergedMap.set(pathKey, updated);
       });
 
-      // produce array from mergedMap preserving original order where possible
+      // 🔑 IMPORTANT: Use the order from body.pageConfigs (incoming request) to preserve user's drag-and-drop sorting
+      // Do NOT use current.pageConfigs order, as that would reset the sorting
       const finalPageConfigs: any[] = [];
-      // prefer keys in current.pageConfigs order
-      (current && current.pageConfigs || []).forEach((pc: any) => {
+
+      // Use the order from the incoming request (body.pageConfigs)
+      body.pageConfigs.forEach((pc: any) => {
         const k = pc.path || pc.id;
         if (mergedMap.has(k)) {
           finalPageConfigs.push(mergedMap.get(k));
           mergedMap.delete(k);
         }
       });
-      // append any remaining ones (new pages)
+
+      // Append any remaining pages that weren't in the incoming request (shouldn't happen normally)
       mergedMap.forEach((v) => finalPageConfigs.push(v));
 
       merged.pageConfigs = finalPageConfigs;
@@ -412,7 +428,42 @@ export async function POST(req: Request) {
       });
       merged.pageVisibility = pageVisibility;
     }
-    await writeSettings(merged);
+
+    // Save pageConfigs to DynamoDB if present
+    if (merged.pageConfigs && Array.isArray(merged.pageConfigs)) {
+      console.log('\\n[Admin Settings API] ═══════════════════════════════════════');
+      console.log('[Admin Settings API] 準備儲存 pageConfigs 到 DynamoDB');
+      console.log(`[Admin Settings API] 頁面數量: ${merged.pageConfigs.length}`);
+      console.log('[Admin Settings API] ═══════════════════════════════════════\\n');
+
+      try {
+        const saveResult = await savePagePermissions(merged.pageConfigs);
+
+        if (!saveResult) {
+          console.error('[Admin Settings API] ❌ DynamoDB 儲存失敗');
+          return NextResponse.json({
+            ok: false,
+            error: 'Failed to save page permissions to DynamoDB. Please check server logs and ensure DynamoDB table exists.'
+          }, { status: 500 });
+        }
+
+        console.log('[Admin Settings API] ✅ pageConfigs 儲存到 DynamoDB 成功');
+      } catch (e) {
+        console.error('[Admin Settings API] ❌ pageConfigs 儲存過程發生異常:', (e as any)?.message || e);
+        console.error('[Admin Settings API] 錯誤堆疊:', e);
+        return NextResponse.json({
+          ok: false,
+          error: `DynamoDB save error: ${(e as any)?.message || 'Unknown error'}`
+        }, { status: 500 });
+      }
+    }
+
+    // Write settings to JSON file, but exclude pageConfigs (DynamoDB only)
+    const settingsForJSON = { ...merged };
+    delete settingsForJSON.pageConfigs;  // Remove pageConfigs from JSON storage
+    delete settingsForJSON.pageVisibility;  // Also remove legacy pageVisibility
+
+    await writeSettings(settingsForJSON);
     return NextResponse.json({ ok: true, settings: merged });
   } catch (err: any) {
     console.error(err);

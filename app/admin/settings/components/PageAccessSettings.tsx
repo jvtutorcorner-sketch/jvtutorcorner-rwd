@@ -7,12 +7,14 @@ type PageConfig = { id: string; path: string; label?: string; permissions: PageP
 type Role = { id: string; name: string; description?: string; isActive: boolean };
 type Settings = { pageConfigs: PageConfig[] } & Record<string, any>;
 
-export default function PageAccessSettings({ 
-  settings: propsSettings, 
-  roles: propsRoles, 
-  pathFilter 
-}: { 
-  settings?: any; 
+export default function PageAccessSettings({
+  settings: propsSettings,
+  setSettings: propsSetSettings,
+  roles: propsRoles,
+  pathFilter
+}: {
+  settings?: any;
+  setSettings?: React.Dispatch<React.SetStateAction<any>>;
   roles?: any[];
   pathFilter?: (path: string) => boolean;
 } = {}) {
@@ -48,18 +50,27 @@ export default function PageAccessSettings({
 
   async function save() {
     if (!internalSettings) return;
+    console.log('[PageAccessSettings] 開始儲存頁面存取權限...');
+    console.log('[PageAccessSettings] 儲存的資料:', internalSettings);
     setSaving(true);
     try {
       const res = await fetch('/api/admin/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(internalSettings) });
       const data = await res.json();
-      if (!res.ok) console.warn('save failed', data);
-      else {
+      if (!res.ok) {
+        console.error('[PageAccessSettings] 儲存失敗:', data);
+      } else {
+        console.log('[PageAccessSettings] 儲存成功！', data);
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new Event('tutor:admin-settings-changed'));
           alert('儲存成功');
         }
       }
-    } finally { setSaving(false); }
+    } catch (err: any) {
+      console.error('[PageAccessSettings] 發生錯誤:', err);
+    } finally {
+      setSaving(false);
+      console.log('[PageAccessSettings] 儲存流程結束');
+    }
   }
 
   if (loading || !internalSettings) return <div style={{ padding: 16 }}>Loading Access settings…</div>;
@@ -69,11 +80,11 @@ export default function PageAccessSettings({
   const filteredPages = pages.filter(p => pathFilter ? pathFilter(p.path) : true);
 
   if (filteredPages.length === 0) {
-     return (
-        <div style={{ padding: 16, border: '1px solid #ddd', borderRadius: 8, background: '#f9f9f9', color: '#666' }}>
-            無法找到符合條件的頁面 (Path not found in config)
-        </div>
-     );
+    return (
+      <div style={{ padding: 16, border: '1px solid #ddd', borderRadius: 8, background: '#f9f9f9', color: '#666' }}>
+        無法找到符合條件的頁面 (Path not found in config)
+      </div>
+    );
   }
 
   return (
@@ -84,7 +95,7 @@ export default function PageAccessSettings({
           {saving ? '儲存中...' : '儲存變更'}
         </button>
       </div>
-      
+
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, border: '1px solid #ddd' }}>
           <thead>
@@ -97,8 +108,8 @@ export default function PageAccessSettings({
             {filteredPages.map(p => (
               <tr key={p.path} className="hover:bg-gray-50">
                 <td style={{ padding: 8, borderBottom: '1px solid #eee' }}>
-                    <div style={{ fontWeight: 'bold' }}>{p.label || p.path}</div>
-                    <div style={{ fontSize: 12, color: '#999', fontFamily: 'monospace' }}>{p.path}</div>
+                  <div style={{ fontWeight: 'bold' }}>{p.label || p.path}</div>
+                  <div style={{ fontSize: 12, color: '#999', fontFamily: 'monospace' }}>{p.path}</div>
                 </td>
                 {internalRoles.filter(r => r.isActive).map(role => {
                   const perm = p.permissions.find((pp: PagePermission) => pp.roleId === role.id);
@@ -117,24 +128,46 @@ export default function PageAccessSettings({
                         // OR stick to existing pattern. 
                         // Checking `PageSettings.tsx`, default is `pageVisible: true`.
                         onChange={(e) => {
-                          setInternalSettings(prev => {
+                          const updateFn = (prev: any) => {
                             if (!prev) return prev;
                             const updated = prev.pageConfigs.map((pc: PageConfig) => {
                               if (pc.path !== p.path) return pc;
                               // Ensure permission object exists
                               let newItemPermissions = [...pc.permissions];
                               const existingPermIndex = newItemPermissions.findIndex(pp => pp.roleId === role.id);
-                              
+
                               if (existingPermIndex >= 0) {
-                                newItemPermissions[existingPermIndex] = { ...newItemPermissions[existingPermIndex], pageVisible: e.target.checked };
+                                // When unchecking pageVisible, also uncheck menuVisible and dropdownVisible
+                                if (!e.target.checked) {
+                                  newItemPermissions[existingPermIndex] = {
+                                    ...newItemPermissions[existingPermIndex],
+                                    pageVisible: false,
+                                    menuVisible: false,
+                                    dropdownVisible: false
+                                  };
+                                } else {
+                                  newItemPermissions[existingPermIndex] = {
+                                    ...newItemPermissions[existingPermIndex],
+                                    pageVisible: true
+                                  };
+                                }
                               } else {
                                 // If role missing in permissions, add it
-                                newItemPermissions.push({ roleId: role.id, roleName: role.name, pageVisible: e.target.checked });
+                                newItemPermissions.push({
+                                  roleId: role.id,
+                                  roleName: role.name,
+                                  pageVisible: e.target.checked,
+                                  menuVisible: false,
+                                  dropdownVisible: false
+                                });
                               }
                               return { ...pc, permissions: newItemPermissions };
                             });
                             return { ...prev, pageConfigs: updated };
-                          });
+                          };
+
+                          setInternalSettings(updateFn);
+                          if (propsSetSettings) propsSetSettings(updateFn);
                         }}
                         style={{ transform: 'scale(1.2)', cursor: 'pointer' }}
                       />

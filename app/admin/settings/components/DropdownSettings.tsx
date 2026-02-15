@@ -7,12 +7,12 @@ type PageConfig = { id: string; path: string; label?: string; permissions: PageP
 type Role = { id: string; name: string; description?: string; isActive: boolean };
 type Settings = { pageConfigs: PageConfig[] } & Record<string, any>;
 
-export default function DropdownSettings({ 
-  settings: propsSettings, 
-  roles: propsRoles, 
-  pathFilter 
-}: { 
-  settings?: any; 
+export default function DropdownSettings({
+  settings: propsSettings,
+  roles: propsRoles,
+  pathFilter
+}: {
+  settings?: any;
   roles?: any[];
   pathFilter?: (path: string) => boolean;
 } = {}) {
@@ -46,17 +46,28 @@ export default function DropdownSettings({
 
   async function save() {
     if (!internalSettings) return;
+    console.log('[DropdownSettings] 開始儲存 Dropdown Menu 可見性設定...');
+    console.log('[DropdownSettings] 儲存的資料:', internalSettings);
     setSaving(true);
     try {
       const res = await fetch('/api/admin/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(internalSettings) });
       if (res.ok) {
+        const data = await res.json();
+        console.log('[DropdownSettings] 儲存成功！', data);
         // notify other parts of the app (Header) to reload admin settings
         if (typeof window !== 'undefined') window.dispatchEvent(new Event('tutor:admin-settings-changed'));
         alert('Dropdown 設定已儲存並套用至選單。');
       } else {
+        const data = await res.json();
+        console.error('[DropdownSettings] 儲存失敗:', data);
         alert('儲存失敗');
       }
-    } finally { setSaving(false); }
+    } catch (err: any) {
+      console.error('[DropdownSettings] 發生錯誤:', err);
+    } finally {
+      setSaving(false);
+      console.log('[DropdownSettings] 儲存流程結束');
+    }
   }
 
   if (loading || !internalSettings) return <div style={{ padding: 16 }}>Loading Dropdown settings…</div>;
@@ -64,9 +75,15 @@ export default function DropdownSettings({
   const pages = internalSettings.pageConfigs || [];
 
   return (
-    <div style={{ padding: 16 }}>
-      <h2>Dropdown Menu 設定</h2>
-      <div style={{ marginTop: 12, overflowX: 'auto' }}>
+    <div style={{ padding: 16, border: '1px solid #eee', borderRadius: 8, background: '#fff' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <h3 style={{ margin: 0, fontSize: 18 }}>Dropdown Menu 可見性設定</h3>
+        <button onClick={save} disabled={saving} style={{ padding: '6px 16px', background: '#2563eb', color: 'white', borderRadius: 6, border: 'none', cursor: 'pointer' }}>
+          {saving ? '儲存中...' : '儲存變更'}
+        </button>
+      </div>
+
+      <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, border: '1px solid #ddd' }}>
           <thead>
             <tr style={{ background: '#f7f7f7' }}>
@@ -78,38 +95,50 @@ export default function DropdownSettings({
             {pages
               .filter(p => pathFilter ? pathFilter(p.path) : true)
               .map(p => (
-              <tr key={p.path}>
-                <td style={{ padding: 8 }}>{p.label || p.path}</td>
-                {internalRoles.filter(r => r.isActive).map(role => {
-                  const perm = p.permissions.find((pp: PagePermission) => pp.roleId === role.id);
-                  return (
-                    <td key={role.id} style={{ padding: 8, textAlign: 'center' }}>
-                      <input
-                        type="checkbox"
-                        checked={!!perm?.dropdownVisible}
-                        onChange={(e) => {
-                          setInternalSettings(prev => {
-                            if (!prev) return prev;
-                            const updated = prev.pageConfigs.map((pc: PageConfig) => {
-                              if (pc.path !== p.path) return pc;
-                              const permissions = pc.permissions.map(perm => perm.roleId === role.id ? { ...perm, dropdownVisible: e.target.checked } : perm);
-                              return { ...pc, permissions };
+                <tr key={p.path}>
+                  <td style={{ padding: 8, borderBottom: '1px solid #eee' }}>
+                    <div style={{ fontWeight: 'bold' }}>{p.label || p.path}</div>
+                    <div style={{ fontSize: 12, color: '#999', fontFamily: 'monospace' }}>{p.path}</div>
+                  </td>
+                  {internalRoles.filter(r => r.isActive).map(role => {
+                    const perm = p.permissions.find((pp: PagePermission) => pp.roleId === role.id);
+                    const isPageVisible = perm?.pageVisible !== false; // Default to true if undefined
+                    const isDisabled = !isPageVisible;
+
+                    return (
+                      <td key={role.id} style={{ padding: 8, textAlign: 'center', borderBottom: '1px solid #eee', background: isDisabled ? '#f5f5f5' : 'transparent' }}>
+                        <input
+                          type="checkbox"
+                          checked={isPageVisible && !!perm?.dropdownVisible}
+                          disabled={isDisabled}
+                          style={{
+                            transform: 'scale(1.2)',
+                            cursor: isDisabled ? 'not-allowed' : 'pointer',
+                            opacity: isDisabled ? 0.4 : 1
+                          }}
+                          onChange={(e) => {
+                            setInternalSettings(prev => {
+                              if (!prev) return prev;
+                              const updated = prev.pageConfigs.map((pc: PageConfig) => {
+                                if (pc.path !== p.path) return pc;
+                                const permissions = pc.permissions.map(perm => perm.roleId === role.id ? { ...perm, dropdownVisible: e.target.checked } : perm);
+                                return { ...pc, permissions };
+                              });
+                              return { ...prev, pageConfigs: updated };
                             });
-                            return { ...prev, pageConfigs: updated };
-                          });
-                        }}
-                      />
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
+                          }}
+                        />
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
           </tbody>
         </table>
       </div>
-      <div style={{ marginTop: 12 }}>
-        <button onClick={save} disabled={saving}>{saving ? '儲存中…' : '儲存 Dropdown'}</button>
-      </div>
+      <p style={{ marginTop: 12, fontSize: 13, color: '#666' }}>
+        * 勾選表示該角色可以在下拉選單看到此項目。未勾選則不顯示於下拉選單中。
+      </p>
     </div>
   );
 }
