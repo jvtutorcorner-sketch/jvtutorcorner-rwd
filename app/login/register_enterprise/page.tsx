@@ -703,8 +703,16 @@ export default function RegisterPage() {
                 type="checkbox"
                 checked={showPasswords}
                 onChange={(e) => setShowPasswords(e.target.checked)}
+                style={{
+                  width: '18px',
+                  height: '18px',
+                  cursor: 'pointer',
+                  margin: 0,
+                  WebkitAppearance: 'checkbox',
+                  appearance: 'checkbox'
+                }}
               />
-              <label htmlFor="showPasswords">顯示密碼</label>
+              <label htmlFor="showPasswords" style={{ cursor: 'pointer', userSelect: 'none' }}>顯示密碼</label>
             </div>
 
             <div className="field" style={{ display: 'none' }}>
@@ -752,13 +760,21 @@ export default function RegisterPage() {
               <label>服務條款與隱私權政策 <span style={{ color: 'red' }}>*</span></label>
               <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <p>請先閱讀我們的 <Link href="/terms" target="_blank" style={{ color: '#0066cc', textDecoration: 'underline' }}>服務條款與隱私權政策</Link></p>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' }}>
                   <input
                     name="terms"
                     type="checkbox"
                     checked={termsAccepted}
                     onChange={(e) => setTermsAccepted(e.target.checked)}
-                    style={{ marginRight: 8 }}
+                    style={{
+                      width: '18px',
+                      height: '18px',
+                      cursor: 'pointer',
+                      margin: 0,
+                      flexShrink: 0,
+                      WebkitAppearance: 'checkbox',
+                      appearance: 'checkbox'
+                    }}
                   />
                   我已閱讀並同意服務條款與隱私權政策
                 </label>
@@ -779,23 +795,11 @@ export default function RegisterPage() {
                 ⚠️ {formError}
               </div>
             )}
-            <div className="modal-actions" style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div className="modal-actions" style={{ marginTop: 12 }}>
               <button type="submit" className="modal-button primary">
                 建立帳戶
               </button>
-              <button
-                type="button"
-                onClick={downloadSampleCSV}
-                className="modal-button"
-                style={{
-                  background: 'linear-gradient(90deg, #10b981, #059669)',
-                  color: '#fff',
-                  border: 'none',
-                  cursor: 'pointer'
-                }}
-              >
-                📥 匯入CSV（下載範例）
-              </button>
+
               <Link href="/login" className="modal-button secondary">返回登入</Link>
             </div>
 

@@ -5,8 +5,7 @@
   "carousel_slide2": "Small group classes",
   "carousel_slide3": "Interactive whiteboard experience",
   "cta_find_teacher": "Find a tutor",
-  "cta_find_course": "Find a course"
-  ,
+  "cta_find_course": "Find a course",
   "menu_teachers": "Teachers",
   "menu_teachers_title": "Teachers - Carefully selected tutors",
   "menu_pricing": "Pricing",
@@ -36,12 +35,10 @@
   "offline_course": "In-person",
   "currency": "NT$",
   "per_session": "per session",
-  "minutes": "minutes"
-  ,
+  "minutes": "minutes",
   "home": "Home",
   "profile_label": "Profile",
-  "students_label": "Students"
-  ,
+  "students_label": "Students",
   "auth_not_logged_in": "Not logged in.",
   "auth_go_to_login": "Go to login",
   "auth_status_prefix": "Signed in as",
@@ -144,7 +141,7 @@
   "mins_before_1440": "1 day before",
   "confirm": "Confirm",
   "personal_settings_title": "Personal settings",
-  "personal_settings_description": "Update personal info, backup email and demo payment data here (do not enter real card numbers).",
+  "personal_settings_description": "Update personal info here.",
   "loading": "Loading…",
   "please_login_to_edit_settings": "Please login to edit your settings.",
   "go_to_login": "Go to login",
@@ -166,8 +163,7 @@
   "bio_muted": "Markdown supported, up to 500 chars.",
   "saving": "Saving…",
   "save_settings": "Save settings",
-  "return_home": "Return home"
-  ,
+  "return_home": "Return home",
   "courses.c1.title": "Intermediate English Exam Crash Course (12 weeks)",
   "courses.c1.subject": "English",
   "courses.c1.level": "Junior/Senior High",
@@ -210,7 +206,7 @@
   "teachers.t4.name": "Mr. Sato",
   "teachers.t4.subjects": "Japanese Conversation · Travel Japanese",
   "teachers.t4.location": "Online / Tokyo",
-   "teachers.t4.intro": "Native Japanese teacher, practices natural dialogue from zero level.",
+  "teachers.t4.intro": "Native Japanese teacher, practices natural dialogue from zero level.",
   "login_heading": "Login",
   "login_status": "Current Login Status",
   "session_expiry_warning_title": "Session expiring soon",
@@ -451,4 +447,3 @@
   "student_courses_created_at": "Created At",
   "enter_classroom": "Enter Classroom"
 }
-

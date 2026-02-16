@@ -115,7 +115,7 @@ export type StoredUser = {
   email: string;
   plan: PlanId;
   // optional role for admin/teacher demo
-  role?: 'admin' | 'user' | 'teacher';
+  role?: 'admin' | 'user' | 'teacher' | string;
   // optional teacher id for demo teacher accounts
   teacherId?: string;
   // optional display/name fields used in various UIs
@@ -148,7 +148,7 @@ export function setStoredUser(user: StoredUser) {
   // Set session start timestamp when user logs in
   try {
     window.localStorage.setItem(SESSION_START_KEY, String(Date.now()));
-  } catch {}
+  } catch { }
 }
 
 // 登出
@@ -159,7 +159,7 @@ export function clearStoredUser() {
     // remove both possible session keys for compatibility
     window.localStorage.removeItem('tutor_session_expiry');
     window.localStorage.removeItem(SESSION_START_KEY);
-  } catch {}
+  } catch { }
 }
 
 export function getSessionStart(): number | null {
@@ -169,7 +169,7 @@ export function getSessionStart(): number | null {
     if (!v) return null;
     const n = Number(v);
     if (Number.isFinite(n) && n > 0) return n;
-  } catch {}
+  } catch { }
   return null;
 }
 
@@ -177,5 +177,5 @@ export function setSessionStart(ms: number) {
   if (typeof window === 'undefined') return;
   try {
     window.localStorage.setItem(SESSION_START_KEY, String(ms));
-  } catch {}
+  } catch { }
 }

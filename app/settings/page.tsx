@@ -14,12 +14,9 @@ export default function SettingsPage() {
   // payment fields moved to Pricing (upgrade) page
   const [firstName, setFirstName] = useState(user?.firstName || '');
   const [lastName, setLastName] = useState(user?.lastName || '');
-  const [bio, setBio] = useState('');
   const [birthdate, setBirthdate] = useState('');
   const [gender, setGender] = useState('');
   const [country, setCountry] = useState('');
-  const [roleId, setRoleId] = useState<string | null>(null);
-  const [backupEmail, setBackupEmail] = useState('');
   const [message, setMessage] = useState<string | null>(null);
   // plan is handled on the pricing (upgrade) page now
   // Plan / payment state (moved here so hooks call order is stable)
@@ -49,12 +46,9 @@ export default function SettingsPage() {
         if (!res.ok) return;
         const data = await res.json();
         if (data?.ok && data.profile) {
-          setBio(data.profile.bio || '');
           setBirthdate(data.profile.birthdate || '');
           setGender(data.profile.gender || '');
           setCountry(data.profile.country || '');
-          setRoleId(data.profile.roid_id || data.profile.role || null);
-          setBackupEmail(data.profile.backupEmail || '');
           setFirstName(data.profile.firstName || '');
           setLastName(data.profile.lastName || '');
         }
@@ -100,7 +94,7 @@ export default function SettingsPage() {
     );
   }
 
-  
+
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -111,11 +105,9 @@ export default function SettingsPage() {
       // plan is updated on the Pricing (upgrade) page
       if (firstName !== undefined) payload.firstName = firstName;
       if (lastName !== undefined) payload.lastName = lastName;
-      if (bio !== undefined) payload.bio = bio;
       if (birthdate !== undefined) payload.birthdate = birthdate;
       if (gender !== undefined) payload.gender = gender;
       if (country !== undefined) payload.country = country;
-      if (backupEmail !== undefined) payload.backupEmail = backupEmail;
       // payment handled on Pricing page; no card data here
 
       const res = await fetch('/api/profile', {
@@ -125,7 +117,7 @@ export default function SettingsPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.message || '更新失敗');
-      setMessage('已更新個人設定（示範）');
+      setMessage('更新個人設定成功');
       // update stored user display name
       const stored = getStoredUser();
       if (stored) {
@@ -154,19 +146,6 @@ export default function SettingsPage() {
               <label>{t('email_label')}</label>
               <input value={user.email} readOnly disabled />
             </div>
-
-            <div className="field">
-              <label>{t('role_label')}</label>
-              <input value={roleId || ''} readOnly disabled />
-            </div>
-
-            <div className="field">
-              <label>{t('backup_email_label')}</label>
-              <input value={backupEmail} onChange={(e) => setBackupEmail(e.target.value)} placeholder={t('backup_placeholder')} />
-              <small className="muted">{t('backup_muted')}</small>
-            </div>
-
-            {/* Plan / payment has been moved out — use Pricing page for upgrades. */}
 
             <div className="field-row">
               <div className="field">
@@ -221,24 +200,13 @@ export default function SettingsPage() {
               </select>
             </div>
 
-            <div className="field">
-              <label>{t('bio_label')}</label>
-              <textarea
-                rows={4}
-                value={bio}
-                onChange={(e) => setBio(e.target.value)}
-                placeholder={t('bio_placeholder')}
-              />
-              <small className="muted">{t('bio_muted')}</small>
-            </div>
-
             {/* Payment moved to Pricing page */}
 
             <div className="modal-actions" style={{ marginTop: 12 }}>
               <button type="submit" className="modal-button primary" disabled={loading}>{loading ? t('saving') : t('save_settings')}</button>
               <Link href="/">{t('return_home')}</Link>
             </div>
-            {message && <p className="form-success" style={{ marginTop: 8 }}>{message}</p>}
+            {message && <p className="form-success" style={{ marginTop: 8, color: '#10b981' }}>{message}</p>}
           </form>
         </div>
       </section>

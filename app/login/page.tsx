@@ -41,7 +41,7 @@ export default function LoginPage() {
           body: JSON.stringify({ email: email.trim().toLowerCase(), password, captchaToken, captchaValue }),
         });
         const data = await res.json();
-        
+
         // If API succeeded, handle redirect
         if (res.ok && data?.ok) {
           const role = data.profile?.role as string | undefined;
@@ -49,7 +49,7 @@ export default function LoginPage() {
           const user: StoredUser = {
             email: email.trim().toLowerCase(),
             plan,
-            role: role === 'admin' ? 'admin' : (role === 'teacher' ? 'teacher' : 'user'),
+            role, // preserve raw role (e.g. 'hr') from API response
             firstName: data.profile?.firstName,
             lastName: data.profile?.lastName,
           };
@@ -65,13 +65,13 @@ export default function LoginPage() {
             window.sessionStorage.setItem('tutor_last_login_time', String(Date.now()));
             // Mark that we just logged in successfully
             window.sessionStorage.setItem('tutor_login_complete', 'true');
-          } catch {}
+          } catch { }
           // Dispatch auth changed event
           window.dispatchEvent(new Event('tutor:auth-changed'));
-          
+
           // Add a small delay to ensure storage events propagate
           await new Promise(r => setTimeout(r, 100));
-          
+
           // If a redirect query param is present, send user there after login
           try {
             const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
@@ -137,19 +137,19 @@ export default function LoginPage() {
         try {
           const nowRef = String(Date.now());
           window.localStorage.setItem('tutor_session_expiry', String(Date.now() + 30 * 60 * 1000));
-          
+
           // Save to both session and local storage for reliability
           window.sessionStorage.setItem('tutor_last_login_time', nowRef);
           window.localStorage.setItem('tutor_last_login_time', nowRef);
-          
+
           // Mark that we just logged in successfully
           window.sessionStorage.setItem('tutor_login_complete', 'true');
-        } catch {}
+        } catch { }
         window.dispatchEvent(new Event('tutor:auth-changed'));
-        
+
         // Add a small delay to ensure storage events propagate
         await new Promise(r => setTimeout(r, 100));
-        
+
         // Check for redirect parameter
         try {
           const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
@@ -160,7 +160,7 @@ export default function LoginPage() {
             return;
           }
         } catch (e) { /* ignore */ }
-        
+
         alert(`${t('login_success')}\n${t('current_plan')}: ${PLAN_LABELS[user.plan]}(${t('test_account')})\n${t('redirecting_home')}`);
         router.push('/');
       } catch (err) {

@@ -215,19 +215,22 @@ export default function Header() {
       <nav id="menu" className="menu main-nav" style={{ boxShadow: 'none' }} aria-label="主選單">
         <ul className="main-nav-left">
           {
-            // build menu items and apply adminSettings.pageVisibility.menu rules when available
+            // build menu items and apply menuVisible from pageConfigs permissions
             MENU_ITEMS.map((item) => {
-              const visEntry = adminSettings?.pageVisibility?.[item.href];
-              // determine visibility based on menu flags: if any flags exist, prefer explicit flag for role; undefined means visible
+              // Check visibility using pageConfigs
               let visible = true;
-              if (visEntry?.menu && (visEntry.menu.admin !== undefined || visEntry.menu.teacher !== undefined || visEntry.menu.user !== undefined)) {
-                const roleKey = user?.role === 'admin' ? 'admin' : user?.role === 'teacher' ? 'teacher' : 'user';
-                const roleFlag = visEntry.menu?.[roleKey];
-                visible = roleFlag === undefined ? true : !!roleFlag;
+              if (adminSettings?.pageConfigs) {
+                const pc = adminSettings.pageConfigs.find((x: any) => x.path === item.href);
+                if (pc) {
+                  const roleKey = user?.role || 'student'; // default to student if no role
+                  const perm = (pc.permissions || []).find((p: any) => p.roleId === roleKey);
+                  if (perm && perm.menuVisible === false) visible = false;
+                }
               }
               if (!visible) return null;
-              // Prefer localized label from translations; fall back to admin-provided label, then default
-              const label = t((item as any).labelKey) || visEntry?.label || item.defaultLabel;
+
+              // Prefer localized label from translations; fall back to default
+              const label = t((item as any).labelKey) || item.defaultLabel;
               return (
                 <li key={item.href}><NavLink href={item.href} title={t((item as any).titleKey)}>{label}</NavLink></li>
               );
@@ -248,14 +251,18 @@ export default function Header() {
                       <div className="menu-user-email">{user.email}</div>
                       <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>
                         {(() => {
-                          const r = user.role;
-                          // map our local stored role ('user') to canonical admin role id ('student')
+                          const r = user.role || 'student';
+                          // map 'user' to 'student' for legacy lookup
                           const lookupId = r === 'user' ? 'student' : r;
                           const roleObj = roles.find((x: any) => x.id === lookupId);
-                          if (roleObj) return roleObj.description || roleObj.name || (lookupId === 'admin' ? '管理者' : lookupId === 'teacher' ? '教師' : '使用者');
+                          if (roleObj) {
+                            return roleObj.description || roleObj.name || lookupId;
+                          }
+                          // Fallback labels for well-known roles
                           if (r === 'admin') return '管理者';
                           if (r === 'teacher') return '教師';
-                          return '使用者';
+                          if (r === 'student' || r === 'user') return '使用者';
+                          return r; // return raw ID as last resort
                         })()}
                       </div>
                     </div>
@@ -299,15 +306,8 @@ export default function Header() {
                               (adminSettings?.pageConfigs || [])
                                 .filter((pc: any) => !!pc.path && pc.path !== '/admin/settings/page-permissions')
                                 .filter((pc: any) => {
-                                  const roleKey = user?.role || 'user';
-                                  // map local 'user' to 'student' if needed, but permissions usually use 'student'
-                                  // actually our roles are 'admin', 'teacher', 'student' (mapped from 'user')
-                                  // let's stick to the stored role.
-                                  // The stored user role is 'admin' | 'teacher' | 'user'.
-                                  // The permissions use 'admin' | 'teacher' | 'student'.
-                                  const effectiveRole = roleKey === 'user' ? 'student' : roleKey;
-
-                                  const perm = (pc.permissions || []).find((p: any) => p.roleId === effectiveRole);
+                                  const roleKey = user?.role || 'student'; // default to student if no role
+                                  const perm = (pc.permissions || []).find((p: any) => p.roleId === roleKey);
                                   // If no permission found, default to false (safe by default)
                                   const visible = perm ? (perm.dropdownVisible !== false) : false;
                                   return !!visible;
@@ -408,9 +408,8 @@ export default function Header() {
                     (adminSettings?.pageConfigs || [])
                       .filter((pc: any) => !!pc.path && pc.path !== '/admin/settings/page-permissions')
                       .filter((pc: any) => {
-                        const roleKey = user?.role || 'user';
-                        const effectiveRole = roleKey === 'user' ? 'student' : roleKey;
-                        const perm = (pc.permissions || []).find((p: any) => p.roleId === effectiveRole);
+                        const roleKey = user?.role || 'student'; // default to student if no role
+                        const perm = (pc.permissions || []).find((p: any) => p.roleId === roleKey);
                         const visible = perm ? (perm.dropdownVisible !== false) : false;
                         return !!visible;
                       })

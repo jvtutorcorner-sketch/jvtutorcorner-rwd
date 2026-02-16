@@ -102,9 +102,8 @@ export default function MenuBar() {
           if (adminSettings?.pageConfigs) {
             const pc = adminSettings.pageConfigs.find((x: any) => x.path === item.href);
             if (pc) {
-              const roleKey = user?.role || 'user'; // 'user' maps to 'student' in perms usually
-              const effectiveRole = roleKey === 'user' ? 'student' : roleKey;
-              const perm = (pc.permissions || []).find((p: any) => p.roleId === effectiveRole);
+              const roleKey = user?.role || 'student'; // default to student if no role
+              const perm = (pc.permissions || []).find((p: any) => p.roleId === roleKey);
               if (perm && perm.menuVisible === false) visible = false;
             }
           }
@@ -177,9 +176,8 @@ export default function MenuBar() {
                         {(adminSettings?.pageConfigs || [])
                           .filter((pc: any) => !!pc.path && pc.path !== '/admin/settings/page-permissions')
                           .filter((pc: any) => {
-                            const roleKey = user?.role || 'user';
-                            const effectiveRole = roleKey === 'user' ? 'student' : roleKey;
-                            const perm = (pc.permissions || []).find((p: any) => p.roleId === effectiveRole);
+                            const roleKey = user?.role || 'student'; // default to student if no role
+                            const perm = (pc.permissions || []).find((p: any) => p.roleId === roleKey);
                             return perm ? (perm.dropdownVisible !== false) : false;
                           })
                           .map((pc: any) => {

@@ -5,8 +5,7 @@
   "carousel_slide2": "小班制團體課程",
   "carousel_slide3": "擬真白板教學體驗",
   "cta_find_teacher": "找老師",
-  "cta_find_course": "找課程"
-  ,
+  "cta_find_course": "找課程",
   "menu_teachers": "專業師資",
   "menu_teachers_title": "專業師資 - 嚴選全球優質師資",
   "menu_pricing": "方案與價格",
@@ -36,16 +35,14 @@
   "offline_course": "實體課程",
   "currency": "NT$",
   "per_session": "堂",
-  "minutes": "分鐘"
-  ,
+  "minutes": "分鐘",
   "session_expiry_warning_title": "會話即將到期",
   "session_expiry_warning_message": "您的登入還有 1 分鐘就會自動登出，請儲存重要資料。",
   "session_expired": "會話已結束，已自動登出。",
   "dismiss": "關閉",
   "home": "首頁",
   "profile_label": "個人檔案",
-  "students_label": "學生列表"
-  ,
+  "students_label": "學生列表",
   "auth_not_logged_in": "尚未登入。",
   "auth_go_to_login": "前往登入",
   "auth_status_prefix": "目前以",
@@ -104,7 +101,7 @@
   "mins_before_1440": "1 天前",
   "confirm": "確認設定",
   "personal_settings_title": "個人化設定",
-  "personal_settings_description": "在此可以更新個人資訊、備用電子郵件與示範用的付款資料（請勿輸入真實卡號）。",
+  "personal_settings_description": "在此可以更新個人資訊",
   "loading": "載入中…",
   "please_login_to_edit_settings": "請先登入以編輯個人設定。",
   "go_to_login": "前往登入",
@@ -126,8 +123,7 @@
   "bio_muted": "支援 Markdown 格式，最多 500 字。",
   "saving": "儲存中…",
   "save_settings": "儲存設定",
-  "return_home": "返回首頁"
-  ,
+  "return_home": "返回首頁",
   "courses.c1.title": "英檢中級衝刺班（12 週）",
   "courses.c1.subject": "英文",
   "courses.c1.level": "國高中",
@@ -170,7 +166,7 @@
   "teachers.t4.name": "佐藤先生",
   "teachers.t4.subjects": "日文會話 · 旅遊日文",
   "teachers.t4.location": "線上 / 東京",
-   "teachers.t4.intro": "日本在地老師，從零基礎開始練習自然對話。",
+  "teachers.t4.intro": "日本在地老師，從零基礎開始練習自然對話。",
   "login_heading": "登入",
   "login_status": "目前登入狀態",
   "login_success": "登入成功！",
@@ -437,8 +433,7 @@
   "student_courses_amount": "金額",
   "student_courses_status": "狀態",
   "student_courses_created_at": "建立時間",
-  "enter_classroom": "進入教室"
-  ,
+  "enter_classroom": "進入教室",
   "wait.title": "準備加入教室",
   "wait.session_label": "Session:",
   "wait.course_id_label": "課程 ID:",
@@ -518,5 +513,3 @@
   "remaining_time": "剩餘時間：",
   "prompt_start_date": "輸入新的開始日期（YYYY-MM-DD），留空則移除"
 }
-
-
