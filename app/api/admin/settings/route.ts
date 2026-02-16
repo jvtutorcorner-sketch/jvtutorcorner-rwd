@@ -116,6 +116,13 @@ async function readSettings() {
           ]
         },
         {
+          id: '/courses_manage', path: '/courses_manage', label: '所有課程管理', permissions: [
+            { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: false, pageVisible: true },
+            { roleId: 'teacher', roleName: 'Teacher', menuVisible: true, dropdownVisible: true, pageVisible: true },
+            { roleId: 'student', roleName: 'Student', menuVisible: false, dropdownVisible: false, pageVisible: false }
+          ]
+        },
+        {
           id: '/student_courses', path: '/student_courses', label: '學生的課程訂單', permissions: [
             { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
             { roleId: 'teacher', roleName: 'Teacher', menuVisible: true, dropdownVisible: true, pageVisible: true },
@@ -271,11 +278,11 @@ export async function POST(req: Request) {
     console.log('\n[Admin Settings API] ════════════════════════════════════════');
     console.log('[Admin Settings API] 🔵 POST 請求開始');
     console.log('[Admin Settings API] ════════════════════════════════════════\n');
-    
+
     const body = await req.json();
     console.log('[Admin Settings API] 📥 接收到的資料大小:', JSON.stringify(body).length, '字節');
     console.log('[Admin Settings API] 🔍 檢查 pageConfigs:', Array.isArray(body.pageConfigs) ? `✅ 是陣列，${body.pageConfigs.length} 個項目` : '❌ 不是陣列或不存在');
-    
+
     const current = await readSettings();
     const merged = { ...current, ...body };
 
@@ -448,7 +455,7 @@ export async function POST(req: Request) {
 
         if (!saveResult) {
           console.error('[Admin Settings API] ❌ DynamoDB 儲存失敗');
-          const errorMsg = process.env.DYNAMODB_TABLE_PAGE_PERMISSIONS 
+          const errorMsg = process.env.DYNAMODB_TABLE_PAGE_PERMISSIONS
             ? 'Failed to save page permissions to DynamoDB. Check server logs for details.'
             : 'DynamoDB table not configured. Environment variable DYNAMODB_TABLE_PAGE_PERMISSIONS is not set.';
           return NextResponse.json({
@@ -475,11 +482,11 @@ export async function POST(req: Request) {
     delete settingsForJSON.pageVisibility;  // Also remove legacy pageVisibility
 
     await writeSettings(settingsForJSON);
-    
+
     console.log('\n[Admin Settings API] ════════════════════════════════════════');
     console.log('[Admin Settings API] ✅ POST 請求完成成功');
     console.log('[Admin Settings API] ════════════════════════════════════════\n');
-    
+
     return NextResponse.json({ ok: true, settings: merged });
   } catch (err: any) {
     console.error('\n[Admin Settings API] ════════════════════════════════════════');
@@ -487,9 +494,9 @@ export async function POST(req: Request) {
     console.error('[Admin Settings API] 錯誤訊息:', err?.message || err);
     console.error('[Admin Settings API] 錯誤堆疊:', err?.stack || err);
     console.error('[Admin Settings API] ════════════════════════════════════════\n');
-    
-    return NextResponse.json({ 
-      ok: false, 
+
+    return NextResponse.json({
+      ok: false,
       error: err?.message || 'write error',
       details: process.env.NODE_ENV === 'development' ? err?.stack : undefined
     }, { status: 500 });

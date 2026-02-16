@@ -9,21 +9,45 @@ import Button from './UI/Button';
 
 export default function MenuBar() {
   const [user, setUser] = useState<StoredUser | null>(null);
+  const [adminSettings, setAdminSettings] = useState<any | null>(null);
   const router = useRouter();
+  const t = useT();
+
+  const syncUser = () => setUser(getStoredUser());
 
   useEffect(() => {
-    const sync = () => setUser(getStoredUser());
-    // initial
-    sync();
-    // listen for auth changes triggered elsewhere
-    if (typeof window !== 'undefined') {
-      window.addEventListener('tutor:auth-changed', sync);
-    }
-    return () => {
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('tutor:auth-changed', sync);
+    syncUser();
+    // Fetch admin settings for dynamic menu
+    (async () => {
+      try {
+        const res = await fetch('/api/admin/settings');
+        const data = await res.json();
+        if (res.ok && data?.ok) setAdminSettings(data.settings || null);
+      } catch (e) {
+        // ignore
       }
-    };
+    })();
+
+    // Listen for auth changes
+    if (typeof window !== 'undefined') {
+      window.addEventListener('tutor:auth-changed', syncUser);
+      // Listen for admin settings changes
+      const onSettingsChanged = async () => {
+        try {
+          const res = await fetch('/api/admin/settings');
+          const data = await res.json();
+          if (res.ok && data?.ok) setAdminSettings(data.settings || null);
+        } catch (e) {
+          // ignore
+        }
+      };
+      window.addEventListener('tutor:admin-settings-changed', onSettingsChanged);
+
+      return () => {
+        window.removeEventListener('tutor:auth-changed', syncUser);
+        window.removeEventListener('tutor:admin-settings-changed', onSettingsChanged);
+      };
+    }
   }, []);
 
   const [menuOpen, setMenuOpen] = useState(false);
@@ -57,17 +81,40 @@ export default function MenuBar() {
     alert(t('alert_logged_out'));
   }
 
-  const t = useT();
+  // Define default top-level menu items to check against admin settings
+  // If not found in settings, default to visible.
+  // Actually, we can just iterate the pageConfigs that are marked as menuVisible.
+  // But usually homepages have a specific design. 
+  // Let's stick to the previous design: Teachers, Courses, About. 
+  // And check their visibility.
+  const DEFAULT_MENU_ITEMS = [
+    { href: '/teachers', label: t('menu_teachers'), key: 'menu_teachers' },
+    { href: '/courses', label: t('menu_courses'), key: 'menu_courses' },
+    { href: '/about', label: t('menu_about'), key: 'menu_about' },
+  ];
 
   return (
     <nav className="homepage-menu" aria-label={t('menu_label')}>
-        <ul className="menu-left">
-        <li><Link href="/teachers">{t('menu_teachers')}</Link></li>
+      <ul className="menu-left">
+        {DEFAULT_MENU_ITEMS.map(item => {
+          // Check visibility
+          let visible = true;
+          if (adminSettings?.pageConfigs) {
+            const pc = adminSettings.pageConfigs.find((x: any) => x.path === item.href);
+            if (pc) {
+              const roleKey = user?.role || 'user'; // 'user' maps to 'student' in perms usually
+              const effectiveRole = roleKey === 'user' ? 'student' : roleKey;
+              const perm = (pc.permissions || []).find((p: any) => p.roleId === effectiveRole);
+              if (perm && perm.menuVisible === false) visible = false;
+            }
+          }
+          if (!visible) return null;
+
+          return <li key={item.href}><Link href={item.href}>{item.label}</Link></li>
+        })}
         {user?.role === 'admin' && (
           <li><Link href="/admin/orders">{t('admin_orders')}</Link></li>
         )}
-        <li><Link href="/courses">{t('menu_courses')}</Link></li>
-        <li><Link href="/about">{t('menu_about')}</Link></li>
       </ul>
 
       <div className="menu-right">
@@ -118,47 +165,58 @@ export default function MenuBar() {
                       }}
                     >
                       <ul style={{ listStyle: 'none', margin: 0, padding: 8 }}>
+                        {/* Admin Fixed Items */}
                         {user?.role === 'admin' && (
-                          <li>
-                            <Link href="/admin/orders" onClick={() => setMenuOpen(false)} className="menu-link">{t('admin_orders')}</Link>
-                          </li>
+                          <>
+                            <li><Link href="/admin/orders" onClick={() => setMenuOpen(false)} className="menu-link">{t('admin_orders')}</Link></li>
+                            <li><Link href="/admin/settings" onClick={() => setMenuOpen(false)} className="menu-link">{t('site_settings')}</Link></li>
+                          </>
                         )}
-                        {user?.role === 'admin' && (
-                          <li>
-                            <Link href="/admin/settings" onClick={() => setMenuOpen(false)} className="menu-link">{t('site_settings')}</Link>
-                          </li>
-                        )}
-                        {user?.role === 'teacher' ? (
-                          <li>
-                            <span
-                              role="menuitem"
-                              tabIndex={0}
-                              className="menu-link"
-                              onClick={() => { setMenuOpen(false); router.push('/courses_manage'); }}
-                              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { setMenuOpen(false); router.push('/courses_manage'); } }}
-                            >
-                              {t('my_courses')}
-                            </span>
-                          </li>
-                        ) : (
-                          <li>
-                            <span
-                              role="menuitem"
-                              tabIndex={0}
-                              className="menu-link"
-                              onClick={() => { setMenuOpen(false); router.push('/settings'); }}
-                              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { setMenuOpen(false); router.push('/settings'); } }}
-                            >
-                              {t('settings_label')}
-                            </span>
-                          </li>
-                        )}
-                        <li>
-                            {/* Personalize now accessed via /settings */}
-                        </li>
-                        <li>
-                          <Link href="/settings" onClick={() => setMenuOpen(false)} className="menu-link">{t('settings_label')}</Link>
-                        </li>
+
+                        {/* Dynamic Dropdown Items */}
+                        {(adminSettings?.pageConfigs || [])
+                          .filter((pc: any) => !!pc.path && pc.path !== '/admin/settings/page-permissions')
+                          .filter((pc: any) => {
+                            const roleKey = user?.role || 'user';
+                            const effectiveRole = roleKey === 'user' ? 'student' : roleKey;
+                            const perm = (pc.permissions || []).find((p: any) => p.roleId === effectiveRole);
+                            return perm ? (perm.dropdownVisible !== false) : false;
+                          })
+                          .map((pc: any) => {
+                            // Avoid duplicates if admin already saw them (though admin layout above handles specific admin pages)
+                            // For simplicity, let's just render what's in pageConfigs that is enabled for dropdown.
+                            // But wait, admin pages like /admin/orders are in pageConfigs too.
+                            // We should probably rely entirely on pageConfigs for the list, 
+                            // OR exclude the ones we already manually rendered above.
+                            // The 'Header.tsx' implementation renders everything from pageConfigs.
+                            // Let's do the same here for consistency, but we might have duplicates if we keep the manual admin links above.
+                            // Let's remove the manual ADMIN links above if they are present in pageConfigs?
+                            // Actually, let's just render the dynamic list. It's cleaner.
+                            // However, we need to respect the manually added "Logout" at the bottom.
+
+                            const p = pc.path;
+                            // Skip if we manually rendered it? 
+                            // If /admin/orders is in pageConfigs and dropdownVisible=true, it will appear here.
+                            // If we keep the manual one above, it shows twice.
+                            // Let's remove the manual ones above if we trust pageConfigs.
+                            // But the prompt asked to refactor to dynamic.
+
+                            const label = pc.label || (
+                              p === '/settings' ? t('settings_label') :
+                                p === '/student_courses' ? t('orders_my_orders') :
+                                  p === '/teacher_courses' ? t('course_orders') :
+                                    p === '/courses_manage' ? t('my_courses') :
+                                      p === '/calendar' ? t('calendar_label') : p
+                            );
+
+                            return (
+                              <li key={p}>
+                                <span role="menuitem" tabIndex={0} className="menu-link" onClick={() => { setMenuOpen(false); router.push(p); }}>{label}</span>
+                              </li>
+                            );
+                          })
+                        }
+
                         <li style={{ borderTop: '1px solid #f3f4f6', marginTop: 8, paddingTop: 8 }}>
                           <Button variant="outline" className="w-full text-left" onClick={() => { setMenuOpen(false); handleLogout(); }}>{t('logout')}</Button>
                         </li>
