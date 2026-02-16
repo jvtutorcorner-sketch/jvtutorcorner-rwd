@@ -15,6 +15,21 @@ import {
   isSameDay,
   addDays,
   parseISO,
+  addWeeks,
+  subWeeks,
+  startOfYear,
+  endOfYear,
+  addYears,
+  subYears,
+  eachMonthOfInterval,
+  isSameYear,
+  setMonth,
+  setDate,
+  setHours,
+  setMinutes,
+  differenceInMinutes,
+  getDay,
+  subDays,
 } from 'date-fns';
 import { zhTW } from 'date-fns/locale';
 import Button from './UI/Button';
@@ -34,10 +49,12 @@ interface CalendarProps {
   events: CalendarEvent[];
 }
 
+type ViewType = 'month' | 'week' | 'day' | 'year';
+
 const Calendar: React.FC<CalendarProps> = ({ events }) => {
   const t = useT();
-  const [currentMonth, setCurrentMonth] = useState(new Date());
-  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [view, setView] = useState<ViewType>('month');
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [reminderTime, setReminderTime] = useState('15'); // minutes before
   const [showReminderModal, setShowReminderModal] = useState(false);
@@ -55,56 +72,153 @@ const Calendar: React.FC<CalendarProps> = ({ events }) => {
     localStorage.setItem('calendar_reminders', JSON.stringify(newReminders));
   };
 
+
+  const next = () => {
+    switch (view) {
+      case 'year':
+        setCurrentDate(addYears(currentDate, 1));
+        break;
+      case 'month':
+        setCurrentDate(addMonths(currentDate, 1));
+        break;
+      case 'week':
+        setCurrentDate(addWeeks(currentDate, 1));
+        break;
+      case 'day':
+        setCurrentDate(addDays(currentDate, 1));
+        break;
+    }
+  };
+
+  const prev = () => {
+    switch (view) {
+      case 'year':
+        setCurrentDate(subYears(currentDate, 1));
+        break;
+      case 'month':
+        setCurrentDate(subMonths(currentDate, 1));
+        break;
+      case 'week':
+        setCurrentDate(subWeeks(currentDate, 1));
+        break;
+      case 'day':
+        setCurrentDate(addDays(currentDate, -1));
+        break;
+    }
+  };
+
   const renderHeader = () => {
+    let titleFormat = 'yyyy年 MMMM';
+    if (view === 'year') titleFormat = 'yyyy年';
+    if (view === 'day') titleFormat = 'yyyy年MM月dd日 (eeee)';
+    if (view === 'week') {
+      const start = startOfWeek(currentDate, { locale: zhTW });
+      const end = endOfWeek(currentDate, { locale: zhTW });
+      // Custom format for week range if needed, or just show Month Year
+      // Showing range: "2023年 10月 22日 - 10月 28日"
+      return (
+        <div className="flex flex-col md:flex-row items-center justify-between px-4 py-4 bg-white border-b border-gray-200">
+          <div className="flex items-center space-x-4">
+            <h2 className="text-xl font-semibold text-gray-900">
+              {format(start, 'yyyy年MM月dd日', { locale: zhTW })} - {format(end, 'MM月dd日', { locale: zhTW })}
+            </h2>
+          </div>
+          <div className="flex items-center space-x-2 mt-2 md:mt-0">
+            <select
+              value={view}
+              onChange={(e) => setView(e.target.value as ViewType)}
+              className="border border-gray-300 rounded-md text-sm px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="year">{t('calendar_view_year') || '年'}</option>
+              <option value="month">{t('calendar_view_month') || '月'}</option>
+              <option value="week">{t('calendar_view_week') || '週'}</option>
+              <option value="day">{t('calendar_view_day') || '日'}</option>
+            </select>
+
+            <div className="flex items-center bg-gray-100 rounded-lg p-1">
+              <Button onClick={prev} variant="ghost" className="p-1 rounded-md hover:bg-white hover:shadow-sm">
+                <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </Button>
+              <Button onClick={() => setCurrentDate(new Date())} variant="ghost" className="px-3 py-1 text-sm font-medium text-gray-700 hover:bg-white hover:shadow-sm rounded-md mx-1">
+                {t('today')}
+              </Button>
+              <Button onClick={next} variant="ghost" className="p-1 rounded-md hover:bg-white hover:shadow-sm">
+                <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </Button>
+            </div>
+          </div>
+        </div>
+      )
+    }
+
     return (
-      <div className="flex items-center justify-between px-4 py-4 bg-white border-b border-gray-200">
+      <div className="flex flex-col md:flex-row items-center justify-between px-4 py-4 bg-white border-b border-gray-200">
         <div className="flex items-center">
           <h2 className="text-xl font-semibold text-gray-900">
-            {format(currentMonth, 'yyyy年 MMMM', { locale: zhTW })}
+            {format(currentDate, titleFormat, { locale: zhTW })}
           </h2>
         </div>
-        <div className="flex items-center space-x-2">
-          <Button onClick={() => setCurrentMonth(subMonths(currentMonth, 1))} variant="ghost" className="p-2 rounded-full">
-            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-          </Button>
-          <Button onClick={() => setCurrentMonth(new Date())} variant="outline" className="px-4 py-2 rounded-lg">
-            {t('today')}
-          </Button>
-          <Button onClick={() => setCurrentMonth(addMonths(currentMonth, 1))} variant="ghost" className="p-2 rounded-full">
-            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-          </Button>
+        <div className="flex items-center space-x-2 mt-2 md:mt-0">
+          <select
+            value={view}
+            onChange={(e) => setView(e.target.value as ViewType)}
+            className="border border-gray-300 rounded-md text-sm px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="year">{t('calendar_view_year') || '年'}</option>
+            <option value="month">{t('calendar_view_month') || '月'}</option>
+            <option value="week">{t('calendar_view_week') || '週'}</option>
+            <option value="day">{t('calendar_view_day') || '日'}</option>
+          </select>
+
+          <div className="flex items-center bg-gray-100 rounded-lg p-1">
+            <Button onClick={prev} variant="ghost" className="p-1 rounded-md hover:bg-white hover:shadow-sm">
+              <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </Button>
+            <Button onClick={() => setCurrentDate(new Date())} variant="ghost" className="px-3 py-1 text-sm font-medium text-gray-700 hover:bg-white hover:shadow-sm rounded-md mx-1">
+              {t('today')}
+            </Button>
+            <Button onClick={next} variant="ghost" className="p-1 rounded-md hover:bg-white hover:shadow-sm">
+              <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </Button>
+          </div>
         </div>
       </div>
     );
   };
 
-  const renderDays = () => {
-    const days = [t('day_sun'), t('day_mon'), t('day_tue'), t('day_wed'), t('day_thu'), t('day_fri'), t('day_sat')];
-    return (
-      <div className="grid grid-cols-7 bg-gray-50 border-b border-gray-200">
-        {days.map((day) => (
-          <div key={day} className="py-2 text-xs font-medium text-center text-gray-500 uppercase tracking-wider">
-            {day}
-          </div>
-        ))}
-      </div>
-    );
+  const getEventStyle = (event: CalendarEvent) => {
+    // Priority: status -> ownerType -> type
+    let colorClass = 'bg-blue-100 text-blue-800 border border-blue-200';
+    if (event.status === 'ongoing') colorClass = 'bg-green-100 text-green-800 border border-green-200';
+    else if (event.status === 'interrupted') colorClass = 'bg-red-100 text-red-800 border border-red-200';
+    else if (event.status === 'finished') colorClass = 'bg-gray-100 text-gray-700 border border-gray-200';
+    else if (event.status === 'upcoming') colorClass = 'bg-indigo-100 text-indigo-800 border border-indigo-200';
+    else if (event.ownerType === 'teacher') colorClass = 'bg-purple-100 text-purple-800 border border-purple-200';
+    else if (event.ownerType === 'student') colorClass = 'bg-indigo-100 text-indigo-800 border border-indigo-200';
+    else if (event.type === 'activity') colorClass = 'bg-green-100 text-green-800 border border-green-200';
+
+    return colorClass;
   };
 
-  const renderCells = () => {
-    const monthStart = startOfMonth(currentMonth);
+  const renderMonth = () => {
+    const monthStart = startOfMonth(currentDate);
     const monthEnd = endOfMonth(monthStart);
-    const startDate = startOfWeek(monthStart);
-    const endDate = endOfWeek(monthEnd);
+    const startDate = startOfWeek(monthStart, { locale: zhTW });
+    const endDate = endOfWeek(monthEnd, { locale: zhTW });
+
+    const daysHeader = [t('day_sun'), t('day_mon'), t('day_tue'), t('day_wed'), t('day_thu'), t('day_fri'), t('day_sat')];
 
     const rows = [];
     let days = [];
     let day = startDate;
-    let formattedDate = '';
 
     while (day <= endDate) {
       for (let i = 0; i < 7; i++) {
@@ -115,10 +229,12 @@ const Calendar: React.FC<CalendarProps> = ({ events }) => {
         days.push(
           <div
             key={day.toString()}
-            className={`min-h-[120px] border-r border-b border-gray-200 p-2 transition-colors ${
-              !isSameMonth(day, monthStart) ? 'bg-gray-50 text-gray-400' : 'bg-white text-gray-900'
-            } ${isSameDay(day, new Date()) ? 'bg-blue-50' : ''}`}
-            onClick={() => setSelectedDate(cloneDay)}
+            className={`min-h-[120px] border-r border-b border-gray-200 p-2 transition-colors cursor-pointer ${!isSameMonth(day, monthStart) ? 'bg-gray-50 text-gray-400' : 'bg-white text-gray-900'
+              } ${isSameDay(day, new Date()) ? 'bg-blue-50' : ''}`}
+            onClick={() => {
+              setCurrentDate(cloneDay);
+              setView('day');
+            }}
           >
             <div className="flex justify-between items-start">
               <span className={`text-sm font-medium ${isSameDay(day, new Date()) ? 'bg-blue-600 text-white w-6 h-6 flex items-center justify-center rounded-full' : ''}`}>
@@ -133,16 +249,7 @@ const Calendar: React.FC<CalendarProps> = ({ events }) => {
                     e.stopPropagation();
                     setSelectedEvent(event);
                   }}
-                  className={`px-2 py-1 text-xs rounded-md truncate cursor-pointer flex items-center justify-between ${(() => {
-                    // Priority: status -> ownerType -> type
-                    if (event.status === 'ongoing') return 'bg-green-100 text-green-800 border border-green-200';
-                    if (event.status === 'interrupted') return 'bg-red-100 text-red-800 border border-red-200';
-                    if (event.status === 'finished') return 'bg-gray-100 text-gray-700 border border-gray-200';
-                    if (event.status === 'upcoming') return 'bg-indigo-100 text-indigo-800 border border-indigo-200';
-                    if (event.ownerType === 'teacher') return 'bg-purple-100 text-purple-800 border border-purple-200';
-                    if (event.ownerType === 'student') return 'bg-indigo-100 text-indigo-800 border border-indigo-200';
-                    return event.type === 'activity' ? 'bg-green-100 text-green-800 border border-green-200' : 'bg-blue-100 text-blue-800 border border-blue-200';
-                  })()} hover:shadow-sm transition-shadow`}
+                  className={`px-2 py-1 text-xs rounded-md truncate cursor-pointer flex items-center justify-between ${getEventStyle(event)} hover:shadow-sm transition-shadow`}
                 >
                   <span className="truncate">{format(event.start, 'HH:mm')} {event.title}</span>
                   {reminders[event.id] && (
@@ -164,8 +271,215 @@ const Calendar: React.FC<CalendarProps> = ({ events }) => {
       );
       days = [];
     }
-    return <div className="bg-white border-l border-t border-gray-200">{rows}</div>;
+
+    return (
+      <div className="flex flex-col h-full">
+        <div className="grid grid-cols-7 bg-gray-50 border-b border-gray-200">
+          {daysHeader.map((dayName) => (
+            <div key={dayName} className="py-2 text-xs font-medium text-center text-gray-500 uppercase tracking-wider">
+              {dayName}
+            </div>
+          ))}
+        </div>
+        <div className="bg-white border-l border-t border-gray-200 flex-1 overflow-y-auto">{rows}</div>
+      </div>
+    );
   };
+
+  const renderYear = () => {
+    const yearStart = startOfYear(currentDate);
+    const months = eachMonthOfInterval({
+      start: yearStart,
+      end: endOfYear(yearStart)
+    });
+
+    return (
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 p-4 overflow-y-auto h-full">
+        {months.map((month) => {
+          const mStart = startOfMonth(month);
+          const mEnd = endOfMonth(mStart);
+          const dStart = startOfWeek(mStart, { locale: zhTW });
+          const dEnd = endOfWeek(mEnd, { locale: zhTW });
+
+          // Mini calendar logic
+          const days = [];
+          let day = dStart;
+          while (day <= dEnd) {
+            days.push(day);
+            day = addDays(day, 1);
+          }
+
+          return (
+            <div
+              key={month.toString()}
+              className="border border-gray-200 rounded-lg p-2 hover:shadow-md transition cursor-pointer bg-white"
+              onClick={() => {
+                setCurrentDate(month);
+                setView('month');
+              }}
+            >
+              <h3 className="text-center font-semibold text-gray-700 mb-2">{format(month, 'MMMM', { locale: zhTW })}</h3>
+              <div className="grid grid-cols-7 gap-1 text-[0.6rem] text-center text-gray-400 mb-1">
+                {['日', '一', '二', '三', '四', '五', '六'].map(d => <div key={d}>{d}</div>)}
+              </div>
+              <div className="grid grid-cols-7 gap-1 text-center">
+                {days.map((d, idx) => {
+                  const isCurrMonth = isSameMonth(d, month);
+                  const hasEvents = isCurrMonth && events.some(e => isSameDay(e.start, d));
+                  return (
+                    <div key={idx} className={`text-[0.65rem] h-5 w-5 flex items-center justify-center rounded-full mx-auto ${!isCurrMonth ? 'invisible' : ''
+                      } ${isSameDay(d, new Date()) ? 'bg-blue-600 text-white font-bold' : (hasEvents ? 'bg-blue-100 text-blue-800 font-semibold' : 'text-gray-700')}`}>
+                      {format(d, 'd')}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    )
+  };
+
+  const renderWeek = () => {
+    const weekStart = startOfWeek(currentDate, { locale: zhTW });
+    const weekDays = [];
+    for (let i = 0; i < 7; i++) {
+      weekDays.push(addDays(weekStart, i));
+    }
+
+    const hours = Array.from({ length: 24 }, (_, i) => i);
+
+    return (
+      <div className="flex flex-col h-full overflow-hidden">
+        {/* Header: Days of Week */}
+        <div className="grid grid-cols-8 border-b border-gray-200 bg-gray-50 flex-shrink-0">
+          <div className="py-2 text-xs font-medium text-center text-gray-500 border-r border-gray-200">
+            GMT+8
+          </div>
+          {weekDays.map((day) => (
+            <div
+              key={day.toString()}
+              className={`py-2 text-center border-r border-gray-200 cursor-pointer hover:bg-gray-100 ${isSameDay(day, new Date()) ? 'bg-blue-50' : ''}`}
+              onClick={() => {
+                setCurrentDate(day);
+                setView('day');
+              }}
+            >
+              <div className={`text-xs font-medium uppercase ${isSameDay(day, new Date()) ? 'text-blue-600' : 'text-gray-500'}`}>
+                {format(day, 'EEE', { locale: zhTW })}
+              </div>
+              <div className={`text-lg font-semibold ${isSameDay(day, new Date()) ? 'text-blue-600' : 'text-gray-900'}`}>
+                {format(day, 'd')}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Scrollable Time Grid */}
+        <div className="flex-1 overflow-y-auto relative">
+          <div className="grid grid-cols-8 min-h-[1440px]"> {/* 24h * 60px/h = 1440px height */}
+            {/* Time Column */}
+            <div className="border-r border-gray-200 bg-white">
+              {hours.map((hour) => (
+                <div key={hour} className="h-[60px] border-b border-gray-100 text-xs text-gray-400 text-right pr-2 relative -top-2.5">
+                  {hour}:00
+                </div>
+              ))}
+            </div>
+
+            {/* Day Columns */}
+            {weekDays.map((day) => {
+              const dayEvents = events.filter((e) => isSameDay(e.start, day));
+              return (
+                <div key={day.toString()} className="border-r border-gray-200 relative bg-white">
+                  {hours.map((hour) => (
+                    <div key={hour} className="h-[60px] border-b border-gray-100"></div>
+                  ))}
+
+                  {/* Events Positioning */}
+                  {dayEvents.map(event => {
+                    const startHour = event.start.getHours();
+                    const startMin = event.start.getMinutes();
+                    const top = (startHour * 60) + startMin;
+                    const height = 60; // Assume 1 hour duration or calculate from end time if available
+
+                    return (
+                      <div
+                        key={event.id}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedEvent(event);
+                        }}
+                        className={`absolute left-0.5 right-0.5 rounded px-2 py-1 text-xs cursor-pointer overflow-hidden border ${getEventStyle(event)} hover:z-10 hover:shadow-md`}
+                        style={{ top: `${top}px`, height: `${height}px` }}
+                      >
+                        <div className="font-semibold truncate">{event.title}</div>
+                        <div className="text-[10px] truncate">{format(event.start, 'HH:mm')}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderDay = () => {
+    const hours = Array.from({ length: 24 }, (_, i) => i);
+    const dayEvents = events.filter((e) => isSameDay(e.start, currentDate));
+
+    return (
+      <div className="flex flex-col h-full overflow-hidden">
+        <div className="flex-1 overflow-y-auto relative">
+          <div className="flex min-h-[1440px]">
+            {/* Time Column */}
+            <div className="w-16 flex-shrink-0 border-r border-gray-200 bg-white">
+              {hours.map((hour) => (
+                <div key={hour} className="h-[60px] border-b border-gray-100 text-xs text-gray-400 text-right pr-2 relative -top-2.5">
+                  {hour}:00
+                </div>
+              ))}
+            </div>
+            {/* Event Area */}
+            <div className="flex-1 relative bg-white">
+              {hours.map((hour) => (
+                <div key={hour} className="h-[60px] border-b border-gray-100"></div>
+              ))}
+              {dayEvents.map(event => {
+                const startHour = event.start.getHours();
+                const startMin = event.start.getMinutes();
+                const top = (startHour * 60) + startMin;
+                const height = 60; // Assume 1 hr
+
+                return (
+                  <div
+                    key={event.id}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedEvent(event);
+                    }}
+                    className={`absolute left-2 right-2 rounded px-3 py-2 text-sm cursor-pointer overflow-hidden border ${getEventStyle(event)} hover:z-10 hover:shadow-md`}
+                    style={{ top: `${top}px`, height: `${height}px` }}
+                  >
+                    <div className="flex justify-between">
+                      <span className="font-bold">{event.title}</span>
+                      <span className="text-xs opacity-75">{format(event.start, 'HH:mm')}</span>
+                    </div>
+                    {event.description && <div className="text-xs mt-1 truncate">{event.description}</div>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  };
+
 
   const handleSetReminder = () => {
     if (selectedEvent) {
@@ -179,9 +493,12 @@ const Calendar: React.FC<CalendarProps> = ({ events }) => {
   return (
     <div className="flex flex-col h-full bg-white rounded-lg shadow-lg overflow-hidden border border-gray-200">
       {renderHeader()}
-      {renderDays()}
+
       <div className="flex-1 overflow-y-auto">
-        {renderCells()}
+        {view === 'month' && renderMonth()}
+        {view === 'year' && renderYear()}
+        {view === 'week' && renderWeek()}
+        {view === 'day' && renderDay()}
       </div>
 
       {/* Event Detail Modal */}
@@ -225,7 +542,7 @@ const Calendar: React.FC<CalendarProps> = ({ events }) => {
                   <p className="text-gray-700 text-sm leading-relaxed">{selectedEvent.description}</p>
                 </div>
               )}
-              
+
               <div className="pt-4 border-t border-gray-100 space-y-3">
                 {selectedEvent.courseId && (
                   <div className="mb-2">
