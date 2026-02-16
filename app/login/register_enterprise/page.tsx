@@ -42,6 +42,11 @@ export default function RegisterPage() {
   // credit card fields moved to post-login settings; do not collect on registration
   const [saved, setSaved] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
+  const [roles, setRoles] = useState<Array<{ id: string, name: string }>>([]);
+  const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [csvError, setCsvError] = useState<string | null>(null);
+  const [csvSuccess, setCsvSuccess] = useState<{ count: number } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Refs for form fields
   const roleRef = useRef<HTMLSelectElement>(null);
@@ -63,6 +68,23 @@ export default function RegisterPage() {
       setUuid(id);
     }
   }, [uuid]);
+
+  // Fetch roles from API
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/admin/roles');
+        const data = await res.json();
+        if (res.ok && data?.roles) {
+          // Filter out admin role and only show active roles
+          const filteredRoles = data.roles.filter((r: any) => r.id !== 'admin' && r.isActive);
+          setRoles(filteredRoles);
+        }
+      } catch (e) {
+        console.error('Failed to fetch roles:', e);
+      }
+    })();
+  }, []);
 
   // plan selection moved to user settings; registration defaults to 'viewer'
 
@@ -297,12 +319,289 @@ export default function RegisterPage() {
     }
   };
 
+  // Function to download sample CSV
+  const downloadSampleCSV = () => {
+    const headers = ['email', 'password', 'firstName', 'lastName', 'role', 'birthdate', 'gender', 'country'];
+    const sampleData = [
+      ['student@example.com', 'password123', 'John', 'Doe', 'student', '2000-01-01', 'male', 'TW'],
+      ['teacher@example.com', 'password456', 'Jane', 'Smith', 'teacher', '1985-05-15', 'female', 'US'],
+    ];
+
+    const csvContent = [
+      headers.join(','),
+      ...sampleData.map(row => row.join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+
+    link.setAttribute('href', url);
+    link.setAttribute('download', 'sample_registration.csv');
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Handle file selection
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.name.endsWith('.csv')) {
+      setCsvError('請選擇 CSV 檔案');
+      setCsvFile(null);
+      return;
+    }
+
+    setCsvFile(file);
+    setCsvError(null);
+  };
+
+  // Parse and validate CSV
+  const handleCsvImport = async () => {
+    if (!csvFile) {
+      setCsvError('請先選擇檔案');
+      return;
+    }
+
+    try {
+      const text = await csvFile.text();
+      const lines = text.split('\n').filter(line => line.trim());
+
+      if (lines.length < 2) {
+        setCsvError('CSV 檔案格式錯誤：至少需要標題列和一筆資料');
+        return;
+      }
+
+      const headers = lines[0].split(',').map(h => h.trim());
+      const requiredHeaders = ['email', 'password', 'firstName', 'lastName', 'role', 'birthdate', 'gender', 'country'];
+
+      const missingHeaders = requiredHeaders.filter(h => !headers.includes(h));
+      if (missingHeaders.length > 0) {
+        setCsvError(`CSV 檔案缺少必要欄位：${missingHeaders.join(', ')}`);
+        return;
+      }
+
+      const records = [];
+      const errors = [];
+
+      for (let i = 1; i < lines.length; i++) {
+        const values = lines[i].split(',').map(v => v.trim());
+        const record: any = {};
+
+        headers.forEach((header, index) => {
+          record[header] = values[index] || '';
+        });
+
+        // Validate required fields
+        const rowErrors = [];
+        if (!record.email) rowErrors.push('email');
+        if (!record.password) rowErrors.push('password');
+        if (!record.firstName) rowErrors.push('firstName');
+        if (!record.lastName) rowErrors.push('lastName');
+        if (!record.role) rowErrors.push('role');
+        if (!record.birthdate) rowErrors.push('birthdate');
+        if (!record.gender) rowErrors.push('gender');
+        if (!record.country) rowErrors.push('country');
+
+        if (rowErrors.length > 0) {
+          errors.push(`第 ${i + 1} 列缺少欄位：${rowErrors.join(', ')}`);
+        } else {
+          records.push(record);
+        }
+      }
+
+      if (errors.length > 0) {
+        setCsvError(`資料驗證失敗：\n${errors.join('\n')}`);
+        return;
+      }
+
+      // Import records
+      let successCount = 0;
+      for (const record of records) {
+        const timezoneName = countryTimezones[record.country] || 'UTC';
+        const times = formatLocalIso(timezoneName);
+
+        const payload = {
+          roid_id: `csv-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+          email: record.email.toLowerCase(),
+          password: record.password,
+          firstName: record.firstName,
+          lastName: record.lastName,
+          role: record.role,
+          plan: record.role === 'teacher' ? null : 'viewer',
+          birthdate: record.birthdate,
+          gender: record.gender,
+          country: record.country,
+          timezone: times.timezone,
+          termsAccepted: true,
+          createdAtUtc: times.utc,
+          createdAtLocal: times.local,
+          updatedAtUtc: times.utc,
+          updatedAtLocal: times.local,
+        };
+
+        const res = await fetch('/api/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        if (res.ok) {
+          successCount++;
+        }
+      }
+
+      setCsvSuccess({ count: successCount });
+      setCsvFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+
+      // Redirect after 5 seconds
+      setTimeout(() => {
+        router.push('/login');
+      }, 5000);
+
+    } catch (err: any) {
+      setCsvError(`CSV 解析失敗：${err.message}`);
+    }
+  };
+
   return (
     <div className="page">
       <header className="page-header">
-        <h1>建立帳戶</h1>
+        <h1>企業建立帳戶</h1>
         <p>請選擇身份並填寫下列<strong>所有必填</strong>資料（標記 <span style={{ color: 'red' }}>*</span> 的欄位為必填）。</p>
+
+        {/* CSV Import Section */}
+        <div style={{ marginTop: 16, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv"
+            onChange={handleFileSelect}
+            style={{ display: 'none' }}
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            style={{
+              padding: '8px 16px',
+              borderRadius: '6px',
+              background: '#6366f1',
+              color: '#fff',
+              border: 'none',
+              cursor: 'pointer',
+              fontWeight: 600
+            }}
+          >
+            📁 選擇檔案
+          </button>
+          <button
+            type="button"
+            onClick={handleCsvImport}
+            disabled={!csvFile}
+            style={{
+              padding: '8px 16px',
+              borderRadius: '6px',
+              background: csvFile ? '#10b981' : '#9ca3af',
+              color: '#fff',
+              border: 'none',
+              cursor: csvFile ? 'pointer' : 'not-allowed',
+              fontWeight: 600
+            }}
+          >
+            📥 匯入CSV
+          </button>
+          <button
+            type="button"
+            onClick={downloadSampleCSV}
+            style={{
+              padding: '8px 16px',
+              borderRadius: '6px',
+              background: '#f59e0b',
+              color: '#fff',
+              border: 'none',
+              cursor: 'pointer',
+              fontWeight: 600
+            }}
+          >
+            📄 下載範例CSV
+          </button>
+          {csvFile && <span style={{ color: '#059669', fontWeight: 600 }}>✓ {csvFile.name}</span>}
+        </div>
       </header>
+
+      {/* CSV Error Dialog */}
+      {csvError && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999
+        }}>
+          <div style={{
+            background: '#fff',
+            padding: 24,
+            borderRadius: 12,
+            maxWidth: 500,
+            boxShadow: '0 20px 40px rgba(0,0,0,0.3)'
+          }}>
+            <h2 style={{ color: '#dc2626', marginBottom: 16 }}>❌ 匯入錯誤</h2>
+            <p style={{ whiteSpace: 'pre-line', marginBottom: 20 }}>{csvError}</p>
+            <button
+              onClick={() => setCsvError(null)}
+              style={{
+                padding: '8px 16px',
+                borderRadius: '6px',
+                background: '#2563eb',
+                color: '#fff',
+                border: 'none',
+                cursor: 'pointer',
+                fontWeight: 600
+              }}
+            >
+              確定
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* CSV Success Dialog */}
+      {csvSuccess && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999
+        }}>
+          <div style={{
+            background: '#fff',
+            padding: 24,
+            borderRadius: 12,
+            maxWidth: 500,
+            boxShadow: '0 20px 40px rgba(0,0,0,0.3)',
+            textAlign: 'center'
+          }}>
+            <h2 style={{ color: '#10b981', marginBottom: 16 }}>✅ 匯入完成</h2>
+            <p style={{ fontSize: 18, marginBottom: 12 }}>成功匯入 <strong>{csvSuccess.count}</strong> 筆資料</p>
+            <p style={{ color: '#6b7280' }}>5秒後將自動返回登入頁面，請確認登入帳號</p>
+          </div>
+        </div>
+      )}
 
       <section className="section">
         <div className="card">
@@ -326,8 +625,11 @@ export default function RegisterPage() {
                 style={{ cursor: 'pointer' }}
               >
                 <option value="">請選擇身份</option>
-                <option value="student">Student</option>
-                <option value="teacher">Teacher</option>
+                {roles.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -477,9 +779,22 @@ export default function RegisterPage() {
                 ⚠️ {formError}
               </div>
             )}
-            <div className="modal-actions" style={{ marginTop: 12 }}>
+            <div className="modal-actions" style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
               <button type="submit" className="modal-button primary">
                 建立帳戶
+              </button>
+              <button
+                type="button"
+                onClick={downloadSampleCSV}
+                className="modal-button"
+                style={{
+                  background: 'linear-gradient(90deg, #10b981, #059669)',
+                  color: '#fff',
+                  border: 'none',
+                  cursor: 'pointer'
+                }}
+              >
+                📥 匯入CSV（下載範例）
               </button>
               <Link href="/login" className="modal-button secondary">返回登入</Link>
             </div>
