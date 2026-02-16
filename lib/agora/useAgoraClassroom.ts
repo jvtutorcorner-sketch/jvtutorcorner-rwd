@@ -69,9 +69,9 @@ interface AgoraJoinResponse {
   whiteboardRoomToken: string;
 }
 
-export function useAgoraClassroom({ 
-  channelName, 
-  role, 
+export function useAgoraClassroom({
+  channelName,
+  role,
   isOneOnOne = false,
   defaultQuality = 'high'
 }: UseAgoraClassroomOptions) {
@@ -148,7 +148,7 @@ export function useAgoraClassroom({
     try {
       // 设置网络质量优先级 - 在 RTC 模式下音频优先
       await client.setStreamFallbackOption(0, 1); // 音频优先
-      
+
       console.log('Applied 1-on-1 optimizations');
     } catch (error) {
       console.error('Failed to apply 1-on-1 optimizations:', error);
@@ -217,7 +217,7 @@ export function useAgoraClassroom({
         const AgoraModule = await import('agora-rtc-sdk-ng');
         const Agora = (AgoraModule as any).default ?? AgoraModule;
         AgoraSDK = Agora;
-        
+
         // 開啟詳細日誌
         try {
           Agora.setLogLevel(0); // 0: DEBUG, 1: INFO, 2: WARNING, 3: ERROR, 4: NONE
@@ -225,13 +225,13 @@ export function useAgoraClassroom({
         } catch (e) {
           console.warn('[Agora] Failed to set log level', e);
         }
-        
+
         // 使用 RTC 模式，所有参与者都可以发布 and 订阅
         const clientConfig = {
           mode: 'rtc' as const,
           codec: 'vp8' as const
         };
-        
+
         const client = Agora.createClient(clientConfig);
         clientRef.current = client;
 
@@ -323,13 +323,13 @@ export function useAgoraClassroom({
                 console.warn('[Agora] setPlaybackDevice failed', e);
               }
               const audioPlay: any = user.audioTrack.play();
-              try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = false; } catch (e) {}
+              try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = false; } catch (e) { }
               if (audioPlay && typeof audioPlay.then === 'function') {
                 await audioPlay as Promise<void>;
-                try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = true; } catch (e) {}
+                try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = true; } catch (e) { }
                 console.log('[Agora] Remote audio started playing for', user.uid, 'at', (performance.now ? performance.now() : Date.now()) - tStart, 'ms');
               } else {
-                try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = true; } catch (e) {}
+                try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = true; } catch (e) { }
                 console.log('[Agora] Remote audio play (non-promise) assumed playing for', user.uid);
               }
             } catch (err) {
@@ -352,10 +352,10 @@ export function useAgoraClassroom({
               } catch (e) {
                 console.warn('[Agora] Failed to play remote video track, scheduling retry', e);
                 setTimeout(() => {
-                  try { 
+                  try {
                     if (user.videoTrack) {
-                      user.videoTrack.play(remoteEl); 
-                      console.log('[Agora] Retry video play attempted'); 
+                      user.videoTrack.play(remoteEl);
+                      console.log('[Agora] Retry video play attempted');
                     }
                   } catch (err) { console.warn('[Agora] Retry video play failed', err); }
                 }, 300);
@@ -372,18 +372,18 @@ export function useAgoraClassroom({
         }
       };
 
-      
+
 
       const onUserUnpublished = (user: IAgoraRTCRemoteUser) => {
         console.log('[Agora] user-unpublished handler executing', { uid: user.uid });
         setRemoteUsers([...client.remoteUsers]);
-        try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = false; } catch (e) {}
+        try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = false; } catch (e) { }
       };
 
       const onUserLeft = (user: IAgoraRTCRemoteUser) => {
         console.log('[Agora] user-left handler executing', { uid: user.uid });
         setRemoteUsers([...client.remoteUsers]);
-        try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = false; } catch (e) {}
+        try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = false; } catch (e) { }
       };
 
       handleUserPublishedRef.current = onUserPublished;
@@ -413,7 +413,7 @@ export function useAgoraClassroom({
           // initialize audio-playing flag for E2E
           (window as any).__agoraAudioPlaying = false;
         }
-      } catch (e) {}
+      } catch (e) { }
 
       // 应用1对1优化 (AFTER join, when websocket is ready)
       if (isOneOnOne) {
@@ -437,7 +437,7 @@ export function useAgoraClassroom({
       // If we have a specific cameraId, don't strictly enforce facingMode
       // as some desktop cameras might fail with 'facingMode: user'
       const camConfig: any = (videoDeviceId && videoDeviceId !== 'null' && videoDeviceId !== '')
-        ? { cameraId: videoDeviceId } 
+        ? { cameraId: videoDeviceId }
         : { facingMode: 'user' };
 
       try {
@@ -452,7 +452,7 @@ export function useAgoraClassroom({
 
         // Use sequential creation instead of combined createMicrophoneAndCameraTracks
         // Combined creation is more prone to "can not find stream" errors
-        
+
         if (publishAudio) {
           console.log('[Agora] Creating microphone track', { micConfig });
           try {
@@ -495,7 +495,7 @@ export function useAgoraClassroom({
       } catch (err) {
         const errorMsg = (err as any)?.message ?? String(err);
         console.error('[Agora] ✗ Track creation failed with fatal error:', errorMsg);
-        
+
         // Final fallback: if everything failed but we should have tracks, 
         // they are already null and will be handled by the publish logic below
       }
@@ -524,7 +524,7 @@ export function useAgoraClassroom({
         }
       }
 
-        const publishList: any[] = [];
+      const publishList: any[] = [];
       if (micTrack) publishList.push(micTrack);
       if (camTrack) publishList.push(camTrack);
 
@@ -548,15 +548,15 @@ export function useAgoraClassroom({
       // Listen for SDK-level autoplay fail events if available
       try {
         if (client && typeof client.on === 'function') {
-            // common variants of the event name
-            const onAutoplay = (ev: any) => {
-              console.warn('Agora autoplay failed event received', ev);
-              setAutoplayFailed(true);
-            };
-            try { client.on('autoplay-failed', onAutoplay); } catch (e) {}
-            try { client.on('AUTOPLAY_FAILED', onAutoplay); } catch (e) {}
-          }
-      } catch (e) {}
+          // common variants of the event name
+          const onAutoplay = (ev: any) => {
+            console.warn('Agora autoplay failed event received', ev);
+            setAutoplayFailed(true);
+          };
+          try { client.on('autoplay-failed', onAutoplay); } catch (e) { }
+          try { client.on('AUTOPLAY_FAILED', onAutoplay); } catch (e) { }
+        }
+      } catch (e) { }
     } catch (e) {
       console.error('join classroom error:', e);
       setError((e as any)?.message ?? 'Unknown error');
@@ -585,12 +585,12 @@ export function useAgoraClassroom({
             if (r && typeof r.then === 'function') {
               try {
                 await r;
-                try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = true; } catch (e) {}
+                try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = true; } catch (e) { }
               } catch (e) {
-                try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = false; } catch (e) {}
+                try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = false; } catch (e) { }
               }
             } else {
-              try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = true; } catch (e) {}
+              try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = true; } catch (e) { }
             }
             ok = true;
           }
@@ -602,7 +602,7 @@ export function useAgoraClassroom({
       if (localMicTrackRef.current) {
         try {
           if (typeof localMicTrackRef.current.setEnabled === 'function') localMicTrackRef.current.setEnabled(true);
-        } catch (e) {}
+        } catch (e) { }
       }
       return ok;
     } catch (e) {
@@ -631,7 +631,7 @@ export function useAgoraClassroom({
             try {
               const res = u.audioTrack.play();
               if (res && typeof res.then === 'function') {
-                await res.catch(() => {});
+                await res.catch(() => { });
               }
             } catch (e) {
               console.warn('triggerFix: audioTrack.play() failed for remote user', e);
@@ -669,12 +669,12 @@ export function useAgoraClassroom({
               if ((mic as any).closed || (mic as any).stopped) {
                 try {
                   mic.stop?.(); mic.close?.();
-                } catch {}
+                } catch { }
                 mic = await AgoraSDK.createMicrophoneAudioTrack();
                 localMicTrackRef.current = mic;
                 needPublishMic = true;
               }
-            } catch (e) {}
+            } catch (e) { }
           }
           if (mic && needPublishMic && client) publishList.push(mic);
         } catch (e) {
@@ -696,12 +696,12 @@ export function useAgoraClassroom({
           } else {
             try {
               if ((cam as any).closed || (cam as any).stopped) {
-                try { cam.stop?.(); cam.close?.(); } catch {}
+                try { cam.stop?.(); cam.close?.(); } catch { }
                 cam = await AgoraSDK.createCameraVideoTrack();
                 localCamTrackRef.current = cam;
                 needPublishCam = true;
               }
-            } catch (e) {}
+            } catch (e) { }
           }
           if (cam && needPublishCam && client) publishList.push(cam);
         } catch (e) {
@@ -715,7 +715,7 @@ export function useAgoraClassroom({
             const toUnpublish: any[] = [];
             if (localMicTrackRef.current && (localMicTrackRef.current as any).closed) toUnpublish.push(localMicTrackRef.current);
             if (localCamTrackRef.current && (localCamTrackRef.current as any).closed) toUnpublish.push(localCamTrackRef.current);
-            try { if (toUnpublish.length > 0) await client.unpublish(toUnpublish); } catch (e) {}
+            try { if (toUnpublish.length > 0) await client.unpublish(toUnpublish); } catch (e) { }
 
             try {
               await client.publish(publishList);
@@ -739,25 +739,25 @@ export function useAgoraClassroom({
             try {
               if (u && (u.videoTrack || u.audioTrack)) {
                 // attempt to re-subscribe to both media types
-                try { await client.subscribe(u, 'video'); } catch (e) {}
-                try { await client.subscribe(u, 'audio'); } catch (e) {}
+                try { await client.subscribe(u, 'video'); } catch (e) { }
+                try { await client.subscribe(u, 'audio'); } catch (e) { }
 
                 // attempt to play tracks into elements (if present)
                 if (u.videoTrack) {
                   try {
                     const remoteEl = remoteVideoRef.current ?? localVideoRef.current;
                     if (remoteEl) u.videoTrack.play(remoteEl);
-                  } catch (e) {}
+                  } catch (e) { }
                 }
                 if (u.audioTrack) {
                   try {
                     const p = u.audioTrack.play();
                     if (p && typeof p.then === 'function') {
-                      try { await p; try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = true; } catch (e) {} } catch (e) { try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = false; } catch (e) {} }
+                      try { await p; try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = true; } catch (e) { } } catch (e) { try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = false; } catch (e) { } }
                     } else {
-                      try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = true; } catch (e) {}
+                      try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = true; } catch (e) { }
                     }
-                  } catch (e) {}
+                  } catch (e) { }
                 }
               }
             } catch (e) {
@@ -798,14 +798,14 @@ export function useAgoraClassroom({
           // remove listeners we registered (pass the same handler we attached)
           try {
             if (client.off && handleUserPublishedRef.current) client.off('user-published', handleUserPublishedRef.current);
-          } catch {}
+          } catch { }
           try {
             if (client.off && handleUserUnpublishedRef.current) client.off('user-unpublished', handleUserUnpublishedRef.current);
-          } catch {}
+          } catch { }
           try {
             if (client.off && handleUserLeftRef.current) client.off('user-left', handleUserLeftRef.current);
-          } catch {}
-        } catch {}
+          } catch { }
+        } catch { }
 
         try {
           await client.leave();
@@ -817,33 +817,33 @@ export function useAgoraClassroom({
         clientChannelRef.current = null;
       }
     } finally {
-        try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = false; } catch (e) {}
-        setJoined(false);
-        setRemoteUsers([]);
+      try { if (typeof window !== 'undefined') (window as any).__agoraAudioPlaying = false; } catch (e) { }
+      setJoined(false);
+      setRemoteUsers([]);
     }
   }, [joined]);
 
   // Listen for whiteboard room UUID from other tabs
   useEffect(() => {
     console.log('[useAgoraClassroom] Hook initialized for channel:', channelName, 'role:', role);
-    
+
     if (typeof window === 'undefined') return;
-    
+
     const courseIdFromChannel = channelName.replace(/^course_/, '').split('_')[0];
     const bc = new BroadcastChannel(`whiteboard_course_${courseIdFromChannel}`);
-    
+
     bc.onmessage = (event) => {
       if (event.data?.type === 'whiteboard_room_created' && event.data.uuid) {
         const whiteboardRoomKey = `whiteboard_room_${channelName}`;
         const existingUuid = localStorage.getItem(whiteboardRoomKey);
-        
+
         if (!existingUuid) {
           console.log('Received whiteboard UUID from other tab');
           localStorage.setItem(whiteboardRoomKey, event.data.uuid);
         }
       }
     };
-    
+
     return () => {
       bc.close();
     };
@@ -1000,7 +1000,7 @@ export function useAgoraClassroom({
                   if (playEl) {
                     localCamTrackRef.current.play(playEl as any);
                   }
-                } catch (e) {}
+                } catch (e) { }
                 await clientRef.current.publish([localCamTrackRef.current]);
               }
             } catch (e) {

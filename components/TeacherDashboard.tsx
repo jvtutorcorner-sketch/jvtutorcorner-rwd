@@ -175,13 +175,6 @@ export default function TeacherDashboard({ teacherId, teacherName }: Props) {
 
   return (
     <div style={{ marginTop: 18 }}>
-      {canEdit && (
-        <div style={{ marginBottom: 12 }}>
-          <Link href="/dashboard/teacher/new-course" className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
-            新增課程
-          </Link>
-        </div>
-      )}
 
       <div>
         <h4>{t('course_list')}</h4>

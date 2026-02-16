@@ -12,7 +12,7 @@ const ClientClassroom = dynamic(() => import('../ClientClassroom'), { ssr: false
 export default function TestPage() {
   // 一次性進入控制
   useOneTimeEntry();
-  
+
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [storedUser, setStoredUser] = useState<StoredUser | null>(null);
@@ -39,16 +39,16 @@ export default function TestPage() {
       } catch (e) { sessionValid = !!su; }
 
       console.log('[AuthCheck][test] storedUser:', su, 'expiry:', window.localStorage.getItem('tutor_session_expiry'), 'sessionValid:', sessionValid);
-      
+
       if (!sessionValid) {
         // Skip redirect if recently logged in (last 15s)
         const lastLoginTime = window.sessionStorage.getItem('tutor_last_login_time') || window.localStorage.getItem('tutor_last_login_time');
         const loginComplete = window.sessionStorage.getItem('tutor_login_complete');
         const timeSinceLogin = lastLoginTime ? Date.now() - Number(lastLoginTime) : Infinity;
-        
+
         if ((timeSinceLogin < 15000 && timeSinceLogin >= 0) || loginComplete === 'true') {
-           console.log('[AuthCheck][test] Skipping redirect - recently logged in or login complete flag set');
-           return false;
+          console.log('[AuthCheck][test] Skipping redirect - recently logged in or login complete flag set');
+          return false;
         }
 
         try {
@@ -64,15 +64,15 @@ export default function TestPage() {
 
     // Use a slightly longer delay (1.5s) to allow storage/auth state to settle after page transition
     const recheckTimer = window.setTimeout(() => { if (checkSession()) return; }, 1500);
-    const onAuthChanged = () => { 
-      try { window.clearTimeout(recheckTimer); } catch (e) {} ; 
+    const onAuthChanged = () => {
+      try { window.clearTimeout(recheckTimer); } catch (e) { };
       // Re-check after 500ms when auth changes
-      window.setTimeout(checkSession, 500); 
+      window.setTimeout(checkSession, 500);
     };
     const onStorageChanged = (e: StorageEvent) => {
       // If storage changed (cross-tab sync), re-evaluate auth
       if (e.key === 'tutor_mock_user' || e.key === 'tutor_session_expiry') {
-        try { window.clearTimeout(recheckTimer); } catch (e) {}
+        try { window.clearTimeout(recheckTimer); } catch (e) { }
         checkSession();
       }
     };
@@ -84,23 +84,23 @@ export default function TestPage() {
     // If not present (direct access), set defaults
     const setupParams = () => {
       if (typeof window === 'undefined') return;
-      
+
       const params = new URLSearchParams(window.location.search);
       let changed = false;
-      
+
       // If courseId is missing, add it
       if (!params.has('courseId')) {
         params.set('courseId', 'c1');
         changed = true;
       }
-      
+
       // If session is missing, generate one from courseId
       if (!params.has('session')) {
         const cId = params.get('courseId') || 'c1';
         params.set('session', `classroom_session_ready_${cId}`);
         changed = true;
       }
-      
+
       // Only update URL if we added params
       if (changed) {
         const newUrl = `${window.location.pathname}?${params.toString()}`;
@@ -129,10 +129,10 @@ export default function TestPage() {
       }
     } catch (e) { /* ignore */ }
 
-    return () => { 
-      try { window.removeEventListener('tutor:auth-changed', onAuthChanged); } catch (e) {} 
-      try { window.removeEventListener('storage', onStorageChanged); } catch (e) {} 
-      try { window.clearTimeout(recheckTimer); } catch (e) {} 
+    return () => {
+      try { window.removeEventListener('tutor:auth-changed', onAuthChanged); } catch (e) { }
+      try { window.removeEventListener('storage', onStorageChanged); } catch (e) { }
+      try { window.clearTimeout(recheckTimer); } catch (e) { }
     };
   }, [mounted, router]);
 
@@ -144,7 +144,7 @@ export default function TestPage() {
         <LanguageSwitcher />
         {mounted && storedUser ? (
           <div style={{ padding: '6px 10px', borderRadius: 8, background: '#f8fafc', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{ fontSize: 13, color: '#111', fontWeight: 600 }}>{`${storedUser.lastName || ''} ${storedUser.firstName || ''}`.trim() || storedUser.displayName || ''}</div>
+            <div style={{ fontSize: 13, color: '#111', fontWeight: 600 }}>{`${storedUser.lastName || ''} ${storedUser.firstName || ''}`.trim() || storedUser.displayName || 'No Set Name'}</div>
             <div style={{ fontSize: 12, color: '#666' }}>({storedUser.role || 'user'})</div>
           </div>
         ) : null}

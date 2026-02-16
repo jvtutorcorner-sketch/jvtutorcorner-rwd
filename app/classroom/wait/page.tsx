@@ -6,15 +6,13 @@ import WaitCountdownManager from '@/components/WaitCountdownManager';
 import { useRouter } from 'next/navigation';
 import { COURSES } from '@/data/courses';
 import { getStoredUser } from '@/lib/mockAuth';
-import VideoControls from '@/components/VideoControls';
-import { VideoQuality } from '@/lib/agora/useAgoraClassroom';
 import { useT } from '@/components/IntlProvider';
 import { useOneTimeEntry } from '@/lib/hooks/useOneTimeEntry';
 
 export default function ClassroomWaitPage() {
   // 一次性進入控制
   useOneTimeEntry();
-  
+
   const router = useRouter();
 
   const [isClient, setIsClient] = useState(false);
@@ -32,8 +30,6 @@ export default function ClassroomWaitPage() {
   const [ready, setReady] = useState(false);
   const [syncMode, setSyncMode] = useState<'sse' | 'polling' | 'disconnected'>('disconnected');
   const [roomUuid, setRoomUuid] = useState<string | null>(null);
-  const [currentQuality, setCurrentQuality] = useState<VideoQuality>('high');
-  const [isLowLatencyMode, setIsLowLatencyMode] = useState(false);
   const pollRef = useRef<number | null>(null);
   const esRef = useRef<EventSource | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
@@ -50,8 +46,8 @@ export default function ClassroomWaitPage() {
   const [uploadingPdf, setUploadingPdf] = useState(false);
   const t = useT();
 
-  
-  
+
+
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -66,7 +62,7 @@ export default function ClassroomWaitPage() {
     if (!sessionFromUrl) {
       params.set('session', key);
       const newUrl = `${window.location.pathname}?${params.toString()}`;
-      try { window.history.replaceState({}, '', newUrl); } catch (e) {}
+      try { window.history.replaceState({}, '', newUrl); } catch (e) { }
     }
 
     const urlRole = params.get('role');
@@ -93,24 +89,24 @@ export default function ClassroomWaitPage() {
         storedUser = getStoredUser();
         if (!expiry) sessionValid = !!storedUser;
         else sessionValid = Number(expiry) > Date.now() && !!storedUser;
-        
+
         // Update state if we found a user during this check (to fix race condition)
         if (storedUser && !storedUserState) {
-           setStoredUserState(storedUser);
-           // Re-calculate role if needed
-           if (!role) {
-             let cRole: 'teacher' | 'student' = 'student';
-             if (storedUser.role === 'teacher' || storedUser.role === 'admin') cRole = 'teacher';
-             // ... other logic ...
-             setRole(cRole);
-           }
+          setStoredUserState(storedUser);
+          // Re-calculate role if needed
+          if (!role) {
+            let cRole: 'teacher' | 'student' = 'student';
+            if (storedUser.role === 'teacher' || storedUser.role === 'admin') cRole = 'teacher';
+            // ... other logic ...
+            setRole(cRole);
+          }
         }
       } catch (e) {
         storedUser = getStoredUser();
         sessionValid = !!storedUser;
       }
 
-        console.log(`[AuthCheck][wait] ${new Date().toISOString()} - storedUser:`, storedUser, 'expiry:', window.localStorage.getItem('tutor_session_expiry'), 'sessionValid:', sessionValid, 'isInLoginFlow:', isInLoginRedirectFlow, 'sessionKey:', key);
+      console.log(`[AuthCheck][wait] ${new Date().toISOString()} - storedUser:`, storedUser, 'expiry:', window.localStorage.getItem('tutor_session_expiry'), 'sessionValid:', sessionValid, 'isInLoginFlow:', isInLoginRedirectFlow, 'sessionKey:', key);
 
       // Check for role mismatches if session is valid
       if (sessionValid) {
@@ -132,14 +128,14 @@ export default function ClassroomWaitPage() {
           try {
             window.sessionStorage.removeItem('tutor_login_complete');
             window.sessionStorage.removeItem('tutor_last_login_time');
-          } catch {}
+          } catch { }
         }
-        
+
         // Skip redirect if just logged in (within last 15 seconds) - allow time for state to settle
         const lastLoginTime = window.sessionStorage.getItem('tutor_last_login_time') || window.localStorage.getItem('tutor_last_login_time');
         const loginComplete = window.sessionStorage.getItem('tutor_login_complete');
         const timeSinceLogin = lastLoginTime ? Date.now() - Number(lastLoginTime) : Infinity;
-        
+
         if ((timeSinceLogin < 15000 || loginComplete === 'true') && timeSinceLogin < Infinity && storedUser) {
           console.log(`[AuthCheck][wait] ${new Date().toISOString()} - Skipping redirect - recently logged in or in login process (${timeSinceLogin} ms ago) for session ${key}`);
           return;
@@ -149,7 +145,7 @@ export default function ClassroomWaitPage() {
           // Don't redirect if we just redirected to login recently
           const lastRedirectTime = window.sessionStorage.getItem('redirect_to_login_time');
           const timeSinceRedirect = lastRedirectTime ? Date.now() - Number(lastRedirectTime) : Infinity;
-          
+
           if (isInLoginRedirectFlow && timeSinceRedirect < 20000) {
             console.log('[AuthCheck][wait] Still in login redirect flow, waiting...');
             return;
@@ -172,11 +168,11 @@ export default function ClassroomWaitPage() {
     // If no recent login (cold entry), wait 5 seconds before forcing login redirect. 
     const lastLoginTimeForDelay = window.sessionStorage.getItem('tutor_last_login_time') || window.localStorage.getItem('tutor_last_login_time');
     const timeSinceLoginForDelay = lastLoginTimeForDelay ? Date.now() - Number(lastLoginTimeForDelay) : Infinity;
-    const initialDelay = timeSinceLoginForDelay < 15000 ? 2000 : 5000; 
+    const initialDelay = timeSinceLoginForDelay < 15000 ? 2000 : 5000;
     const recheckTimer = window.setTimeout(checkSessionAndMaybeRedirect, initialDelay);
     const onAuthChanged = () => {
       // If auth changed, cancel pending redirect and re-evaluate after a short delay
-      try { window.clearTimeout(recheckTimer); } catch (e) {}
+      try { window.clearTimeout(recheckTimer); } catch (e) { }
       isInLoginRedirectFlow = false;  // Auth changed, so we're out of the redirect flow
       // Add a small delay to allow authentication state to settle
       window.setTimeout(checkSessionAndMaybeRedirect, 200);
@@ -184,7 +180,7 @@ export default function ClassroomWaitPage() {
     const onStorageChanged = (e: StorageEvent) => {
       // If storage changed (cross-tab sync), re-evaluate auth
       if (e.key === 'tutor_mock_user' || e.key === 'tutor_session_expiry') {
-        try { window.clearTimeout(recheckTimer); } catch (e) {}
+        try { window.clearTimeout(recheckTimer); } catch (e) { }
         checkSessionAndMaybeRedirect();
       }
     };
@@ -193,9 +189,9 @@ export default function ClassroomWaitPage() {
 
     // cleanup listener on unmount
     return () => {
-      try { window.removeEventListener('tutor:auth-changed', onAuthChanged); } catch (e) {}
-      try { window.removeEventListener('storage', onStorageChanged); } catch (e) {}
-      try { window.clearTimeout(recheckTimer); } catch (e) {}
+      try { window.removeEventListener('tutor:auth-changed', onAuthChanged); } catch (e) { }
+      try { window.removeEventListener('storage', onStorageChanged); } catch (e) { }
+      try { window.clearTimeout(recheckTimer); } catch (e) { }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -221,11 +217,11 @@ export default function ClassroomWaitPage() {
           const email = storedUserState?.email;
           const userId = email || role || 'anonymous';
           const selfIsReady = serverParticipants.some((p: { role: string; userId: string }) => p.role === role && p.userId === userId);
-          
+
           // Check if data actually changed before updating state
           const currentData = { participantsCount: serverParticipants.length, selfIsReady };
           const lastData = lastSyncDataRef.current;
-          
+
           if (!lastData || lastData.participantsCount !== currentData.participantsCount || lastData.selfIsReady !== currentData.selfIsReady) {
             setParticipants(serverParticipants);
             setReady(selfIsReady);
@@ -270,31 +266,31 @@ export default function ClassroomWaitPage() {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ uuid: syncUuid, role, userId, action: nextReadyState ? 'ready' : 'unready' }),
     })
-    .then(res => {
-      console.log('toggleReady: fetch response status:', res.status);
-      if (!res.ok) throw new Error('Server update failed');
-      // After successfully telling the server, immediately sync the latest state from it.
-      // The server is the source of truth.
-      syncStateFromServer();
-      // Notify other tabs in this browser to re-sync immediately
-      try {
-        if (bcRef.current) {
-          bcRef.current.postMessage({ type: 'ready_changed', uuid: syncUuid, timestamp: Date.now() });
-        } else {
-          const bc = new BroadcastChannel(syncUuid);
-          bc.postMessage({ type: 'ready_changed', uuid: syncUuid, timestamp: Date.now() });
-          setTimeout(() => bc.close(), 200);
+      .then(res => {
+        console.log('toggleReady: fetch response status:', res.status);
+        if (!res.ok) throw new Error('Server update failed');
+        // After successfully telling the server, immediately sync the latest state from it.
+        // The server is the source of truth.
+        syncStateFromServer();
+        // Notify other tabs in this browser to re-sync immediately
+        try {
+          if (bcRef.current) {
+            bcRef.current.postMessage({ type: 'ready_changed', uuid: syncUuid, timestamp: Date.now() });
+          } else {
+            const bc = new BroadcastChannel(syncUuid);
+            bc.postMessage({ type: 'ready_changed', uuid: syncUuid, timestamp: Date.now() });
+            setTimeout(() => bc.close(), 200);
+          }
+        } catch (e) {
+          // ignore
         }
-      } catch (e) {
-        // ignore
-      }
-    })
-    .catch(err => {
-      console.error('toggleReady POST failed:', err);
-      // If the POST fails, we can show an error and re-sync to get the last good state.
-      alert(t('wait.sync_update_failed'));
-      syncStateFromServer();
-    });
+      })
+      .catch(err => {
+        console.error('toggleReady POST failed:', err);
+        // If the POST fails, we can show an error and re-sync to get the last good state.
+        alert(t('wait.sync_update_failed'));
+        syncStateFromServer();
+      });
   };
 
   // --- UNIFIED SYNC LOGIC ---
@@ -337,9 +333,9 @@ export default function ClassroomWaitPage() {
     // In development, try SSE but disable it after first failure to avoid console spam.
     const createEventSource = () => {
       // Auto-disable SSE in production environment
-      const isProduction = window.location.hostname === 'www.jvtutorcorner.com' || 
-                           window.location.hostname === 'jvtutorcorner.com';
-      
+      const isProduction = window.location.hostname === 'www.jvtutorcorner.com' ||
+        window.location.hostname === 'jvtutorcorner.com';
+
       if (sseDisabledRef.current || isProduction) {
         if (isProduction) {
           console.log('SYNC: Production environment detected, using polling mode only.');
@@ -360,9 +356,9 @@ export default function ClassroomWaitPage() {
           console.log('SYNC: SSE connection opened successfully.');
           setSyncMode('sse');
           retryCountRef.current = 0;
-          if (reconnectTimerRef.current) { 
-            clearTimeout(reconnectTimerRef.current); 
-            reconnectTimerRef.current = null; 
+          if (reconnectTimerRef.current) {
+            clearTimeout(reconnectTimerRef.current);
+            reconnectTimerRef.current = null;
           }
         };
 
@@ -381,7 +377,7 @@ export default function ClassroomWaitPage() {
         es.onerror = (err) => {
           console.warn('SYNC: SSE error, disabling and switching to polling mode.');
           setSyncMode('polling');
-          try { es.close(); } catch (e) {}
+          try { es.close(); } catch (e) { }
           esRef.current = null;
 
           // Immediately disable SSE after first error (no retries in dev either)
@@ -445,7 +441,7 @@ export default function ClassroomWaitPage() {
         bcRef.current = null;
       }
       if (esRef.current) {
-        try { esRef.current.close(); } catch (e) {}
+        try { esRef.current.close(); } catch (e) { }
         esRef.current = null;
       }
       if (reconnectTimerRef.current) {
@@ -463,7 +459,7 @@ export default function ClassroomWaitPage() {
       // At this point we know sessionReadyKey and course are not null due to the outer check
       const uuid = sessionReadyKey!;
       const courseData = course!;
-      
+
       try {
         // Check if session time is already set
         const response = await fetch(`/api/classroom/session?uuid=${encodeURIComponent(uuid)}`);
@@ -473,13 +469,13 @@ export default function ClassroomWaitPage() {
             // No end time set, initialize it based on course duration
             const sessionDurationMinutes = courseData.sessionDurationMinutes || 50; // Default 50 minutes
             const endTs = Date.now() + (sessionDurationMinutes * 60 * 1000);
-            
+
             const setResponse = await fetch('/api/classroom/session', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ uuid, endTs })
             });
-            
+
             if (setResponse.ok) {
               console.log('[WaitPage] Initialized session end time:', new Date(endTs).toISOString(), 'duration:', sessionDurationMinutes, 'minutes');
             } else {
@@ -543,7 +539,7 @@ export default function ClassroomWaitPage() {
       alert('只有老師可以上傳PDF');
       return;
     }
-    
+
     setUploadingPdf(true);
     try {
       // Read file as ArrayBuffer
@@ -584,7 +580,7 @@ export default function ClassroomWaitPage() {
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ uuid: sessionReadyKey, fileName: file.name, contentType: file.type })
           });
-          
+
           if (!presignResp.ok) {
             const errorText = await presignResp.text().catch(() => 'Unknown presign error');
             console.warn('PDF Upload - Presign API not available, falling back to base64 upload:', { status: presignResp.status, statusText: presignResp.statusText, errorText });
@@ -679,15 +675,15 @@ export default function ClassroomWaitPage() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           {storedUserState && (
             <div style={{ marginLeft: 12, padding: '6px 10px', borderRadius: 8, background: '#f8fafc', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <div style={{ fontSize: 13, color: '#111', fontWeight: 600 }}>{((storedUserState.lastName || '') + ' ' + (storedUserState.firstName || '')).trim() || storedUserState.displayName || storedUserState.email}</div>
+              <div style={{ fontSize: 13, color: '#111', fontWeight: 600 }}>{((storedUserState.lastName || '') + ' ' + (storedUserState.firstName || '')).trim() || storedUserState.displayName || 'No Set Name'}</div>
               <div style={{ fontSize: 12, color: '#666' }}>({storedUserState.role || 'user'})</div>
             </div>
           )}
         </div>
       </div>
       <div style={{ marginTop: 12 }}>
-      <div style={{ fontWeight: 600, fontSize: 18 }}>{course?.title ?? '課程'}</div>
-      {orderId && <div style={{ color: '#666' }}>{t('wait.order_id_label')} {orderId}</div>}
+        <div style={{ fontWeight: 600, fontSize: 18 }}>{course?.title ?? '課程'}</div>
+
         <div style={{ marginTop: 4, color: '#666' }}>
           {t('wait.role_label')} {role ? (role === 'teacher' ? `${t('role_teacher')} (Teacher)` : `${t('role_student')} (Student)`) : '—'}
         </div>
@@ -717,14 +713,14 @@ export default function ClassroomWaitPage() {
 
       {/* 就緒按鈕 - 只有通過設備檢測才能點擊 */}
       <div style={{ marginTop: 20, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-        <button 
-          onClick={toggleReady} 
+        <button
+          onClick={toggleReady}
           disabled={!deviceCheckPassed}
-          style={{ 
-            padding: '12px 24px', 
-            background: !deviceCheckPassed ? '#ccc' : (ready ? '#4caf50' : '#2563eb'), 
-            color: 'white', 
-            border: 'none', 
+          style={{
+            padding: '12px 24px',
+            background: !deviceCheckPassed ? '#ccc' : (ready ? '#4caf50' : '#2563eb'),
+            color: 'white',
+            border: 'none',
             borderRadius: 8,
             fontSize: 15,
             fontWeight: 600,
@@ -753,11 +749,11 @@ export default function ClassroomWaitPage() {
             </div>
           </div>
           <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-            <label style={{ 
-              padding: '10px 20px', 
-              background: uploadingPdf ? '#ccc' : '#2196f3', 
-              color: 'white', 
-              border: 'none', 
+            <label style={{
+              padding: '10px 20px',
+              background: uploadingPdf ? '#ccc' : '#2196f3',
+              color: 'white',
+              border: 'none',
               borderRadius: 6,
               fontSize: 14,
               fontWeight: 600,
@@ -765,8 +761,8 @@ export default function ClassroomWaitPage() {
               display: 'inline-block'
             }}>
               {uploadingPdf ? '上傳中...' : '選擇 PDF 檔案'}
-              <input 
-                type="file" 
+              <input
+                type="file"
                 accept="application/pdf"
                 disabled={uploadingPdf}
                 onChange={(e) => {
@@ -819,14 +815,14 @@ export default function ClassroomWaitPage() {
       </div>
 
       <div style={{ marginTop: 24 }}>
-        <button 
-          onClick={enterClassroom} 
-          disabled={!canEnter} 
-          style={{ 
-            padding: '14px 28px', 
-            background: canEnter ? '#1976d2' : '#9ca3af', 
-            color: 'white', 
-            border: 'none', 
+        <button
+          onClick={enterClassroom}
+          disabled={!canEnter}
+          style={{
+            padding: '14px 28px',
+            background: canEnter ? '#1976d2' : '#9ca3af',
+            color: 'white',
+            border: 'none',
             borderRadius: 8,
             fontSize: 16,
             fontWeight: 600,
@@ -835,19 +831,19 @@ export default function ClassroomWaitPage() {
           {canEnter ? `✓ ${t('wait.enter_now')}` : t('wait.waiting_all_ready')}
         </button>
         <div style={{ display: 'inline-flex', gap: 8, marginLeft: 16 }}>
-          <button 
-            onClick={async () => { 
-              try { 
-                const url = `${window.location.origin}/classroom/wait?courseId=${encodeURIComponent(courseId)}${orderId ? `&orderId=${encodeURIComponent(orderId)}` : ''}${sessionReadyKey ? `&session=${encodeURIComponent(sessionReadyKey)}` : ''}`; 
-                await navigator.clipboard.writeText(url); 
-                alert(t('wait.copy_link_alert')); 
-              } catch (e) { 
-                try { 
-                  const url = `${window.location.origin}/classroom/wait?courseId=${encodeURIComponent(courseId)}${orderId ? `&orderId=${encodeURIComponent(orderId)}` : ''}${sessionReadyKey ? `&session=${encodeURIComponent(sessionReadyKey)}` : ''}`; 
-                  (window as any).prompt(t('wait.copy_link_prompt'), url); 
-                } catch {} 
-              } 
-            }} 
+          <button
+            onClick={async () => {
+              try {
+                const url = `${window.location.origin}/classroom/wait?courseId=${encodeURIComponent(courseId)}${orderId ? `&orderId=${encodeURIComponent(orderId)}` : ''}${sessionReadyKey ? `&session=${encodeURIComponent(sessionReadyKey)}` : ''}`;
+                await navigator.clipboard.writeText(url);
+                alert(t('wait.copy_link_alert'));
+              } catch (e) {
+                try {
+                  const url = `${window.location.origin}/classroom/wait?courseId=${encodeURIComponent(courseId)}${orderId ? `&orderId=${encodeURIComponent(orderId)}` : ''}${sessionReadyKey ? `&session=${encodeURIComponent(sessionReadyKey)}` : ''}`;
+                  (window as any).prompt(t('wait.copy_link_prompt'), url);
+                } catch { }
+              }
+            }}
             style={{ padding: '10px 16px', border: '1px solid #ccc', borderRadius: 6, background: 'white', cursor: 'pointer' }}>
             📋 {t('wait.copy_link')}
           </button>
@@ -859,16 +855,10 @@ export default function ClassroomWaitPage() {
         )}
       </div>
 
-      {/* Video quality controls - only visible to admin */}
-      {storedUserState?.role === 'admin' && (
-        <div style={{ marginTop: 20, maxWidth: 720 }}>
-          <VideoControls currentQuality={currentQuality} isLowLatencyMode={isLowLatencyMode} onQualityChange={setCurrentQuality} onLowLatencyToggle={setIsLowLatencyMode} hasVideo={true} />
-        </div>
-      )}
-    {/* Place countdown manager at the end of the page content so it flows with scroll */}
-    <div style={{ marginTop: 24 }}>
-      <WaitCountdownManager sessionReadyKey={sessionReadyKey} />
-    </div>
+      {/* Place countdown manager at the end of the page content so it flows with scroll */}
+      <div style={{ marginTop: 24 }}>
+        <WaitCountdownManager sessionReadyKey={sessionReadyKey} />
+      </div>
     </div>
   );
 }
@@ -967,14 +957,14 @@ function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, vi
       }
     };
     updateDevices();
-    try { navigator.mediaDevices && navigator.mediaDevices.addEventListener && navigator.mediaDevices.addEventListener('devicechange', updateDevices); } catch (e) {}
-    return () => { mounted = false; try { navigator.mediaDevices && navigator.mediaDevices.removeEventListener && navigator.mediaDevices.removeEventListener('devicechange', updateDevices); } catch (e) {} };
+    try { navigator.mediaDevices && navigator.mediaDevices.addEventListener && navigator.mediaDevices.addEventListener('devicechange', updateDevices); } catch (e) { }
+    return () => { mounted = false; try { navigator.mediaDevices && navigator.mediaDevices.removeEventListener && navigator.mediaDevices.removeEventListener('devicechange', updateDevices); } catch (e) { } };
   }, []);
 
   const requestPermissions = async () => {
     try {
       console.log('[Permission] Requesting camera and microphone access...');
-      
+
       if (!navigator.mediaDevices) {
         console.error('[Permission] navigator.mediaDevices not available');
         return false;
@@ -988,16 +978,16 @@ function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, vi
       const s = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
       console.log('[Permission] Permissions granted, stream acquired');
       setPermissionGranted(true);
-      
+
       // Stop all tracks
       s.getTracks().forEach((t) => {
         console.log('[Permission] Stopping track:', t.kind, t.id);
         t.stop();
       });
-      
+
       // Add a small delay before enumerating devices (helps with iOS)
       await new Promise(resolve => setTimeout(resolve, 100));
-      
+
       // After permissions granted, enumerate devices to populate the selectors
       try {
         console.log('[Permission] Enumerating devices...');
@@ -1005,7 +995,7 @@ function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, vi
         const ais = list.filter((d) => d.kind === 'audioinput');
         const vis = list.filter((d) => d.kind === 'videoinput');
         console.log('[Permission] Devices enumerated:', { audioInputs: ais.length, videoInputs: vis.length, allDevices: list.length });
-        
+
         setAudioInputs(ais);
         setVideoInputs(vis);
         // Auto-select first device if not already selected
@@ -1026,7 +1016,7 @@ function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, vi
     } catch (e: any) {
       console.error('[Permission] Permission error:', e?.name, e?.message);
       setPermissionGranted(false);
-      
+
       // Provide more specific error messages
       if (e?.name === 'NotAllowedError') {
         alert(t('permission_denied_devices'));
@@ -1068,7 +1058,7 @@ function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, vi
 
       previewStreamRef.current = s;
       if (localVideoRef.current) {
-        try { localVideoRef.current.srcObject = s; } catch (e) {}
+        try { localVideoRef.current.srcObject = s; } catch (e) { }
         try { await localVideoRef.current.play(); } catch (e) { console.warn('startCameraPreview: video.play() failed', e); }
       }
       setPreviewingCamera(true);
@@ -1088,7 +1078,7 @@ function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, vi
         s.getTracks().forEach((t) => t.stop());
       }
       previewStreamRef.current = null;
-      if (localVideoRef.current) try { localVideoRef.current.srcObject = null; } catch (e) {}
+      if (localVideoRef.current) try { localVideoRef.current.srcObject = null; } catch (e) { }
     } catch (e) {
       console.warn('stopCameraPreview failed', e);
     }
@@ -1122,7 +1112,7 @@ function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, vi
           for (let i = 0; i < arr.length; i++) sum += arr[i];
           const avg = sum / arr.length;
           setMicLevel(Math.min(100, Math.floor(avg)));
-        } catch (e) {}
+        } catch (e) { }
         if (testingMicRef.current) window.requestAnimationFrame(update);
       };
       update();
@@ -1137,11 +1127,11 @@ function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, vi
 
   const stopMicTest = () => {
     try {
-      try { audioContextRef.current?.close(); } catch (e) {}
+      try { audioContextRef.current?.close(); } catch (e) { }
       audioContextRef.current = null;
       analyserRef.current = null;
       micSourceRef.current = null;
-    } catch (e) {}
+    } catch (e) { }
     setTestingMic(false);
     testingMicRef.current = false;
     setMicLevel(0);
@@ -1149,13 +1139,13 @@ function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, vi
 
   // persist selection when changed
   React.useEffect(() => {
-    try { if (selectedAudioDeviceId) localStorage.setItem('tutor_selected_audio', selectedAudioDeviceId); } catch (e) {}
+    try { if (selectedAudioDeviceId) localStorage.setItem('tutor_selected_audio', selectedAudioDeviceId); } catch (e) { }
   }, [selectedAudioDeviceId]);
   React.useEffect(() => {
-    try { if (selectedVideoDeviceId) localStorage.setItem('tutor_selected_video', selectedVideoDeviceId); } catch (e) {}
+    try { if (selectedVideoDeviceId) localStorage.setItem('tutor_selected_video', selectedVideoDeviceId); } catch (e) { }
   }, [selectedVideoDeviceId]);
   React.useEffect(() => {
-    try { if (selectedAudioOutputId) localStorage.setItem('tutor_selected_output', selectedAudioOutputId); } catch (e) {}
+    try { if (selectedAudioOutputId) localStorage.setItem('tutor_selected_output', selectedAudioOutputId); } catch (e) { }
   }, [selectedAudioOutputId]);
 
   // 通知父組件檢測狀態
@@ -1206,12 +1196,12 @@ function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, vi
       document.body.appendChild(a);
       // stop after 700ms
       setTimeout(async () => {
-        try { osc.stop(); } catch (e) {}
-        try { ctx.close(); } catch (e) {}
-        try { a.pause(); a.srcObject = null; a.remove(); } catch (e) {}
+        try { osc.stop(); } catch (e) { }
+        try { ctx.close(); } catch (e) { }
+        try { a.pause(); a.srcObject = null; a.remove(); } catch (e) { }
         setSpeakerTested(true);
       }, 700);
-      } catch (e) {
+    } catch (e) {
       console.warn('testSpeaker failed', e);
       alert(t('wait.sound_test_failed'));
     }
@@ -1219,7 +1209,7 @@ function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, vi
 
   // No auto-request: permissions will be requested by explicit user gesture
   React.useEffect(() => {
-    return () => {};
+    return () => { };
   }, []);
 
   return (
@@ -1245,7 +1235,7 @@ function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, vi
             </div>
           )}
         </div>
-          <div style={{ marginTop: 12, fontSize: 13, color: '#fff', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ marginTop: 12, fontSize: 13, color: '#fff', display: 'flex', alignItems: 'center', gap: 8 }}>
           <div style={{ width: 16, height: 16, borderRadius: '50%', background: videoTested ? '#4caf50' : '#666' }} />
           <span>{videoTested ? t('wait.video_tested') : t('wait.video_not_tested')}</span>
         </div>
@@ -1261,14 +1251,14 @@ function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, vi
           </div>
           {isClient && (
             <>
-              <select 
-                value={selectedAudioDeviceId ?? ''} 
-                onChange={(e) => setSelectedAudioDeviceId(e.target.value || null)} 
+              <select
+                value={selectedAudioDeviceId ?? ''}
+                onChange={(e) => setSelectedAudioDeviceId(e.target.value || null)}
                 style={{ width: '100%', padding: '8px 10px', fontSize: 13, borderRadius: 6, border: '1px solid #ccc', marginBottom: 10 }}>
                 {audioInputs.length === 0 && <option value="">{t('wait.no_microphone')}</option>}
                 {audioInputs.map((d) => (<option key={d.deviceId} value={d.deviceId}>{d.label || t('wait.microphone')}</option>))}
               </select>
-              <button 
+              <button
                 onClick={() => { testingMic ? stopMicTest() : startMicTest(); }}
                 style={{ width: '100%', padding: '10px 14px', background: testingMic ? '#d32f2f' : '#1976d2', color: 'white', border: 'none', borderRadius: 6, fontWeight: 500, cursor: 'pointer' }}>
                 {testingMic ? t('wait.mic_stop') : t('wait.mic_test')}
@@ -1288,10 +1278,10 @@ function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, vi
         {/* 喇叭 (輸出裝置) 檢查 */}
         <div style={{ padding: 14, border: '1px solid #e0e0e0', borderRadius: 8, background: 'white' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-              <div style={{ width: 20, height: 20, borderRadius: '50%', background: speakerTested ? '#4caf50' : '#ccc', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 12, fontWeight: 'bold' }}>
-                {speakerTested ? '✓' : ''}
-              </div>
-              <label style={{ fontSize: 14, fontWeight: 600, color: '#333' }}>{t('wait.sound')}</label>
+            <div style={{ width: 20, height: 20, borderRadius: '50%', background: speakerTested ? '#4caf50' : '#ccc', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 12, fontWeight: 'bold' }}>
+              {speakerTested ? '✓' : ''}
+            </div>
+            <label style={{ fontSize: 14, fontWeight: 600, color: '#333' }}>{t('wait.sound')}</label>
           </div>
           {isClient && (
             <>
@@ -1321,14 +1311,14 @@ function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, vi
           </div>
           {isClient && (
             <>
-              <select 
-                value={selectedVideoDeviceId ?? ''} 
-                onChange={(e) => setSelectedVideoDeviceId(e.target.value || null)} 
+              <select
+                value={selectedVideoDeviceId ?? ''}
+                onChange={(e) => setSelectedVideoDeviceId(e.target.value || null)}
                 style={{ width: '100%', padding: '8px 10px', fontSize: 13, borderRadius: 6, border: '1px solid #ccc', marginBottom: 10 }}>
                 {videoInputs.length === 0 && <option value="">{t('wait.no_camera')}</option>}
                 {videoInputs.map((d) => (<option key={d.deviceId} value={d.deviceId}>{d.label || t('wait.camera')}</option>))}
               </select>
-              <button 
+              <button
                 onClick={() => { previewingCamera ? stopCameraPreview() : startCameraPreview(); }}
                 style={{ width: '100%', padding: '10px 14px', background: previewingCamera ? '#d32f2f' : '#1976d2', color: 'white', border: 'none', borderRadius: 6, fontWeight: 500, cursor: 'pointer' }}>
                 {previewingCamera ? t('wait.camera_stop_preview') : t('wait.camera_preview')}
@@ -1338,7 +1328,7 @@ function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, vi
         </div>
 
         {isClient && !permissionGranted && (
-          <button 
+          <button
             onClick={async () => {
               try {
                 // Check if mediaDevices is available before requesting
