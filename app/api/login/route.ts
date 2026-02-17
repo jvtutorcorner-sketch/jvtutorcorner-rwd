@@ -47,8 +47,19 @@ export async function POST(req: Request) {
     let found: any = null;
     if (useDynamo) {
       try {
-        const scanRes: any = await ddbDocClient.send(new ScanCommand({ TableName: PROFILES_TABLE, FilterExpression: 'email = :email AND password = :pw', ExpressionAttributeValues: { ':email': String(email).toLowerCase(), ':pw': password } }));
-        if (scanRes?.Count > 0) found = scanRes.Items[0];
+        const scanRes: any = await ddbDocClient.send(new ScanCommand({
+          TableName: PROFILES_TABLE,
+          FilterExpression: 'email = :email',
+          ExpressionAttributeValues: { ':email': String(email).toLowerCase() }
+        }));
+        if (scanRes?.Count > 0) {
+          const item = scanRes.Items[0];
+          if (item.password === password) {
+            found = item;
+          } else {
+            return NextResponse.json({ ok: false, message: 'login_password_wrong' }, { status: 401 });
+          }
+        }
       } catch (e) {
         console.warn('[login] Dynamo scan failed, falling back to file', (e as any)?.message || e);
       }
@@ -56,11 +67,18 @@ export async function POST(req: Request) {
 
     if (!found) {
       const profiles = await readProfiles();
-      found = profiles.find((p: any) => p.email === String(email).toLowerCase() && p.password === password);
+      const user = profiles.find((p: any) => p.email === String(email).toLowerCase());
+      if (user) {
+        if (user.password === password) {
+          found = user;
+        } else {
+          return NextResponse.json({ ok: false, message: 'login_password_wrong' }, { status: 401 });
+        }
+      }
     }
 
     if (!found) {
-      return NextResponse.json({ ok: false }, { status: 401 });
+      return NextResponse.json({ ok: false, message: 'login_account_not_found' }, { status: 401 });
     }
 
     // Return minimal public profile info (include names if available)

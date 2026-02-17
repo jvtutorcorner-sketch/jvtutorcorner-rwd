@@ -34,55 +34,98 @@ export default function LoginPage() {
     setError(null);
     (async () => {
       try {
-        // Try server-side profiles first
+        const trimmedEmail = email.trim().toLowerCase();
+
+        // 1. Check for mock users first to avoid 401 errors in console for test accounts
+        const userConfig = MOCK_USERS[trimmedEmail];
+        if (userConfig) {
+          if (password !== TEST_PASSWORD) {
+            setError(t('login_password_wrong'));
+            await loadCaptcha();
+            return;
+          }
+
+          // Mock login success
+          const user: StoredUser = {
+            email: trimmedEmail,
+            plan: userConfig.plan,
+            firstName: userConfig.firstName,
+            lastName: userConfig.lastName,
+          };
+          if ((userConfig as any).teacherId) {
+            (user as any).teacherId = (userConfig as any).teacherId;
+            (user as any).role = 'teacher';
+          }
+          setStoredUser(user);
+          setCurrentUser(user);
+          try {
+            const nowRef = String(Date.now());
+            window.localStorage.setItem('tutor_session_expiry', String(Date.now() + 30 * 60 * 1000));
+            window.sessionStorage.setItem('tutor_last_login_time', nowRef);
+            window.localStorage.setItem('tutor_last_login_time', nowRef);
+            window.sessionStorage.setItem('tutor_login_complete', 'true');
+          } catch { }
+
+          window.dispatchEvent(new Event('tutor:auth-changed'));
+          await new Promise(r => setTimeout(r, 100));
+
+          // Check for redirect parameter
+          try {
+            const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+            const redirect = params?.get('redirect');
+            if (redirect) {
+              router.push(decodeURIComponent(redirect));
+              return;
+            }
+          } catch (e) { /* ignore */ }
+
+          alert(`${t('login_success')}\n${t('current_plan')}: ${PLAN_LABELS[user.plan]}(${t('test_account')})\n${t('redirecting_home')}`);
+          router.push('/');
+          return;
+        }
+
+        // 2. Try server-side profiles for other accounts
         const res = await fetch('/api/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: email.trim().toLowerCase(), password, captchaToken, captchaValue }),
+          body: JSON.stringify({ email: trimmedEmail, password, captchaToken, captchaValue }),
         });
         const data = await res.json();
 
-        // If API succeeded, handle redirect
+        // If API succeeded
         if (res.ok && data?.ok) {
           const role = data.profile?.role as string | undefined;
           const plan = (data.profile?.plan as any) || 'basic';
           const user: StoredUser = {
-            email: email.trim().toLowerCase(),
+            email: trimmedEmail,
             plan,
-            role, // preserve raw role (e.g. 'hr') from API response
+            role,
             firstName: data.profile?.firstName,
             lastName: data.profile?.lastName,
           };
-          // attach teacherId for teacher profiles so client can use it for permission checks
           if (role === 'teacher' && data.profile?.id) {
             (user as any).teacherId = String(data.profile.id);
           }
           setStoredUser(user);
           setCurrentUser(user);
-          // set 30-minute session expiry (client-side)
           try {
             window.localStorage.setItem('tutor_session_expiry', String(Date.now() + 30 * 60 * 1000));
             window.sessionStorage.setItem('tutor_last_login_time', String(Date.now()));
-            // Mark that we just logged in successfully
             window.sessionStorage.setItem('tutor_login_complete', 'true');
           } catch { }
-          // Dispatch auth changed event
           window.dispatchEvent(new Event('tutor:auth-changed'));
-
-          // Add a small delay to ensure storage events propagate
           await new Promise(r => setTimeout(r, 100));
 
-          // If a redirect query param is present, send user there after login
+          // Redirection logic
           try {
             const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
             const redirect = params?.get('redirect');
             if (redirect) {
-              console.log('[Login] Redirecting to:', redirect);
-              // prefer full-path redirect
               router.push(decodeURIComponent(redirect));
               return;
             }
           } catch (e) { /* ignore */ }
+
           if (role === 'admin') {
             alert(t('login_admin_success'));
             router.push('/');
@@ -93,76 +136,14 @@ export default function LoginPage() {
           return;
         }
 
-        // If API failed...
-        if (!res.ok) {
-          // If 401 (Unauthorized), it means captcha was good but user not in DB, so we continue to mock fallback
-          if (res.status === 401) {
-            // continue to mock users
-            console.log('User not in profiles DB, trying mock users...');
-          } else {
-            // Other errors (like 400 Captcha error) should stop here and refresh captcha
-            const msg = data?.message ? t(data.message) : t('login_error');
-            setError(msg);
-            await loadCaptcha();
-            return;
-          }
-        }
-
-        // Fallback to mock users
-        const trimmedEmail = email.trim().toLowerCase();
-        const userConfig = MOCK_USERS[trimmedEmail];
-        if (!userConfig) {
-          setError(t('login_account_not_found'));
+        // 3. If API failed
+        if (!res.ok || !data?.ok) {
+          const msg = data?.message ? t(data.message) : t('login_error');
+          setError(msg);
           await loadCaptcha();
           return;
         }
-        if (password !== TEST_PASSWORD) {
-          setError(t('login_password_wrong'));
-          await loadCaptcha();
-          return;
-        }
-        const user: StoredUser = {
-          email: trimmedEmail,
-          plan: userConfig.plan,
-          firstName: userConfig.firstName,
-          lastName: userConfig.lastName,
-        };
-        // If the mock user entry includes a teacherId, attach it and mark role
-        if ((userConfig as any).teacherId) {
-          (user as any).teacherId = (userConfig as any).teacherId;
-          (user as any).role = 'teacher';
-        }
-        setStoredUser(user);
-        setCurrentUser(user);
-        try {
-          const nowRef = String(Date.now());
-          window.localStorage.setItem('tutor_session_expiry', String(Date.now() + 30 * 60 * 1000));
 
-          // Save to both session and local storage for reliability
-          window.sessionStorage.setItem('tutor_last_login_time', nowRef);
-          window.localStorage.setItem('tutor_last_login_time', nowRef);
-
-          // Mark that we just logged in successfully
-          window.sessionStorage.setItem('tutor_login_complete', 'true');
-        } catch { }
-        window.dispatchEvent(new Event('tutor:auth-changed'));
-
-        // Add a small delay to ensure storage events propagate
-        await new Promise(r => setTimeout(r, 100));
-
-        // Check for redirect parameter
-        try {
-          const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
-          const redirect = params?.get('redirect');
-          if (redirect) {
-            console.log('[Login Mock] Redirecting to:', redirect);
-            router.push(decodeURIComponent(redirect));
-            return;
-          }
-        } catch (e) { /* ignore */ }
-
-        alert(`${t('login_success')}\n${t('current_plan')}: ${PLAN_LABELS[user.plan]}(${t('test_account')})\n${t('redirecting_home')}`);
-        router.push('/');
       } catch (err) {
         console.error(err);
         setError(t('login_error'));

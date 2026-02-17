@@ -8,11 +8,12 @@ import { LanguageSwitcher } from './LanguageSwitcher';
 import NavLink from './NavLink';
 import { useT } from './IntlProvider';
 import Button from './UI/Button';
+import { useAdminSettings } from '@/components/AdminSettingsProvider';
 
 export default function Header() {
   const [user, setUser] = useState<StoredUser | null>(null);
   const [hydrated, setHydrated] = useState(false);
-  const [adminSettings, setAdminSettings] = useState<any | null>(null);
+  const { settings: adminSettings } = useAdminSettings(); // Use global settings
   const [roles, setRoles] = useState<any[]>([]);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const router = useRouter();
@@ -26,6 +27,40 @@ export default function Header() {
     { href: '/testimony', titleKey: 'menu_testimony_title', labelKey: 'menu_testimony', defaultLabel: '學員見證' },
     { href: '/about', titleKey: 'menu_about_title', labelKey: 'menu_about', defaultLabel: '關於我們' },
   ];
+
+  // Helper to check permissions
+  // Returns true if visible, false if hidden
+  const checkVisibility = (path: string, type: 'menu' | 'dropdown') => {
+    if (!adminSettings?.pageConfigs) return true; // If settings not loaded, default to visible (legacy behavior) to avoid flicker? 
+    // Actually, if settings are loading, maybe safer to show nothing or default? 
+    // Let's keep legacy behavior for now: if NO config at all, show it.
+
+    const pc = adminSettings.pageConfigs.find((x: any) => x.path === path);
+    if (!pc) return type === 'menu'; // If not in config: visible for Main Menu items (legacy), hidden for Dropdown (dynamic)
+
+    let roleKey = user?.role || 'student';
+    // Map legacy 'user' role to 'student' to match settings
+    if (roleKey === 'user') roleKey = 'student';
+
+    // Admin always sees everything? Or should we respect settings even for admin?
+    // Let's respect settings, but usually admins have all true.
+
+    const perm = (pc.permissions || []).find((p: any) => p.roleId === roleKey);
+    if (!perm) {
+      // CRITICAL CHANGE: If a page is configured but this role has no record, 
+      // it means the role was added later or data is incomplete.
+      // Default to HIDDEN for safety.
+      return false;
+    }
+
+    // If the page itself is hidden ("Page Visible" unchecked), it should NEVER appear in menus/dropdowns
+    if (perm.pageVisible === false) return false;
+
+    if (type === 'menu') return perm.menuVisible === true; // Strict true check
+    if (type === 'dropdown') return perm.dropdownVisible === true; // Strict true check
+
+    return false;
+  };
 
   // Fallback: mark anchors in .main-nav as active based on pathname
   useEffect(() => {
@@ -45,62 +80,21 @@ export default function Header() {
 
   const t = useT();
 
-  function isActive(path: string) {
-    if (!pathname) return false;
-    // consider subpaths as active (e.g. /courses/123)
-    return pathname === path || pathname.startsWith(path + '/') || pathname.startsWith(path + '?') || pathname.startsWith(path + '#');
-  }
-
   useEffect(() => {
     // mark hydrated then read stored user to avoid SSR -> CSR flash
     setHydrated(true);
     setUser(getStoredUser());
+
+    // Fetch roles for label display
     (async () => {
       try {
-        const res = await fetch('/api/admin/settings');
-        const data = await res.json();
-        if (res.ok && data?.ok) setAdminSettings(data.settings || null);
-        try {
-          const r = await fetch('/api/admin/roles');
-          const rr = await r.json();
-          if (r.ok && rr?.ok) setRoles(rr.roles || rr);
-        } catch (e) {
-          // ignore
-        }
+        const r = await fetch('/api/admin/roles');
+        const rr = await r.json();
+        if (r.ok && rr?.ok) setRoles(rr.roles || rr);
       } catch (e) {
         // ignore
       }
     })();
-  }, []);
-
-  // Note: viewport show/hide handled in CSS to avoid hydration flashes
-
-  useEffect(() => {
-    // listen for external changes to admin settings (e.g. saved from admin UI)
-    async function onSettingsChanged() {
-      try {
-        const res = await fetch('/api/admin/settings');
-        const data = await res.json();
-        if (res.ok && data?.ok) setAdminSettings(data.settings || null);
-        try {
-          const r = await fetch('/api/admin/roles');
-          const rr = await r.json();
-          if (r.ok && rr?.ok) setRoles(rr.roles || rr);
-        } catch (e) {
-          // ignore
-        }
-      } catch (e) {
-        // ignore
-      }
-    }
-    if (typeof window !== 'undefined') {
-      window.addEventListener('tutor:admin-settings-changed', onSettingsChanged);
-    }
-    return () => {
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('tutor:admin-settings-changed', onSettingsChanged);
-      }
-    };
   }, []);
 
   // listen for role changes dispatched when admin updates roles
@@ -217,16 +211,7 @@ export default function Header() {
           {
             // build menu items and apply menuVisible from pageConfigs permissions
             MENU_ITEMS.map((item) => {
-              // Check visibility using pageConfigs
-              let visible = true;
-              if (adminSettings?.pageConfigs) {
-                const pc = adminSettings.pageConfigs.find((x: any) => x.path === item.href);
-                if (pc) {
-                  const roleKey = user?.role || 'student'; // default to student if no role
-                  const perm = (pc.permissions || []).find((p: any) => p.roleId === roleKey);
-                  if (perm && perm.menuVisible === false) visible = false;
-                }
-              }
+              const visible = checkVisibility(item.href, 'menu');
               if (!visible) return null;
 
               // Prefer localized label from translations; fall back to default
@@ -237,8 +222,6 @@ export default function Header() {
             })
           }
         </ul>
-
-        {/* moved /orders into the avatar dropdown - keep mobile button below */}
 
         <div className="main-nav-right">
           <ul>
@@ -305,13 +288,7 @@ export default function Header() {
                               // Unified dynamic dropdown items for all logged-in users
                               (adminSettings?.pageConfigs || [])
                                 .filter((pc: any) => !!pc.path && pc.path !== '/admin/settings/page-permissions')
-                                .filter((pc: any) => {
-                                  const roleKey = user?.role || 'student'; // default to student if no role
-                                  const perm = (pc.permissions || []).find((p: any) => p.roleId === roleKey);
-                                  // If no permission found, default to false (safe by default)
-                                  const visible = perm ? (perm.dropdownVisible !== false) : false;
-                                  return !!visible;
-                                })
+                                .filter((pc: any) => checkVisibility(pc.path, 'dropdown'))
                                 .map((pc: any) => {
                                   const p = pc.path;
                                   const label = pc.label || (p === '/settings' ? t('settings_label') :
@@ -319,8 +296,6 @@ export default function Header() {
                                       p === '/teacher_courses' ? t('course_orders') :
                                         p === '/courses_manage' ? t('my_courses') :
                                           p === '/calendar' ? t('calendar_label') : p);
-
-                                  // Skip if it's the current page? No, usually we show it.
 
                                   return (
                                     <li key={p}>
@@ -368,15 +343,9 @@ export default function Header() {
             </div>
             <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
               {MENU_ITEMS.map((item) => {
-                const visEntry = adminSettings?.pageVisibility?.[item.href];
-                let visible = true;
-                if (visEntry?.menu && (visEntry.menu.admin !== undefined || visEntry.menu.teacher !== undefined || visEntry.menu.user !== undefined)) {
-                  const roleKey = user?.role === 'admin' ? 'admin' : user?.role === 'teacher' ? 'teacher' : 'user';
-                  const roleFlag = visEntry.menu?.[roleKey];
-                  visible = roleFlag === undefined ? true : !!roleFlag;
-                }
+                const visible = checkVisibility(item.href, 'menu');
                 if (!visible) return null;
-                const label = t((item as any).labelKey) || visEntry?.label || item.defaultLabel;
+                const label = t((item as any).labelKey) || item.defaultLabel;
                 return (
                   <li key={item.href} style={{ marginBottom: 8 }}>
                     <a className="mobile-menu-link" href={item.href} onClick={() => setMobileMenuOpen(false)} style={{ color: '#111827', textDecoration: 'none' }}>{label}</a>
@@ -407,12 +376,7 @@ export default function Header() {
                     // Unified dynamic dropdown items for mobile menu
                     (adminSettings?.pageConfigs || [])
                       .filter((pc: any) => !!pc.path && pc.path !== '/admin/settings/page-permissions')
-                      .filter((pc: any) => {
-                        const roleKey = user?.role || 'student'; // default to student if no role
-                        const perm = (pc.permissions || []).find((p: any) => p.roleId === roleKey);
-                        const visible = perm ? (perm.dropdownVisible !== false) : false;
-                        return !!visible;
-                      })
+                      .filter((pc: any) => checkVisibility(pc.path, 'dropdown'))
                       .map((pc: any) => {
                         const p = pc.path;
                         const label = pc.label || (p === '/settings' ? t('settings_label') :

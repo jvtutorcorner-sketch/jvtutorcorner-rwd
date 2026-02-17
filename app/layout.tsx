@@ -10,6 +10,8 @@ import ConfigureAmplify from '@/components/ConfigureAmplify';
 import Header from '@/components/Header';
 import PageBreadcrumb from '@/components/PageBreadcrumb';
 import SessionTimer from '@/components/SessionTimer';
+import { AdminSettingsProvider } from '@/components/AdminSettingsProvider';
+import PermissionGuard from '@/components/auth/PermissionGuard';
 
 export const metadata: Metadata = {
   title: 'Tutor Platform',
@@ -33,18 +35,18 @@ export default function RootLayout({
           {/* Mount SessionTimer as a client component */}
           {/* Import dynamically to avoid server-side errors */}
           {/* We'll render via a client component import below */}
-        {/* GA4：放在 body 裡，用 next/script */}
-        {GA_MEASUREMENT_ID && (
-          <>
-            <Script
-              src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`}
-              strategy="afterInteractive"
-            />
-            <Script
-              id="ga4-init"
-              strategy="afterInteractive"
-              dangerouslySetInnerHTML={{
-                __html: `
+          {/* GA4：放在 body 裡，用 next/script */}
+          {GA_MEASUREMENT_ID && (
+            <>
+              <Script
+                src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`}
+                strategy="afterInteractive"
+              />
+              <Script
+                id="ga4-init"
+                strategy="afterInteractive"
+                dangerouslySetInnerHTML={{
+                  __html: `
                   window.dataLayer = window.dataLayer || [];
                   function gtag(){dataLayer.push(arguments);}
                   gtag('js', new Date());
@@ -52,22 +54,25 @@ export default function RootLayout({
                     page_path: window.location.pathname,
                   });
                 `,
-              }}
-            />
-          </>
-        )}
+                }}
+              />
+            </>
+          )}
 
-        <Header />
-        <SessionTimer />
+          <AdminSettingsProvider>
+            <Header />
+            <PermissionGuard />
+            <SessionTimer />
 
-        <main>
-          <PageBreadcrumb />
-          {children}
-        </main>
+            <main>
+              <PageBreadcrumb />
+              {children}
+            </main>
+          </AdminSettingsProvider>
 
-        <footer className="site-footer">
-          © {new Date().getFullYear()} Tutor Corner
-        </footer>
+          <footer className="site-footer">
+            © {new Date().getFullYear()} Tutor Corner
+          </footer>
         </IntlProvider>
       </body>
     </html>

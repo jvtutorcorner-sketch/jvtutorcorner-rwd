@@ -16,9 +16,7 @@ export default function PagePermissionsPage() {
   const [roles, setRoles] = useState<Role[]>([]);
   const [activeTab, setActiveTab] = useState<'pages' | 'menus'>('pages');
 
-  useEffect(() => { load(); }, []);
-
-  async function load() {
+  const load = async () => {
     try {
       const s = await fetch('/api/admin/settings');
       const rs = await s.json();
@@ -29,7 +27,22 @@ export default function PagePermissionsPage() {
     } catch (err) {
       console.error(err);
     }
-  }
+  };
+
+  useEffect(() => {
+    load();
+
+    // Listen for setting changes from child components
+    const handleSettingsChanged = () => {
+      console.log('🔄 [PagePermissionsPage] Detect settings change, reloading...');
+      load();
+    };
+
+    window.addEventListener('tutor:admin-settings-changed', handleSettingsChanged);
+    return () => {
+      window.removeEventListener('tutor:admin-settings-changed', handleSettingsChanged);
+    };
+  }, []);
 
   if (!settings) return <main style={{ padding: 24 }}>Loading settings…</main>;
 
@@ -91,11 +104,11 @@ export default function PagePermissionsPage() {
       {activeTab === 'menus' && (
         <div>
           <section style={{ marginBottom: 24 }}>
-            <MenuSettings />
+            <MenuSettings settings={settings} roles={roles} />
           </section>
 
           <section style={{ marginBottom: 24 }}>
-            <DropdownSettings />
+            <DropdownSettings settings={settings} roles={roles} />
           </section>
         </div>
       )}
