@@ -118,6 +118,8 @@ export type StoredUser = {
   role?: 'admin' | 'user' | 'teacher' | string;
   // optional teacher id for demo teacher accounts
   teacherId?: string;
+  // roid_id is used for DynamoDB primary key matching
+  roid_id?: string;
   // optional display/name fields used in various UIs
   displayName?: string;
   firstName?: string;

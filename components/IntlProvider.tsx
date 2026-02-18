@@ -89,3 +89,10 @@ export function useSetLocale() {
   const { setLocale } = useIntl();
   return setLocale;
 }
+
+// ServerT is a simple placeholder to use in Server Components
+// It will just render the key, allowing client-side hydration to handle it if needed
+// or just providing a consistent way to mark translatable strings.
+export function ServerT({ s }: { s: string }) {
+  return <span>{s}</span>;
+}
