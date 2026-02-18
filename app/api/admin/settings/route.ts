@@ -4,6 +4,9 @@ import path from 'path';
 import resolveDataFile from '@/lib/localData';
 import { getPagePermissions, savePagePermissions } from '@/lib/pagePermissionsService';
 
+export const dynamic = 'force-dynamic';
+
+
 async function readSettings() {
   try {
     const SETTINGS_FILE = await resolveDataFile('admin_settings.json');

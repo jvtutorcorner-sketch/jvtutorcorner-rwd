@@ -69,97 +69,74 @@ export default function TeacherDashboard({ teacherId, teacherName }: Props) {
     try {
       const stored = getStoredUser();
       let url = `/api/courses`;
-      // prefer teacherId for logged-in teacher
-      if (stored?.role === 'teacher' && stored?.teacherId) {
-        url = `/api/courses?teacherId=${encodeURIComponent(stored.teacherId)}`;
-      } else if (teacherId) {
-        url = `/api/courses?teacherId=${encodeURIComponent(String(teacherId))}`;
-      } else if (teacherName) {
-        url = `/api/courses?teacher=${encodeURIComponent(String(teacherName))}`;
+      let myTeacherId = teacherId;
+      let myTeacherName = teacherName;
+
+      // Prefer logged-in user info
+      if (stored?.role === 'teacher') {
+        if (stored.teacherId) myTeacherId = stored.teacherId;
+        // Use displayName or lastName as fallback for name matching if needed, 
+        // but ID is better.
+        if (!myTeacherName) {
+          const tFound = TEACHERS.find(x => String(x.id) === String(stored.teacherId));
+          myTeacherName = tFound?.name || stored.displayName || stored.lastName;
+        }
+      }
+
+      // Build query
+      if (myTeacherId) {
+        url = `/api/courses?teacherId=${encodeURIComponent(String(myTeacherId))}`;
+      } else if (myTeacherName) {
+        url = `/api/courses?teacher=${encodeURIComponent(String(myTeacherName))}`;
       }
 
       const res = await fetch(url);
       const data = await res.json();
+
       if (res.ok && data?.data) {
         let list = Array.isArray(data.data) ? data.data : [];
-        // if user is teacher and no results, try fallback by teacher name (bundled data uses teacherName)
-        if ((stored?.role === 'teacher' && stored?.teacherId) && list.length === 0) {
-          const t = TEACHERS.find((x) => String(x.id) === String(stored.teacherId));
-          const name = t?.name || `${stored.lastName}老師` || stored.displayName || '';
-          if (name) {
-            const res2 = await fetch(`/api/courses?teacher=${encodeURIComponent(name)}`);
-            const d2 = await res2.json();
-            if (res2.ok && d2?.data && Array.isArray(d2.data) && d2.data.length > 0) {
-              list = d2.data;
-            }
-          }
 
-          // Still empty? fetch all courses from the source (.local_data/courses.json) and show them.
-          if (list.length === 0) {
-            try {
-              const resAll = await fetch('/api/courses');
-              const dAll = await resAll.json();
-              if (resAll.ok && dAll?.data && Array.isArray(dAll.data)) {
-                list = dAll.data;
-              }
-            } catch (e) {
-              // ignore
-            }
-          }
-        }
+        // Strict Client-side filtering to ensure no other teacher's courses leak
+        if (stored?.role === 'teacher') {
+          const tid = String(stored.teacherId || '').toLowerCase();
+          const tname = String(myTeacherName || '').toLowerCase();
 
-        if (stored?.role === 'teacher' && stored?.teacherId) {
-          // Try to filter to the logged-in teacher where possible; if matching information is missing, fall back to showing all fetched courses.
-          const teacherKey = String(stored.teacherId).toLowerCase();
-          const teacherNameFromList = (TEACHERS.find(x => String(x.id) === String(stored.teacherId))?.name || '').toLowerCase();
-          const filtered = list.filter((c: any) => {
-            const ids = String(c.teacherId || c.teacher || '').toLowerCase();
-            const names = String(c.teacherName || c.teacher || '').toLowerCase();
-            if (ids && ids.includes(teacherKey)) return true;
-            if (teacherNameFromList && names.includes(teacherNameFromList)) return true;
+          list = list.filter((c: any) => {
+            const cTid = String(c.teacherId || '').toLowerCase();
+            const cTname = String(c.teacherName || c.teacher || '').toLowerCase();
+
+            // If course has teacherId, match strictly on ID
+            if (tid && cTid) {
+              return cTid === tid;
+            }
+            // If course only has name, match on name
+            if (tname && cTname) {
+              return cTname.includes(tname);
+            }
             return false;
           });
-          setCourses(filtered.length > 0 ? filtered : list);
-        } else {
-          setCourses(list);
         }
+
+        setCourses(list);
+      } else {
+        setCourses([]);
       }
     } catch (e) {
       // ignore
+      setCourses([]);
     } finally {
       setLoading(false);
     }
   }
 
-  async function handleDeleteCourse(id: string) {
-    if (!confirm(t('confirm_delete_course'))) return;
-    try {
-      const res = await fetch(`/api/courses/${encodeURIComponent(id)}`, { method: 'DELETE' });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.message || t('delete_failed'));
-      loadCourses();
-      alert(t('course_deleted_demo'));
-    } catch (err: any) {
-      alert(err?.message || t('delete_failed'));
-    }
-  }
-
   function handleEditCourse(id: string) {
-    const ok = confirm(t('confirm_edit_course') || 'Confirm edit this course?');
-    if (!ok) return;
+    // const ok = confirm(t('confirm_edit_course') || 'Confirm edit this course?');
+    // if (!ok) return;
     router.push(`/courses_manage/${encodeURIComponent(id)}/edit`);
   }
 
-  async function handlePatchCourse(id: string, updates: any) {
-    try {
-      const res = await fetch(`/api/courses/${encodeURIComponent(id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updates) });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.message || t('update_failed'));
-      loadCourses();
-      alert(t('course_updated_demo'));
-    } catch (err: any) {
-      alert(err?.message || t('update_failed'));
-    }
+  function handleCreateCourse() {
+    router.push('/courses_manage/new');
   }
 
   function formatDateTime(value: any) {
@@ -177,9 +154,19 @@ export default function TeacherDashboard({ teacherId, teacherName }: Props) {
     <div style={{ marginTop: 18 }}>
 
       <div>
-        <h4>{t('course_list')}</h4>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <h4>{t('course_list')}</h4>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {canEdit && (
+              <Button onClick={handleCreateCourse} variant="primary">
+                新增課程
+              </Button>
+            )}
+          </div>
+        </div>
+
         {loading && <p>{t('loading')}</p>}
-        {courses.length === 0 ? (
+        {!loading && courses.length === 0 ? (
           <p className="muted">{t('no_courses')}</p>
         ) : (
           <div style={{ overflowX: 'auto' }}>
@@ -222,20 +209,7 @@ export default function TeacherDashboard({ teacherId, teacherName }: Props) {
                           }}
                           variant="primary"
                         >
-                          {t('edit') || 'Edit'}
-                        </Button>
-                        <Button
-                          onClick={() => {
-                            if (!canEdit) {
-                              alert(t('no_permission') || 'You do not have permission');
-                              return;
-                            }
-                            if (!confirm(t('confirm_delete_course'))) return;
-                            handleDeleteCourse(c.id);
-                          }}
-                          variant="danger"
-                        >
-                          {t('delete')}
+                          {t('edit')}
                         </Button>
                       </div>
                     </td>

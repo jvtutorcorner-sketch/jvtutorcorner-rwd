@@ -4,7 +4,7 @@ import path from 'path';
 import { randomUUID } from 'crypto';
 import resolveDataFile from '@/lib/localData';
 import { COURSES as BUNDLED_COURSES } from '@/data/courses';
-import { PutCommand, ScanCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
+import { PutCommand, ScanCommand, GetCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
 import { ddbDocClient } from '@/lib/dynamo';
 
 async function readCourses(): Promise<any[]> {
@@ -127,8 +127,8 @@ export async function POST(req: Request) {
       tags: body.tags || [],
       mode: body.mode || 'online',
       description: body.description || '',
-    // status: '上架' or '下架'
-    status: body.status || '上架',
+      // status: '上架' or '下架'
+      status: body.status || '上架',
       // scheduling fields
       nextStartDate: body.nextStartDate || null,
       startDate: body.startDate || null,
@@ -142,6 +142,21 @@ export async function POST(req: Request) {
       createdAt: now,
       updatedAt: now,
     };
+    const COURSES_TABLE = process.env.DYNAMODB_TABLE_COURSES || 'jvtutorcorner-courses';
+    const hasCreds = !!(process.env.CI_AWS_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID) && !!(process.env.CI_AWS_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY);
+    const useDynamo = typeof COURSES_TABLE === 'string' && COURSES_TABLE.length > 0 && (process.env.NODE_ENV === 'production' || hasCreds);
+
+    if (useDynamo) {
+      try {
+        const putCmd = new PutCommand({ TableName: COURSES_TABLE, Item: course });
+        await ddbDocClient.send(putCmd);
+        return NextResponse.json({ ok: true, course }, { status: 201 });
+      } catch (err: any) {
+        console.error('[courses POST Dynamo] error', err?.message || err);
+        // Fallback to local
+      }
+    }
+
     courses.unshift(course);
     await writeCourses(courses);
     return NextResponse.json({ ok: true, course }, { status: 201 });
@@ -158,6 +173,21 @@ export async function DELETE(req: Request) {
     if (!id) {
       return NextResponse.json({ ok: false, message: 'id is required' }, { status: 400 });
     }
+    const COURSES_TABLE = process.env.DYNAMODB_TABLE_COURSES || 'jvtutorcorner-courses';
+    const hasCreds = !!(process.env.CI_AWS_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID) && !!(process.env.CI_AWS_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY);
+    const useDynamo = typeof COURSES_TABLE === 'string' && COURSES_TABLE.length > 0 && (process.env.NODE_ENV === 'production' || hasCreds);
+
+    if (useDynamo) {
+      try {
+        const delCmd = new DeleteCommand({ TableName: COURSES_TABLE, Key: { id } });
+        await ddbDocClient.send(delCmd);
+        return NextResponse.json({ ok: true, message: 'Deleted from DynamoDB' });
+      } catch (err: any) {
+        console.error('[courses DELETE Dynamo] error', err?.message || err);
+        // Fallback to local
+      }
+    }
+
     const courses = await readCourses();
     const idx = courses.findIndex((c) => String(c.id) === String(id));
     if (idx === -1) {

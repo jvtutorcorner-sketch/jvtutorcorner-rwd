@@ -11,7 +11,7 @@ export default function EditCoursePage() {
   const courseId = params?.id as string | undefined;
   const [loading, setLoading] = useState(false);
   const [course, setCourse] = useState<any | null>(null);
-  const [form, setForm] = useState<any>({ title: '', description: '', durationMinutes: '', startDateTime: '', endDateTime: '', membershipPlan: '' });
+  const [form, setForm] = useState<any>({ title: '', description: '', durationMinutes: '', startDateTime: '', endDateTime: '', membershipPlan: '', status: '' });
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -26,52 +26,53 @@ export default function EditCoursePage() {
         if (json?.ok && (json.course || json.data)) {
           const c = json.course || (Array.isArray(json.data) ? json.data[0] : json.data);
           setCourse(c);
-            // Normalize incoming datetime values for date / time inputs
-            function toDateInput(val: any) {
-              if (!val) return '';
-              try {
-                const d = new Date(val);
-                if (isNaN(d.getTime())) return '';
-                return d.toISOString().slice(0, 10);
-              } catch (e) {
-                return '';
-              }
+          // Normalize incoming datetime values for date / time inputs
+          function toDateInput(val: any) {
+            if (!val) return '';
+            try {
+              const d = new Date(val);
+              if (isNaN(d.getTime())) return '';
+              return d.toISOString().slice(0, 10);
+            } catch (e) {
+              return '';
             }
-            function toTimeInput(val: any) {
-              if (!val) return '';
-              try {
-                const d = new Date(val);
-                if (isNaN(d.getTime())) return '';
-                return d.toTimeString().slice(0, 8); // HH:MM:SS
-              } catch (e) {
-                return '';
-              }
+          }
+          function toTimeInput(val: any) {
+            if (!val) return '';
+            try {
+              const d = new Date(val);
+              if (isNaN(d.getTime())) return '';
+              return d.toTimeString().slice(0, 8); // HH:MM:SS
+            } catch (e) {
+              return '';
             }
+          }
 
-            const normalizedStart = c.nextStartDate || c.startDate || null;
-            const normalizedEnd = c.endDate || null;
+          const normalizedStart = c.nextStartDate || c.startDate || null;
+          const normalizedEnd = c.endDate || null;
 
-            // Combine date and time for datetime-local inputs
-            function toDateTimeInput(val: any) {
-              if (!val) return '';
-              try {
-                const d = new Date(val);
-                if (isNaN(d.getTime())) return '';
-                // Format as YYYY-MM-DDTHH:MM for datetime-local
-                return d.toISOString().slice(0, 16);
-              } catch (e) {
-                return '';
-              }
+          // Combine date and time for datetime-local inputs
+          function toDateTimeInput(val: any) {
+            if (!val) return '';
+            try {
+              const d = new Date(val);
+              if (isNaN(d.getTime())) return '';
+              // Format as YYYY-MM-DDTHH:MM for datetime-local
+              return d.toISOString().slice(0, 16);
+            } catch (e) {
+              return '';
             }
+          }
 
-            setForm({
-              title: c.title || '',
-              description: c.description || '',
-              durationMinutes: c.durationMinutes != null ? String(c.durationMinutes) : '',
-              startDateTime: toDateTimeInput(normalizedStart),
-              endDateTime: toDateTimeInput(normalizedEnd),
-              membershipPlan: c.membershipPlan || '',
-            });
+          setForm({
+            title: c.title || '',
+            description: c.description || '',
+            durationMinutes: c.durationMinutes != null ? String(c.durationMinutes) : '',
+            startDateTime: toDateTimeInput(normalizedStart),
+            endDateTime: toDateTimeInput(normalizedEnd),
+            membershipPlan: c.membershipPlan || '',
+            status: c.status || '上架',
+          });
         } else {
           // surface server message when available
           const msg = json?.message || '取得課程資料失敗';
@@ -106,6 +107,7 @@ export default function EditCoursePage() {
       updates.endDate = new Date(form.endDateTime).toISOString();
     }
     if (form.membershipPlan !== undefined) updates.membershipPlan = form.membershipPlan || null;
+    if (form.status !== undefined) updates.status = form.status || '上架';
 
     try {
       const ok = typeof window !== 'undefined' ? window.confirm('確定要將變更儲存至課程？') : true;
@@ -128,6 +130,31 @@ export default function EditCoursePage() {
       }
     } catch (e) {
       setError('更新發生錯誤');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!courseId) return;
+    if (!confirm('確定要刪除此課程嗎？此動作無法復原。')) return;
+
+    try {
+      setLoading(true);
+      const res = await fetch(`/api/courses/${encodeURIComponent(courseId)}`, {
+        method: 'DELETE',
+      });
+      const json = await res.json();
+      if (res.ok && json?.ok) {
+        setSuccess('課程已刪除');
+        router.push('/courses_manage');
+      } else {
+        const msg = json?.message || '刪除失敗';
+        console.warn('[EditCourse] delete failed', msg);
+        setError(msg);
+      }
+    } catch (e) {
+      setError('刪除發生錯誤');
     } finally {
       setLoading(false);
     }
@@ -192,11 +219,24 @@ export default function EditCoursePage() {
           </select>
         </div>
 
+        <div>
+          <label style={{ display: 'block', fontWeight: 600 }}>課程狀態</label>
+          <select
+            value={form.status || '上架'}
+            onChange={(e) => setForm({ ...form, status: e.target.value })}
+            style={{ width: '100%', padding: 8, backgroundColor: 'white' }}
+          >
+            <option value="上架">上架</option>
+            <option value="下架">下架</option>
+          </select>
+        </div>
+
         {error ? <div style={{ color: 'crimson' }}>{error}</div> : null}
         {success ? <div style={{ color: '#16a34a' }}>{success}</div> : null}
 
         <div>
           <button type="submit" disabled={loading} style={{ background: loading ? '#9ca3af' : '#2563eb', color: '#fff', padding: '8px 14px', borderRadius: 6, border: 'none', cursor: loading ? 'default' : 'pointer' }}>{loading ? '提交中...' : '儲存變更'}</button>
+          <button type="button" onClick={handleDelete} disabled={loading} style={{ marginLeft: 8, background: loading ? '#9ca3af' : '#dc2626', color: '#fff', padding: '8px 14px', borderRadius: 6, border: 'none', cursor: loading ? 'default' : 'pointer' }}>刪除課程</button>
           <button type="button" onClick={() => router.push('/courses_manage')} style={{ marginLeft: 8, padding: '8px 12px' }}>取消</button>
         </div>
       </form>

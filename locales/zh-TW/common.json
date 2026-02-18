@@ -296,6 +296,7 @@
   "prompt_membership_plan": "輸入所屬會員方案 key（如 basic/pro/elite），留空則移除",
   "set_plan": "設定方案",
   "delete": "刪除",
+  "edit": "編輯",
   "start_date": "開始日期",
   "membership_plan": "所屬方案",
   "order_management": "訂單管理",

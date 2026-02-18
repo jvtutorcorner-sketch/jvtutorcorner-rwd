@@ -17,6 +17,7 @@ export type Course = {
   totalSessions?: number;
   seatsLeft?: number;
   currency?: string;
+  status?: string;
 };
 
 export const COURSES: Course[] = [
@@ -39,6 +40,7 @@ export const COURSES: Course[] = [
     totalSessions: 24,
     seatsLeft: 5,
     currency: 'TWD',
+    status: '上架',
   },
   {
     id: 'c2',
@@ -58,6 +60,7 @@ export const COURSES: Course[] = [
     totalSessions: 16,
     seatsLeft: 8,
     currency: 'TWD',
+    status: '上架',
   },
   {
     id: 'c3',
@@ -77,6 +80,7 @@ export const COURSES: Course[] = [
     totalSessions: 10,
     seatsLeft: 3,
     currency: 'TWD',
+    status: '上架',
   },
   {
     id: 'c4',
@@ -96,5 +100,6 @@ export const COURSES: Course[] = [
     totalSessions: 8,
     seatsLeft: 10,
     currency: 'TWD',
+    status: '上架',
   },
 ];

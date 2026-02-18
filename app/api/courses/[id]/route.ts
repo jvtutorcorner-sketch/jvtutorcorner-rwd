@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import fs from 'fs/promises';
 import path from 'path';
 import resolveDataFile from '@/lib/localData';
+import { COURSES as BUNDLED_COURSES } from '@/data/courses';
 import { PutCommand, GetCommand, UpdateCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
 import { ddbDocClient } from '@/lib/dynamo';
 
@@ -9,7 +10,9 @@ async function readCourses(): Promise<any[]> {
   try {
     const DATA_FILE = await resolveDataFile('courses.json');
     const raw = await fs.readFile(DATA_FILE, 'utf8');
-    return JSON.parse(raw || '[]');
+    const parsed = JSON.parse(raw || '[]');
+    // If local file is empty, return empty array (we handle merge later)
+    return parsed;
   } catch (err) {
     return [];
   }
@@ -24,9 +27,21 @@ async function writeCourses(arr: any[]) {
   }
 }
 
+// Helper to get all effective courses (Local or Bundled fallback)
+// Returns [coursesArray, isFromBundle]
+async function getEffectiveCourses(): Promise<[any[], boolean]> {
+  let courses = await readCourses();
+  let isFromBundle = false;
+  if ((!courses || courses.length === 0) && Array.isArray(BUNDLED_COURSES) && BUNDLED_COURSES.length > 0) {
+    courses = [...(BUNDLED_COURSES as any[])]; // distinct copy
+    isFromBundle = true;
+  }
+  return [courses, isFromBundle];
+}
+
 export async function DELETE(req: Request, { params }: { params: any }) {
   try {
-    const id = params.id;
+    const { id } = await params;
 
     // Check for DynamoDB support
     const COURSES_TABLE = process.env.DYNAMODB_TABLE_COURSES || 'jvtutorcorner-courses';
@@ -46,8 +61,18 @@ export async function DELETE(req: Request, { params }: { params: any }) {
     }
 
     // Fallback to local file handling
-    const courses = await readCourses();
-    const idx = courses.findIndex((c) => String(c.id) === String(id));
+    // Load effective courses (merging bundled if local is empty)
+    const [courses] = await getEffectiveCourses();
+
+    // Normalize ID lookup
+    let idx = courses.findIndex((c) => String(c.id) === String(id));
+    if (idx === -1) {
+      try {
+        const dec = decodeURIComponent(id);
+        idx = courses.findIndex((c) => String(c.id) === String(dec));
+      } catch (e) { }
+    }
+
     if (idx === -1) return NextResponse.json({ ok: false, message: 'Course not found' }, { status: 404 });
     courses.splice(idx, 1);
     await writeCourses(courses);
@@ -60,7 +85,7 @@ export async function DELETE(req: Request, { params }: { params: any }) {
 
 export async function GET(req: Request, { params }: { params: any }) {
   try {
-    const id = params.id;
+    const { id } = await params;
 
     // Check for DynamoDB support
     const COURSES_TABLE = process.env.DYNAMODB_TABLE_COURSES || 'jvtutorcorner-courses';
@@ -81,8 +106,16 @@ export async function GET(req: Request, { params }: { params: any }) {
     }
 
     // Fallback to local file handling
-    const courses = await readCourses();
-    const c = courses.find((x) => String(x.id) === String(id));
+    const [courses] = await getEffectiveCourses();
+
+    let c = courses.find((x) => String(x.id) === String(id));
+    if (!c) {
+      try {
+        const dec = decodeURIComponent(id);
+        c = courses.find((x) => String(x.id) === String(dec));
+      } catch (e) { }
+    }
+
     if (!c) return NextResponse.json({ ok: false, message: 'Course not found' }, { status: 404 });
     return NextResponse.json({ ok: true, course: c });
   } catch (err: any) {
@@ -93,7 +126,7 @@ export async function GET(req: Request, { params }: { params: any }) {
 
 export async function PATCH(req: Request, { params }: { params: any }) {
   try {
-    const id = params.id;
+    const { id } = await params;
     const body = await req.json();
 
     // Check for DynamoDB support
@@ -146,6 +179,19 @@ export async function PATCH(req: Request, { params }: { params: any }) {
           updateExpressionParts.push('description = :description');
           expressionAttributeValues[':description'] = body.description;
         }
+        if (body.teacherName !== undefined) {
+          updateExpressionParts.push('teacherName = :teacherName');
+          expressionAttributeValues[':teacherName'] = body.teacherName;
+        }
+        if (body.teacherId !== undefined) {
+          updateExpressionParts.push('teacherId = :teacherId');
+          expressionAttributeValues[':teacherId'] = body.teacherId;
+        }
+        if (body.status !== undefined) {
+          updateExpressionParts.push('#status = :status');
+          expressionAttributeNames['#status'] = 'status';
+          expressionAttributeValues[':status'] = body.status;
+        }
 
         // Always update updatedAt
         updateExpressionParts.push('updatedAt = :updatedAt');
@@ -171,9 +217,19 @@ export async function PATCH(req: Request, { params }: { params: any }) {
     }
 
     // Fallback to local file handling
-    const courses = await readCourses();
-    const idx = courses.findIndex((c) => String(c.id) === String(id));
-    if (idx === -1) return NextResponse.json({ ok: false, message: 'Course not found' }, { status: 404 });
+    const [courses] = await getEffectiveCourses();
+
+    let idx = courses.findIndex((c) => String(c.id) === String(id));
+    if (idx === -1) {
+      try {
+        const dec = decodeURIComponent(id);
+        idx = courses.findIndex((c) => String(c.id) === String(dec));
+      } catch (e) { }
+    }
+
+    if (idx === -1) {
+      return NextResponse.json({ ok: false, message: 'Course not found' }, { status: 404 });
+    }
     const course = courses[idx];
     const updates: any = {};
     if (body.title !== undefined) updates.title = body.title;
@@ -185,6 +241,10 @@ export async function PATCH(req: Request, { params }: { params: any }) {
     if (body.pricePerSession !== undefined) updates.pricePerSession = body.pricePerSession;
     if (body.membershipPlan !== undefined) updates.membershipPlan = body.membershipPlan;
     if (body.description !== undefined) updates.description = body.description;
+    if (body.teacherName !== undefined) updates.teacherName = body.teacherName;
+    if (body.teacherId !== undefined) updates.teacherId = body.teacherId;
+    if (body.status !== undefined) updates.status = body.status;
+
     const now = new Date().toISOString();
     const merged = { ...course, ...updates, updatedAt: now };
     courses[idx] = merged;
@@ -195,3 +255,4 @@ export async function PATCH(req: Request, { params }: { params: any }) {
     return NextResponse.json({ ok: false, message: 'Failed to patch course' }, { status: 500 });
   }
 }
+
