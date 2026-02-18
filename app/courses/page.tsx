@@ -1,7 +1,6 @@
-// app/courses/page.tsx
+import { ScanCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
+import { ddbDocClient } from '@/lib/dynamo';
 import { COURSES } from '@/data/courses';
-import resolveDataFile from '@/lib/localData';
-import fs from 'fs/promises';
 import { CourseCard } from '@/components/CourseCard';
 import SearchForm from '@/components/SearchForm';
 
@@ -19,7 +18,6 @@ export default async function CoursesPage(props?: CoursesPageProps) {
   const raw = await (props?.searchParams ?? {});
   function getParam(key: string) {
     if (!raw) return '';
-    // support URLSearchParams-like, plain object, or other shapes
     if (typeof (raw as any).get === 'function') {
       try {
         return (raw as any).get(key) ?? '';
@@ -35,21 +33,41 @@ export default async function CoursesPage(props?: CoursesPageProps) {
   const language = String(getParam('language') ?? '');
   const teacher = String(getParam('teacher') ?? '');
   const mode = String(getParam('mode') ?? '');
-  // region 目前課程資料沒有地區欄位，先忽略
-  // const region = searchParams?.region ?? '';
 
   const subjectTrim = subject.trim().toLowerCase();
   const languageTrim = language.trim().toLowerCase();
   const teacherTrim = teacher.trim().toLowerCase();
 
-  // load persisted courses from .local_data (if available) and merge with built-in COURSES
+  // Fetch courses from DynamoDB
   let persisted: any[] = [];
   try {
-    const DATA_FILE = await resolveDataFile('courses.json');
-    const raw = await fs.readFile(DATA_FILE, 'utf8');
-    persisted = JSON.parse(raw || '[]');
+    const COURSES_TABLE = process.env.DYNAMODB_TABLE_COURSES || 'jvtutorcorner-courses';
+    const TEACHERS_TABLE = process.env.DYNAMODB_TABLE_TEACHERS || 'jvtutorcorner-teachers';
+
+    const scanCmd = new ScanCommand({ TableName: COURSES_TABLE });
+    const result = await ddbDocClient.send(scanCmd);
+    persisted = result.Items || [];
+
+    // Join teacher names
+    const uniqueTids = Array.from(new Set(persisted.map((i: any) => i.teacherId).filter(Boolean)));
+    if (uniqueTids.length > 0) {
+      const teacherMap: Record<string, string> = {};
+      await Promise.all(uniqueTids.map(async (tid: any) => {
+        try {
+          const tRes = await ddbDocClient.send(new GetCommand({ TableName: TEACHERS_TABLE, Key: { id: tid } }));
+          if (tRes.Item && (tRes.Item.name || tRes.Item.displayName)) {
+            teacherMap[tid] = tRes.Item.name || tRes.Item.displayName;
+          }
+        } catch (e) { }
+      }));
+      persisted.forEach((item: any) => {
+        if (item.teacherId && teacherMap[item.teacherId]) {
+          item.teacherName = teacherMap[item.teacherId];
+        }
+      });
+    }
   } catch (e) {
-    // ignore if file missing
+    console.error('[CoursesPage] DynamoDB error:', e);
     persisted = [];
   }
 

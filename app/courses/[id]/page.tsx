@@ -1,37 +1,38 @@
+import { GetCommand } from '@aws-sdk/lib-dynamodb';
+import { ddbDocClient } from '@/lib/dynamo';
 import { COURSES } from '@/data/courses';
 import { EnrollButton } from '@/components/EnrollButton';
-import resolveDataFile from '@/lib/localData';
-import fs from 'fs/promises';
 import Link from 'next/link';
 
 export default async function CourseDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
-  // Load persisted courses and merge with built-in COURSES
-  let persisted: any[] = [];
+  // Fetch course from DynamoDB
+  let course: any = null;
   try {
-    const DATA_FILE = await resolveDataFile('courses.json');
-    const raw = await fs.readFile(DATA_FILE, 'utf8');
-    persisted = JSON.parse(raw || '[]');
-  } catch (e) {
-    persisted = [];
-  }
+    const COURSES_TABLE = process.env.DYNAMODB_TABLE_COURSES || 'jvtutorcorner-courses';
+    const TEACHERS_TABLE = process.env.DYNAMODB_TABLE_TEACHERS || 'jvtutorcorner-teachers';
 
-  // Merge persisted in front so recent creations appear first; avoid duplicate ids
-  const known = new Map<string, any>();
-  const merged = [] as any[];
-  for (const p of persisted) {
-    if (p && p.id) {
-      known.set(String(p.id), p);
-      merged.push(p);
+    const getCmd = new GetCommand({ TableName: COURSES_TABLE, Key: { id } });
+    const result = await ddbDocClient.send(getCmd);
+    course = result.Item || null;
+
+    if (course && course.teacherId) {
+      try {
+        const tRes = await ddbDocClient.send(new GetCommand({ TableName: TEACHERS_TABLE, Key: { id: course.teacherId } }));
+        if (tRes.Item && (tRes.Item.name || tRes.Item.displayName)) {
+          course.teacherName = tRes.Item.name || tRes.Item.displayName;
+        }
+      } catch (e) { }
     }
-  }
-  for (const c of COURSES) {
-    if (!c || !c.id) continue;
-    if (!known.has(String(c.id))) merged.push(c);
+  } catch (e) {
+    console.error('[CourseDetailPage] DynamoDB get error:', e);
   }
 
-  const course = merged.find((c) => c.id === id);
+  // If not in DynamoDB, check bundled COURSES
+  if (!course) {
+    course = COURSES.find((c) => c.id === id);
+  }
 
   if (!course) {
     // 找不到課程，簡單顯示一個提示，並給一個回列表的按鈕

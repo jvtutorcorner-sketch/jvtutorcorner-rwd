@@ -211,11 +211,13 @@ export default function EditCoursePage() {
             <option value="">
               {form.membershipPlan ? `${PLAN_LABELS[form.membershipPlan as PlanId] || form.membershipPlan}（目前設定）` : '未設定'}
             </option>
-            {Object.entries(PLAN_LABELS).map(([key, label]) => (
-              <option key={key} value={key}>
-                {label}
-              </option>
-            ))}
+            {Object.entries(PLAN_LABELS)
+              .filter(([key]) => key !== 'viewer')
+              .map(([key, label]) => (
+                <option key={key} value={key}>
+                  {label}
+                </option>
+              ))}
           </select>
         </div>
 
