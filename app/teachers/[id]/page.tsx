@@ -46,7 +46,13 @@ export default async function TeacherDetailPage({ params }: { params: any }) {
         />
         <div style={{ flex: 1 }}>
           <h1>{teacher.name}</h1>
-          <p style={{ fontSize: '1.2rem', color: '#666' }}>{(teacher.subjects || []).join(' · ')}</p>
+          <p style={{ fontSize: '1.2rem', color: '#666', marginBottom: '8px' }}>
+            {(teacher.subjects || []).join(' · ')}
+          </p>
+          <div style={{ display: 'flex', gap: '16px', color: '#4b5563', marginBottom: '16px', fontSize: '1rem' }}>
+            <span>📍 {teacher.location || '線上'}</span>
+            <span>💰 NT$ {teacher.hourlyRate || 0} / hr</span>
+          </div>
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', margin: '16px 0' }}>
             {(teacher.languages || []).map((lang: string) => (
               <span key={lang} style={{ background: '#f3f4f6', padding: '4px 12px', borderRadius: '16px', fontSize: '14px' }}>
