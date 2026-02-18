@@ -1,6 +1,5 @@
 import React from 'react';
 import { TEACHERS } from '@/data/teachers';
-import PageBreadcrumb from '@/components/PageBreadcrumb';
 import { ServerT } from '@/components/IntlProvider';
 import Link from 'next/link';
 import { GetCommand } from '@aws-sdk/lib-dynamodb';
@@ -36,7 +35,6 @@ export default async function TeacherDetailPage({ params }: { params: any }) {
 
   return (
     <main style={{ padding: '24px', maxWidth: '1000px', margin: '0 auto' }}>
-      <PageBreadcrumb />
 
       <div style={{ display: 'flex', gap: '32px', marginTop: '24px', flexWrap: 'wrap' }}>
         <img
@@ -49,10 +47,6 @@ export default async function TeacherDetailPage({ params }: { params: any }) {
           <p style={{ fontSize: '1.2rem', color: '#666', marginBottom: '8px' }}>
             {(teacher.subjects || []).join(' · ')}
           </p>
-          <div style={{ display: 'flex', gap: '16px', color: '#4b5563', marginBottom: '16px', fontSize: '1rem' }}>
-            <span>📍 {teacher.location || '線上'}</span>
-            <span>💰 NT$ {teacher.hourlyRate || 0} / hr</span>
-          </div>
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', margin: '16px 0' }}>
             {(teacher.languages || []).map((lang: string) => (
               <span key={lang} style={{ background: '#f3f4f6', padding: '4px 12px', borderRadius: '16px', fontSize: '14px' }}>
@@ -60,7 +54,6 @@ export default async function TeacherDetailPage({ params }: { params: any }) {
               </span>
             ))}
           </div>
-          <TeacherEditButton teacherId={id} />
         </div>
       </div>
 

@@ -172,6 +172,11 @@ export default function MenuBar() {
                           </>
                         )}
 
+                        {/* Teacher specific items */}
+                        {user?.role === 'teacher' && (
+                          <li><Link href="/teacher/profile" onClick={() => setMenuOpen(false)} className="menu-link">個人檔案</Link></li>
+                        )}
+
                         {/* Dynamic Dropdown Items */}
                         {(adminSettings?.pageConfigs || [])
                           .filter((pc: any) => !!pc.path && pc.path !== '/admin/settings/page-permissions')

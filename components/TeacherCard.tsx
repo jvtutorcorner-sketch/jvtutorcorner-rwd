@@ -29,7 +29,7 @@ export const TeacherCard: React.FC<TeacherCardProps> = ({ teacher }) => {
         <div>
           <h3 className="card-title">{tt(`teachers.${teacher.id}.name`, teacher.name)}</h3>
           <p className="card-subtitle">
-            {tt(`teachers.${teacher.id}.subjects`, teacher.subjects.join(' · '))}｜{tt(`teachers.${teacher.id}.location`, teacher.location)}｜NT$ {teacher.hourlyRate || 0} / hr
+            {tt(`teachers.${teacher.id}.subjects`, teacher.subjects.join(' · '))}
           </p>
         </div>
       </div>
