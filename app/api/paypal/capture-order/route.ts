@@ -6,6 +6,11 @@ export async function POST(req: NextRequest) {
     try {
         const { orderID } = await req.json();
 
+        if (process.env.NEXT_PUBLIC_PAYMENT_MOCK_MODE === 'true' && orderID?.startsWith('MOCK_ORDER_')) {
+            console.log('[PayPal Capture Order] Mock Mode Active');
+            return NextResponse.json({ success: true, data: { status: 'COMPLETED', id: orderID } });
+        }
+
         const accessToken = await generateAccessToken();
         const url = `${PAYPAL_API.base}/v2/checkout/orders/${orderID}/capture`;
 

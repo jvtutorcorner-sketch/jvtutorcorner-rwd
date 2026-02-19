@@ -95,13 +95,28 @@ export default function PayPalCheckoutPage() {
                     </div>
                 )}
 
-                <PayPalScriptProvider options={initialOptions}>
-                    <PayPalButtons
-                        style={{ layout: "vertical" }}
-                        createOrder={createOrder}
-                        onApprove={onApprove}
-                    />
-                </PayPalScriptProvider>
+                {process.env.NEXT_PUBLIC_PAYMENT_MOCK_MODE === 'true' ? (
+                    <div className="space-y-4">
+                        <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg text-sm text-blue-800 mb-4">
+                            <strong>模擬模式已開啟</strong><br />
+                            由於 PayPal SDK 會驗證 Order ID，在模擬模式下我們改用測試按鈕。
+                        </div>
+                        <button
+                            onClick={() => setSuccess(true)}
+                            className="w-full bg-[#ffc439] hover:bg-[#f2ba36] text-black font-bold py-3 px-4 rounded-full flex items-center justify-center transition-colors shadow-sm"
+                        >
+                            <span className="mr-2 italic text-blue-800 text-lg">PayPal</span> 模擬結帳 (MOCK)
+                        </button>
+                    </div>
+                ) : (
+                    <PayPalScriptProvider options={initialOptions}>
+                        <PayPalButtons
+                            style={{ layout: "vertical" }}
+                            createOrder={createOrder}
+                            onApprove={onApprove}
+                        />
+                    </PayPalScriptProvider>
+                )}
             </div>
         </div>
     );

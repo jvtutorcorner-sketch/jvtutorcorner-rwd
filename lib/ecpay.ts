@@ -61,7 +61,8 @@ export function generateCheckMacValue(params: Record<string, string | number>): 
         .replace(/%21/g, '!')
         .replace(/%2a/g, '*')
         .replace(/%28/g, '(')
-        .replace(/%29/g, ')');
+        .replace(/%29/g, ')')
+        .replace(/%20/g, '+');
 
     // 4. SHA256
     const sha256 = crypto.createHash('sha256').update(encoded).digest('hex');

@@ -20,6 +20,11 @@ export async function POST(req: NextRequest) {
         console.log('[ECPay Return] Received:', data);
 
         // 1. Verify CheckMacValue
+        if (process.env.NEXT_PUBLIC_PAYMENT_MOCK_MODE === 'true') {
+            console.log('[ECPay Return] Mock Mode Active');
+            return new NextResponse('1|OK', { headers: { 'Content-Type': 'text/plain' } });
+        }
+
         if (!verifyCheckMacValue(data)) {
             console.error('[ECPay Return] CheckMacValue verification failed');
             return new NextResponse('0|CheckMacValue Error', { status: 200 }); // ECPay expects 200 OK

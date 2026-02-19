@@ -13,6 +13,11 @@ export async function POST(req: NextRequest) {
         console.log('[ECPay Client Return] Received:', data);
 
         // Optional: Verify signature again before redirecting (Security)
+        if (process.env.NEXT_PUBLIC_PAYMENT_MOCK_MODE === 'true') {
+            console.log('[ECPay Client Return] Mock Mode Active');
+            return NextResponse.redirect(`${process.env.NEXT_PUBLIC_BASE_URL}/ecpay/success`, 302);
+        }
+
         if (!verifyCheckMacValue(data)) {
             console.error('[ECPay Client Return] Signature verification failed');
             // Redirect to failure page

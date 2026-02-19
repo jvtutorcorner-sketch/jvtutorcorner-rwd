@@ -5,6 +5,18 @@ import profilesService from '@/lib/profilesService';
 
 export async function POST(req: NextRequest) {
     try {
+        const body = await req.json();
+        const { priceId, successUrl, cancelUrl, userId } = body;
+
+        // 0. Global Mock Mode Check
+        if (process.env.NEXT_PUBLIC_PAYMENT_MOCK_MODE === 'true') {
+            console.log('[Stripe Checkout] Mock Mode Active - Skipping real API call and DB lookup');
+            return NextResponse.json({
+                sessionId: 'mock_session_' + Date.now(),
+                url: 'https://checkout.stripe.com/pay/mock_success_url_from_api'
+            });
+        }
+
         // 1. Get current user
         // TODO: Replace with real session check
         // const session = await getServerSession(authOptions);
@@ -12,9 +24,6 @@ export async function POST(req: NextRequest) {
 
         // For now, we simulate getting user ID from request or mock auth
         // In a real app, use the session
-        const body = await req.json();
-        const { priceId, successUrl, cancelUrl, userId } = body;
-
         if (!userId || !priceId) {
             return NextResponse.json({ error: 'Missing userId or priceId' }, { status: 400 });
         }
@@ -46,6 +55,7 @@ export async function POST(req: NextRequest) {
         }
 
         // 4. Create Checkout Session
+
         const session = await stripe.checkout.sessions.create({
             customer: customerId,
             mode: 'subscription',

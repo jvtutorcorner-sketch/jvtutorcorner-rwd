@@ -11,6 +11,33 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Missing amount or itemName' }, { status: 400 });
         }
 
+        if (process.env.NEXT_PUBLIC_PAYMENT_MOCK_MODE === 'true') {
+            console.log('[ECPay Checkout] Mock Mode Active');
+            const mockSuccessHtml = `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>ECPay Mock Payment</title>
+                    <style>
+                        body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background: #f0f2f5; }
+                        .card { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); text-align: center; }
+                        .btn { background: #40b070; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; text-decoration: none; }
+                    </style>
+                </head>
+                <body>
+                    <div class="card">
+                        <h2>綠界模擬付款頁面 (MOCK)</h2>
+                        <p>訂單金額: TWD ${amount}</p>
+                        <p>商品名稱: ${itemName}</p>
+                        <p style="color: #666; margin-bottom: 2rem;">這是在 .env.local 中開啟 NEXT_PUBLIC_PAYMENT_MOCK_MODE 後的模擬畫面。</p>
+                        <a href="/ecpay/success" class="btn">模擬付款成功並返回</a>
+                    </div>
+                </body>
+                </html>
+            `;
+            return new NextResponse(mockSuccessHtml, { headers: { 'Content-Type': 'text/html' } });
+        }
+
         const tradeNo = generateMerchantTradeNo();
         const date = new Date();
         // Format: YYYY/MM/DD HH:mm:ss

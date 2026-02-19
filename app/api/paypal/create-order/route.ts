@@ -8,6 +8,11 @@ export async function POST(req: NextRequest) {
         // For demo, we assume the client sends valid structure or we mock it.
 
         // Mock values
+        if (process.env.NEXT_PUBLIC_PAYMENT_MOCK_MODE === 'true') {
+            console.log('[PayPal Create Order] Mock Mode Active');
+            return NextResponse.json({ orderID: 'MOCK_ORDER_' + Date.now() });
+        }
+
         const value = '100.00';
 
         const accessToken = await generateAccessToken();
