@@ -9,7 +9,7 @@ import { ddbDocClient } from '@/lib/dynamo';
 const COURSES_TABLE = process.env.DYNAMODB_TABLE_COURSES || 'jvtutorcorner-courses';
 const TEACHERS_TABLE = process.env.DYNAMODB_TABLE_TEACHERS || 'jvtutorcorner-teachers';
 
-export async function DELETE(req: Request, { params }: { params: any }) {
+export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
 
@@ -22,7 +22,7 @@ export async function DELETE(req: Request, { params }: { params: any }) {
   }
 }
 
-export async function GET(req: Request, { params }: { params: any }) {
+export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
 
@@ -65,7 +65,7 @@ export async function GET(req: Request, { params }: { params: any }) {
   }
 }
 
-export async function PATCH(req: Request, { params }: { params: any }) {
+export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
     const body = await req.json();

@@ -19,27 +19,27 @@ export const dynamic = 'force-dynamic';
 // ==========================================
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
-    
+    const { id } = await params;
+
     if (!id) {
       return NextResponse.json(
         { ok: false, error: 'Organization ID is required' },
         { status: 400 }
       );
     }
-    
+
     const organization = await organizationService.getOrganizationById(id);
-    
+
     if (!organization) {
       return NextResponse.json(
         { ok: false, error: 'Organization not found' },
         { status: 404 }
       );
     }
-    
+
     // TODO: Check if user has permission to view this organization
     // const session = await getServerSession();
     // if (!session) {
@@ -50,10 +50,10 @@ export async function GET(
     // if (!isAdmin && !isMember) {
     //   return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     // }
-    
-    return NextResponse.json({ 
-      ok: true, 
-      organization 
+
+    return NextResponse.json({
+      ok: true,
+      organization
     });
   } catch (error: any) {
     console.error('[OrganizationsAPI] GET by ID failed:', error.message);
@@ -69,18 +69,18 @@ export async function GET(
 // ==========================================
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
-    
+    const { id } = await params;
+
     if (!id) {
       return NextResponse.json(
         { ok: false, error: 'Organization ID is required' },
         { status: 400 }
       );
     }
-    
+
     // TODO: Check if user is org admin or system admin
     // const session = await getServerSession();
     // if (!session) {
@@ -91,12 +91,12 @@ export async function PATCH(
     // if (!isSystemAdmin && !isOrgAdmin) {
     //   return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     // }
-    
+
     const body = await req.json();
-    
+
     // Extract allowed updatable fields
     const updates: any = {};
-    
+
     if (body.name !== undefined) updates.name = body.name;
     if (body.status !== undefined) {
       if (!['active', 'suspended', 'trial', 'cancelled'].includes(body.status)) {
@@ -135,20 +135,20 @@ export async function PATCH(
     if (body.contractStartDate !== undefined) updates.contractStartDate = body.contractStartDate;
     if (body.contractEndDate !== undefined) updates.contractEndDate = body.contractEndDate;
     if (body.billingCycle !== undefined) updates.billingCycle = body.billingCycle;
-    
+
     if (Object.keys(updates).length === 0) {
       return NextResponse.json(
         { ok: false, error: 'No valid fields to update' },
         { status: 400 }
       );
     }
-    
+
     const organization = await organizationService.updateOrganization(id, updates);
-    
-    return NextResponse.json({ 
-      ok: true, 
+
+    return NextResponse.json({
+      ok: true,
       organization,
-      message: 'Organization updated successfully' 
+      message: 'Organization updated successfully'
     });
   } catch (error: any) {
     console.error('[OrganizationsAPI] PATCH failed:', error.message);
@@ -164,27 +164,27 @@ export async function PATCH(
 // ==========================================
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
-    
+    const { id } = await params;
+
     if (!id) {
       return NextResponse.json(
         { ok: false, error: 'Organization ID is required' },
         { status: 400 }
       );
     }
-    
+
     // TODO: Check if user is system admin
     // const session = await getServerSession();
     // if (!session || session.user.role !== 'admin') {
     //   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     // }
-    
+
     const { searchParams } = new URL(req.url);
     const hardDelete = searchParams.get('hard') === 'true';
-    
+
     // Verify organization exists
     const org = await organizationService.getOrganizationById(id);
     if (!org) {
@@ -193,13 +193,13 @@ export async function DELETE(
         { status: 404 }
       );
     }
-    
+
     await organizationService.deleteOrganization(id, hardDelete);
-    
-    return NextResponse.json({ 
-      ok: true, 
-      message: hardDelete 
-        ? 'Organization permanently deleted' 
+
+    return NextResponse.json({
+      ok: true,
+      message: hardDelete
+        ? 'Organization permanently deleted'
         : 'Organization marked as cancelled'
     });
   } catch (error: any) {

@@ -4,7 +4,7 @@ import { GetCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 
 const TEACHERS_TABLE = process.env.DYNAMODB_TABLE_TEACHERS || 'jvtutorcorner-teachers';
 
-export async function GET(req: Request, { params }: { params: any }) {
+export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
     try {
         const { id } = await params;
         const getCmd = new GetCommand({ TableName: TEACHERS_TABLE, Key: { id } });
@@ -18,7 +18,7 @@ export async function GET(req: Request, { params }: { params: any }) {
     }
 }
 
-export async function PATCH(req: Request, { params }: { params: any }) {
+export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
     try {
         const { id } = await params;
         const body = await req.json();
