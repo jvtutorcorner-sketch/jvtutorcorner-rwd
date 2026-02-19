@@ -23,7 +23,7 @@ const explicitCredentials = explicitAccessKey && explicitSecretKey ? {
   ...(explicitSessionToken ? { sessionToken: explicitSessionToken as string } : {})
 } : undefined;
 
-console.log(`[WhiteboardAPI] AWS creds present: ${explicitAccessKey ? (String(explicitAccessKey).substring(0,5) + '...') : 'no'}`);
+console.log(`[WhiteboardAPI] AWS creds present: ${explicitAccessKey ? (String(explicitAccessKey).substring(0, 5) + '...') : 'no'}`);
 
 const client = new DynamoDBClient({ region, credentials: explicitCredentials });
 
@@ -65,12 +65,12 @@ function generateRoomToken(roomUuid: string) {
   }
 
   return roomToken(
-    ak, 
-    sk, 
+    ak,
+    sk,
     1000 * 60 * 60 * 24, // 24 hours
-    { 
+    {
       role: TokenRole.Admin,
-      uuid: roomUuid 
+      uuid: roomUuid
     }
   );
 }
@@ -107,6 +107,26 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing channelName or courseId' }, { status: 400 });
     }
 
+    // 🔒 Security Check: Verify User Access
+    // Only check if userId and courseId are present (skips anonymous/test flows if needed, but best to enforce)
+    if (userId && courseId) {
+      // Lazy import to avoid circular dep issues if any, though verifyCourseAccess should be clean
+      const { verifyCourseAccess } = await import('@/lib/accessControl');
+      const access = await verifyCourseAccess(userId, courseId);
+
+      if (!access.granted) {
+        console.warn(`[WhiteboardAPI] ⛔ Access Denied for user ${userId} on course ${courseId}. Reason: ${access.reason}`);
+        return NextResponse.json({
+          error: 'Access Denied',
+          message: 'You do not have permission to access this course.',
+          detail: access.reason
+        }, { status: 403 });
+      }
+      console.log(`[WhiteboardAPI] ✅ Access Granted for user ${userId} on course ${courseId} (Source: ${access.source})`);
+    } else {
+      console.warn('[WhiteboardAPI] ⚠️ Warning: userId or courseId missing, skipping access control check. This should be blocked in production.');
+    } // TODO: Enforce strict check when all clients are updated
+
     let roomUuid: string | undefined;
 
     // 1. Force override (Debug/Testing)
@@ -116,7 +136,7 @@ export async function POST(req: NextRequest) {
     } else {
       // 2. DynamoDB Lookup
       const tableName = process.env.DYNAMODB_TABLE_COURSES || 'jvtutorcorner-courses';
-      
+
       if (!process.env.DYNAMODB_TABLE_COURSES) {
         console.warn(`[WhiteboardAPI] WARNING: DYNAMODB_TABLE_COURSES env var is missing. Falling back to hardcoded: ${tableName}`);
       }
@@ -141,7 +161,7 @@ export async function POST(req: NextRequest) {
         });
         console.log('[WhiteboardAPI] Attempting DynamoDB GetCommand:', { tableName, dbKey: dbKey.substring(0, 10) + '...' });
         const getResult = await docClient.send(getCmd);
-        
+
         if (getResult.Item && getResult.Item.whiteboardUuid) {
           roomUuid = getResult.Item.whiteboardUuid as string;
           console.log(`[WhiteboardAPI] ✅ FOUND persistent room in DB for key ${dbKey}`);
@@ -162,16 +182,16 @@ export async function POST(req: NextRequest) {
         roomUuid = ROOM_CACHE.get(channelName) as string;
         console.log(`[WhiteboardAPI] Found room in memory cache: [REDACTED]`);
       }
-      
+
       // 3. Create New Room if not found (with concurrency guard)
-        if (!roomUuid) {
-          // If caller requested lookup-only, return not found without creating to avoid races
-          if (lookupOnly) {
-            console.log(`[WhiteboardAPI] lookupOnly request - no room found for ${dbKey}, returning not found`);
-            return NextResponse.json({ found: false }, { status: 200 });
-          }
+      if (!roomUuid) {
+        // If caller requested lookup-only, return not found without creating to avoid races
+        if (lookupOnly) {
+          console.log(`[WhiteboardAPI] lookupOnly request - no room found for ${dbKey}, returning not found`);
+          return NextResponse.json({ found: false }, { status: 200 });
+        }
         console.log(`[WhiteboardAPI] Creating NEW Whiteboard Room for key: ${dbKey}. Reason: Not found in DB or Cache.`);
-        
+
         const adminToken = generateSdkToken();
         const createRoomRes = await fetch('https://api.netless.link/v5/rooms', {
           method: 'POST',
@@ -195,64 +215,64 @@ export async function POST(req: NextRequest) {
 
         // 4. Atomic Save to DynamoDB
         console.log(`[WhiteboardAPI] Attempting ATOMIC save to DynamoDB Table: ${tableName}, Key: ${dbKey}`);
-        
-        try {
-            // Use UpdateCommand with ConditionExpression to ensure we don't overwrite if someone else created one simultaneously
-            const updateParams = {
-                TableName: tableName,
-                Key: { id: dbKey },
-                UpdateExpression: "SET whiteboardUuid = :w, updatedAt = :t",
-                ConditionExpression: "attribute_not_exists(whiteboardUuid)",
-                ExpressionAttributeValues: {
-                    ":w": newRoomUuid,
-                    ":t": new Date().toISOString()
-                },
-                ReturnValues: "ALL_NEW" as const 
-            };
-            
-            console.log('[WhiteboardAPI][DDB][Update] Sending Atomic UpdateCommand');
-            const updateCmd = new UpdateCommand(updateParams);
-            await docClient.send(updateCmd);
-            roomUuid = newRoomUuid;
-            console.log(`[WhiteboardAPI] Successfully saved new room ${roomUuid} to DB for key ${dbKey}`);
 
-            // Update Cache
-            if (channelName) {
-              ROOM_CACHE.set(channelName, roomUuid as string);
-              console.log(`[WhiteboardAPI] Updated in-memory cache for channel ${channelName} => ${roomUuid}`);
-            }
+        try {
+          // Use UpdateCommand with ConditionExpression to ensure we don't overwrite if someone else created one simultaneously
+          const updateParams = {
+            TableName: tableName,
+            Key: { id: dbKey },
+            UpdateExpression: "SET whiteboardUuid = :w, updatedAt = :t",
+            ConditionExpression: "attribute_not_exists(whiteboardUuid)",
+            ExpressionAttributeValues: {
+              ":w": newRoomUuid,
+              ":t": new Date().toISOString()
+            },
+            ReturnValues: "ALL_NEW" as const
+          };
+
+          console.log('[WhiteboardAPI][DDB][Update] Sending Atomic UpdateCommand');
+          const updateCmd = new UpdateCommand(updateParams);
+          await docClient.send(updateCmd);
+          roomUuid = newRoomUuid;
+          console.log(`[WhiteboardAPI] Successfully saved new room ${roomUuid} to DB for key ${dbKey}`);
+
+          // Update Cache
+          if (channelName) {
+            ROOM_CACHE.set(channelName, roomUuid as string);
+            console.log(`[WhiteboardAPI] Updated in-memory cache for channel ${channelName} => ${roomUuid}`);
+          }
 
         } catch (dbWriteError: any) {
-            if (dbWriteError.name === 'ConditionalCheckFailedException' || dbWriteError.__type === 'ConditionalCheckFailedException') {
-                console.log(`[WhiteboardAPI] Concurrency detected! Someone else saved a whiteboardUuid for ${dbKey} just now.`);
-                // Fetch the one that was just saved by the other process
-                const finalGetCmd = new GetCommand({
-                    TableName: tableName,
-                    Key: { id: dbKey },
-                    ConsistentRead: true
-                });
-                const finalGetResult = await docClient.send(finalGetCmd);
-                if (finalGetResult.Item && finalGetResult.Item.whiteboardUuid) {
-                    roomUuid = finalGetResult.Item.whiteboardUuid as string;
-                    console.log(`[WhiteboardAPI] Recovered from race condition. Using uuid from DB: ${roomUuid}`);
-                    if (channelName) ROOM_CACHE.set(channelName, roomUuid);
-                } else {
-                    console.error('[WhiteboardAPI] Race condition occurred but still couldn\'t find whiteboardUuid in DB!');
-                    // This is a weird state - we created a room but can't save it and can't find the other one.
-                    // Instead of falling back blindly, return error to force client to retry.
-                    return NextResponse.json({ error: 'Database race recovery failed' }, { status: 500 });
-                }
+          if (dbWriteError.name === 'ConditionalCheckFailedException' || dbWriteError.__type === 'ConditionalCheckFailedException') {
+            console.log(`[WhiteboardAPI] Concurrency detected! Someone else saved a whiteboardUuid for ${dbKey} just now.`);
+            // Fetch the one that was just saved by the other process
+            const finalGetCmd = new GetCommand({
+              TableName: tableName,
+              Key: { id: dbKey },
+              ConsistentRead: true
+            });
+            const finalGetResult = await docClient.send(finalGetCmd);
+            if (finalGetResult.Item && finalGetResult.Item.whiteboardUuid) {
+              roomUuid = finalGetResult.Item.whiteboardUuid as string;
+              console.log(`[WhiteboardAPI] Recovered from race condition. Using uuid from DB: ${roomUuid}`);
+              if (channelName) ROOM_CACHE.set(channelName, roomUuid);
             } else {
-                console.error('[WhiteboardAPI] CRITICAL: DynamoDB Write FAILED:', dbWriteError.name, dbWriteError.message);
-                // Return error if we can't save to DB. 
-                // This prevents the case where Teacher enters room X but Student can't find it.
-                return NextResponse.json({ 
-                  error: 'Failed to persist whiteboard UUID to database',
-                  details: dbWriteError.message,
-                  tableName: tableName,
-                  key: dbKey
-                }, { status: 500 });
+              console.error('[WhiteboardAPI] Race condition occurred but still couldn\'t find whiteboardUuid in DB!');
+              // This is a weird state - we created a room but can't save it and can't find the other one.
+              // Instead of falling back blindly, return error to force client to retry.
+              return NextResponse.json({ error: 'Database race recovery failed' }, { status: 500 });
             }
+          } else {
+            console.error('[WhiteboardAPI] CRITICAL: DynamoDB Write FAILED:', dbWriteError.name, dbWriteError.message);
+            // Return error if we can't save to DB. 
+            // This prevents the case where Teacher enters room X but Student can't find it.
+            return NextResponse.json({
+              error: 'Failed to persist whiteboard UUID to database',
+              details: dbWriteError.message,
+              tableName: tableName,
+              key: dbKey
+            }, { status: 500 });
+          }
         }
       }
     }

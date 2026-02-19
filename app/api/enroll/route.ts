@@ -26,6 +26,9 @@ export type EnrollmentRecord = {
   updatedAt: string;
   paymentProvider?: string;
   paymentSessionId?: string;
+  // B2B 擴充欄位
+  orgId?: string;           // 若為企業用戶，歸屬於哪個組織
+  sourceType?: 'B2C' | 'B2B_SEAT' | 'ADMIN_OVERRIDE'; // 來源類型
 };
 
 const TABLE_NAME = process.env.ENROLLMENTS_TABLE;
@@ -74,7 +77,7 @@ if (!useDynamo) {
 // load persisted enrollments in dev fallback
 if (!useDynamo) {
   // initialize persisted enrollments (non-blocking)
-  loadLocalEnrollments().catch(() => {});
+  loadLocalEnrollments().catch(() => { });
 }
 
 function generateId() {
@@ -109,6 +112,7 @@ export async function POST(request: NextRequest) {
       courseId: String(courseId),
       courseTitle: String(courseTitle),
       status: 'PENDING_PAYMENT',
+      sourceType: 'B2C', // Default to B2C purchase
       createdAt: now,
       updatedAt: now,
     };
@@ -242,9 +246,9 @@ export async function GET() {
     return NextResponse.json(
       {
         ok: true,
-          total: items.length,
-          data: items,
-          source: 'dynamodb',
+        total: items.length,
+        data: items,
+        source: 'dynamodb',
       },
       { status: 200 },
     );
