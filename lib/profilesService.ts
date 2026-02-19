@@ -105,7 +105,7 @@ export async function getProfileById(id: string) {
     try {
       const r: any = await callProfilesHttp('getById', { id });
       return r?.item || null;
-    } catch (e) {}
+    } catch (e) { }
   }
 
   if (PROFILES_LAMBDA) {
@@ -185,7 +185,7 @@ export async function findProfilesByOrgId(orgId: string): Promise<ProfileB2B[]> 
   if (!PROFILES_TABLE) {
     throw new Error('DYNAMODB_TABLE_PROFILES not configured');
   }
-  
+
   try {
     const result = await ddbDocClient.send(new QueryCommand({
       TableName: PROFILES_TABLE,
@@ -195,7 +195,7 @@ export async function findProfilesByOrgId(orgId: string): Promise<ProfileB2B[]> 
         ':orgId': orgId
       }
     }));
-    
+
     return (result.Items as ProfileB2B[]) || [];
   } catch (error: any) {
     console.error(`[profilesService] ❌ Failed to query profiles by orgId ${orgId}:`, error.message);
@@ -217,7 +217,7 @@ export async function assignProfileToOrg(
   if (!PROFILES_TABLE) {
     throw new Error('DYNAMODB_TABLE_PROFILES not configured');
   }
-  
+
   try {
     const result = await ddbDocClient.send(new UpdateCommand({
       TableName: PROFILES_TABLE,
@@ -233,7 +233,7 @@ export async function assignProfileToOrg(
       },
       ReturnValues: 'ALL_NEW'
     }));
-    
+
     console.log(`[profilesService] ✅ Assigned profile ${profileId} to org ${orgId}`);
     return result.Attributes as ProfileB2B;
   } catch (error: any) {
@@ -249,7 +249,7 @@ export async function removeProfileFromOrg(profileId: string): Promise<ProfileB2
   if (!PROFILES_TABLE) {
     throw new Error('DYNAMODB_TABLE_PROFILES not configured');
   }
-  
+
   try {
     const result = await ddbDocClient.send(new UpdateCommand({
       TableName: PROFILES_TABLE,
@@ -262,7 +262,7 @@ export async function removeProfileFromOrg(profileId: string): Promise<ProfileB2
       },
       ReturnValues: 'ALL_NEW'
     }));
-    
+
     console.log(`[profilesService] ✅ Removed profile ${profileId} from org`);
     return result.Attributes as ProfileB2B;
   } catch (error: any) {
@@ -281,7 +281,7 @@ export async function updateProfileOrgUnit(
   if (!PROFILES_TABLE) {
     throw new Error('DYNAMODB_TABLE_PROFILES not configured');
   }
-  
+
   try {
     const result = await ddbDocClient.send(new UpdateCommand({
       TableName: PROFILES_TABLE,
@@ -293,7 +293,7 @@ export async function updateProfileOrgUnit(
       },
       ReturnValues: 'ALL_NEW'
     }));
-    
+
     console.log(`[profilesService] ✅ Updated profile ${profileId} org unit to ${orgUnitId}`);
     return result.Attributes as ProfileB2B;
   } catch (error: any) {
@@ -302,15 +302,38 @@ export async function updateProfileOrgUnit(
   }
 }
 
+/**
+ * Find profile by Stripe Customer ID
+ */
+export async function findProfileByStripeCustomerId(stripeCustomerId: string) {
+  if (PROFILES_TABLE) {
+    try {
+      const scanRes: any = await ddbDocClient.send(new ScanCommand({
+        TableName: PROFILES_TABLE,
+        FilterExpression: 'stripeCustomerId = :cid',
+        ExpressionAttributeValues: { ':cid': stripeCustomerId }
+      }));
+      if (scanRes?.Count > 0) return scanRes.Items[0];
+      return null;
+    } catch (e) {
+      console.warn('[profilesService] dynamo scan by stripeId failed', (e as any)?.message || e);
+    }
+  }
+
+  const profiles = await readProfilesFile();
+  return profiles.find((p: any) => p.stripeCustomerId === stripeCustomerId) || null;
+}
+
 export default {
   // Original functions
   findProfileByEmail,
   getProfileById,
   putProfile,
-  
+
   // B2B/B2C extended functions
   findProfilesByOrgId,
   assignProfileToOrg,
   removeProfileFromOrg,
   updateProfileOrgUnit,
+  findProfileByStripeCustomerId,
 };
