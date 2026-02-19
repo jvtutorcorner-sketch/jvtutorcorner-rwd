@@ -292,19 +292,14 @@ export async function POST(req: Request) {
     // If caller provided pageConfigs, regenerate the legacy `pageVisibility` map
     // so parts of the app that read pageVisibility (Header, SSR code) reflect the changes.
     if (body.pageConfigs && Array.isArray(body.pageConfigs)) {
-      // Merge incoming pageConfigs into existing pageConfigs so that unspecified flags
-      // (e.g. dropdownVisible) are preserved instead of being reset.
+      // 🔑 IMPORTANT: Use the order and presence from body.pageConfigs (incoming request) to support deletions and drag-and-drop sorting
+      const finalPageConfigs: any[] = [];
       const existingMap = new Map<string, any>();
       (current && current.pageConfigs || []).forEach((pc: any) => existingMap.set(pc.path || pc.id, pc));
 
-      // Build merged pageConfigs starting from existing ones
-      const mergedPageConfigs: any[] = (current && current.pageConfigs) ? JSON.parse(JSON.stringify(current.pageConfigs)) : [];
-      const mergedMap = new Map<string, any>();
-      mergedPageConfigs.forEach((pc: any) => mergedMap.set(pc.path || pc.id, pc));
-
       body.pageConfigs.forEach((pc: any) => {
         const pathKey = pc.path || pc.id;
-        const existing = mergedMap.get(pathKey) || existingMap.get(pathKey) || { path: pathKey, id: pathKey, label: pc.label || pathKey, permissions: [] };
+        const existing = existingMap.get(pathKey) || { path: pathKey, id: pathKey, label: pc.label || pathKey, permissions: [] };
 
         // build a role-indexed map of existing permissions
         const existingPermsMap = new Map<string, any>();
@@ -326,36 +321,18 @@ export async function POST(req: Request) {
           });
         });
 
-        const updated = {
+        finalPageConfigs.push({
           id: existing.id || pathKey,
           path: pathKey,
           label: pc.label || existing.label || pathKey,
           permissions: mergedPerms
-        };
-
-        mergedMap.set(pathKey, updated);
+        });
       });
-
-      // 🔑 IMPORTANT: Use the order from body.pageConfigs (incoming request) to preserve user's drag-and-drop sorting
-      // Do NOT use current.pageConfigs order, as that would reset the sorting
-      const finalPageConfigs: any[] = [];
-
-      // Use the order from the incoming request (body.pageConfigs)
-      body.pageConfigs.forEach((pc: any) => {
-        const k = pc.path || pc.id;
-        if (mergedMap.has(k)) {
-          finalPageConfigs.push(mergedMap.get(k));
-          mergedMap.delete(k);
-        }
-      });
-
-      // Append any remaining pages that weren't in the incoming request (shouldn't happen normally)
-      mergedMap.forEach((v) => finalPageConfigs.push(v));
 
       merged.pageConfigs = finalPageConfigs;
 
       // regenerate legacy pageVisibility from merged.pageConfigs
-      const pageVisibility: Record<string, any> = merged.pageVisibility || {};
+      const pageVisibility: Record<string, any> = {};
       merged.pageConfigs.forEach((pc: any) => {
         const entry: any = { label: pc.label || pc.path, menu: {}, dropdown: {}, page: {} };
         (pc.permissions || []).forEach((perm: any) => {

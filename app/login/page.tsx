@@ -282,38 +282,6 @@ export default function LoginPage() {
         </div>
       </section>
 
-      <section className="section">
-        <div className="card">
-          <h2>{t('test_accounts')}</h2>
-          <p>{t('use_test_accounts')}</p>
-          <ul>
-            {/* Core test accounts */}
-            <li>
-              <strong>Basic：</strong> basic@test.com （Basic {t('basic_plan')}）<span style={{ color: '#2563eb', fontWeight: 'bold' }}>({MOCK_USERS['basic@test.com'].lastName}{MOCK_USERS['basic@test.com'].firstName})</span>
-            </li>
-            <li>
-              <strong>Pro：</strong> pro@test.com （Pro {t('pro_plan')}）<span style={{ color: '#2563eb', fontWeight: 'bold' }}>({MOCK_USERS['pro@test.com'].lastName}{MOCK_USERS['pro@test.com'].firstName})</span>
-            </li>
-            <li>
-              <strong>Elite：</strong> elite@test.com （Elite {t('elite_plan')}）<span style={{ color: '#2563eb', fontWeight: 'bold' }}>({MOCK_USERS['elite@test.com'].lastName}{MOCK_USERS['elite@test.com'].firstName})</span>
-            </li>
-            {/* legacy demo teacher removed */}
-
-            {/* Additional teacher demo accounts generated from MOCK_USERS */}
-            {Object.entries(MOCK_USERS)
-              .filter(([email, cfg]) => (cfg as any).teacherId)
-              .map(([email, cfg]) => (
-                <li key={email}>
-                  <strong>{(cfg.displayName || t('teacher'))}：</strong> {email} （{cfg.displayName}）
-                  <span style={{ color: '#2563eb', fontWeight: 'bold' }}>({cfg.lastName}{cfg.firstName})</span>
-                </li>
-              ))}
-          </ul>
-          <div style={{ marginTop: 12 }}>
-            <small>{t('test_password_label')}: 123456</small>
-          </div>
-        </div>
-      </section>
     </div>
   );
 }

@@ -54,23 +54,23 @@ export default function PageSettings({
     console.log('📦 [PageSettings] 完整儲存資料:', settings);
     console.log('🔍 [PageSettings] pageConfigs 數量:', settings.pageConfigs?.length || 0);
     console.log('🔍 [PageSettings] settings 結構:', Object.keys(settings || {}));
-    
+
     // Validate data before sending
     if (!Array.isArray(settings.pageConfigs)) {
       console.error('❌ [PageSettings] pageConfigs 不是陣列！');
       alert('錯誤：pageConfigs 資料格式不正確');
       return;
     }
-    
+
     if (settings.pageConfigs.length === 0) {
       console.warn('⚠️  [PageSettings] pageConfigs 為空');
     }
-    
+
     setSaving(true);
     try {
       const dataToSend = settings;
       console.log('📤 [PageSettings] 發送資料大小:', JSON.stringify(dataToSend).length, '字節');
-      
+
       const res = await fetch('/api/admin/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -106,7 +106,7 @@ export default function PageSettings({
     const path = (newPath || '').trim();
     if (!path) return alert('請輸入頁面路徑');
     if (settings.pageConfigs.some((pc: PageConfig) => pc.path === path)) return alert('頁面已存在');
-    const defaultPerms = (roles || []).filter((r: Role) => r.isActive).map((r: Role) => ({ roleId: r.id, roleName: r.name, menuVisible: false, dropdownVisible: false, pageVisible: true }));
+    const defaultPerms = (roles || []).filter((r: Role) => r.isActive).map((r: Role) => ({ roleId: r.id, roleName: r.name, menuVisible: false, dropdownVisible: false, pageVisible: false }));
     const newPage: PageConfig = { id: path, path, label: newLabel || path, permissions: defaultPerms };
     setSettings((prev: Settings | null) => prev ? { ...prev, pageConfigs: [...prev.pageConfigs, newPage] } : prev);
     setNewPath(''); setNewLabel('');
@@ -117,7 +117,7 @@ export default function PageSettings({
     const ok = confirm(`確定要刪除頁面 ${path} 嗎？此操作無法復原。`);
     if (!ok) return;
     setSettings((prev: Settings | null) => prev ? { ...prev, pageConfigs: prev.pageConfigs.filter((pc: PageConfig) => pc.path !== path) } : prev);
-    
+
     // 刪除後退出編輯模式
     if (editingPath === path) {
       cancelEdit();
@@ -236,15 +236,15 @@ export default function PageSettings({
     <div style={{ padding: 16, border: '1px solid #eee', borderRadius: 8, background: '#fff' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <h3 style={{ margin: 0, fontSize: 18 }}>管理 Pages{allowAddRemove ? '（新增 / 刪除 / 編輯）' : ''}</h3>
-        <button 
-          onClick={save} 
-          disabled={saving || !hasChanges} 
-          style={{ 
-            padding: '6px 16px', 
-            background: !hasChanges ? '#cbd5e1' : '#2563eb', 
-            color: 'white', 
-            borderRadius: 6, 
-            border: 'none', 
+        <button
+          onClick={save}
+          disabled={saving || !hasChanges}
+          style={{
+            padding: '6px 16px',
+            background: !hasChanges ? '#cbd5e1' : '#2563eb',
+            color: 'white',
+            borderRadius: 6,
+            border: 'none',
             cursor: !hasChanges ? 'not-allowed' : 'pointer',
             opacity: !hasChanges ? 0.6 : 1,
             fontWeight: 600
