@@ -170,8 +170,147 @@ export async function putProfile(profile: any) {
   return profile;
 }
 
+// ==========================================
+// B2B/B2C Extended Functions
+// ==========================================
+
+import { QueryCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import type { ProfileB2B } from './types/b2b';
+
+/**
+ * Query profiles by organization ID (uses byOrgId GSI)
+ * Requires EmailIndex GSI on the Profiles table
+ */
+export async function findProfilesByOrgId(orgId: string): Promise<ProfileB2B[]> {
+  if (!PROFILES_TABLE) {
+    throw new Error('DYNAMODB_TABLE_PROFILES not configured');
+  }
+  
+  try {
+    const result = await ddbDocClient.send(new QueryCommand({
+      TableName: PROFILES_TABLE,
+      IndexName: 'byOrgId',
+      KeyConditionExpression: 'orgId = :orgId',
+      ExpressionAttributeValues: {
+        ':orgId': orgId
+      }
+    }));
+    
+    return (result.Items as ProfileB2B[]) || [];
+  } catch (error: any) {
+    console.error(`[profilesService] ❌ Failed to query profiles by orgId ${orgId}:`, error.message);
+    throw new Error(`Failed to query profiles by orgId: ${error.message}`);
+  }
+}
+
+/**
+ * Assign a profile to an organization
+ * Updates orgId, orgUnitId, isB2B, and licenseId fields
+ */
+export async function assignProfileToOrg(
+  profileId: string,
+  orgId: string,
+  orgUnitId?: string,
+  licenseId?: string,
+  isOrgAdmin: boolean = false
+): Promise<ProfileB2B> {
+  if (!PROFILES_TABLE) {
+    throw new Error('DYNAMODB_TABLE_PROFILES not configured');
+  }
+  
+  try {
+    const result = await ddbDocClient.send(new UpdateCommand({
+      TableName: PROFILES_TABLE,
+      Key: { id: profileId },
+      UpdateExpression: 'SET orgId = :orgId, orgUnitId = :orgUnitId, isB2B = :isB2B, isOrgAdmin = :isOrgAdmin, licenseId = :licenseId, updatedAt = :now',
+      ExpressionAttributeValues: {
+        ':orgId': orgId,
+        ':orgUnitId': orgUnitId || null,
+        ':isB2B': true,
+        ':isOrgAdmin': isOrgAdmin,
+        ':licenseId': licenseId || null,
+        ':now': new Date().toISOString()
+      },
+      ReturnValues: 'ALL_NEW'
+    }));
+    
+    console.log(`[profilesService] ✅ Assigned profile ${profileId} to org ${orgId}`);
+    return result.Attributes as ProfileB2B;
+  } catch (error: any) {
+    console.error(`[profilesService] ❌ Failed to assign profile to org:`, error.message);
+    throw new Error(`Failed to assign profile to org: ${error.message}`);
+  }
+}
+
+/**
+ * Remove a profile from an organization (convert back to B2C)
+ */
+export async function removeProfileFromOrg(profileId: string): Promise<ProfileB2B> {
+  if (!PROFILES_TABLE) {
+    throw new Error('DYNAMODB_TABLE_PROFILES not configured');
+  }
+  
+  try {
+    const result = await ddbDocClient.send(new UpdateCommand({
+      TableName: PROFILES_TABLE,
+      Key: { id: profileId },
+      UpdateExpression: 'SET orgId = :null, orgUnitId = :null, isB2B = :false, isOrgAdmin = :false, licenseId = :null, updatedAt = :now',
+      ExpressionAttributeValues: {
+        ':null': null,
+        ':false': false,
+        ':now': new Date().toISOString()
+      },
+      ReturnValues: 'ALL_NEW'
+    }));
+    
+    console.log(`[profilesService] ✅ Removed profile ${profileId} from org`);
+    return result.Attributes as ProfileB2B;
+  } catch (error: any) {
+    console.error(`[profilesService] ❌ Failed to remove profile from org:`, error.message);
+    throw new Error(`Failed to remove profile from org: ${error.message}`);
+  }
+}
+
+/**
+ * Update profile's org unit (for moving within organizational hierarchy)
+ */
+export async function updateProfileOrgUnit(
+  profileId: string,
+  orgUnitId: string | null
+): Promise<ProfileB2B> {
+  if (!PROFILES_TABLE) {
+    throw new Error('DYNAMODB_TABLE_PROFILES not configured');
+  }
+  
+  try {
+    const result = await ddbDocClient.send(new UpdateCommand({
+      TableName: PROFILES_TABLE,
+      Key: { id: profileId },
+      UpdateExpression: 'SET orgUnitId = :orgUnitId, updatedAt = :now',
+      ExpressionAttributeValues: {
+        ':orgUnitId': orgUnitId,
+        ':now': new Date().toISOString()
+      },
+      ReturnValues: 'ALL_NEW'
+    }));
+    
+    console.log(`[profilesService] ✅ Updated profile ${profileId} org unit to ${orgUnitId}`);
+    return result.Attributes as ProfileB2B;
+  } catch (error: any) {
+    console.error(`[profilesService] ❌ Failed to update profile org unit:`, error.message);
+    throw new Error(`Failed to update profile org unit: ${error.message}`);
+  }
+}
+
 export default {
+  // Original functions
   findProfileByEmail,
   getProfileById,
   putProfile,
+  
+  // B2B/B2C extended functions
+  findProfilesByOrgId,
+  assignProfileToOrg,
+  removeProfileFromOrg,
+  updateProfileOrgUnit,
 };
