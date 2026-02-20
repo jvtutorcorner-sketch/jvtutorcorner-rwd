@@ -1,11 +1,12 @@
 
 import { NextResponse } from 'next/server';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, PutCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, PutCommand, ScanCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
 import { randomUUID } from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import resolveDataFile from '@/lib/localData';
+import { COURSES } from '@/data/courses';
 
 // DynamoDB client initialization: prefer explicit credentials when provided (local/dev),
 // otherwise fall back to SDK default chain (IAM role in prod).
@@ -64,7 +65,7 @@ async function saveLocalOrders() {
 if (!useDynamo) {
   console.warn(`[orders API] Not using DynamoDB (NODE_ENV=${process.env.NODE_ENV}, DYNAMODB_TABLE_ORDERS=${ORDERS_TABLE}). Using LOCAL_ORDERS fallback.`);
   // load persisted orders in dev (non-blocking)
-  loadLocalOrders().catch(() => {});
+  loadLocalOrders().catch(() => { });
 } else {
   console.log(`[orders API] Using DynamoDB Table: ${ORDERS_TABLE}`);
 }
@@ -106,11 +107,41 @@ export async function POST(request: Request) {
     // Human-friendly display number which includes user id and timestamp (updated on status changes)
     const orderNumber = `${userId}-${createdAt}`;
 
+    // Fetch course duration and total sessions
+    let durationMinutes = 0;
+    let totalSessions = 1;
+
+    try {
+      const COURSES_TABLE = process.env.DYNAMODB_TABLE_COURSES || 'jvtutorcorner-courses';
+      if (useDynamo) {
+        const getCmd = new GetCommand({ TableName: COURSES_TABLE, Key: { id: courseId } });
+        const res = await docClient.send(getCmd);
+        if (res.Item) {
+          durationMinutes = res.Item.durationMinutes || 0;
+          totalSessions = res.Item.totalSessions || 1;
+        } else {
+          // fallback to bundled courses just in case
+          const course = COURSES.find(c => c.id === courseId);
+          durationMinutes = course?.durationMinutes || 0;
+          totalSessions = course?.totalSessions || 1;
+        }
+      } else {
+        const course = COURSES.find(c => c.id === courseId);
+        durationMinutes = course?.durationMinutes || 0;
+        totalSessions = course?.totalSessions || 1;
+      }
+    } catch (e) {
+      console.warn('[orders API] Failed to fetch course duration/sessions:', e);
+    }
     const order = {
       orderId,
       orderNumber,
       userId,
       courseId,
+      durationMinutes, // Storing duration at time of order
+      totalSessions,
+      remainingSessions: totalSessions,
+      remainingSeconds: durationMinutes * 60,
       enrollmentId: enrollmentId || null,
       amount: amount || 0,
       currency: currency || 'TWD',
@@ -127,9 +158,9 @@ export async function POST(request: Request) {
       await docClient.send(command);
     } else {
       // dev fallback: push to in-memory store
-        LOCAL_ORDERS.unshift(order);
-        // persist to disk when possible
-        saveLocalOrders().catch(() => {});
+      LOCAL_ORDERS.unshift(order);
+      // persist to disk when possible
+      saveLocalOrders().catch(() => { });
     }
 
     return NextResponse.json({
@@ -226,8 +257,24 @@ export async function GET(request: Request) {
       } catch (e) {
         LOCAL_ORDERS = LOCAL_ORDERS || [];
       }
-      const items = LOCAL_ORDERS.slice(0, limit);
-      return NextResponse.json({ ok: true, total: LOCAL_ORDERS.length, data: items, lastKey: null }, { status: 200 });
+      let filteredOrders = LOCAL_ORDERS;
+      if (status) filteredOrders = filteredOrders.filter(o => o.status === status);
+      if (enrollmentId) filteredOrders = filteredOrders.filter(o => o.enrollmentId === enrollmentId);
+      if (userId) filteredOrders = filteredOrders.filter(o => o.userId === userId);
+      if (courseId) filteredOrders = filteredOrders.filter(o => o.courseId === courseId);
+      if (orderIdFilter) filteredOrders = filteredOrders.filter(o => o.orderId === orderIdFilter);
+      if (startDate) filteredOrders = filteredOrders.filter(o => o.createdAt && new Date(o.createdAt) >= new Date(startDate));
+      if (endDate) filteredOrders = filteredOrders.filter(o => o.createdAt && new Date(o.createdAt) <= new Date(endDate));
+
+      // Sort by createdAt descending to get newest first
+      filteredOrders.sort((a, b) => {
+        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return timeB - timeA;
+      });
+
+      const items = filteredOrders.slice(0, limit);
+      return NextResponse.json({ ok: true, total: filteredOrders.length, data: items, lastKey: null }, { status: 200 });
     }
 
     const scanInput: any = { TableName, Limit: limit };

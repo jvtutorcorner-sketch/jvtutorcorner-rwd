@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useMemo, useEffect, useState, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useAgoraClassroom } from '@/lib/agora/useAgoraClassroom';
 import { getStoredUser, setStoredUser } from '@/lib/mockAuth';
 import { COURSES } from '@/data/courses';
@@ -38,16 +39,39 @@ const hexToRgbArray = (value: string | number[]): [number, number, number] => {
 };
 
 const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) => {
-  const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
-  const courseId = searchParams?.get('courseId') ?? 'c1';
-  const orderId = searchParams?.get('orderId') ?? null;
-  const sessionParam = searchParams?.get('session');
-  const sessionReadyKey = useMemo(() => 
+  const params = useSearchParams();
+  const courseId = params?.get('courseId') ?? params?.get('courseid') ?? 'c1';
+  const orderId = params?.get('orderId') ?? params?.get('orderid') ?? null;
+  const sessionParam = params?.get('session');
+  const sessionReadyKey = useMemo(() =>
     sessionParam || channelName || `classroom_session_ready_${courseId}`,
     [sessionParam, channelName, courseId]
   );
   const t = useT();
-  
+
+  const [courseTitle, setCourseTitle] = useState('課程');
+
+  // Fetch course title from API
+  useEffect(() => {
+    if (!courseId) return;
+    fetch(`/api/courses/${encodeURIComponent(courseId)}`)
+      .then(r => r.json())
+      .then(j => {
+        if (j.ok && j.course?.title) {
+          setCourseTitle(j.course.title);
+        } else {
+          // Fallback to bundled data
+          const b = COURSES.find(c => c.id === courseId);
+          if (b?.title) setCourseTitle(b.title);
+        }
+      })
+      .catch(() => {
+        // Safe fallback
+        const b = COURSES.find(c => c.id === courseId);
+        if (b?.title) setCourseTitle(b.title);
+      });
+  }, [courseId]);
+
   // ★ Helper function to get user display name based on login info
   const getDisplayName = (user: any, role?: 'teacher' | 'student', suffix?: string): string => {
     if (!user) {
@@ -57,30 +81,30 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       }
       return role === 'teacher' ? t('teacher') : t('student');
     }
-    
+
     // 优先级：lastName + firstName → displayName → role
     const fullName = `${user.lastName || ''} ${user.firstName || ''}`.trim();
     if (fullName) return fullName;
     if (user.displayName) return user.displayName;
-    
+
     // Fallback to role
     if (suffix === 'you') {
       return role === 'teacher' ? `${t('teacher')} (你)` : `${t('student')} (你)`;
     }
     return role === 'teacher' ? t('teacher') : t('student');
   };
-  
+
   // Feature Flag: Agora Whiteboard vs Canvas Whiteboard
   // Default to using Agora whiteboard unless explicitly disabled with NEXT_PUBLIC_USE_AGORA_WHITEBOARD='false'
   const useAgoraWhiteboard = process.env.NEXT_PUBLIC_USE_AGORA_WHITEBOARD !== 'false';
-  
+
   const agoraWhiteboardRef = useRef<AgoraWhiteboardRef>(null);
   const [agoraRoomData, setAgoraRoomData] = useState<{ uuid: string; roomToken: string; appIdentifier: string; region: string; userId: string } | null>(null);
   const [whiteboardState, setWhiteboardState] = useState<any>(null);
   const [whiteboardError, setWhiteboardError] = useState<string | null>(null);
   const [joinAttemptCount, setJoinAttemptCount] = useState(0);
   const lastJoinTimeRef = useRef<number>(0);
-  
+
   // Poll whiteboard state for toolbar display
   // Reduced from 300ms to 1000ms since this is only used for UI display (tool buttons, page info)
   // not for real-time drawing synchronization (which happens via Agora WebSocket)
@@ -97,14 +121,16 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     }, 1000); // Poll every 1s - sufficient for UI updates, tool state tracking
     return () => clearInterval(interval);
   }, []); // Run continuously, not dependent on agoraRoomData
-  
+
   // determine courseId from query string (e.g. ?courseId=c1)
   const course = COURSES.find((c) => c.id === courseId) || null;
-  
+
   // Share classroom and media channel via explicit session param when available
   const effectiveChannelName = sessionParam || channelName || `classroom_session_ready_${courseId}`;
 
   const [mounted, setMounted] = useState(false);
+  const [isRoleOccupied, setIsRoleOccupied] = useState(false);
+  const endTsRef = useRef<number | null>(null);
   useEffect(() => {
     setMounted(true);
     console.log('[ClientClassroom] setMounted called');
@@ -134,9 +160,9 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     }, 250);
     // call again after keyboard/toolbar animations
     const id2 = window.setTimeout(() => {
-      try { agoraWhiteboardRef.current?.forceFix(); } catch (e) {}
+      try { agoraWhiteboardRef.current?.forceFix(); } catch (e) { }
     }, 900);
-    return () => { try { window.clearTimeout(id); window.clearTimeout(id2); } catch (e) {} };
+    return () => { try { window.clearTimeout(id); window.clearTimeout(id2); } catch (e) { } };
   }, [isMobileViewport]);
 
   // determine role from stored user + course mapping
@@ -224,7 +250,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   const userIdRef = useRef<string | null>(null);
   const userId = useMemo(() => {
     if (userIdRef.current) return userIdRef.current;
-    
+
     let id: string;
     if (storedUser?.email) {
       id = storedUser.email;
@@ -323,7 +349,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       try {
         const finalRole = (urlRole === 'teacher' || urlRole === 'student') ? (urlRole as Role) : computedRole;
         const isTeacher = finalRole === 'teacher';
-        
+
         if (isTeacher) {
           // === TEACHER: First lookup existing room via read-only endpoint, create only if not found ===
           console.log('[ClientClassroom] Teacher: Looking up existing whiteboard room (read-only)...');
@@ -354,19 +380,19 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           } catch (e) {
             console.warn('[ClientClassroom] Teacher lookup failed, will try to create:', e);
           }
-          
+
           // If no existing room found, create one
           if (!teacherRoomData) {
             console.log('[ClientClassroom] Teacher: Creating new whiteboard room...');
             const createBody: any = { userId, channelName: sessionReadyKey, courseId };
-            
+
             try {
               const createRes = await fetch('/api/whiteboard/room', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(createBody)
               });
-              
+
               if (createRes.ok) {
                 teacherRoomData = await createRes.json();
                 console.log('[ClientClassroom] Teacher created new room');
@@ -378,10 +404,10 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
               console.error('[ClientClassroom] Teacher create API failed:', e);
             }
           }
-          
+
           if (teacherRoomData) {
             setAgoraRoomData(teacherRoomData);
-            
+
             // Broadcast uuid to student(s) via BroadcastChannel
             try {
               const bc = new BroadcastChannel(sessionReadyKey);
@@ -402,7 +428,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
         } else {
           // === STUDENT: Wait for teacher's broadcast, fallback to API if timeout ===
           console.log('[ClientClassroom] Student: Waiting for teacher to broadcast uuid (timeout: 10s)...');
-          
+
           let receivedData: any = null;
           try {
             const bc = new BroadcastChannel(sessionReadyKey);
@@ -412,7 +438,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                 bc.close();
                 resolve(null);
               }, 10000);
-              
+
               bc.onmessage = (event) => {
                 if (event.data?.type === 'whiteboard-uuid-sync') {
                   console.log('[ClientClassroom] Student received uuid from teacher via broadcast');
@@ -425,85 +451,85 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           } catch (bcErr) {
             console.warn('[ClientClassroom] BroadcastChannel not available, fallback to API:', bcErr);
           }
-          
+
           if (receivedData) {
             // Use teacher's room directly
             console.log('[ClientClassroom] Student using teacher\'s room uuid');
             setAgoraRoomData(receivedData);
           } else {
-              // Fallback: poll for existing room with lookup-only to avoid creating duplicate
-              console.log('[ClientClassroom] Student fallback: polling for existing room via lookupOnly...');
-              let found = false;
-              let lookupData: any = null;
+            // Fallback: poll for existing room with lookup-only to avoid creating duplicate
+            console.log('[ClientClassroom] Student fallback: polling for existing room via lookupOnly...');
+            let found = false;
+            let lookupData: any = null;
 
-              // Try multiple times to allow teacher's write to propagate using the read-only endpoint
-              for (let i = 0; i < 8; i++) { // 8 * 500ms = 4s
-                try {
-                  const j = await fetchExistingWhiteboardUuid(courseId, sessionReadyKey);
-                  if (j?.uuid) {
-                    // Fetch full room credentials for the canonical uuid
-                    try {
-                      const tokenRes = await fetch('/api/whiteboard/room', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ userId, channelName: sessionReadyKey, courseId, roomUuid: j.uuid })
-                      });
-                      if (tokenRes.ok) {
-                        lookupData = await tokenRes.json();
-                        found = true;
-                        console.log(`[ClientClassroom] Student lookup attempt ${i + 1}: room found`);
-                      } else {
-                        console.warn(`[ClientClassroom] Student token fetch failed on attempt ${i + 1}`);
-                      }
-                    } catch (e) {
-                      console.warn(`[ClientClassroom] Student token fetch error on attempt ${i + 1}:`, e);
+            // Try multiple times to allow teacher's write to propagate using the read-only endpoint
+            for (let i = 0; i < 8; i++) { // 8 * 500ms = 4s
+              try {
+                const j = await fetchExistingWhiteboardUuid(courseId, sessionReadyKey);
+                if (j?.uuid) {
+                  // Fetch full room credentials for the canonical uuid
+                  try {
+                    const tokenRes = await fetch('/api/whiteboard/room', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ userId, channelName: sessionReadyKey, courseId, roomUuid: j.uuid })
+                    });
+                    if (tokenRes.ok) {
+                      lookupData = await tokenRes.json();
+                      found = true;
+                      console.log(`[ClientClassroom] Student lookup attempt ${i + 1}: room found`);
+                    } else {
+                      console.warn(`[ClientClassroom] Student token fetch failed on attempt ${i + 1}`);
                     }
-                  } else if (j && j.found === false) {
-                    console.log(`[ClientClassroom] Student lookup attempt ${i + 1}: room not found yet`);
+                  } catch (e) {
+                    console.warn(`[ClientClassroom] Student token fetch error on attempt ${i + 1}:`, e);
                   }
-                } catch (e) {
-                  console.warn(`[ClientClassroom] Student lookup attempt ${i + 1} failed:`, e);
+                } else if (j && j.found === false) {
+                  console.log(`[ClientClassroom] Student lookup attempt ${i + 1}: room not found yet`);
                 }
-                if (found) break;
-                await new Promise(r => setTimeout(r, 500));
+              } catch (e) {
+                console.warn(`[ClientClassroom] Student lookup attempt ${i + 1} failed:`, e);
               }
+              if (found) break;
+              await new Promise(r => setTimeout(r, 500));
+            }
 
-              if (found && lookupData) {
-                console.log('[ClientClassroom] Student found existing room via lookup, using it');
-                setAgoraRoomData(lookupData);
-              } else {
-                // Still no room found after polling — create new room (teacher may be absent)
-                console.log('[ClientClassroom] Student: no existing room found after polling, will create new room');
-                const requestBody: any = { userId, channelName: sessionReadyKey, courseId };
-                try {
-                  const res = await fetch('/api/whiteboard/room', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(requestBody)
-                  });
-                  if (res.ok) {
-                    const data = await res.json();
-                    console.log('[ClientClassroom] Student created new room via API');
-                    setAgoraRoomData(data);
-                  } else {
-                    const errorText = await res.text();
-                    console.error('[ClientClassroom] Student failed to create room:', res.status, errorText);
-                    if (process.env.NODE_ENV !== 'production') {
-                      try {
-                        const errorData = JSON.parse(errorText);
-                        setWhiteboardError(errorData.error || errorData.message || 'Failed to create whiteboard room');
-                      } catch {
-                        setWhiteboardError(`Failed to create whiteboard room: ${errorText}`);
-                      }
-                    }
-                  }
-                } catch (e) {
-                  console.error('[ClientClassroom] Student API create failed:', e);
+            if (found && lookupData) {
+              console.log('[ClientClassroom] Student found existing room via lookup, using it');
+              setAgoraRoomData(lookupData);
+            } else {
+              // Still no room found after polling — create new room (teacher may be absent)
+              console.log('[ClientClassroom] Student: no existing room found after polling, will create new room');
+              const requestBody: any = { userId, channelName: sessionReadyKey, courseId };
+              try {
+                const res = await fetch('/api/whiteboard/room', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(requestBody)
+                });
+                if (res.ok) {
+                  const data = await res.json();
+                  console.log('[ClientClassroom] Student created new room via API');
+                  setAgoraRoomData(data);
+                } else {
+                  const errorText = await res.text();
+                  console.error('[ClientClassroom] Student failed to create room:', res.status, errorText);
                   if (process.env.NODE_ENV !== 'production') {
-                    setWhiteboardError(`Failed to create whiteboard room: ${e instanceof Error ? e.message : 'Unknown error'}`);
+                    try {
+                      const errorData = JSON.parse(errorText);
+                      setWhiteboardError(errorData.error || errorData.message || 'Failed to create whiteboard room');
+                    } catch {
+                      setWhiteboardError(`Failed to create whiteboard room: ${errorText}`);
+                    }
                   }
                 }
+              } catch (e) {
+                console.error('[ClientClassroom] Student API create failed:', e);
+                if (process.env.NODE_ENV !== 'production') {
+                  setWhiteboardError(`Failed to create whiteboard room: ${e instanceof Error ? e.message : 'Unknown error'}`);
+                }
               }
+            }
           }
         }
       } catch (error) {
@@ -513,7 +539,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
         }
       }
     };
-    
+
     initAgoraWhiteboard();
   }, [useAgoraWhiteboard, mounted, userId, courseId, sessionReadyKey, computedRole]); // Added courseId back to dependencies for sync stability
 
@@ -530,12 +556,12 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       const maxRetries = 8;
       // Initial delay to give DynamoDB time to sync from upload
       await new Promise(resolve => setTimeout(resolve, 500));
-      
+
       console.log('[ClientClassroom] === PDF FETCH START ===');
       console.log('[ClientClassroom] Session Key:', sessionReadyKey);
       console.log('[ClientClassroom] Course ID:', courseId);
       console.log('[ClientClassroom] Is Test Path:', isTestPath);
-      
+
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout per request
@@ -543,12 +569,12 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           const retryDelay = Math.min(500 * Math.pow(1.5, attempt - 1), 3000);
           const timestamp = Date.now();
           console.log(`[ClientClassroom] Checking for PDF metadata (attempt ${attempt}/${maxRetries})... UUID: ${sessionReadyKey}`);
-          
+
           const resp = await fetch(`/api/whiteboard/pdf?uuid=${encodeURIComponent(sessionReadyKey)}&check=true&t=${timestamp}`, {
             signal: controller.signal
           });
           clearTimeout(timeoutId);
-          
+
           if (!resp.ok) {
             console.warn(`[ClientClassroom] PDF metadata check failed (attempt ${attempt}/${maxRetries}): status ${resp.status}`);
             if (attempt === maxRetries) {
@@ -558,12 +584,12 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
             await new Promise(resolve => setTimeout(resolve, retryDelay));
             continue;
           }
-          
+
           const json = await resp.json();
           if (!json.found) {
-            console.log(`[ClientClassroom] PDF not found on server yet (attempt ${attempt}/${maxRetries})`);
+            // It's normal for a room to not have a PDF
             if (attempt === maxRetries) {
-              console.log('[ClientClassroom] No PDF found after all retries');
+              console.info('[ClientClassroom] No PDF found after all retries (which is normal if no PDF was uploaded)');
               setSelectedPdf(null);
               setShowPdf(false);
               return;
@@ -573,7 +599,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           }
 
           console.log('[ClientClassroom] ✓ PDF metadata found!', json.meta);
-          
+
           // Now fetch the actual file
           const fileTimeoutId = setTimeout(() => controller.abort(), 20000); // longer timeout for file download
           const fileResp = await fetch(`/api/whiteboard/pdf?uuid=${encodeURIComponent(sessionReadyKey)}&t=${timestamp}`, {
@@ -585,24 +611,23 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
             console.error('[ClientClassroom] PDF file download failed:', fileResp.status);
             return;
           }
-          
+
           const blob = await fileResp.blob();
           const fileName = json.meta?.name || 'course.pdf';
           const fileType = json.meta?.type || 'application/pdf';
           const file = new File([blob], fileName, { type: fileType });
-          
+
           console.log('[ClientClassroom] ✓ PDF loaded successfully:', fileName, 'size:', blob.size);
           setSelectedPdf(file);
           setShowPdf(true);
           return; // Success!
-          
+
         } catch (e: any) {
           clearTimeout(timeoutId);
           const isAbort = e.name === 'AbortError';
-          console.warn(`[ClientClassroom] PDF check error (attempt ${attempt}/${maxRetries}):`, isAbort ? 'Timed out' : e.message);
-          
+          // Downgrade warning since it's normal to not find a PDF immediately
           if (attempt === maxRetries) {
-            console.error('[ClientClassroom] Giving up on PDF after multiple errors');
+            console.log('[ClientClassroom] Stopped polling for PDF (none found or network error).');
             return;
           }
           await new Promise(resolve => setTimeout(resolve, 2000));
@@ -622,11 +647,14 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           if (data?.type === 'pdf-uploaded' || data?.type === 'pdf-set') {
             console.log('[ClientClassroom] Received pdf-upload event, refetching PDF for session');
             fetchPdfForSession();
+          } else if (data?.type === 'class_ended') {
+            console.log('[ClientClassroom] Received class_ended via SSE, exiting...');
+            handleLeave();
           }
         } catch (e) { /* ignore parse errors */ }
       };
       es.onerror = (err) => {
-        try { es?.close(); } catch (e) {}
+        try { es?.close(); } catch (e) { }
         es = null;
       };
     } catch (e) {
@@ -634,7 +662,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     }
 
     return () => {
-      try { if (es) es.close(); } catch (e) {}
+      try { if (es) es.close(); } catch (e) { }
     };
   }, [mounted, sessionReadyKey]);
 
@@ -645,40 +673,114 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   useEffect(() => {
     // Only proceed if we are a teacher, have a file, room data, and the whiteboard reference
     if (isTeacher && useAgoraWhiteboard && selectedPdf && agoraRoomData && agoraWhiteboardRef.current) {
-         // Avoid double insertion if same PDF and same session
-         const pdfIdentifier = `${sessionReadyKey}_${selectedPdf.name}_${selectedPdf.size}`;
-         if (pdfInsertedRef.current === pdfIdentifier) return;
+      // Avoid double insertion if same PDF and same session
+      const pdfIdentifier = `${sessionReadyKey}_${selectedPdf.name}_${selectedPdf.size}`;
+      if (pdfInsertedRef.current === pdfIdentifier) return;
 
-         console.log('[ClientClassroom] PDF auto-insert condition met:', selectedPdf.name);
-         
-         const insert = async () => {
-             // Second check inside async to handle race conditions
-             if (!agoraWhiteboardRef.current || pdfInsertedRef.current === pdfIdentifier) return;
+      console.log('[ClientClassroom] PDF auto-insert condition met:', selectedPdf.name);
 
-             try {
-                const pdfUrl = `${window.location.origin}/api/whiteboard/pdf?uuid=${encodeURIComponent(sessionReadyKey)}&t=${Date.now()}`;
-                
-                console.log('[ClientClassroom] Attempting to auto-insert PDF:', selectedPdf.name, 'URL:', pdfUrl);
-                await agoraWhiteboardRef.current.insertPDF(pdfUrl, selectedPdf.name);
-                console.log('[ClientClassroom] PDF auto-insert request sent');
-                pdfInsertedRef.current = pdfIdentifier;
-             } catch (e) {
-                 console.error('[ClientClassroom] Failed to auto-insert PDF:', e);
-             }
-         };
-         
-         // Give board time to connect and become writable
-         const timer = setTimeout(insert, 3000);
-         return () => clearTimeout(timer);
+      const insert = async () => {
+        // Second check inside async to handle race conditions
+        if (!agoraWhiteboardRef.current || pdfInsertedRef.current === pdfIdentifier) return;
+
+        try {
+          const pdfUrl = `${window.location.origin}/api/whiteboard/pdf?uuid=${encodeURIComponent(sessionReadyKey)}&t=${Date.now()}`;
+
+          console.log('[ClientClassroom] Attempting to auto-insert PDF:', selectedPdf.name, 'URL:', pdfUrl);
+          await agoraWhiteboardRef.current.insertPDF(pdfUrl, selectedPdf.name);
+          console.log('[ClientClassroom] PDF auto-insert request sent');
+          pdfInsertedRef.current = pdfIdentifier;
+        } catch (e) {
+          console.error('[ClientClassroom] Failed to auto-insert PDF:', e);
+        }
+      };
+
+      // Give board time to connect and become writable
+      const timer = setTimeout(insert, 3000);
+      return () => clearTimeout(timer);
     }
   }, [useAgoraWhiteboard, selectedPdf, agoraRoomData, sessionReadyKey, isTeacher]);
 
   // session countdown - default to 5 minutes
   const [sessionDurationMinutes, setSessionDurationMinutes] = useState<number>(5); // 5 minutes
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
+
+  const remainingSecondsRef = useRef<number | null>(null);
+  useEffect(() => {
+    remainingSecondsRef.current = remainingSeconds;
+  }, [remainingSeconds]);
+
+  const [orderRemainingSeconds, setOrderRemainingSeconds] = useState<number | null>(null);
+  const [orderFetchComplete, setOrderFetchComplete] = useState<boolean>(false);
+
+  // Fetch order remainingSeconds for authoritative timer duration
+  useEffect(() => {
+    const fetchOrderTime = async () => {
+      try {
+        if (orderId) {
+          // If we have an explicit orderId, fetch that specific order
+          const r = await fetch(`/api/orders/${encodeURIComponent(orderId)}`);
+          const j = await r.json();
+          if (j.ok && j.order) {
+            let sec = null;
+            if (typeof j.order.remainingSeconds === 'number') {
+              sec = j.order.remainingSeconds;
+            } else if (typeof j.order.durationMinutes === 'number') {
+              sec = j.order.durationMinutes * 60;
+            }
+            if (sec !== null) {
+              console.log('[ClientClassroom] Order remainingSeconds fetched by orderId:', sec);
+              setOrderRemainingSeconds(sec);
+              setSessionDurationMinutes(Math.ceil(sec / 60));
+            }
+          }
+        } else if (courseId) {
+          // Fallback: fetch recent active order by courseId
+          // If the user is a student, we filter by userId to get their specific order.
+          // If the user is a teacher (testing or entering without orderId), we retrieve the latest order for the course.
+          let queryUrl = `/api/orders?courseId=${encodeURIComponent(courseId)}`;
+          if (storedUser?.role === 'user' && storedUser?.email) {
+            queryUrl += `&userId=${encodeURIComponent(storedUser.email)}`;
+          }
+
+          const r = await fetch(queryUrl);
+          const j = await r.json();
+          if (j.ok && j.data && j.data.length > 0) {
+            // Sort to ensure we get the most recent order for this course
+            const sortedOrders = j.data.sort((a: any, b: any) => {
+              const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+              const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+              return timeB - timeA;
+            });
+            const activeOrder = sortedOrders[0];
+
+            let sec = null;
+            if (typeof activeOrder.remainingSeconds === 'number') {
+              sec = activeOrder.remainingSeconds;
+            } else if (typeof activeOrder.durationMinutes === 'number') {
+              sec = activeOrder.durationMinutes * 60;
+            }
+
+            if (sec !== null) {
+              console.log('[ClientClassroom] Order remainingSeconds fetched by courseId:', sec);
+              setOrderRemainingSeconds(sec);
+              setSessionDurationMinutes(Math.ceil(sec / 60));
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('[ClientClassroom] failed to fetch order seconds', e);
+      } finally {
+        setOrderFetchComplete(true);
+      }
+    };
+
+    fetchOrderTime();
+  }, [orderId, courseId, storedUser?.email]);
+
   const timerRef = useRef<number | null>(null);
   // Delay before countdown starts (5 seconds)
-  const INITIAL_COUNTDOWN_DELAY_MS = 5 * 1000; 
+  const INITIAL_COUNTDOWN_DELAY_MS = 5 * 1000;
   const [fullyInitialized, setFullyInitialized] = useState(false);
   const [classFullyLoadedAt, setClassFullyLoadedAt] = useState<number | null>(null);
   const [bootSteps, setBootSteps] = useState<Array<{ name: string; done: boolean }>>([
@@ -735,33 +837,13 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     }
   }, [selectedAudioDeviceId, selectedVideoDeviceId]);
 
-  // Auto-join for teacher: if whiteboard room is ready but RTC not joined, attempt a single auto-join.
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    if (!isTeacher) return; // only auto-join for teacher
-    if (joined || loading) return; // already joined or in progress
-    if (!agoraRoomData) return; // wait for whiteboard room data
-
-    const tryAutoJoin = async () => {
-      try {
-        console.log('[ClientClassroom] Auto-join attempt for teacher: agoraRoomData present, calling join()');
-        // default: publish audio+video based on saved preferences
-        await join({ publishAudio: micEnabled, publishVideo: wantPublishVideo, audioDeviceId: selectedAudioDeviceId ?? undefined, videoDeviceId: selectedVideoDeviceId ?? undefined });
-        console.log('[ClientClassroom] Auto-join invoked');
-      } catch (e) {
-        console.warn('[ClientClassroom] Auto-join failed:', e);
-      }
-    };
-
-    // Small delay to allow other init steps to settle
-    const id = window.setTimeout(tryAutoJoin, 300);
-    return () => clearTimeout(id);
-  }, [isTeacher, joined, loading, agoraRoomData, micEnabled, wantPublishVideo, selectedAudioDeviceId, selectedVideoDeviceId, join]);
+  // (Auto-join logic removed to prevent INVALID_OPERATION AgoraRTCError: Client already in connecting/connected state)
 
   // pre-join waiting / readiness state (require same course + order)
   const [ready, setReady] = useState(false);
   const [canJoin, setCanJoin] = useState(false);
-  // Prevent duplicate tabs for same user/session (client-side only)
+  // Prevent duplicate tabs logic removed
+  // State variables kept for now to avoid extensive refactoring, but they do nothing
   const [duplicateDetected, setDuplicateDetected] = useState(false);
   const [duplicateOverride, setDuplicateOverride] = useState(false);
 
@@ -782,13 +864,13 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
 
   // Log initialization info once on mount
   useEffect(() => {
-    console.log('ClientClassroom initialized:', { 
-      courseId, 
-      orderId, 
-      channelName, 
+    console.log('ClientClassroom initialized:', {
+      courseId,
+      orderId,
+      channelName,
       effectiveChannelName,
       urlRole,
-      computedRole 
+      computedRole
     });
   }, []); // Empty deps = run once on mount
 
@@ -806,7 +888,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
         } else if (s.name === 'Syncing session state') {
           done = !!sessionReadyKey;
         }
-        
+
         if (done !== s.done) {
           changed = true;
           return { ...s, done };
@@ -829,7 +911,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       setClassFullyLoadedAt(null);
     }
   }, [agoraRoomData, whiteboardMeta, sessionReadyKey, joined, whiteboardState]);
-  
+
   // Debug whiteboard state
   useEffect(() => {
     console.log('Whiteboard state:', {
@@ -839,7 +921,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       whiteboardMeta,
       joined
     });
-    
+
     // 為 E2E 測試暴露狀態
     if (typeof window !== 'undefined') {
       (window as any).__classroom_joined = joined;
@@ -854,7 +936,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     const sessionBroadcastName = sessionParam || channelName || `classroom_session_ready_${courseId}`;
     console.log('ClientClassroom broadcast channel:', sessionBroadcastName);
     const bc = new BroadcastChannel(sessionBroadcastName);
-    
+
     bc.onmessage = (event) => {
       console.log('[BroadcastChannel] Received message:', event.data);
       // Support clearing whiteboard when another participant requests it
@@ -885,10 +967,10 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       if (event.data?.type === 'class_started' && !joined && !loading) {
         // New: Student saves the authoritative endTs from teacher
         if (event.data.endTs) {
-            const endKey = `class_end_ts_${sessionReadyKey}`;
-            try {
-                localStorage.setItem(endKey, String(event.data.endTs));
-            } catch (e) {}
+          const endKey = `class_end_ts_${sessionReadyKey}`;
+          try {
+            localStorage.setItem(endKey, String(event.data.endTs));
+          } catch (e) { }
         }
         console.log('收到開始上課通知，自動加入... 頻道:', effectiveChannelName);
         // 学生端自动加入
@@ -913,9 +995,9 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
         }
       }
     };
-    
+
     return () => {
-      try { bc.close(); } catch (e) {}
+      try { bc.close(); } catch (e) { }
     };
   }, [courseId, orderId, joined, loading, micEnabled, wantPublishVideo, join, sessionParam, channelName]);
 
@@ -947,8 +1029,8 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
         if (qResp.ok) {
           const qJson = await qResp.json();
           const parts = qJson.participants || [];
-          bothPresent = parts.some((p: any) => p.role === 'teacher' && p.present) && 
-                        parts.some((p: any) => p.role === 'student' && p.present);
+          bothPresent = parts.some((p: any) => p.role === 'teacher' && p.present) &&
+            parts.some((p: any) => p.role === 'student' && p.present);
         }
 
         if (hasActiveSession) {
@@ -958,18 +1040,18 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
             setTimeout(() => setJoinAttemptCount(0), 10000);
             return;
           }
-          
+
           const now = Date.now();
           if (now - lastJoinTimeRef.current < 5000) return; // Throttle joins to every 5s
           lastJoinTimeRef.current = now;
-          
+
           console.log(`[AutoJoin] ${roleName} 檢測到進行中會話，正在自動加入... (Attempt ${joinAttemptCount + 1})`);
           setJoinAttemptCount(prev => prev + 1);
-          join({ 
-            publishAudio: micEnabled, 
-            publishVideo: wantPublishVideo, 
-            audioDeviceId: selectedAudioDeviceId ?? undefined, 
-            videoDeviceId: selectedVideoDeviceId ?? undefined 
+          join({
+            publishAudio: micEnabled,
+            publishVideo: wantPublishVideo,
+            audioDeviceId: selectedAudioDeviceId ?? undefined,
+            videoDeviceId: selectedVideoDeviceId ?? undefined
           });
           return;
         }
@@ -995,11 +1077,11 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
             audioDeviceId: selectedAudioDeviceId,
             videoDeviceId: selectedVideoDeviceId
           });
-          join({ 
-            publishAudio: micEnabled, 
-            publishVideo: wantPublishVideo, 
-            audioDeviceId: selectedAudioDeviceId ?? undefined, 
-            videoDeviceId: selectedVideoDeviceId ?? undefined 
+          join({
+            publishAudio: micEnabled,
+            publishVideo: wantPublishVideo,
+            audioDeviceId: selectedAudioDeviceId ?? undefined,
+            videoDeviceId: selectedVideoDeviceId ?? undefined
           });
         }
       } catch (e) {
@@ -1052,7 +1134,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
         console.log('[ClientClassroom] Devices enumerated:', { audioCount: ais.length, videoCount: vis.length, devices: list.map(d => ({ kind: d.kind, label: d.label || '(no label)', deviceId: d.deviceId })) });
         setAudioInputs(ais);
         setVideoInputs(vis);
-        
+
         // Auto-select first device if not already selected
         if (!selectedAudioDeviceId && ais.length) {
           console.log('[ClientClassroom] Auto-selecting first audio device:', ais[0].deviceId);
@@ -1072,7 +1154,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
 
     return () => {
       mountedFlag = false;
-      try { navigator.mediaDevices && navigator.mediaDevices.removeEventListener && navigator.mediaDevices.removeEventListener('devicechange', updateDevices); } catch (e) {}
+      try { navigator.mediaDevices && navigator.mediaDevices.removeEventListener && navigator.mediaDevices.removeEventListener('devicechange', updateDevices); } catch (e) { }
     };
   }, [selectedAudioDeviceId, selectedVideoDeviceId]);
 
@@ -1189,10 +1271,10 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
               const hasStudent = parts.some((p) => p.role === 'student' && p.present);
               setCanJoin(hasTeacher && hasStudent);
             }
-          } catch (e) {}
+          } catch (e) { }
         };
       }
-    } catch (e) {}
+    } catch (e) { }
 
     // Add a fallback interval to refresh participant status (essential for production where SSE is disabled, 
     // and good as a safety fallback in development if SSE fails).
@@ -1208,8 +1290,8 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
             const hasStudent = parts.some((p: any) => p.role === 'student' && p.present);
             setCanJoin(hasTeacher && hasStudent);
           }
-        } catch (e) {}
-      }, 3000); 
+        } catch (e) { }
+      }, 3000);
     }
 
     // Also respond to storage events from other tabs
@@ -1221,7 +1303,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     return () => {
       window.removeEventListener('storage', onStorage);
       if (pollingInterval) clearInterval(pollingInterval);
-      try { es?.close(); } catch (e) {}
+      try { es?.close(); } catch (e) { }
     };
   }, [sessionReadyKey]);
 
@@ -1235,21 +1317,8 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       const roleName = (urlRole === 'teacher' || computedRole === 'teacher') ? 'teacher' : 'student';
       const localUserId = storedUser?.email || roleName || 'anonymous';
 
-      // Client-side duplicate detection: check localStorage for existing present entry
-      try {
-        const raw = localStorage.getItem(sessionReadyKey);
-        const arr = raw ? JSON.parse(raw) as Array<any> : [];
-        // Only treat as duplicate if same role (teacher/student) has an entry marked present
-        const exists = arr.some((p) => p.role === roleName && (p.userId === localUserId || p.email === localUserId) && p.present);
-        if (exists && !duplicateOverride) {
-          console.log('[ClientClassroom] Duplicate tab detected for user:', localUserId);
-          setDuplicateDetected(true);
-          return; // do not proceed to mark ready or call server
-        }
-        setDuplicateDetected(false);
-      } catch (e) {
-        // ignore parse errors and continue
-      }
+      // Client-side duplicate detection removed (it was self-triggering).
+      // We rely solely on the useOneTimeEntry hook for lockouts now.
 
       // Update local storage first to ensure local consistency (will skip if no change)
       markReady(true);
@@ -1259,6 +1328,14 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
         if (!r.ok) return;
         const j = await r.json();
         const parts = j.participants || [];
+
+        // Enforce 1-on-1 limit
+        const isOccupied = parts.some((p: any) => p.role === roleName && p.userId !== localUserId);
+        if (isOccupied) {
+          setIsRoleOccupied(true);
+          return; // Block entry, don't report as ready
+        }
+
         const selfEntry = parts.find((p: any) => p.role === roleName && p.userId === localUserId);
 
         // Ensure server marks us present
@@ -1266,12 +1343,12 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           await fetch('/api/classroom/ready', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ 
-              uuid: sessionReadyKey, 
-              role: roleName, 
-              userId: localUserId, 
+            body: JSON.stringify({
+              uuid: sessionReadyKey,
+              role: roleName,
+              userId: localUserId,
               action: 'ready',
-              present: true 
+              present: true
             }),
           });
           if (!reportedRef.current) {
@@ -1279,16 +1356,53 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
             reportedRef.current = true;
           }
         }
+
+        // Check if session has been ended/cleared on server
+        try {
+          const sessionResp = await fetch(`/api/classroom/session?uuid=${encodeURIComponent(sessionReadyKey)}`, { cache: 'no-store' });
+          if (sessionResp.ok) {
+            const sessionData = await sessionResp.json();
+            const serverEndTs = typeof sessionData.endTs === 'number' ? sessionData.endTs : null;
+
+            // 1. Sync timer if server has a different endTs
+            if (serverEndTs && (!endTsRef.current || Math.abs(endTsRef.current - serverEndTs) > 2000)) {
+              console.log('[Timer] Heartbeat syncing endTs from server:', serverEndTs);
+              endTsRef.current = serverEndTs;
+              const endKey = `class_end_ts_${sessionReadyKey}`;
+              try { localStorage.setItem(endKey, String(serverEndTs)); } catch (e) { }
+            }
+
+            // 2. Clear timer if server session is cleared
+            if (serverEndTs === null && endTsRef.current !== null) {
+              console.log('[Timer] Heartbeat detected cleared session on server');
+              endTsRef.current = null;
+              const endKey = `class_end_ts_${sessionReadyKey}`;
+              try { localStorage.removeItem(endKey); } catch (e) { }
+            }
+
+            // 3. Exit if session ended on server (and we aren't the teacher who just ended it)
+            if (sessionData.endTs === null && reportedRef.current) {
+              const isTeacher = (urlRole === 'teacher' || computedRole === 'teacher');
+              if (!isTeacher) {
+                console.log('[ClientClassroom] Session ended on server, student exiting via heartbeat check...');
+                handleLeave();
+              }
+            }
+          }
+        } catch (e) { }
       } catch (e) {
         console.warn('[ClientClassroom] Failed to report ready to server', e);
       }
     };
 
     reportReady();
-    
+
     // Periodic heartbeat to keep the ready status alive while on this page
-    // Increased interval to reduce unnecessary API calls
-    const interval = setInterval(reportReady, 30000); // Changed from 10s to 30s
+    // Reduced interval to 10s for better responsiveness in session sync
+    const interval = setInterval(() => {
+      console.log(`[ClientClassroom] Heartbeat pulse for ${sessionReadyKey}...`);
+      reportReady();
+    }, 10000);
     return () => {
       clearInterval(interval);
       reportedRef.current = false;
@@ -1297,7 +1411,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       const userId = storedUser?.email || roleName || 'anonymous';
       const params = new URLSearchParams();
       params.append('uuid', sessionReadyKey);
-      
+
       // Use sendBeacon for more reliable delivery during unload
       if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
         const blob = new Blob([JSON.stringify({ uuid: sessionReadyKey, role: roleName, userId, action: 'ready', present: false })], { type: 'application/json' });
@@ -1305,6 +1419,34 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       }
     };
   }, [mounted, sessionReadyKey, urlRole, computedRole, storedUser?.email, duplicateOverride]);
+
+  // Persistent listener for session termination (BroadcastChannel for same-browser sync)
+  useEffect(() => {
+    if (!mounted || !sessionReadyKey) return;
+
+    let bc: BroadcastChannel | null = null;
+    try {
+      const sessionBroadcastName = sessionParam || channelName || `classroom_session_ready_${courseId}`;
+      bc = new BroadcastChannel(sessionBroadcastName);
+      bc.onmessage = (event) => {
+        if (event.data?.type === 'class_ended') {
+          console.log('[ClientClassroom] Received class_ended via BroadcastChannel, exiting...');
+          handleLeave();
+        } else if (event.data?.type === 'class_started' && event.data?.endTs) {
+          console.log('[ClientClassroom] Received class_started via BroadcastChannel, syncing endTs:', event.data.endTs);
+          endTsRef.current = event.data.endTs;
+          const endKey = `class_end_ts_${sessionReadyKey}`;
+          try { localStorage.setItem(endKey, String(event.data.endTs)); } catch (e) { }
+        }
+      };
+    } catch (e) {
+      console.warn('Persistent BroadcastChannel listener failed:', e);
+    }
+
+    return () => {
+      try { bc?.close(); } catch (e) { }
+    };
+  }, [mounted, sessionReadyKey, courseId, sessionParam, channelName]);
 
   const endSession = async () => {
     try {
@@ -1314,14 +1456,14 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
         const bc = new BroadcastChannel(sessionBroadcastName);
         bc.postMessage({ type: 'class_ended', timestamp: Date.now() });
         console.log('已廣播結束上課通知 ->', sessionBroadcastName);
-        setTimeout(() => { try { bc.close(); } catch (e) {} }, 100);
+        setTimeout(() => { try { bc.close(); } catch (e) { } }, 100);
       } catch (e) {
         console.warn('BroadcastChannel endSession failed', e);
       }
-      
+
       await leave();
-      try { (window as any).__wbRoom = null; } catch (e) {}
-      
+      try { (window as any).__wbRoom = null; } catch (e) { }
+
       // Clean up whiteboard room
       if (useAgoraWhiteboard && agoraRoomData?.uuid) {
         try {
@@ -1342,24 +1484,29 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           });
         } catch (e) { console.warn('canvas whiteboard close request failed (ignored)', e); }
       }
-      
+
       // 返回到等待页面，保持相应的 role 参数
       const currentRole = (urlRole === 'teacher' || urlRole === 'student') ? urlRole : computedRole;
       const waitPageUrl = `/classroom/wait?courseId=${courseId}${orderId ? `&orderId=${orderId}` : ''}&role=${currentRole}`;
       try {
         // Clear persistent end timestamp when session ends
         const endKey = `class_end_ts_${sessionReadyKey}`;
-        try { 
+        try {
           localStorage.removeItem(endKey);
           // Also clear the ready state for the session
           localStorage.removeItem(sessionReadyKey);
-        } catch (e) {}
-        try {
-          // clear authoritative server session record as well
-          try { await fetch('/api/classroom/session', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ uuid: sessionReadyKey, action: 'clear' }) }); } catch (e) { console.warn('Failed to clear server session', e); }
-        } catch (e) {}
-      } catch (e) {}
-      window.location.href = waitPageUrl;
+        } catch (e) { }
+        // clear authoritative server session record as well
+        try { await fetch('/api/classroom/session', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ uuid: sessionReadyKey, action: 'clear' }) }); } catch (e) { console.warn('Failed to clear server session', e); }
+      } catch (e) { }
+
+      // ensure we formally mark them as not present to trigger time saving
+      markReady(false);
+
+      // small delay to let localstorage/fetch propagate before full navigation
+      setTimeout(() => {
+        window.location.href = waitPageUrl;
+      }, 50);
     } catch (e) {
       console.warn('end session failed', e);
       alert('End session attempt failed; check console');
@@ -1375,7 +1522,14 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       const currentRole = (urlRole === 'teacher' || urlRole === 'student') ? urlRole : computedRole;
       const waitPageUrl = `/classroom/wait?courseId=${courseId}${orderId ? `&orderId=${orderId}` : ''}&role=${currentRole}`;
       console.log('navigating to:', waitPageUrl);
-      window.location.href = waitPageUrl;
+
+      // ensure we formally mark them as not present to trigger time saving
+      markReady(false);
+
+      // small delay to let localstorage/fetch propagate before full navigation
+      setTimeout(() => {
+        window.location.href = waitPageUrl;
+      }, 50);
     } catch (e) {
       console.warn('leave failed', e);
       // Don't show alert for extension errors
@@ -1413,29 +1567,45 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       const user = (getStoredUser && typeof getStoredUser === 'function') ? getStoredUser() : null;
       const roleName = (urlRole === 'teacher' || computedRole === 'teacher') ? 'teacher' : 'student';
       const userId = user?.email || roleName || 'anonymous';
-      
+
       // Check if state actually changed before updating
       const existingEntry = arr.find((p) => p.role === roleName && (p.userId === userId || p.email === user?.email));
       const hasChanged = flag ? (!existingEntry || !existingEntry.present) : (existingEntry && existingEntry.present);
-      
+
       // Only update if state actually changed
       if (!hasChanged) {
         return; // No change needed, avoid unnecessary updates
       }
-      
+
       // remove existing entry for this role/userId
       const filtered = arr.filter((p) => !(p.role === roleName && (p.userId === userId || p.email === user?.email)));
       if (flag) {
         filtered.push({ role: roleName, userId, email: user?.email, present: true }); // We are in classroom, so mark as present
+      } else {
+        // We are marking this user as NOT present (leaving the room)
+        // If they are the very last person to leave, save the remaining time to the DB.
+        const activeUsersCount = filtered.filter(p => p.present).length;
+        if (activeUsersCount === 0 && orderId && remainingSecondsRef.current !== null) {
+          console.log('[ClientClassroom] Both users have left. Saving remaining time to db:', remainingSecondsRef.current);
+          try {
+            // Using keepalive since this might be fired on window unload
+            fetch(`/api/orders/${encodeURIComponent(orderId)}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ remainingSeconds: remainingSecondsRef.current }),
+              keepalive: true
+            }).catch(e => console.warn('[Timer] deduct session failed', e));
+          } catch (e) { }
+        }
       }
       localStorage.setItem(sessionReadyKey, JSON.stringify(filtered));
-      try { window.dispatchEvent(new StorageEvent('storage', { key: sessionReadyKey, newValue: JSON.stringify(filtered) })); } catch (e) {}
+      try { window.dispatchEvent(new StorageEvent('storage', { key: sessionReadyKey, newValue: JSON.stringify(filtered) })); } catch (e) { }
       // notify other tabs via BroadcastChannel
       try {
         const bc = new BroadcastChannel(sessionReadyKey);
         bc.postMessage({ type: 'ready-updated' });
         bc.close();
-      } catch (e) {}
+      } catch (e) { }
     } catch (e) {
       console.warn('markReady failed', e);
     }
@@ -1446,7 +1616,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     // the "ready" status on unmount has been moved to the `useEffect` that
     // handles the `joined` state change. This prevents a user leaving the
     // classroom from affecting the state of the waiting room.
-    return () => {};
+    return () => { };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1455,7 +1625,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   useEffect(() => {
     if (typeof window === 'undefined') return;
     // This effect is intentionally left empty.
-    return () => {};
+    return () => { };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionReadyKey, urlRole, computedRole]);
 
@@ -1463,15 +1633,16 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   useEffect(() => {
     // clear existing timer
     if (timerRef.current) {
-      try { window.clearInterval(timerRef.current); } catch (e) {}
+      try { window.clearInterval(timerRef.current); } catch (e) { }
       timerRef.current = null;
     }
 
-    // Only start countdown when joined AND fully initialized
-    if (joined && fullyInitialized) {
+    // Only start countdown when joined AND fully initialized and order fetch is complete
+    if (joined && fullyInitialized && orderFetchComplete) {
       const isTeacher = (urlRole === 'teacher' || urlRole === 'student') ? urlRole === 'teacher' : computedRole === 'teacher';
-      const secs = Math.floor((sessionDurationMinutes || 10) * 60); // Default to 10 mins if 0
-      
+      // Use order's remainingSeconds if available, else fallback to course duration
+      const secs = orderRemainingSeconds ?? Math.floor((sessionDurationMinutes || 10) * 60);
+
       // Fallback: set initial value immediately before any async calls ensure non-null
       setRemainingSeconds((prev) => prev !== null ? prev : secs);
 
@@ -1480,13 +1651,14 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
         const endKey = `class_end_ts_${sessionReadyKey}`;
 
         // Determine or create authoritative end timestamp
-        let endTs: number | null = null;
+        let endTs: number | null = endTsRef.current;
         try {
           const existing = typeof window !== 'undefined' ? localStorage.getItem(endKey) : null;
           if (existing) {
             const parsed = Number(existing || 0);
             if (!Number.isNaN(parsed) && parsed > Date.now()) {
               endTs = parsed;
+              endTsRef.current = endTs;
               console.log('[Timer] Found existing endTs in localStorage:', endTs);
             }
           }
@@ -1502,8 +1674,9 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
               const sEnd = j?.endTs;
               if (typeof sEnd === 'number' && sEnd > Date.now()) {
                 endTs = sEnd;
+                endTsRef.current = endTs;
                 console.log('[Timer] Found endTs from server:', endTs);
-                try { localStorage.setItem(endKey, String(endTs)); } catch (e) {}
+                try { localStorage.setItem(endKey, String(endTs)); } catch (e) { }
               }
             }
           } catch (e) { console.warn('[Timer] Fetch session failed:', e); }
@@ -1516,17 +1689,18 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           // We add a small buffer for the initial delay
           const bufferSecs = Math.ceil(INITIAL_COUNTDOWN_DELAY_MS / 1000);
           endTs = now + (secs + bufferSecs) * 1000;
-          
+          endTsRef.current = endTs;
+
           console.log('[Timer] Teacher creating new authoritative endTs:', endTs);
-          try { localStorage.setItem(endKey, String(endTs)); } catch (e) {}
-          
+          try { localStorage.setItem(endKey, String(endTs)); } catch (e) { }
+
           // Broadcast class_started with endTs
           const sessionBroadcastName = sessionParam || channelName || `classroom_session_ready_${courseId}`;
           try {
             const bc = new BroadcastChannel(sessionBroadcastName);
             bc.postMessage({ type: 'class_started', timestamp: now, endTs });
-            setTimeout(() => { try { bc.close(); } catch (e) {} }, 100);
-          } catch (e) {}
+            setTimeout(() => { try { bc.close(); } catch (e) { } }, 100);
+          } catch (e) { }
 
           // Persist to server
           try {
@@ -1535,7 +1709,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
               headers: { 'content-type': 'application/json' },
               body: JSON.stringify({ uuid: sessionReadyKey, endTs }),
             });
-          } catch (e) {}
+          } catch (e) { }
         }
 
         // Start countdown calculation
@@ -1543,13 +1717,16 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           const now = Date.now();
           let finalRemaining: number;
 
-          if (endTs) {
-            finalRemaining = Math.max(0, Math.ceil((endTs - now) / 1000));
+          // Always use the latest endTsRef value if available
+          const currentEndTs = endTsRef.current;
+
+          if (currentEndTs) {
+            finalRemaining = Math.max(0, Math.ceil((currentEndTs - now) / 1000));
           } else {
             // Student who hasn't received endTs yet - show a waiting value
             finalRemaining = secs;
           }
-          
+
           setRemainingSeconds(finalRemaining);
           return finalRemaining;
         };
@@ -1559,24 +1736,36 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
 
         timerRef.current = window.setInterval(() => {
           const currentRemaining = updateRemaining();
-          
+
           if (currentRemaining <= 0) {
             console.log('[Timer] Time is up! Clearing whiteboard as part of session cleanup.');
             if (timerRef.current) {
               window.clearInterval(timerRef.current);
               timerRef.current = null;
             }
-            
+
             // ✅ TIMING POINT 1: Countdown timer completion
             // Cleanup and end session - broadcast whiteboard_clear to all participants
             try {
               const sessionBroadcastName = sessionParam || channelName || `classroom_session_ready_${courseId}`;
               const bc2 = new BroadcastChannel(sessionBroadcastName);
               bc2.postMessage({ type: 'whiteboard_clear', timestamp: Date.now() });
-              setTimeout(() => { try { bc2.close(); } catch (e) {} }, 50);
+              setTimeout(() => { try { bc2.close(); } catch (e) { } }, 50);
 
               if (useAgoraWhiteboard) agoraWhiteboardRef.current?.clearPDF();
-            } catch (e) {}
+            } catch (e) { }
+
+            // Deduct session and remaining minutes from order exactly once when time is up
+            if (isTeacher && orderId) {
+              try {
+                fetch(`/api/orders/${encodeURIComponent(orderId)}`, {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ action: 'deduct' }),
+                  keepalive: true,
+                }).catch(e => console.warn('[Timer] deduct session failed', e));
+              } catch (e) { }
+            }
 
             setTimeout(() => endSession(), 1000);
           }
@@ -1588,11 +1777,11 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
 
     return () => {
       if (timerRef.current) {
-        try { window.clearInterval(timerRef.current); } catch (e) {}
+        try { window.clearInterval(timerRef.current); } catch (e) { }
         timerRef.current = null;
       }
     };
-  }, [joined, sessionDurationMinutes, fullyInitialized, classFullyLoadedAt]);
+  }, [joined, sessionDurationMinutes, fullyInitialized, classFullyLoadedAt, orderFetchComplete, orderRemainingSeconds]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -1612,7 +1801,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       }
       previewStreamRef.current = null;
       if (localVideoRef.current) {
-        try { localVideoRef.current.srcObject = null; } catch (e) {}
+        try { localVideoRef.current.srcObject = null; } catch (e) { }
       }
     } catch (e) {
       console.warn('stopCameraPreview failed', e);
@@ -1664,9 +1853,9 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       const s = previewStreamRef.current;
       if (s) s.getTracks().forEach((t) => t.stop());
       previewStreamRef.current = null;
-      if (micSourceRef.current) { try { micSourceRef.current.disconnect(); } catch (e) {} micSourceRef.current = null; }
-      if (analyserRef.current) { try { analyserRef.current.disconnect(); } catch (e) {} analyserRef.current = null; }
-      if (audioContextRef.current) { try { audioContextRef.current.close(); } catch (e) {} audioContextRef.current = null; }
+      if (micSourceRef.current) { try { micSourceRef.current.disconnect(); } catch (e) { } micSourceRef.current = null; }
+      if (analyserRef.current) { try { analyserRef.current.disconnect(); } catch (e) { } analyserRef.current = null; }
+      if (audioContextRef.current) { try { audioContextRef.current.close(); } catch (e) { } audioContextRef.current = null; }
     } catch (e) {
       console.warn('stopMicTest failed', e);
     }
@@ -1678,17 +1867,17 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   const toggleMic = async () => {
     if (micTogglePendingRef.current) return;
     micTogglePendingRef.current = true;
-    
+
     // Capture current state at function call time
     const wasEnabled = micEnabled;
     console.log('[toggleMic] START - wasEnabled=', wasEnabled, 'micStreamRef=', micStreamRef.current);
-    
+
     try {
       if (wasEnabled) {
         // Mute microphone
         console.log('[toggleMic] Muting...');
         setMicEnabled(false);
-        
+
         // Then async: ask Agora to mute if joined
         try {
           if (joined && typeof setLocalAudioEnabled === 'function') {
@@ -1704,7 +1893,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           }
           if (testingMic) stopMicTest();
         } catch (e) { console.warn('Failed to silence local mic', e); }
-        
+
         console.log('[toggleMic] Microphone muted - state set to false');
       } else {
         // Unmute microphone
@@ -1775,25 +1964,45 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   useEffect(() => {
     return () => {
       // cleanup on unmount
-      try { stopCameraPreview(); } catch (e) {}
-      try { stopMicTest(); } catch (e) {}
+      try { stopCameraPreview(); } catch (e) { }
+      try { stopMicTest(); } catch (e) { }
       // Stop independent microphone stream
       try {
         if (micStreamRef.current) {
           micStreamRef.current.getTracks().forEach(track => track.stop());
           micStreamRef.current = null;
         }
-      } catch (e) {}
+      } catch (e) { }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  
+
   // Helper functions for color checking
   const isColorActive = (c: number[]) => {
     if (!whiteboardState?.activeColor) return false;
     const active = whiteboardState.activeColor;
     return active[0] === c[0] && active[1] === c[1] && active[2] === c[2];
   };
+
+  if (isRoleOccupied) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: '#f5f5f5', textAlign: 'center', padding: 20 }}>
+        <div style={{ padding: 40, background: 'white', borderRadius: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', maxWidth: 500 }}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>🚫</div>
+          <h2 style={{ color: '#d32f2f', marginBottom: 16 }}>教室已滿</h2>
+          <p style={{ fontSize: 16, color: '#666', marginBottom: 24, lineHeight: 1.5 }}>
+            此教室已經有一位同角色的使用者。為了確保一對一教學，您無法同時進入。
+          </p>
+          <button
+            onClick={() => window.location.href = (urlRole === 'teacher' || computedRole === 'teacher') ? '/teacher_courses' : '/student_courses'}
+            style={{ padding: '12px 24px', background: '#1976d2', color: 'white', border: 'none', borderRadius: 8, fontSize: 16, cursor: 'pointer', fontWeight: 600 }}
+          >
+            返回課程列表
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -1815,7 +2024,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       {/* Course Title (only on /classroom/test) */}
       {isTestPath && (
         <div style={{ background: '#fff', color: '#111827', fontSize: '18px', padding: '10px 12px', textAlign: 'center', fontWeight: 700, borderBottom: '1px solid #e5e7eb' }}>
-          {course?.title ?? '課程'}
+          {courseTitle}
         </div>
       )}
 
@@ -1825,18 +2034,18 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           <span style={{ color: isTeacher ? '#4ade80' : '#fbbf24', fontWeight: 'bold' }}>{isTeacher ? 'TEACHER' : 'STUDENT'}</span> | {agoraRoomData.region} | {whiteboardState.phase} | {whiteboardState.viewMode} | Course: {courseId} | UUID: {agoraRoomData.uuid}
         </div>
       )}
-      
+
       {/* Teacher Toolbar - Below status bar */}
       {useAgoraWhiteboard && isTeacher && agoraWhiteboardRef.current && whiteboardState && (
         <div style={{ padding: '8px 0', display: 'flex', justifyContent: 'center', background: '#f8f9fa', borderBottom: '1px solid #e5e7eb' }}>
-          <div style={{ 
-            display: 'flex', 
+          <div style={{
+            display: 'flex',
             flexDirection: 'row',
             alignItems: 'center',
-            gap: '8px', 
-            padding: '8px 16px', 
-            backgroundColor: '#ffffff', 
-            borderRadius: '12px', 
+            gap: '8px',
+            padding: '8px 16px',
+            backgroundColor: '#ffffff',
+            borderRadius: '12px',
             boxShadow: '0 4px 12px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.05)',
             border: '1px solid #e5e7eb'
           }}>
@@ -1872,186 +2081,154 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           </div>
         </div>
       )}
-      
-    {/* Duplicate detected modal (prevent same user re-opening same session) */}
-    {duplicateDetected && !duplicateOverride && (
-      <div style={{
-        position: 'fixed',
-        left: '50%',
-        top: '20%',
-        transform: 'translateX(-50%)',
-        background: 'white',
-        color: '#111827',
-        padding: '20px',
-        borderRadius: 12,
-        zIndex: 100000,
-        boxShadow: '0 12px 48px rgba(0,0,0,0.25)',
-        minWidth: 360
-      }}>
-        <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 8 }}>已在其他分頁開啟此課程</div>
-        <div style={{ color: '#374151', fontSize: 13, lineHeight: 1.4 }}>我們偵測到同一使用者已在另一個分頁或裝置中進入此課程。為避免重複連線，系統暫時停止自動報到。</div>
-        <div style={{ display: 'flex', gap: 10, marginTop: 14, justifyContent: 'flex-end' }}>
-          <button
-            onClick={() => setDuplicateOverride(true)}
-            style={{ padding: '8px 12px', background: '#10b981', color: 'white', borderRadius: 8, border: 'none', cursor: 'pointer' }}
-          >在此繼續 (覆寫)</button>
-          <button
-            onClick={() => {
-              const currentRole = (urlRole === 'teacher' || urlRole === 'student') ? urlRole : computedRole;
-              const waitPageUrl = `/classroom/wait?courseId=${courseId}${orderId ? `&orderId=${orderId}` : ''}&role=${currentRole}`;
-              try { window.location.href = waitPageUrl; } catch (e) { /* ignore */ }
-            }}
-            style={{ padding: '8px 12px', background: '#ef4444', color: 'white', borderRadius: 8, border: 'none', cursor: 'pointer' }}
-          >返回等待頁</button>
-        </div>
-      </div>
-    )}
 
-    {/* Debug Modal - Top Right */}
-    {isTestPath && showDebugModal && (
-      <div style={{ 
-        position: 'fixed', 
-        right: 16, 
-        top: 16, 
-        background: 'rgba(15, 23, 42, 0.95)', 
-        color: 'white', 
-        padding: '16px', 
-        borderRadius: 12, 
-        zIndex: 99999, 
-        fontSize: 13, 
-        lineHeight: 1.5,
-        minWidth: 280,
-        boxShadow: '0 8px 32px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.1)',
-        backdropFilter: 'blur(10px)'
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: 8 }}>
-          <div style={{ fontWeight: 700, fontSize: 14, color: '#60a5fa' }}>🔍 DEBUG INFO</div>
-          <button 
-            onClick={() => setShowDebugModal(false)}
-            style={{ 
-              background: 'rgba(239, 68, 68, 0.2)', 
-              border: 'none', 
-              color: '#fca5a5', 
-              cursor: 'pointer', 
-              fontSize: 18, 
-              lineHeight: 1,
-              width: 24,
-              height: 24,
-              borderRadius: 6,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}
-          >×</button>
-        </div>
-        <div style={{ display: 'grid', gap: 6 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span style={{ opacity: 0.7 }}>joined:</span>
-            <span style={{ fontWeight: 600, color: joined ? '#34d399' : '#fbbf24' }}>{String(joined)}</span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span style={{ opacity: 0.7 }}>fullyInitialized:</span>
-            <span style={{ fontWeight: 600, color: fullyInitialized ? '#34d399' : '#fbbf24' }}>{String(fullyInitialized)}</span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span style={{ opacity: 0.7 }}>agoraRoomData:</span>
-            <span style={{ fontWeight: 600, color: agoraRoomData ? '#34d399' : '#ef4444' }}>{agoraRoomData ? 'yes' : 'no'}</span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span style={{ opacity: 0.7 }}>whiteboardRef:</span>
-            <span style={{ fontWeight: 600, color: agoraWhiteboardRef.current ? '#34d399' : '#ef4444' }}>{agoraWhiteboardRef.current ? 'yes' : 'no'}</span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span style={{ opacity: 0.7 }}>remainingSeconds:</span>
-            <span style={{ fontWeight: 600, color: remainingSeconds === null ? '#ef4444' : '#34d399' }}>{remainingSeconds === null ? 'null' : remainingSeconds}</span>
-          </div>
-          <div style={{ marginTop: 6, paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.1)' }}>
-            <div style={{ opacity: 0.5, fontSize: 11, marginBottom: 4 }}>Session Key:</div>
-            <div style={{ fontFamily: 'monospace', fontSize: 11, wordBreak: 'break-all', color: '#94a3b8' }}>{String(sessionReadyKey)}</div>
-          </div>
-        </div>
-      </div>
-    )}
+      {/* Duplicate detected modal removed entirely */}
 
-    {/* Control Modal - Bottom Right */}
-    {isTestPath && showControlModal && (
-      <div style={{ 
-        position: 'fixed', 
-        right: 16, 
-        bottom: 16, 
-        background: 'rgba(15, 23, 42, 0.95)', 
-        color: 'white', 
-        padding: '16px', 
-        borderRadius: 12, 
-        zIndex: 99999, 
-        fontSize: 13, 
-        lineHeight: 1.5,
-        minWidth: 280,
-        boxShadow: '0 8px 32px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.1)',
-        backdropFilter: 'blur(10px)'
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: 8 }}>
-          <div style={{ fontWeight: 700, fontSize: 14, color: '#a78bfa' }}>⚙️ TEST CONTROLS</div>
-          <button 
-            onClick={() => setShowControlModal(false)}
-            style={{ 
-              background: 'rgba(239, 68, 68, 0.2)', 
-              border: 'none', 
-              color: '#fca5a5', 
-              cursor: 'pointer', 
-              fontSize: 18, 
-              lineHeight: 1,
-              width: 24,
-              height: 24,
-              borderRadius: 6,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}
-          >×</button>
-        </div>
-        <div style={{ display: 'grid', gap: 8 }}>
-          <button
-            onClick={() => setShowDebugModal(true)}
-            style={{
-              background: showDebugModal ? 'rgba(96, 165, 250, 0.2)' : 'rgba(96, 165, 250, 0.4)',
-              border: '1px solid rgba(96, 165, 250, 0.3)',
-              color: '#93c5fd',
-              padding: '8px 12px',
-              borderRadius: 8,
-              cursor: 'pointer',
-              fontSize: 12,
-              fontWeight: 600,
-              transition: 'all 0.2s'
-            }}
-          >
-            {showDebugModal ? '✓ Debug Visible' : 'Show Debug'}
-          </button>
-          <div style={{ padding: '8px 12px', background: 'rgba(59, 130, 246, 0.1)', borderRadius: 8, fontSize: 11 }}>
-            <div style={{ opacity: 0.6, marginBottom: 4 }}>Role:</div>
-            <div style={{ fontWeight: 600, color: '#60a5fa' }}>{isTeacher ? 'Teacher' : 'Student'}</div>
+      {/* Debug Modal - Top Right */}
+      {isTestPath && showDebugModal && (
+        <div style={{
+          position: 'fixed',
+          right: 16,
+          top: 16,
+          background: 'rgba(15, 23, 42, 0.95)',
+          color: 'white',
+          padding: '16px',
+          borderRadius: 12,
+          zIndex: 99999,
+          fontSize: 13,
+          lineHeight: 1.5,
+          minWidth: 280,
+          boxShadow: '0 8px 32px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.1)',
+          backdropFilter: 'blur(10px)'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: 8 }}>
+            <div style={{ fontWeight: 700, fontSize: 14, color: '#60a5fa' }}>🔍 DEBUG INFO</div>
+            <button
+              onClick={() => setShowDebugModal(false)}
+              style={{
+                background: 'rgba(239, 68, 68, 0.2)',
+                border: 'none',
+                color: '#fca5a5',
+                cursor: 'pointer',
+                fontSize: 18,
+                lineHeight: 1,
+                width: 24,
+                height: 24,
+                borderRadius: 6,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >×</button>
           </div>
-          <div style={{ padding: '8px 12px', background: 'rgba(168, 85, 247, 0.1)', borderRadius: 8, fontSize: 11 }}>
-            <div style={{ opacity: 0.6, marginBottom: 4 }}>Remote Users:</div>
-            <div style={{ fontWeight: 600, color: '#c084fc' }}>{remoteUsers.length}</div>
-          </div>
-          {error && (
-            <div style={{ padding: '8px 12px', background: 'rgba(239, 68, 68, 0.1)', borderRadius: 8, fontSize: 11 }}>
-              <div style={{ opacity: 0.6, marginBottom: 4 }}>Error:</div>
-              <div style={{ fontWeight: 600, color: '#f87171' }}>{error}</div>
+          <div style={{ display: 'grid', gap: 6 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ opacity: 0.7 }}>joined:</span>
+              <span style={{ fontWeight: 600, color: joined ? '#34d399' : '#fbbf24' }}>{String(joined)}</span>
             </div>
-          )}
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ opacity: 0.7 }}>fullyInitialized:</span>
+              <span style={{ fontWeight: 600, color: fullyInitialized ? '#34d399' : '#fbbf24' }}>{String(fullyInitialized)}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ opacity: 0.7 }}>agoraRoomData:</span>
+              <span style={{ fontWeight: 600, color: agoraRoomData ? '#34d399' : '#ef4444' }}>{agoraRoomData ? 'yes' : 'no'}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ opacity: 0.7 }}>whiteboardRef:</span>
+              <span style={{ fontWeight: 600, color: agoraWhiteboardRef.current ? '#34d399' : '#ef4444' }}>{agoraWhiteboardRef.current ? 'yes' : 'no'}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ opacity: 0.7 }}>remainingSeconds:</span>
+              <span style={{ fontWeight: 600, color: remainingSeconds === null ? '#ef4444' : '#34d399' }}>{remainingSeconds === null ? 'null' : remainingSeconds}</span>
+            </div>
+            <div style={{ marginTop: 6, paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+              <div style={{ opacity: 0.5, fontSize: 11, marginBottom: 4 }}>Session Key:</div>
+              <div style={{ fontFamily: 'monospace', fontSize: 11, wordBreak: 'break-all', color: '#94a3b8' }}>{String(sessionReadyKey)}</div>
+            </div>
+          </div>
         </div>
-      </div>
-    )}
+      )}
+
+      {/* Control Modal - Bottom Right */}
+      {isTestPath && showControlModal && (
+        <div style={{
+          position: 'fixed',
+          right: 16,
+          bottom: 16,
+          background: 'rgba(15, 23, 42, 0.95)',
+          color: 'white',
+          padding: '16px',
+          borderRadius: 12,
+          zIndex: 99999,
+          fontSize: 13,
+          lineHeight: 1.5,
+          minWidth: 280,
+          boxShadow: '0 8px 32px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.1)',
+          backdropFilter: 'blur(10px)'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: 8 }}>
+            <div style={{ fontWeight: 700, fontSize: 14, color: '#a78bfa' }}>⚙️ TEST CONTROLS</div>
+            <button
+              onClick={() => setShowControlModal(false)}
+              style={{
+                background: 'rgba(239, 68, 68, 0.2)',
+                border: 'none',
+                color: '#fca5a5',
+                cursor: 'pointer',
+                fontSize: 18,
+                lineHeight: 1,
+                width: 24,
+                height: 24,
+                borderRadius: 6,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >×</button>
+          </div>
+          <div style={{ display: 'grid', gap: 8 }}>
+            <button
+              onClick={() => setShowDebugModal(true)}
+              style={{
+                background: showDebugModal ? 'rgba(96, 165, 250, 0.2)' : 'rgba(96, 165, 250, 0.4)',
+                border: '1px solid rgba(96, 165, 250, 0.3)',
+                color: '#93c5fd',
+                padding: '8px 12px',
+                borderRadius: 8,
+                cursor: 'pointer',
+                fontSize: 12,
+                fontWeight: 600,
+                transition: 'all 0.2s'
+              }}
+            >
+              {showDebugModal ? '✓ Debug Visible' : 'Show Debug'}
+            </button>
+            <div style={{ padding: '8px 12px', background: 'rgba(59, 130, 246, 0.1)', borderRadius: 8, fontSize: 11 }}>
+              <div style={{ opacity: 0.6, marginBottom: 4 }}>Role:</div>
+              <div style={{ fontWeight: 600, color: '#60a5fa' }}>{isTeacher ? 'Teacher' : 'Student'}</div>
+            </div>
+            <div style={{ padding: '8px 12px', background: 'rgba(168, 85, 247, 0.1)', borderRadius: 8, fontSize: 11 }}>
+              <div style={{ opacity: 0.6, marginBottom: 4 }}>Remote Users:</div>
+              <div style={{ fontWeight: 600, color: '#c084fc' }}>{remoteUsers.length}</div>
+            </div>
+            {error && (
+              <div style={{ padding: '8px 12px', background: 'rgba(239, 68, 68, 0.1)', borderRadius: 8, fontSize: 11 }}>
+                <div style={{ opacity: 0.6, marginBottom: 4 }}>Error:</div>
+                <div style={{ fontWeight: 600, color: '#f87171' }}>{error}</div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
 
 
-    <div className="client-classroom">
-      {/* Left: Whiteboard (flexible) */}
-      <div className="client-left" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', height: '100%' }}>
-        <div className="client-left-inner" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', height: '100%' }}>
-          <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, flexWrap: 'nowrap', justifyContent: 'space-between' }}>
+      <div className="client-classroom">
+        {/* Left: Whiteboard (flexible) */}
+        <div className="client-left" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', height: '100%' }}>
+          <div className="client-left-inner" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', height: '100%' }}>
+            <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, flexWrap: 'nowrap', justifyContent: 'space-between' }}>
               <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
                 {remainingSeconds !== null && (
                   <div style={{ color: 'red', fontWeight: 600, whiteSpace: 'nowrap' }}>{Math.floor((remainingSeconds || 0) / 60)}:{String((remainingSeconds || 0) % 60).padStart(2, '0')}</div>
@@ -2110,131 +2287,131 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                   )}
                 </div>
               )}
-          </div>
-          {/* Whiteboard container - improved for mobile viewport with dvh */}
-          <div className="whiteboard-container" style={{ width: '100%', flex: isMobileViewport ? 'none' : 1, position: 'relative', height: isMobileViewport ? 'auto' : '100%', minHeight: isMobileViewport ? '320px' : '500px', isolation: 'isolate' }}>
-            {useAgoraWhiteboard ? (
-              agoraRoomData ? (
-                <AgoraWhiteboard
-                  key={agoraRoomData.uuid}
-                  ref={agoraWhiteboardRef}
-                  roomUuid={agoraRoomData.uuid}
-                  roomToken={agoraRoomData.roomToken}
-                  appIdentifier={agoraRoomData.appIdentifier}
-                  userId={agoraRoomData.userId}
-                  region={agoraRoomData.region}
-                  courseId={courseId}
-                  className="w-full h-full"
+            </div>
+            {/* Whiteboard container - improved for mobile viewport with dvh */}
+            <div className="whiteboard-container" style={{ width: '100%', flex: isMobileViewport ? 'none' : 1, position: 'relative', height: isMobileViewport ? 'auto' : '100%', minHeight: isMobileViewport ? '320px' : '500px', isolation: 'isolate' }}>
+              {useAgoraWhiteboard ? (
+                agoraRoomData ? (
+                  <AgoraWhiteboard
+                    key={agoraRoomData.uuid}
+                    ref={agoraWhiteboardRef}
+                    roomUuid={agoraRoomData.uuid}
+                    roomToken={agoraRoomData.roomToken}
+                    appIdentifier={agoraRoomData.appIdentifier}
+                    userId={agoraRoomData.userId}
+                    region={agoraRoomData.region}
+                    courseId={courseId}
+                    className="w-full h-full"
 
-                  // ★★★ 關鍵修復：必須明確傳入 role ★★★
-                  role={(urlRole === 'teacher' || computedRole === 'teacher') ? 'teacher' : 'student'}
-                />
-              ) : (
-                    <div className="w-full h-full flex items-center justify-center bg-slate-50">
-                      <div className="text-center">
-                        <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-300 border-t-blue-600 mx-auto mb-2" />
-                        <div className="text-sm text-slate-600">初始化白板中...</div>
-                      </div>
+                    // ★★★ 關鍵修復：必須明確傳入 role ★★★
+                    role={(urlRole === 'teacher' || computedRole === 'teacher') ? 'teacher' : 'student'}
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center bg-slate-50">
+                    <div className="text-center">
+                      <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-300 border-t-blue-600 mx-auto mb-2" />
+                      <div className="text-sm text-slate-600">初始化白板中...</div>
                     </div>
-              )
-            ) : (
-              // Legacy whiteboard fallback - rendered only if Agora is disabled
-              <EnhancedWhiteboard 
-                channelName={effectiveChannelName}
-                room={undefined} 
-                whiteboardRef={whiteboardRef}
-                editable={isTeacher}
-                autoFit={true}
-                className="flex-1" 
-                onPdfSelected={(f) => { setSelectedPdf(f); }}
-                pdfFile={selectedPdf}
-                micEnabled={micEnabled}
-                onToggleMic={toggleMic}
-                hasMic={hasAudioInput !== false}
-                onLeave={() => leave()}
-              />
-            )}
-            {/* Boot-style overlay while not fullyInitialized */}
-            {joined && !fullyInitialized && (
-              <div style={{ position: 'absolute', inset: 0, background: 'rgba(8,8,10,0.85)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 60 }}>
-                <div style={{ width: 520, padding: 24 }}>
-                  <div style={{ fontFamily: 'monospace', fontSize: 14, marginBottom: 12 }}>systemd [classroom@{effectiveChannelName}] booting...</div>
-                  <div style={{ background: '#0b1220', padding: 12, borderRadius: 6, maxHeight: 240, overflow: 'auto', fontFamily: 'monospace', fontSize: 13 }}>
-                    {bootSteps.map((s, idx) => (
-                      <div key={s.name} style={{ color: s.done ? '#90ee90' : '#888', marginBottom: 6 }}>
-                        {s.done ? '●' : '○'} {s.name}
-                      </div>
-                    ))}
-                    <div style={{ marginTop: 8, color: '#aaa', fontSize: 12 }}>Waiting for all services to be ready. Countdown will start after full load + 1 hour.</div>
+                  </div>
+                )
+              ) : (
+                // Legacy whiteboard fallback - rendered only if Agora is disabled
+                <EnhancedWhiteboard
+                  channelName={effectiveChannelName}
+                  room={undefined}
+                  whiteboardRef={whiteboardRef}
+                  editable={isTeacher}
+                  autoFit={true}
+                  className="flex-1"
+                  onPdfSelected={(f) => { setSelectedPdf(f); }}
+                  pdfFile={selectedPdf}
+                  micEnabled={micEnabled}
+                  onToggleMic={toggleMic}
+                  hasMic={hasAudioInput !== false}
+                  onLeave={() => leave()}
+                />
+              )}
+              {/* Boot-style overlay while not fullyInitialized */}
+              {joined && !fullyInitialized && (
+                <div style={{ position: 'absolute', inset: 0, background: 'rgba(8,8,10,0.85)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 60 }}>
+                  <div style={{ width: 520, padding: 24 }}>
+                    <div style={{ fontFamily: 'monospace', fontSize: 14, marginBottom: 12 }}>systemd [classroom@{effectiveChannelName}] booting...</div>
+                    <div style={{ background: '#0b1220', padding: 12, borderRadius: 6, maxHeight: 240, overflow: 'auto', fontFamily: 'monospace', fontSize: 13 }}>
+                      {bootSteps.map((s, idx) => (
+                        <div key={s.name} style={{ color: s.done ? '#90ee90' : '#888', marginBottom: 6 }}>
+                          {s.done ? '●' : '○'} {s.name}
+                        </div>
+                      ))}
+                      <div style={{ marginTop: 8, color: '#aaa', fontSize: 12 }}>Waiting for all services to be ready. Countdown will start after full load + 1 hour.</div>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Right: Video previews and controls (fixed width) */}
-      <div className="client-right">
-        <div className="client-right-inner">
-          <div className="video-container">
-            <video ref={localVideoRef} autoPlay muted playsInline style={{ transform: 'scaleX(-1)' }} />
-            <div className="video-label">
-              {mounted ? getDisplayName(storedUser, isTeacher ? 'teacher' : 'student', 'you') : '載入中...'}
+        {/* Right: Video previews and controls (fixed width) */}
+        <div className="client-right">
+          <div className="client-right-inner">
+            <div className="video-container">
+              <video ref={localVideoRef} autoPlay muted playsInline style={{ transform: 'scaleX(-1)' }} />
+              <div className="video-label">
+                {mounted ? getDisplayName(storedUser, isTeacher ? 'teacher' : 'student', 'you') : '載入中...'}
+              </div>
             </div>
-          </div>
 
-          <div className="video-container">
-            <video ref={remoteVideoRef} autoPlay playsInline />
-            <div className="video-label">
-              {!firstRemote 
-                ? '等待連接...'
-                : (remoteName || getDisplayName(null, isTeacher ? 'student' : 'teacher'))
-              }
+            <div className="video-container">
+              <video ref={remoteVideoRef} autoPlay playsInline />
+              <div className="video-label">
+                {!firstRemote
+                  ? '等待連接...'
+                  : (remoteName || getDisplayName(null, isTeacher ? 'student' : 'teacher'))
+                }
+              </div>
+              {/* Controls moved: mic and leave are shown under the Join button in the controls area. */}
             </div>
-            {/* Controls moved: mic and leave are shown under the Join button in the controls area. */}
-          </div>
 
-          {/* Controls */}
-          <div className="client-controls">
-            {mounted && (isAdmin || computedRole === 'teacher' || computedRole === 'student') && (
-              <>
+            {/* Controls */}
+            <div className="client-controls">
+              {mounted && (isAdmin || computedRole === 'teacher' || computedRole === 'student') && (
+                <>
 
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  {permissionGranted && (
-                    <button
-                      onClick={async () => {
-                        try {
-                          if (previewingCamera) {
-                            // Stop preview stream if present
-                            if (previewStreamRef.current) {
-                              previewStreamRef.current.getTracks().forEach(t => t.stop());
-                              previewStreamRef.current = null;
-                            }
-                            // If joined and Agora track exists, ask Agora to disable local camera
-                            try { if (joined && typeof setLocalVideoEnabled === 'function') await setLocalVideoEnabled(false); } catch (e) { console.warn('Failed to disable Agora camera during preview stop', e); }
-                            if (localVideoRef.current) {
-                              try { localVideoRef.current.srcObject = null; } catch (e) {}
-                            }
-                            setPreviewingCamera(false);
-                          } else {
-                            // If already joined and Agora can manage camera, reuse Agora track
-                            if (joined && typeof setLocalVideoEnabled === 'function') {
-                              try {
-                                await setLocalVideoEnabled(true);
-                                setPreviewingCamera(true);
-                                return;
-                              } catch (e) {
-                                console.warn('setLocalVideoEnabled(true) failed, falling back to preview getUserMedia', e);
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    {permissionGranted && (
+                      <button
+                        onClick={async () => {
+                          try {
+                            if (previewingCamera) {
+                              // Stop preview stream if present
+                              if (previewStreamRef.current) {
+                                previewStreamRef.current.getTracks().forEach(t => t.stop());
+                                previewStreamRef.current = null;
                               }
+                              // If joined and Agora track exists, ask Agora to disable local camera
+                              try { if (joined && typeof setLocalVideoEnabled === 'function') await setLocalVideoEnabled(false); } catch (e) { console.warn('Failed to disable Agora camera during preview stop', e); }
+                              if (localVideoRef.current) {
+                                try { localVideoRef.current.srcObject = null; } catch (e) { }
+                              }
+                              setPreviewingCamera(false);
+                            } else {
+                              // If already joined and Agora can manage camera, reuse Agora track
+                              if (joined && typeof setLocalVideoEnabled === 'function') {
+                                try {
+                                  await setLocalVideoEnabled(true);
+                                  setPreviewingCamera(true);
+                                  return;
+                                } catch (e) {
+                                  console.warn('setLocalVideoEnabled(true) failed, falling back to preview getUserMedia', e);
+                                }
+                              }
+                              await startCameraPreview();
                             }
-                            await startCameraPreview();
+                          } catch (e) {
+                            console.warn('Preview toggle failed', e);
                           }
-                        } catch (e) {
-                          console.warn('Preview toggle failed', e);
-                        }
-                      }}
-                      style={{
+                        }}
+                        style={{
                           flex: 1,
                           minWidth: 0,
                           background: previewingCamera ? '#6b7280' : '#10b981',
@@ -2247,93 +2424,93 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                           textAlign: 'center',
                           transition: 'background-color 0.2s ease'
                         }}
+                      >
+                        {previewingCamera ? t('camera_off') : t('camera_on')}
+                      </button>
+                    )}
+
+                    {/* Microphone placed here (swapped with Join) */}
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        console.log('Mic button clicked, permissionGranted=', permissionGranted, 'hasAudioInput=', hasAudioInput, 'micEnabled=', micEnabled);
+                        try {
+                          if (!permissionGranted) {
+                            await requestPermissions();
+                          }
+                        } catch (e) {
+                          console.warn('requestPermissions failed', e);
+                        }
+
+                        // Re-check available devices after requesting permissions
+                        let hasAudio = hasAudioInput;
+                        try {
+                          if (navigator && navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+                            const devs = await navigator.mediaDevices.enumerateDevices();
+                            hasAudio = devs.some(d => d.kind === 'audioinput');
+                            console.log('enumerateDevices result, hasAudio=', hasAudio, devs);
+                          }
+                        } catch (e) {
+                          console.warn('enumerateDevices failed', e);
+                        }
+
+                        if (!hasAudio) {
+                          alert(t('microphone_not_found'));
+                          return;
+                        }
+
+                        console.log('[Mic Button] Before toggleMic, micEnabled=', micEnabled);
+                        await toggleMic();
+                        console.log('[Mic Button] After toggleMic, micEnabled should be toggled');
+                      }}
+                      // keep button enabled so user gesture can request permissions
+                      disabled={false}
+                      style={{
+                        flex: 1,
+                        minWidth: 0,
+                        background: micEnabled ? '#10b981' : '#6b7280',
+                        color: 'white',
+                        border: 'none',
+                        padding: '8px 12px',
+                        borderRadius: 4,
+                        cursor: 'pointer',
+                        fontWeight: 600,
+                        textAlign: 'center',
+                        transition: 'background-color 0.2s ease'
+                      }}
                     >
-                      {previewingCamera ? t('camera_off') : t('camera_on')}
+                      {micEnabled ? t('mic_on') : t('mic_off')}
                     </button>
+
+                    {/* New Leave button in the controls row (same as handleLeave) */}
+                    <button
+                      onClick={() => { try { handleLeave(); } catch (e) { console.error('Leave click error', e); } }}
+                      disabled={!joined}
+                      style={{
+                        display: isTestPath ? 'none' : 'block',
+                        background: joined ? '#f44336' : '#ef9a9a',
+                        color: 'white',
+                        border: 'none',
+                        padding: '8px 12px',
+                        borderRadius: 4,
+                        cursor: joined ? 'pointer' : 'not-allowed',
+                        fontWeight: 600
+                      }}
+                    >
+                      {t('leave')}
+                    </button>
+
+                    {/* Mic toggle and Leave placed below the Join button */}
+                  </div>
+
+                  {/* Console Log Viewers for debugging */}
+                  {typeof window !== 'undefined' && window.location.pathname !== '/classroom/test' && (
+                    <>
+                      <ConsoleLogViewer title={`${(urlRole === 'teacher' || computedRole === 'teacher') ? '老師' : '學生'} Console Log`} />
+                      <ConsoleLogViewer title={`${(urlRole === 'teacher' || computedRole === 'teacher') ? '學生' : '老師'} Console Log`} />
+                      <NetworkSpeedMonitor title="網路速度監控" />
+                    </>
                   )}
-
-                  {/* Microphone placed here (swapped with Join) */}
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      console.log('Mic button clicked, permissionGranted=', permissionGranted, 'hasAudioInput=', hasAudioInput, 'micEnabled=', micEnabled);
-                      try {
-                        if (!permissionGranted) {
-                          await requestPermissions();
-                        }
-                      } catch (e) {
-                        console.warn('requestPermissions failed', e);
-                      }
-
-                      // Re-check available devices after requesting permissions
-                      let hasAudio = hasAudioInput;
-                      try {
-                        if (navigator && navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
-                          const devs = await navigator.mediaDevices.enumerateDevices();
-                          hasAudio = devs.some(d => d.kind === 'audioinput');
-                          console.log('enumerateDevices result, hasAudio=', hasAudio, devs);
-                        }
-                      } catch (e) {
-                        console.warn('enumerateDevices failed', e);
-                      }
-
-                      if (!hasAudio) {
-                        alert(t('microphone_not_found'));
-                        return;
-                      }
-
-                      console.log('[Mic Button] Before toggleMic, micEnabled=', micEnabled);
-                      await toggleMic();
-                      console.log('[Mic Button] After toggleMic, micEnabled should be toggled');
-                    }}
-                    // keep button enabled so user gesture can request permissions
-                    disabled={false}
-                    style={{
-                      flex: 1,
-                      minWidth: 0,
-                      background: micEnabled ? '#10b981' : '#6b7280',
-                      color: 'white',
-                      border: 'none',
-                      padding: '8px 12px',
-                      borderRadius: 4,
-                      cursor: 'pointer',
-                      fontWeight: 600,
-                      textAlign: 'center',
-                      transition: 'background-color 0.2s ease'
-                    }}
-                  >
-                    {micEnabled ? t('mic_on') : t('mic_off')}
-                  </button>
-
-                  {/* New Leave button in the controls row (same as handleLeave) */}
-                  <button
-                    onClick={() => { try { handleLeave(); } catch (e) { console.error('Leave click error', e); } }}
-                    disabled={!joined}
-                    style={{
-                      display: typeof window !== 'undefined' && window.location.pathname === '/classroom/test' ? 'none' : 'block',
-                      background: joined ? '#f44336' : '#ef9a9a',
-                      color: 'white',
-                      border: 'none',
-                      padding: '8px 12px',
-                      borderRadius: 4,
-                      cursor: joined ? 'pointer' : 'not-allowed',
-                      fontWeight: 600
-                    }}
-                  >
-                    {t('leave')}
-                  </button>
-
-                  {/* Mic toggle and Leave placed below the Join button */}
-                </div>
-
-                {/* Console Log Viewers for debugging */}
-                {typeof window !== 'undefined' && window.location.pathname !== '/classroom/test' && (
-                  <>
-                    <ConsoleLogViewer title={`${(urlRole === 'teacher' || computedRole === 'teacher') ? '老師' : '學生'} Console Log`} />
-                    <ConsoleLogViewer title={`${(urlRole === 'teacher' || computedRole === 'teacher') ? '學生' : '老師'} Console Log`} />
-                    <NetworkSpeedMonitor title="網路速度監控" />
-                  </>
-                )}
 
                   <div style={{ marginTop: 8, display: 'flex', gap: 8, flexDirection: 'column', alignItems: 'stretch' }}>
                     {!joined ? (
@@ -2348,7 +2525,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                             }
                             setPreviewingCamera(false);
                           }
-                            if (!canJoin) {
+                          if (!canJoin) {
                             // Shouldn't be clickable when disabled, but guard anyway
                             alert(t('waitpage_not_ready'));
                             return;
@@ -2367,7 +2544,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                           fontWeight: 600,
                           width: '100%'
                         }}
-                        >
+                      >
                         {loading ? t('joining') : (canJoin ? t('join_start') : t('wait_other_ready'))}
                       </button>
                     ) : (
@@ -2385,7 +2562,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                       onClick={() => { try { handleLeave(); } catch (e) { console.error('Leave click error', e); } }}
                       disabled={!joined}
                       style={{
-                        display: typeof window !== 'undefined' && window.location.pathname === '/classroom/test' ? 'none' : 'block',
+                        display: isTestPath ? 'none' : 'block',
                         background: joined ? '#f44336' : '#ef9a9a',
                         color: 'white',
                         border: 'none',
@@ -2398,112 +2575,132 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                     >
                       {t('leave')}
                     </button>
-                  </div>
 
-                {typeof window !== 'undefined' && window.location.pathname !== '/classroom/test' && (
-                  <>
-                    {joined && (
-                      <div style={{ marginTop: 6, fontSize: 11, color: '#ffeb3b', background: 'rgba(255,235,59,0.1)', padding: 4, borderRadius: 4 }}>
-                        {t('started_billing')}
-                      </div>
+                    {isTeacher && (
+                      <button
+                        onClick={() => { if (window.confirm(t('confirm_end_session') || '確定要結束課程嗎？')) endSession(); }}
+                        disabled={!joined}
+                        style={{
+                          marginTop: 8,
+                          background: joined ? '#d32f2f' : '#ef9a9a',
+                          color: 'white',
+                          border: 'none',
+                          padding: '8px 12px',
+                          borderRadius: 6,
+                          cursor: joined ? 'pointer' : 'not-allowed',
+                          fontWeight: 600,
+                          width: '100%'
+                        }}
+                      >
+                        {t('end_session')}
+                      </button>
                     )}
-
-                    <div style={{ marginTop: 6, fontSize: 12, color: '#666' }}>
-                      <div><strong>{t('join')}</strong>: {t('join_desc')}</div>
-                      <div><strong>{t('leave')}</strong>: {t('leave_desc')}</div>
-                      <div><strong>{t('end_session')}</strong>: {t('end_session_desc')}</div>
-                    </div>
-                  </>
-                )}
-                
-                {remainingSeconds !== null && (
-                  <div style={{ marginTop: 6 }}>
-                    <strong>{t('remaining_time')}</strong> {Math.floor((remainingSeconds || 0) / 60)}:{String((remainingSeconds || 0) % 60).padStart(2, '0')}
                   </div>
-                )}
-              </>
-            )}
-            {loading && <div style={{ color: '#ccc' }}>{t('joining')}</div>}
-            {error && <div style={{ color: 'salmon' }}>{error}</div>}
-          </div>
-        </div>
 
+                  {typeof window !== 'undefined' && window.location.pathname !== '/classroom/test' && (
+                    <>
+                      {joined && (
+                        <div style={{ marginTop: 6, fontSize: 11, color: '#ffeb3b', background: 'rgba(255,235,59,0.1)', padding: 4, borderRadius: 4 }}>
+                          {t('started_billing')}
+                        </div>
+                      )}
+
+                      <div style={{ marginTop: 6, fontSize: 12, color: '#666' }}>
+                        <div><strong>{t('join')}</strong>: {t('join_desc')}</div>
+                        <div><strong>{t('leave')}</strong>: {t('leave_desc')}</div>
+                        <div><strong>{t('end_session')}</strong>: {t('end_session_desc')}</div>
+                      </div>
+                    </>
+                  )}
+
+                  {remainingSeconds !== null && (
+                    <div style={{ marginTop: 6 }}>
+                      <strong>{t('remaining_time')}</strong> {Math.floor((remainingSeconds || 0) / 60)}:{String((remainingSeconds || 0) % 60).padStart(2, '0')}
+                    </div>
+                  )}
+                </>
+              )}
+              {loading && <div style={{ color: '#ccc' }}>{t('joining')}</div>}
+              {error && <div style={{ color: 'salmon' }}>{error}</div>}
+            </div>
+          </div>
+
+        </div>
       </div>
-    </div>
     </>
   );
 };
 
 // Helper components for toolbar
 const ToolButton = ({ active, onClick, icon, title }: any) => {
-    const [isPressed, setIsPressed] = React.useState(false);
-    const timeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+  const [isPressed, setIsPressed] = React.useState(false);
+  const timeoutRef = React.useRef<NodeJS.Timeout | null>(null);
 
-    const press = () => {
-        setIsPressed(true);
-    };
+  const press = () => {
+    setIsPressed(true);
+  };
 
-    const release = () => {
-        if (timeoutRef.current) clearTimeout(timeoutRef.current);
-        timeoutRef.current = setTimeout(() => {
-            setIsPressed(false);
-        }, 300);
-    };
-    
-    // Explicit click handler to ensure feedback even if mouse events are messy
-    const handleClick = (e: any) => {
-        // Force press state visually
-        setIsPressed(true);
-        // Execute actual action
-        if (onClick) onClick(e);
-        // Schedule release
-        release();
-    };
+  const release = () => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    timeoutRef.current = setTimeout(() => {
+      setIsPressed(false);
+    }, 300);
+  };
 
-    return (
-        <button 
-            onClick={handleClick}
-            onMouseDown={press}
-            onMouseUp={release}
-            onMouseLeave={release}
-            onTouchStart={press}
-            onTouchEnd={release}
-            title={title}
-            style={{ 
-                padding: '10px', 
-                borderRadius: '12px', 
-                background: (active || isPressed) ? '#eff6ff' : 'transparent', 
-                border: (active || isPressed) ? '2px solid #000000' : '2px solid transparent', 
-                cursor: 'pointer', 
-                fontSize: '22px',
-                transition: 'all 0.1s ease', // Faster transition for snappier feel
-                filter: (active || isPressed) ? 'none' : 'grayscale(100%)',
-                opacity: (active || isPressed) ? 1 : 0.5,
-                boxShadow: (active || isPressed) ? '0 2px 5px rgba(0, 0, 0, 0.15)' : 'none',
-                transform: isPressed ? 'scale(0.95)' : 'scale(1)'
-            }}
-        >
-            {icon}
-        </button>
-    );
+  // Explicit click handler to ensure feedback even if mouse events are messy
+  const handleClick = (e: any) => {
+    // Force press state visually
+    setIsPressed(true);
+    // Execute actual action
+    if (onClick) onClick(e);
+    // Schedule release
+    release();
+  };
+
+  return (
+    <button
+      onClick={handleClick}
+      onMouseDown={press}
+      onMouseUp={release}
+      onMouseLeave={release}
+      onTouchStart={press}
+      onTouchEnd={release}
+      title={title}
+      style={{
+        padding: '10px',
+        borderRadius: '12px',
+        background: (active || isPressed) ? '#eff6ff' : 'transparent',
+        border: (active || isPressed) ? '2px solid #000000' : '2px solid transparent',
+        cursor: 'pointer',
+        fontSize: '22px',
+        transition: 'all 0.1s ease', // Faster transition for snappier feel
+        filter: (active || isPressed) ? 'none' : 'grayscale(100%)',
+        opacity: (active || isPressed) ? 1 : 0.5,
+        boxShadow: (active || isPressed) ? '0 2px 5px rgba(0, 0, 0, 0.15)' : 'none',
+        transform: isPressed ? 'scale(0.95)' : 'scale(1)'
+      }}
+    >
+      {icon}
+    </button>
+  );
 };
 
 const ColorDot = ({ color, active, onClick }: any) => (
-    <div 
-        onClick={onClick} 
-        style={{ 
-            width: '28px', 
-            height: '28px', 
-            borderRadius: '50%', 
-            backgroundColor: color,
-            border: active ? '3px solid #000000' : '2px solid #d1d5db', 
-            boxShadow: active ? '0 0 0 2px white inset, 0 2px 6px rgba(0,0,0,0.2)' : '0 1px 3px rgba(0,0,0,0.1)',
-            cursor: 'pointer',
-            transition: 'all 0.2s ease',
-            transform: active ? 'scale(1.15)' : 'scale(1)',
-            opacity: active ? 1 : 0.7
-        }} 
-    />
+  <div
+    onClick={onClick}
+    style={{
+      width: '28px',
+      height: '28px',
+      borderRadius: '50%',
+      backgroundColor: color,
+      border: active ? '3px solid #000000' : '2px solid #d1d5db',
+      boxShadow: active ? '0 0 0 2px white inset, 0 2px 6px rgba(0,0,0,0.2)' : '0 1px 3px rgba(0,0,0,0.1)',
+      cursor: 'pointer',
+      transition: 'all 0.2s ease',
+      transform: active ? 'scale(1.15)' : 'scale(1)',
+      opacity: active ? 1 : 0.7
+    }}
+  />
 );
 
 export default ClientClassroom;

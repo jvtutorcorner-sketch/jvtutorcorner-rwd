@@ -47,7 +47,7 @@ export function useOneTimeEntry() {
     const currentUrl = window.location.pathname + window.location.search;
     const normalizedUrl = currentUrl.replace(/\/$/, '');
     currentUrlRef.current = normalizedUrl;
-    
+
     // Storage key for tracking current entry (user + URL specific)
     const storageTimestampKey = `classroom_entry_${userId}_${normalizedUrl}_ts`;
     storageKeyRef.current = storageTimestampKey;
@@ -59,33 +59,33 @@ export function useOneTimeEntry() {
 
       if (lastEntryTimestamp) {
         const timeSinceEntry = now - Number(lastEntryTimestamp);
-        
+
         // If time since entry is very short (< 500ms), likely a page refresh - allow it
         if (timeSinceEntry < 500) {
           console.log('[OneTimeEntry] Detected page refresh (time delta < 500ms) - allowing re-entry for user:', userId);
           window.sessionStorage.setItem(storageTimestampKey, now.toString());
           return;
         }
-        
-        // If last entry was more than 2 minutes ago, allow re-entry (session likely ended)
-        if (timeSinceEntry > 2 * 60 * 1000) {
-          console.log('[OneTimeEntry] Session timeout - allowing re-entry for user:', userId);
+
+        // If last entry was more than 10 seconds ago, allow re-entry (session likely ended or user testing)
+        // Reduced from 2 minutes to 10 seconds to allow easier testing and returning to the page
+        if (timeSinceEntry > 10 * 1000) {
+          console.log('[OneTimeEntry] Session timeout (10s) - allowing re-entry for user:', userId);
           window.sessionStorage.setItem(storageTimestampKey, now.toString());
           return;
         }
 
-        // Otherwise, block the re-entry (time between 500ms and 2 minutes)
-        const remainingSeconds = Math.ceil((2 * 60 * 1000 - timeSinceEntry) / 1000);
-        const remainingMinutes = Math.ceil(remainingSeconds / 60);
+        // Otherwise, block the re-entry (time between 500ms and 10 seconds)
+        const remainingSeconds = Math.ceil((10 * 1000 - timeSinceEntry) / 1000);
         const message = `
-您剛才已進入此教室。為確保教學品質及防止誤操作，此連結在 ${remainingMinutes} 分鐘內無法重複進入。
+您剛才已進入此教室。為確保教學品質及防止誤操作，此連結在短期內無法重複進入。
 
 📌 了解限制原因：
   • 防止誤操作：避免無意中重複點擊導致的問題
   • 保護教學秩序：確保教室人員管理的完整性
   • 維持穩定連線：防止惡意重複進入影響課程進行
 
-⏱️ 您可在 ${remainingMinutes} 分鐘後重新進入此連結。
+⏱️ 您可在 ${remainingSeconds} 秒後重新進入此連結。
 `;
         console.log('[OneTimeEntry] Blocking re-entry for user:', userId, 'URL:', normalizedUrl, 'Time since entry:', timeSinceEntry);
         alert(message.trim());
@@ -130,11 +130,11 @@ export function useOneTimeEntry() {
 
     window.addEventListener('beforeunload', handleBeforeUnload);
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    
+
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
-      
+
       // Also clear on component unmount
       try {
         if (storageKeyRef.current) {
@@ -154,11 +154,11 @@ export function useOneTimeEntry() {
 export function clearCurrentEntry() {
   try {
     if (typeof window === 'undefined') return;
-    
+
     const storedUser = getStoredUser();
     const userId = storedUser?.email || storedUser?.role || 'anonymous';
     const currentUrl = window.location.pathname + window.location.search;
-    
+
     const storageTimestampKey = `classroom_entry_${userId}_${currentUrl}_ts`;
     window.sessionStorage.removeItem(storageTimestampKey);
     console.log('[OneTimeEntry] Manually cleared current entry lock for user:', userId);
@@ -173,7 +173,7 @@ export function clearCurrentEntry() {
 export function clearAllEntries() {
   try {
     if (typeof window === 'undefined') return;
-    
+
     const keys = Object.keys(window.sessionStorage);
     keys.forEach(key => {
       if (key.startsWith('classroom_entry_') && key.endsWith('_ts')) {
@@ -193,14 +193,14 @@ export function clearAllEntries() {
 export function getCurrentEntryInfo() {
   try {
     if (typeof window === 'undefined') return null;
-    
+
     const storedUser = getStoredUser();
     const userId = storedUser?.email || storedUser?.role || 'anonymous';
     const currentUrl = window.location.pathname + window.location.search;
-    
+
     const storageTimestampKey = `classroom_entry_${userId}_${currentUrl}_ts`;
     const timestamp = window.sessionStorage.getItem(storageTimestampKey);
-    
+
     return {
       userId,
       url: currentUrl,

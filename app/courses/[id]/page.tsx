@@ -63,6 +63,8 @@ export default async function CourseDetailPage({ params }: { params: Promise<{ i
     nextStartDate,
     startDate,
     endDate,
+    startTime,
+    endTime,
     totalSessions,
     seatsLeft,
     currency = 'TWD',
@@ -122,11 +124,17 @@ export default async function CourseDetailPage({ params }: { params: Promise<{ i
               <span>單堂時長</span>
               <span>{durationMinutes} 分鐘</span>
             </div>
-            {(startDate || endDate) && (
+            <div className="info-row">
+              <span>課程期間</span>
+              <span>
+                {startDate || nextStartDate || 'TBD'} ~ {endDate || 'TBD'}
+              </span>
+            </div>
+            {(startTime || endTime) && (
               <div className="info-row">
-                <span>開課期間</span>
+                <span>課程時間</span>
                 <span>
-                  {startDate || 'TBD'} ~ {endDate || 'TBD'}
+                  {startTime || 'TBD'} ~ {endTime || 'TBD'}
                 </span>
               </div>
             )}
@@ -134,12 +142,6 @@ export default async function CourseDetailPage({ params }: { params: Promise<{ i
               <div className="info-row">
                 <span>總堂數</span>
                 <span>{totalSessions} 堂</span>
-              </div>
-            )}
-            {nextStartDate && (
-              <div className="info-row">
-                <span>下一梯次</span>
-                <span>{nextStartDate}</span>
               </div>
             )}
             {typeof seatsLeft === 'number' && (
@@ -150,7 +152,7 @@ export default async function CourseDetailPage({ params }: { params: Promise<{ i
             )}
 
             <div style={{ marginTop: 16 }}>
-              <EnrollButton courseId={course.id} courseTitle={course.title} />
+              <EnrollButton courseId={course.id} courseTitle={course.title} requiredPlan={course.requiredPlan || 'basic'} />
             </div>
 
             <p className="course-side-note">

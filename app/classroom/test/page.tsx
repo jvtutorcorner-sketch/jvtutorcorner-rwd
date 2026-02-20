@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, Suspense } from 'react';
 import dynamic from 'next/dynamic';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { useRouter } from 'next/navigation';
@@ -145,11 +145,13 @@ export default function TestPage() {
         {mounted && storedUser ? (
           <div style={{ padding: '6px 10px', borderRadius: 8, background: '#f8fafc', display: 'flex', alignItems: 'center', gap: 8 }}>
             <div style={{ fontSize: 13, color: '#111', fontWeight: 600 }}>{`${storedUser.lastName || ''} ${storedUser.firstName || ''}`.trim() || storedUser.displayName || 'No Set Name'}</div>
-            <div style={{ fontSize: 12, color: '#666' }}>({storedUser.role || 'user'})</div>
+            <div style={{ fontSize: 12, color: '#666' }}>({storedUser.role === 'user' ? 'student' : (storedUser.role || 'user')})</div>
           </div>
         ) : null}
       </div>
-      <ClientClassroom channelName={channel} />
+      <Suspense fallback={<div style={{ padding: 20 }}>載入教室中...</div>}>
+        <ClientClassroom channelName={channel} />
+      </Suspense>
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import resolveDataFile from '@/lib/localData';
 import fs from 'fs';
 import path from 'path';
+import { broadcast } from '@/lib/classroomSSE';
 
 async function dataPathFor(uuid: string) {
   return await resolveDataFile(`classroom_session_${uuid}.json`);
@@ -48,6 +49,8 @@ export async function POST(req: NextRequest) {
 
     if (action === 'clear') {
       await writeSession(uuid, { endTs: null });
+      // Broadcast to all SSE listeners that the class has ended
+      try { broadcast(uuid, { type: 'class_ended', timestamp: Date.now() }); } catch (e) { }
       return NextResponse.json({ endTs: null });
     }
 
@@ -56,7 +59,7 @@ export async function POST(req: NextRequest) {
     // Allow resetting expired session: if client sends a new endTs, we just overwrite it.
     // The previous logic allowed this too, but we are making it explicit that overwriting is supported.
     // If the client logic detects expiration, it can POST a new endTs (extended time).
-    
+
     await writeSession(uuid, { endTs });
     return NextResponse.json({ endTs });
   } catch (err: any) {

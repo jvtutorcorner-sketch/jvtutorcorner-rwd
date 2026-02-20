@@ -19,6 +19,7 @@ export default function ClassroomWaitPage() {
   useEffect(() => { setIsClient(true); }, []);
 
   const [courseId, setCourseId] = useState('c1');
+  const [courseTitle, setCourseTitle] = useState('課程');
   const [orderId, setOrderId] = useState<string | null>(null);
   const [storedUserState, setStoredUserState] = useState<any>(null);
   const [role, setRole] = useState<'teacher' | 'student' | null>(null);
@@ -56,6 +57,25 @@ export default function ClassroomWaitPage() {
     const orderFromUrl = params.get('orderId');
     setCourseId(courseFromUrl);
     setOrderId(orderFromUrl ?? null);
+
+    // Fetch course details from API for dynamic title
+    fetch(`/api/courses/${encodeURIComponent(courseFromUrl)}`)
+      .then(r => r.json())
+      .then(j => {
+        if (j.ok && j.course?.title) {
+          setCourseTitle(j.course.title);
+        } else {
+          // Fallback to bundled data title if API fails or doesn't have it
+          const b = COURSES.find(c => c.id === courseFromUrl);
+          if (b?.title) setCourseTitle(b.title);
+        }
+      })
+      .catch(() => {
+        // Safe fallback
+        const b = COURSES.find(c => c.id === courseFromUrl);
+        if (b?.title) setCourseTitle(b.title);
+      });
+
     const sessionFromUrl = params.get('session');
     const key = sessionFromUrl ? sessionFromUrl : `classroom_session_ready_${courseFromUrl}`;
     setSessionReadyKey(key);
@@ -666,7 +686,34 @@ export default function ClassroomWaitPage() {
     }
   }, [role, sessionReadyKey]);
 
+  const isRoleTaken = React.useMemo(() => {
+    if (!role || !storedUserState) return false;
+    const currentUserId = storedUserState.email || role || 'anonymous';
+    // If there is any participant with the same role but a different user ID, it means the role is occupied
+    return participants.some(p => p.role === role && p.userId !== currentUserId);
+  }, [participants, role, storedUserState]);
+
   if (!isClient) return null;
+
+  if (isRoleTaken) {
+    return (
+      <div className="wait-page-container" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', textAlign: 'center' }}>
+        <div style={{ padding: 32, background: '#fff0f0', border: '2px solid #ffcdd2', borderRadius: 12, maxWidth: 500 }}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>🚫</div>
+          <h2 style={{ color: '#d32f2f', marginBottom: 16 }}>{t('wait.room_full_title') || '無法進入'}</h2>
+          <p style={{ fontSize: 16, color: '#333', marginBottom: 24, lineHeight: 1.5 }}>
+            {t('wait.room_full_desc') || `此教室已經有一位 ${role === 'teacher' ? '老師' : '學生'} 在裡面了。為了確保一對一的教學品質，您目前無法進入。`}
+          </p>
+          <button
+            onClick={() => router.push(role === 'teacher' ? '/teacher_courses' : '/student_courses')}
+            style={{ padding: '12px 24px', background: '#1976d2', color: 'white', border: 'none', borderRadius: 8, fontSize: 16, fontWeight: 600, cursor: 'pointer' }}
+          >
+            {t('wait.return_home') || '返回我的課程'}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="wait-page-container">
@@ -682,7 +729,7 @@ export default function ClassroomWaitPage() {
         </div>
       </div>
       <div style={{ marginTop: 12 }}>
-        <div style={{ fontWeight: 600, fontSize: 18 }}>{course?.title ?? '課程'}</div>
+        <div style={{ fontWeight: 600, fontSize: 18 }}>{courseTitle}</div>
 
         <div style={{ marginTop: 4, color: '#666' }}>
           {t('wait.role_label')} {role ? (role === 'teacher' ? `${t('role_teacher')} (Teacher)` : `${t('role_student')} (Student)`) : '—'}

@@ -5,12 +5,14 @@ import { useRouter } from 'next/navigation';
 import { getStoredUser, type StoredUser } from '@/lib/mockAuth';
 import Link from 'next/link';
 import { useT } from '@/components/IntlProvider';
+import { COURSE_RECORDS } from '@/data/courseRecords';
 
 type Order = {
   orderId: string;
   orderNumber?: string;
   userId?: string;
   courseId?: string;
+  durationMinutes?: number;
   amount?: number;
   currency?: string;
   status?: string;
@@ -21,7 +23,7 @@ export default function StudentCoursesPage() {
   const router = useRouter();
   const t = useT();
   const [orders, setOrders] = useState<Order[] | null>(null);
-  const [courseMap, setCourseMap] = useState<Record<string, { title?: string; teacherName?: string }>>({});
+  const [courseMap, setCourseMap] = useState<Record<string, { title?: string; teacherName?: string; durationMinutes?: number; totalSessions?: number }>>({});
   const [userMap, setUserMap] = useState<Record<string, { firstName?: string; lastName?: string }>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -140,14 +142,24 @@ export default function StudentCoursesPage() {
     const fetches = ids.map((cid: string) =>
       fetch(`/api/courses?id=${encodeURIComponent(cid)}`)
         .then(r => r.json())
-        .then(j => (j && j.ok && j.course ? { title: j.course.title, teacherName: j.course.teacherName || j.course.teacher || null } : null))
+        .then(j => (j && j.ok && j.course ? {
+          title: j.course.title,
+          teacherName: j.course.teacherName || j.course.teacher || null,
+          durationMinutes: j.course.durationMinutes,
+          totalSessions: j.course.totalSessions
+        } : null))
         .catch(() => null)
     );
     Promise.all(fetches).then((results) => {
-      const map: Record<string, { title?: string; teacherName?: string }> = {};
+      const map: Record<string, { title?: string; teacherName?: string; durationMinutes?: number; totalSessions?: number }> = {};
       ids.forEach((id: string, idx: number) => {
         const t = results[idx] as any | null;
-        if (t) map[id] = { title: t.title, teacherName: t.teacherName };
+        if (t) map[id] = {
+          title: t.title,
+          teacherName: t.teacherName,
+          durationMinutes: t.durationMinutes,
+          totalSessions: t.totalSessions
+        };
       });
       setCourseMap(map);
     }).catch(() => setCourseMap({}));
@@ -212,11 +224,11 @@ export default function StudentCoursesPage() {
               <thead>
                 <tr>
                   <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>{t('student_courses_student')}</th>
-                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>{t('student_courses_order_number')}</th>
                   <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>{t('student_courses_course_name')}</th>
                   <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>{t('student_courses_teacher')}</th>
-                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>{t('student_courses_amount')}</th>
                   <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>{t('student_courses_status')}</th>
+                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>剩餘課程數</th>
+                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>剩餘時間 (分)</th>
                   <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>{t('student_courses_created_at')}</th>
                   <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>{t('enter_classroom')}</th>
                 </tr>
@@ -226,17 +238,58 @@ export default function StudentCoursesPage() {
                   <tr key={o.orderId}>
                     <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.userId ? (userMap[o.userId]?.firstName && userMap[o.userId]?.lastName ? `${userMap[o.userId].firstName} ${userMap[o.userId].lastName}` : o.userId) : '-'}</td>
                     <td style={{ border: '2px solid #ccc', padding: '6px' }}>
-                      <Link href={`/student_courses/${o.orderId}`}>{o.orderId}</Link>
+                      {o.courseId ? (courseMap[o.courseId]?.title || o.courseId) : '-'}
                     </td>
-                    <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.courseId ? (courseMap[o.courseId]?.title || o.courseId) : '-'}</td>
                     <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.courseId ? (courseMap[o.courseId]?.teacherName || '-') : '-'}</td>
-                    <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.amount !== undefined && o.amount !== null ? `${o.amount} ${o.currency ?? 'TWD'}` : '-'}</td>
-                    <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.status ?? '-'}</td>
+                    <td style={{ border: '2px solid #ccc', padding: '6px' }}>
+                      {(() => {
+                        if (!o.courseId) return '-';
+                        const record = COURSE_RECORDS.find(r => r.courseId === o.courseId);
+                        if (record) {
+                          if (record.status === 'attended') return t('calendar_status_attended') || 'Attended';
+                          if (record.status === 'missed') return t('calendar_status_missed') || 'Missed';
+                          if (record.status === 'pending') return t('calendar_status_pending') || 'Pending';
+                        }
+                        return t('calendar_status_pending') || 'Pending';
+                      })()}
+                    </td>
+                    <td style={{ border: '2px solid #ccc', padding: '6px' }}>
+                      {(() => {
+                        if (typeof (o as any).remainingSessions === 'number') {
+                          return `${(o as any).remainingSessions}`;
+                        }
+                        if (!o.courseId) return '-';
+                        const c = courseMap[o.courseId];
+                        if (!c) return '-';
+                        const total = c.totalSessions || 0;
+                        const attended = COURSE_RECORDS.filter(r => r.courseId === o.courseId && r.status === 'attended').length;
+                        return `${Math.max(0, total - attended)}`;
+                      })()}
+                    </td>
+                    <td style={{ border: '2px solid #ccc', padding: '6px' }}>
+                      {(() => {
+                        if (typeof (o as any).remainingSeconds === 'number') {
+                          const sess = typeof (o as any).remainingSessions === 'number' ? (o as any).remainingSessions : 1;
+                          return `${Math.ceil(((o as any).remainingSeconds * sess) / 60)} m`;
+                        }
+                        if (typeof (o as any).remainingMinutes === 'number') {
+                          return `${(o as any).remainingMinutes} m`;
+                        }
+                        if (!o.courseId) return '-';
+                        const c = courseMap[o.courseId];
+                        if (!c) return '-';
+                        const total = c.totalSessions || 0;
+                        const attended = COURSE_RECORDS.filter(r => r.courseId === o.courseId && r.status === 'attended').length;
+                        const duration = o.durationMinutes || c.durationMinutes || 0;
+                        const remaining = Math.max(0, total - attended) * duration;
+                        return `${remaining} m`;
+                      })()}
+                    </td>
                     <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.createdAt ? new Date(o.createdAt).toLocaleString() : '-'}</td>
                     <td style={{ border: '2px solid #ccc', padding: '6px' }}>
                       {o.courseId ? (
-                        <Link 
-                          href={`/classroom/wait?courseId=${encodeURIComponent(o.courseId)}&orderId=${encodeURIComponent(o.orderId)}`}
+                        <Link
+                          href={`/classroom/wait?courseId=${encodeURIComponent(o.courseId)}&orderId=${encodeURIComponent(o.orderId || (o as any).id || '')}&orderid=${encodeURIComponent(o.orderId || (o as any).id || '')}`}
                           className="btn btn-primary"
                           style={{ padding: '4px 8px', fontSize: '12px' }}
                         >

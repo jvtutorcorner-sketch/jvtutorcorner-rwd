@@ -266,7 +266,7 @@
   "orders_label": "Orders",
   "all_orders": "All Orders",
   "course_orders": "Course Orders",
-  "my_orders": "My Orders",
+  "my_orders": "My Course History",
   "login_to_view_orders": "Please login to view your orders.",
   "go_login": "Go to Login",
   "load_error": "Loading failed",

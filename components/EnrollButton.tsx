@@ -9,6 +9,7 @@ import { useT } from '@/components/IntlProvider';
 interface EnrollButtonProps {
   courseId: string;
   courseTitle: string;
+  requiredPlan?: 'basic' | 'pro' | 'elite';
 }
 
 type Enrollment = {
@@ -23,6 +24,7 @@ type Enrollment = {
 export const EnrollButton: React.FC<EnrollButtonProps> = ({
   courseId,
   courseTitle,
+  requiredPlan = 'basic',
 }) => {
   const t = useT();
   const [isOpen, setIsOpen] = useState(false);
@@ -143,6 +145,18 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
     }
   };
 
+  const PLAN_LEVELS: Record<string, number> = {
+    viewer: 0,
+    basic: 1,
+    pro: 2,
+    elite: 3,
+  };
+
+  const userPlan = storedUser?.plan || 'viewer';
+  const userLevel = PLAN_LEVELS[userPlan] || 0;
+  const requiredLevel = PLAN_LEVELS[requiredPlan] || 1;
+  const isPlanSufficient = userLevel >= requiredLevel;
+
   return (
     <>
       <button
@@ -152,17 +166,30 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
             // not logged in: do nothing (button disabled visually); provide hint instead
             return;
           }
+          if (!isPlanSufficient) return;
           // logged in: open confirmation modal
           setConfirmOpen(true);
         }}
-        disabled={!storedUser}
-        title={!storedUser ? t('enroll_title_login') : `${t('enroll_title_logged_prefix')} ${storedUser.email} ${t('enroll_title_logged_suffix')}`}
+        disabled={!storedUser || !isPlanSufficient}
+        title={
+          !storedUser
+            ? t('enroll_title_login')
+            : !isPlanSufficient
+              ? `需要 ${requiredPlan.charAt(0).toUpperCase() + requiredPlan.slice(1)} 方案才能報名此課程`
+              : `${t('enroll_title_logged_prefix')} ${storedUser.email} ${t('enroll_title_logged_suffix')}`
+        }
       >
         {t('enroll_button_label')}
       </button>
 
       {!storedUser && (
         <p className="auth-warning">{t('enroll_login_hint_before')} <Link href="/login">{t('login')}</Link>{t('enroll_login_hint_after')}</p>
+      )}
+
+      {storedUser && !isPlanSufficient && (
+        <p className="auth-warning" style={{ color: '#d32f2f' }}>
+          您的 {userPlan} 方案無法報名此課程，請升級至 {requiredPlan.charAt(0).toUpperCase() + requiredPlan.slice(1)} 方案或更高等級。
+        </p>
       )}
 
       {submissions.length > 0 && (

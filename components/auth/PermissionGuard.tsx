@@ -40,6 +40,13 @@ export default function PermissionGuard() {
             // Actually, pageConfigs usually contains exact routes like /pricing.
             // What about /pricing/subfeature?
 
+            // Bypass for /classroom paths since they manage their own permissions
+            if (pathname?.startsWith('/classroom')) {
+                setAuthorized(true);
+                setChecking(false);
+                return;
+            }
+
             // Filter configs that match the start of the pathname
             // Sort by length descending to match most specific path first
             const config = settings.pageConfigs

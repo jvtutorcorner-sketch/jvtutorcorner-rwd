@@ -179,7 +179,16 @@ export function useAgoraClassroom({
   // join with options: whether to publish audio/video
   const joinWithOptions = useCallback(async (opts?: { publishAudio?: boolean; publishVideo?: boolean; audioDeviceId?: string; videoDeviceId?: string; }) => {
     const { publishAudio = true, publishVideo = true, audioDeviceId, videoDeviceId } = opts || {};
+
+    // Prevent joining if already joined, currently loading, or if the Agora client is already in the process of connecting.
     if (joined || loading) return;
+    if (clientRef.current) {
+      const state = clientRef.current.connectionState;
+      if (state === 'CONNECTING' || state === 'CONNECTED' || state === 'RECONNECTING') {
+        console.log('[Agora] Aborting join attempt, client state is already:', state);
+        return;
+      }
+    }
 
     try {
       setLoading(true);

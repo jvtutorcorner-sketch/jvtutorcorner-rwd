@@ -41,8 +41,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ orde
 
     const TableName = process.env.DYNAMODB_TABLE_ORDERS || 'jvtutorcorner-orders';
 
-    // If local dev fallback and not using Dynamo, check local file
-    const useDynamo = process.env.NODE_ENV === 'production' && typeof process.env.DYNAMODB_TABLE_ORDERS === 'string' && process.env.DYNAMODB_TABLE_ORDERS.length > 0;
+    // Enable DynamoDB when a table name is provided and either running in production
+    // or explicit AWS credentials are available in env (useful for local dev).
+    const useDynamo =
+      typeof TableName === 'string' && TableName.length > 0 && (
+        process.env.NODE_ENV === 'production' || (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY)
+      );
     if (!useDynamo) {
       const found = LOCAL_ORDERS.find((o) => o.orderId === orderId) || null;
       if (!found) return NextResponse.json({ error: 'Order not found' }, { status: 404 });
@@ -69,15 +73,22 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ or
   try {
     const { orderId } = await params as { orderId: string };
     const body = await request.json();
-    const { status, payments, payment } = body || {};
+    const { action, status, payments, payment, remainingSeconds } = body || {};
 
-    if (!orderId || !status) {
-      return NextResponse.json({ error: 'orderId and status required' }, { status: 400 });
+    if (!orderId) {
+      return NextResponse.json({ error: 'orderId required' }, { status: 400 });
+    }
+
+    if (!status && action !== 'deduct' && typeof remainingSeconds !== 'number') {
+      return NextResponse.json({ error: 'status, action, or remainingSeconds required' }, { status: 400 });
     }
 
     const TableName = process.env.DYNAMODB_TABLE_ORDERS || 'jvtutorcorner-orders';
 
-    const useDynamo = process.env.NODE_ENV === 'production' && typeof process.env.DYNAMODB_TABLE_ORDERS === 'string' && process.env.DYNAMODB_TABLE_ORDERS.length > 0;
+    const useDynamo =
+      typeof TableName === 'string' && TableName.length > 0 && (
+        process.env.NODE_ENV === 'production' || (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY)
+      );
 
     let updated: any = null;
 
@@ -91,8 +102,26 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ or
       if (Array.isArray(payments)) existingPayments.push(...payments);
       if (payment) existingPayments.push(payment);
 
-      LOCAL_ORDERS[idx] = { ...existing, status, updatedAt: now, orderNumber: `${existing.userId || 'unknown'}-${now}`, payments: existingPayments };
-      updated = LOCAL_ORDERS[idx];
+      updated = { ...existing, updatedAt: now };
+      if (status) {
+        updated.status = status;
+        updated.orderNumber = `${existing.userId || 'unknown'}-${now}`;
+      }
+      updated.payments = existingPayments;
+
+      if (action === 'deduct') {
+        const rSessions = typeof existing.remainingSessions === 'number' ? existing.remainingSessions : existing.totalSessions || 0;
+
+        updated.remainingSessions = Math.max(0, rSessions - 1);
+        // remainingSeconds stays as the per-session duration unless we want to pool it, 
+        // but user asked to avoid multiplying by total sessions.
+      }
+
+      if (typeof remainingSeconds === 'number') {
+        updated.remainingSeconds = Math.max(0, remainingSeconds);
+      }
+
+      LOCAL_ORDERS[idx] = updated;
       saveLocalOrders();
     } else {
       // get existing
@@ -107,11 +136,26 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ or
       const now = new Date().toISOString();
 
       // merge payments for Dynamo: append incoming payments/payment
-      const existingPayments = Array.isArray(existingRes.Item.payments) ? existingRes.Item.payments.slice() : [];
+      const existingItem = existingRes.Item;
+      const existingPayments = Array.isArray(existingItem.payments) ? existingItem.payments.slice() : [];
       if (Array.isArray(payments)) existingPayments.push(...payments);
       if (payment) existingPayments.push(payment);
 
-      updated = { ...existingRes.Item, status, updatedAt: now, orderNumber: `${existingRes.Item.userId || 'unknown'}-${now}`, payments: existingPayments } as any;
+      updated = { ...existingItem, updatedAt: now, payments: existingPayments } as any;
+      if (status) {
+        updated.status = status;
+        updated.orderNumber = `${existingItem.userId || 'unknown'}-${now}`;
+      }
+
+      if (action === 'deduct') {
+        const rSessions = typeof existingItem.remainingSessions === 'number' ? existingItem.remainingSessions : existingItem.totalSessions || 0;
+
+        updated.remainingSessions = Math.max(0, rSessions - 1);
+      }
+
+      if (typeof remainingSeconds === 'number') {
+        updated.remainingSeconds = Math.max(0, remainingSeconds);
+      }
 
       await docClient.send(new PutCommand({ TableName, Item: updated }));
     }

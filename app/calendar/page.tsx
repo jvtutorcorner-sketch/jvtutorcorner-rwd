@@ -37,23 +37,28 @@ export default function CalendarPage() {
       return;
     }
 
-    // student/other: fetch enrollments and include only PAID / ACTIVE enrollments
+    // student/other: fetch orders and include ACTIVE/PAID orders
     (async () => {
       try {
-        const res = await fetch('/api/enroll');
+        const url = `/api/orders?limit=50&userId=${encodeURIComponent(user.email || '')}`;
+        const res = await fetch(url);
         const data = await res.json();
-        const rows = data?.data || [];
-        const okStatuses = new Set(['PAID', 'ACTIVE']);
+        let rows: any[] = [];
+        if (data && Array.isArray(data)) rows = data;
+        else if (data && Array.isArray(data.data)) rows = data.data;
+
         const ids = new Set<string>();
         for (const r of rows) {
           if (!r) continue;
-          if (String(r.email).trim().toLowerCase() === String(user.email).trim().toLowerCase() && okStatuses.has(r.status)) {
+          const status = String(r.status || '').toUpperCase();
+          // Assume if order exists and isn't failed/cancelled, the student is allowed in the course.
+          if (status !== 'FAILED' && status !== 'CANCELLED' && status !== 'CANCELED') {
             if (r.courseId) ids.add(String(r.courseId));
           }
         }
         setAllowedCourseIds(ids);
       } catch (e) {
-        console.error('[calendar] failed to load enrollments', e);
+        console.error('[calendar] failed to load enrollments/orders', e);
         setAllowedCourseIds(new Set());
       }
     })();
@@ -88,31 +93,30 @@ export default function CalendarPage() {
       const start = matchingActivity
         ? parseISO(matchingActivity.timestamp)
         : (() => {
-            const dateStr = record.date + 'T19:00:00Z';
-            return parseISO(dateStr);
-          })();
+          const dateStr = record.date + 'T19:00:00Z';
+          return parseISO(dateStr);
+        })();
 
       const course = COURSES.find((c) => c.id === record.courseId);
       const duration = (course && (course.sessionDurationMinutes || course.durationMinutes)) || 60;
       const end = addMinutes(start, duration);
       const now = new Date();
-      const statusStr: 'upcoming' | 'ongoing' | 'interrupted' | 'finished' = record.status === 'missed' 
-        ? 'interrupted' 
-        : now < start 
-          ? 'upcoming' 
-          : now >= start && now < end 
-            ? 'ongoing' 
+      const statusStr: 'upcoming' | 'ongoing' | 'interrupted' | 'finished' = record.status === 'missed'
+        ? 'interrupted'
+        : now < start
+          ? 'upcoming'
+          : now >= start && now < end
+            ? 'ongoing'
             : 'finished';
 
       return {
         id: record.id,
-        title: `${record.courseName} (${
-          record.status === 'attended'
+        title: `${record.courseName} (${record.status === 'attended'
             ? t('calendar_status_attended')
             : record.status === 'missed'
               ? t('calendar_status_missed')
               : t('calendar_status_pending')
-        })`,
+          })`,
         start,
         description: record.notes,
         type: 'record' as const,
