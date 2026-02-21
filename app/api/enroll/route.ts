@@ -31,7 +31,7 @@ export type EnrollmentRecord = {
   sourceType?: 'B2C' | 'B2B_SEAT' | 'ADMIN_OVERRIDE'; // 來源類型
 };
 
-const TABLE_NAME = process.env.ENROLLMENTS_TABLE;
+const TABLE_NAME = process.env.ENROLLMENTS_TABLE || process.env.DYNAMODB_TABLE_ENROLLMENTS || 'jvtutorcorner-enrollments';
 
 // local persistence for development fallback
 let LOCAL_ENROLLMENTS: EnrollmentRecord[] = [];
@@ -60,9 +60,9 @@ async function saveLocalEnrollments() {
 
 // production 且有 TABLE_NAME 才真的用 DynamoDB
 const useDynamo =
-  process.env.NODE_ENV === 'production' &&
-  typeof TABLE_NAME === 'string' &&
-  TABLE_NAME.length > 0;
+  typeof TABLE_NAME === 'string' && TABLE_NAME.length > 0 && (
+    process.env.NODE_ENV === 'production' || !!(process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID)
+  );
 
 if (!useDynamo) {
   console.warn(

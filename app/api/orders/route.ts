@@ -32,12 +32,12 @@ const getUserId = async (): Promise<string | null> => {
 
 // Development fallback: keep orders in memory when DynamoDB isn't configured
 let LOCAL_ORDERS: any[] = [];
-const ORDERS_TABLE = process.env.DYNAMODB_TABLE_ORDERS;
+const ORDERS_TABLE = process.env.DYNAMODB_TABLE_ORDERS || 'jvtutorcorner-orders';
 // Enable DynamoDB when a table name is provided and either running in production
 // or explicit AWS credentials are available in env (useful for local dev).
 const useDynamo =
   typeof ORDERS_TABLE === 'string' && ORDERS_TABLE.length > 0 && (
-    process.env.NODE_ENV === 'production' || (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY)
+    process.env.NODE_ENV === 'production' || !!(process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID)
   );
 
 async function loadLocalOrders() {

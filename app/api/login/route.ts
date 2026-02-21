@@ -41,8 +41,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, profile: publicProfile });
     }
 
-    const PROFILES_TABLE = process.env.DYNAMODB_TABLE_PROFILES || process.env.PROFILES_TABLE || '';
-    const useDynamo = typeof PROFILES_TABLE === 'string' && PROFILES_TABLE.length > 0;
+    const PROFILES_TABLE = process.env.DYNAMODB_TABLE_PROFILES || process.env.PROFILES_TABLE || 'jvtutorcorner-profiles';
+    const useDynamo = typeof PROFILES_TABLE === 'string' && PROFILES_TABLE.length > 0 &&
+      (process.env.NODE_ENV === 'production' || !!(process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID));
 
     let found: any = null;
     if (useDynamo) {

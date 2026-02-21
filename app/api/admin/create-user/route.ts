@@ -25,8 +25,9 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { email, plan } = body;
     if (!email) return NextResponse.json({ ok: false, error: 'email required' }, { status: 400 });
-    const PROFILES_TABLE = process.env.DYNAMODB_TABLE_PROFILES || process.env.PROFILES_TABLE || '';
-    const useDynamo = typeof PROFILES_TABLE === 'string' && PROFILES_TABLE.length > 0;
+    const PROFILES_TABLE = process.env.DYNAMODB_TABLE_PROFILES || process.env.PROFILES_TABLE || 'jvtutorcorner-profiles';
+    const useDynamo = typeof PROFILES_TABLE === 'string' && PROFILES_TABLE.length > 0 &&
+      (process.env.NODE_ENV === 'production' || !!(process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID));
 
     if (useDynamo) {
       try {
