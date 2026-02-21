@@ -36,17 +36,27 @@ export async function POST(req: NextRequest) {
             const merchantTradeNo = data.MerchantTradeNo;
             const amount = data.TradeAmt;
             const userId = data.CustomField1; // We stored userId here in Checkout
+            const orderId = data.CustomField2;
+
+            console.log(`[ECPay Return] Payment Success: ${merchantTradeNo} for User ${userId}, matching Order ${orderId}`);
 
             // 3. Update DB
-            // TODO: Implement proper Order table update
-            console.log(`[ECPay Return] Payment Success: ${merchantTradeNo} for User ${userId}`);
-
-            // Update User permission if needed (e.g., granting a license directly)
-            // Or typically specific order handling logic.
-            // For this task, we assume "granting access" logic placeholder.
-            if (userId) {
-                // Example: Log or update user entitlement
-                // await profilesService.updateUserEntitlement(userId, ...);
+            if (orderId) {
+                try {
+                    const base = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+                    const res = await fetch(`${base}/api/orders/${encodeURIComponent(orderId)}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ status: 'PAID' }),
+                    });
+                    if (!res.ok) {
+                        console.error('[ECPay Return] Failed to update order status via API', res.status);
+                    } else {
+                        console.log(`[ECPay Return] Successfully updated order ${orderId} to PAID via API`);
+                    }
+                } catch (e) {
+                    console.error('[ECPay Return] Error updating order status:', e);
+                }
             }
 
         } else {

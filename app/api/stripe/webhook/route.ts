@@ -98,13 +98,33 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) 
     const userId = session.metadata?.userId;
     const subscriptionId = session.subscription as string;
     const customerId = session.customer as string;
+    const orderId = session.metadata?.orderId;
 
     if (!userId) {
         console.warn('Missing userId in session metadata');
         return;
     }
 
-    console.log(`[Stripe Webhook] Checkout completed for user ${userId}`);
+    console.log(`[Stripe Webhook] Checkout completed for user ${userId}, matching Order ${orderId}`);
+
+    // Update DB Order Status
+    if (orderId) {
+        try {
+            const base = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+            const res = await fetch(`${base}/api/orders/${encodeURIComponent(orderId)}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: 'PAID' }),
+            });
+            if (!res.ok) {
+                console.error('[Stripe Webhook] Failed to update order status via API', res.status);
+            } else {
+                console.log(`[Stripe Webhook] Successfully updated order ${orderId} to PAID via API`);
+            }
+        } catch (e) {
+            console.error('[Stripe Webhook] Error updating order status:', e);
+        }
+    }
 
     // Retrieve subscription details to get status and period end
     const subscription = await stripe.subscriptions.retrieve(subscriptionId);

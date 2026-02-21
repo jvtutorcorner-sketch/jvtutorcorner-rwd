@@ -127,9 +127,8 @@ export default function PricingPage() {
             return (
               <div
                 key={plan.id}
-                className={`card pricing-card ${
-                  plan.badge ? 'pricing-card-highlight' : ''
-                }`}
+                className={`card pricing-card ${plan.badge ? 'pricing-card-highlight' : ''
+                  }`}
               >
                 <header className="pricing-header">
                   <h2>{PLAN_LABELS[plan.id]}</h2>
@@ -165,6 +164,13 @@ export default function PricingPage() {
                     <button className="card-button" disabled>
                       {t('pricing_current_plan')}
                     </button>
+                  ) : user ? (
+                    <Link
+                      href={`/pricing/checkout?plan=${plan.id}`}
+                      className="card-button primary"
+                    >
+                      {t('pricing_upgrade')}
+                    </Link>
                   ) : (
                     <Link
                       href="/login"

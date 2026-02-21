@@ -152,14 +152,15 @@ export default async function CourseDetailPage({ params }: { params: Promise<{ i
             )}
 
             <div style={{ marginTop: 16 }}>
-              <EnrollButton courseId={course.id} courseTitle={course.title} requiredPlan={course.requiredPlan || 'basic'} />
+              <EnrollButton
+                courseId={course.id}
+                courseTitle={course.title}
+                requiredPlan={course.requiredPlan || 'basic'}
+                price={pricePerSession || 0}
+                currency={currency || 'TWD'}
+              />
             </div>
 
-            <p className="course-side-note">
-              目前為示範環境，報名資料只會暫存在前端並輸出到 console。
-              之後可以在這裡串接 Stripe / 跨國金流或本地第三方支付，
-              完成線上刷卡與訂單建立。
-            </p>
           </div>
         </aside>
       </div>

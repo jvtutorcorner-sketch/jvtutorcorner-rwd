@@ -23,7 +23,7 @@ export default function TeacherCoursesPage() {
   const router = useRouter();
   const t = useT();
   const [orders, setOrders] = useState<Order[] | null>(null);
-  const [courseMap, setCourseMap] = useState<Record<string, { title?: string; teacherName?: string; durationMinutes?: number; totalSessions?: number }>>({});
+  const [courseMap, setCourseMap] = useState<Record<string, { title?: string; teacherName?: string; durationMinutes?: number; totalSessions?: number; startDate?: string; nextStartDate?: string; endDate?: string; startTime?: string; endTime?: string }>>({});
   const [userMap, setUserMap] = useState<Record<string, { firstName?: string; lastName?: string }>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -46,6 +46,23 @@ export default function TeacherCoursesPage() {
     };
   }, []);
 
+  const getPageTitle = () => {
+    if (!user) return t('orders_label');
+    if (user.role === 'admin') return t('all_orders');
+    if (user.role === 'teacher') return t('course_orders');
+    return t('my_orders');
+  };
+
+  function formatDateTime(value: any) {
+    if (!value) return '-';
+    try {
+      const d = new Date(value);
+      if (isNaN(d.getTime())) return String(value);
+      return d.toLocaleString(undefined, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    } catch (e) {
+      return String(value);
+    }
+  }
   useEffect(() => {
     if (!mounted || !user) return;
     if (user.role !== 'teacher') return;
@@ -53,7 +70,7 @@ export default function TeacherCoursesPage() {
 
     // Fetch teacher's courses, then fetch orders for those courses
     const teacherId = (user as any).teacherId || '';
-    const teacherName = user.lastName ? `${user.lastName}老師` : user.email || '';
+    const teacherName = user.displayName || (user.lastName ? `${user.lastName}老師` : user.email || '');
 
     fetch(`/api/courses?teacherId=${encodeURIComponent(teacherId)}`)
       .then((r) => r.json())
@@ -81,7 +98,8 @@ export default function TeacherCoursesPage() {
         Promise.all(orderPromises)
           .then((orderArrays) => {
             const allOrders = orderArrays.flat();
-            const uniqueOrders = allOrders.filter((order, index, self) => index === self.findIndex((o) => o.orderId === order.orderId));
+            const uniqueOrders = allOrders.filter((order, index, self) => index === self.findIndex((o) => o.orderId === order.orderId))
+              .filter(order => order.status !== 'FAILED');
             setOrders(uniqueOrders);
             // build courseId -> title map
             const ids = Array.from(new Set(uniqueOrders.map((o) => o.courseId).filter(Boolean)));
@@ -96,7 +114,12 @@ export default function TeacherCoursesPage() {
                   title: j.course.title,
                   teacherName: j.course.teacherName || j.course.teacher || null,
                   durationMinutes: j.course.durationMinutes,
-                  totalSessions: j.course.totalSessions
+                  totalSessions: j.course.totalSessions,
+                  startDate: j.course.startDate || null,
+                  nextStartDate: j.course.nextStartDate || null,
+                  endDate: j.course.endDate || null,
+                  startTime: j.course.startTime || null,
+                  endTime: j.course.endTime || null
                 } : null))
                 .catch(() => null),
             );
@@ -183,10 +206,11 @@ export default function TeacherCoursesPage() {
                   <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>{t('role_student')}</th>
                   <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>{t('student_courses_course_name')}</th>
                   <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>{t('role_teacher')}</th>
-                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>{t('status')}</th>
+                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>{t('session_duration_label')}</th>
                   <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>剩餘課程數</th>
                   <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>剩餘時間 (分)</th>
-                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>{t('student_courses_created_at')}</th>
+                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>{t('start_time_label')}</th>
+                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>{t('end_time_label')}</th>
                   <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>{t('enter_classroom')}</th>
                 </tr>
               </thead>
@@ -194,20 +218,17 @@ export default function TeacherCoursesPage() {
                 {orders.map((o) => (
                   <tr key={o.orderId}>
                     <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.userId ? (userMap[o.userId]?.firstName && userMap[o.userId]?.lastName ? `${userMap[o.userId].firstName} ${userMap[o.userId].lastName}` : o.userId) : '-'}</td>
-                    <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.courseId ? (courseMap[o.courseId]?.title || o.courseId) : '-'}</td>
-                    <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.courseId ? (courseMap[o.courseId]?.teacherName || '-') : '-'}</td>
                     <td style={{ border: '2px solid #ccc', padding: '6px' }}>
-                      {(() => {
-                        if (!o.courseId) return '-';
-                        const record = COURSE_RECORDS.find(r => r.courseId === o.courseId);
-                        if (record) {
-                          if (record.status === 'attended') return t('calendar_status_attended') || 'Attended';
-                          if (record.status === 'missed') return t('calendar_status_missed') || 'Missed';
-                          if (record.status === 'pending') return t('calendar_status_pending') || 'Pending';
-                        }
-                        return t('calendar_status_pending') || 'Pending';
-                      })()}
+                      {o.courseId ? (
+                        <Link href={`/courses/${encodeURIComponent(o.courseId)}`}>
+                          {courseMap[o.courseId]?.title || o.courseId}
+                        </Link>
+                      ) : (
+                        '-'
+                      )}
                     </td>
+                    <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.courseId ? (courseMap[o.courseId]?.teacherName || '-') : '-'}</td>
+                    <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.courseId ? (courseMap[o.courseId]?.durationMinutes ? `${courseMap[o.courseId]?.durationMinutes} m` : '-') : '-'}</td>
                     <td style={{ border: '2px solid #ccc', padding: '6px' }}>
                       {(() => {
                         if (typeof (o as any).remainingSessions === 'number') {
@@ -240,7 +261,18 @@ export default function TeacherCoursesPage() {
                         return `${remaining} m`;
                       })()}
                     </td>
-                    <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.createdAt ? new Date(o.createdAt).toLocaleString() : '-'}</td>
+                    <td style={{ border: '2px solid #ccc', padding: '6px' }}>
+                      {(() => {
+                        const c = courseMap[o.courseId || ''];
+                        return formatDateTime(c?.nextStartDate || c?.startDate);
+                      })()}
+                    </td>
+                    <td style={{ border: '2px solid #ccc', padding: '6px' }}>
+                      {(() => {
+                        const c = courseMap[o.courseId || ''];
+                        return formatDateTime(c?.endDate);
+                      })()}
+                    </td>
                     <td style={{ border: '2px solid #ccc', padding: '6px' }}>
                       {o.courseId ? (
                         <Link

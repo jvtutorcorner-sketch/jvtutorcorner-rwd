@@ -6,7 +6,7 @@ import profilesService from '@/lib/profilesService';
 export async function POST(req: NextRequest) {
     try {
         const body = await req.json();
-        const { priceId, successUrl, cancelUrl, userId } = body;
+        const { priceId, successUrl, cancelUrl, userId, orderId } = body;
 
         // 0. Global Mock Mode Check
         if (process.env.NEXT_PUBLIC_PAYMENT_MOCK_MODE === 'true') {
@@ -70,6 +70,7 @@ export async function POST(req: NextRequest) {
             cancel_url: cancelUrl || `${process.env.NEXT_PUBLIC_BASE_URL}/settings/billing?canceled=true`,
             metadata: {
                 userId: userId,
+                orderId: orderId,
             },
         });
 

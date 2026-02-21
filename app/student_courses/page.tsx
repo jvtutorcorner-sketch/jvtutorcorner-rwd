@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { getStoredUser, type StoredUser } from '@/lib/mockAuth';
+import { getStoredUser, setStoredUser, type StoredUser } from '@/lib/mockAuth';
 import Link from 'next/link';
 import { useT } from '@/components/IntlProvider';
 import { COURSE_RECORDS } from '@/data/courseRecords';
@@ -16,6 +16,7 @@ type Order = {
   amount?: number;
   currency?: string;
   status?: string;
+  enrollmentId?: string;
   createdAt?: string;
 };
 
@@ -23,7 +24,7 @@ export default function StudentCoursesPage() {
   const router = useRouter();
   const t = useT();
   const [orders, setOrders] = useState<Order[] | null>(null);
-  const [courseMap, setCourseMap] = useState<Record<string, { title?: string; teacherName?: string; durationMinutes?: number; totalSessions?: number }>>({});
+  const [courseMap, setCourseMap] = useState<Record<string, { title?: string; teacherName?: string; durationMinutes?: number; totalSessions?: number; startDate?: string; nextStartDate?: string; endDate?: string; startTime?: string; endTime?: string }>>({});
   const [userMap, setUserMap] = useState<Record<string, { firstName?: string; lastName?: string }>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -129,11 +130,41 @@ export default function StudentCoursesPage() {
   }, [user?.email, mounted]);
 
   // When orders change, fetch course titles for any courseIds found
+  // AND process plan upgrades if present
   useEffect(() => {
     if (!orders || orders.length === 0) {
       setCourseMap({});
       return;
     }
+
+    // Process plan upgrades based on enrollmentId
+    if (user) {
+      let upgradedPlan = user.plan;
+      let hasUpgrade = false;
+
+      // Find the most recent PAID plan upgrade order
+      // We sort assuming orders are already fetched latest first, but we check all PAID
+      for (const o of orders) {
+        if (o.status?.toUpperCase() === 'PAID' && o.enrollmentId?.startsWith('plan_upgrade_')) {
+          const planFromOrder = o.enrollmentId.replace('plan_upgrade_', '');
+          if (planFromOrder && planFromOrder !== user.plan) {
+            upgradedPlan = planFromOrder as any;
+            hasUpgrade = true;
+            break; // take the latest
+          }
+        }
+      }
+
+      if (hasUpgrade && upgradedPlan !== user.plan) {
+        const updatedUser = { ...user, plan: upgradedPlan };
+        setStoredUser(updatedUser);
+        setUser(updatedUser);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new Event('tutor:auth-changed'));
+        }
+      }
+    }
+
     const ids = Array.from(new Set(orders.map(o => o.courseId).filter((id): id is string => !!id)));
     if (ids.length === 0) {
       setCourseMap({});
@@ -146,7 +177,12 @@ export default function StudentCoursesPage() {
           title: j.course.title,
           teacherName: j.course.teacherName || j.course.teacher || null,
           durationMinutes: j.course.durationMinutes,
-          totalSessions: j.course.totalSessions
+          totalSessions: j.course.totalSessions,
+          startDate: j.course.startDate || null,
+          nextStartDate: j.course.nextStartDate || null,
+          endDate: j.course.endDate || null,
+          startTime: j.course.startTime || null,
+          endTime: j.course.endTime || null,
         } : null))
         .catch(() => null)
     );
@@ -199,6 +235,17 @@ export default function StudentCoursesPage() {
     return t('my_orders');
   };
 
+  function formatDateTime(value: any) {
+    if (!value) return '-';
+    try {
+      const d = new Date(value);
+      if (isNaN(d.getTime())) return String(value);
+      return d.toLocaleString(undefined, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    } catch (e) {
+      return String(value);
+    }
+  }
+
   return (
     <div className="page">
       <section className="section">
@@ -226,33 +273,29 @@ export default function StudentCoursesPage() {
                   <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>{t('student_courses_student')}</th>
                   <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>{t('student_courses_course_name')}</th>
                   <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>{t('student_courses_teacher')}</th>
-                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>{t('student_courses_status')}</th>
+                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>{t('session_duration_label')}</th>
                   <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>剩餘課程數</th>
                   <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>剩餘時間 (分)</th>
-                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>{t('student_courses_created_at')}</th>
+                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>{t('start_time_label')}</th>
+                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>{t('end_time_label')}</th>
                   <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>{t('enter_classroom')}</th>
                 </tr>
               </thead>
               <tbody>
-                {orders.map((o) => (
+                {orders.filter(o => !!o.courseId).map((o) => (
                   <tr key={o.orderId}>
                     <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.userId ? (userMap[o.userId]?.firstName && userMap[o.userId]?.lastName ? `${userMap[o.userId].firstName} ${userMap[o.userId].lastName}` : o.userId) : '-'}</td>
                     <td style={{ border: '2px solid #ccc', padding: '6px' }}>
-                      {o.courseId ? (courseMap[o.courseId]?.title || o.courseId) : '-'}
+                      {o.courseId ? (
+                        <Link href={`/courses/${encodeURIComponent(o.courseId)}`}>
+                          {courseMap[o.courseId]?.title || o.courseId}
+                        </Link>
+                      ) : (
+                        '-'
+                      )}
                     </td>
                     <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.courseId ? (courseMap[o.courseId]?.teacherName || '-') : '-'}</td>
-                    <td style={{ border: '2px solid #ccc', padding: '6px' }}>
-                      {(() => {
-                        if (!o.courseId) return '-';
-                        const record = COURSE_RECORDS.find(r => r.courseId === o.courseId);
-                        if (record) {
-                          if (record.status === 'attended') return t('calendar_status_attended') || 'Attended';
-                          if (record.status === 'missed') return t('calendar_status_missed') || 'Missed';
-                          if (record.status === 'pending') return t('calendar_status_pending') || 'Pending';
-                        }
-                        return t('calendar_status_pending') || 'Pending';
-                      })()}
-                    </td>
+                    <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.courseId ? (courseMap[o.courseId]?.durationMinutes ? `${courseMap[o.courseId]?.durationMinutes} m` : '-') : '-'}</td>
                     <td style={{ border: '2px solid #ccc', padding: '6px' }}>
                       {(() => {
                         if (typeof (o as any).remainingSessions === 'number') {
@@ -285,16 +328,31 @@ export default function StudentCoursesPage() {
                         return `${remaining} m`;
                       })()}
                     </td>
-                    <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.createdAt ? new Date(o.createdAt).toLocaleString() : '-'}</td>
+                    <td style={{ border: '2px solid #ccc', padding: '6px' }}>
+                      {(() => {
+                        const c = courseMap[o.courseId || ''];
+                        return formatDateTime(c?.nextStartDate || c?.startDate);
+                      })()}
+                    </td>
+                    <td style={{ border: '2px solid #ccc', padding: '6px' }}>
+                      {(() => {
+                        const c = courseMap[o.courseId || ''];
+                        return formatDateTime(c?.endDate);
+                      })()}
+                    </td>
                     <td style={{ border: '2px solid #ccc', padding: '6px' }}>
                       {o.courseId ? (
-                        <Link
-                          href={`/classroom/wait?courseId=${encodeURIComponent(o.courseId)}&orderId=${encodeURIComponent(o.orderId || (o as any).id || '')}&orderid=${encodeURIComponent(o.orderId || (o as any).id || '')}`}
-                          className="btn btn-primary"
-                          style={{ padding: '4px 8px', fontSize: '12px' }}
-                        >
-                          {t('enter_classroom')}
-                        </Link>
+                        ['basic', 'pro', 'elite'].includes(user?.plan || '') ? (
+                          <Link
+                            href={`/classroom/wait?courseId=${encodeURIComponent(o.courseId)}&orderId=${encodeURIComponent(o.orderId || (o as any).id || '')}&orderid=${encodeURIComponent(o.orderId || (o as any).id || '')}`}
+                            className="btn btn-primary"
+                            style={{ padding: '4px 8px', fontSize: '12px' }}
+                          >
+                            {t('enter_classroom')}
+                          </Link>
+                        ) : (
+                          '-'
+                        )
                       ) : (
                         '-'
                       )}

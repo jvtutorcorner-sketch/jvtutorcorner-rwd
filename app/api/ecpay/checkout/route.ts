@@ -4,11 +4,11 @@ import { generateCheckMacValue, generateMerchantTradeNo, ECPAY_API_URL, getBaseE
 export async function POST(req: NextRequest) {
     try {
         const body = await req.json();
-        const { amount, itemName, userId } = body;
+        const { amount, itemName, userId, orderId } = body;
 
         // Validation
-        if (!amount || !itemName) {
-            return NextResponse.json({ error: 'Missing amount or itemName' }, { status: 400 });
+        if (!amount || !itemName || !orderId) {
+            return NextResponse.json({ error: 'Missing amount, itemName or orderId' }, { status: 400 });
         }
 
         if (process.env.NEXT_PUBLIC_PAYMENT_MOCK_MODE === 'true') {
@@ -73,6 +73,7 @@ export async function POST(req: NextRequest) {
         if (userId) {
             params['CustomField1'] = userId;
         }
+        params['CustomField2'] = orderId; // Always pass orderId here
 
         // Generate CheckMacValue
         const checkMacValue = generateCheckMacValue(params);
