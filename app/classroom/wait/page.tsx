@@ -54,9 +54,9 @@ export default function ClassroomWaitPage() {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
     const courseFromUrl = params.get('courseId') ?? 'c1';
-    const orderFromUrl = params.get('orderId');
+    const orderFromUrl = params.get('orderId') || params.get('orderid');
     setCourseId(courseFromUrl);
-    setOrderId(orderFromUrl ?? null);
+    setOrderId(orderFromUrl || null);
 
     // Fetch course details from API for dynamic title
     fetch(`/api/courses/${encodeURIComponent(courseFromUrl)}`)
@@ -77,7 +77,8 @@ export default function ClassroomWaitPage() {
       });
 
     const sessionFromUrl = params.get('session');
-    const key = sessionFromUrl ? sessionFromUrl : `classroom_session_ready_${courseFromUrl}`;
+    // If no session key in URL, generate one that includes orderId to prevent course-level collisions
+    const key = sessionFromUrl ? sessionFromUrl : `classroom_session_ready_${courseFromUrl}${orderFromUrl ? `_${orderFromUrl}` : ''}`;
     setSessionReadyKey(key);
     if (!sessionFromUrl) {
       params.set('session', key);
@@ -235,7 +236,8 @@ export default function ClassroomWaitPage() {
         .then((j) => {
           const serverParticipants = j.participants || [];
           const email = storedUserState?.email;
-          const userId = email || role || 'anonymous';
+          // Use a more stable userId to prevent false-positives in "isRoleTaken"
+          const userId = email || (typeof window !== 'undefined' ? (window as any).__MOCK_USER_ID__ : null) || 'anonymous';
           const selfIsReady = serverParticipants.some((p: { role: string; userId: string }) => p.role === role && p.userId === userId);
 
           // Check if data actually changed before updating state
@@ -269,7 +271,7 @@ export default function ClassroomWaitPage() {
 
     const syncUuid = sessionReadyKey;
     const email = storedUserState?.email;
-    const userId = email || role || 'anonymous';
+    const userId = email || (typeof window !== 'undefined' ? (window as any).__MOCK_USER_ID__ : null) || 'anonymous';
 
     console.log('toggleReady: syncUuid=', syncUuid, 'role=', role, 'userId=', userId);
 
@@ -688,7 +690,7 @@ export default function ClassroomWaitPage() {
 
   const isRoleTaken = React.useMemo(() => {
     if (!role || !storedUserState) return false;
-    const currentUserId = storedUserState.email || role || 'anonymous';
+    const currentUserId = storedUserState.email || (typeof window !== 'undefined' ? (window as any).__MOCK_USER_ID__ : null) || 'anonymous';
     // If there is any participant with the same role but a different user ID, it means the role is occupied
     return participants.some(p => p.role === role && p.userId !== currentUserId);
   }, [participants, role, storedUserState]);

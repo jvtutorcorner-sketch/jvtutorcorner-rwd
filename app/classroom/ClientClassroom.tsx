@@ -1381,7 +1381,9 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
             }
 
             // 3. Exit if session ended on server (and we aren't the teacher who just ended it)
-            if (sessionData.endTs === null && reportedRef.current) {
+            // Safety: Only kick out if we actually have a session previously (endTsRef.current !== null).
+            // This avoids kicking out students who enter before the session is initialized on the server.
+            if (sessionData.endTs === null && reportedRef.current && endTsRef.current !== null) {
               const isTeacher = (urlRole === 'teacher' || computedRole === 'teacher');
               if (!isTeacher) {
                 console.log('[ClientClassroom] Session ended on server, student exiting via heartbeat check...');
@@ -1682,8 +1684,8 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           } catch (e) { console.warn('[Timer] Fetch session failed:', e); }
         }
 
-        // If no endTs and teacher, create one
-        if (!endTs && isTeacher) {
+        // If no endTs, initialize one. Both teacher and student can initialize to ensure timer starts.
+        if (!endTs) {
           const now = Date.now();
           // The end time is calculated from the moment both joined+whiteboard are ready
           // We add a small buffer for the initial delay
@@ -1691,10 +1693,10 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           endTs = now + (secs + bufferSecs) * 1000;
           endTsRef.current = endTs;
 
-          console.log('[Timer] Teacher creating new authoritative endTs:', endTs);
+          console.log('[Timer] Initializing new authoritative endTs:', endTs);
           try { localStorage.setItem(endKey, String(endTs)); } catch (e) { }
 
-          // Broadcast class_started with endTs
+          // Broadcast class_started with endTs so other tabs/users sync
           const sessionBroadcastName = sessionParam || channelName || `classroom_session_ready_${courseId}`;
           try {
             const bc = new BroadcastChannel(sessionBroadcastName);
@@ -1702,7 +1704,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
             setTimeout(() => { try { bc.close(); } catch (e) { } }, 100);
           } catch (e) { }
 
-          // Persist to server
+          // Persist to server session store
           try {
             await fetch('/api/classroom/session', {
               method: 'POST',
