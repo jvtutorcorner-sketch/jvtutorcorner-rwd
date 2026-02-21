@@ -85,7 +85,10 @@ export default function PermissionGuard() {
             //    BUT the UI checkboxes imply "checked = visible".
 
             let isAllowed = true;
-            if (perm) {
+            if (role === 'admin' && pathname?.startsWith('/admin')) {
+                // Safety bypass: Admin can always access admin pages
+                isAllowed = true;
+            } else if (perm) {
                 isAllowed = perm.pageVisible !== false;
             } else {
                 // No explicit permission set for this role on this page

@@ -51,6 +51,9 @@ export default function DedicatedTeacherEditPage() {
                     setIntro(tData.intro || '');
                     setSubjects(tData.subjects?.join(', ') || '');
                     setLanguages(tData.languages?.join(', ') || '');
+                    if (tData.profileReviewStatus === 'PENDING') {
+                        setMessage('您有一筆變更申請正在審核中，新的提交會覆蓋它。');
+                    }
                 } else if (res.status === 404) {
                     // Initialize name from session if profile doesn't exist yet
                     setName(fallbackName);
@@ -81,16 +84,19 @@ export default function DedicatedTeacherEditPage() {
         };
 
         try {
-            const res = await fetch(`/api/teachers/${teacherId}`, {
-                method: 'PATCH',
+            const res = await fetch(`/api/teachers/${teacherId}/review-request`, {
+                method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),
             });
             const data = await res.json();
             if (data.ok) {
-                setMessage('✨ 更新成功！');
+                setMessage('✨ 提交成功！請等待管理員審核。系統將在 5 秒後自動返回首頁...');
+                setTimeout(() => {
+                    router.push('/');
+                }, 5000);
             } else {
-                setMessage(data.message || '❌ 更新失敗');
+                setMessage(data.message || '❌ 提交失敗');
             }
         } catch (err) {
             setMessage('❌ 連線失敗');
@@ -202,7 +208,7 @@ export default function DedicatedTeacherEditPage() {
                                     opacity: saving ? 0.7 : 1,
                                 }}
                             >
-                                {saving ? '處理中...' : '儲存變更'}
+                                {saving ? '送出中...' : '送出提交變更'}
                             </button>
                             {teacherId && (
                                 <Link
