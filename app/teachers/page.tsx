@@ -1,14 +1,18 @@
 import React from 'react';
 import { TEACHERS } from '@/data/teachers';
 import { TeacherCard } from '@/components/TeacherCard';
-import { useT, ServerT } from '@/components/IntlProvider';
 import SearchForm from '@/components/SearchForm';
-import PageBreadcrumb from '@/components/PageBreadcrumb';
 import { ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { ddbDocClient } from '@/lib/dynamo';
+import Pagination from '@/components/Pagination';
 
-export default async function TeachersPage() {
-  const t = ServerT; // Use server-side translation helper if available, or just render keys
+export default async function TeachersPage({ searchParams }: { searchParams: Promise<any> }) {
+  const spa = await searchParams;
+  const teacherQuery = (spa?.teacher || '').toLowerCase().trim();
+  const languageQuery = (spa?.language || '').toLowerCase().trim();
+
+  const limit = parseInt(spa?.limit || '20', 10);
+  const page = parseInt(spa?.page || '1', 10);
 
   let teachers: any[] = [];
   try {
@@ -25,22 +29,46 @@ export default async function TeachersPage() {
     teachers = TEACHERS;
   }
 
+  // Client-side filtering (simulated on server for searchParams)
+  const filteredTeachers = teachers.filter(t => {
+    const name = (t.name || t.displayName || '').toLowerCase();
+    const lats = (t.languages || []).map((l: string) => l.toLowerCase());
+
+    if (teacherQuery && !name.includes(teacherQuery)) return false;
+    if (languageQuery && !lats.some((l: string) => l.includes(languageQuery))) return false;
+
+    return true;
+  });
+
+  // Pagination logic
+  const totalItems = filteredTeachers.length;
+  const startIndex = (page - 1) * limit;
+  const paginatedTeachers = filteredTeachers.slice(startIndex, startIndex + limit);
+
   return (
     <main style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
-      <PageBreadcrumb />
-      <h1 style={{ marginBottom: '24px' }}><ServerT s="menu_teachers" /></h1>
+      <h1 style={{ marginBottom: '24px' }}>專業師資</h1>
 
       <section style={{ marginBottom: '32px' }}>
-        <SearchForm targetPath="/teachers" />
+        <SearchForm
+          targetPath="/teachers"
+          initial={{ teacher: spa?.teacher, language: spa?.language }}
+        />
       </section>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '24px' }}>
-        {teachers.map(teacher => (
+        {paginatedTeachers.map(teacher => (
           <TeacherCard key={teacher.id || teacher.roid_id} teacher={teacher} />
         ))}
       </div>
 
-      {teachers.length === 0 && (
+      <Pagination
+        totalItems={totalItems}
+        pageSize={limit}
+        currentPage={page}
+      />
+
+      {totalItems === 0 && (
         <div style={{ textAlign: 'center', padding: '48px', color: '#666' }}>
           目前沒有符合條件的老師。
         </div>

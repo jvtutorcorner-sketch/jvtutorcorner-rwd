@@ -59,7 +59,7 @@ export default async function TeacherDetailPage({ params }: { params: any }) {
 
       <div style={{ marginTop: '40px', padding: '24px', background: '#f9fafb', borderRadius: '12px' }}>
         <h3 style={{ fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '16px' }}>
-          <ServerT s="about_teacher_title" />
+          關於老師
         </h3>
         <p style={{ lineHeight: '1.6', whiteSpace: 'pre-line' }}>{teacher.intro}</p>
       </div>

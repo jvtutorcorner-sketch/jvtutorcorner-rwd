@@ -3,7 +3,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { getStoredUser } from '@/lib/mockAuth';
-import PageBreadcrumb from '@/components/PageBreadcrumb';
 import { useT } from '@/components/IntlProvider';
 import Link from 'next/link';
 
@@ -107,7 +106,6 @@ export default function TeacherEditPage() {
             fontFamily: "'Outfit', 'Inter', sans-serif"
         }}>
             <div style={{ maxWidth: '900px', margin: '0 auto' }}>
-                <PageBreadcrumb />
 
                 <header style={{ marginTop: '32px', marginBottom: '40px', textAlign: 'center' }}>
                     <h1 style={{

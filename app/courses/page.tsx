@@ -3,6 +3,7 @@ import { ddbDocClient } from '@/lib/dynamo';
 import { COURSES } from '@/data/courses';
 import { CourseCard } from '@/components/CourseCard';
 import SearchForm from '@/components/SearchForm';
+import Pagination from '@/components/Pagination';
 
 type CoursesPageProps = {
   searchParams?: {
@@ -11,6 +12,8 @@ type CoursesPageProps = {
     region?: string;
     mode?: string;
     teacher?: string;
+    limit?: string;
+    page?: string;
   };
 };
 
@@ -18,21 +21,18 @@ export default async function CoursesPage(props?: CoursesPageProps) {
   const raw = await (props?.searchParams ?? {});
   function getParam(key: string) {
     if (!raw) return '';
-    if (typeof (raw as any).get === 'function') {
-      try {
-        return (raw as any).get(key) ?? '';
-      } catch {
-        return '';
-      }
-    }
-    if (typeof raw === 'object') return (raw as any)[key] ?? '';
-    return '';
+    // Next.js 15 searchParams can be a Promise or an object
+    // If it's the raw object from props after 'await', just access it
+    return (raw as any)[key] ?? '';
   }
 
   const subject = String(getParam('subject') ?? '');
   const language = String(getParam('language') ?? '');
   const teacher = String(getParam('teacher') ?? '');
   const mode = String(getParam('mode') ?? '');
+
+  const limit = parseInt(String(getParam('limit') || '20'), 10);
+  const page = parseInt(String(getParam('page') || '1'), 10);
 
   const subjectTrim = subject.trim().toLowerCase();
   const languageTrim = language.trim().toLowerCase();
@@ -101,36 +101,41 @@ export default async function CoursesPage(props?: CoursesPageProps) {
 
   const hasFilter = Boolean(subjectTrim || languageTrim || teacherTrim || mode);
 
+  // Pagination logic
+  const totalItems = filtered.length;
+  const startIndex = (page - 1) * limit;
+  const paginatedCourses = filtered.slice(startIndex, startIndex + limit);
+
   return (
-    <div className="page">
-      <header className="page-header">
-        <h1>所有課程</h1>
-        {hasFilter ? (
-          <p>目前顯示符合條件的課程，共 {filtered.length} 堂。</p>
-        ) : (
-          <p>主題式課程，從國中、高中到成人進修都能找到。</p>
-        )}
-      </header>
+    <main style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
+      <h1 style={{ marginBottom: '24px' }}>所有課程</h1>
 
       {/* 搜尋表單（移到課程總覽頁面） */}
-      <section className="section">
+      <section style={{ marginBottom: '32px' }}>
         <SearchForm
           initial={{ subject, language, mode, teacher }}
           targetPath="/courses"
         />
       </section>
 
-      <section className="section">
-        {filtered.length === 0 ? (
+      <section>
+        {paginatedCourses.length === 0 ? (
           <p>目前沒有符合篩選條件的課程，請調整搜尋條件再試試。</p>
         ) : (
-          <div className="card-grid">
-            {filtered.map((course) => (
-              <CourseCard key={course.id} course={course} />
-            ))}
-          </div>
+          <>
+            <div className="card-grid">
+              {paginatedCourses.map((course) => (
+                <CourseCard key={course.id} course={course} />
+              ))}
+            </div>
+            <Pagination
+              totalItems={totalItems}
+              pageSize={limit}
+              currentPage={page}
+            />
+          </>
         )}
       </section>
-    </div>
+    </main>
   );
 }
