@@ -14,23 +14,18 @@ export default function AdminDashboard() {
   const [stats, setStats] = useState({
     revenue: 0,
     orderCount: 0,
-    pendingOrders: 0
+    pendingOrders: 0,
+    teacherCount: 0,
+    profileCount: 0,
   });
 
   useEffect(() => {
     async function fetchStats() {
       try {
-        const res = await fetch('/api/orders');
+        const res = await fetch('/api/admin/stats');
         const data = await res.json();
-        if (data.ok && Array.isArray(data.orders)) {
-          const orders = data.orders;
-          const revenue = orders.reduce((acc: number, curr: any) => acc + (Number(curr.amount) || 0), 0);
-          const pending = orders.filter((o: any) => o.status === 'PENDING').length;
-          setStats({
-            revenue,
-            orderCount: orders.length,
-            pendingOrders: pending
-          });
+        if (data.ok && data.stats) {
+          setStats(data.stats);
         }
       } catch (e) {
         console.error('Failed to load stats', e);
@@ -44,7 +39,7 @@ export default function AdminDashboard() {
       <header className="mb-8">
         <div className="flex justify-between items-end">
           <div>
-            <h1 className="text-3xl font-bold text-gray-800">管理後台 (Dashboard)</h1>
+            <h1 className="text-3xl font-bold text-gray-800">後台儀表板 (Dashboard)</h1>
             <p className="text-gray-500 mt-2">歡迎回來！今日系統運作正常，以下是即時營運概況。</p>
           </div>
           <div className="text-sm text-gray-400">
@@ -76,16 +71,15 @@ export default function AdminDashboard() {
           <div className="p-3 bg-green-50 rounded-lg text-green-600"><IconUsers /></div>
           <div>
             <p className="text-sm text-gray-500 font-medium">在線師資 (Teachers)</p>
-            <h3 className="text-2xl font-bold text-gray-800">{TEACHERS.length}</h3>
+            <h3 className="text-2xl font-bold text-gray-800">{stats.teacherCount}</h3>
           </div>
         </div>
 
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center gap-4 hover:shadow-md transition-shadow">
-          <div className="p-3 bg-teal-50 rounded-lg text-teal-600"><IconCheck /></div>
+          <div className="p-3 bg-teal-50 rounded-lg text-teal-600"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg></div>
           <div>
-            <p className="text-sm text-gray-500 font-medium">系統狀態 (System)</p>
-            <h3 className="text-lg font-bold text-green-600">Operational</h3>
-            <p className="text-xs text-gray-400">Database & APIs: OK</p>
+            <p className="text-sm text-gray-500 font-medium">註冊人數 (Members)</p>
+            <h3 className="text-2xl font-bold text-gray-800">{stats.profileCount}</h3>
           </div>
         </div>
       </div>
@@ -101,7 +95,7 @@ export default function AdminDashboard() {
           </div>
           <p className="text-sm text-gray-500 mb-6 h-10">管理首頁輪播圖片、師資列表顯示以及課程內容。</p>
           <div className="flex flex-col gap-3">
-            <Link href="/admin/carousel" className="text-sm font-medium text-gray-600 hover:text-blue-600 flex items-center gap-2 p-2 rounded hover:bg-blue-50 transition-colors">
+            <Link href="/carousel" className="text-sm font-medium text-gray-600 hover:text-blue-600 flex items-center gap-2 p-2 rounded hover:bg-blue-50 transition-colors">
               <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span> 前往輪播圖管理
             </Link>
             <Link href="/teachers" className="text-sm font-medium text-gray-600 hover:text-blue-600 flex items-center gap-2 p-2 rounded hover:bg-blue-50 transition-colors">
@@ -142,8 +136,8 @@ export default function AdminDashboard() {
               <span className="w-1.5 h-1.5 rounded-full bg-purple-400"></span> 系統權限與角色設定
             </Link>
             <div className="flex gap-2 mt-1 px-2">
-              <Link href="/admin/whiteboard_canvas" className="text-xs bg-purple-50 hover:bg-purple-100 text-purple-700 px-3 py-1.5 rounded-md border border-purple-100 transition-colors">
-                🎨 原生畫布
+              <Link href="/admin/whiteboard_sse" className="text-xs bg-purple-50 hover:bg-purple-100 text-purple-700 px-3 py-1.5 rounded-md border border-purple-100 transition-colors">
+                🎨 白板SSE
               </Link>
               <Link href="/admin/whiteboard_agora" className="text-xs bg-purple-50 hover:bg-purple-100 text-purple-700 px-3 py-1.5 rounded-md border border-purple-100 transition-colors">
                 🌐 Agora SDK

@@ -62,7 +62,31 @@ export async function GET(request: Request, { params }: { params: Promise<{ orde
       return NextResponse.json({ error: 'Order not found' }, { status: 404 });
     }
 
-    return NextResponse.json({ ok: true, order: item }, { status: 200 });
+    // Resolve Names
+    const PROFILES_TABLE = process.env.DYNAMODB_TABLE_PROFILES || 'jvtutorcorner-profiles';
+    const COURSES_TABLE = process.env.DYNAMODB_TABLE_COURSES || 'jvtutorcorner-courses';
+
+    let userName = item.userId;
+    let courseTitle = item.courseId;
+
+    try {
+      if (item.userId) {
+        const uRes = await docClient.send(new GetCommand({ TableName: PROFILES_TABLE, Key: { id: item.userId } }));
+        if (uRes.Item) {
+          userName = uRes.Item.fullName || `${uRes.Item.firstName || ''} ${uRes.Item.lastName || ''}`.trim() || uRes.Item.email || item.userId;
+        }
+      }
+      if (item.courseId) {
+        const cRes = await docClient.send(new GetCommand({ TableName: COURSES_TABLE, Key: { id: item.courseId } }));
+        if (cRes.Item) {
+          courseTitle = cRes.Item.title || item.courseId;
+        }
+      }
+    } catch (e) {
+      console.warn('Name resolution failed for orderId:', orderId, e);
+    }
+
+    return NextResponse.json({ ok: true, order: { ...item, userName, courseTitle } }, { status: 200 });
   } catch (err) {
     console.error('orders/[orderId] GET error:', err);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });

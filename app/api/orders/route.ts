@@ -298,6 +298,52 @@ export async function GET(request: Request) {
     const res = await docClient.send(new ScanCommand(scanInput));
 
     const items = (res.Items || []) as any[];
+
+    // Resolve User Names and Course Titles
+    const userIds = Array.from(new Set(items.map(o => o.userId).filter(Boolean)));
+    const courseIds = Array.from(new Set(items.map(o => o.courseId).filter(Boolean)));
+
+    const PROFILES_TABLE = process.env.DYNAMODB_TABLE_PROFILES || 'jvtutorcorner-profiles';
+    const COURSES_TABLE = process.env.DYNAMODB_TABLE_COURSES || 'jvtutorcorner-courses';
+
+    const userMap: Record<string, string> = {};
+    const courseMap: Record<string, string> = {};
+
+    // Fetch user profiles
+    await Promise.all(userIds.map(async (uid) => {
+      try {
+        const uRes = await docClient.send(new GetCommand({ TableName: PROFILES_TABLE, Key: { id: uid } }));
+        if (uRes.Item) {
+          userMap[uid] = uRes.Item.fullName || `${uRes.Item.firstName || ''} ${uRes.Item.lastName || ''}`.trim() || uRes.Item.email || uid;
+        } else {
+          userMap[uid] = uid;
+        }
+      } catch (e) {
+        userMap[uid] = uid;
+      }
+    }));
+
+    // Fetch course titles
+    await Promise.all(courseIds.map(async (cid) => {
+      try {
+        const cRes = await docClient.send(new GetCommand({ TableName: COURSES_TABLE, Key: { id: cid } }));
+        if (cRes.Item) {
+          courseMap[cid] = cRes.Item.title || cid;
+        } else {
+          courseMap[cid] = cid;
+        }
+      } catch (e) {
+        courseMap[cid] = cid;
+      }
+    }));
+
+    // map resolved names back to items
+    const enrichedItems = items.map(o => ({
+      ...o,
+      userName: userMap[o.userId] || o.userId,
+      courseTitle: courseMap[o.courseId] || o.courseId
+    }));
+
     const lastEvaluatedKey = (res as any).LastEvaluatedKey;
     let encodedLastKey: string | null = null;
     if (lastEvaluatedKey) {
@@ -314,7 +360,7 @@ export async function GET(request: Request) {
     }
 
     return NextResponse.json(
-      { ok: true, total: items.length, data: items, lastKey: encodedLastKey },
+      { ok: true, total: enrichedItems.length, data: enrichedItems, lastKey: encodedLastKey },
       { status: 200 },
     );
   } catch (err) {

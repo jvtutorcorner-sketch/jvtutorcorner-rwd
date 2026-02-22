@@ -10,8 +10,10 @@ type Order = {
   orderNumber?: string;
   id?: string;
   userId?: string;
+  userName?: string;
   enrollmentId?: string;
   courseId?: string;
+  courseTitle?: string;
   amount?: number;
   currency?: string;
   status?: string;
@@ -28,12 +30,14 @@ export default function OrdersManager() {
   const [lastKey, setLastKey] = useState<string | null>(null);
   const [history, setHistory] = useState<(string | null)[]>([]);
   const [filterStatus, setFilterStatus] = useState<string>('');
-  
+
   const [filterUserId, setFilterUserId] = useState<string>('');
   const [filterCourseId, setFilterCourseId] = useState<string>('');
   const [filterOrderId, setFilterOrderId] = useState<string>('');
   const [filterStartDate, setFilterStartDate] = useState<string>('');
   const [filterEndDate, setFilterEndDate] = useState<string>('');
+
+  const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
 
   async function load(key: string | null = null) {
     setLoading(true);
@@ -44,7 +48,7 @@ export default function OrdersManager() {
       if (key) q.set('lastKey', key);
       // add filters
       if (filterStatus) q.set('status', filterStatus);
-      
+
       if (filterUserId) q.set('userId', filterUserId);
       if (filterCourseId) q.set('courseId', filterCourseId);
       if (filterOrderId) q.set('orderId', filterOrderId);
@@ -62,7 +66,7 @@ export default function OrdersManager() {
     }
   }
 
-  // build course id -> title map
+  // build course id -> title map (local fallback if API doesn't resolve)
   const courseTitleMap = new Map<string, string>(COURSES.map((c) => [c.id, c.title]));
 
   useEffect(() => {
@@ -95,25 +99,18 @@ export default function OrdersManager() {
     load(null);
   }
 
-  function toIsoDateString(localDate: string) {
-    // input from <input type=date> is YYYY-MM-DD, convert to ISO date-time start/end
-    if (!localDate) return '';
-    // start: YYYY-MM-DDT00:00:00.000Z  ; end: YYYY-MM-DDT23:59:59.999Z
-    return localDate;
-  }
-
   function exportCSV() {
     if (!orders || orders.length === 0) {
       alert(t('no_orders_to_export'));
       return;
     }
 
-    const headers = ['orderNumber','orderId', 'userId', 'courseTitle', 'amount', 'currency', 'status', 'createdAt', 'updatedAt'];
+    const headers = ['orderNumber', 'orderId', 'userName', 'courseTitle', 'amount', 'currency', 'status', 'createdAt', 'updatedAt'];
     const rows = orders.map((o) => [
       o.orderNumber || o.orderId || o.id || '',
       o.orderId || o.id || '',
-      o.userId || '',
-      (o.courseId && courseTitleMap.get(o.courseId)) || o.courseId || '',
+      o.userName || o.userId || '',
+      o.courseTitle || (o.courseId && courseTitleMap.get(o.courseId)) || o.courseId || '',
       o.amount != null ? String(o.amount) : '',
       o.currency || '',
       o.status || '',
@@ -127,7 +124,7 @@ export default function OrdersManager() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `orders_export_${new Date().toISOString().slice(0,10)}.csv`;
+    a.download = `orders_export_${new Date().toISOString().slice(0, 10)}.csv`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -136,13 +133,11 @@ export default function OrdersManager() {
 
   function handleNext() {
     if (!lastKey) return;
-    // push current lastKey to history to allow going back
     setHistory((h) => [...h, lastKey]);
     load(lastKey);
   }
 
   function handlePrev() {
-    // pop last history entry and load with the previous key
     setHistory((h) => {
       if (h.length === 0) return h;
       const newH = [...h];
@@ -151,27 +146,6 @@ export default function OrdersManager() {
       load(prevKey);
       return newH;
     });
-  }
-
-  async function patchOrder(orderId: string, status: string) {
-    try {
-      const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || 'Failed to update order');
-      alert('Order updated');
-      // if API returned updated order, update local list immediately to reflect status
-      if (data && data.order) {
-        setOrders((prev) => prev.map((o) => (o.orderId === orderId ? data.order : o)));
-      } else {
-        load();
-      }
-    } catch (err: any) {
-      alert('Update order error: ' + (err?.message || err));
-    }
   }
 
   function mapStatusToAction(status: string) {
@@ -197,7 +171,6 @@ export default function OrdersManager() {
       note: `Admin action: ${label}`,
     } as any;
 
-    // send payment together with status so backend will append it
     patchOrderWithPayment(order.orderId, status, payment);
   }
 
@@ -213,6 +186,7 @@ export default function OrdersManager() {
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || 'Failed to update order');
       alert(t('order_updated'));
+      setEditingOrderId(null);
       if (data && data.order) {
         setOrders((prev) => prev.map((o) => (o.orderId === orderId ? data.order : o)));
       } else {
@@ -223,112 +197,136 @@ export default function OrdersManager() {
     }
   }
 
+  // Button styles
+  const btnStyle = {
+    padding: '6px 12px',
+    borderRadius: '6px',
+    fontSize: '13px',
+    fontWeight: 500,
+    cursor: 'pointer',
+    border: 'none',
+    transition: 'all 0.2s',
+    marginRight: '8px',
+  };
+
+  const primaryBtn = { ...btnStyle, backgroundColor: '#007bff', color: '#fff' };
+  const successBtn = { ...btnStyle, backgroundColor: '#28a745', color: '#fff' };
+  const dangerBtn = { ...btnStyle, backgroundColor: '#dc3545', color: '#fff' };
+  const warningBtn = { ...btnStyle, backgroundColor: '#ffc107', color: '#000' };
+  const secondaryBtn = { ...btnStyle, backgroundColor: '#6c757d', color: '#fff' };
+
   return (
-    <div>
-      <h3>{t('order_management')}</h3>
-      <div style={{ marginBottom: 8 }}>
-        <label>{t('per_page')}: </label>
-        <select value={limit} onChange={(e) => setLimit(parseInt(e.target.value, 10))}>
-          <option value={10}>10</option>
-          <option value={20}>20</option>
-          <option value={50}>50</option>
-          <option value={100}>100</option>
-        </select>
-      </div>
+    <div style={{ backgroundColor: '#fff', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', padding: '24px' }}>
+      <h3 style={{ fontSize: '20px', fontWeight: 700, marginBottom: '20px', color: '#1a202c' }}>{t('order_management')}</h3>
 
-      <div style={{ marginBottom: 12 }}>
-        <label style={{ marginRight: 8 }}>{t('status')}:</label>
-        <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} style={{ marginRight: 12 }}>
-          <option value="">{t('all')}</option>
-          <option value="PENDING">PENDING</option>
-          <option value="PAID">PAID</option>
-          <option value="CANCELLED">CANCELLED</option>
-          <option value="REFUNDED">REFUNDED</option>
-          <option value="FAILED">FAILED</option>
-        </select>
-
-        <label style={{ marginRight: 8 }}>OrderId:</label>
-        <input value={filterOrderId} onChange={(e) => setFilterOrderId(e.target.value)} placeholder="orderId" style={{ marginRight: 12 }} />
-
-        <div style={{ display: 'inline-block', marginLeft: 8 }}>
-          <label style={{ marginRight: 6 }}>{t('from')}:</label>
-          <input type="date" value={filterStartDate} onChange={(e) => setFilterStartDate(e.target.value)} style={{ marginRight: 8 }} />
-          <label style={{ marginRight: 6 }}>{t('to')}:</label>
-          <input type="date" value={filterEndDate} onChange={(e) => setFilterEndDate(e.target.value)} style={{ marginRight: 8 }} />
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', marginBottom: '24px', backgroundColor: '#f7fafc', padding: '20px', borderRadius: '8px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <label style={{ fontSize: '13px', color: '#4a5568' }}>{t('per_page')}</label>
+          <select value={limit} onChange={(e) => setLimit(parseInt(e.target.value, 10))} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+            <option value={10}>10</option>
+            <option value={20}>20</option>
+            <option value={50}>50</option>
+            <option value={100}>100</option>
+          </select>
         </div>
 
-        <button onClick={handleSearch} style={{ marginLeft: 8 }}>{t('search')}</button>
-        <button onClick={() => exportCSV()} style={{ marginLeft: 8 }}>{t('export_csv')}</button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <label style={{ fontSize: '13px', color: '#4a5568' }}>{t('status')}</label>
+          <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+            <option value="">{t('all')}</option>
+            <option value="PENDING">PENDING</option>
+            <option value="PAID">PAID</option>
+            <option value="CANCELLED">CANCELLED</option>
+            <option value="REFUNDED">REFUNDED</option>
+            <option value="FAILED">FAILED</option>
+          </select>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <label style={{ fontSize: '13px', color: '#4a5568' }}>OrderId 搜尋</label>
+          <input value={filterOrderId} onChange={(e) => setFilterOrderId(e.target.value)} placeholder="輸入訂單編號" style={{ padding: '8px', borderRadius: '6px', border: '1px solid #e2e8f0' }} />
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <label style={{ fontSize: '13px', color: '#4a5568' }}>{t('from')}</label>
+          <input type="date" value={filterStartDate} onChange={(e) => setFilterStartDate(e.target.value)} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #e2e8f0' }} />
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <label style={{ fontSize: '13px', color: '#4a5568' }}>{t('to')}</label>
+          <input type="date" value={filterEndDate} onChange={(e) => setFilterEndDate(e.target.value)} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #e2e8f0' }} />
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px' }}>
+          <button onClick={handleSearch} style={{ ...primaryBtn, margin: 0 }}>{t('search')}</button>
+          <button onClick={() => exportCSV()} style={{ ...secondaryBtn, margin: 0 }}>{t('export_csv')}</button>
+        </div>
       </div>
 
-      {loading && <p>{t('loading')}</p>}
-      {error && <p style={{ color: 'red' }}>{error}</p>}
+      {loading && <p style={{ color: '#4a5568', fontStyle: 'italic' }}>{t('loading')}</p>}
+      {error && <p style={{ color: '#e53e3e', fontSize: '14px' }}>{error}</p>}
 
-      <table className="orders-table" style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #ddd' }}>
-            <thead>
-                <tr>
-                <th style={{ border: '1px solid #ddd', padding: '8px 6px', textAlign: 'left' }}>{t('order_id')}</th>
-                <th style={{ border: '1px solid #ddd', padding: '8px 6px', textAlign: 'left' }}>{t('user')}</th>
-                <th style={{ border: '1px solid #ddd', padding: '8px 6px', textAlign: 'left' }}>{t('course_id')}</th>
-                <th style={{ border: '1px solid #ddd', padding: '8px 6px', textAlign: 'left' }}>{t('amount')}</th>
-                <th style={{ border: '1px solid #ddd', padding: '8px 6px', textAlign: 'left' }}>{t('currency_label')}</th>
-                <th style={{ border: '1px solid #ddd', padding: '8px 6px', textAlign: 'left' }}>{t('status')}</th>
-                <th style={{ border: '1px solid #ddd', padding: '8px 6px', textAlign: 'left' }}>{t('create_time')}</th>
-                <th style={{ border: '1px solid #ddd', padding: '8px 6px', textAlign: 'left' }}>{t('update_time')}</th>
-                <th style={{ border: '1px solid #ddd', padding: '8px 6px', textAlign: 'left' }}>{t('actions')}</th>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0 }}>
+          <thead>
+            <tr style={{ backgroundColor: '#f8fafc' }}>
+              <th style={{ padding: '12px 16px', borderBottom: '2px solid #edf2f7', textAlign: 'left', fontSize: '12px', color: '#718096', textTransform: 'uppercase' }}>{t('order_id')}</th>
+              <th style={{ padding: '12px 16px', borderBottom: '2px solid #edf2f7', textAlign: 'left', fontSize: '12px', color: '#718096', textTransform: 'uppercase' }}>學員</th>
+              <th style={{ padding: '12px 16px', borderBottom: '2px solid #edf2f7', textAlign: 'left', fontSize: '12px', color: '#718096', textTransform: 'uppercase' }}>課程</th>
+              <th style={{ padding: '12px 16px', borderBottom: '2px solid #edf2f7', textAlign: 'left', fontSize: '12px', color: '#718096', textTransform: 'uppercase' }}>{t('amount')}</th>
+              <th style={{ padding: '12px 16px', borderBottom: '2px solid #edf2f7', textAlign: 'left', fontSize: '12px', color: '#718096', textTransform: 'uppercase' }}>{t('status')}</th>
+              <th style={{ padding: '12px 16px', borderBottom: '2px solid #edf2f7', textAlign: 'left', fontSize: '12px', color: '#718096', textTransform: 'uppercase' }}>{t('create_time')}</th>
+              <th style={{ padding: '12px 16px', borderBottom: '2px solid #edf2f7', textAlign: 'right', fontSize: '12px', color: '#718096', textTransform: 'uppercase' }}>{t('actions')}</th>
+            </tr>
+          </thead>
+          <tbody style={{ fontSize: '14px', color: '#2d3748' }}>
+            {orders.map((o, idx) => (
+              <tr key={o.orderId || o.id || idx} style={{ borderBottom: '1px solid #f0f4f8' }}>
+                <td style={{ padding: '16px' }}>
+                  <Link href={`/admin/orders/${o.orderId}`} style={{ color: '#3182ce', fontWeight: 600, textDecoration: 'none' }}>
+                    {o.orderId || o.id}
+                  </Link>
+                </td>
+                <td style={{ padding: '16px' }}>{o.userName || o.userId || '-'}</td>
+                <td style={{ padding: '16px' }}>{o.courseTitle || (o.courseId && courseTitleMap.get(o.courseId)) || o.courseId || '-'}</td>
+                <td style={{ padding: '16px' }}>{o.currency} {o.amount?.toLocaleString()}</td>
+                <td style={{ padding: '16px' }}>
+                  <span style={{
+                    padding: '4px 8px',
+                    borderRadius: '9999px',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    backgroundColor: o.status === 'PAID' ? '#c6f6d5' : o.status === 'PENDING' ? '#feebc8' : '#fed7d7',
+                    color: o.status === 'PAID' ? '#22543d' : o.status === 'PENDING' ? '#744210' : '#822727'
+                  }}>
+                    {o.status}
+                  </span>
+                </td>
+                <td style={{ padding: '16px' }}>{o.createdAt ? new Date(o.createdAt).toLocaleDateString() : '-'}</td>
+                <td style={{ padding: '16px', textAlign: 'right' }}>
+                  {editingOrderId === o.orderId ? (
+                    <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end' }}>
+                      <button onClick={() => confirmAndPatch(o, t('mark_as_paid'), 'PAID')} style={successBtn}>{t('set_paid')}</button>
+                      <button onClick={() => confirmAndPatch(o, t('cancel_order'), 'CANCELLED')} style={dangerBtn}>{t('cancel')}</button>
+                      <button onClick={() => confirmAndPatch(o, t('refund'), 'REFUNDED')} style={warningBtn}>{t('refund')}</button>
+                      <button onClick={() => setEditingOrderId(null)} style={secondaryBtn}>取消</button>
+                    </div>
+                  ) : (
+                    <button onClick={() => setEditingOrderId(o.orderId || null)} style={primaryBtn}>編輯</button>
+                  )}
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {orders.map((o, idx) => (
-                  <tr key={o.orderId || o.id || idx}>
-                  <td style={{ padding: '8px 6px', border: '1px solid #ddd' }}>
-                      <Link
-                        href={`/admin/orders/${o.orderId}`}
-                        title={`${t('view_order')} ${o.orderNumber || o.orderId || o.id}`}
-                        style={{ color: '#0366d6', textDecoration: 'underline', fontWeight: 700, cursor: 'pointer' }}
-                      >
-                        {o.orderId || o.id}
-                      </Link>
-                  </td>
-                  <td style={{ padding: '8px 6px', border: '1px solid #ddd' }}>{o.userId || '-'}</td>
-                  <td style={{ padding: '8px 6px', border: '1px solid #ddd' }}>{o.courseId ? (courseTitleMap.get(o.courseId) || o.courseId) : '-'}</td>
-                  <td style={{ padding: '8px 6px', border: '1px solid #ddd' }}>{o.amount}</td>
-                  <td style={{ padding: '8px 6px', border: '1px solid #ddd' }}>{o.currency}</td>
-                  <td style={{ padding: '8px 6px', border: '1px solid #ddd' }}>{o.status}</td>
-                  <td style={{ padding: '8px 6px', border: '1px solid #ddd' }}>{o.createdAt ? new Date(o.createdAt).toLocaleString() : '-'}</td>
-                  <td style={{ padding: '8px 6px', border: '1px solid #ddd' }}>{o.updatedAt ? new Date(o.updatedAt).toLocaleString() : '-'}</td>
-                  <td style={{ padding: '8px 6px', border: '1px solid #ddd' }}>
-                    <button onClick={() => confirmAndPatch(o, t('mark_as_paid'), 'PAID')} style={{ marginRight: 8 }}>{t('set_paid')}</button>
-                    <button onClick={() => confirmAndPatch(o, t('cancel_order'), 'CANCELLED')} style={{ marginRight: 8 }}>{t('cancel')}</button>
-                    {(() => {
-                      const canComplete = (o.status || '').toUpperCase() === 'PAID';
-                      return (
-                        <button
-                          onClick={() => {
-                            if (!canComplete) {
-                              alert(t('order_complete_only_paid'));
-                              return;
-                            }
-                            confirmAndPatch(o, t('complete_order'), 'COMPLETED');
-                          }}
-                          disabled={!canComplete}
-                          title={canComplete ? t('complete_order') : t('complete_only_paid')}
-                          style={{ marginRight: 8, opacity: canComplete ? 1 : 0.6, cursor: canComplete ? 'pointer' : 'not-allowed' }}
-                        >
-                          {t('complete')}
-                        </button>
-                      );
-                    })()}
-                    <button onClick={() => confirmAndPatch(o, t('refund'), 'REFUNDED')}>{t('refund')}</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
-      <div style={{ marginTop: 12 }}>
-        <button onClick={handlePrev} disabled={history.length === 0} style={{ marginRight: 8 }}>{t('previous')}</button>
-        <button onClick={handleNext} disabled={!lastKey}>{t('next')}</button>
+      <div style={{ marginTop: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <p style={{ fontSize: '14px', color: '#718096' }}>顯示 {orders.length} 筆資料</p>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button onClick={handlePrev} disabled={history.length === 0} style={{ ...secondaryBtn, opacity: history.length === 0 ? 0.5 : 1 }}>{t('previous')}</button>
+          <button onClick={handleNext} disabled={!lastKey} style={{ ...secondaryBtn, opacity: !lastKey ? 0.5 : 1 }}>{t('next')}</button>
+        </div>
       </div>
     </div>
   );
