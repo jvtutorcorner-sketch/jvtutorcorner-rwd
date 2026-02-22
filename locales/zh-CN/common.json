@@ -511,5 +511,7 @@
   "student_courses_amount": "金额",
   "student_courses_status": "状态",
   "student_courses_created_at": "建立时间",
-  "enter_classroom": "进入教室"
+  "enter_classroom": "进入教室",
+  "login_google_workspace_notice": "正在重定向到 Google Workspace 验证...\n这将使用您的组织账号进行安全登录。",
+  "or_classic": "或使用传统方式"
 }

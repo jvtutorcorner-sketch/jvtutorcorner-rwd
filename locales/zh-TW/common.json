@@ -506,5 +506,7 @@
   "status_payment_failed": "付款失敗",
   "status_payment_pending": "等待付款",
   "status_payment_paid": "已付款",
-  "payment_continue_payment": "跳轉付款頁"
+  "payment_continue_payment": "跳轉付款頁",
+  "login_google_workspace_notice": "正在導向 Google Workspace 驗證...\n這將使用您的組織帳號進行安全登入。",
+  "or_classic": "或使用傳統方式"
 }

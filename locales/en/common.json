@@ -446,5 +446,7 @@
   "student_courses_amount": "Amount",
   "student_courses_status": "Status",
   "student_courses_created_at": "Created At",
-  "enter_classroom": "Enter Classroom"
+  "enter_classroom": "Enter Classroom",
+  "login_google_workspace_notice": "Redirecting to Google Workspace authentication...\nThis will use your organization account for secure login.",
+  "or_classic": "or use classic method"
 }

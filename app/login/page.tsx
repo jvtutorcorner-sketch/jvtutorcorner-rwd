@@ -19,7 +19,7 @@ export default function LoginPage() {
   const router = useRouter();
   const t = useT();
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState(TEST_PASSWORD);
+  const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const [captchaImage, setCaptchaImage] = useState<string | null>(null);
@@ -28,6 +28,7 @@ export default function LoginPage() {
   const [currentUser, setCurrentUser] = useState<StoredUser | null>(
     typeof window !== 'undefined' ? getStoredUser() : null,
   );
+
 
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -170,7 +171,59 @@ export default function LoginPage() {
 
   useEffect(() => {
     loadCaptcha();
-  }, []);
+
+    // Check for Google Auth redirect success
+    const handleGoogleRedirect = async () => {
+      if (typeof window === 'undefined') return;
+
+      const searchParams = new URLSearchParams(window.location.search);
+      const isGoogleSuccess = searchParams.get('google_auth_success');
+
+      if (isGoogleSuccess === 'true') {
+        const mockEmail = 'google.user@gmail.com'; // Default mock Google email for prototype
+        const userConfig = MOCK_USERS[mockEmail] || { plan: 'viewer', firstName: 'Google', lastName: 'User' };
+
+        const user: StoredUser = {
+          email: mockEmail,
+          plan: userConfig.plan as any,
+          firstName: userConfig.firstName,
+          lastName: userConfig.lastName,
+          role: 'user',
+        };
+
+        setStoredUser(user);
+        setCurrentUser(user);
+
+        try {
+          const nowRef = String(Date.now());
+          window.localStorage.setItem('tutor_session_expiry', String(Date.now() + 30 * 60 * 1000));
+          window.sessionStorage.setItem('tutor_last_login_time', nowRef);
+          window.localStorage.setItem('tutor_last_login_time', nowRef);
+          window.sessionStorage.setItem('tutor_login_complete', 'true');
+        } catch { }
+
+        window.dispatchEvent(new Event('tutor:auth-changed'));
+
+        // Clean up URL
+        router.replace('/login');
+
+        alert(`${t('login_success')}\nGoogle Account Verified.\n${t('redirecting_home')}`);
+
+        // redirect based on previous requested redirect url or home
+        const redirect = searchParams.get('redirect');
+        if (redirect) {
+          router.push(decodeURIComponent(redirect));
+        } else {
+          router.push('/');
+        }
+      } else if (searchParams.get('error') === 'google_auth_failed') {
+        setError('Google 帳號驗證登入失敗。');
+      }
+    };
+
+    handleGoogleRedirect();
+  }, [router, t]);
+
 
   const handleLogout = () => {
     clearStoredUser();
@@ -278,6 +331,8 @@ export default function LoginPage() {
                 {t('create_account')}
               </Link>
             </div>
+
+
           </form>
         </div>
       </section>

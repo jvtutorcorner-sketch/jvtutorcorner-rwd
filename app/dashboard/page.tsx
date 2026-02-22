@@ -19,7 +19,10 @@ export default function AdminDashboard() {
     profileCount: 0,
   });
 
+  const [mounted, setMounted] = useState(false);
+
   useEffect(() => {
+    setMounted(true);
     async function fetchStats() {
       try {
         const res = await fetch('/api/admin/stats');
@@ -43,7 +46,7 @@ export default function AdminDashboard() {
             <p className="text-gray-500 mt-2">歡迎回來！今日系統運作正常，以下是即時營運概況。</p>
           </div>
           <div className="text-sm text-gray-400">
-            {new Date().toLocaleDateString()}
+            {mounted && new Date().toLocaleDateString()}
           </div>
         </div>
       </header>
