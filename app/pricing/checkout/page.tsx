@@ -50,22 +50,20 @@ function CheckoutContent() {
 
     const handleCreateOrder = async (method: string) => {
         try {
-            const res = await fetch('/api/orders', {
+            const res = await fetch('/api/plan-upgrades', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     userId: user.email,
-                    courseId: '', // Empty because it's a plan upgrade, not a course
-                    enrollmentId: `plan_upgrade_${planId}`,
+                    planId: planId,
                     amount: price,
                     currency: 'TWD',
-                    durationMinutes: 0,
                 }),
             });
 
-            if (!res.ok) throw new Error('Order creation failed');
+            if (!res.ok) throw new Error('Upgrade creation failed');
             const data = await res.json();
-            return data.order;
+            return data.upgrade;
         } catch (err) {
             console.error(err);
             alert(t('create_order_error') || 'Order creation error');
@@ -88,8 +86,8 @@ function CheckoutContent() {
 
     const handlePaymentEcpay = async () => {
         setIsSubmitting(true);
-        const order = await handleCreateOrder('ecpay');
-        if (!order) {
+        const upgrade = await handleCreateOrder('ecpay');
+        if (!upgrade) {
             setIsSubmitting(false);
             return;
         }
@@ -101,7 +99,7 @@ function CheckoutContent() {
                 body: JSON.stringify({
                     amount: price,
                     itemName: itemName,
-                    orderId: order.orderId,
+                    orderId: upgrade.upgradeId,
                 }),
             });
             const data = await res.json();
@@ -117,8 +115,8 @@ function CheckoutContent() {
 
     const handlePaymentStripe = async () => {
         setIsSubmitting(true);
-        const order = await handleCreateOrder('stripe');
-        if (!order) {
+        const upgrade = await handleCreateOrder('stripe');
+        if (!upgrade) {
             setIsSubmitting(false);
             return;
         }
@@ -131,7 +129,7 @@ function CheckoutContent() {
                     amount: price,
                     currency: 'TWD',
                     itemName: itemName,
-                    orderId: order.orderId,
+                    orderId: upgrade.upgradeId,
                 }),
             });
             const data = await res.json();
@@ -145,8 +143,8 @@ function CheckoutContent() {
 
     const handlePaymentPaypal = async () => {
         setIsSubmitting(true);
-        const order = await handleCreateOrder('paypal');
-        if (!order) {
+        const upgrade = await handleCreateOrder('paypal');
+        if (!upgrade) {
             setIsSubmitting(false);
             return;
         }
@@ -159,7 +157,7 @@ function CheckoutContent() {
                     amount: price,
                     currency: 'TWD',
                     itemName: itemName,
-                    orderId: order.orderId,
+                    orderId: upgrade.upgradeId,
                 }),
             });
             const data = await res.json();
@@ -177,15 +175,15 @@ function CheckoutContent() {
 
     const handlePaymentSimulated = async () => {
         setIsSubmitting(true);
-        const order = await handleCreateOrder('simulated');
-        if (!order) {
+        const upgrade = await handleCreateOrder('simulated');
+        if (!upgrade) {
             setIsSubmitting(false);
             return;
         }
 
         try {
-            // Simulate backend updating the order to PAID
-            await fetch(`/api/orders/${encodeURIComponent(order.orderId)}`, {
+            // Simulate backend updating the upgrade status to PAID
+            await fetch(`/api/plan-upgrades/${encodeURIComponent(upgrade.upgradeId)}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ status: 'PAID' }),
