@@ -17,9 +17,9 @@ const docClient = DynamoDBDocumentClient.from(client);
 
 const UPGRADES_TABLE = process.env.DYNAMODB_TABLE_PLAN_UPGRADES || 'jvtutorcorner-plan-upgrades';
 
-export async function PATCH(request: Request, { params }: { params: { upgradeId: string } }) {
+export async function PATCH(request: Request, { params }: { params: Promise<{ upgradeId: string }> }) {
     try {
-        const { upgradeId } = params;
+        const { upgradeId } = await params;
         const { status } = await request.json();
 
         if (!status) {

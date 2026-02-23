@@ -30,12 +30,8 @@ export default function PricingPage() {
   const t = useT();
   const [user, setUser] = useState<StoredUser | null>(null);
   const [plan, setPlan] = useState<PlanId | ''>('');
-  const [cardNumber, setCardNumber] = useState('');
-  const [cardExpiry, setCardExpiry] = useState('');
-  const [cardCvc, setCardCvc] = useState('');
-  const [cardCountry, setCardCountry] = useState('TW');
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const router = useRouter();
 
   const PLANS: PlanConfig[] = [
     {
@@ -102,7 +98,6 @@ export default function PricingPage() {
     router.refresh();
     alert(t('alert_logged_out'));
   };
-  const router = useRouter();
 
   function handleSwitchAccount() {
     router.push('/login');

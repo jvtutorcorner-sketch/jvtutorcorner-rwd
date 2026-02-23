@@ -390,7 +390,7 @@ export default function AdminSettingsPage() {
           <a href="/admin/settings/page-permissions"><button style={{ padding: '8px 14px' }}>Page 存取權限</button></a>
           <a href="/admin/settings/dropdown"><button style={{ padding: '8px 14px' }}>Dropdown Menu 設定</button></a>
           <a href="/admin/settings/roles-usage"><button style={{ padding: '8px 14px' }}>Role 使用設定</button></a>
-          <a href="/admin/settings/pricing"><button style={{ padding: '8px 14px' }}>方案與價格設定</button></a>
+          <a href="/admin/subscriptions"><button style={{ padding: '8px 14px' }}>訂閱方案與擴充管理</button></a>
         </div>
       </section>
       <section style={{ marginTop: 12 }}>
@@ -404,13 +404,13 @@ export default function AdminSettingsPage() {
             <h3 style={{ margin: 0 }}>白板與課堂互動設定</h3>
             <p style={{ color: '#666', fontSize: '14px', margin: '4px 0 0 0' }}>管理教室白板系統、音訊視訊權限卡控與預設供應商。</p>
           </div>
-          <Link 
-            href="/admin/settings/whiteboard" 
-            style={{ 
-              backgroundColor: '#0070f3', 
-              color: 'white', 
-              padding: '8px 16px', 
-              borderRadius: '6px', 
+          <Link
+            href="/admin/settings/whiteboard"
+            style={{
+              backgroundColor: '#0070f3',
+              color: 'white',
+              padding: '8px 16px',
+              borderRadius: '6px',
               textDecoration: 'none',
               fontWeight: 'bold',
               fontSize: '14px'

@@ -37,10 +37,10 @@ Parameters:
     Default: jvtutorcorner-whiteboard-permissions
     Description: DynamoDB table name for whiteboard permissions
 
-  AgoraLogsTableName:
+  SubscriptionsTableName:
     Type: String
-    Default: jvtutorcorner-agora-logs
-    Description: DynamoDB table name for Agora SDK debug logs
+    Default: jvtutorcorner-subscriptions
+    Description: DynamoDB table name for subscription plans and extensions
 
 Resources:
   TeachersTable:
@@ -263,6 +263,24 @@ Resources:
         - Key: Project
           Value: jvtutorcorner
 
+  SubscriptionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref SubscriptionsTableName
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: false
+      Tags:
+        - Key: Project
+          Value: jvtutorcorner
+
 Outputs:
   TeachersTableName:
     Description: Name of teachers DynamoDB table
@@ -317,3 +335,10 @@ Outputs:
   AgoraLogsTableArn:
     Description: ARN of Agora logs DynamoDB table
     Value: !GetAtt AgoraLogsTable.Arn
+
+  SubscriptionsTableName:
+    Description: Name of subscriptions DynamoDB table
+    Value: !Ref SubscriptionsTableName
+  SubscriptionsTableArn:
+    Description: ARN of subscriptions DynamoDB table
+    Value: !GetAtt SubscriptionsTable.Arn

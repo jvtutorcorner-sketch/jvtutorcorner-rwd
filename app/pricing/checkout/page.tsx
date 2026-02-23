@@ -12,6 +12,7 @@ import {
     PLAN_PRICES,
     PLAN_FEATURES
 } from '@/lib/mockAuth';
+import { SubscriptionConfig } from '@/lib/subscriptionsService';
 import Link from 'next/link';
 
 function CheckoutContent() {
@@ -24,7 +25,10 @@ function CheckoutContent() {
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     // Extract from query params
-    const planId = searchParams.get('plan') as PlanId | null;
+    const planId = searchParams.get('plan');
+    const isMockPlan = planId ? Boolean((PLAN_LABELS as Record<string, string>)[planId]) : false;
+    const [subData, setSubData] = useState<SubscriptionConfig | null>(null);
+    const [loadingSub, setLoadingSub] = useState(false);
 
     useEffect(() => {
         setMounted(true);
@@ -33,20 +37,62 @@ function CheckoutContent() {
 
         if (!currentUser) {
             router.push('/login');
-        } else if (!planId || !PLAN_LABELS[planId] || planId === 'viewer') {
-            router.push('/pricing');
+            return;
         }
-    }, [planId, router]);
 
-    if (!mounted || !user || !planId || !PLAN_LABELS[planId] || planId === 'viewer') {
+        if (!planId || planId === 'viewer') {
+            router.push('/pricing');
+            return;
+        }
+
+        if (!isMockPlan) {
+            // It's a dynamic subscription
+            setLoadingSub(true);
+            const fetchSub = async () => {
+                try {
+                    const res = await fetch(`/api/admin/subscriptions?id=${planId}`);
+                    const data = await res.json();
+                    if (data.ok && data.subscription) {
+                        setSubData(data.subscription);
+                    } else {
+                        router.push('/pricing');
+                    }
+                } catch (err) {
+                    console.error('Failed to load sub info', err);
+                    router.push('/pricing');
+                } finally {
+                    setLoadingSub(false);
+                }
+            };
+            fetchSub();
+        }
+    }, [planId, isMockPlan, router]);
+
+    if (!mounted || !user || !planId || (isMockPlan && !PLAN_LABELS[planId as PlanId]) || (!isMockPlan && loadingSub) || (!isMockPlan && !subData)) {
         return <div className="page section"><p>{t('loading')}</p></div>;
     }
 
-    // Parse price number from PLAN_PRICES (e.g., "NT$499 / 月" -> 499)
-    const priceString = PLAN_PRICES[planId];
-    const priceMatch = priceString.match(/(\d+,?\d*)/);
-    const price = priceMatch ? parseInt(priceMatch[0].replace(/,/g, ''), 10) : 0;
-    const itemName = `Plan Upgrade: ${PLAN_LABELS[planId]}`;
+    let price = 0;
+    let itemName = '';
+    let planLabel = '';
+    let planFeatures: string[] = [];
+
+    if (isMockPlan) {
+        const id = planId as PlanId;
+        const priceString = PLAN_PRICES[id];
+        const priceMatch = priceString.match(/(\d+,?\d*)/);
+        price = priceMatch ? parseInt(priceMatch[0].replace(/,/g, ''), 10) : 0;
+        itemName = `Plan Upgrade: ${PLAN_LABELS[id]}`;
+        planLabel = PLAN_LABELS[id];
+        planFeatures = PLAN_FEATURES[id];
+    } else if (subData) {
+        const priceString = subData.priceHint || '0';
+        const priceMatch = priceString.match(/(\d+,?\d*)/);
+        price = priceMatch ? parseInt(priceMatch[0].replace(/,/g, ''), 10) : 0;
+        itemName = `Plan Upgrade: ${subData.label}`;
+        planLabel = subData.label;
+        planFeatures = subData.features;
+    }
 
     const handleCreateOrder = async (method: string) => {
         try {
@@ -76,7 +122,7 @@ function CheckoutContent() {
         // In production, the webhook or /api/orders PATCH handles backend truth,
         // and /student_courses sync handles frontend state upon returning.
         // For immediate UI feedback, we update localStorage if simulated directly.
-        const updatedUser = { ...user, plan: planId };
+        const updatedUser = { ...user, plan: planId as any };
         setStoredUser(updatedUser);
         setUser(updatedUser);
         if (typeof window !== 'undefined') {
@@ -205,19 +251,19 @@ function CheckoutContent() {
 
             <section className="section" style={{ maxWidth: '600px', margin: '0 auto' }}>
                 <div className="card" style={{ padding: '24px' }}>
-                    <h2>{PLAN_LABELS[planId]}</h2>
+                    <h2>{planLabel}</h2>
                     <p style={{ margin: '16px 0', fontSize: '24px', fontWeight: 'bold', color: '#0070ba' }}>
                         NT$ {price}
                     </p>
 
                     <div style={{ marginBottom: '24px', padding: '16px', backgroundColor: '#f8f9fa', borderRadius: '8px' }}>
                         <p><strong>帳號：</strong> {user.email}</p>
-                        <p><strong>目前方案：</strong> {PLAN_LABELS[user.plan]}</p>
+                        <p><strong>目前方案：</strong> {(PLAN_LABELS as Record<string, string>)[user.plan] || user.plan}</p>
                     </div>
 
                     <h3>方案包含：</h3>
                     <ul style={{ paddingLeft: '20px', marginBottom: '32px' }}>
-                        {PLAN_FEATURES[planId].map((f, i) => (
+                        {planFeatures.map((f, i) => (
                             <li key={i} style={{ marginBottom: '8px' }}>{f}</li>
                         ))}
                     </ul>

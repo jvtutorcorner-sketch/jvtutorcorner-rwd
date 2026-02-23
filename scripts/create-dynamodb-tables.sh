@@ -132,5 +132,15 @@ aws dynamodb create-table \
   --billing-mode PAY_PER_REQUEST \
   --region $REGION
 
+# Create subscriptions table
+aws dynamodb create-table \
+  --table-name jvtutorcorner-subscriptions \
+  --attribute-definitions \
+    AttributeName=id,AttributeType=S \
+  --key-schema \
+    AttributeName=id,KeyType=HASH \
+  --billing-mode PAY_PER_REQUEST \
+  --region $REGION
+
 echo "All DynamoDB tables created successfully!"
 echo "Now redeploy your Amplify application to pick up the new environment variables."
