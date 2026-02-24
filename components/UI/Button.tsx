@@ -11,8 +11,8 @@ type Props = React.ButtonHTMLAttributes<HTMLButtonElement> & {
 };
 
 const variantMap: Record<Variant, string> = {
-  primary: 'bg-blue-600 text-white hover:bg-blue-700',
-  secondary: 'bg-indigo-100 text-indigo-800 hover:bg-indigo-200',
+  primary: 'bg-[#8a2bb5] text-white hover:bg-[#7a26a1]',
+  secondary: 'bg-[#dfd0e6] text-[#8a2bb5] hover:bg-[#d4c1df] border border-[#8a2bb5]/20',
   ghost: 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200',
   danger: 'bg-red-600 text-white hover:bg-red-700',
   muted: 'bg-gray-100 text-gray-700 hover:bg-gray-200',

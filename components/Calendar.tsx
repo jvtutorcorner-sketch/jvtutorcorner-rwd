@@ -47,14 +47,23 @@ interface CalendarEvent {
 
 interface CalendarProps {
   events: CalendarEvent[];
+  view?: ViewType;
+  onViewChange?: (view: ViewType) => void;
 }
 
 type ViewType = 'month' | 'week' | 'day' | 'year';
 
-const Calendar: React.FC<CalendarProps> = ({ events }) => {
+const Calendar: React.FC<CalendarProps> = ({ events, view: controlledView, onViewChange }) => {
   const t = useT();
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [view, setView] = useState<ViewType>('month');
+  const [internalView, setInternalView] = useState<ViewType>('month');
+
+  const view = controlledView || internalView;
+
+  const setView = (v: ViewType) => {
+    if (onViewChange) onViewChange(v);
+    setInternalView(v);
+  };
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [reminderTime, setReminderTime] = useState('15'); // minutes before
   const [showReminderModal, setShowReminderModal] = useState(false);
@@ -135,17 +144,17 @@ const Calendar: React.FC<CalendarProps> = ({ events }) => {
               <option value="day">{t('calendar_view_day') || '日'}</option>
             </select>
 
-            <div className="flex items-center bg-gray-100 rounded-lg p-1">
-              <Button onClick={prev} variant="ghost" className="p-1 rounded-md hover:bg-white hover:shadow-sm">
-                <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="flex items-center space-x-1">
+              <Button onClick={prev} variant="outline" size="sm" className="p-1.5">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
               </Button>
-              <Button onClick={() => setCurrentDate(new Date())} variant="ghost" className="px-3 py-1 text-sm font-medium text-gray-700 hover:bg-white hover:shadow-sm rounded-md mx-1">
+              <Button onClick={() => setCurrentDate(new Date())} variant="primary" size="sm" className="px-4">
                 {t('today')}
               </Button>
-              <Button onClick={next} variant="ghost" className="p-1 rounded-md hover:bg-white hover:shadow-sm">
-                <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <Button onClick={next} variant="outline" size="sm" className="p-1.5">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                 </svg>
               </Button>
@@ -174,17 +183,17 @@ const Calendar: React.FC<CalendarProps> = ({ events }) => {
             <option value="day">{t('calendar_view_day') || '日'}</option>
           </select>
 
-          <div className="flex items-center bg-gray-100 rounded-lg p-1">
-            <Button onClick={prev} variant="ghost" className="p-1 rounded-md hover:bg-white hover:shadow-sm">
-              <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="flex items-center space-x-1">
+            <Button onClick={prev} variant="outline" size="sm" className="p-1.5">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
             </Button>
-            <Button onClick={() => setCurrentDate(new Date())} variant="ghost" className="px-3 py-1 text-sm font-medium text-gray-700 hover:bg-white hover:shadow-sm rounded-md mx-1">
+            <Button onClick={() => setCurrentDate(new Date())} variant="primary" size="sm" className="px-4">
               {t('today')}
             </Button>
-            <Button onClick={next} variant="ghost" className="p-1 rounded-md hover:bg-white hover:shadow-sm">
-              <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <Button onClick={next} variant="outline" size="sm" className="p-1.5">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
               </svg>
             </Button>
