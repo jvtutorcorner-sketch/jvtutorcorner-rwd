@@ -23,17 +23,48 @@ export default function AddAppPage() {
         e.preventDefault();
         setLoading(true);
         try {
-            // 模擬儲存 API 請求 (參考金流的設計方式)
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            // Retrieve userId from the stored user session (same pattern used by /pricing/checkout)
+            let userId = 'anonymous';
+            if (typeof window !== 'undefined') {
+                try {
+                    const raw = localStorage.getItem('tutor_user');
+                    if (raw) {
+                        const stored = JSON.parse(raw);
+                        userId = stored.email || stored.id || 'anonymous';
+                    }
+                } catch (_) { }
+            }
+
+            const res = await fetch('/api/app-integrations', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    userId,
+                    type: 'LINE',
+                    name: formData.name,
+                    // 各類型的專屬設定統一放 config，未來新增其他應用程式類型（Slack、Teams 等）不需改資料表
+                    config: {
+                        channelAccessToken: formData.channelAccessToken,
+                        channelSecret: formData.channelSecret,
+                    },
+                }),
+            });
+
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                throw new Error(errData.error || `HTTP ${res.status}`);
+            }
+
             alert('應用程式新增成功！');
             router.push('/pricing');
-        } catch (error) {
+        } catch (error: any) {
             console.error('Save failed:', error);
-            alert('新增失敗');
+            alert(`新增失敗：${error?.message || '請稍後再試'}`);
         } finally {
             setLoading(false);
         }
     };
+
 
     return (
         <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900 p-4">

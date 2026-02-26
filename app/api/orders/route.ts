@@ -75,8 +75,8 @@ export async function POST(request: Request) {
     const { courseId, enrollmentId, amount, currency, userId: clientUserId } = await request.json();
     let userId = await getUserId();
 
-    if (!courseId && !enrollmentId?.startsWith('plan_upgrade_')) {
-      return NextResponse.json({ error: 'Course ID is required' }, { status: 400 });
+    if (!courseId) {
+      return NextResponse.json({ error: 'Course ID is required. For plan subscriptions, use /api/plan-upgrades instead.' }, { status: 400 });
     }
 
     // If no authenticated userId (dev/demo), or if it's a placeholder mock user, try to derive user from enrollment record
