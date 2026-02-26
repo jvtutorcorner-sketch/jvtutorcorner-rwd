@@ -110,6 +110,11 @@ export default function PricingPage() {
         <p>
           {t('pricing_description')}
         </p>
+        <div style={{ marginTop: '20px' }}>
+          <Link href="/pricing/add-app" className="tag tag-accent" style={{ textDecoration: 'none', padding: '10px 20px', display: 'inline-block' }}>
+            + 新增應用程式
+          </Link>
+        </div>
 
         {/* Auth tag removed from Pricing page per request */}
       </header>
