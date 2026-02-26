@@ -56,7 +56,7 @@ export default function AddAppPage() {
             }
 
             alert('應用程式新增成功！');
-            router.push('/pricing');
+            router.push('/apps');
         } catch (error: any) {
             console.error('Save failed:', error);
             alert(`新增失敗：${error?.message || '請稍後再試'}`);
