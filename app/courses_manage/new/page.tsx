@@ -51,10 +51,34 @@ export default function NewCoursePage() {
         // Attach teacher info
         if (currentUser) {
             if (currentUser.teacherId) updates.teacherId = currentUser.teacherId;
-            updates.teacherName = currentUser.displayName || currentUser.lastName || currentUser.name || 'Unknown Teacher';
+            // Build teacher name from first/last name, displayName, or fetch from profile API
+            const storedName =
+                ((currentUser.firstName || '') + ' ' + (currentUser.lastName || '')).trim() ||
+                currentUser.displayName ||
+                currentUser.lastName ||
+                currentUser.name;
+            if (storedName) {
+                updates.teacherName = storedName;
+            } else {
+                // Fetch real name from profile API as fallback
+                try {
+                    const pRes = await fetch(`/api/profile?email=${encodeURIComponent(currentUser.email || '')}`);
+                    const pJson = await pRes.json();
+                    if (pJson?.ok && pJson.profile) {
+                        const p = pJson.profile;
+                        updates.teacherName = p.fullName ||
+                            ((p.firstName || '') + ' ' + (p.lastName || '')).trim() ||
+                            p.displayName ||
+                            p.email ||
+                            '老師';
+                    } else {
+                        updates.teacherName = '老師';
+                    }
+                } catch {
+                    updates.teacherName = '老師';
+                }
+            }
         } else {
-            // Fallback for dev/demo if not logged in?
-            // Ideally should block or prompt login, but for now specific to teacher dashboard flow
             updates.teacherName = 'Demo Teacher';
         }
 

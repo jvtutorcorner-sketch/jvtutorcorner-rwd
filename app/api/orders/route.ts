@@ -27,7 +27,8 @@ const ORDERS_TABLE = process.env.DYNAMODB_TABLE_ORDERS || 'jvtutorcorner-orders'
 
 export async function POST(request: Request) {
   try {
-    const { courseId, enrollmentId, amount, currency, userId: clientUserId } = await request.json();
+    const body = await request.json();
+    const { courseId, enrollmentId, amount, currency, userId: clientUserId, startTime, endTime } = body;
     let userId = await getUserId();
 
     if (!courseId) {
@@ -82,6 +83,8 @@ export async function POST(request: Request) {
       amount: amount || 0,
       currency: currency || 'TWD',
       status: 'PENDING',
+      startTime: startTime || null,
+      endTime: endTime || null,
       createdAt,
       updatedAt: createdAt,
     };
@@ -191,17 +194,32 @@ export async function GET(request: Request) {
 
     const userMap: Record<string, string> = {};
     const courseMap: Record<string, string> = {};
+    const teacherMap: Record<string, string> = {};
 
     await Promise.all(userIds.map(async (uid) => {
       try {
+        let item: any = null;
+        // Try direct lookup by id first
         const uRes = await docClient.send(new GetCommand({ TableName: PROFILES_TABLE, Key: { id: uid } }));
-        if (uRes.Item) {
-          userMap[uid] = uRes.Item.fullName || `${uRes.Item.firstName || ''} ${uRes.Item.lastName || ''}`.trim() || uRes.Item.email || uid;
+        item = uRes.Item || null;
+        // If not found, scan by email (userId is often the email)
+        if (!item) {
+          const { ScanCommand: SC } = await import('@aws-sdk/lib-dynamodb');
+          const scanRes = await docClient.send(new SC({
+            TableName: PROFILES_TABLE,
+            FilterExpression: 'email = :email',
+            ExpressionAttributeValues: { ':email': String(uid).toLowerCase() }
+          }));
+          item = scanRes.Items?.[0] || null;
+        }
+        if (item) {
+          const name = item.fullName || `${item.firstName || ''} ${item.lastName || ''}`.trim();
+          userMap[uid] = name || '學生'; // never fall back to email
         } else {
-          userMap[uid] = uid;
+          userMap[uid] = '學生'; // unknown user — show generic label, not email
         }
       } catch (e) {
-        userMap[uid] = uid;
+        userMap[uid] = '學生';
       }
     }));
 
@@ -210,6 +228,53 @@ export async function GET(request: Request) {
         const cRes = await docClient.send(new GetCommand({ TableName: COURSES_TABLE, Key: { id: cid } }));
         if (cRes.Item) {
           courseMap[cid] = cRes.Item.title || cid;
+          const courseTeacherId = cRes.Item.teacherId || '';
+          let tName = '';
+
+          // Step 1: Try to get teacher's firstName + lastName from profiles table via teacherId
+          if (courseTeacherId) {
+            try {
+              // Scan profiles for matching roid_id (which stores teacherId)
+              const { ScanCommand: SC2 } = await import('@aws-sdk/lib-dynamodb');
+              const pScan = await docClient.send(new SC2({
+                TableName: PROFILES_TABLE,
+                FilterExpression: 'roid_id = :rid OR id = :rid',
+                ExpressionAttributeValues: { ':rid': courseTeacherId }
+              }));
+              const pItem = pScan.Items?.[0];
+              if (pItem) {
+                const firstName = pItem.firstName || '';
+                const lastName = pItem.lastName || '';
+                tName = `${firstName} ${lastName}`.trim() || pItem.fullName || pItem.displayName || '';
+              }
+            } catch (e) {
+              // ignore profile lookup failure
+            }
+          }
+
+          // Step 2: Fallback to teachers table name
+          if (!tName && courseTeacherId) {
+            try {
+              const TEACHERS_TABLE = process.env.DYNAMODB_TABLE_TEACHERS || 'jvtutorcorner-teachers';
+              const tRes = await docClient.send(new GetCommand({ TableName: TEACHERS_TABLE, Key: { id: courseTeacherId } }));
+              if (tRes.Item) {
+                const firstName = tRes.Item.firstName || '';
+                const lastName = tRes.Item.lastName || '';
+                tName = `${firstName} ${lastName}`.trim() ||
+                  tRes.Item.name || tRes.Item.displayName || '';
+              }
+            } catch (e) {
+              // ignore teacher table lookup failure
+            }
+          }
+
+          // Step 3: Last resort — use the stored teacherName from the course (but not 'Unknown Teacher')
+          if (!tName || tName === 'Unknown Teacher') {
+            const stored = cRes.Item.teacherName || cRes.Item.teacher || '';
+            tName = (stored && stored !== 'Unknown Teacher') ? stored : '';
+          }
+
+          teacherMap[cid] = tName;
         } else {
           courseMap[cid] = cid;
         }
@@ -220,8 +285,9 @@ export async function GET(request: Request) {
 
     const enrichedItems = items.map(o => ({
       ...o,
-      userName: userMap[o.userId] || o.userId,
-      courseTitle: courseMap[o.courseId] || o.courseId
+      userName: userMap[o.userId] || '學生',
+      courseTitle: courseMap[o.courseId] || o.courseId,
+      teacherName: o.courseId ? (teacherMap[o.courseId] || '') : ''
     }));
 
     const lastEvaluatedKey = (res as any).LastEvaluatedKey;

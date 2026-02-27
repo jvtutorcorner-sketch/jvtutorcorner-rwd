@@ -38,11 +38,14 @@ interface CalendarEvent {
   id: string;
   title: string;
   start: Date;
+  end: Date;
   description?: string;
   type: 'activity' | 'record';
   ownerType?: 'student' | 'teacher';
   courseId?: string;
-  status?: 'upcoming' | 'ongoing' | 'interrupted' | 'finished';
+  teacherName?: string;
+  studentName?: string;
+  status?: 'upcoming' | 'ongoing' | 'interrupted' | 'absent' | 'finished';
 }
 
 interface CalendarProps {
@@ -205,14 +208,22 @@ const Calendar: React.FC<CalendarProps> = ({ events, view: controlledView, onVie
 
   const getEventStyle = (event: CalendarEvent) => {
     // Priority: status -> ownerType -> type
-    let colorClass = 'bg-blue-100 text-blue-800 border border-blue-200';
-    if (event.status === 'ongoing') colorClass = 'bg-green-100 text-green-800 border border-green-200';
-    else if (event.status === 'interrupted') colorClass = 'bg-red-100 text-red-800 border border-red-200';
-    else if (event.status === 'finished') colorClass = 'bg-gray-100 text-gray-700 border border-gray-200';
-    else if (event.status === 'upcoming') colorClass = 'bg-indigo-100 text-indigo-800 border border-indigo-200';
-    else if (event.ownerType === 'teacher') colorClass = 'bg-purple-100 text-purple-800 border border-purple-200';
-    else if (event.ownerType === 'student') colorClass = 'bg-indigo-100 text-indigo-800 border border-indigo-200';
-    else if (event.type === 'activity') colorClass = 'bg-green-100 text-green-800 border border-green-200';
+    // Using vivid, high-contrast colors for each state
+    let colorClass = 'bg-blue-500 text-white border border-blue-600';           // default: blue
+    if (event.status === 'ongoing') colorClass = 'bg-emerald-500 text-white border border-emerald-600';  // 進行中：鮮綠
+    else if (event.status === 'interrupted') colorClass = 'bg-orange-500 text-white border border-orange-600'; // 中斷：橘色
+    else if (event.status === 'absent') colorClass = 'bg-rose-500 text-white border border-rose-600';  // 缺席：紅色
+    else if (event.status === 'finished') colorClass = 'bg-slate-400 text-white border border-slate-500'; // 結束：灰
+    else if (event.status === 'upcoming') {
+      const now = new Date();
+      if (now >= event.start) {
+        // Class time has started but DB state is not ONGOING
+        colorClass = 'bg-violet-500 text-white border border-violet-600'; // 未開始上課：紫
+      } else {
+        colorClass = 'bg-sky-500 text-white border border-sky-600';       // 即將開始：天藍
+      }
+    } else if (event.ownerType === 'teacher') colorClass = 'bg-violet-500 text-white border border-violet-600';
+    else if (event.type === 'activity') colorClass = 'bg-sky-500 text-white border border-sky-600';         // 課程活動：天藍
 
     return colorClass;
   };
@@ -258,9 +269,16 @@ const Calendar: React.FC<CalendarProps> = ({ events, view: controlledView, onVie
                     e.stopPropagation();
                     setSelectedEvent(event);
                   }}
-                  className={`px-2 py-1 text-xs rounded-md truncate cursor-pointer flex items-center justify-between ${getEventStyle(event)} hover:shadow-sm transition-shadow`}
+                  className={`px-2 py-1 text-xs rounded-md cursor-pointer flex flex-col justify-between ${getEventStyle(event)} hover:shadow-sm transition-shadow`}
                 >
-                  <span className="truncate">{format(event.start, 'HH:mm')} {event.title}</span>
+                  <div className="flex justify-between items-center w-full">
+                    <span className="font-semibold truncate">{event.title}</span>
+                    {event.teacherName && <span className="opacity-90 ml-1 text-[10px] whitespace-nowrap">{event.teacherName}</span>}
+                  </div>
+                  <div className="flex justify-between items-center w-full mt-0.5 text-[10px]">
+                    <span className="whitespace-nowrap">{format(event.start, 'HH:mm')}</span>
+                    {event.studentName && <span className="truncate opacity-90 ml-1 leading-tight">{event.studentName}</span>}
+                  </div>
                   {reminders[event.id] && (
                     <svg className="w-3 h-3 ml-1 text-indigo-600 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                       <path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z" />
@@ -400,6 +418,26 @@ const Calendar: React.FC<CalendarProps> = ({ events, view: controlledView, onVie
             {/* Day Columns */}
             {weekDays.map((day) => {
               const dayEvents = events.filter((e) => isSameDay(e.start, day));
+
+              // Calculate overlapping events layout
+              const sortedEvents = [...dayEvents].sort((a, b) => a.start.getTime() - b.start.getTime());
+              const columns: CalendarEvent[][] = [];
+              const eventLayouts = new Map<string, { col: number; totalCols: number }>();
+
+              for (const event of sortedEvents) {
+                let colIndex = 0;
+                while (columns[colIndex] && columns[colIndex].some(e =>
+                  (event.start >= e.start && event.start < e.end) ||
+                  (event.end > e.start && event.end <= e.end) ||
+                  (event.start <= e.start && event.end >= e.end)
+                )) {
+                  colIndex++;
+                }
+                if (!columns[colIndex]) columns[colIndex] = [];
+                columns[colIndex].push(event);
+                eventLayouts.set(event.id, { col: colIndex, totalCols: 0 });
+              }
+
               return (
                 <div key={day.toString()} className="border-r border-gray-200 relative bg-white">
                   {hours.map((hour) => (
@@ -411,7 +449,14 @@ const Calendar: React.FC<CalendarProps> = ({ events, view: controlledView, onVie
                     const startHour = event.start.getHours();
                     const startMin = event.start.getMinutes();
                     const top = (startHour * 60) + startMin;
-                    const height = 60; // Assume 1 hour duration or calculate from end time if available
+                    const durationInMin = Math.max(30, differenceInMinutes(event.end, event.start));
+                    const height = durationInMin;
+
+                    const layout = eventLayouts.get(event.id);
+                    const col = layout?.col || 0;
+                    const totalCols = columns.length;
+                    const width = 100 / totalCols;
+                    const left = col * width;
 
                     return (
                       <div
@@ -420,11 +465,22 @@ const Calendar: React.FC<CalendarProps> = ({ events, view: controlledView, onVie
                           e.stopPropagation();
                           setSelectedEvent(event);
                         }}
-                        className={`absolute left-0.5 right-0.5 rounded px-2 py-1 text-xs cursor-pointer overflow-hidden border ${getEventStyle(event)} hover:z-10 hover:shadow-md`}
-                        style={{ top: `${top}px`, height: `${height}px` }}
+                        className={`absolute rounded px-2 py-1 text-xs cursor-pointer overflow-hidden border flex flex-col ${getEventStyle(event)} hover:z-10 hover:shadow-md transition-all`}
+                        style={{
+                          top: `${top}px`,
+                          height: `${height}px`,
+                          left: `${left}%`,
+                          width: `${width}%`,
+                        }}
                       >
-                        <div className="font-semibold truncate">{event.title}</div>
-                        <div className="text-[10px] truncate">{format(event.start, 'HH:mm')}</div>
+                        <div className="flex justify-between items-center w-full">
+                          <span className="font-semibold truncate">{event.title}</span>
+                          {event.teacherName && <span className="opacity-90 ml-1 text-[10px] whitespace-nowrap">{event.teacherName}</span>}
+                        </div>
+                        <div className="flex justify-between items-start w-full mt-0.5 text-[10px]">
+                          <span className="whitespace-nowrap">{format(event.start, 'HH:mm')}</span>
+                          {event.studentName && <span className="truncate ml-1 opacity-90 text-right leading-tight">{event.studentName}</span>}
+                        </div>
                       </div>
                     );
                   })}
@@ -458,30 +514,68 @@ const Calendar: React.FC<CalendarProps> = ({ events, view: controlledView, onVie
               {hours.map((hour) => (
                 <div key={hour} className="h-[60px] border-b border-gray-100"></div>
               ))}
-              {dayEvents.map(event => {
-                const startHour = event.start.getHours();
-                const startMin = event.start.getMinutes();
-                const top = (startHour * 60) + startMin;
-                const height = 60; // Assume 1 hr
+              {(() => {
+                const sortedEvents = [...dayEvents].sort((a, b) => a.start.getTime() - b.start.getTime());
+                const columns: CalendarEvent[][] = [];
+                const eventLayouts = new Map<string, { col: number }>();
 
-                return (
-                  <div
-                    key={event.id}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSelectedEvent(event);
-                    }}
-                    className={`absolute left-2 right-2 rounded px-3 py-2 text-sm cursor-pointer overflow-hidden border ${getEventStyle(event)} hover:z-10 hover:shadow-md`}
-                    style={{ top: `${top}px`, height: `${height}px` }}
-                  >
-                    <div className="flex justify-between">
-                      <span className="font-bold">{event.title}</span>
-                      <span className="text-xs opacity-75">{format(event.start, 'HH:mm')}</span>
+                for (const event of sortedEvents) {
+                  let colIndex = 0;
+                  while (columns[colIndex] && columns[colIndex].some(e =>
+                    (event.start >= e.start && event.start < e.end) ||
+                    (event.end > e.start && event.end <= e.end) ||
+                    (event.start <= e.start && event.end >= e.end)
+                  )) {
+                    colIndex++;
+                  }
+                  if (!columns[colIndex]) columns[colIndex] = [];
+                  columns[colIndex].push(event);
+                  eventLayouts.set(event.id, { col: colIndex });
+                }
+
+                return dayEvents.map(event => {
+                  const startHour = event.start.getHours();
+                  const startMin = event.start.getMinutes();
+                  const top = (startHour * 60) + startMin;
+                  const durationInMin = Math.max(30, differenceInMinutes(event.end, event.start));
+                  const height = durationInMin;
+
+                  const layout = eventLayouts.get(event.id);
+                  const col = layout?.col || 0;
+                  const totalCols = columns.length;
+                  const width = 100 / totalCols;
+                  const left = col * width;
+
+                  return (
+                    <div
+                      key={event.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedEvent(event);
+                      }}
+                      className={`absolute rounded px-3 py-2 text-sm cursor-pointer overflow-hidden border flex flex-col ${getEventStyle(event)} hover:z-10 hover:shadow-md transition-all`}
+                      style={{
+                        top: `${top}px`,
+                        height: `${height}px`,
+                        left: `${left}%`,
+                        width: `${width}%`
+                      }}
+                    >
+                      <div className="flex justify-between items-center">
+                        <span className="font-bold text-base flex flex-row items-center gap-2">
+                          {event.title}
+                          {event.teacherName && <span className="font-normal text-sm opacity-90">({event.teacherName})</span>}
+                        </span>
+                        <div className="flex flex-row items-center gap-3 text-sm opacity-90">
+                          <span>{format(event.start, 'HH:mm')}</span>
+                          {event.studentName && <span className="bg-black/10 px-1.5 py-0.5 rounded font-medium">{event.studentName}</span>}
+                        </div>
+                      </div>
+                      {event.description && <div className="text-xs mt-1 truncate">{event.description}</div>}
                     </div>
-                    {event.description && <div className="text-xs mt-1 truncate">{event.description}</div>}
-                  </div>
-                );
-              })}
+                  );
+                });
+              })()}
             </div>
           </div>
         </div>
@@ -503,6 +597,35 @@ const Calendar: React.FC<CalendarProps> = ({ events, view: controlledView, onVie
     <div className="flex flex-col h-full bg-white rounded-lg shadow-lg overflow-hidden border border-gray-200">
       {renderHeader()}
 
+      {/* 狀態圖例 (Status Legend) */}
+      <div className="flex flex-wrap items-center gap-3 px-4 py-3 bg-gray-50 border-b border-gray-200 text-xs">
+        <span className="font-semibold text-gray-600 mr-2">課程狀態標示：</span>
+        <div className="flex items-center space-x-1">
+          <div className="w-3 h-3 rounded-full bg-violet-500 border border-violet-600"></div>
+          <span className="text-gray-700">未開始上課</span>
+        </div>
+        <div className="flex items-center space-x-1">
+          <div className="w-3 h-3 rounded-full bg-sky-500 border border-sky-600"></div>
+          <span className="text-gray-700">即將開始</span>
+        </div>
+        <div className="flex items-center space-x-1">
+          <div className="w-3 h-3 rounded-full bg-emerald-500 border border-emerald-600"></div>
+          <span className="text-gray-700">進行中</span>
+        </div>
+        <div className="flex items-center space-x-1">
+          <div className="w-3 h-3 rounded-full bg-slate-400 border border-slate-500"></div>
+          <span className="text-gray-700">已結束</span>
+        </div>
+        <div className="flex items-center space-x-1">
+          <div className="w-3 h-3 rounded-full bg-orange-500 border border-orange-600"></div>
+          <span className="text-gray-700">中斷</span>
+        </div>
+        <div className="flex items-center space-x-1">
+          <div className="w-3 h-3 rounded-full bg-rose-500 border border-rose-600"></div>
+          <span className="text-gray-700">缺席</span>
+        </div>
+      </div>
+
       <div className="flex-1 overflow-y-auto">
         {view === 'month' && renderMonth()}
         {view === 'year' && renderYear()}
@@ -515,13 +638,16 @@ const Calendar: React.FC<CalendarProps> = ({ events, view: controlledView, onVie
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
           <div className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden">
             <div className={`px-6 py-4 flex justify-between items-center ${(() => {
-              if (selectedEvent.status === 'ongoing') return 'bg-green-600';
-              if (selectedEvent.status === 'interrupted') return 'bg-red-600';
-              if (selectedEvent.status === 'finished') return 'bg-gray-700';
-              if (selectedEvent.status === 'upcoming') return 'bg-indigo-600';
-              if (selectedEvent.ownerType === 'teacher') return 'bg-purple-600';
-              if (selectedEvent.ownerType === 'student') return 'bg-indigo-600';
-              return selectedEvent.type === 'activity' ? 'bg-green-600' : 'bg-blue-600';
+              if (selectedEvent.status === 'ongoing') return 'bg-emerald-600';
+              if (selectedEvent.status === 'interrupted') return 'bg-orange-600';
+              if (selectedEvent.status === 'absent') return 'bg-rose-600';
+              if (selectedEvent.status === 'finished') return 'bg-slate-500';
+              if (selectedEvent.status === 'upcoming') {
+                return selectedEvent.ownerType === 'teacher' ? 'bg-violet-600' : 'bg-sky-600';
+              }
+              if (selectedEvent.ownerType === 'teacher') return 'bg-violet-600';
+              if (selectedEvent.ownerType === 'student') return 'bg-sky-600';
+              return 'bg-blue-600';
             })()} text-white`}>
               <h3 className="text-lg font-bold">{t('course_details')}</h3>
               <button onClick={() => setSelectedEvent(null)} className="text-white hover:text-gray-200">
@@ -533,7 +659,14 @@ const Calendar: React.FC<CalendarProps> = ({ events, view: controlledView, onVie
             <div className="p-6 space-y-4">
               <div>
                 <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('course_name')}</label>
-                <p className="text-lg font-medium text-gray-900">{selectedEvent.title}</p>
+                <div className="flex items-center space-x-2">
+                  <p className="text-lg font-medium text-gray-900">{selectedEvent.title}</p>
+                  {selectedEvent.teacherName && (
+                    <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs rounded-full font-medium">
+                      {selectedEvent.teacherName}
+                    </span>
+                  )}
+                </div>
               </div>
               <div className="flex space-x-8">
                 <div>
@@ -542,7 +675,14 @@ const Calendar: React.FC<CalendarProps> = ({ events, view: controlledView, onVie
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('time')}</label>
-                  <p className="text-gray-700">{format(selectedEvent.start, 'HH:mm')}</p>
+                  <div className="flex items-center space-x-2">
+                    <p className="text-gray-700">{format(selectedEvent.start, 'HH:mm')}</p>
+                    {selectedEvent.studentName && (
+                      <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full font-medium">
+                        {selectedEvent.studentName}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
               {selectedEvent.description && (

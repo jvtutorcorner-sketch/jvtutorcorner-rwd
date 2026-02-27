@@ -15,6 +15,8 @@ export default function CalendarPage() {
   const t = useT();
   const [allowedCourseIds, setAllowedCourseIds] = useState<Set<string> | null>(null);
   const [view, setView] = useState<'year' | 'month' | 'week' | 'day'>('month');
+  // 存放從 /api/orders 取得的訂單資料（包含 startTime / endTime）
+  const [orderEvents, setOrderEvents] = useState<any[]>([]);
 
   useEffect(() => {
     // determine allowed courses for current user
@@ -27,43 +29,187 @@ export default function CalendarPage() {
     // admin: allow all
     if (user.role === 'admin') {
       setAllowedCourseIds(new Set(COURSES.map((c) => c.id)));
-      return;
-    }
+    } else if (user.role === 'teacher') {
+      (async () => {
+        try {
+          const teacherId = (user as any).teacherId || '';
+          const teacherName = user.displayName || (user.lastName ? `${user.lastName}老師` : user.email || '');
 
-    // teacher: allow courses taught by this teacher
-    if (user.role === 'teacher' && (user as any).teacherId) {
-      const teacher = TEACHERS.find((t) => String(t.id) === String((user as any).teacherId));
-      const name = teacher?.name;
-      const ids = COURSES.filter((c) => String(c.teacherName || '').trim() === String(name || '').trim()).map((c) => c.id);
-      setAllowedCourseIds(new Set(ids));
-      return;
-    }
-
-    // student/other: fetch orders and include ACTIVE/PAID orders
-    (async () => {
-      try {
-        const url = `/api/orders?limit=50&userId=${encodeURIComponent(user.email || '')}`;
-        const res = await fetch(url);
-        const data = await res.json();
-        let rows: any[] = [];
-        if (data && Array.isArray(data)) rows = data;
-        else if (data && Array.isArray(data.data)) rows = data.data;
-
-        const ids = new Set<string>();
-        for (const r of rows) {
-          if (!r) continue;
-          const status = String(r.status || '').toUpperCase();
-          // Assume if order exists and isn't failed/cancelled, the student is allowed in the course.
-          if (status !== 'FAILED' && status !== 'CANCELLED' && status !== 'CANCELED') {
-            if (r.courseId) ids.add(String(r.courseId));
+          let teacherCourses: any[] = [];
+          const res = await fetch(`/api/courses?teacherId=${encodeURIComponent(teacherId)}`);
+          const courseData = await res.json();
+          if (courseData?.ok && Array.isArray(courseData.data)) {
+            teacherCourses = courseData.data;
           }
+          if (teacherCourses.length === 0 && teacherName) {
+            const res2 = await fetch(`/api/courses?teacher=${encodeURIComponent(teacherName)}`);
+            const courseData2 = await res2.json();
+            teacherCourses = courseData2?.data || [];
+          }
+
+          const cIds = teacherCourses.map((c) => c.id).filter(Boolean);
+          setAllowedCourseIds(new Set(cIds));
+
+          if (cIds.length > 0) {
+            const orderPromises = cIds.map((courseId: string) =>
+              fetch(`/api/orders?courseId=${encodeURIComponent(courseId)}&limit=50`)
+                .then((r) => r.json())
+                .then((data) => (data && data.ok ? data.data || [] : data?.data || []))
+                .catch(() => [])
+            );
+            const orderArrays = await Promise.all(orderPromises);
+            const rows = orderArrays.flat();
+
+            const eventsFromOrders: any[] = [];
+            for (const r of rows) {
+              if (!r || !r.startTime || !r.courseId) continue;
+              const status = String(r.status || '').toUpperCase();
+              if (status === 'FAILED' || status === 'CANCELLED' || status === 'CANCELED') continue;
+
+              try {
+                const start = new Date(r.startTime);
+                if (isNaN(start.getTime())) continue;
+
+                let end: Date;
+                if (r.endTime) {
+                  end = new Date(r.endTime);
+                } else if (r.durationMinutes) {
+                  end = addMinutes(start, r.durationMinutes);
+                } else {
+                  end = addMinutes(start, 60);
+                }
+
+                const now = new Date();
+                let statusStr: 'upcoming' | 'ongoing' | 'finished' | 'interrupted' | 'absent' =
+                  now < start ? 'upcoming' : 'ongoing';
+
+                // Only show ongoing if the DB status is ONGOING
+                if (statusStr === 'ongoing' && status !== 'ONGOING') {
+                  statusStr = 'upcoming';
+                }
+
+                if (status === 'INTERRUPTED') statusStr = 'interrupted';
+                else if (status === 'FINISHED') statusStr = 'finished';
+                else if (now > end && status !== 'FINISHED' && status !== 'INTERRUPTED') statusStr = 'absent';
+
+                if (status === 'ABSENT') statusStr = 'absent';
+
+                const courseTitle = r.courseTitle || '課程';
+                // userName is already resolved to firstName+lastName by the API, never use raw userId
+                const studentName = r.userName || '學生';
+
+                eventsFromOrders.push({
+                  id: `order-${r.orderId}`,
+                  title: courseTitle,
+                  teacherName: '老師', // Assuming current user is teacher
+                  studentName: studentName,
+                  start,
+                  end,
+                  description: `課程時間：${start.toLocaleString()} ~ ${end.toLocaleString()}`,
+                  type: 'activity' as const,
+                  ownerType: 'teacher' as const,
+                  courseId: r.courseId,
+                  status: statusStr,
+                });
+              } catch (e) {
+                console.warn('[calendar] 解析訂單時間失敗', r.orderId, e);
+              }
+            }
+
+            const uniqueEvents = eventsFromOrders.filter((ev, index, self) => index === self.findIndex((e) => e.id === ev.id));
+            setOrderEvents(uniqueEvents);
+          }
+        } catch (e) {
+          console.error('[calendar] failed to load teacher courses/orders', e);
+          setAllowedCourseIds(new Set());
         }
-        setAllowedCourseIds(ids);
-      } catch (e) {
-        console.error('[calendar] failed to load enrollments/orders', e);
-        setAllowedCourseIds(new Set());
-      }
-    })();
+      })();
+    } else {
+      // student/other: fetch orders
+      (async () => {
+        try {
+          const url = `/api/orders?limit=50&userId=${encodeURIComponent(user.email || '')}`;
+          const res = await fetch(url);
+          const data = await res.json();
+          let rows: any[] = [];
+          if (data && Array.isArray(data)) rows = data;
+          else if (data && Array.isArray(data.data)) rows = data.data;
+
+          const ids = new Set<string>();
+          for (const r of rows) {
+            if (!r) continue;
+            const status = String(r.status || '').toUpperCase();
+            if (status !== 'FAILED' && status !== 'CANCELLED' && status !== 'CANCELED') {
+              if (r.courseId) ids.add(String(r.courseId));
+            }
+          }
+          setAllowedCourseIds(ids);
+
+          // 從 order 的 startTime / endTime 建立行事曆事件
+          const eventsFromOrders: any[] = [];
+          for (const r of rows) {
+            if (!r || !r.startTime || !r.courseId) continue;
+            const status = String(r.status || '').toUpperCase();
+            if (status === 'FAILED' || status === 'CANCELLED' || status === 'CANCELED') continue;
+
+            try {
+              const start = new Date(r.startTime);
+              if (isNaN(start.getTime())) continue;
+
+              // 決定結束時間 (使用 endTime 或 durationMinutes)
+              let end: Date;
+              if (r.endTime) {
+                end = new Date(r.endTime);
+              } else if (r.durationMinutes) {
+                end = addMinutes(start, r.durationMinutes);
+              } else {
+                end = addMinutes(start, 60);
+              }
+
+              const now = new Date();
+              let statusStr: 'upcoming' | 'ongoing' | 'finished' | 'interrupted' | 'absent' =
+                now < start ? 'upcoming' : 'ongoing';
+
+              // Only show ongoing if the DB status is ONGOING
+              if (statusStr === 'ongoing' && status !== 'ONGOING') {
+                statusStr = 'upcoming';
+              }
+
+              if (status === 'INTERRUPTED') statusStr = 'interrupted';
+              else if (status === 'FINISHED') statusStr = 'finished';
+              else if (now > end && status !== 'FINISHED' && status !== 'INTERRUPTED') statusStr = 'absent';
+
+              if (status === 'ABSENT') statusStr = 'absent';
+
+              // 取得課程名稱
+              const courseTitle = r.courseTitle || '課程';
+              // teacherName is resolved by the API from the course record — never use raw email
+              const teacherName = r.teacherName || '老師';
+
+              eventsFromOrders.push({
+                id: `order-${r.orderId}`,
+                title: courseTitle,
+                teacherName: teacherName,
+                studentName: '學生', // Assuming current user is student
+                start,
+                end,
+                description: `課程時間：${start.toLocaleString()} ~ ${end.toLocaleString()}`,
+                type: 'activity' as const,
+                ownerType: 'student' as const,
+                courseId: r.courseId,
+                status: statusStr,
+              });
+            } catch (e) {
+              console.warn('[calendar] 解析訂單時間失敗', r.orderId, e);
+            }
+          }
+          setOrderEvents(eventsFromOrders);
+        } catch (e) {
+          console.error('[calendar] failed to load enrollments/orders', e);
+          setAllowedCourseIds(new Set());
+        }
+      })();
+    }
   }, []);
 
   const events = useMemo(() => {
@@ -151,13 +297,17 @@ export default function CalendarPage() {
       };
     });
 
-    // Filter all events by allowedCourseIds (only include events for allowed courses)
+    // Filter all static events by allowedCourseIds
     const filteredActivity = activityEvents.filter((e) => allowedCourseIds.has(e.courseId || ''));
     const filteredRecords = recordEvents.filter((e) => allowedCourseIds.has(e.courseId || ''));
     const filteredTeacher = teacherEvents.filter((e) => allowedCourseIds.has(e.courseId || ''));
 
-    return [...filteredActivity, ...filteredRecords, ...filteredTeacher];
-  }, [allowedCourseIds, t]);
+    // Deduplicate order events (avoid duplicating with static events from same courseId)
+    const existingIds = new Set([...filteredActivity, ...filteredRecords, ...filteredTeacher].map(e => e.id));
+    const filteredOrderEvents = orderEvents.filter(e => !existingIds.has(e.id));
+
+    return [...filteredActivity, ...filteredRecords, ...filteredTeacher, ...filteredOrderEvents];
+  }, [allowedCourseIds, orderEvents, t]);
 
   const stats = useMemo(() => {
     if (!allowedCourseIds) return { current: 0, ex: 0 };
@@ -212,3 +362,4 @@ export default function CalendarPage() {
     </div>
   );
 }
+
