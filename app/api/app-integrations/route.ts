@@ -47,10 +47,17 @@ let LOCAL_INTEGRATIONS: AppIntegrationRecord[] = [];
 async function loadLocal() {
     try {
         const FILE = await resolveDataFile('app-integrations.json');
+        console.log('[app-integrations API] Loading from:', FILE);
         if (fs.existsSync(FILE)) {
-            LOCAL_INTEGRATIONS = JSON.parse(fs.readFileSync(FILE, 'utf8') || '[]');
+            const content = fs.readFileSync(FILE, 'utf8');
+            LOCAL_INTEGRATIONS = JSON.parse(content || '[]');
+            console.log('[app-integrations API] Loaded records:', LOCAL_INTEGRATIONS.length);
+        } else {
+            console.log('[app-integrations API] File does not exist yet.');
+            LOCAL_INTEGRATIONS = [];
         }
     } catch (e) {
+        console.error('[app-integrations API] loadLocal error:', e);
         LOCAL_INTEGRATIONS = [];
     }
 }
@@ -58,6 +65,7 @@ async function loadLocal() {
 async function saveLocal() {
     try {
         const FILE = await resolveDataFile('app-integrations.json');
+        console.log('[app-integrations API] Saving to:', FILE);
         fs.writeFileSync(FILE, JSON.stringify(LOCAL_INTEGRATIONS, null, 2), 'utf8');
     } catch (e) {
         console.warn('[app-integrations API] failed to save local data', e);
