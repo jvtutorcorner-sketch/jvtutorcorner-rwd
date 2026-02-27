@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { uploadToS3, getObjectBuffer } from '@/lib/s3';
+import { uploadToS3, getObjectBuffer, deleteFromS3 } from '@/lib/s3';
 import { saveWhiteboardState, getWhiteboardState, normalizeUuid } from '@/lib/whiteboardService';
 import { broadcastToUuid } from '../stream/route';
 import path from 'path';
@@ -8,22 +8,23 @@ import fs from 'fs';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { uuid: rawUuid, pdf } = body;
+    const { uuid: rawUuid, pdf, orderId } = body;
     const uuid = normalizeUuid(rawUuid);
-    
+
     console.log('[PDF POST] ===== PDF UPLOAD REQUEST =====');
     console.log('[PDF POST] Raw UUID received:', rawUuid);
     console.log('[PDF POST] Normalized UUID:', uuid);
+    console.log('[PDF POST] Order ID:', orderId);
     console.log('[PDF POST] PDF name:', pdf?.name);
-    
+
     if (!uuid || !pdf) {
       console.error('[PDF POST] Validation failed: Missing uuid or pdf object');
       return NextResponse.json({ error: 'Missing uuid or pdf metadata' }, { status: 400 });
     }
-    
+
     let uploaded: { url: string; key: string } | null = null;
     let useS3 = !!(process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID || process.env.AWS_S3_BUCKET_NAME);
-    
+
     console.log('[PDF POST] S3 Configuration check:', {
       hasAccessKey: !!process.env.AWS_ACCESS_KEY_ID,
       hasCiAccessKey: !!process.env.CI_AWS_ACCESS_KEY_ID,
@@ -34,23 +35,24 @@ export async function POST(req: NextRequest) {
 
     // Case 1: PDF already uploaded (e.g., via presigned URL)
     if (pdf.s3Key) {
-       console.log('[PDF POST] PDF already uploaded to storage. Key:', pdf.s3Key);
-       uploaded = { 
-         url: pdf.url || `/api/whiteboard/pdf?uuid=${encodeURIComponent(rawUuid || 'default')}`, 
-         key: pdf.s3Key 
-       };
-    } 
+      console.log('[PDF POST] PDF already uploaded to storage. Key:', pdf.s3Key);
+      uploaded = {
+        url: pdf.url || `/api/whiteboard/pdf?uuid=${encodeURIComponent(rawUuid || 'default')}`,
+        key: pdf.s3Key
+      };
+    }
     // Case 2: PDF provided as base64 data to be uploaded by the server
     else if (pdf.data) {
       // Decode base64
       const buffer = Buffer.from(pdf.data, 'base64');
-      
+
       // Try S3 upload first if credentials available
       if (useS3) {
         try {
-          const key = `whiteboard/session_${uuid}.pdf`;
+          const baseId = orderId ? normalizeUuid(orderId) : uuid;
+          const key = `whiteboard/session_${baseId}.pdf`;
           console.log('[PDF POST] Attempting S3 upload. Key:', key, 'Size:', buffer.length, 'Type:', pdf.type);
-          
+
           uploaded = await uploadToS3(buffer, key, pdf.type || 'application/pdf');
           console.log('[PDF POST] ✓ PDF upload to S3 success:', { key: uploaded.key, url: uploaded.url });
         } catch (s3Error: any) {
@@ -60,7 +62,7 @@ export async function POST(req: NextRequest) {
           uploaded = null;
         }
       }
-      
+
       // Fall back to local storage if S3 failed or not configured
       if (!uploaded) {
         if (useS3) {
@@ -68,25 +70,26 @@ export async function POST(req: NextRequest) {
         } else {
           console.log('[PDF POST] S3 not configured, using local storage');
         }
-        
+
         const timestamp = Date.now();
         const randomId = Math.random().toString(36).substr(2, 9);
         const fileExtension = pdf.name.split('.').pop() || 'pdf';
-        const key = `whiteboard/session_${uuid}_${timestamp}_${randomId}.${fileExtension}`;
-        
+        const baseId = orderId ? normalizeUuid(orderId) : uuid;
+        const key = `whiteboard/session_${baseId}_${timestamp}_${randomId}.${fileExtension}`;
+
         const uploadsDir = path.join(process.cwd(), '.uploads', 'whiteboard');
         if (!fs.existsSync(uploadsDir)) {
           fs.mkdirSync(uploadsDir, { recursive: true });
         }
-        
+
         const localPath = path.join(uploadsDir, `session_${uuid}_${timestamp}_${randomId}.${fileExtension}`);
-        
+
         try {
           // Write file to local storage (instead of using bypass)
           fs.writeFileSync(localPath, buffer);
           console.log('[PDF POST] ✓ PDF written to local storage:', { localPath, size: buffer.length });
-          
-          const url = `/api/uploads/whiteboard/session_${uuid}_${timestamp}_${randomId}.${fileExtension}`;
+
+          const url = `/api/uploads/whiteboard/session_${baseId}_${timestamp}_${randomId}.${fileExtension}`;
           uploaded = { url, key };
           console.log('[PDF POST] ✓ PDF record prepared (local storage):', { url, key });
         } catch (writeError: any) {
@@ -98,17 +101,18 @@ export async function POST(req: NextRequest) {
       console.error('[PDF POST] Validation failed: Missing pdf data or s3Key');
       return NextResponse.json({ error: 'Missing pdf data or s3Key' }, { status: 400 });
     }
-    
+
     if (!uploaded) {
       throw new Error('Failed to prepare PDF upload');
     }
-    
+
     // Save metadata
     const meta = { name: pdf.name, uploadedAt: Date.now(), size: pdf.size, type: pdf.type };
-    
+
     if (useS3) {
       try {
-        const metaKey = `whiteboard/session_${uuid}_meta.json`;
+        const baseId = orderId ? normalizeUuid(orderId) : uuid;
+        const metaKey = `whiteboard/session_${baseId}_meta.json`;
         await uploadToS3(Buffer.from(JSON.stringify(meta)), metaKey, 'application/json');
         console.log('[PDF POST] Metadata upload to S3 success:', metaKey);
       } catch (metaError) {
@@ -129,11 +133,11 @@ export async function POST(req: NextRequest) {
     try {
       console.log('[PDF POST] Getting existing whiteboard state for uuid:', uuid);
       const existing = await getWhiteboardState(uuid);
-      console.log('[PDF POST] Existing whiteboard state:', { 
-        hasState: !!existing, 
-        hasStrokes: !!existing?.strokes, 
+      console.log('[PDF POST] Existing whiteboard state:', {
+        hasState: !!existing,
+        hasStrokes: !!existing?.strokes,
         hasPdf: !!existing?.pdf,
-        fullState: existing 
+        fullState: existing
       });
       const strokes = existing?.strokes || [];
       const pdfState = {
@@ -148,10 +152,10 @@ export async function POST(req: NextRequest) {
       console.log('[PDF POST] Saving PDF state:', pdfState);
       await saveWhiteboardState(uuid, strokes, pdfState as any);
       console.log('[PDF POST] Saved whiteboard state with PDF metadata for uuid:', uuid);
-      
+
       // Wait a bit to ensure DynamoDB consistency
       await new Promise(resolve => setTimeout(resolve, 300));
-      
+
       // Verify the save worked with retry
       let verifyState = null;
       for (let i = 0; i < 3; i++) {
@@ -161,7 +165,7 @@ export async function POST(req: NextRequest) {
           break;
         }
         if (i < 2) {
-          console.log(`[PDF POST] Verification attempt ${i+1} - PDF not yet visible, retrying...`);
+          console.log(`[PDF POST] Verification attempt ${i + 1} - PDF not yet visible, retrying...`);
           await new Promise(resolve => setTimeout(resolve, 500));
         }
       }
@@ -171,7 +175,7 @@ export async function POST(req: NextRequest) {
         pdfName: verifyState?.pdf?.name,
         pdfUrl: verifyState?.pdf?.url
       });
-      
+
       try {
         broadcastToUuid(uuid, { type: 'pdf-uploaded', pdf: pdfState, clientId: pdf.uploadedBy || null });
         console.log('[PDF POST] broadcasted pdf-uploaded event for uuid:', uuid);
@@ -182,11 +186,11 @@ export async function POST(req: NextRequest) {
       console.error('[PDF POST] Failed to save whiteboard state metadata:', dbError);
     }
 
-    return NextResponse.json({ 
-      success: true, 
-      message: 'PDF uploaded', 
-      key: uploaded.key, 
-      url: uploaded.url 
+    return NextResponse.json({
+      success: true,
+      message: 'PDF uploaded',
+      key: uploaded.key,
+      url: uploaded.url
     });
   } catch (error: any) {
     console.error('[PDF POST] Critical error:', error);
@@ -199,64 +203,64 @@ export async function GET(req: NextRequest) {
   const rawUuid = searchParams.get('uuid');
   const uuid = normalizeUuid(rawUuid);
   const check = searchParams.get('check'); // if true, just return metadata
-  
+
   console.log('[PDF GET] ===== PDF RETRIEVAL REQUEST =====');
   console.log('[PDF GET] Raw UUID received:', rawUuid);
   console.log('[PDF GET] Normalized UUID:', uuid);
   console.log('[PDF GET] Check mode:', !!check);
-  
+
   if (!uuid || uuid === 'default') {
     return NextResponse.json({ error: 'Missing uuid' }, { status: 400 });
   }
-  
+
   try {
     // Get PDF info from whiteboard state instead of assuming fixed key
     console.log('[PDF GET] Querying DynamoDB for uuid:', uuid);
-    
+
     // Retry logic for eventual consistency - more aggressive
     let state = null;
     let attempts = 0;
     const maxAttempts = 5;
-    
+
     while (!state?.pdf && attempts < maxAttempts) {
       attempts++;
       state = await getWhiteboardState(uuid);
-      
+
       // Fallback: Try prefixed version if not found (legacy data fallback)
       if (!state?.pdf && !uuid.startsWith('course_')) {
         const fallbackUuid = `course_${uuid}`;
         console.log(`[PDF GET] PDF not found for ${uuid}, trying fallback ${fallbackUuid}...`);
         state = await getWhiteboardState(fallbackUuid);
       }
-      
+
       if (state?.pdf) {
         console.log(`[PDF GET] ✓ PDF found on attempt ${attempts}/${maxAttempts}`);
         break;
       }
-      
+
       if (attempts < maxAttempts) {
         const delay = Math.min(300 * Math.pow(1.5, attempts - 1), 2000);
         console.log(`[PDF GET] PDF not found, retrying in ${delay}ms (attempt ${attempts}/${maxAttempts})`);
         await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
-    
-    console.log('[PDF GET] Retrieved whiteboard state after retries:', { 
+
+    console.log('[PDF GET] Retrieved whiteboard state after retries:', {
       attempts,
-      hasState: !!state, 
-      hasStrokes: !!state?.strokes, 
-      hasPdf: !!state?.pdf, 
+      hasState: !!state,
+      hasStrokes: !!state?.strokes,
+      hasPdf: !!state?.pdf,
       pdfName: state?.pdf?.name
     });
     const pdf = state?.pdf;
-    
+
     console.log('[PDF GET] uuid:', uuid, 'check:', check, 'hasPdf:', !!pdf);
-    
+
     if (!pdf) {
       console.log('[PDF GET] No PDF found in whiteboard state for uuid:', uuid, '- returning found: false');
       return NextResponse.json({ found: false }, { status: 200 });
     }
-    
+
     // If just checking existence/meta
     if (check) {
       const meta = {
@@ -268,11 +272,11 @@ export async function GET(req: NextRequest) {
       console.log('[PDF GET] Found PDF in whiteboard state for check request:', { uuid, meta });
       return NextResponse.json({ found: true, meta });
     }
-    
+
     // Return the PDF bytes
     const s3Key = pdf.s3Key;
     const url = pdf.url;
-    
+
     console.log('[PDF GET] Attempting to serve PDF bytes:', {
       hasS3Key: !!s3Key,
       s3Key: s3Key,
@@ -281,7 +285,7 @@ export async function GET(req: NextRequest) {
       isLocalFile: url?.startsWith('/api/uploads/'),
       isS3: !url?.startsWith('/api/uploads/')
     });
-    
+
     // PRIORITY: If s3Key is present (even if url starts with /api/uploads), try S3 first
     if (s3Key) {
       try {
@@ -300,13 +304,13 @@ export async function GET(req: NextRequest) {
         // If S3 fail, fall through to check local storage
       }
     }
-    
+
     // FALLBACK 1: If it's a local file (starts with /api/uploads)
     if (url && url.startsWith('/api/uploads/')) {
       console.log('[PDF GET] ⚠️ Serving local PDF file:', url);
       // The file is served via the uploads API, so redirect or proxy
       const localPath = path.join(process.cwd(), '.uploads', 'whiteboard', s3Key?.split('/').pop() || 'file.pdf');
-      
+
       if (!fs.existsSync(localPath)) {
         console.log('[PDF GET] ✗ Local PDF file not found:', { path: localPath, expectedFile: s3Key?.split('/').pop() });
         // Instead of returning 404 immediately, we'll try S3 in the next block if not already tried
@@ -326,7 +330,7 @@ export async function GET(req: NextRequest) {
         }
       }
     }
-    
+
     // Otherwise, try S3 (if not already tried or if local failed)
     try {
       console.log('[PDF GET] Final attempt: Retrieving from S3:', { s3Key, bucket: process.env.AWS_S3_BUCKET_NAME });
@@ -349,6 +353,90 @@ export async function GET(req: NextRequest) {
     }
   } catch (error: any) {
     console.error('PDF get critical failure:', error);
+    return NextResponse.json({ error: 'Internal server error', details: error.message }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const rawUuid = searchParams.get('uuid');
+  const orderId = searchParams.get('orderId');
+  const uuid = normalizeUuid(rawUuid);
+
+  console.log('[PDF DELETE] ===== PDF DELETE REQUEST =====');
+  console.log('[PDF DELETE] Raw UUID received:', rawUuid);
+  console.log('[PDF DELETE] Normalized UUID:', uuid);
+  console.log('[PDF DELETE] Order ID:', orderId);
+
+  if (!uuid || uuid === 'default') {
+    return NextResponse.json({ error: 'Missing uuid' }, { status: 400 });
+  }
+
+  try {
+    const baseId = orderId ? normalizeUuid(orderId) : uuid;
+    console.log('[PDF DELETE] Querying DynamoDB for:', baseId, 'and', uuid);
+
+    let state = await getWhiteboardState(baseId);
+    if (!state?.pdf && baseId !== uuid) {
+      state = await getWhiteboardState(uuid);
+    }
+
+    // Fallback: Try prefixed version if not found (legacy data fallback)
+    if (!state?.pdf && !uuid.startsWith('course_')) {
+      const fallbackUuid = `course_${uuid}`;
+      state = await getWhiteboardState(fallbackUuid);
+    }
+
+    if (!state?.pdf) {
+      console.log('[PDF DELETE] No PDF found in whiteboard state for uuid:', uuid);
+      return NextResponse.json({ success: true, message: 'No PDF found to delete' });
+    }
+
+    const { s3Key, url } = state.pdf;
+    console.log('[PDF DELETE] Found PDF to delete:', { s3Key, url });
+
+    let useS3 = !!(process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID || process.env.AWS_S3_BUCKET_NAME);
+
+    // Delete from S3
+    if (useS3 && s3Key) {
+      try {
+        console.log('[PDF DELETE] Deleting from S3:', s3Key);
+        await deleteFromS3(s3Key);
+        console.log('[PDF DELETE] ✓ PDF deleted from S3');
+      } catch (err: any) {
+        console.warn('[PDF DELETE] ✗ Failed to delete from S3:', err.message);
+      }
+    }
+
+    // Delete from local storage if applicable
+    if (url && url.startsWith('/api/uploads/')) {
+      try {
+        const localPath = path.join(process.cwd(), '.uploads', 'whiteboard', s3Key?.split('/').pop() || 'file.pdf');
+        if (fs.existsSync(localPath)) {
+          fs.unlinkSync(localPath);
+          console.log('[PDF DELETE] ✓ PDF deleted from local storage:', localPath);
+        }
+      } catch (err: any) {
+        console.warn('[PDF DELETE] ✗ Failed to delete local file:', err.message);
+      }
+    }
+
+    // Clear the PDF metadata from DynamoDB so clients don't try to fetch a deleted file
+    try {
+      console.log(`[PDF DELETE] Clearing PDF metadata from DB for ${baseId} (and ${uuid} if different)`);
+      const strokes = state?.strokes || [];
+      await saveWhiteboardState(baseId, strokes, null);
+      if (baseId !== uuid) {
+        await saveWhiteboardState(uuid, strokes, null);
+      }
+      console.log('[PDF DELETE] ✓ PDF metadata cleared from DB');
+    } catch (dbErr: any) {
+      console.warn('[PDF DELETE] ✗ Failed to clear PDF metadata from DB:', dbErr.message);
+    }
+
+    return NextResponse.json({ success: true, message: 'PDF deleted successfully' });
+  } catch (error: any) {
+    console.error('[PDF DELETE] Critical error:', error);
     return NextResponse.json({ error: 'Internal server error', details: error.message }, { status: 500 });
   }
 }

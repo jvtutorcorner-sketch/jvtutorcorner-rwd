@@ -255,6 +255,8 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   // Use a ref to keep the ID stable across re-renders for the same component instance
   const userIdRef = useRef<string | null>(null);
 
+  const [isEnding, setIsEnding] = useState(false);
+
   // Create a unique per-tab ID to distinguish multiple tabs opened by the same logged-in user
   const tabId = useMemo(() => {
     if (typeof window === 'undefined') return 'ssr';
@@ -1040,7 +1042,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   // 🚀 自動加入/恢復機制 (Auto-join / Re-join)
   // 處理學生自動進入已開始的課堂，以及老師重新整理頁面後恢復通話
   useEffect(() => {
-    if (!mounted || joined || loading || !sessionReadyKey) return;
+    if (!mounted || joined || loading || !sessionReadyKey || isEnding) return;
 
     const checkAndAutoJoin = async () => {
       try {
@@ -1395,8 +1397,12 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           });
           if (!reportedRef.current) {
             console.log(`[ClientClassroom] Reported ${roleName} as PRESENT to server`);
-            reportedRef.current = true;
           }
+        }
+
+        // Always mark as having reported properly once we've synced once
+        if (!reportedRef.current) {
+          reportedRef.current = true;
         }
 
         // Check if session has been ended/cleared on server
@@ -1406,7 +1412,19 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
             const sessionData = await sessionResp.json();
             const serverEndTs = typeof sessionData.endTs === 'number' ? sessionData.endTs : null;
 
-            // 1. Sync timer if server has a different endTs
+            // 1. Exit if session ended on server (and we aren't the teacher who just ended it)
+            // Safety: Only kick out if we actually have a session previously (endTsRef.current !== null).
+            // This avoids kicking out students who enter before the session is initialized on the server.
+            if (sessionData.endTs === null && endTsRef.current !== null) {
+              const isTeacher = (urlRole === 'teacher' || computedRole === 'teacher');
+              if (!isTeacher) {
+                console.log('[ClientClassroom] Session ended on server, student exiting via heartbeat check...');
+                handleLeave();
+                return; // Stop processing further state changes once we've triggered exit
+              }
+            }
+
+            // 2. Sync timer if server has a different endTs
             if (serverEndTs && (!endTsRef.current || Math.abs(endTsRef.current - serverEndTs) > 2000)) {
               console.log('[Timer] Heartbeat syncing endTs from server:', serverEndTs);
               endTsRef.current = serverEndTs;
@@ -1414,23 +1432,12 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
               try { localStorage.setItem(endKey, String(serverEndTs)); } catch (e) { }
             }
 
-            // 2. Clear timer if server session is cleared
+            // 3. Clear timer if server session is cleared
             if (serverEndTs === null && endTsRef.current !== null) {
               console.log('[Timer] Heartbeat detected cleared session on server');
               endTsRef.current = null;
               const endKey = `class_end_ts_${sessionReadyKey}`;
               try { localStorage.removeItem(endKey); } catch (e) { }
-            }
-
-            // 3. Exit if session ended on server (and we aren't the teacher who just ended it)
-            // Safety: Only kick out if we actually have a session previously (endTsRef.current !== null).
-            // This avoids kicking out students who enter before the session is initialized on the server.
-            if (sessionData.endTs === null && reportedRef.current && endTsRef.current !== null) {
-              const isTeacher = (urlRole === 'teacher' || computedRole === 'teacher');
-              if (!isTeacher) {
-                console.log('[ClientClassroom] Session ended on server, student exiting via heartbeat check...');
-                handleLeave();
-              }
             }
           }
         } catch (e) { }
@@ -1494,7 +1501,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
 
   const endSession = async () => {
     try {
-      // 广播结束上课通知 (use same shared session name as wait page)
+      // 1. Broadcast end session notice
       const sessionBroadcastName = sessionParam || channelName || `classroom_session_ready_${courseId}`;
       try {
         const bc = new BroadcastChannel(sessionBroadcastName);
@@ -1505,82 +1512,136 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
         console.warn('BroadcastChannel endSession failed', e);
       }
 
-      await leave();
-      try { (window as any).__wbRoom = null; } catch (e) { }
-
-      // Clean up whiteboard room
-      if (useAgoraWhiteboard && agoraRoomData?.uuid) {
+      // 1.5 Explicitly save remaining time before destroying the session
+      // This is necessary because clearing the session breaks the user-counting in markReady(false)
+      if (orderId && remainingSecondsRef.current !== null) {
+        console.log('[ClientClassroom] endSession triggered. Saving remaining time to db:', remainingSecondsRef.current);
         try {
-          await fetch('/api/whiteboard/room', {
-            method: 'DELETE',
+          fetch(`/api/orders/${encodeURIComponent(orderId)}`, {
+            method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ uuid: agoraRoomData.uuid }),
-            keepalive: true,
-          });
-        } catch (e) { console.warn('Agora whiteboard cleanup failed (ignored)', e); }
-      } else if (whiteboardMeta?.uuid) {
-        try {
-          await fetch('/api/agora/whiteboard/close', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ uuid: whiteboardMeta.uuid }),
-            keepalive: true,
-          });
-        } catch (e) { console.warn('canvas whiteboard close request failed (ignored)', e); }
+            body: JSON.stringify({ remainingSeconds: remainingSecondsRef.current }),
+            keepalive: true
+          }).catch(e => console.warn('[ClientClassroom] endSession save time failed', e));
+        } catch (e) { }
       }
 
-      // 返回到等待页面，保持相应的 role 参数
-      const currentRole = (urlRole === 'teacher' || urlRole === 'student') ? urlRole : computedRole;
-      const waitPageUrl = `/classroom/wait?courseId=${courseId}${orderId ? `&orderId=${orderId}` : ''}&role=${currentRole}`;
+      // 2. Clear authoritative server session IMMEDIATELY so students exit.
+      // We do this before waiting for any slow Agora SDK calls.
+      setIsEnding(true);
       try {
-        // Clear persistent end timestamp when session ends
         const endKey = `class_end_ts_${sessionReadyKey}`;
-        try {
-          localStorage.removeItem(endKey);
-          // Also clear the ready state for the session
-          localStorage.removeItem(sessionReadyKey);
-        } catch (e) { }
-        // clear authoritative server session record as well
-        try { await fetch('/api/classroom/session', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ uuid: sessionReadyKey, action: 'clear' }) }); } catch (e) { console.warn('Failed to clear server session', e); }
-      } catch (e) { }
+        localStorage.removeItem(endKey);
+        localStorage.removeItem(sessionReadyKey);
 
-      // ensure we formally mark them as not present to trigger time saving
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2000);
+
+        try {
+          await fetch('/api/classroom/session', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ uuid: sessionReadyKey, action: 'clear' }),
+            keepalive: true,
+            signal: controller.signal
+          });
+          console.log('[ClientClassroom] Server session cleared');
+        } finally {
+          clearTimeout(timeoutId);
+        }
+      } catch (e) {
+        console.warn('Failed to clear server session', e);
+      }
+
+      // ensure we formally mark them as not present to trigger time saving locally
       markReady(false);
 
-      // small delay to let localstorage/fetch propagate before full navigation
+      // 3. Start Whiteboard Cleanup asynchronously (don't block)
+      try { (window as any).__wbRoom = null; } catch (e) { }
+
+      // 3.5 Delete PDF from S3
+      if (isTeacher) { // redundant check but safe
+        try {
+          const deletePdfUrl = `/api/whiteboard/pdf?uuid=${encodeURIComponent(sessionReadyKey)}${orderId ? `&orderId=${encodeURIComponent(orderId)}` : ''}`;
+          fetch(deletePdfUrl, {
+            method: 'DELETE',
+            keepalive: true
+          }).catch(e => console.warn('PDF deletion failed', e));
+        } catch (e) { }
+      }
+
+      if (useAgoraWhiteboard && agoraRoomData?.uuid) {
+        fetch('/api/whiteboard/room', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ uuid: agoraRoomData.uuid }),
+          keepalive: true,
+        }).catch(e => console.warn('Agora whiteboard cleanup failed (ignored)', e));
+      } else if (whiteboardMeta?.uuid) {
+        fetch('/api/agora/whiteboard/close', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ uuid: whiteboardMeta.uuid }),
+          keepalive: true,
+        }).catch(e => console.warn('canvas whiteboard close request failed (ignored)', e));
+      }
+
+      // 4. Leave Agora with a timeout to prevent hanging UI
+      try {
+        console.log('[ClientClassroom] Leaving Agora...');
+        await Promise.race([
+          leave(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Agora leave timeout')), 1500))
+        ]);
+        console.log('[ClientClassroom] Agora leave complete');
+      } catch (e) {
+        console.warn('[ClientClassroom] Agora leave timed out or failed', e);
+      }
+
+    } catch (e) {
+      console.warn('end session failed', e);
+    } finally {
+      // 5. Always redirect to wait page, regardless of errors
+      const currentRole = (urlRole === 'teacher' || urlRole === 'student') ? urlRole : computedRole;
+      const waitPageUrl = `/classroom/wait?courseId=${courseId}${orderId ? `&orderId=${orderId}` : ''}&role=${currentRole}`;
       setTimeout(() => {
         window.location.href = waitPageUrl;
       }, 50);
-    } catch (e) {
-      console.warn('end session failed', e);
-      alert('End session attempt failed; check console');
     }
   };
 
   const handleLeave = async () => {
+    if (isEnding) return;
+    setIsEnding(true);
     try {
       console.log('handleLeave called');
-      await leave();
-      console.log('leave() completed');
+
+      // ensure we formally mark them as not present to trigger time saving
+      markReady(false);
+
+      // Leave Agora with a timeout to prevent hanging UI
+      try {
+        await Promise.race([
+          leave(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Agora leave timeout')), 1500))
+        ]);
+        console.log('leave() completed');
+      } catch (e) {
+        console.warn('leave failed or timed out', e);
+      }
+
+    } catch (e) {
+      console.warn('handleLeave top-level error', e);
+    } finally {
       // Return to wait page based on role
       const currentRole = (urlRole === 'teacher' || urlRole === 'student') ? urlRole : computedRole;
       const waitPageUrl = `/classroom/wait?courseId=${courseId}${orderId ? `&orderId=${orderId}` : ''}&role=${currentRole}`;
       console.log('navigating to:', waitPageUrl);
 
-      // ensure we formally mark them as not present to trigger time saving
-      markReady(false);
-
       // small delay to let localstorage/fetch propagate before full navigation
       setTimeout(() => {
         window.location.href = waitPageUrl;
       }, 50);
-    } catch (e) {
-      console.warn('leave failed', e);
-      // Don't show alert for extension errors
-      const errorMessage = e instanceof Error ? e.message : String(e);
-      if (!errorMessage.includes('Receiving end does not exist')) {
-        alert('Leave failed; check console');
-      }
     }
   };
 
@@ -2391,6 +2452,21 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                   </div>
                 </div>
               )}
+
+              {isEnding && (
+                <div style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,0.8)', color: '#333', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, backdropFilter: 'blur(4px)' }}>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ width: 40, height: 40, border: '4px solid #f3f3f3', borderTop: '4px solid #d32f2f', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 16px' }}></div>
+                    <div style={{ fontWeight: 600 }}>正在結束課程並保存進度...</div>
+                    <style>{`
+                      @keyframes spin {
+                        0% { transform: rotate(0deg); }
+                        100% { transform: rotate(360deg); }
+                      }
+                    `}</style>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -2529,15 +2605,15 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                     {/* New Leave button in the controls row (same as handleLeave) */}
                     <button
                       onClick={() => { try { handleLeave(); } catch (e) { console.error('Leave click error', e); } }}
-                      disabled={!joined}
+                      disabled={!joined || isEnding}
                       style={{
                         display: isTestPath ? 'none' : 'block',
-                        background: joined ? '#f44336' : '#ef9a9a',
+                        background: (joined && !isEnding) ? '#f44336' : '#ef9a9a',
                         color: 'white',
                         border: 'none',
                         padding: '8px 12px',
                         borderRadius: 4,
-                        cursor: joined ? 'pointer' : 'not-allowed',
+                        cursor: (joined && !isEnding) ? 'pointer' : 'not-allowed',
                         fontWeight: 600
                       }}
                     >
@@ -2604,15 +2680,15 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
 
                     <button
                       onClick={() => { try { handleLeave(); } catch (e) { console.error('Leave click error', e); } }}
-                      disabled={!joined}
+                      disabled={!joined || isEnding}
                       style={{
                         display: isTestPath ? 'none' : 'block',
-                        background: joined ? '#f44336' : '#ef9a9a',
+                        background: (joined && !isEnding) ? '#f44336' : '#ef9a9a',
                         color: 'white',
                         border: 'none',
                         padding: '8px 12px',
                         borderRadius: 6,
-                        cursor: joined ? 'pointer' : 'not-allowed',
+                        cursor: (joined && !isEnding) ? 'pointer' : 'not-allowed',
                         fontWeight: 600,
                         width: '100%'
                       }}
@@ -2623,15 +2699,15 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                     {isTeacher && (
                       <button
                         onClick={() => { if (window.confirm(t('confirm_end_session') || '確定要結束課程嗎？')) endSession(); }}
-                        disabled={!joined}
+                        disabled={!joined || isEnding}
                         style={{
                           marginTop: 8,
-                          background: joined ? '#d32f2f' : '#ef9a9a',
+                          background: (joined && !isEnding) ? '#d32f2f' : '#ef9a9a',
                           color: 'white',
                           border: 'none',
                           padding: '8px 12px',
                           borderRadius: 6,
-                          cursor: joined ? 'pointer' : 'not-allowed',
+                          cursor: (joined && !isEnding) ? 'pointer' : 'not-allowed',
                           fontWeight: 600,
                           width: '100%'
                         }}

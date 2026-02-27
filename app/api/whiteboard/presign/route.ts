@@ -5,7 +5,7 @@ import { normalizeUuid } from '../stream/route';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { uuid: rawUuid, fileName, contentType } = body;
+    const { uuid: rawUuid, fileName, contentType, orderId } = body;
     const uuid = normalizeUuid(rawUuid);
 
     if (!uuid || !fileName) {
@@ -13,8 +13,9 @@ export async function POST(req: NextRequest) {
     }
 
     // Generate a unique key for the PDF file
-    // Use the normalized uuid in the key for consistency across tracking systems
-    const key = `whiteboard/session_${uuid}_${Date.now()}_${fileName}`;
+    // Use the orderId if available, otherwise fallback to normalized uuid
+    const baseId = orderId ? normalizeUuid(orderId) : uuid;
+    const key = `whiteboard/session_${baseId}_${Date.now()}_${fileName}`;
 
     // Generate presigned PUT URL
     const { url, publicUrl } = await getPresignedPutUrl(key, contentType || 'application/pdf', 900); // 15 minutes expiry

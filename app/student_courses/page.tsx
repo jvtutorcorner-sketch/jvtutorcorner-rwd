@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { getStoredUser, setStoredUser, type StoredUser } from '@/lib/mockAuth';
 import Link from 'next/link';
@@ -25,7 +25,7 @@ type Order = {
   durationMinutes?: number;
 };
 
-export default function StudentCoursesPage() {
+function StudentCoursesContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const pathname = usePathname();
@@ -566,3 +566,12 @@ export default function StudentCoursesPage() {
     </div>
   );
 }
+
+export default function StudentCoursesPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <StudentCoursesContent />
+    </Suspense>
+  );
+}
+

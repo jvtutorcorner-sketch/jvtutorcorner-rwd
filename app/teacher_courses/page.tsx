@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { getStoredUser, type StoredUser } from '@/lib/mockAuth';
 import Link from 'next/link';
@@ -23,7 +23,7 @@ type Order = {
   durationMinutes?: number;
 };
 
-export default function TeacherCoursesPage() {
+function TeacherCoursesContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const pathname = usePathname();
@@ -428,13 +428,30 @@ export default function TeacherCoursesPage() {
                     </td>
                     <td style={{ border: '2px solid #ccc', padding: '6px' }}>
                       {(() => {
+                        // 1. Prioritize order-specific startTime
+                        if (o.startTime) {
+                          const isoDate = o.startTime.includes('T') ? o.startTime : `${o.startTime.split(' ')[0]}T${o.startTime.split(' ')[1] || '00:00:00'}`;
+                          return formatDateTime(isoDate);
+                        }
+                        // 2. Fallback to order createdAt (represents when order was placed)
+                        if (o.createdAt) {
+                          return formatDateTime(o.createdAt);
+                        }
+
+                        // 3. Last fallback: course map defaults
                         const c = courseMap[o.courseId || ''];
                         if (!c) return '-';
-                        const rawDatePart = c.nextStartDate || c.startDate;
+                        const rawStart = c.nextStartDate || c.startDate;
+                        if (!rawStart) return '-';
+
+                        // If it's already a full ISO string with time, use it directly
+                        if (rawStart.includes('T')) {
+                          return formatDateTime(rawStart);
+                        }
+
+                        // Fallback: combine date with startTime if needed
+                        const datePart = rawStart.split('T')[0];
                         let timePart = c.startTime;
-                        if (!rawDatePart) return '-';
-                        const datePart = rawDatePart.split('T')[0];
-                        // Remove any Chinese AM/PM markers
                         if (timePart) {
                           timePart = timePart.replace(/[上下]午/g, '').trim();
                         }
@@ -443,12 +460,24 @@ export default function TeacherCoursesPage() {
                     </td>
                     <td style={{ border: '2px solid #ccc', padding: '6px' }}>
                       {(() => {
+                        // 1. Prioritize order-specific endTime
+                        if (o.endTime) {
+                          const isoDate = o.endTime.includes('T') ? o.endTime : `${o.endTime.split(' ')[0]}T${o.endTime.split(' ')[1] || '00:00:00'}`;
+                          return formatDateTime(isoDate);
+                        }
+
+                        // 2. Fallback to course map defaults
                         const c = courseMap[o.courseId || ''];
                         if (!c) return '-';
-                        const rawDatePart = c.endDate;
+                        const rawEnd = c.endDate;
+                        if (!rawEnd) return '-';
+
+                        if (rawEnd.includes('T')) {
+                          return formatDateTime(rawEnd);
+                        }
+
+                        const datePart = rawEnd.split('T')[0];
                         let timePart = c.endTime;
-                        if (!rawDatePart) return '-';
-                        const datePart = rawDatePart.split('T')[0];
                         if (timePart) {
                           timePart = timePart.replace(/[上下]午/g, '').trim();
                         }
@@ -482,3 +511,12 @@ export default function TeacherCoursesPage() {
     </div>
   );
 }
+
+export default function TeacherCoursesPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <TeacherCoursesContent />
+    </Suspense>
+  );
+}
+

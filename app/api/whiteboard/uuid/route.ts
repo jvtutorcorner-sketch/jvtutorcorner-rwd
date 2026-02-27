@@ -35,16 +35,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing courseId or channelName' }, { status: 400 });
     }
 
-    const tableName = process.env.DYNAMODB_TABLE_COURSES ;
-    const dbKey = normalizeUuid(courseId ? courseId : channelName);
-    
+    const tableName = process.env.DYNAMODB_TABLE_COURSES;
+    const dbKey = normalizeUuid(channelName ? channelName : (courseId || 'default'));
+
     console.log(`[WhiteboardUUIDAPI] Using table: ${tableName}, key: ${dbKey}`);
 
     try {
       const getCmd = new GetCommand({ TableName: tableName, Key: { id: dbKey }, ConsistentRead: true });
       console.log('[WhiteboardUUIDAPI] Sending GetCommand to DynamoDB...');
       const res = await docClient.send(getCmd);
-      
+
       if (res.Item && res.Item.whiteboardUuid) {
         console.log(`[WhiteboardUUIDAPI] ✅ Found uuid ${res.Item.whiteboardUuid} for key ${dbKey}`);
         return NextResponse.json({ found: true, uuid: res.Item.whiteboardUuid }, { status: 200 });
@@ -58,9 +58,9 @@ export async function POST(req: NextRequest) {
       console.error('  Message:', ddbErr?.message);
       console.error('  RequestId:', ddbErr?.$metadata?.requestId);
       console.error('  Full error:', JSON.stringify(ddbErr, null, 2));
-      
-      return NextResponse.json({ 
-        error: 'DynamoDB read error', 
+
+      return NextResponse.json({
+        error: 'DynamoDB read error',
         errorName: ddbErr?.name,
         errorCode: ddbErr?.$metadata?.httpStatusCode,
         details: ddbErr?.message,

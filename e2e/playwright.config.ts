@@ -1,4 +1,9 @@
 import { defineConfig, devices } from '@playwright/test';
+import dotenv from 'dotenv';
+import path from 'path';
+
+// Load environment variables from .env.local
+dotenv.config({ path: path.resolve(__dirname, '..', '.env.local') });
 
 /**
  * Playwright 配置：多客戶端延遲測試
@@ -6,6 +11,7 @@ import { defineConfig, devices } from '@playwright/test';
 export default defineConfig({
   testDir: './e2e',
   testMatch: '**/*.spec.ts',
+  timeout: 60000,
 
   fullyParallel: false, // 禁用並行以避免端口衝突
   forbidOnly: process.env.CI ? true : false,

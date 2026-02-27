@@ -52,9 +52,11 @@ export default function TestPage() {
         }
 
         try {
-          const redirect = encodeURIComponent(window.location.pathname + window.location.search);
-          router.replace(`/login?redirect=${redirect}`);
-          return true;
+          console.warn('[AuthCheck][test] Session expired or user missing, but bypassing redirect to keep user in active classroom.');
+          // const redirect = encodeURIComponent(window.location.pathname + window.location.search);
+          // router.replace(`/login?redirect=${redirect}`);
+          // return true;
+          return false;
         } catch (e) {
           console.warn('Failed to redirect to login:', e);
         }

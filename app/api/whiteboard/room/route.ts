@@ -153,15 +153,11 @@ export async function POST(req: NextRequest) {
         console.warn(`[WhiteboardAPI] WARNING: DYNAMODB_TABLE_COURSES env var is missing. Falling back to hardcoded: ${tableName}`);
       }
 
-      // Priority: use courseId if available (most reliable), fallback to session_{channelName}
-      // If courseId is provided, we query the course directly to find its attached whiteboard
-      let dbKey = `session_${channelName}`;
-      let isCourseRec = false;
-
-      if (courseId) {
-        dbKey = courseId;
-        isCourseRec = true;
-      }
+      // Priority: use channelName if available (session-specific), fallback to courseId
+      // This ensures that different orders for the same course get separate whiteboards.
+      const { normalizeUuid } = await import('@/lib/whiteboardService');
+      let dbKey = channelName ? channelName : (courseId || 'default');
+      dbKey = normalizeUuid(dbKey);
 
       console.log(`[WhiteboardAPI] Querying DynamoDB Table: [REDACTED], Key: [REDACTED], Region: ${region}`);
 

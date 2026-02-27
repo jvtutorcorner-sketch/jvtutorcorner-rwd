@@ -43,6 +43,7 @@ interface CalendarEvent {
   type: 'activity' | 'record';
   ownerType?: 'student' | 'teacher';
   courseId?: string;
+  orderId?: string;
   teacherName?: string;
   studentName?: string;
   status?: 'upcoming' | 'ongoing' | 'interrupted' | 'absent' | 'finished';
@@ -698,7 +699,8 @@ const Calendar: React.FC<CalendarProps> = ({ events, view: controlledView, onVie
                     {(() => {
                       const user = getStoredUser();
                       const roleParam = user?.role ? `&role=${encodeURIComponent(user.role)}` : '';
-                      const href = `/classroom/wait?courseId=${encodeURIComponent(selectedEvent.courseId)}${roleParam}`;
+                      const orderParam = selectedEvent.orderId ? `&orderId=${encodeURIComponent(selectedEvent.orderId)}` : '';
+                      const href = `/classroom/wait?courseId=${encodeURIComponent(selectedEvent.courseId)}${roleParam}${orderParam}`;
                       return (
                         <a
                           href={href}

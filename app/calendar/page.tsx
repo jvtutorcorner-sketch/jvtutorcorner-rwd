@@ -109,6 +109,7 @@ export default function CalendarPage() {
                   type: 'activity' as const,
                   ownerType: 'teacher' as const,
                   courseId: r.courseId,
+                  orderId: r.orderId,
                   status: statusStr,
                 });
               } catch (e) {
@@ -197,6 +198,7 @@ export default function CalendarPage() {
                 type: 'activity' as const,
                 ownerType: 'student' as const,
                 courseId: r.courseId,
+                orderId: r.orderId,
                 status: statusStr,
               });
             } catch (e) {

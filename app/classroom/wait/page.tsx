@@ -27,7 +27,9 @@ export default function ClassroomWaitPage() {
   // Helper: compute consistent userId for presence tracking (email-based, no tabId suffix)
   const localPresenceId = React.useMemo(() => {
     const su = typeof window !== 'undefined' ? storedUserState : null;
-    return su?.email || (typeof window !== 'undefined' ? (window as any).__MOCK_USER_ID__ : null) || null;
+    const email = su?.email || (typeof window !== 'undefined' ? (window as any).__MOCK_USER_ID__ : null) || null;
+    console.log('[WaitPage] Computed localPresenceId:', email);
+    return email;
   }, [storedUserState]);
 
   const course = COURSES.find((c) => c.id === courseId) || null;
@@ -43,8 +45,9 @@ export default function ClassroomWaitPage() {
   const retryCountRef = useRef(0);
   const sseDisabledRef = useRef(false);
   const bcRef = useRef<BroadcastChannel | null>(null);
+  const [isUpdating, setIsUpdating] = useState(false);
   const isUpdatingRef = useRef(false);
-  const lastSyncDataRef = useRef<{ participantsCount: number; selfIsReady: boolean } | null>(null);
+  const lastSyncDataRef = useRef<{ participantsJson: string; selfIsReady: boolean } | null>(null);
   const syncDebounceRef = useRef<number | null>(null);
   const [deviceCheckPassed, setDeviceCheckPassed] = useState(false);
   const [audioOk, setAudioOk] = useState(false);
@@ -213,7 +216,7 @@ export default function ClassroomWaitPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const syncStateFromServer = React.useCallback(() => {
+  const syncStateFromServer = React.useCallback((forceUpdate = false) => {
     if (!sessionReadyKey || !role) return;
 
     // Debounce: clear previous pending sync
@@ -221,8 +224,6 @@ export default function ClassroomWaitPage() {
       clearTimeout(syncDebounceRef.current);
     }
 
-    // Wait 300ms before syncing to batch multiple rapid sync requests (increased from 100ms)
-    // This reduces the frequency of state updates and prevents excessive re-renders
     syncDebounceRef.current = window.setTimeout(() => {
       fetch(`/api/classroom/ready?uuid=${encodeURIComponent(sessionReadyKey)}`)
         .then((r) => {
@@ -231,84 +232,120 @@ export default function ClassroomWaitPage() {
         })
         .then((j) => {
           const serverParticipants = j.participants || [];
-          // Use plain email (no tabId) — consistent with what we write to DB
           const userId = localPresenceId || role || 'anonymous';
           const selfIsReady = serverParticipants.some((p: { role: string; userId: string; present?: boolean }) => p.role === role && p.userId === userId && p.present);
 
-          // Check if data actually changed before updating state
-          const currentData = { participantsCount: serverParticipants.length, selfIsReady };
+          const participantsJson = JSON.stringify(serverParticipants);
+          const currentData = { participantsJson, selfIsReady };
           const lastData = lastSyncDataRef.current;
 
-          if (!lastData || lastData.participantsCount !== currentData.participantsCount || lastData.selfIsReady !== currentData.selfIsReady) {
+          // Skip if currently updating, to prevent stale server data from overwriting optimistic state
+          if (isUpdatingRef.current && !forceUpdate) {
+            console.log('[Sync] Skipped update because an optimistic update is in progress.');
+            return;
+          }
+
+          // Always apply if forceUpdate, otherwise only if data actually changed (robust check)
+          if (forceUpdate || !lastData || lastData.participantsJson !== participantsJson || lastData.selfIsReady !== selfIsReady) {
             setParticipants(serverParticipants);
             setReady(selfIsReady);
             lastSyncDataRef.current = currentData;
-            console.log('Synced state from server:', currentData);
+            console.log(`[Sync] Updated state. Role: ${role}, Ready: ${selfIsReady}, Participants: ${serverParticipants.length}. Force: ${forceUpdate}`);
           }
-          // If no change, skip state update to prevent re-render
         })
         .catch((e) => {
-          console.warn('Failed to sync state from server:', e);
-          // On failure, reset to a safe state
-          setParticipants([]);
-          setReady(false);
-          lastSyncDataRef.current = null;
+          console.warn('[Sync] Failed to sync state from server:', e);
+          // Only clear if absolutely necessary; usually better to keep last known state
+          if (forceUpdate) {
+            setParticipants([]);
+            setReady(false);
+            lastSyncDataRef.current = null;
+          }
         });
     }, 100);
-  }, [sessionReadyKey, role, storedUserState]);
+  }, [sessionReadyKey, role, localPresenceId]);
 
   const toggleReady = () => {
-    console.log('toggleReady called, deviceCheckPassed:', deviceCheckPassed);
-    if (!deviceCheckPassed) {
-      alert(t('wait.ready_toggle_need_check'));
+    console.log('toggleReady called, deviceCheckPassed:', deviceCheckPassed, 'isUpdating:', isUpdating);
+    if (!deviceCheckPassed || isUpdating) {
+      if (!deviceCheckPassed) alert(t('wait.ready_toggle_need_check'));
       return;
     }
 
     const syncUuid = sessionReadyKey;
-    // Use plain email (no tabId) for presence tracking
     const userId = localPresenceId || role || 'anonymous';
-
-    console.log('toggleReady: syncUuid=', syncUuid, 'role=', role, 'userId=', userId);
-
-    const nextReadyState = !ready;
 
     if (!syncUuid || !role) {
       console.error('toggleReady: missing syncUuid or role');
       return;
     }
 
-    // Send the state change to the server.
-    // IMPORTANT: must include `present: true` when action is 'ready',
-    // because the server stores `present: !!present` — missing field means false.
+    const nextReadyState = !ready;
+
+    // 1. Optimistic UI update - lock button immediately
+    setIsUpdating(true);
+    isUpdatingRef.current = true;
+    setReady(nextReadyState);
+
+    // Optimistic participant array update for responsive UI cards
+    const optimisticParticipants = [...participants];
+    if (nextReadyState) {
+      if (!optimisticParticipants.some(p => p.role === role && p.userId === userId)) {
+        optimisticParticipants.push({ role, userId, present: true });
+      }
+    } else {
+      const idx = optimisticParticipants.findIndex(p => p.role === role && p.userId === userId);
+      if (idx !== -1) optimisticParticipants.splice(idx, 1);
+    }
+    setParticipants(optimisticParticipants);
+
+    // Reset cache so the next sync from server always applies
+    lastSyncDataRef.current = null;
+
+    console.log(`toggleReady: setting optimistic state to ${nextReadyState} for role ${role} and userId ${userId}`);
+
+    // 2. Send the state change to the server.
     fetch('/api/classroom/ready', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ uuid: syncUuid, role, userId, action: nextReadyState ? 'ready' : 'unready', present: nextReadyState }),
     })
       .then(res => {
-        console.log('toggleReady: fetch response status:', res.status);
-        if (!res.ok) throw new Error('Server update failed');
-        // After successfully telling the server, immediately sync the latest state from it.
-        // The server is the source of truth.
-        syncStateFromServer();
-        // Notify other tabs in this browser to re-sync immediately
+        if (!res.ok) throw new Error(`Server update failed: ${res.status}`);
+        return res.json();
+      })
+      .then((data) => {
+        // 3. Apply state directly from POST response (source of truth, no extra GET needed)
+        const serverParticipants = data.participants || [];
+        const selfIsReady = serverParticipants.some(
+          (p: { role: string; userId: string; present?: boolean }) =>
+            p.role === role && p.userId === userId && p.present
+        );
+        setParticipants(serverParticipants);
+        setReady(selfIsReady);
+        lastSyncDataRef.current = { participantsJson: JSON.stringify(serverParticipants), selfIsReady };
+        console.log(`toggleReady: success. Applied state from POST directly. Role: ${role}, Ready: ${selfIsReady}`);
+
+        // Notify other tabs
         try {
-          if (bcRef.current) {
-            bcRef.current.postMessage({ type: 'ready_changed', uuid: syncUuid, timestamp: Date.now() });
-          } else {
-            const bc = new BroadcastChannel(syncUuid);
-            bc.postMessage({ type: 'ready_changed', uuid: syncUuid, timestamp: Date.now() });
-            setTimeout(() => bc.close(), 200);
-          }
-        } catch (e) {
-          // ignore
-        }
+          const bc = bcRef.current || new BroadcastChannel(syncUuid);
+          bc.postMessage({ type: 'ready_changed', uuid: syncUuid, timestamp: Date.now() });
+          if (!bcRef.current) setTimeout(() => bc.close(), 200);
+        } catch (e) { }
       })
       .catch(err => {
         console.error('toggleReady POST failed:', err);
-        // If the POST fails, we can show an error and re-sync to get the last good state.
+        // 4. Revert optimistic state on error
+        setReady(!nextReadyState);
+        lastSyncDataRef.current = null;
         alert(t('wait.sync_update_failed'));
-        syncStateFromServer();
+        // Force-sync to recover true server state
+        syncStateFromServer(true);
+      })
+      .finally(() => {
+        // 5. Unlock the button
+        setIsUpdating(false);
+        isUpdatingRef.current = false;
       });
   };
 
@@ -510,8 +547,8 @@ export default function ClassroomWaitPage() {
     initSessionTime();
   }, [sessionReadyKey, course]);
 
-  const hasTeacher = participants.some((p: { role: string; userId: string }) => p.role === 'teacher');
-  const hasStudent = participants.some((p: { role: string; userId: string }) => p.role === 'student');
+  const hasTeacher = participants.some((p: { role: string; userId: string; present?: boolean }) => p.role === 'teacher' && p.present);
+  const hasStudent = participants.some((p: { role: string; userId: string; present?: boolean }) => p.role === 'student' && p.present);
   const canEnter = hasTeacher && hasStudent;
 
   const enterClassroom = React.useCallback(() => {
@@ -597,7 +634,7 @@ export default function ClassroomWaitPage() {
           const presignResp = await fetch('/api/whiteboard/presign', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ uuid: sessionReadyKey, fileName: file.name, contentType: file.type })
+            body: JSON.stringify({ uuid: sessionReadyKey, fileName: file.name, contentType: file.type, orderId })
           });
 
           if (!presignResp.ok) {
@@ -629,6 +666,7 @@ export default function ClassroomWaitPage() {
                 headers: { 'content-type': 'application/json' },
                 body: JSON.stringify({
                   uuid: sessionReadyKey,
+                  orderId,
                   pdf: { name: file.name, s3Key: key, size: file.size, type: file.type }
                 })
               });
@@ -655,6 +693,7 @@ export default function ClassroomWaitPage() {
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
             uuid: sessionReadyKey,
+            orderId,
             pdf: {
               name: file.name,
               data: buffer.toString('base64'),
@@ -760,6 +799,12 @@ export default function ClassroomWaitPage() {
 
   return (
     <div className="wait-page-container">
+      <style jsx>{`
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
+
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <h2>{t('wait.title')}</h2>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -805,7 +850,7 @@ export default function ClassroomWaitPage() {
       <div style={{ marginTop: 20, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
         <button
           onClick={toggleReady}
-          disabled={!deviceCheckPassed}
+          disabled={!deviceCheckPassed || isUpdating}
           style={{
             padding: '12px 24px',
             background: !deviceCheckPassed ? '#ccc' : (ready ? '#4caf50' : '#2563eb'),
@@ -814,10 +859,19 @@ export default function ClassroomWaitPage() {
             borderRadius: 8,
             fontSize: 15,
             fontWeight: 600,
-            cursor: !deviceCheckPassed ? 'not-allowed' : 'pointer',
-            opacity: !deviceCheckPassed ? 0.6 : 1
+            cursor: (!deviceCheckPassed || isUpdating) ? 'not-allowed' : 'pointer',
+            opacity: (!deviceCheckPassed || isUpdating) ? 0.6 : 1,
+            minWidth: '180px',
+            transition: 'all 0.2s ease'
           }}>
-          {ready ? t('wait.ready_toggle_ready') : (deviceCheckPassed ? t('wait.ready_toggle_not_ready') : t('wait.ready_toggle_need_check'))}
+          {isUpdating ? (
+            <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+              <span className="spinner" style={{ width: '16px', height: '16px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: 'white', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></span>
+              {t('processing') || '處理中...'}
+            </span>
+          ) : (
+            ready ? t('wait.ready_toggle_ready') : (deviceCheckPassed ? t('wait.ready_toggle_not_ready') : t('wait.ready_toggle_need_check'))
+          )}
         </button>
         {!deviceCheckPassed && (
           <div style={{ color: '#d32f2f', fontSize: 13 }}>
