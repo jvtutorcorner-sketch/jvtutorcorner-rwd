@@ -24,8 +24,8 @@ async function getAgoraCredentials() {
 
   // Allow direct environment variables for emergency cases
   if (envAppId && envAppCertificate &&
-      envAppId !== 'USE_SSM' && envAppCertificate !== 'USE_SSM' &&
-      envAppId.length === 32 && envAppCertificate.length === 32) {
+    envAppId !== 'USE_SSM' && envAppCertificate !== 'USE_SSM' &&
+    envAppId.length === 32 && envAppCertificate.length === 32) {
     console.log('[Agora] Using credentials from environment variables');
     cachedCredentials = {
       appId: envAppId,
@@ -48,11 +48,24 @@ async function getAgoraCredentials() {
   return cachedCredentials;
 }
 
+// Agora requires channel names ≤ 64 bytes (ASCII only from allowed charset)
+function truncateChannelName(name: string): string {
+  // Encode as UTF-8 and slice to 64 bytes, then decode safely
+  const encoded = new TextEncoder().encode(name);
+  if (encoded.length <= 64) return name;
+  const sliced = encoded.slice(0, 64);
+  return new TextDecoder().decode(sliced).replace(/\uFFFD/g, ''); // remove any broken chars at boundary
+}
+
 export async function GET(req: Request) {
   try {
     console.log('[Agora] Token request received');
     const url = new URL(req.url);
-    const channelName = url.searchParams.get('channelName') || 'default-channel';
+    const rawChannel = url.searchParams.get('channelName') || 'default-channel';
+    const channelName = truncateChannelName(rawChannel);
+    if (channelName !== rawChannel) {
+      console.log(`[Agora] Channel name truncated from ${rawChannel.length} to ${channelName.length} chars`);
+    }
     const uidParam = url.searchParams.get('uid') || '0';
     const uid = Number(uidParam) || 0;
 

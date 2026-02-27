@@ -1,26 +1,32 @@
 "use client";
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { getStoredUser, type StoredUser } from '@/lib/mockAuth';
 import Link from 'next/link';
 import { useT } from '@/components/IntlProvider';
 import { COURSE_RECORDS } from '@/data/courseRecords';
+import Pagination from '@/components/Pagination';
 
 type Order = {
   orderId: string;
   orderNumber?: string;
   userId?: string;
   courseId?: string;
-  durationMinutes?: number;
+  orderDate?: string;
   amount?: number;
   currency?: string;
-  status?: string;
+  notes?: string;
+  startTime?: string;
+  endTime?: string;
   createdAt?: string;
+  durationMinutes?: number;
 };
 
 export default function TeacherCoursesPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
   const t = useT();
   const [orders, setOrders] = useState<Order[] | null>(null);
   const [courseMap, setCourseMap] = useState<Record<string, { title?: string; teacherName?: string; durationMinutes?: number; totalSessions?: number; startDate?: string; nextStartDate?: string; endDate?: string; startTime?: string; endTime?: string }>>({});
@@ -29,6 +35,19 @@ export default function TeacherCoursesPage() {
   const [error, setError] = useState<string | null>(null);
   const [user, setUser] = useState<StoredUser | null>(null);
   const [mounted, setMounted] = useState(false);
+
+  // Search local state
+  const limitParam = parseInt(searchParams.get('limit') || '20', 10);
+  const pageParam = parseInt(searchParams.get('page') || '1', 10);
+  const qCourse = searchParams.get('course') || '';
+  const qTeacher = searchParams.get('teacher') || '';
+  const qTimeFrom = searchParams.get('timeFrom') || '';
+  const qTimeTo = searchParams.get('timeTo') || '';
+
+  const [searchInputCourse, setSearchInputCourse] = useState(qCourse);
+  const [searchInputTeacher, setSearchInputTeacher] = useState(qTeacher);
+  const [searchInputTimeFrom, setSearchInputTimeFrom] = useState(qTimeFrom);
+  const [searchInputTimeTo, setSearchInputTimeTo] = useState(qTimeTo);
 
   useEffect(() => {
     function onAuth() {
@@ -58,7 +77,31 @@ export default function TeacherCoursesPage() {
     try {
       const d = new Date(value);
       if (isNaN(d.getTime())) return String(value);
-      return d.toLocaleString(undefined, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      return d.toLocaleString(undefined, {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      }).replace(/\//g, '-'); // Use dash for consistency if needed, or keep locale-based
+    } catch (e) {
+      return String(value);
+    }
+  }
+  // Helper to format time only (HH:mm:ss) in 24h
+  function formatTime(value: any) {
+    if (!value) return '-';
+    try {
+      const d = new Date(value);
+      if (isNaN(d.getTime())) return String(value);
+      return d.toLocaleTimeString(undefined, {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      });
     } catch (e) {
       return String(value);
     }
@@ -125,14 +168,19 @@ export default function TeacherCoursesPage() {
             );
             Promise.all(courseFetches)
               .then((results) => {
-                const map: Record<string, { title?: string; teacherName?: string; durationMinutes?: number; totalSessions?: number }> = {};
+                const map: Record<string, { title?: string; teacherName?: string; durationMinutes?: number; totalSessions?: number; startDate?: string; nextStartDate?: string; endDate?: string; startTime?: string; endTime?: string }> = {};
                 ids.forEach((id, idx) => {
                   const t = results[idx] as any | null;
                   if (t) map[id] = {
                     title: t.title,
                     teacherName: t.teacherName,
                     durationMinutes: t.durationMinutes,
-                    totalSessions: t.totalSessions
+                    totalSessions: t.totalSessions,
+                    startDate: t.startDate,
+                    nextStartDate: t.nextStartDate,
+                    endDate: t.endDate,
+                    startTime: t.startTime,
+                    endTime: t.endTime
                   };
                 });
                 setCourseMap(map);
@@ -188,18 +236,135 @@ export default function TeacherCoursesPage() {
   );
   if (user.role !== 'teacher') return <div>{t('teacher_only_feature')}</div>;
 
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('page', '1'); // reset to page 1
+    if (searchInputCourse.trim()) params.set('course', searchInputCourse.trim());
+    else params.delete('course');
+    if (searchInputTeacher.trim()) params.set('teacher', searchInputTeacher.trim());
+    else params.delete('teacher');
+    if (searchInputTimeFrom) params.set('timeFrom', searchInputTimeFrom);
+    else params.delete('timeFrom');
+    if (searchInputTimeTo) params.set('timeTo', searchInputTimeTo);
+    else params.delete('timeTo');
+    router.push(`${pathname}?${params.toString()}`);
+  };
+
+  // Helper to get order start time timestamp for filtering
+  const getOrderStartTimestamp = (o: Order) => {
+    if (o.startTime && (o.startTime.includes('T') || o.startTime.endsWith('Z'))) {
+      return new Date(o.startTime).getTime();
+    }
+    const c = courseMap[o.courseId || ''];
+    if (!c) return 0;
+    const datePart = c.nextStartDate || c.startDate;
+    let timePart = c.startTime;
+    if (!datePart) return 0;
+    if (timePart) {
+      timePart = timePart.replace(/[上下]午/g, '').trim();
+    } else {
+      timePart = '00:00:00';
+    }
+    // ensure timepart has seconds
+    if (timePart.split(':').length === 2) {
+      timePart += ':00';
+    }
+    return new Date(`${datePart}T${timePart}`).getTime();
+  };
+
+  // Filter orders
+  let filteredOrders = orders || [];
+  if (filteredOrders.length > 0) {
+    if (qCourse) {
+      const lowerQ = qCourse.toLowerCase();
+      filteredOrders = filteredOrders.filter(o => {
+        const title = (o.courseId && courseMap[o.courseId]?.title) ? courseMap[o.courseId].title!.toLowerCase() : '';
+        return title.includes(lowerQ) || (o.courseId && o.courseId.toLowerCase().includes(lowerQ));
+      });
+    }
+    if (qTeacher) {
+      const lowerT = qTeacher.toLowerCase();
+      filteredOrders = filteredOrders.filter(o => {
+        const tName = (o.courseId && courseMap[o.courseId]?.teacherName) ? courseMap[o.courseId].teacherName!.toLowerCase() : '';
+        return tName.includes(lowerT);
+      });
+    }
+    if (qTimeFrom) {
+      const fromMs = new Date(qTimeFrom).getTime();
+      filteredOrders = filteredOrders.filter(o => getOrderStartTimestamp(o) >= fromMs);
+    }
+    if (qTimeTo) {
+      const toMs = new Date(qTimeTo).getTime();
+      filteredOrders = filteredOrders.filter(o => getOrderStartTimestamp(o) <= toMs);
+    }
+  }
+
+  // Paginate
+  const totalItems = filteredOrders.length;
+  const startIndex = (pageParam - 1) * limitParam;
+  const paginatedOrders = filteredOrders.slice(startIndex, startIndex + limitParam);
+
   return (
     <div className="page">
       <section className="section">
+        <h2 style={{ marginBottom: '16px' }}>{t('course_orders')}</h2>
+
+        {/* Search Bar matching /courses */}
+        <form onSubmit={handleSearch} style={{ display: 'flex', gap: '16px', marginBottom: '24px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <label style={{ fontSize: '14px', fontWeight: 'bold' }}>{t('teacher')}</label>
+            <input
+              type="text"
+              value={searchInputTeacher}
+              onChange={(e) => setSearchInputTeacher(e.target.value)}
+              placeholder={t('search_teacher_placeholder')}
+              style={{ padding: '8px', border: '1px solid #ccc', borderRadius: '4px', minWidth: '150px' }}
+            />
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <label style={{ fontSize: '14px', fontWeight: 'bold' }}>{t('student_courses_course_name')}</label>
+            <input
+              type="text"
+              value={searchInputCourse}
+              onChange={(e) => setSearchInputCourse(e.target.value)}
+              placeholder={`搜尋課程...`}
+              style={{ padding: '8px', border: '1px solid #ccc', borderRadius: '4px', minWidth: '150px' }}
+            />
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <label style={{ fontSize: '14px', fontWeight: 'bold' }}>開始區間 (起)</label>
+            <input
+              type="datetime-local"
+              step="1"
+              value={searchInputTimeFrom}
+              onChange={(e) => setSearchInputTimeFrom(e.target.value)}
+              style={{ padding: '8px', border: '1px solid #ccc', borderRadius: '4px', minWidth: '180px' }}
+            />
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <label style={{ fontSize: '14px', fontWeight: 'bold' }}>開始區間 (迄)</label>
+            <input
+              type="datetime-local"
+              step="1"
+              value={searchInputTimeTo}
+              onChange={(e) => setSearchInputTimeTo(e.target.value)}
+              style={{ padding: '8px', border: '1px solid #ccc', borderRadius: '4px', minWidth: '180px' }}
+            />
+          </div>
+          <button type="submit" className="btn btn-primary" style={{ padding: '8px 16px', height: 'fit-content' }}>
+            {t('search')}
+          </button>
+        </form>
+
         {loading ? (
           <p>{t('loading')}</p>
         ) : error ? (
           <p>{t('load_error')}: {error}</p>
-        ) : !orders || orders.length === 0 ? (
-          <p>{t('no_orders')}</p>
+        ) : paginatedOrders.length === 0 ? (
+          <p>目前沒有符合條件的訂單。</p>
         ) : (
           <>
-            <h2>{t('course_orders')}</h2>
             <table className="orders-table" style={{ borderCollapse: 'collapse', border: '2px solid #ccc', width: '100%' }}>
               <thead>
                 <tr>
@@ -215,7 +380,7 @@ export default function TeacherCoursesPage() {
                 </tr>
               </thead>
               <tbody>
-                {orders.map((o) => (
+                {paginatedOrders.map((o) => (
                   <tr key={o.orderId}>
                     <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.userId ? (userMap[o.userId]?.firstName && userMap[o.userId]?.lastName ? `${userMap[o.userId].firstName} ${userMap[o.userId].lastName}` : o.userId) : '-'}</td>
                     <td style={{ border: '2px solid #ccc', padding: '6px' }}>
@@ -264,13 +429,30 @@ export default function TeacherCoursesPage() {
                     <td style={{ border: '2px solid #ccc', padding: '6px' }}>
                       {(() => {
                         const c = courseMap[o.courseId || ''];
-                        return formatDateTime(c?.nextStartDate || c?.startDate);
+                        if (!c) return '-';
+                        const rawDatePart = c.nextStartDate || c.startDate;
+                        let timePart = c.startTime;
+                        if (!rawDatePart) return '-';
+                        const datePart = rawDatePart.split('T')[0];
+                        // Remove any Chinese AM/PM markers
+                        if (timePart) {
+                          timePart = timePart.replace(/[上下]午/g, '').trim();
+                        }
+                        return formatDateTime(`${datePart}T${timePart || '00:00:00'}`);
                       })()}
                     </td>
                     <td style={{ border: '2px solid #ccc', padding: '6px' }}>
                       {(() => {
                         const c = courseMap[o.courseId || ''];
-                        return formatDateTime(c?.endDate);
+                        if (!c) return '-';
+                        const rawDatePart = c.endDate;
+                        let timePart = c.endTime;
+                        if (!rawDatePart) return '-';
+                        const datePart = rawDatePart.split('T')[0];
+                        if (timePart) {
+                          timePart = timePart.replace(/[上下]午/g, '').trim();
+                        }
+                        return formatDateTime(`${datePart}T${timePart || '00:00:00'}`);
                       })()}
                     </td>
                     <td style={{ border: '2px solid #ccc', padding: '6px' }}>
@@ -288,6 +470,12 @@ export default function TeacherCoursesPage() {
                 ))}
               </tbody>
             </table>
+
+            <Pagination
+              totalItems={totalItems}
+              pageSize={limitParam}
+              currentPage={pageParam}
+            />
           </>
         )}
       </section>

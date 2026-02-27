@@ -24,10 +24,16 @@ export default function ClassroomWaitPage() {
   const [storedUserState, setStoredUserState] = useState<any>(null);
   const [role, setRole] = useState<'teacher' | 'student' | null>(null);
 
+  // Helper: compute consistent userId for presence tracking (email-based, no tabId suffix)
+  const localPresenceId = React.useMemo(() => {
+    const su = typeof window !== 'undefined' ? storedUserState : null;
+    return su?.email || (typeof window !== 'undefined' ? (window as any).__MOCK_USER_ID__ : null) || null;
+  }, [storedUserState]);
+
   const course = COURSES.find((c) => c.id === courseId) || null;
 
   const [sessionReadyKey, setSessionReadyKey] = useState<string | null>(null);
-  const [participants, setParticipants] = useState<Array<{ role: string; userId: string }>>([]);
+  const [participants, setParticipants] = useState<Array<{ role: string; userId: string; present?: boolean }>>([]);
   const [ready, setReady] = useState(false);
   const [syncMode, setSyncMode] = useState<'sse' | 'polling' | 'disconnected'>('disconnected');
   const [roomUuid, setRoomUuid] = useState<string | null>(null);
@@ -129,19 +135,9 @@ export default function ClassroomWaitPage() {
 
       console.log(`[AuthCheck][wait] ${new Date().toISOString()} - storedUser:`, storedUser, 'expiry:', window.localStorage.getItem('tutor_session_expiry'), 'sessionValid:', sessionValid, 'isInLoginFlow:', isInLoginRedirectFlow, 'sessionKey:', key);
 
-      // Check for role mismatches if session is valid
-      if (sessionValid) {
-        const curRole = storedUser?.role;
-        const curIsTeacherOrAdmin = curRole === 'teacher' || curRole === 'admin';
-        const strictTeacherMismatch = urlRole === 'teacher' && !curIsTeacherOrAdmin;
-        const strictStudentMismatch = urlRole === 'student' && curIsTeacherOrAdmin;
-
-        if (strictTeacherMismatch || strictStudentMismatch) {
-          console.warn(`[AuthCheck][wait] ${new Date().toISOString()} - Role mismatch detected after delay (URL: ${urlRole}, User: ${curRole}) - redirecting to home`);
-          router.replace('/');
-          return;
-        }
-      }
+      // Check for role mismatches if session is valid — only apply for logged-in users with explicit roles
+      // Removed: the old strict redirect which was kicking teachers/students from valid classroom links
+      // Role enforcement is now handled at the classroom page level and by the /classroom/test auto-correct logic.
 
       if (!sessionValid) {
         // Clear login complete flag if session has expired (storedUser is null)
@@ -235,10 +231,9 @@ export default function ClassroomWaitPage() {
         })
         .then((j) => {
           const serverParticipants = j.participants || [];
-          const email = storedUserState?.email;
-          // Use a more stable userId to prevent false-positives in "isRoleTaken"
-          const userId = email || (typeof window !== 'undefined' ? (window as any).__MOCK_USER_ID__ : null) || 'anonymous';
-          const selfIsReady = serverParticipants.some((p: { role: string; userId: string }) => p.role === role && p.userId === userId);
+          // Use plain email (no tabId) — consistent with what we write to DB
+          const userId = localPresenceId || role || 'anonymous';
+          const selfIsReady = serverParticipants.some((p: { role: string; userId: string; present?: boolean }) => p.role === role && p.userId === userId && p.present);
 
           // Check if data actually changed before updating state
           const currentData = { participantsCount: serverParticipants.length, selfIsReady };
@@ -270,8 +265,8 @@ export default function ClassroomWaitPage() {
     }
 
     const syncUuid = sessionReadyKey;
-    const email = storedUserState?.email;
-    const userId = email || (typeof window !== 'undefined' ? (window as any).__MOCK_USER_ID__ : null) || 'anonymous';
+    // Use plain email (no tabId) for presence tracking
+    const userId = localPresenceId || role || 'anonymous';
 
     console.log('toggleReady: syncUuid=', syncUuid, 'role=', role, 'userId=', userId);
 
@@ -283,10 +278,12 @@ export default function ClassroomWaitPage() {
     }
 
     // Send the state change to the server.
+    // IMPORTANT: must include `present: true` when action is 'ready',
+    // because the server stores `present: !!present` — missing field means false.
     fetch('/api/classroom/ready', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ uuid: syncUuid, role, userId, action: nextReadyState ? 'ready' : 'unready' }),
+      body: JSON.stringify({ uuid: syncUuid, role, userId, action: nextReadyState ? 'ready' : 'unready', present: nextReadyState }),
     })
       .then(res => {
         console.log('toggleReady: fetch response status:', res.status);
@@ -689,11 +686,44 @@ export default function ClassroomWaitPage() {
   }, [role, sessionReadyKey]);
 
   const isRoleTaken = React.useMemo(() => {
-    if (!role || !storedUserState) return false;
-    const currentUserId = storedUserState.email || (typeof window !== 'undefined' ? (window as any).__MOCK_USER_ID__ : null) || 'anonymous';
-    // If there is any participant with the same role but a different user ID, it means the role is occupied
-    return participants.some(p => p.role === role && p.userId !== currentUserId);
-  }, [participants, role, storedUserState]);
+    if (!role) return false;
+
+    // Bypass room-full check if in debug mode
+    if (typeof window !== 'undefined' && window.location.search.includes('debugMode=1')) {
+      return false;
+    }
+
+    // Use plain email to identify self (no tabId) — same as what we write to DB
+    const currentUserId = localPresenceId;
+    if (!currentUserId) return false; // Anonymous users can always enter
+
+    // Block only if another DIFFERENT user with the same role is currently PRESENT
+    return participants.some(p =>
+      p.role === role &&
+      p.present === true &&
+      p.userId !== currentUserId &&
+      // Also ensure the blocking participant isn't a stale record with same email from a previous session
+      !p.userId.startsWith(currentUserId)
+    );
+  }, [participants, role, localPresenceId]);
+
+  // Auto-refresh participants list every 30s when role is occupied to detect when the other user leaves
+  const [roleCheckCountdown, setRoleCheckCountdown] = useState(30);
+  useEffect(() => {
+    if (!isRoleTaken || !sessionReadyKey) return;
+    setRoleCheckCountdown(30);
+    const countdown = setInterval(() => {
+      setRoleCheckCountdown(prev => {
+        if (prev <= 1) {
+          // Refresh participants from server
+          syncStateFromServer();
+          return 30;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(countdown);
+  }, [isRoleTaken, sessionReadyKey, syncStateFromServer]);
 
   if (!isClient) return null;
 
@@ -701,17 +731,28 @@ export default function ClassroomWaitPage() {
     return (
       <div className="wait-page-container" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', textAlign: 'center' }}>
         <div style={{ padding: 32, background: '#fff0f0', border: '2px solid #ffcdd2', borderRadius: 12, maxWidth: 500 }}>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>🚫</div>
-          <h2 style={{ color: '#d32f2f', marginBottom: 16 }}>{t('wait.room_full_title') || '無法進入'}</h2>
-          <p style={{ fontSize: 16, color: '#333', marginBottom: 24, lineHeight: 1.5 }}>
-            {t('wait.room_full_desc') || `此教室已經有一位 ${role === 'teacher' ? '老師' : '學生'} 在裡面了。為了確保一對一的教學品質，您目前無法進入。`}
+          <div style={{ fontSize: 48, marginBottom: 16 }}>⏳</div>
+          <h2 style={{ color: '#d32f2f', marginBottom: 16 }}>{t('wait.room_full_title') || '目前無法進入'}</h2>
+          <p style={{ fontSize: 16, color: '#333', marginBottom: 8, lineHeight: 1.5 }}>
+            {t('wait.room_full_desc') || `此教室已經有一位 ${role === 'teacher' ? '老師' : '學生'} 在裡面了。`}
           </p>
-          <button
-            onClick={() => router.push(role === 'teacher' ? '/teacher_courses' : '/student_courses')}
-            style={{ padding: '12px 24px', background: '#1976d2', color: 'white', border: 'none', borderRadius: 8, fontSize: 16, fontWeight: 600, cursor: 'pointer' }}
-          >
-            {t('wait.return_home') || '返回我的課程'}
-          </button>
+          <p style={{ fontSize: 14, color: '#666', marginBottom: 24 }}>
+            正在自動等待對方離開... 將在 <strong>{roleCheckCountdown}</strong> 秒後重新檢查。
+          </p>
+          <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+            <button
+              onClick={() => { syncStateFromServer(); setRoleCheckCountdown(30); }}
+              style={{ padding: '10px 20px', background: '#1976d2', color: 'white', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
+            >
+              🔄 立即重新檢查
+            </button>
+            <button
+              onClick={() => router.push(role === 'teacher' ? '/teacher_courses' : '/student_courses')}
+              style={{ padding: '10px 20px', background: '#666', color: 'white', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
+            >
+              {t('wait.return_home') || '返回我的課程'}
+            </button>
+          </div>
         </div>
       </div>
     );

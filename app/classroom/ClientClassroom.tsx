@@ -131,6 +131,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   const [mounted, setMounted] = useState(false);
   const [isRoleOccupied, setIsRoleOccupied] = useState(false);
   const endTsRef = useRef<number | null>(null);
+
   useEffect(() => {
     setMounted(true);
     console.log('[ClientClassroom] setMounted called');
@@ -214,7 +215,12 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     triggerFix,
   } = useAgoraClassroom(agoraConfig);
 
-
+  useEffect(() => {
+    if (isRoleOccupied && joined && typeof leave === 'function') {
+      console.warn('[ClientClassroom] Role occupied by another connection! Leaving Agora to prevent ghost connections.');
+      leave();
+    }
+  }, [isRoleOccupied, joined, leave]);
 
   const isTeacher = (urlRole === 'teacher' || computedRole === 'teacher');
 
@@ -248,28 +254,46 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   // Optimization: ensure unique IDs for multiple anonymous students to avoid cursor/sync collisions
   // Use a ref to keep the ID stable across re-renders for the same component instance
   const userIdRef = useRef<string | null>(null);
+
+  // Create a unique per-tab ID to distinguish multiple tabs opened by the same logged-in user
+  const tabId = useMemo(() => {
+    if (typeof window === 'undefined') return 'ssr';
+    let id = sessionStorage.getItem('classroom_tab_id');
+    if (!id) {
+      id = Math.random().toString(36).substring(2, 10);
+      sessionStorage.setItem('classroom_tab_id', id);
+    }
+    return id;
+  }, []);
+
   const userId = useMemo(() => {
     if (userIdRef.current) return userIdRef.current;
 
     let id: string;
     if (storedUser?.email) {
-      id = storedUser.email;
+      // tabId suffix ensures unique cursor identity in Agora whiteboard when same user opens multiple tabs
+      id = `${storedUser.email}_${tabId}`;
     } else {
       const base = (urlRole === 'teacher' || computedRole === 'teacher' ? 'teacher' : 'student');
-      // For development/anonymous testing, append a small random string if no email is found
-      // This allows multiple browser tabs to act as different users
-      id = `${base}_${Math.random().toString(36).substring(7)}`;
+      id = `${base}_${tabId}`;
     }
     userIdRef.current = id;
     return id;
-  }, [storedUser?.email, urlRole, computedRole]);
+  }, [storedUser?.email, urlRole, computedRole, tabId]);
+
+  // presenceId: plain identity (no tabId) used for the classroom ready/presence API
+  // Must match what the wait page writes so isRoleTaken works correctly
+  const presenceId = useMemo(() => {
+    return storedUser?.email || null;
+  }, [storedUser?.email]);
 
   const firstRemote = useMemo(() => {
     if (!remoteUsers || remoteUsers.length === 0) return null;
     // Prefer a remote user whose uid does not match the local user identifier
     const localId = storedUser?.email || userId || null;
-    const other = remoteUsers.find((u: any) => String(u.uid) !== String(localId));
-    return other ?? remoteUsers[0] ?? null;
+    const others = remoteUsers.filter((u: any) => String(u.uid) !== String(localId));
+    // Use the last joined user (to match the video that actually plays)
+    return others.length > 0 ? others[others.length - 1] : remoteUsers[remoteUsers.length - 1];
   }, [remoteUsers, storedUser?.email, userId]);
 
   // Remote name resolution for test path: cache + single fetch per uid
@@ -278,42 +302,52 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const isTestPath = window.location.pathname === '/classroom/test';
-    if (!isTestPath) return;
     const r = firstRemote;
-    if (!r || !r.uid) {
+    if (!r) {
       setRemoteName(null);
       return;
     }
-    const uid = String(r.uid);
-    // If remote uid equals local user id, skip
-    if (uid === (storedUser?.email || '')) {
-      setRemoteName(`${storedUser?.lastName || ''} ${storedUser?.firstName || ''}`.trim() || storedUser?.displayName || null);
-      return;
-    }
-    if (remoteNameCacheRef.current[uid]) {
-      setRemoteName(remoteNameCacheRef.current[uid]);
-      return;
-    }
-    // fetch profile once
-    (async () => {
-      try {
-        const res = await fetch(`/api/profile?email=${encodeURIComponent(uid)}`);
-        if (!res.ok) {
-          // fallback: show uid
-          remoteNameCacheRef.current[uid] = uid;
-          setRemoteName(uid);
-          return;
+
+    // In Agora, uid is just a number (e.g. 1 or 1234). It's NOT an email!
+    // Try to look up the participant's real email/identity from localStorage's sync
+    try {
+      const raw = localStorage.getItem(sessionReadyKey);
+      if (raw) {
+        const arr = JSON.parse(raw) as Array<any>;
+        const oppositeRole = isTeacher ? 'student' : 'teacher';
+        const oppositeUser = arr.find(p => p.role === oppositeRole && p.present);
+
+        if (oppositeUser) {
+          const idToFetch = oppositeUser.email || oppositeUser.userId;
+          if (idToFetch && idToFetch.includes('@')) {
+            const cleanEmail = idToFetch.split('_')[0]; // Remove tab ID suffix if present
+            if (remoteNameCacheRef.current[cleanEmail]) {
+              setRemoteName(remoteNameCacheRef.current[cleanEmail]);
+              return;
+            }
+            fetch(`/api/profile?email=${encodeURIComponent(cleanEmail)}`)
+              .then(res => res.ok ? res.json() : null)
+              .then(j => {
+                const name = j?.profile ? `${j.profile.lastName || ''} ${j.profile.firstName || ''}`.trim() || j.profile.nickname || cleanEmail : cleanEmail;
+                remoteNameCacheRef.current[cleanEmail] = name;
+                setRemoteName(name);
+              }).catch(() => {
+                remoteNameCacheRef.current[cleanEmail] = cleanEmail;
+                setRemoteName(cleanEmail);
+              });
+            return;
+          } else {
+            // Anonymous or random string
+            setRemoteName(oppositeUser.userId || oppositeRole);
+            return;
+          }
         }
-        const j = await res.json();
-        const name = j?.profile ? `${j.profile.lastName || ''} ${j.profile.firstName || ''}`.trim() || j.profile.nickname || uid : uid;
-        remoteNameCacheRef.current[uid] = name;
-        setRemoteName(name);
-      } catch (e) {
-        remoteNameCacheRef.current[uid] = uid;
-        setRemoteName(uid);
       }
-    })();
-  }, [firstRemote, storedUser?.email]);
+    } catch (e) { }
+
+    // Fallback if nothing found
+    setRemoteName(isTeacher ? 'Student' : 'Teacher');
+  }, [firstRemote, isTeacher, sessionReadyKey]);
 
   // Helper: read-only API call to fetch existing whiteboard uuid for a course or channel
   async function fetchExistingWhiteboardUuid(courseId?: string, channelName?: string) {
@@ -364,7 +398,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                 const tokenRes = await fetch('/api/whiteboard/room', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ userId, channelName: sessionReadyKey, courseId, roomUuid: lookupJson.uuid })
+                  body: JSON.stringify({ userId, channelName: sessionReadyKey, courseId, orderId, roomUuid: lookupJson.uuid })
                 });
                 if (tokenRes.ok) {
                   teacherRoomData = await tokenRes.json();
@@ -384,7 +418,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           // If no existing room found, create one
           if (!teacherRoomData) {
             console.log('[ClientClassroom] Teacher: Creating new whiteboard room...');
-            const createBody: any = { userId, channelName: sessionReadyKey, courseId };
+            const createBody: any = { userId, channelName: sessionReadyKey, courseId, orderId };
 
             try {
               const createRes = await fetch('/api/whiteboard/room', {
@@ -472,7 +506,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                     const tokenRes = await fetch('/api/whiteboard/room', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ userId, channelName: sessionReadyKey, courseId, roomUuid: j.uuid })
+                      body: JSON.stringify({ userId, channelName: sessionReadyKey, courseId, orderId, roomUuid: j.uuid })
                     });
                     if (tokenRes.ok) {
                       lookupData = await tokenRes.json();
@@ -500,7 +534,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
             } else {
               // Still no room found after polling — create new room (teacher may be absent)
               console.log('[ClientClassroom] Student: no existing room found after polling, will create new room');
-              const requestBody: any = { userId, channelName: sessionReadyKey, courseId };
+              const requestBody: any = { userId, channelName: sessionReadyKey, courseId, orderId };
               try {
                 const res = await fetch('/api/whiteboard/room', {
                   method: 'POST',
@@ -859,6 +893,8 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   const [penColor, setPenColor] = useState<string>('#000000');
 
   // Debug modals for test path (start minimized)
+  // Only visible when URL contains ?debugMode=1 (engineers only, hidden from teachers/students)
+  const isDevMode = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('debugMode') === '1';
   const [showDebugModal, setShowDebugModal] = useState(false);
   const [showControlModal, setShowControlModal] = useState(false);
 
@@ -1041,6 +1077,11 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
             return;
           }
 
+          if (isRoleOccupied) {
+            console.log('[AutoJoin] Aborting auto-join because role is occupied');
+            return;
+          }
+
           const now = Date.now();
           if (now - lastJoinTimeRef.current < 5000) return; // Throttle joins to every 5s
           lastJoinTimeRef.current = now;
@@ -1057,7 +1098,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
         }
 
         // 2. 只有當雙方都在教室內 (canJoin=true 或 qResp 返回雙方都 present) 才觸發啟動
-        if (canJoin || bothPresent || forceJoin) {
+        if (!isRoleOccupied && (canJoin || bothPresent || forceJoin)) {
           if (joinAttemptCount >= 3) {
             console.warn('[AutoJoin] Too many failures, stopping auto-join for 10s');
             setTimeout(() => setJoinAttemptCount(0), 10000);
@@ -1315,7 +1356,8 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
 
     const reportReady = async () => {
       const roleName = (urlRole === 'teacher' || computedRole === 'teacher') ? 'teacher' : 'student';
-      const localUserId = storedUser?.email || roleName || 'anonymous';
+      // Use plain email (no tabId) for presence API — must match what wait page writes
+      const localUserId = presenceId || roleName;
 
       // Client-side duplicate detection removed (it was self-triggering).
       // We rely solely on the useOneTimeEntry hook for lockouts now.
@@ -1329,9 +1371,9 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
         const j = await r.json();
         const parts = j.participants || [];
 
-        // Enforce 1-on-1 limit
-        const isOccupied = parts.some((p: any) => p.role === roleName && p.userId !== localUserId);
-        if (isOccupied) {
+        // Enforce 1-on-1 limit: block if a DIFFERENT user with same role is present
+        const isOccupied = parts.some((p: any) => p.role === roleName && p.userId !== localUserId && p.present);
+        if (isOccupied && !isDevMode) {
           setIsRoleOccupied(true);
           return; // Block entry, don't report as ready
         }
@@ -1410,13 +1452,13 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       reportedRef.current = false;
       // Optional: Mark as not present when leaving the page (best-effort)
       const roleName = (urlRole === 'teacher' || computedRole === 'teacher') ? 'teacher' : 'student';
-      const userId = storedUser?.email || roleName || 'anonymous';
+      const localUserId = presenceId || roleName; // plain email, no tabId
       const params = new URLSearchParams();
       params.append('uuid', sessionReadyKey);
 
       // Use sendBeacon for more reliable delivery during unload
       if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
-        const blob = new Blob([JSON.stringify({ uuid: sessionReadyKey, role: roleName, userId, action: 'ready', present: false })], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify({ uuid: sessionReadyKey, role: roleName, userId: localUserId, action: 'ready', present: false })], { type: 'application/json' });
         navigator.sendBeacon('/api/classroom/ready', blob);
       }
     };
@@ -2086,8 +2128,8 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
 
       {/* Duplicate detected modal removed entirely */}
 
-      {/* Debug Modal - Top Right */}
-      {isTestPath && showDebugModal && (
+      {/* Debug Modal - Top Right (Engineers only, hidden with ?debugMode=1) */}
+      {isTestPath && isDevMode && showDebugModal && (
         <div style={{
           position: 'fixed',
           right: 16,
@@ -2152,8 +2194,8 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
         </div>
       )}
 
-      {/* Control Modal - Bottom Right */}
-      {isTestPath && showControlModal && (
+      {/* Control Modal - Bottom Right (Engineers only, hidden with ?debugMode=1) */}
+      {isTestPath && isDevMode && showControlModal && (
         <div style={{
           position: 'fixed',
           right: 16,
@@ -2236,8 +2278,8 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                   <div style={{ color: 'red', fontWeight: 600, whiteSpace: 'nowrap' }}>{Math.floor((remainingSeconds || 0) / 60)}:{String((remainingSeconds || 0) % 60).padStart(2, '0')}</div>
                 )}
               </div>
-              {/* Toggle buttons for test page - same row as remaining time */}
-              {isTestPath && (
+              {/* Toggle buttons for test page - only visible to engineers with ?debugMode=1 */}
+              {isTestPath && isDevMode && (
                 <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
                   {!showDebugModal && (
                     <button

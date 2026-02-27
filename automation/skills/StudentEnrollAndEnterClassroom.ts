@@ -158,13 +158,33 @@ export class StudentEnrollAndEnterClassroomSkill {
             this.log(`🌐 前往課程頁面: ${courseUrl}`);
             await page.goto(courseUrl, { waitUntil: 'networkidle' });
 
-            const enrollBtn = page.locator('button').filter({ hasText: /^報名$|^Enroll$|^立即報名/ }).first();
-            await enrollBtn.waitFor({ state: 'visible', timeout });
+            const initialEnrollBtn = page.locator('button').filter({ hasText: /^報名$|^Enroll$|^立即報名/ }).first();
+            await initialEnrollBtn.waitFor({ state: 'visible', timeout });
+            this.log(`🖱️ 點擊「報名」按鈕以開啟時間選擇彈窗...`);
+            await initialEnrollBtn.click();
 
-            this.log(`🖱️ 點擊「報名」按鈕...`);
+            // 處理「選擇開始時間」彈窗
+            const confirmBtn = page.locator('button:has-text("確認報名")').first();
+            await confirmBtn.waitFor({ state: 'visible', timeout: 5000 });
+
+            const startTimeInput = page.locator('#start-time');
+            if (await startTimeInput.isVisible().catch(() => false)) {
+                const val = await startTimeInput.inputValue();
+                this.log(`🕒 彈窗內偵測到時間: ${val || '無'}`);
+                if (!val) {
+                    const defaultDate = new Date();
+                    defaultDate.setMinutes(defaultDate.getMinutes() + 60);
+                    const tzoffset = defaultDate.getTimezoneOffset() * 60000;
+                    const localTime = (new Date(defaultDate.getTime() - tzoffset)).toISOString().slice(0, 16);
+                    await startTimeInput.fill(localTime);
+                    this.log(`🕒 已手動填入時間: ${localTime}`);
+                }
+            }
+
+            this.log(`🖱️ 點擊彈窗內的「確認報名」按鈕...`);
             const [enrollResponse] = await Promise.all([
                 page.waitForResponse(resp => resp.url().includes('/api/orders') && resp.request().method() === 'POST', { timeout }),
-                enrollBtn.click()
+                confirmBtn.click()
             ]);
             this.log(`✅ 報名已執行 (Status: ${enrollResponse.status()})`);
 

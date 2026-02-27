@@ -10,6 +10,8 @@ type Enrollment = {
   courseId: string;
   courseTitle: string;
   status: string;
+  startTime?: string;
+  endTime?: string;
   createdAt: string;
   updatedAt: string;
   orderId?: string;
@@ -167,6 +169,11 @@ export default function EnrollmentManager() {
         {items.map((e) => (
           <li key={e.id} style={{ marginBottom: 12, borderBottom: "1px solid #eee", paddingBottom: 8 }}>
             <div><strong>{e.courseTitle}</strong> — {e.name} ({e.email})</div>
+            {e.startTime && (
+              <div style={{ fontSize: '0.85rem', color: '#666' }}>
+                課程時間: {new Date(e.startTime).toLocaleString()} ~ {e.endTime ? new Date(e.endTime).toLocaleString() : 'TBD'}
+              </div>
+            )}
             <div>{t('status')}: {e.status}</div>
             <div style={{ marginTop: 8 }}>
               {e.status === "PENDING_PAYMENT" && (

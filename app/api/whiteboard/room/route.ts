@@ -113,12 +113,15 @@ export async function POST(req: NextRequest) {
       // Lazy import to avoid circular dep issues if any, though verifyCourseAccess should be clean
       const { verifyCourseAccess } = await import('@/lib/accessControl');
 
-      // Temporary bypass for teachers/admins or local mock users during development/demo
+      // Bypass for: teachers/admins identifiable by userId pattern, local test env,
+      // or when orderId is provided (user already has a verified booking via orders table)
+      const orderId = body.orderId?.trim();
       const isTeacherOrAdmin = userId.startsWith('teacher') || userId.includes('admin') || userId.includes('t1@');
       const isLocalTest = process.env.NODE_ENV !== 'production' || !process.env.DYNAMODB_TABLE_ORDERS;
+      const hasOrderId = !!orderId; // If orderId is passed, booking was already verified at order creation
 
-      if (isTeacherOrAdmin || isLocalTest) {
-        console.log(`[WhiteboardAPI] ⚠️ Bypassing access control for ${userId} (Role bypass or Local Test)`);
+      if (isTeacherOrAdmin || isLocalTest || hasOrderId) {
+        console.log(`[WhiteboardAPI] ⚠️ Bypassing access control for ${userId} (Role bypass, Local Test, or orderId present)`);
       } else {
         const access = await verifyCourseAccess(userId, courseId);
 

@@ -101,14 +101,28 @@ export default function TestPage() {
         changed = true;
       }
 
+      // ⚠️ ENFORCE ROLE PARAMETER TO AVOID CONFUSION: 
+      // Auto-append or correct the `role` parameter based on the logged-in user
+      const su = getStoredUser();
+      if (su) {
+        const expectedRole = (su.role === 'teacher' || su.role === 'admin') ? 'teacher' : 'student';
+        const currentRole = params.get('role');
+        // Update URL if missing or mismatched (unless admin is explicitly testing student role)
+        if (!currentRole || (currentRole !== expectedRole && !(su.role === 'admin' && currentRole === 'student'))) {
+          params.set('role', expectedRole);
+          changed = true;
+        }
+      }
+
       // Only update URL if we added params
       if (changed) {
         const newUrl = `${window.location.pathname}?${params.toString()}`;
         try {
+          // Using replaceState to instantly update the URL bar, router.replace will follow if needed
           window.history.replaceState({}, '', newUrl);
-        } catch (e) {
-          // Silently ignore history API errors
-        }
+        } catch (e) { }
+        // Trigger a re-render to pass the new params to child components
+        router.replace(newUrl);
       }
     };
     setupParams();
@@ -123,8 +137,8 @@ export default function TestPage() {
         const isExactMatch = currentSu.role === urlRole;
         if (!isStudentMatch && !isExactMatch) {
           console.warn('[AuthCheck][test] Role mismatch detected:', { urlRole, userRole: currentSu.role });
-          router.replace('/');
-          return;
+          // Note: setupParams already auto-corrected the URL and dispatched router.replace
+          // We no longer kick them blindly to `/` so they can successfully join with their true identity.
         }
       }
     } catch (e) { /* ignore */ }

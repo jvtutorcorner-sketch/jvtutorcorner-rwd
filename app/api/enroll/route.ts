@@ -1,6 +1,6 @@
 // app/api/enroll/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { PutCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { PutCommand, ScanCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
 import { ddbDocClient } from '@/lib/dynamo';
 import fs from 'fs';
 import path from 'path';
@@ -26,6 +26,8 @@ export type EnrollmentRecord = {
   updatedAt: string;
   paymentProvider?: string;
   paymentSessionId?: string;
+  startTime?: string;
+  endTime?: string;
   // B2B 擴充欄位
   orgId?: string;           // 若為企業用戶，歸屬於哪個組織
   sourceType?: 'B2C' | 'B2B_SEAT' | 'ADMIN_OVERRIDE'; // 來源類型
@@ -87,7 +89,7 @@ function generateId() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name, email, courseId, courseTitle } = body || {};
+    const { name, email, courseId, courseTitle, startTime, endTime } = body || {};
 
     if (!name || !email || !courseId || !courseTitle) {
       return NextResponse.json(
@@ -111,6 +113,8 @@ export async function POST(request: NextRequest) {
       email: String(email).trim(),
       courseId: String(courseId),
       courseTitle: String(courseTitle),
+      startTime: startTime ? String(startTime) : undefined,
+      endTime: endTime ? String(endTime) : undefined,
       status: 'PENDING_PAYMENT',
       sourceType: 'B2C', // Default to B2C purchase
       createdAt: now,
@@ -191,21 +195,28 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ ok: false, error: '伺服器尚未設定 ENROLLMENTS_TABLE。' }, { status: 500 });
     }
 
-    // 使用 PutCommand 覆寫
+    // 💡 重要：獲取現有資料以進行合併，避免覆寫掉其他欄位 (如 startTime)
+    const getRes = await ddbDocClient.send(
+      new GetCommand({ TableName: TABLE_NAME, Key: { id } })
+    );
+
+    const existing = getRes.Item || {};
     const updatedAt = new Date().toISOString();
-    const Item = {
-      id,
+
+    const item: EnrollmentRecord = {
+      ...existing as EnrollmentRecord,
+      id, // 確保 ID 不變
       status,
-      paymentProvider: paymentProvider || undefined,
-      paymentSessionId: paymentSessionId || undefined,
+      paymentProvider: paymentProvider || existing.paymentProvider,
+      paymentSessionId: paymentSessionId || existing.paymentSessionId,
       updatedAt,
     };
 
     await ddbDocClient.send(
-      new PutCommand({ TableName: TABLE_NAME, Item }),
+      new PutCommand({ TableName: TABLE_NAME, Item: item }),
     );
 
-    return NextResponse.json({ ok: true, enrollment: Item }, { status: 200 });
+    return NextResponse.json({ ok: true, enrollment: item }, { status: 200 });
   } catch (err: any) {
     console.error('[enroll API] PATCH 發生錯誤:', err?.message || err, err?.stack);
     return NextResponse.json({ ok: false, error: '伺服器錯誤。' }, { status: 500 });

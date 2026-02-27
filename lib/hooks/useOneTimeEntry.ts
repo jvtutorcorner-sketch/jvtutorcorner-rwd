@@ -38,6 +38,12 @@ export function useOneTimeEntry() {
       return;
     }
 
+    // ⚠️ Allow bypassing one-time entry for debugging if debugMode=1 is set
+    if (window.location.search.includes('debugMode=1')) {
+      console.log('[OneTimeEntry] Skipping one-time entry check for debug mode');
+      return;
+    }
+
     // Get user identifier (email or role)
     const storedUser = getStoredUser();
     const userId = storedUser?.email || storedUser?.role || 'anonymous';

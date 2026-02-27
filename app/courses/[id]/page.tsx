@@ -158,6 +158,7 @@ export default async function CourseDetailPage({ params }: { params: Promise<{ i
                 requiredPlan={course.requiredPlan || 'basic'}
                 price={pricePerSession || 0}
                 currency={currency || 'TWD'}
+                durationMinutes={durationMinutes || 0}
               />
             </div>
 
