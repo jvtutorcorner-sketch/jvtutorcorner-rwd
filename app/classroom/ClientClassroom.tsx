@@ -775,8 +775,9 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           // If the user is a student, we filter by userId to get their specific order.
           // If the user is a teacher (testing or entering without orderId), we retrieve the latest order for the course.
           let queryUrl = `/api/orders?courseId=${encodeURIComponent(courseId)}`;
-          if (storedUser?.role === 'user' && storedUser?.email) {
-            queryUrl += `&userId=${encodeURIComponent(storedUser.email)}`;
+          const uid = (storedUser as any)?.id || storedUser?.email;
+          if (storedUser?.role === 'user' && uid) {
+            queryUrl += `&userId=${encodeURIComponent(uid)}`;
           }
 
           const r = await fetch(queryUrl);

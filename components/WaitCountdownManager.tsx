@@ -33,21 +33,21 @@ export default function WaitCountdownManager({ sessionReadyKey }: WaitCountdownM
             const now = Date.now();
             const remainingMs = data.endTs - now;
             let remainingSeconds = Math.max(0, Math.floor(remainingMs / 1000));
-            
+
             // Grace period logic: if session is expired or expiring soon,
             // don't force immediate redirect. Instead, give a grace period (e.g. 10 mins)
             // so the user isn't kicked out immediately upon entry.
             if (remainingSeconds <= 0) {
-               console.log(`[WaitCountdownManager] ${new Date().toISOString()} - Session expired for ${sessionReadyKey}, applying 10-minute grace period.`);
-               remainingSeconds = 600;
+              console.log(`[WaitCountdownManager] ${new Date().toISOString()} - Session expired for ${sessionReadyKey}, applying 10-minute grace period.`);
+              remainingSeconds = 600;
             }
 
             console.log(`[WaitCountdownManager] ${new Date().toISOString()} - Session end time loaded for ${sessionReadyKey}:`, {
-                  endTs: new Date(data.endTs).toISOString(),
-                  remainingSeconds,
-                  remainingMinutes: Math.floor(remainingSeconds / 60)
-                });
-            
+              endTs: new Date(data.endTs).toISOString(),
+              remainingSeconds,
+              remainingMinutes: Math.floor(remainingSeconds / 60)
+            });
+
             setSeconds(remainingSeconds);
             setShow(false);
           } else {
@@ -68,7 +68,7 @@ export default function WaitCountdownManager({ sessionReadyKey }: WaitCountdownM
     };
 
     loadSessionTime();
-    
+
     // Clear any existing interval
     if (ref.current) {
       clearInterval(ref.current);
@@ -83,13 +83,13 @@ export default function WaitCountdownManager({ sessionReadyKey }: WaitCountdownM
         if (next <= 60) setShow(true);
         if (next <= 0) {
           console.warn(`[WaitCountdownManager] ${new Date().toISOString()} - Countdown reached zero for ${sessionReadyKey}, redirecting to home immediately`);
-          try { window.location.href = '/'; } catch (e) {}
+          try { window.location.href = '/'; } catch (e) { }
           return 0;
         }
         return next;
       });
     }, 1000);
-    
+
     return () => {
       if (ref.current) { console.log(`[WaitCountdownManager] ${new Date().toISOString()} - Clearing countdown interval for ${sessionReadyKey}`); clearInterval(ref.current); ref.current = null; }
     };
@@ -97,13 +97,13 @@ export default function WaitCountdownManager({ sessionReadyKey }: WaitCountdownM
 
   const handleStay = () => {
     console.log(`[WaitCountdownManager] ${new Date().toISOString()} - User chose to stay on wait page, resetting countdown for ${sessionReadyKey}`);
-    setSeconds(90);
+    setSeconds(600);
     setShow(false);
   };
 
   const handleLeave = () => {
     console.log(`[WaitCountdownManager] ${new Date().toISOString()} - User chose to leave wait page for ${sessionReadyKey}`);
-    try { window.location.href = '/'; } catch (e) {}
+    try { window.location.href = '/'; } catch (e) { }
   };
 
   return (

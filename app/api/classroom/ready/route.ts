@@ -8,21 +8,38 @@ async function dataPathFor(uuid: string) {
   return await resolveDataFile(`classroom_ready_${uuid}.json`);
 }
 
-async function readList(uuid: string) {
+async function readList(uuid: string): Promise<Array<{ role: string; userId: string; present?: boolean }>> {
   const p = await dataPathFor(uuid);
-  try {
-    const txt = await fs.promises.readFile(p, 'utf8');
-    return JSON.parse(txt) as Array<{ role: string; userId: string; present?: boolean }>;
-  } catch (e) {
-    return [];
+  // Retry a few times if the file is busy or empty/incomplete
+  for (let i = 0; i < 5; i++) {
+    try {
+      const txt = await fs.promises.readFile(p, 'utf8');
+      if (!txt || txt.trim() === '') return [];
+      return JSON.parse(txt);
+    } catch (e: any) {
+      if (e.code === 'ENOENT') return [];
+      // If busy or parse error, wait slightly and retry
+      await new Promise(r => setTimeout(r, 20 * i));
+    }
   }
+  return [];
 }
 
 async function writeList(uuid: string, arr: Array<{ role: string; userId: string; present?: boolean }>) {
   const p = await dataPathFor(uuid);
+  const data = JSON.stringify(arr || []);
+  const tmp = p + '.tmp' + Math.random().toString(36).slice(2);
   try {
     await fs.promises.mkdir(path.dirname(p), { recursive: true });
-    await fs.promises.writeFile(p, JSON.stringify(arr || []), 'utf8');
+    // Write to a temporary file first, then rename for atomicity
+    await fs.promises.writeFile(tmp, data, 'utf8');
+    try {
+      await fs.promises.rename(tmp, p);
+    } catch (e) {
+      // Fallback if rename fails (common on Windows if file is locked)
+      await fs.promises.writeFile(p, data, 'utf8');
+      try { await fs.promises.unlink(tmp); } catch (e2) { }
+    }
   } catch (e) {
     console.warn('writeList failed', e);
   }

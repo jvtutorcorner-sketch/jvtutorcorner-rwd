@@ -185,6 +185,17 @@ export async function GET(request: Request) {
     const res = await docClient.send(new ScanCommand(scanInput));
     const items = (res.Items || []) as any[];
 
+    // Determine the very final encoded key for pagination returning
+    const lastEvaluatedKey = (res as any).LastEvaluatedKey;
+    let encodedLastKey: string | null = null;
+    if (lastEvaluatedKey) {
+      try {
+        encodedLastKey = Buffer.from(JSON.stringify(lastEvaluatedKey)).toString('base64');
+      } catch (e) {
+        encodedLastKey = null;
+      }
+    }
+
     // Resolve User Names and Course Titles
     const userIds = Array.from(new Set(items.map(o => o.userId).filter(Boolean)));
     const courseIds = Array.from(new Set(items.map(o => o.courseId).filter(Boolean)));
@@ -289,16 +300,6 @@ export async function GET(request: Request) {
       courseTitle: courseMap[o.courseId] || o.courseId,
       teacherName: o.courseId ? (teacherMap[o.courseId] || '') : ''
     }));
-
-    const lastEvaluatedKey = (res as any).LastEvaluatedKey;
-    let encodedLastKey: string | null = null;
-    if (lastEvaluatedKey) {
-      try {
-        encodedLastKey = Buffer.from(JSON.stringify(lastEvaluatedKey)).toString('base64');
-      } catch (e) {
-        encodedLastKey = null;
-      }
-    }
 
     if (orderIdFilter && items.length === 0) {
       return NextResponse.json({ ok: false, error: `Order with ID ${orderIdFilter} not found` }, { status: 404 });
