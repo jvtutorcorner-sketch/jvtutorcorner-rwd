@@ -13,6 +13,10 @@ const clients: Map<string, Set<any>> = new Map();
 // state: { strokes: any[], pdf: any | null }
 export const roomStates: Map<string, { strokes: any[], pdf: any | null, updatedAt?: number, lastEvent?: any }> = new Map();
 
+// Initialize DynamoDB early to ensure credentials are ready
+import { ddbDocClient } from '@/lib/dynamo';
+const _init = ddbDocClient;
+
 function encodeSSE(obj: any) {
   try {
     return new TextEncoder().encode(`data: ${JSON.stringify(obj)}\n\n`);
@@ -40,12 +44,14 @@ export async function GET(req: NextRequest) {
     if (host.endsWith('jvtutorcorner.com') || host.includes('amplifyapp.com') || host.includes('amplifyapp') || host.includes('cloudfront.net')) {
       try {
         const single = `data: ${JSON.stringify({ type: 'connected', uuid, timestamp: Date.now() })}\n\n`;
-        return new Response(single, { headers: {
-          'Content-Type': 'text/event-stream',
-          'Cache-Control': 'no-cache, no-transform',
-          'X-Accel-Buffering': 'no',
-          'Access-Control-Allow-Origin': '*',
-        } });
+        return new Response(single, {
+          headers: {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache, no-transform',
+            'X-Accel-Buffering': 'no',
+            'Access-Control-Allow-Origin': '*',
+          }
+        });
       } catch (e) {
         console.warn('[WB SSE Server] Production short-response failed, continuing to stream fallback', e);
       }
@@ -64,24 +70,24 @@ export async function GET(req: NextRequest) {
     const stream = new ReadableStream({
       start(controller) {
         // send connected ping
-        try { controller.enqueue(encodeSSE({ type: 'connected', timestamp: Date.now() })); } catch (e) {}
+        try { controller.enqueue(encodeSSE({ type: 'connected', timestamp: Date.now() })); } catch (e) { }
 
         // Register client controller to clients map
         let set = clients.get(uuid);
         if (!set) { set = new Set(); clients.set(uuid, set); }
         // capture a small header preview to help correlate client connections
-        let headerPreview: Record<string,string|null> | null = null;
+        let headerPreview: Record<string, string | null> | null = null;
         try {
           const hdr = req.headers;
           headerPreview = {
             host: hdr.get('host'),
             'x-forwarded-for': hdr.get('x-forwarded-for'),
-            'user-agent': hdr.get('user-agent')?.slice(0,200) ?? null,
+            'user-agent': hdr.get('user-agent')?.slice(0, 200) ?? null,
           };
         } catch (e) { headerPreview = null; }
         const client = { controller, meta: { connectedAt: Date.now(), headerPreview } } as any;
         set.add(client);
-        try { console.log(`[WB SSE Server] Client registered. UUID: ${uuid}, Total clients: ${set.size}`, client.meta); } catch (e) {}
+        try { console.log(`[WB SSE Server] Client registered. UUID: ${uuid}, Total clients: ${set.size}`, client.meta); } catch (e) { }
 
         // Send full initial state to the new client (prefer in-memory, but fetch from DynamoDB if missed)
         try {
@@ -96,7 +102,7 @@ export async function GET(req: NextRequest) {
                 console.log('[WB SSE Server] Sending DynamoDB initial state (fallback):', { uuid, strokes: dbState.strokes?.length });
                 // Also update in-memory cache so subsequent updates match correctly
                 if (!roomStates.has(uuid)) {
-                   roomStates.set(uuid, { strokes: dbState.strokes || [], pdf: dbState.pdf || null });
+                  roomStates.set(uuid, { strokes: dbState.strokes || [], pdf: dbState.pdf || null });
                 }
                 controller.enqueue(encodeSSE({ type: 'init-state', strokes: dbState.strokes, pdf: dbState.pdf }));
               } else {
@@ -127,7 +133,7 @@ export async function GET(req: NextRequest) {
     return new Response(stream, { headers });
   } catch (err: any) {
     try {
-      const errorId = (typeof (globalThis as any).crypto?.randomUUID === 'function') ? (globalThis as any).crypto.randomUUID() : `err-${Date.now()}-${Math.floor(Math.random()*1000)}`;
+      const errorId = (typeof (globalThis as any).crypto?.randomUUID === 'function') ? (globalThis as any).crypto.randomUUID() : `err-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
       console.error(`[WB SSE Server] ErrorId=${errorId} RequestURL=${req?.url ?? 'unknown'} Error:`, err && err.stack ? err.stack : err);
       const payload = JSON.stringify({ message: 'SSE server error', errorId });
       return new Response(payload, { status: 500, headers: { 'Content-Type': 'application/json' } });
@@ -143,13 +149,13 @@ export async function GET(req: NextRequest) {
 export function broadcastToUuid(uuid: string, payload: any): number {
   const normalized = normalizeUuid(uuid);
   console.log(`[WB SSE Server] broadcastToUuid: raw uuid="${uuid}", normalized="${normalized}"`);
-  
+
   // CRITICAL FIX: Update state FIRST (before broadcasting), so it persists across serverless invocations
   try {
     console.log('[WB SSE Server] [STATE_UPDATE] normalized uuid:', normalized, 'roomStates map keys before:', Array.from(roomStates.keys()));
     let state = roomStates.get(normalized) as any;
     const prevStrokes = state?.strokes?.length ?? 0;
-    const prevPdfInfo = state?.pdf ? { name: state.pdf.name ?? null, large: !!state.pdf?.large, preview: String(state.pdf?.dataUrl || '').slice(0,100) } : null;
+    const prevPdfInfo = state?.pdf ? { name: state.pdf.name ?? null, large: !!state.pdf?.large, preview: String(state.pdf?.dataUrl || '').slice(0, 100) } : null;
     if (!state) {
       state = { strokes: [], pdf: null } as any;
       roomStates.set(normalized, state);
@@ -209,9 +215,9 @@ export function broadcastToUuid(uuid: string, payload: any): number {
     } catch (e) { /* ignore */ }
 
     const newStrokes = state.strokes?.length ?? 0;
-    const newPdfInfo = state?.pdf ? { name: state.pdf.name ?? null, large: !!state.pdf?.large, preview: String(state.pdf?.dataUrl || '').slice(0,100) } : null;
+    const newPdfInfo = state?.pdf ? { name: state.pdf.name ?? null, large: !!state.pdf?.large, preview: String(state.pdf?.dataUrl || '').slice(0, 100) } : null;
     state.updatedAt = Date.now();
-    
+
     // CRITICAL: Verify the state was actually updated
     const verifyState = roomStates.get(normalized);
     console.log('[WB SSE Server] [STATE_FINAL] roomStates updated for', normalized, { prevStrokes, newStrokes, verifyStrokes: verifyState?.strokes?.length, prevPdfInfo, newPdfInfo, lastEvent: state.lastEvent, updatedAt: state.updatedAt });
@@ -224,12 +230,12 @@ export function broadcastToUuid(uuid: string, payload: any): number {
   let preview = '';
   try { preview = JSON.stringify(payload).slice(0, 200); } catch (e) { preview = String(payload).slice(0, 200); }
   console.log(`[WB SSE Server] Broadcasting to uuid: ${uuid} (normalized: ${normalized}), clients: ${set?.size || 0}, event type: ${payload?.type}, preview: ${preview}`);
-  
+
   if (!set) {
     console.log('[WB SSE Server] No clients connected for this uuid - state updated but not broadcast to clients');
     return 0;
   }
-  
+
   const msg = `data: ${JSON.stringify(payload)}\n\n`;
   let successCount = 0;
   for (const c of Array.from(set)) {
