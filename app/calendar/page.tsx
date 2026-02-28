@@ -44,7 +44,19 @@ export default function CalendarPage() {
           if (teacherCourses.length === 0 && teacherName) {
             const res2 = await fetch(`/api/courses?teacher=${encodeURIComponent(teacherName)}`);
             const courseData2 = await res2.json();
-            teacherCourses = courseData2?.data || [];
+            if (courseData2?.data && courseData2.data.length > 0) {
+              teacherCourses = courseData2.data;
+            } else if (user.lastName) {
+              const res3 = await fetch(`/api/courses?teacher=${encodeURIComponent(user.lastName)}`);
+              const courseData3 = await res3.json();
+              if (courseData3?.data && courseData3.data.length > 0) {
+                teacherCourses = courseData3.data;
+              } else if (user.firstName) {
+                const res4 = await fetch(`/api/courses?teacher=${encodeURIComponent(user.firstName)}`);
+                const courseData4 = await res4.json();
+                teacherCourses = courseData4?.data || [];
+              }
+            }
           }
 
           const cIds = teacherCourses.map((c) => c.id).filter(Boolean);
@@ -62,21 +74,43 @@ export default function CalendarPage() {
 
             const eventsFromOrders: any[] = [];
             for (const r of rows) {
-              if (!r || !r.startTime || !r.courseId) continue;
+              if (!r || !r.courseId) continue;
               const status = String(r.status || '').toUpperCase();
               if (status === 'FAILED' || status === 'CANCELLED' || status === 'CANCELED') continue;
 
               try {
-                const start = new Date(r.startTime);
+                let startStr = r.startTime;
+                if (!startStr) {
+                  const c = COURSES.find(x => x.id === r.courseId);
+                  if (c) {
+                    const datePart = c.nextStartDate || (c as any).startDate;
+                    let timePart = (c as any).startTime;
+                    if (timePart) {
+                      timePart = timePart.replace(/[上下]午/g, '').trim();
+                      if (timePart.split(':').length === 2) timePart += ':00';
+                    } else {
+                      timePart = '00:00:00';
+                    }
+                    if (datePart) startStr = `${datePart}T${timePart}`;
+                  }
+                }
+                if (!startStr) startStr = r.createdAt;
+                if (!startStr) continue;
+
+                // handle ISO formats that might miss T
+                const isoDate = startStr.includes('T') ? startStr : `${startStr.split(' ')[0]}T${startStr.split(' ')[1] || '00:00:00'}`;
+                const start = new Date(isoDate);
                 if (isNaN(start.getTime())) continue;
 
                 let end: Date;
                 if (r.endTime) {
-                  end = new Date(r.endTime);
+                  const endIso = r.endTime.includes('T') ? r.endTime : `${r.endTime.split(' ')[0]}T${r.endTime.split(' ')[1] || '00:00:00'}`;
+                  end = new Date(endIso);
                 } else if (r.durationMinutes) {
                   end = addMinutes(start, r.durationMinutes);
                 } else {
-                  end = addMinutes(start, 60);
+                  const c = COURSES.find(x => x.id === r.courseId);
+                  end = addMinutes(start, c?.durationMinutes || 60);
                 }
 
                 const now = new Date();
@@ -94,7 +128,7 @@ export default function CalendarPage() {
 
                 if (status === 'ABSENT') statusStr = 'absent';
 
-                const courseTitle = r.courseTitle || '課程';
+                const courseTitle = r.courseTitle || COURSES.find(x => x.id === r.courseId)?.title || '課程';
                 // userName is already resolved to firstName+lastName by the API, never use raw userId
                 const studentName = r.userName || '學生';
 
@@ -149,22 +183,43 @@ export default function CalendarPage() {
           // 從 order 的 startTime / endTime 建立行事曆事件
           const eventsFromOrders: any[] = [];
           for (const r of rows) {
-            if (!r || !r.startTime || !r.courseId) continue;
+            if (!r || !r.courseId) continue;
             const status = String(r.status || '').toUpperCase();
             if (status === 'FAILED' || status === 'CANCELLED' || status === 'CANCELED') continue;
 
             try {
-              const start = new Date(r.startTime);
+              let startStr = r.startTime;
+              if (!startStr) {
+                const c = COURSES.find(x => x.id === r.courseId);
+                if (c) {
+                  const datePart = c.nextStartDate || (c as any).startDate;
+                  let timePart = (c as any).startTime;
+                  if (timePart) {
+                    timePart = timePart.replace(/[上下]午/g, '').trim();
+                    if (timePart.split(':').length === 2) timePart += ':00';
+                  } else {
+                    timePart = '00:00:00';
+                  }
+                  if (datePart) startStr = `${datePart}T${timePart}`;
+                }
+              }
+              if (!startStr) startStr = r.createdAt;
+              if (!startStr) continue;
+
+              const isoDate = startStr.includes('T') ? startStr : `${startStr.split(' ')[0]}T${startStr.split(' ')[1] || '00:00:00'}`;
+              const start = new Date(isoDate);
               if (isNaN(start.getTime())) continue;
 
               // 決定結束時間 (使用 endTime 或 durationMinutes)
               let end: Date;
               if (r.endTime) {
-                end = new Date(r.endTime);
+                const endIso = r.endTime.includes('T') ? r.endTime : `${r.endTime.split(' ')[0]}T${r.endTime.split(' ')[1] || '00:00:00'}`;
+                end = new Date(endIso);
               } else if (r.durationMinutes) {
                 end = addMinutes(start, r.durationMinutes);
               } else {
-                end = addMinutes(start, 60);
+                const c = COURSES.find(x => x.id === r.courseId);
+                end = addMinutes(start, c?.durationMinutes || 60);
               }
 
               const now = new Date();
@@ -183,9 +238,9 @@ export default function CalendarPage() {
               if (status === 'ABSENT') statusStr = 'absent';
 
               // 取得課程名稱
-              const courseTitle = r.courseTitle || '課程';
+              const courseTitle = r.courseTitle || COURSES.find(x => x.id === r.courseId)?.title || '課程';
               // teacherName is resolved by the API from the course record — never use raw email
-              const teacherName = r.teacherName || '老師';
+              const teacherName = r.teacherName || COURSES.find(x => x.id === r.courseId)?.teacherName || '老師';
 
               eventsFromOrders.push({
                 id: `order-${r.orderId}`,
