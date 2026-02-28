@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { getStoredUser } from '@/lib/mockAuth';
 import { useT } from '@/components/IntlProvider';
 import {
@@ -135,6 +136,19 @@ const Calendar: React.FC<CalendarProps> = ({ events, view: controlledView, onVie
             <h2 className="text-xl font-semibold text-gray-900">
               {format(start, 'yyyy年MM月dd日', { locale: zhTW })} - {format(end, 'MM月dd日', { locale: zhTW })}
             </h2>
+            {/* 檢視提醒按鈕 */}
+            {Object.keys(reminders).length > 0 && (
+              <Link
+                href="/calendar/reminders"
+                className="flex items-center space-x-1 px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-colors text-sm font-medium"
+                title="檢視所有提醒"
+              >
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z" />
+                </svg>
+                <span>{Object.keys(reminders).length}</span>
+              </Link>
+            )}
           </div>
           <div className="flex items-center space-x-2 mt-2 md:mt-0">
             <select
@@ -170,10 +184,23 @@ const Calendar: React.FC<CalendarProps> = ({ events, view: controlledView, onVie
 
     return (
       <div className="flex flex-col md:flex-row items-center justify-between px-4 py-4 bg-white border-b border-gray-200">
-        <div className="flex items-center">
+        <div className="flex items-center space-x-4">
           <h2 className="text-xl font-semibold text-gray-900">
             {format(currentDate, titleFormat, { locale: zhTW })}
           </h2>
+          {/* 檢視提醒按鈕 */}
+          {Object.keys(reminders).length > 0 && (
+            <Link
+              href="/calendar/reminders"
+              className="flex items-center space-x-1 px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-colors text-sm font-medium"
+              title="檢視所有提醒"
+            >
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z" />
+              </svg>
+              <span>{Object.keys(reminders).length}</span>
+            </Link>
+          )}
         </div>
         <div className="flex items-center space-x-2 mt-2 md:mt-0">
           <select
@@ -585,12 +612,47 @@ const Calendar: React.FC<CalendarProps> = ({ events, view: controlledView, onVie
   };
 
 
-  const handleSetReminder = () => {
-    if (selectedEvent) {
-      const newReminders = { ...reminders, [selectedEvent.id]: reminderTime };
-      saveReminders(newReminders);
-      alert(`提醒已設定！將在課程開始前 ${reminderTime} 分鐘發送通知至您的信箱。`);
-      setShowReminderModal(false);
+  const handleSetReminder = async () => {
+    if (!selectedEvent) return;
+    
+    const user = getStoredUser();
+    if (!user) {
+      alert('請先登入');
+      return;
+    }
+    
+    try {
+      // Call API to save reminder
+      const response = await fetch('/api/calendar/reminders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.email || 'anonymous',
+          orderId: selectedEvent.orderId,
+          eventId: selectedEvent.id,
+          courseId: selectedEvent.courseId,
+          // courseName/teacherName/studentName 不存入DB
+          // 這些欄位展示時透過 courseId/orderId 動態查詢
+          eventStartTime: selectedEvent.start.toISOString(),
+          reminderMinutes: reminderTime
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (data.ok) {
+        // Also update localStorage for backward compatibility
+        const newReminders = { ...reminders, [selectedEvent.id]: reminderTime };
+        saveReminders(newReminders);
+        
+        alert(`提醒已設定！將在課程開始前 ${reminderTime} 分鐘發送通知至您的信箱。`);
+        setShowReminderModal(false);
+      } else {
+        alert('設定提醒失敗：' + data.error);
+      }
+    } catch (error) {
+      console.error('Error setting reminder:', error);
+      alert('設定提醒失敗，請稍後再試');
     }
   };
 

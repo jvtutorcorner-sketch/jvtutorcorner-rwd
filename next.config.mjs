@@ -40,6 +40,7 @@ const nextConfig = {
     DYNAMODB_TABLE_PAGE_PERMISSIONS: process.env.DYNAMODB_TABLE_PAGE_PERMISSIONS || 'jvtutorcorner-page-permissions',
     DYNAMODB_TABLE_WHITEBOARD_PERMISSIONS: process.env.DYNAMODB_TABLE_WHITEBOARD_PERMISSIONS || 'jvtutorcorner-whiteboard-permissions',
     DYNAMODB_TABLE_AGORA_LOGS: process.env.DYNAMODB_TABLE_AGORA_LOGS || 'jvtutorcorner-agora-logs',
+    DYNAMODB_TABLE_CALENDAR_REMINDERS: process.env.DYNAMODB_TABLE_CALENDAR_REMINDERS || 'jvtutorcorner-calendar-reminders',
     AWS_REGION: process.env.AWS_REGION || process.env.CI_AWS_REGION || 'ap-northeast-1',
     AMPLIFY_REGION: process.env.AMPLIFY_REGION,
   },
