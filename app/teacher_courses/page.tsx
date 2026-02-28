@@ -124,7 +124,27 @@ function TeacherCoursesContent() {
         }
         if (teacherCourses.length === 0) {
           // fallback: query by name
-          return fetch(`/api/courses?teacher=${encodeURIComponent(teacherName)}`).then((r) => r.json()).then((j) => j?.data || []);
+          return fetch(`/api/courses?teacher=${encodeURIComponent(teacherName)}`)
+            .then((r) => r.json())
+            .then((j) => {
+              if (j?.data && j.data.length > 0) return j.data;
+              // second fallback: query by lastName only (e.g. course has "許" but teacherName is "許老師")
+              if (user.lastName) {
+                return fetch(`/api/courses?teacher=${encodeURIComponent(user.lastName)}`)
+                  .then((r2) => r2.json())
+                  .then((j2) => {
+                    if (j2?.data && j2.data.length > 0) return j2.data;
+                    // third fallback: query by firstName
+                    if (user.firstName) {
+                      return fetch(`/api/courses?teacher=${encodeURIComponent(user.firstName)}`)
+                        .then((r3) => r3.json())
+                        .then((j3) => j3?.data || []);
+                    }
+                    return [];
+                  });
+              }
+              return [];
+            });
         }
         return teacherCourses;
       })

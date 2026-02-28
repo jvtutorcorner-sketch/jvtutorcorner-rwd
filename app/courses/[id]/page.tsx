@@ -70,6 +70,25 @@ export default async function CourseDetailPage({ params }: { params: Promise<{ i
     currency = 'TWD',
   } = course;
 
+  const formatDate = (val: any) => {
+    if (!val) return 'TBD';
+    try {
+      const d = new Date(val);
+      if (isNaN(d.getTime())) return String(val);
+      return d.toLocaleString('zh-TW', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+      }).replace(/\//g, '-');
+    } catch (e) {
+      return String(val);
+    }
+  };
+
   return (
     <div className="page">
       <header className="page-header">
@@ -127,7 +146,7 @@ export default async function CourseDetailPage({ params }: { params: Promise<{ i
             <div className="info-row">
               <span>課程期間</span>
               <span>
-                {startDate || nextStartDate || 'TBD'} ~ {endDate || 'TBD'}
+                {formatDate(startDate || nextStartDate)} ~ {formatDate(endDate)}
               </span>
             </div>
             {(startTime || endTime) && (
