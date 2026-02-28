@@ -40,13 +40,20 @@ export default async function CoursesPage(props?: CoursesPageProps) {
 
   // Fetch courses from DynamoDB
   let persisted: any[] = [];
+  let dbError: string | null = null;
+  
   try {
     const COURSES_TABLE = process.env.DYNAMODB_TABLE_COURSES || 'jvtutorcorner-courses';
     const TEACHERS_TABLE = process.env.DYNAMODB_TABLE_TEACHERS || 'jvtutorcorner-teachers';
 
+    console.log('[CoursesPage] Loading courses from table:', COURSES_TABLE);
+    
     const scanCmd = new ScanCommand({ TableName: COURSES_TABLE });
     const result = await ddbDocClient.send(scanCmd);
     persisted = result.Items || [];
+
+    console.log(`[CoursesPage] Loaded ${persisted.length} courses from DynamoDB`);
+    console.log('[CoursesPage] Courses:', persisted.map(c => ({ id: c.id, title: c.title })));
 
     // Join teacher names
     const uniqueTids = Array.from(new Set(persisted.map((i: any) => i.teacherId).filter(Boolean)));
@@ -68,28 +75,28 @@ export default async function CoursesPage(props?: CoursesPageProps) {
     }
   } catch (e) {
     console.error('[CoursesPage] DynamoDB error:', e);
+    dbError = String(e);
     persisted = [];
   }
 
-  // merge persisted in front so recent creations appear first; avoid duplicate ids
-  const known = new Map<string, any>();
-  const merged = [] as any[];
-  for (const p of persisted) {
-    if (p && p.id) {
-      known.set(String(p.id), p);
-      merged.push(p);
-    }
-  }
-  for (const c of COURSES) {
-    if (!c || !c.id) continue;
-    if (!known.has(String(c.id))) merged.push(c);
+  // Strategy: Use ONLY DynamoDB data if available; fallback to local data only if DynamoDB is empty
+  let merged: any[] = [];
+  
+  if (persisted.length > 0) {
+    // ✅ DynamoDB has data: use it exclusively
+    console.log(`[CoursesPage] Using ${persisted.length} courses from DynamoDB (ignoring local data)`);
+    merged = persisted;
+  } else {
+    // ⚠️ DynamoDB is empty: fallback to local courses.ts
+    console.warn('[CoursesPage] DynamoDB returned no courses, falling back to local COURSES data');
+    merged = COURSES;
   }
 
-  // DEBUG: expose persisted/merged counts and first few ids to help diagnose missing entries
-  const persistedCount = persisted.length;
-  const builtinCount = COURSES.length;
-  const mergedCount = merged.length;
-  const persistedSample = persisted.slice(0, 10).map((p) => p.id).join(', ');
+  // DEBUG: expose counts to help diagnose
+  const dbCount = persisted.length;
+  const localCount = COURSES.length;
+  const displayedCount = merged.length;
+  const usingDatabase = persisted.length > 0;
 
   const filtered = merged.filter((c) => {
     if (subjectTrim && !(c.subject || '').toLowerCase().includes(subjectTrim)) return false;
