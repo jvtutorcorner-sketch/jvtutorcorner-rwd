@@ -16,7 +16,7 @@ const PdfViewer = dynamic(() => import('@/components/PdfViewer'), { ssr: false }
 const ConsoleLogViewer = dynamic(() => import('@/components/ConsoleLogViewer'), { ssr: false });
 const NetworkSpeedMonitor = dynamic(() => import('@/components/NetworkSpeedMonitor'), { ssr: false });
 
-type Role = 'teacher' | 'student';
+type Role = 'teacher' | 'student' | 'assistant' | 'observer';
 
 const hexToRgbArray = (value: string | number[]): [number, number, number] => {
   if (Array.isArray(value) && value.length === 3) {
@@ -36,6 +36,29 @@ const hexToRgbArray = (value: string | number[]): [number, number, number] => {
   }
   const num = Number.parseInt(hex, 16);
   return [(num >> 16) & 255, (num >> 8) & 255, num & 255];
+};
+
+/** P3: 小班制 - 遠端參與者視訊組件
+ * 當 remoteUsers > 1 時，每位參與者独立渲染到自己的 div 上
+ */
+const RemoteParticipantVideo: React.FC<{ user: any; label?: string }> = ({ user, label }) => {
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    if (user?.videoTrack) {
+      try { user.videoTrack.play(el); } catch (e) { console.warn('[RemoteParticipantVideo] play failed', e); }
+    }
+    return () => {
+      try { user?.videoTrack?.stop(); } catch (e) { }
+    };
+  }, [user, user?.videoTrack]);
+  return (
+    <div style={{ width: '100%', height: '100%', background: '#000', position: 'relative', borderRadius: 4, overflow: 'hidden' }}>
+      <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+      {label && <div style={{ position: 'absolute', bottom: 4, left: 6, fontSize: 11, color: 'rgba(255,255,255,0.8)', background: 'rgba(0,0,0,0.4)', padding: '1px 6px', borderRadius: 3 }}>{label}</div>}
+    </div>
+  );
 };
 
 const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) => {
@@ -168,9 +191,13 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
 
   // determine role from stored user + course mapping
   const storedUser = typeof window !== 'undefined' ? getStoredUser() : null;
-  // allow overriding role via URL parameter `role=teacher|student` for testing
+  // allow overriding role via URL parameter `role=teacher|student|assistant|observer` for testing
   const urlRole = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('role') : null;
   const forceJoin = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('forceJoin') === 'true';
+
+  // P4: Observer & Assistant role detection
+  const isObserver = urlRole === 'observer';
+  const isAssistant = urlRole === 'assistant';
 
   const isAdmin = storedUser?.role === 'admin';
   let computedRole: Role = 'student';
@@ -184,12 +211,24 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     }
   }
 
+  // Define isTeacher early so it can be used in subsequent derivations
+  const isTeacher = (urlRole === 'teacher' || computedRole === 'teacher');
+
+  // P1+P2: Whiteboard permission state + plan gating
+  const [canStudentDraw, setCanStudentDraw] = useState(false);
+  const userPlan = storedUser?.plan || 'basic';
+  const hasWhiteboardAccess = isTeacher || (typeof window !== 'undefined' && ['pro', 'elite'].includes(userPlan));
+
   const agoraConfig = useMemo(() => ({
     channelName: effectiveChannelName,
-    role: (urlRole === 'teacher' || urlRole === 'student') ? (urlRole as Role) : computedRole,
-    isOneOnOne: true, // 启用1对1优化
+    // Map 'observer' and 'assistant' to actual Agora roles (teacher or student)
+    role: (urlRole === 'teacher' || urlRole === 'student') ? (urlRole as any as 'teacher' | 'student') : 
+          isAssistant ? 'teacher' : 
+          isObserver ? 'student' : 
+          computedRole,
+    isOneOnOne: false, // P3: Disable 1v1 mode to enable small class 2-6 people
     defaultQuality: 'high' as const // 默认高质量
-  }), [effectiveChannelName, urlRole, computedRole]);
+  }), [effectiveChannelName, urlRole, computedRole, isAssistant, isObserver]);
 
   const {
     joined,
@@ -221,8 +260,6 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       leave();
     }
   }, [isRoleOccupied, joined, leave]);
-
-  const isTeacher = (urlRole === 'teacher' || computedRole === 'teacher');
 
   const isTestPath = typeof window !== 'undefined' && window.location.pathname === '/classroom/test';
 
@@ -1012,8 +1049,8 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           } catch (e) { }
         }
         console.log('收到開始上課通知，自動加入... 頻道:', effectiveChannelName);
-        // 学生端自动加入
-        join({ publishAudio: micEnabled, publishVideo: wantPublishVideo, audioDeviceId: selectedAudioDeviceId ?? undefined, videoDeviceId: selectedVideoDeviceId ?? undefined });
+        // 学生端自动加入 (P4: observer joins without publishing)
+        join({ publishAudio: isObserver ? false : micEnabled, publishVideo: isObserver ? false : wantPublishVideo, audioDeviceId: isObserver ? undefined : selectedAudioDeviceId ?? undefined, videoDeviceId: isObserver ? undefined : selectedVideoDeviceId ?? undefined });
       } else if (event.data?.type === 'ready-updated') {
         // Another tab updated ready state — re-check localStorage and update canJoin immediately
         try {
@@ -1092,10 +1129,10 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           console.log(`[AutoJoin] ${roleName} 檢測到進行中會話，正在自動加入... (Attempt ${joinAttemptCount + 1})`);
           setJoinAttemptCount(prev => prev + 1);
           join({
-            publishAudio: micEnabled,
-            publishVideo: wantPublishVideo,
-            audioDeviceId: selectedAudioDeviceId ?? undefined,
-            videoDeviceId: selectedVideoDeviceId ?? undefined
+            publishAudio: isObserver ? false : micEnabled,
+            publishVideo: isObserver ? false : wantPublishVideo,
+            audioDeviceId: isObserver ? undefined : selectedAudioDeviceId ?? undefined,
+            videoDeviceId: isObserver ? undefined : selectedVideoDeviceId ?? undefined
           });
           return;
         }
@@ -1116,16 +1153,16 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           console.log(`[AutoJoin] Attempting auto-join...`, {
             roleName,
             attempt: joinAttemptCount + 1,
-            publishAudio: micEnabled,
-            publishVideo: wantPublishVideo,
+            publishAudio: isObserver ? false : micEnabled,
+            publishVideo: isObserver ? false : wantPublishVideo,
             audioDeviceId: selectedAudioDeviceId,
             videoDeviceId: selectedVideoDeviceId
           });
           join({
-            publishAudio: micEnabled,
-            publishVideo: wantPublishVideo,
-            audioDeviceId: selectedAudioDeviceId ?? undefined,
-            videoDeviceId: selectedVideoDeviceId ?? undefined
+            publishAudio: isObserver ? false : micEnabled,
+            publishVideo: isObserver ? false : wantPublishVideo,
+            audioDeviceId: isObserver ? undefined : selectedAudioDeviceId ?? undefined,
+            videoDeviceId: isObserver ? undefined : selectedVideoDeviceId ?? undefined
           });
         }
       } catch (e) {
@@ -2341,6 +2378,30 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                   <div style={{ color: 'red', fontWeight: 600, whiteSpace: 'nowrap' }}>{Math.floor((remainingSeconds || 0) / 60)}:{String((remainingSeconds || 0) % 60).padStart(2, '0')}</div>
                 )}
               </div>
+              {/* 老師：畫筆授權按鈕 */}
+              {isTeacher && joined && (
+                <button
+                  onClick={() => setCanStudentDraw(v => !v)}
+                  title={canStudentDraw ? '收回學生畫筆權限' : '授予學生畫筆權限'}
+                  style={{
+                    background: canStudentDraw ? 'rgba(16,185,129,0.9)' : 'rgba(100,116,139,0.6)',
+                    border: 'none',
+                    color: 'white',
+                    cursor: 'pointer',
+                    fontSize: 12,
+                    padding: '4px 10px',
+                    borderRadius: 6,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    fontWeight: 600,
+                    whiteSpace: 'nowrap',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  {canStudentDraw ? '✅ 學生可畫' : '✏️ 授權畫筆'}
+                </button>
+              )}
               {/* Toggle buttons for test page - only visible to engineers with ?debugMode=1 */}
               {isTestPath && isDevMode && (
                 <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
@@ -2398,7 +2459,17 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
             {/* Whiteboard container - improved for mobile viewport with dvh */}
             <div className="whiteboard-container" style={{ width: '100%', flex: isMobileViewport ? 'none' : 1, position: 'relative', height: isMobileViewport ? 'auto' : '100%', minHeight: isMobileViewport ? '320px' : '500px', isolation: 'isolate' }}>
               {useAgoraWhiteboard ? (
-                agoraRoomData ? (
+                !hasWhiteboardAccess ? (
+                  // P2: Plan gating - student on Basic plan cannot access whiteboard
+                  <div className="w-full h-full flex items-center justify-center bg-slate-50" style={{ border: '2px dashed #e2e8f0', borderRadius: 12 }}>
+                    <div style={{ textAlign: 'center', padding: 32 }}>
+                      <div style={{ fontSize: 48 }}>📊</div>
+                      <div style={{ fontWeight: 600, fontSize: 18, marginTop: 12, color: '#1e293b' }}>白板功能需要升級</div>
+                      <div style={{ color: '#64748b', marginTop: 8, fontSize: 14 }}>Pro 或 Elite 方案才能使用互動白板</div>
+                      <a href="/pricing" style={{ display: 'inline-block', marginTop: 16, background: '#2563eb', color: 'white', padding: '8px 24px', borderRadius: 8, textDecoration: 'none', fontWeight: 600, fontSize: 14 }}>查看方案</a>
+                    </div>
+                  </div>
+                ) : agoraRoomData ? (
                   <AgoraWhiteboard
                     key={agoraRoomData.uuid}
                     ref={agoraWhiteboardRef}
@@ -2410,8 +2481,11 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                     courseId={courseId}
                     className="w-full h-full"
 
-                    // ★★★ 關鍵修復：必須明確傳入 role ★★★
-                    role={(urlRole === 'teacher' || computedRole === 'teacher') ? 'teacher' : 'student'}
+                    role={(urlRole === 'teacher' || computedRole === 'teacher') ? 'teacher'
+                      : isObserver ? 'observer'
+                      : isAssistant ? 'assistant'
+                      : 'student'}
+                    canDraw={canStudentDraw}
                   />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center bg-slate-50">
@@ -2427,7 +2501,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                   channelName={effectiveChannelName}
                   room={undefined}
                   whiteboardRef={whiteboardRef}
-                  editable={isTeacher}
+                  editable={isTeacher || (isAssistant) || (!isTeacher && !isObserver && canStudentDraw)}
                   autoFit={true}
                   className="flex-1"
                   onPdfSelected={(f) => { setSelectedPdf(f); }}
@@ -2476,23 +2550,47 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
         {/* Right: Video previews and controls (fixed width) */}
         <div className="client-right">
           <div className="client-right-inner">
-            <div className="video-container">
-              <video ref={localVideoRef} autoPlay muted playsInline style={{ transform: 'scaleX(-1)' }} />
-              <div className="video-label">
-                {mounted ? getDisplayName(storedUser, isTeacher ? 'teacher' : 'student', 'you') : '載入中...'}
+            {/* P4: Observer badge */}
+            {isObserver && (
+              <div style={{ background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.4)', borderRadius: 8, padding: '6px 12px', fontSize: 12, color: '#f59e0b', fontWeight: 600, textAlign: 'center', marginBottom: 8 }}>
+                👁️ 旁聽模式 - 將匿名觀看課堂
               </div>
-            </div>
+            )}
+            {/* Local video (hidden for pure observers) */}
+            {!isObserver && (
+              <div className="video-container">
+                <video ref={localVideoRef} autoPlay muted playsInline style={{ transform: 'scaleX(-1)' }} />
+                <div className="video-label">
+                  {mounted ? getDisplayName(storedUser, isTeacher ? 'teacher' : 'student', 'you') : '載入中...'}
+                </div>
+              </div>
+            )}
 
-            <div className="video-container">
-              <video ref={remoteVideoRef} autoPlay playsInline />
-              <div className="video-label">
-                {!firstRemote
-                  ? '等待連接...'
-                  : (remoteName || getDisplayName(null, isTeacher ? 'student' : 'teacher'))
-                }
+            {/* P3: Multi-participant remote video grid */}
+            {remoteUsers.length === 0 ? (
+              <div className="video-container">
+                <video ref={remoteVideoRef} autoPlay playsInline />
+                <div className="video-label">等待連接...</div>
               </div>
-              {/* Controls moved: mic and leave are shown under the Join button in the controls area. */}
-            </div>
+            ) : (
+              remoteUsers.map((user: any, idx: number) => (
+                <div key={String(user.uid)} className="video-container">
+                  {idx === 0 ? (
+                    // First remote user: use existing remoteVideoRef for hook compatibility
+                    <video ref={remoteVideoRef} autoPlay playsInline />
+                  ) : (
+                    // Additional remote users (P3 small class): dedicated container
+                    <RemoteParticipantVideo user={user} />
+                  )}
+                  <div className="video-label">
+                    {idx === 0
+                      ? (remoteName || getDisplayName(null, isTeacher ? 'student' : 'teacher'))
+                      : `參與者 ${idx + 1}`
+                    }
+                  </div>
+                </div>
+              ))
+            )}
 
             {/* Controls */}
             <div className="client-controls">

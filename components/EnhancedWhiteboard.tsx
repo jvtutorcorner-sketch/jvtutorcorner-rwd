@@ -505,10 +505,8 @@ export default function EnhancedWhiteboard({
   }, [mounted]);
 
   const isActionAllowed = useCallback((actionKey: string) => {
-    // If editable prop explicitly disabled, deny all actions
+    // If editable prop explicitly disabled, deny all actions (respects dynamic plan/role gating)
     if (!editable) return false;
-    // If student, deny all drawing/tool actions
-    if (currentUserRoleId === 'student') return false;
     // If admin settings are not configured, allow by default
     if (!whiteboardPermissions) return true;
     // If settings exist but we couldn't determine role, deny to be safe
@@ -516,7 +514,7 @@ export default function EnhancedWhiteboard({
     const allowed = whiteboardPermissions[actionKey];
     if (!Array.isArray(allowed)) return true;
     return allowed.includes(currentUserRoleId);
-  }, [currentUserRoleId, whiteboardPermissions]);
+  }, [currentUserRoleId, editable, whiteboardPermissions]);
 
 
   // Helper for incremental drawing (avoid clearing canvas)

@@ -31,7 +31,10 @@ interface AgoraWhiteboardProps {
     userId: string;
     region?: string;
     className?: string;
-    role?: 'teacher' | 'student';
+    /** teacher = 授課者, student = 學生, assistant = 助教(可畫), observer = 旁聽(唯讀) */
+    role?: 'teacher' | 'student' | 'assistant' | 'observer';
+    /** 老師可動態授予/收回學生畫筆 */
+    canDraw?: boolean;
     courseId?: string;
 }
 
@@ -39,7 +42,7 @@ type ToolType = "pencil" | "eraser" | "selector";
 
 const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, ref) => {
     // 1. 使用動態 Region，預設為 sg
-    const { roomUuid, roomToken, appIdentifier, userId, className, role = 'student', region = 'sg', courseId } = props;
+    const { roomUuid, roomToken, appIdentifier, userId, className, role = 'student', region = 'sg', courseId, canDraw } = props;
 
     // Hooks
     const containerRef = useRef<HTMLDivElement>(null);
@@ -144,7 +147,11 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
                 });
 
                 const isTeacher = role === 'teacher';
-                console.log(`[CoreSDK] Joining as ${role}, Region: ${region}, UUID: ...${roomUuid.slice(-6)}`);
+                const isAssistant = role === 'assistant';
+                const isObserver = role === 'observer';
+                // canWrite: teacher & assistant always write; student only if canDraw granted; observer never
+                const canWrite = isTeacher || isAssistant || (role === 'student' && canDraw === true);
+                console.log(`[CoreSDK] Joining as ${role}, canWrite=${canWrite}, Region: ${region}, UUID: ...${roomUuid.slice(-6)}`);
 
                 const room = await whiteWebSdk.joinRoom({
                     uuid: roomUuid,
@@ -152,8 +159,8 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
                     region: region as any,
                     uid: userId,
                     // ★★★ 關鍵：永遠設為 false，解鎖 SDK 內部同步機制 ★★★
-                    disableCameraTransform: false, 
-                    isWritable: isTeacher,
+                    disableCameraTransform: false,
+                    isWritable: canWrite,
                 });
 
                 if (isAborted) {
@@ -183,9 +190,9 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
                          console.error("[CoreSDK] Bind failed:", e);
                     }
                     
-                    // ★★★ 視覺除錯：將背景設為淺藍色 (只限老師) ★★★
+                    // ★★★ 視覺除錯：將背景設為淺藍色 (只限有寫權限者) ★★★
                     // 如果畫面變藍，代表渲染成功；如果還是白，代表高度是 0
-                    if (isTeacher) {
+                    if (canWrite) {
                         try {
                             room.setGlobalState({ backgroundColor: { r: 240, g: 248, b: 255 } });
                         } catch (e) {
@@ -239,23 +246,23 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
                 setStatus("連線成功");
 
                 // --- 視角同步邏輯 ---
-                if (isTeacher) {
+                if (canWrite) {
                     room.setViewMode("broadcaster");
                     setViewMode("Broadcaster");
-                    // 老師加入後，重置到中心點，建立基準
+                    // 有寫權限者加入後，重置到中心點，建立基準
                     setTimeout(() => {
                         room.moveCamera({ centerX: 0, centerY: 0, scale: 1 });
                     }, 600);
                     
                     room.setMemberState({
                         currentApplianceName: "pencil",
-                        strokeColor: [220, 38, 38],
+                        strokeColor: isTeacher ? [220, 38, 38] : isAssistant ? [37, 99, 235] : [16, 185, 129],
                         strokeWidth: 4,
                     });
                 } else {
                     room.setViewMode("follower");
                     setViewMode("Follower");
-                    // 學生加入後也先強制回正一次
+                    // 學生/旁聽者加入後也先強制回正一次
                     setTimeout(() => {
                          room.moveCamera({ centerX: 0, centerY: 0, scale: 1 });
                     }, 600);
@@ -335,6 +342,27 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
             if (typeof window !== 'undefined') (window as any).agoraRoom = null;
         };
     }, [isMounted, sdkLoaded, appIdentifier, roomUuid, roomToken, userId, role, region]);
+
+    // 3b. Dynamic canDraw change: update SDK isWritable when teacher grants/revokes
+    useEffect(() => {
+        if (!roomRef.current) return;
+        const canWrite = role === 'teacher' || role === 'assistant' || (role === 'student' && canDraw === true);
+        try {
+            roomRef.current.setWritable(canWrite);
+            if (canWrite) {
+                roomRef.current.setViewMode('broadcaster');
+                roomRef.current.setMemberState({
+                    currentApplianceName: 'pencil',
+                    strokeColor: [16, 185, 129], // green for student
+                    strokeWidth: 4,
+                });
+            } else {
+                roomRef.current.setViewMode('follower');
+            }
+        } catch (e) {
+            console.warn('[BoardImpl] setWritable dynamic update failed', e);
+        }
+    }, [canDraw, role]);
 
     // 4. Methods
     useImperativeHandle(ref, () => ({
@@ -530,7 +558,8 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
             }
 
             // 3. Restore View
-            if (role !== 'teacher') {
+            const canWrite = role === 'teacher' || role === 'assistant' || (role === 'student' && canDraw === true);
+            if (!canWrite) {
                 roomRef.current.setViewMode("follower");
             }
             roomRef.current.moveCamera({ centerX: 0, centerY: 0, scale: 1, animationMode: "continuous" });
@@ -581,13 +610,13 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
                 }} 
             />
 
-            {/* 學生專用透明遮罩 (Physical Guard) - 防止學生手動亂動，但允許 SDK 同步 */}
-            {role !== 'teacher' && (
+            {/* 旁聽者專用透明遮罩 - 完全封鎖輸入，允許 SDK 視角同步 */}
+            {role === 'observer' && (
                 <div 
                     style={{
-                        position: 'absolute', inset: 0, zIndex: 20, cursor: 'not-allowed', background: 'transparent'
+                        position: 'absolute', inset: 0, zIndex: 20, cursor: 'default', background: 'transparent', pointerEvents: 'all'
                     }}
-                    title="視角跟隨中"
+                    title="旁聽模式 - 僅觀看"
                 />
             )}
 
