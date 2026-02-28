@@ -53,7 +53,7 @@ export const CourseCard: React.FC<CourseCardProps> = ({ course }) => {
         {t('course_language_label')}{tt(`courses.${course.id}.language`, course.language)}
       </p>
       <div className="card-tags">
-        {course.tags.map((tag, i) => (
+        {(course.tags || []).map((tag, i) => (
           <span key={tag} className="tag">
             {tt(`courses.${course.id}.tags.${i}`, tag)}
           </span>

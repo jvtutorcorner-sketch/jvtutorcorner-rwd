@@ -92,9 +92,9 @@ export default async function CoursesPage(props?: CoursesPageProps) {
   const persistedSample = persisted.slice(0, 10).map((p) => p.id).join(', ');
 
   const filtered = merged.filter((c) => {
-    if (subjectTrim && !c.subject.toLowerCase().includes(subjectTrim)) return false;
-    if (languageTrim && !c.language.toLowerCase().includes(languageTrim)) return false;
-    if (teacherTrim && !c.teacherName.toLowerCase().includes(teacherTrim)) return false;
+    if (subjectTrim && !(c.subject || '').toLowerCase().includes(subjectTrim)) return false;
+    if (languageTrim && !(c.language || '').toLowerCase().includes(languageTrim)) return false;
+    if (teacherTrim && !(c.teacherName || '').toLowerCase().includes(teacherTrim)) return false;
     if (mode && c.mode !== mode) return false;
     return true;
   });

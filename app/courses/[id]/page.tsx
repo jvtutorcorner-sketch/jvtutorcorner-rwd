@@ -100,7 +100,7 @@ export default async function CourseDetailPage({ params }: { params: Promise<{ i
           <div className="course-section">
             <h2>課程標籤</h2>
             <div className="card-tags">
-              {tags.map((tag: string) => (
+              {(tags || []).map((tag: string) => (
                 <span key={tag} className="tag">
                   {tag}
                 </span>
