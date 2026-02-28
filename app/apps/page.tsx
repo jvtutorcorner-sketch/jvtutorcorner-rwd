@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 interface AppIntegration {
     integrationId: string;
     userId: string;
-    type: string; // 'LINE', 'ECPAY', 'PAYPAL', 'STRIPE'
+    type: string;
     name: string;
     config?: Record<string, string>;
     status: string;
@@ -15,12 +15,33 @@ interface AppIntegration {
 }
 
 const PAYMENT_TYPES = ['ECPAY', 'PAYPAL', 'STRIPE'];
+const CHANNEL_TYPES = ['LINE', 'TELEGRAM', 'WHATSAPP', 'MESSENGER', 'SLACK', 'TEAMS', 'DISCORD', 'WECHAT'];
+
+/** 各通訊渠道的顏色、圖標與顯示名稱 */
+const CHANNEL_META: Record<string, { badge: string; label: string; icon: string; desc: string }> = {
+    LINE:      { badge: 'bg-green-100 text-green-800', label: 'LINE', icon: '💬', desc: '台灣、日本最常用的即時通訊軟體' },
+    TELEGRAM:  { badge: 'bg-sky-100 text-sky-800', label: 'Telegram', icon: '✈️', desc: '加密即時通訊，支援 Bot API' },
+    WHATSAPP:  { badge: 'bg-emerald-100 text-emerald-800', label: 'WhatsApp', icon: '📱', desc: '全球超過 20 億用戶的即時通訊' },
+    MESSENGER: { badge: 'bg-blue-100 text-blue-800', label: 'Messenger', icon: '💙', desc: 'Facebook / Meta 即時通訊平台' },
+    SLACK:     { badge: 'bg-purple-100 text-purple-800', label: 'Slack', icon: '🔗', desc: '企業團隊協作與訊息通知' },
+    TEAMS:     { badge: 'bg-violet-100 text-violet-800', label: 'Teams', icon: '👥', desc: 'Microsoft 企業通訊與會議' },
+    DISCORD:   { badge: 'bg-indigo-100 text-indigo-800', label: 'Discord', icon: '🎮', desc: '社群伺服器，適合線上課程群組' },
+    WECHAT:    { badge: 'bg-lime-100 text-lime-800', label: 'WeChat', icon: '🟢', desc: '中國大陸最普及的通訊平台' },
+};
+
+const PAYMENT_META: Record<string, { badge: string; label: string; icon: string; desc: string }> = {
+    ECPAY:  { badge: 'bg-emerald-100 text-emerald-800', label: '綠界科技 ECPay', icon: '🏦', desc: '台灣本地金流，支援超商/ATM/信用卡' },
+    PAYPAL: { badge: 'bg-blue-100 text-blue-800', label: 'PayPal', icon: '🅿️', desc: '全球最大線上支付平台' },
+    STRIPE: { badge: 'bg-indigo-100 text-indigo-800', label: 'Stripe', icon: '💳', desc: '全球開發者首選線上刷卡服務' },
+};
 
 
 export default function AppsPage() {
     const [apps, setApps] = useState<AppIntegration[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedAppConfig, setSelectedAppConfig] = useState<AppIntegration | null>(null);
+    const [testingId, setTestingId] = useState<string | null>(null);   // integrationId currently testing
+    const [testResults, setTestResults] = useState<Record<string, { success: boolean; message: string }>>({});
     const router = useRouter();
 
     useEffect(() => {
@@ -51,8 +72,41 @@ export default function AppsPage() {
         fetchApps();
     }, []);
 
+    /** 取得指定類型已連接的整合記錄 */
+    const getConnectedApps = (type: string) => apps.filter(a => a.type === type);
+
+    /** 測試指定整合的連線 */
+    const handleTest = async (app: AppIntegration) => {
+        const id = app.integrationId;
+        setTestingId(id);
+        // 清除先前結果
+        setTestResults(prev => { const n = { ...prev }; delete n[id]; return n; });
+
+        try {
+            const res = await fetch('/api/app-integrations/test', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    integrationId: id,
+                    type: app.type,
+                    config: app.config,
+                }),
+            });
+            const data = await res.json();
+            if (data.ok && data.result) {
+                setTestResults(prev => ({ ...prev, [id]: data.result }));
+            } else {
+                setTestResults(prev => ({ ...prev, [id]: { success: false, message: data.error || '測試失敗' } }));
+            }
+        } catch (e: any) {
+            setTestResults(prev => ({ ...prev, [id]: { success: false, message: `請求失敗: ${e.message}` } }));
+        } finally {
+            setTestingId(null);
+        }
+    };
+
     return (
-        <div className="page p-6 max-w-4xl mx-auto">
+        <div className="page p-6 max-w-5xl mx-auto">
             <header className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-8">
                 <div>
                     <h1 className="text-3xl font-bold text-gray-900 dark:text-white">系統設定</h1>
@@ -74,6 +128,7 @@ export default function AppsPage() {
                 </div>
             ) : (
                 <>
+                    {/* ─────────── 通訊渠道區塊 ─────────── */}
                     <div className="flex justify-between items-center mb-6 border-b border-gray-200 dark:border-gray-700 pb-2">
                         <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-100 flex items-center">
                             <svg className="w-5 h-5 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -88,22 +143,106 @@ export default function AppsPage() {
                             新增通訊 App
                         </Link>
                     </div>
-                    {apps.filter(app => !PAYMENT_TYPES.includes(app.type)).length === 0 ? (
-                        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-8 text-center border border-dashed border-gray-300 dark:border-gray-700 mb-8">
-                            <p className="text-gray-500 dark:text-gray-400 mb-4">尚未設定任何通訊工具。</p>
-                            <Link href="/add-app" className="inline-block bg-white text-blue-600 border border-blue-600 hover:bg-blue-50 font-medium py-1.5 px-6 rounded-lg transition-colors">
-                                新增通訊 App
-                            </Link>
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-10">
-                            {apps.filter(app => !PAYMENT_TYPES.includes(app.type)).map((app) => (
-                                <IntegrationCard key={app.integrationId} app={app} />
-                            ))}
-                        </div>
-                    )}
 
-                    <div className="flex justify-between items-center mb-6 border-b border-gray-200 dark:border-gray-700 pb-2 mt-10">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-12">
+                        {CHANNEL_TYPES.map((type) => {
+                            const meta = CHANNEL_META[type];
+                            const connected = getConnectedApps(type);
+                            const isConnected = connected.length > 0;
+                            const activeApp = connected.find(a => a.status === 'ACTIVE');
+
+                            return (
+                                <div key={type} className={`relative bg-white dark:bg-gray-800 rounded-xl shadow-sm border-2 p-5 flex flex-col transition-all hover:shadow-md ${isConnected ? 'border-green-300 dark:border-green-600' : 'border-gray-200 dark:border-gray-700'}`}>
+                                    {/* 連線狀態指示燈 */}
+                                    <div className="absolute top-3 right-3">
+                                        {isConnected ? (
+                                            <span className="flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-400">
+                                                <span className="relative flex h-2.5 w-2.5">
+                                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                                                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
+                                                </span>
+                                                已連接
+                                            </span>
+                                        ) : (
+                                            <span className="text-xs font-medium text-gray-400 dark:text-gray-500">未連接</span>
+                                        )}
+                                    </div>
+
+                                    {/* 圖標與名稱 */}
+                                    <div className="flex items-center gap-3 mb-3">
+                                        <span className="text-2xl">{meta.icon}</span>
+                                        <div>
+                                            <h3 className="font-bold text-gray-900 dark:text-white">{meta.label}</h3>
+                                        </div>
+                                    </div>
+
+                                    {/* 說明文字 */}
+                                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-4 flex-1">{meta.desc}</p>
+
+                                    {/* 已連接的名稱 */}
+                                    {activeApp && (
+                                        <p className="text-xs text-green-600 dark:text-green-400 mb-3 truncate">
+                                            ✓ {activeApp.name}
+                                        </p>
+                                    )}
+
+                                    {/* 操作按鈕 */}
+                                    <div className="space-y-2">
+                                        {isConnected && (
+                                            <>
+                                                {/* 測試結果 */}
+                                                {connected.map(c => testResults[c.integrationId] && (
+                                                    <div key={c.integrationId} className={`text-xs p-2 rounded-lg ${testResults[c.integrationId].success ? 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300'}`}>
+                                                        <span className="font-bold">{testResults[c.integrationId].success ? '✓ 測試成功' : '✗ 測試失敗'}</span>
+                                                        <p className="mt-0.5 break-all">{testResults[c.integrationId].message}</p>
+                                                    </div>
+                                                ))}
+                                            </>
+                                        )}
+                                        <div className="flex gap-2">
+                                            {isConnected ? (
+                                                <>
+                                                    <button
+                                                        onClick={() => handleTest(connected[0])}
+                                                        disabled={testingId === connected[0].integrationId}
+                                                        className="flex-1 text-xs bg-amber-50 hover:bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 dark:hover:bg-amber-900/50 font-medium py-2 px-3 rounded-lg transition-colors disabled:opacity-50 flex items-center justify-center gap-1"
+                                                    >
+                                                        {testingId === connected[0].integrationId ? (
+                                                            <><svg className="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>測試中...</>
+                                                        ) : (
+                                                            <>🔍 測試連線</>
+                                                        )}
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setSelectedAppConfig(connected[0])}
+                                                        className="text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 dark:hover:bg-blue-900/50 font-medium py-2 px-3 rounded-lg transition-colors"
+                                                    >
+                                                        設定
+                                                    </button>
+                                                    <Link
+                                                        href={`/add-app?channel=${type}`}
+                                                        className="text-xs bg-gray-50 hover:bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 font-medium py-2 px-3 rounded-lg transition-colors"
+                                                    >
+                                                        新增
+                                                    </Link>
+                                                </>
+                                            ) : (
+                                                <Link
+                                                    href={`/add-app?channel=${type}`}
+                                                    className="w-full text-center text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 border border-blue-300 font-semibold py-2 px-3 rounded-lg transition-colors"
+                                                >
+                                                    立即串接
+                                                </Link>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+
+                    {/* ─────────── 金流服務區塊 ─────────── */}
+                    <div className="flex justify-between items-center mb-6 border-b border-gray-200 dark:border-gray-700 pb-2">
                         <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-100 flex items-center">
                             <svg className="w-5 h-5 mr-2 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
@@ -118,60 +257,176 @@ export default function AppsPage() {
                         </Link>
                     </div>
 
-                    {apps.filter(app => PAYMENT_TYPES.includes(app.type)).length === 0 ? (
-                        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-8 text-center border border-dashed border-gray-300 dark:border-gray-700">
-                            <p className="text-gray-500 dark:text-gray-400 mb-4">尚未綁定任何收款帳號。</p>
-                            <Link href="/add-app?type=payment" className="inline-block bg-white text-green-600 border border-green-600 hover:bg-green-50 font-medium py-1.5 px-6 rounded-lg transition-colors">
-                                新增金流服務設定
-                            </Link>
-                        </div>
-                    ) : (
-                        <div className="overflow-x-auto bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
-                            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                                <thead className="bg-gray-50 dark:bg-gray-700/50">
-                                    <tr>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">服務類型</th>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">名稱</th>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">狀態</th>
-                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">建立時間</th>
-                                        <th scope="col" className="px-6 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">操作</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                                    {apps.filter(app => PAYMENT_TYPES.includes(app.type)).map((app) => {
-                                        let badgeColor = 'bg-blue-100 text-blue-800';
-                                        if (app.type === 'PAYPAL') badgeColor = 'bg-blue-100 text-blue-800';
-                                        if (app.type === 'ECPAY') badgeColor = 'bg-emerald-100 text-emerald-800';
-                                        if (app.type === 'STRIPE') badgeColor = 'bg-indigo-100 text-indigo-800';
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+                        {PAYMENT_TYPES.map((type) => {
+                            const meta = PAYMENT_META[type];
+                            const connected = getConnectedApps(type);
+                            const isConnected = connected.length > 0;
+                            const activeApp = connected.find(a => a.status === 'ACTIVE');
 
-                                        return (
-                                            <tr key={app.integrationId} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                                    <span className={`px-2 py-1 text-xs font-bold rounded ${badgeColor}`}>
-                                                        {app.type}
-                                                    </span>
-                                                </td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                                                    {app.name}
-                                                </td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm">
-                                                    <span className={`px-2 py-1 text-xs font-bold rounded ${app.status === 'ACTIVE' ? 'bg-green-500 text-white' : 'bg-gray-400 text-white'}`}>
-                                                        {app.status}
-                                                    </span>
-                                                </td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                                                    {new Date(app.createdAt).toLocaleDateString()}
-                                                </td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
-                                                    <button onClick={() => setSelectedAppConfig(app)} className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300 font-semibold transition-colors">
-                                                        詳細資訊
+                            return (
+                                <div key={type} className={`relative bg-white dark:bg-gray-800 rounded-xl shadow-sm border-2 p-6 flex flex-col transition-all hover:shadow-md ${isConnected ? 'border-green-300 dark:border-green-600' : 'border-gray-200 dark:border-gray-700'}`}>
+                                    {/* 連線狀態 */}
+                                    <div className="absolute top-3 right-3">
+                                        {isConnected ? (
+                                            <span className="flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-400">
+                                                <span className="relative flex h-2.5 w-2.5">
+                                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                                                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
+                                                </span>
+                                                已連接
+                                            </span>
+                                        ) : (
+                                            <span className="text-xs font-medium text-gray-400 dark:text-gray-500">未設定</span>
+                                        )}
+                                    </div>
+
+                                    {/* 圖標與名稱 */}
+                                    <div className="flex items-center gap-3 mb-3">
+                                        <span className="text-2xl">{meta.icon}</span>
+                                        <div>
+                                            <h3 className="font-bold text-gray-900 dark:text-white">{meta.label}</h3>
+                                        </div>
+                                    </div>
+
+                                    {/* 說明文字 */}
+                                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-4 flex-1">{meta.desc}</p>
+
+                                    {/* 已連接的名稱 */}
+                                    {activeApp && (
+                                        <p className="text-xs text-green-600 dark:text-green-400 mb-3 truncate">
+                                            ✓ {activeApp.name}
+                                            {activeApp.createdAt && (
+                                                <span className="text-gray-400 ml-1">· {new Date(activeApp.createdAt).toLocaleDateString()}</span>
+                                            )}
+                                        </p>
+                                    )}
+
+                                    {/* 操作按鈕 */}
+                                    <div className="space-y-2">
+                                        {isConnected && (
+                                            <>
+                                                {/* 測試結果 */}
+                                                {connected.map(c => testResults[c.integrationId] && (
+                                                    <div key={c.integrationId} className={`text-xs p-2 rounded-lg ${testResults[c.integrationId].success ? 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300'}`}>
+                                                        <span className="font-bold">{testResults[c.integrationId].success ? '✓ 測試成功' : '✗ 測試失敗'}</span>
+                                                        <p className="mt-0.5 break-all">{testResults[c.integrationId].message}</p>
+                                                    </div>
+                                                ))}
+                                            </>
+                                        )}
+                                        <div className="flex gap-2">
+                                            {isConnected ? (
+                                                <>
+                                                    <button
+                                                        onClick={() => handleTest(connected[0])}
+                                                        disabled={testingId === connected[0].integrationId}
+                                                        className="flex-1 text-xs bg-amber-50 hover:bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 dark:hover:bg-amber-900/50 font-medium py-2 px-3 rounded-lg transition-colors disabled:opacity-50 flex items-center justify-center gap-1"
+                                                    >
+                                                        {testingId === connected[0].integrationId ? (
+                                                            <><svg className="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>測試中...</>
+                                                        ) : (
+                                                            <>🔍 測試連線</>
+                                                        )}
                                                     </button>
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
+                                                    <button
+                                                        onClick={() => setSelectedAppConfig(connected[0])}
+                                                        className="text-xs bg-green-50 hover:bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 dark:hover:bg-green-900/50 font-medium py-2 px-3 rounded-lg transition-colors"
+                                                    >
+                                                        設定
+                                                    </button>
+                                                    <Link
+                                                        href={`/add-app?type=payment&provider=${type}`}
+                                                        className="text-xs bg-gray-50 hover:bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 font-medium py-2 px-3 rounded-lg transition-colors"
+                                                    >
+                                                        新增
+                                                    </Link>
+                                                </>
+                                            ) : (
+                                                <Link
+                                                    href={`/add-app?type=payment&provider=${type}`}
+                                                    className="w-full text-center text-xs bg-green-100 hover:bg-green-200 text-green-700 border border-green-300 font-semibold py-2 px-3 rounded-lg transition-colors"
+                                                >
+                                                    立即設定
+                                                </Link>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+
+                    {/* ─────────── 已連接的整合列表 ─────────── */}
+                    {apps.length > 0 && (
+                        <div className="mt-8">
+                            <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4 flex items-center border-b border-gray-200 dark:border-gray-700 pb-2">
+                                <svg className="w-5 h-5 mr-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                                </svg>
+                                已連接的服務 ({apps.length})
+                            </h2>
+                            <div className="overflow-x-auto bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
+                                <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                                    <thead className="bg-gray-50 dark:bg-gray-700/50">
+                                        <tr>
+                                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">類型</th>
+                                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">名稱</th>
+                                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">狀態</th>
+                                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">建立時間</th>
+                                            <th scope="col" className="px-6 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">操作</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                                        {apps.map((app) => {
+                                            const isPayment = PAYMENT_TYPES.includes(app.type);
+                                            const meta = isPayment ? PAYMENT_META[app.type] : CHANNEL_META[app.type];
+                                            const badgeColor = meta?.badge || 'bg-gray-100 text-gray-800';
+                                            const label = meta?.label || app.type;
+                                            const icon = isPayment ? PAYMENT_META[app.type]?.icon : CHANNEL_META[app.type]?.icon;
+
+                                            return (
+                                                <tr key={app.integrationId} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                                        <span className={`inline-flex items-center gap-1 px-2 py-1 text-xs font-bold rounded ${badgeColor}`}>
+                                                            {icon && <span>{icon}</span>}{label}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                                                        {app.name}
+                                                    </td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                                                        <span className={`px-2 py-1 text-xs font-bold rounded ${app.status === 'ACTIVE' ? 'bg-green-500 text-white' : 'bg-gray-400 text-white'}`}>
+                                                            {app.status === 'ACTIVE' ? '啟用' : '停用'}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                                                        {new Date(app.createdAt).toLocaleDateString()}
+                                                    </td>
+                                                    <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium space-x-3">
+                                                        <button
+                                                            onClick={() => handleTest(app)}
+                                                            disabled={testingId === app.integrationId}
+                                                            className={`font-semibold transition-colors ${testingId === app.integrationId ? 'text-gray-400 cursor-wait' : 'text-amber-600 hover:text-amber-800 dark:text-amber-400 dark:hover:text-amber-300'}`}
+                                                        >
+                                                            {testingId === app.integrationId ? '測試中...' : '測試'}
+                                                        </button>
+                                                        <button onClick={() => setSelectedAppConfig(app)} className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300 font-semibold transition-colors">
+                                                            詳細
+                                                        </button>
+                                                        {/* 測試結果行內顯示 */}
+                                                        {testResults[app.integrationId] && (
+                                                            <span className={`text-xs ${testResults[app.integrationId].success ? 'text-green-600' : 'text-red-600'}`}>
+                                                                {testResults[app.integrationId].success ? '✓' : '✗'}
+                                                            </span>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     )}
                 </>
@@ -198,7 +453,7 @@ export default function AppsPage() {
                                     </div>
                                     <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
                                         <h3 className="text-lg leading-6 font-medium text-gray-900 dark:text-white" id="modal-title">
-                                            金流詳細資訊 - {selectedAppConfig.name}
+                                            詳細資訊 - {selectedAppConfig.name}
                                         </h3>
                                         <div className="mt-4">
                                             <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">
@@ -211,7 +466,7 @@ export default function AppsPage() {
                                                             <li key={key} className="flex flex-col sm:flex-row sm:items-center">
                                                                 <span className="font-semibold w-1/3 truncate text-gray-500 dark:text-gray-400 capitalize">{key}:</span>
                                                                 <span className="w-2/3 break-all bg-white dark:bg-gray-800 px-2 py-1 rounded inline-block shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600">
-                                                                    {key.toLowerCase().includes('secret') || key.toLowerCase().includes('hashkey') || key.toLowerCase().includes('hashiv')
+                                                                    {key.toLowerCase().includes('secret') || key.toLowerCase().includes('hashkey') || key.toLowerCase().includes('hashiv') || key.toLowerCase().includes('token') || key.toLowerCase().includes('password')
                                                                         ? '**********'
                                                                         : value}
                                                                 </span>
@@ -223,7 +478,7 @@ export default function AppsPage() {
                                                 )}
                                             </div>
                                             <p className="text-xs text-red-500 dark:text-red-400 mt-4 italic">
-                                                * 為保護您的金流帳戶安全，機敏密鑰如 SecretKey 和 HashKey 等資訊以星號隱藏顯示。
+                                                * 為保護帳戶安全，機敏密鑰如 Token、Secret、Password 等資訊以星號隱藏顯示。
                                             </p>
                                         </div>
                                     </div>
@@ -242,50 +497,6 @@ export default function AppsPage() {
                     </div>
                 </div>
             )}
-        </div>
-    );
-}
-function IntegrationCard({ app }: { app: AppIntegration }) {
-    const isPayment = PAYMENT_TYPES.includes(app.type);
-
-    // Config colors based on app type
-    let badgeColor = 'bg-blue-100 text-blue-800';
-    if (app.type === 'LINE') badgeColor = 'bg-green-100 text-green-800';
-    if (app.type === 'PAYPAL') badgeColor = 'bg-blue-100 text-blue-800';
-    if (app.type === 'ECPAY') badgeColor = 'bg-emerald-100 text-emerald-800';
-    if (app.type === 'STRIPE') badgeColor = 'bg-indigo-100 text-indigo-800';
-
-    return (
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6 border border-gray-100 dark:border-gray-700 flex flex-col justify-between">
-            <div>
-                <div className="flex justify-between items-start mb-4">
-                    <span className={`px-2 py-1 text-xs font-bold rounded ${badgeColor}`}>
-                        {app.type}
-                    </span>
-                    <span className={`px-2 py-1 text-xs font-bold rounded ${app.status === 'ACTIVE' ? 'bg-green-500 text-white' : 'bg-gray-400 text-white'}`}>
-                        {app.status}
-                    </span>
-                </div>
-                <h3 className="text-lg font-bold text-gray-900 dark:text-white truncate">{app.name}</h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                    建立於 {new Date(app.createdAt).toLocaleDateString()}
-                </p>
-                {isPayment && (
-                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">
-                        用於向學生收取課程費用
-                    </p>
-                )}
-            </div>
-            <div className="mt-6 pt-4 border-t border-gray-50 dark:border-gray-700 flex justify-end">
-                <button className="text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 text-sm font-medium mr-4">
-                    編輯設定
-                </button>
-                <button className="text-gray-400 hover:text-red-600 dark:hover:text-red-400">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                </button>
-            </div>
         </div>
     );
 }

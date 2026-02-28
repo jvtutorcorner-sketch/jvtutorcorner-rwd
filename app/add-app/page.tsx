@@ -19,15 +19,47 @@ function AddAppForm() {
 
     const [loading, setLoading] = useState(false);
 
-    // For Communication (LINE)
-    const [lineData, setLineData] = useState({
+    // Communication channel type selector - pre-select from URL ?channel=TELEGRAM
+    const channelFromUrl = searchParams.get('channel')?.toUpperCase() || 'LINE';
+    const [selectedChannelType, setSelectedChannelType] = useState(
+        ['LINE','TELEGRAM','WHATSAPP','MESSENGER','SLACK','TEAMS','DISCORD','WECHAT'].includes(channelFromUrl) ? channelFromUrl : 'LINE'
+    );
+
+    // Payment provider from URL ?provider=STRIPE
+    const providerFromUrl = searchParams.get('provider')?.toUpperCase() || 'ECPAY';
+
+    // For Communication - generic fields
+    const [channelData, setChannelData] = useState({
         name: '',
+        // LINE
         channelAccessToken: '',
-        channelSecret: ''
+        channelSecret: '',
+        // Telegram
+        botToken: '',
+        // WhatsApp
+        phoneNumberId: '',
+        whatsappAccessToken: '',
+        // Messenger
+        pageAccessToken: '',
+        appSecret: '',
+        // Slack
+        botOAuthToken: '',
+        signingSecret: '',
+        // Teams
+        appId: '',
+        appPassword: '',
+        // Discord
+        discordBotToken: '',
+        applicationId: '',
+        // WeChat
+        wechatAppId: '',
+        wechatAppSecret: '',
     });
 
     // For Payment
-    const [selectedPaymentProvider, setSelectedPaymentProvider] = useState('ECPAY');
+    const [selectedPaymentProvider, setSelectedPaymentProvider] = useState(
+        ['ECPAY','PAYPAL','STRIPE'].includes(providerFromUrl) ? providerFromUrl : 'ECPAY'
+    );
     const [paymentData, setPaymentData] = useState({
         name: '',
         ecpayMerchantId: '',
@@ -40,12 +72,82 @@ function AddAppForm() {
         paypalSecretKey: ''
     });
 
-    const handleLineChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-        setLineData({ ...lineData, [e.target.name]: e.target.value });
+    const handleChannelChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+        setChannelData({ ...channelData, [e.target.name]: e.target.value });
     };
 
     const handlePaymentChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         setPaymentData({ ...paymentData, [e.target.name]: e.target.value });
+    };
+
+    /** 各通訊渠道的 config 欄位定義 */
+    const CHANNEL_CONFIG_MAP: Record<string, { fields: { name: string; label: string; type: string; placeholder: string; required: boolean; rows?: number }[]; hint: string }> = {
+        LINE: {
+            hint: '前往 LINE Developers Console 取得 Channel Access Token 和 Channel Secret。',
+            fields: [
+                { name: 'channelAccessToken', label: 'Channel Access Token', type: 'textarea', placeholder: '請輸入 Channel Access Token (用於發信)', required: true, rows: 3 },
+                { name: 'channelSecret', label: 'Channel Secret', type: 'text', placeholder: '請輸入 Channel Secret (用於驗證)', required: true },
+            ],
+        },
+        TELEGRAM: {
+            hint: '透過 BotFather (@BotFather) 建立 Bot 後取得 Bot Token。',
+            fields: [
+                { name: 'botToken', label: 'Bot Token', type: 'text', placeholder: '123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11', required: true },
+            ],
+        },
+        WHATSAPP: {
+            hint: '前往 Meta for Developers → WhatsApp Business API 取得 Phone Number ID 和 Access Token。',
+            fields: [
+                { name: 'phoneNumberId', label: 'Phone Number ID', type: 'text', placeholder: '請輸入 Phone Number ID', required: true },
+                { name: 'whatsappAccessToken', label: 'Access Token', type: 'text', placeholder: '請輸入 WhatsApp Business Access Token', required: true },
+            ],
+        },
+        MESSENGER: {
+            hint: '前往 Meta for Developers → Messenger Platform 取得 Page Access Token 和 App Secret。',
+            fields: [
+                { name: 'pageAccessToken', label: 'Page Access Token', type: 'textarea', placeholder: '請輸入 Page Access Token', required: true, rows: 3 },
+                { name: 'appSecret', label: 'App Secret', type: 'text', placeholder: '請輸入 App Secret (用於驗證)', required: true },
+            ],
+        },
+        SLACK: {
+            hint: '前往 Slack API (api.slack.com) → Your Apps 建立 Bot，取得 OAuth Token 和 Signing Secret。',
+            fields: [
+                { name: 'botOAuthToken', label: 'Bot User OAuth Token', type: 'text', placeholder: 'xoxb-XXXX-XXXX-XXXX', required: true },
+                { name: 'signingSecret', label: 'Signing Secret', type: 'text', placeholder: '請輸入 Signing Secret', required: true },
+            ],
+        },
+        TEAMS: {
+            hint: '前往 Azure Bot Service / Teams Developer Portal 取得 App ID 和 App Password。',
+            fields: [
+                { name: 'appId', label: 'App ID (Microsoft)', type: 'text', placeholder: '請輸入 Microsoft App ID', required: true },
+                { name: 'appPassword', label: 'App Password', type: 'password', placeholder: '請輸入 App Password', required: true },
+            ],
+        },
+        DISCORD: {
+            hint: '前往 Discord Developer Portal 建立 Application 及 Bot，取得 Bot Token。',
+            fields: [
+                { name: 'discordBotToken', label: 'Bot Token', type: 'text', placeholder: '請輸入 Discord Bot Token', required: true },
+                { name: 'applicationId', label: 'Application ID', type: 'text', placeholder: '請輸入 Application ID', required: true },
+            ],
+        },
+        WECHAT: {
+            hint: '前往微信公眾平台 (mp.weixin.qq.com) 取得 AppID 和 AppSecret。',
+            fields: [
+                { name: 'wechatAppId', label: 'AppID', type: 'text', placeholder: '請輸入 AppID', required: true },
+                { name: 'wechatAppSecret', label: 'AppSecret', type: 'text', placeholder: '請輸入 AppSecret', required: true },
+            ],
+        },
+    };
+
+    const CHANNEL_LABELS: Record<string, string> = {
+        LINE: 'LINE',
+        TELEGRAM: 'Telegram',
+        WHATSAPP: 'WhatsApp Business',
+        MESSENGER: 'Facebook Messenger',
+        SLACK: 'Slack',
+        TEAMS: 'Microsoft Teams',
+        DISCORD: 'Discord',
+        WECHAT: 'WeChat 微信',
     };
 
     const handleSave = async (e: React.FormEvent) => {
@@ -93,14 +195,21 @@ function AddAppForm() {
                     config
                 };
             } else {
+                // 通訊渠道 - 依選擇的渠道類型取出對應 config 欄位
+                const channelCfg = CHANNEL_CONFIG_MAP[selectedChannelType];
+                const config: Record<string, string> = {};
+                if (channelCfg) {
+                    for (const f of channelCfg.fields) {
+                        const val = (channelData as any)[f.name];
+                        if (val) config[f.name] = val;
+                    }
+                }
+
                 payload = {
                     userId,
-                    type: 'LINE',
-                    name: lineData.name,
-                    config: {
-                        channelAccessToken: lineData.channelAccessToken,
-                        channelSecret: lineData.channelSecret,
-                    },
+                    type: selectedChannelType,
+                    name: channelData.name || `${CHANNEL_LABELS[selectedChannelType] || selectedChannelType} 通知`,
+                    config,
                 };
             }
 
@@ -142,7 +251,7 @@ function AddAppForm() {
                     <div className="text-center">
                         <h1 className="text-2xl font-bold">{isPayment ? '新增金流服務' : '新增應用程式'}</h1>
                         <p className={`mt-2 ${isPayment ? 'text-green-100' : 'text-blue-100'}`}>
-                            {isPayment ? '設定您的 ECPay、Stripe 或 PayPal 金流服務設定' : '設定通訊渠道串接參數 (如 LINE Developer)'}
+                            {isPayment ? '設定您的 ECPay、Stripe 或 PayPal 金流服務設定' : '設定通訊渠道串接參數 (LINE、Telegram、WhatsApp 等)'}
                         </p>
                     </div>
                 </div>
@@ -162,10 +271,9 @@ function AddAppForm() {
                                     此處填寫的金鑰將被安全加密儲存，專門用於您的課程結帳，確保學生的付款能直接匯入您的金流帳戶中。請勿將您的 HashKey 或 Secret Key 洩漏給他人。
                                 </p>
                             ) : (
-                                <ul className="list-disc list-inside text-sm text-blue-800 space-y-2">
-                                    <li><strong>Channel Access Token</strong>: 用於呼叫 API 發送訊息 (發信)。</li>
-                                    <li><strong>Channel Secret</strong>: 用於驗證 Webhook 來源請求是否合法 (驗證)。</li>
-                                </ul>
+                                <p className="text-sm text-blue-800">
+                                    {CHANNEL_CONFIG_MAP[selectedChannelType]?.hint || '請依照各平台的開發者後台取得對應的金鑰與權杖。'}
+                                </p>
                             )}
                         </div>
                     </div>
@@ -272,47 +380,74 @@ function AddAppForm() {
                             <>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                        選擇通訊渠道 <span className="text-red-500">*</span>
+                                    </label>
+                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
+                                        {Object.entries(CHANNEL_LABELS).map(([key, label]) => (
+                                            <button
+                                                key={key}
+                                                type="button"
+                                                onClick={() => setSelectedChannelType(key)}
+                                                className={`px-3 py-2 text-sm rounded-lg border-2 font-medium transition-all ${
+                                                    selectedChannelType === key
+                                                        ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-400'
+                                                        : 'border-gray-200 bg-white text-gray-600 hover:border-blue-300 hover:bg-blue-50/50 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600'
+                                                }`}
+                                            >
+                                                {label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                                         應用程式名稱
                                     </label>
                                     <input
                                         type="text"
                                         name="name"
-                                        value={lineData.name}
-                                        onChange={handleLineChange}
-                                        placeholder="例如：官方客服小幫手"
+                                        value={channelData.name}
+                                        onChange={handleChannelChange}
+                                        placeholder={`例如：我的 ${CHANNEL_LABELS[selectedChannelType]} 通知`}
                                         className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                                         required
                                     />
                                 </div>
 
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                        Channel Access Token <span className="text-red-500">*</span>
-                                    </label>
-                                    <textarea
-                                        name="channelAccessToken"
-                                        value={lineData.channelAccessToken}
-                                        onChange={handleLineChange}
-                                        placeholder="請輸入 Channel Access Token (用於發信)"
-                                        rows={3}
-                                        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono text-sm"
-                                        required
-                                    />
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                        Channel Secret <span className="text-red-500">*</span>
-                                    </label>
-                                    <input
-                                        type="text"
-                                        name="channelSecret"
-                                        value={lineData.channelSecret}
-                                        onChange={handleLineChange}
-                                        placeholder="請輸入 Channel Secret (用於驗證)"
-                                        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono text-sm"
-                                        required
-                                    />
+                                {/* 動態渲染所選通訊渠道的設定欄位 */}
+                                <div className="space-y-4 p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800/50">
+                                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                                        {CHANNEL_CONFIG_MAP[selectedChannelType]?.hint}
+                                    </p>
+                                    {CHANNEL_CONFIG_MAP[selectedChannelType]?.fields.map((field) => (
+                                        <div key={field.name}>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                                {field.label} {field.required && <span className="text-red-500">*</span>}
+                                            </label>
+                                            {field.type === 'textarea' ? (
+                                                <textarea
+                                                    name={field.name}
+                                                    value={(channelData as any)[field.name] || ''}
+                                                    onChange={handleChannelChange}
+                                                    placeholder={field.placeholder}
+                                                    rows={field.rows || 3}
+                                                    className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono text-sm"
+                                                    required={field.required}
+                                                />
+                                            ) : (
+                                                <input
+                                                    type={field.type}
+                                                    name={field.name}
+                                                    value={(channelData as any)[field.name] || ''}
+                                                    onChange={handleChannelChange}
+                                                    placeholder={field.placeholder}
+                                                    className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono text-sm"
+                                                    required={field.required}
+                                                />
+                                            )}
+                                        </div>
+                                    ))}
                                 </div>
                             </>
                         )}
