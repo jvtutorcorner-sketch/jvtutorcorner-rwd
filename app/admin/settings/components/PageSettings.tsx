@@ -32,18 +32,22 @@ export default function PageSettings({
   const [hasChanges, setHasChanges] = useState(false);
   const [initialSettings, setInitialSettings] = useState<string>('');
 
-  // 初始化時記錄原始狀態
-  useEffect(() => {
-    if (settings) {
-      setInitialSettings(JSON.stringify(settings.pageConfigs));
-    }
-  }, []);
+  // Snapshot only paths/labels/order — ignore permission fields (managed by PageAccessSettings)
+  function pageSnapshot(pageConfigs: any[]): string {
+    return JSON.stringify((pageConfigs || []).map(p => ({ id: p.id, path: p.path, label: p.label || '' })));
+  }
 
-  // 監控 settings 變化
+  // 初始化時記錄原始狀態（只抓一次）
+  useEffect(() => {
+    if (settings && !initialSettings) {
+      setInitialSettings(pageSnapshot(settings.pageConfigs));
+    }
+  }, [settings]);
+
+  // 監控 settings 變化（只比較 path/label/order）
   useEffect(() => {
     if (settings && initialSettings) {
-      const currentState = JSON.stringify(settings.pageConfigs);
-      setHasChanges(currentState !== initialSettings);
+      setHasChanges(pageSnapshot(settings.pageConfigs) !== initialSettings);
     }
   }, [settings, initialSettings]);
 
@@ -84,7 +88,7 @@ export default function PageSettings({
         console.log('✅ [PageSettings] 儲存成功！', data);
         // 儲存成功後，更新初始狀態
         if (settings) {
-          setInitialSettings(JSON.stringify(settings.pageConfigs));
+          setInitialSettings(pageSnapshot(settings.pageConfigs));
           setHasChanges(false);
         }
         if (typeof window !== 'undefined') {
@@ -146,7 +150,7 @@ export default function PageSettings({
 
     setSettings((prev: Settings | null) => prev ? {
       ...prev,
-      pageConfigs: prev.pageConfigs.map(pc => pc.path === oldPath ? { ...pc, label: label || pc.path, path: newPath } : pc)
+      pageConfigs: prev.pageConfigs.map(pc => pc.path === oldPath ? { ...pc, id: newPath, path: newPath, label: label || newPath } : pc)
     } : prev);
     setEditingPath(null);
     setEditingLabel('');

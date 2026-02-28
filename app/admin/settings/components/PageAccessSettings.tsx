@@ -112,6 +112,12 @@ export default function PageAccessSettings({
   // Ensure we sort pages or just take them as is.
   const filteredPages = pages.filter(p => pathFilter ? pathFilter(p.path) : true);
 
+  console.log('🔍 [PageAccessSettings] Total pages:', pages.length);
+  console.log('🔍 [PageAccessSettings] Filtered pages:', filteredPages.length);
+  console.log('🔍 [PageAccessSettings] First page:', filteredPages[0]);
+  console.log('🔍 [PageAccessSettings] First page permissions:', filteredPages[0]?.permissions);
+  console.log('🔍 [PageAccessSettings] Active roles:', internalRoles.filter(r => r.isActive));
+
   if (filteredPages.length === 0) {
     return (
       <div style={{ padding: 16, border: '1px solid #ddd', borderRadius: 8, background: '#f9f9f9', color: '#666' }}>

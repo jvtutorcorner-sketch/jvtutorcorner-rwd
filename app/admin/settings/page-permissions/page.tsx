@@ -22,6 +22,11 @@ export default function PagePermissionsPage() {
       const rs = await s.json();
       const r = await fetch('/api/admin/roles');
       const rr = await r.json();
+      
+      console.log('🔍 [PagePermissionsPage] API Response:', rs);
+      console.log('🔍 [PagePermissionsPage] pageConfigs length:', rs.settings?.pageConfigs?.length || 0);
+      console.log('🔍 [PagePermissionsPage] First page permissions:', rs.settings?.pageConfigs?.[0]?.permissions);
+      
       if (s.ok && rs.ok) setSettings(rs.settings || rs);
       if (r.ok && rr.ok) setRoles(rr.roles || rr);
     } catch (err) {

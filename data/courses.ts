@@ -19,6 +19,9 @@ export type Course = {
   currency?: string;
   status?: string;
   requiredPlan?: 'basic' | 'pro' | 'elite';
+  // 點數扣點機制
+  pointCost?: number;          // 每堂課所需點數（設定後可用點數報名）
+  enrollmentType?: 'plan' | 'points' | 'both';  // plan=方案制 points=點數制 both=兩者皆可
 };
 
 export const COURSES: Course[] = [
@@ -42,6 +45,8 @@ export const COURSES: Course[] = [
     seatsLeft: 5,
     currency: 'TWD',
     status: '上架',
+    pointCost: 10,
+    enrollmentType: 'both',
   },
   {
     id: 'c2',
@@ -62,6 +67,8 @@ export const COURSES: Course[] = [
     seatsLeft: 8,
     currency: 'TWD',
     status: '上架',
+    pointCost: 8,
+    enrollmentType: 'both',
   },
   {
     id: 'c3',
@@ -83,6 +90,8 @@ export const COURSES: Course[] = [
     currency: 'TWD',
     status: '上架',
     requiredPlan: 'pro',
+    pointCost: 15,
+    enrollmentType: 'both',
   },
   {
     id: 'c4',
@@ -104,5 +113,7 @@ export const COURSES: Course[] = [
     currency: 'TWD',
     status: '上架',
     requiredPlan: 'elite',
+    pointCost: 20,
+    enrollmentType: 'points',
   },
 ];

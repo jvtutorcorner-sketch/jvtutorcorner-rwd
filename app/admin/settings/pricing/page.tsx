@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from 'react';
-import { PLAN_TARGETS } from '@/lib/mockAuth';
+import { PLAN_TARGETS, PLAN_LABELS, PLAN_DESCRIPTIONS, PLAN_FEATURES, PLAN_PRICES } from '@/lib/mockAuth';
 
 type PlanConfig = {
   id: string;
@@ -15,22 +15,39 @@ type PlanConfig = {
   order: number;
 };
 
+type PointPackage = {
+  id: string;
+  name: string; // 套餐名稱（例如：入門包、超值包）
+  points: number; // 點數數量
+  price: number; // 價格
+  bonus?: number; // 贈送點數
+  description?: string; // 描述
+  badge?: string; // 徽章（推薦、熱門等）
+  isActive: boolean;
+  order: number;
+};
+
 type PricingSettings = {
   pageTitle: string;
   pageDescription: string;
-  plans: PlanConfig[];
+  mode: 'subscription' | 'points'; // 新增：模式選擇
+  plans: PlanConfig[]; // 訂閱方案
+  pointPackages: PointPackage[]; // 點數套餐
 };
 
 export default function PricingSettingsPage() {
   const [settings, setSettings] = useState<PricingSettings>({
     pageTitle: '方案與價格設定',
     pageDescription: '管理會員方案的標籤、價格和功能特色',
-    plans: []
+    mode: 'subscription',
+    plans: [],
+    pointPackages: []
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
+  const [originalSettings, setOriginalSettings] = useState<PricingSettings | null>(null);
 
   const syncTargets = async (autoSave = true) => {
     setSettings(prev => {
@@ -55,150 +72,16 @@ export default function PricingSettingsPage() {
         if (response.ok && data.ok) {
           const loadedSettings = data.settings as PricingSettings;
           setSettings(loadedSettings);
-          // If the stored settings look like defaults, try importing from public page
-          if (!loadedSettings.plans || loadedSettings.plans.length === 0 || loadedSettings.pageDescription === '管理會員方案的標籤、價格和功能特色') {
-            importFromPublicPricing(loadedSettings);
+          // If no plans exist, suggest importing from mockAuth or public page
+          if (!loadedSettings.plans || loadedSettings.plans.length === 0) {
+            setMessage('💡 尚未設定任何方案，您可以使用「從 mockAuth 新增方案」或「匯入公開頁內容」按鈕來初始化方案資料');
           }
         } else {
-          // Fallback to default data
-          const loadedSettings: PricingSettings = {
-            pageTitle: '方案與價格設定',
-            pageDescription: '管理會員方案的標籤、價格和功能特色',
-            plans: [
-              {
-                id: 'viewer',
-                label: '新辦帳戶',
-                priceHint: 'NT$0 / 僅查詢',
-                badge: '預設',
-                targetAudience: '新手學員、試用者',
-                includedFeatures: '課程瀏覽、師資查詢',
-                features: [
-                  '僅能瀏覽與查詢老師和課程清單',
-                  '無法預約或參與付費課程',
-                  '無白板與錄影回放功能',
-                ],
-                isActive: true,
-                order: 1
-              },
-              {
-                id: 'basic',
-                label: 'Basic 普通會員',
-                priceHint: '最低入門價（可到時再定價）',
-                targetAudience: '初學者、預算有限的學生',
-                includedFeatures: '基礎課程瀏覽、社群互動',
-                features: [
-                  '有限的課程瀏覽與試聽',
-                  '社群功能（留言、評價）',
-                  '基礎教學支援',
-                ],
-                isActive: true,
-                order: 2
-              },
-              {
-                id: 'pro',
-                label: 'Pro 中級會員',
-                priceHint: '主力方案，建議訂為 Basic 的 2–3 倍',
-                badge: '推薦',
-                targetAudience: '進階學習者、專業學生',
-                includedFeatures: '白板功能、錄影回放、進階搜尋',
-                features: [
-                  '完整白板功能',
-                  '錄影回放（30 天保存）',
-                  '進階課程搜尋與篩選',
-                ],
-                isActive: true,
-                order: 3
-              },
-              {
-                id: 'elite',
-                label: 'Elite 高級會員',
-                priceHint: '高客單價、可採合約制或專案報價',
-                targetAudience: 'VIP客戶、高端學習者',
-                includedFeatures: '長期錄影、專屬師資、一對一支援',
-                features: [
-                  '白板與長期錄影（無限保存）',
-                  '專屬高端師資推薦',
-                  '一對一客服與優先支援',
-                ],
-                isActive: true,
-                order: 4
-              }
-            ]
-          };
-          setSettings(loadedSettings);
-          // try to import from the public page to prefill
-          importFromPublicPricing(loadedSettings);
+          setMessage('無法載入方案資料：' + (data.error || '未知錯誤'));
         }
       } catch (error) {
         console.error('Failed to load pricing data:', error);
-        // Fallback to default data
-        const loadedSettings: PricingSettings = {
-          pageTitle: '方案與價格設定',
-          pageDescription: '管理會員方案的標籤、價格和功能特色',
-          plans: [
-            {
-              id: 'viewer',
-              label: '新辦帳戶',
-              priceHint: 'NT$0 / 僅查詢',
-              badge: '預設',
-              targetAudience: '新手學員、試用者',
-              includedFeatures: '課程瀏覽、師資查詢',
-              features: [
-                '僅能瀏覽與查詢老師和課程清單',
-                '無法預約或參與付費課程',
-                '無白板與錄影回放功能',
-              ],
-              isActive: true,
-              order: 1
-            },
-            {
-              id: 'basic',
-              label: 'Basic 普通會員',
-              priceHint: '最低入門價（可到時再定價）',
-              targetAudience: '初學者、預算有限的學生',
-              includedFeatures: '基礎課程瀏覽、社群互動',
-              features: [
-                '有限的課程瀏覽與試聽',
-                '社群功能（留言、評價）',
-                '基礎教學支援',
-              ],
-              isActive: true,
-              order: 2
-            },
-            {
-              id: 'pro',
-              label: 'Pro 中級會員',
-              priceHint: '主力方案，建議訂為 Basic 的 2–3 倍',
-              badge: '推薦',
-              targetAudience: '進階學習者、專業學生',
-              includedFeatures: '白板功能、錄影回放、進階搜尋',
-              features: [
-                '完整白板功能',
-                '錄影回放（30 天保存）',
-                '進階課程搜尋與篩選',
-              ],
-              isActive: true,
-              order: 3
-            },
-            {
-              id: 'elite',
-              label: 'Elite 高級會員',
-              priceHint: '高客單價、可採合約制或專案報價',
-              targetAudience: 'VIP客戶、高端學習者',
-              includedFeatures: '長期錄影、專屬師資、一對一支援',
-              features: [
-                '白板與長期錄影（無限保存）',
-                '專屬高端師資推薦',
-                '一對一客服與優先支援',
-              ],
-              isActive: true,
-              order: 4
-            }
-          ]
-        };
-        setSettings(loadedSettings);
-        // try to import from the public page to prefill
-        importFromPublicPricing(loadedSettings);
+        setMessage('網路錯誤，無法載入方案資料');
       } finally {
         setLoading(false);
       }
@@ -206,6 +89,13 @@ export default function PricingSettingsPage() {
 
     loadPricingData();
   }, []);
+
+  // Set originalSettings after loading is complete
+  useEffect(() => {
+    if (!loading && originalSettings === null) {
+      setOriginalSettings(JSON.parse(JSON.stringify(settings)));
+    }
+  }, [loading]);
 
   // Import content from the public /pricing page into admin fields
   const importFromPublicPricing = async (base?: PricingSettings) => {
@@ -271,6 +161,49 @@ export default function PricingSettingsPage() {
     setSettings(prev => ({ ...prev, [field]: value }));
   };
 
+  const importFromMockAuth = () => {
+    setSettings(prev => {
+      const existingIds = new Set(prev.plans.map(p => p.id));
+      const maxOrder = prev.plans.length > 0 ? Math.max(...prev.plans.map(p => p.order)) : 0;
+      
+      // 定義固定順序，避免 Object.entries() 順序不確定
+      const planOrder = ['viewer', 'basic', 'pro', 'elite'];
+      
+      const plansToAdd: PlanConfig[] = [];
+      planOrder.forEach((id, index) => {
+        if (!existingIds.has(id)) {
+          plansToAdd.push({
+            id,
+            label: PLAN_LABELS[id as keyof typeof PLAN_LABELS],
+            priceHint: PLAN_PRICES[id as keyof typeof PLAN_PRICES],
+            badge: id === 'pro' ? '推薦' : undefined,
+            targetAudience: PLAN_TARGETS[id as keyof typeof PLAN_TARGETS] || '',
+            includedFeatures: PLAN_DESCRIPTIONS[id as keyof typeof PLAN_DESCRIPTIONS] || '',
+            features: PLAN_FEATURES[id as keyof typeof PLAN_FEATURES] || [],
+            isActive: true,
+            order: maxOrder + plansToAdd.length + 1
+          });
+        }
+      });
+      
+      return {
+        ...prev,
+        plans: [...prev.plans, ...plansToAdd]
+      };
+    });
+    setMessage('已從 mockAuth 匯入新方案');
+    setTimeout(() => setMessage(''), 3000);
+    // 在一小段時間後滾動到頁面底部，讓用戶看到新方案
+    setTimeout(() => {
+      window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' });
+    }, 100);
+  };
+
+  const hasChanges = (): boolean => {
+    if (!originalSettings) return false;
+    return JSON.stringify(settings) !== JSON.stringify(originalSettings);
+  };
+
   const updatePlan = (planId: string, field: keyof PlanConfig, value: string | string[] | boolean | number) => {
     setSettings(prev => ({
       ...prev,
@@ -323,6 +256,124 @@ export default function PricingSettingsPage() {
     setSettings(prev => ({ ...prev, plans: newPlans }));
   };
 
+  // 點數套餐管理函數
+  const addPointPackage = () => {
+    const newPackage: PointPackage = {
+      id: `points_${Date.now()}`,
+      name: '新套餐',
+      points: 100,
+      price: 1000,
+      bonus: 0,
+      description: '套餐描述',
+      badge: '',
+      isActive: true,
+      order: Math.max(...(settings.pointPackages?.map(p => p.order) || [0]), 0) + 1
+    };
+    setSettings(prev => ({
+      ...prev,
+      pointPackages: [...(prev.pointPackages || []), newPackage]
+    }));
+  };
+
+  const addMockPointPackages = () => {
+    const maxOrder = Math.max(...(settings.pointPackages?.map(p => p.order) || [0]), 0);
+    
+    const mockPackages: PointPackage[] = [
+      {
+        id: `points_${Date.now()}_1`,
+        name: '入門包',
+        points: 50,
+        price: 500,
+        bonus: 0,
+        description: '適合新手體驗的基礎套餐',
+        badge: '推薦新手',
+        isActive: true,
+        order: maxOrder + 1
+      },
+      {
+        id: `points_${Date.now()}_2`,
+        name: '普通包',
+        points: 100,
+        price: 900,
+        bonus: 10,
+        description: '性價比最好的熱銷套餐',
+        badge: '熱銷',
+        isActive: true,
+        order: maxOrder + 2
+      },
+      {
+        id: `points_${Date.now()}_3`,
+        name: '超值包',
+        points: 250,
+        price: 2000,
+        bonus: 50,
+        description: '大量購買享優惠',
+        badge: '推薦',
+        isActive: true,
+        order: maxOrder + 3
+      },
+      {
+        id: `points_${Date.now()}_4`,
+        name: 'VIP 尊享包',
+        points: 500,
+        price: 3500,
+        bonus: 150,
+        description: '專為忠實用戶設計的頂級套餐',
+        badge: 'VIP',
+        isActive: true,
+        order: maxOrder + 4
+      }
+    ];
+    
+    setSettings(prev => ({
+      ...prev,
+      pointPackages: [...(prev.pointPackages || []), ...mockPackages]
+    }));
+    
+    setMessage('已新增 4 個模擬點數套餐');
+    setTimeout(() => setMessage(''), 3000);
+    
+    // 滾動到頁面底部
+    setTimeout(() => {
+      window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' });
+    }, 100);
+  };
+
+  const removePointPackage = (packageId: string) => {
+    setSettings(prev => ({
+      ...prev,
+      pointPackages: (prev.pointPackages || []).filter(pkg => pkg.id !== packageId)
+    }));
+  };
+
+  const updatePointPackage = (packageId: string, field: keyof PointPackage, value: string | number | boolean) => {
+    setSettings(prev => ({
+      ...prev,
+      pointPackages: (prev.pointPackages || []).map(pkg =>
+        pkg.id === packageId ? { ...pkg, [field]: value } : pkg
+      )
+    }));
+  };
+
+  const movePointPackage = (packageId: string, direction: 'up' | 'down') => {
+    const packages = settings.pointPackages || [];
+    const currentIndex = packages.findIndex(p => p.id === packageId);
+    if (currentIndex === -1) return;
+
+    const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+    if (newIndex < 0 || newIndex >= packages.length) return;
+
+    const newPackages = [...packages];
+    [newPackages[currentIndex], newPackages[newIndex]] = [newPackages[newIndex], newPackages[currentIndex]];
+
+    // Update order values
+    newPackages.forEach((pkg, index) => {
+      pkg.order = index + 1;
+    });
+
+    setSettings(prev => ({ ...prev, pointPackages: newPackages }));
+  };
+
 
   const saveSettings = async () => {
     setSaving(true);
@@ -339,6 +390,8 @@ export default function PricingSettingsPage() {
 
       if (response.ok && data.ok) {
         setMessage('方案設定已儲存！');
+        // Update originalSettings after successful save
+        setOriginalSettings(JSON.parse(JSON.stringify(settings)));
       } else {
         setMessage(data.error || '儲存失敗，請重試');
       }
@@ -384,6 +437,40 @@ export default function PricingSettingsPage() {
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
+
+        {/* 模式選擇 */}
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            收費模式
+          </label>
+          <div className="flex gap-4">
+            <button
+              onClick={() => updateSettings('mode', 'subscription')}
+              className={`px-6 py-3 rounded-lg font-medium transition-colors ${
+                settings.mode === 'subscription'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              }`}
+            >
+              📅 訂閱方案
+            </button>
+            <button
+              onClick={() => updateSettings('mode', 'points')}
+              className={`px-6 py-3 rounded-lg font-medium transition-colors ${
+                settings.mode === 'points'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              }`}
+            >
+              💎 點數購買
+            </button>
+          </div>
+          <p className="mt-2 text-sm text-gray-500">
+            {settings.mode === 'subscription' 
+              ? '訂閱方案：學員定期付費取得課程存取權' 
+              : '點數購買：學員購買點數，每次上課扣除相應點數'}
+          </p>
+        </div>
       </div>
 
       {message && (
@@ -392,34 +479,43 @@ export default function PricingSettingsPage() {
         </div>
       )}
 
-      <div className="mb-6">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold text-gray-900">方案管理</h2>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => syncTargets(true)}
-              className="px-3 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
-            >
-              同步適合對象
-            </button>
-            <button
-              onClick={() => importFromPublicPricing()}
-              className="px-3 py-2 bg-yellow-500 text-white rounded-md hover:bg-yellow-600"
-            >
-              匯入公開頁內容
-            </button>
-            <button
-              onClick={addPlan}
-              className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
-            >
-              + 新增方案
-            </button>
+      {/* 訂閱方案管理 */}
+      {settings.mode === 'subscription' && (
+        <>
+          <div className="mb-6">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-semibold text-gray-900">訂閱方案管理</h2>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => syncTargets(true)}
+                  className="px-3 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
+                >
+                  同步適合對象
+                </button>
+                <button
+                  onClick={() => importFromPublicPricing()}
+                  className="px-3 py-2 bg-yellow-500 text-white rounded-md hover:bg-yellow-600"
+                >
+                  匯入公開頁內容
+                </button>
+                <button
+                  onClick={() => importFromMockAuth()}
+                  className="px-3 py-2 bg-purple-500 text-white rounded-md hover:bg-purple-600"
+                >
+                  從 mockAuth 新增方案
+                </button>
+                <button
+                  onClick={addPlan}
+                  className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+                >
+                  + 新增方案
+                </button>
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
 
-      <div className="bg-white border-2 border-gray-300 rounded-lg shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
+          <div className="bg-white border-2 border-gray-300 rounded-lg shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
           <table className="min-w-full border-collapse" style={{ borderCollapse: 'collapse' }}>
             <thead className="bg-gray-50">
               <tr>
@@ -453,22 +549,34 @@ export default function PricingSettingsPage() {
                 .map((plan, index) => (
                 <tr key={plan.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap" style={{ border: '2px solid #d1d5db' }}>
-                    <div className="flex flex-col gap-1">
-                      <button
-                        onClick={() => movePlan(plan.id, 'up')}
-                        disabled={index === 0}
-                        className="px-2 py-1 text-xs bg-gray-200 text-gray-700 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-300"
-                      >
-                        ↑
-                      </button>
-                      <button
-                        onClick={() => movePlan(plan.id, 'down')}
-                        disabled={index === settings.plans.length - 1}
-                        className="px-2 py-1 text-xs bg-gray-200 text-gray-700 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-300"
-                      >
-                        ↓
-                      </button>
-                    </div>
+                    {editingPlanId === plan.id ? (
+                      <div className="flex flex-col gap-1">
+                        <button
+                          onClick={() => {
+                            if (window.confirm('確定要上移此方案順序嗎？')) {
+                              movePlan(plan.id, 'up');
+                            }
+                          }}
+                          disabled={index === 0}
+                          className="px-2 py-1 text-xs bg-gray-200 text-gray-700 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-300"
+                        >
+                          ↑
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (window.confirm('確定要下移此方案順序嗎？')) {
+                              movePlan(plan.id, 'down');
+                            }
+                          }}
+                          disabled={index === settings.plans.length - 1}
+                          className="px-2 py-1 text-xs bg-gray-200 text-gray-700 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-300"
+                        >
+                          ↓
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="text-xs text-gray-400">–</div>
+                    )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap" style={{ border: '2px solid #d1d5db' }}>
                     <div className="flex items-center">
@@ -545,12 +653,18 @@ export default function PricingSettingsPage() {
                       >
                         {editingPlanId === plan.id ? '儲存' : '編輯'}
                       </button>
-                      <button
-                        onClick={() => removePlan(plan.id)}
-                        className="px-3 py-1 text-sm bg-red-500 text-white rounded hover:bg-red-600"
-                      >
-                        刪除
-                      </button>
+                      {editingPlanId === plan.id && (
+                        <button
+                          onClick={() => {
+                            if (window.confirm(`確定要刪除方案「${plan.label}」嗎？此操作無法復原。`)) {
+                              removePlan(plan.id);
+                            }
+                          }}
+                          className="px-3 py-1 text-sm bg-red-500 text-white rounded hover:bg-red-600"
+                        >
+                          刪除
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -559,11 +673,224 @@ export default function PricingSettingsPage() {
           </table>
         </div>
       </div>
+        </>
+      )}
+
+      {/* 點數套餐管理 */}
+      {settings.mode === 'points' && (
+        <>
+          <div className="mb-6">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-semibold text-gray-900">點數套餐管理</h2>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={addMockPointPackages}
+                  className="px-4 py-2 bg-purple-500 text-white rounded-md hover:bg-purple-600"
+                >
+                  📊 新增模擬資料
+                </button>
+                <button
+                  onClick={addPointPackage}
+                  className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+                >
+                  + 新增套餐
+                </button>
+              </div>
+            </div>
+            <p className="mt-2 text-sm text-gray-600">
+              管理點數購買套餐，學員購買點數後可用於報名課程，點數消耗由課程扣點設定決定
+            </p>
+          </div>
+
+          <div className="bg-white border-2 border-gray-300 rounded-lg shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="min-w-full border-collapse" style={{ borderCollapse: 'collapse' }}>
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ border: '2px solid #d1d5db' }}>
+                      排序
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ border: '2px solid #d1d5db' }}>
+                      狀態
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ border: '2px solid #d1d5db' }}>
+                      套餐名稱
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ border: '2px solid #d1d5db' }}>
+                      點數
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ border: '2px solid #d1d5db' }}>
+                      價格 (NT$)
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ border: '2px solid #d1d5db' }}>
+                      贈送點數
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ border: '2px solid #d1d5db' }}>
+                      徽章
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ border: '2px solid #d1d5db' }}>
+                      描述
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ border: '2px solid #d1d5db' }}>
+                      操作
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white">
+                  {(settings.pointPackages || [])
+                    .sort((a, b) => a.order - b.order)
+                    .map((pkg, index) => (
+                    <tr key={pkg.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap" style={{ border: '2px solid #d1d5db' }}>
+                        {editingPlanId === pkg.id ? (
+                          <div className="flex flex-col gap-1">
+                            <button
+                              onClick={() => {
+                                if (window.confirm('確定要上移此套餐順序嗎？')) {
+                                  movePointPackage(pkg.id, 'up');
+                                }
+                              }}
+                              disabled={index === 0}
+                              className="px-2 py-1 text-xs bg-gray-200 text-gray-700 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-300"
+                            >
+                              ↑
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (window.confirm('確定要下移此套餐順序嗎？')) {
+                                  movePointPackage(pkg.id, 'down');
+                                }
+                              }}
+                              disabled={index === (settings.pointPackages || []).length - 1}
+                              className="px-2 py-1 text-xs bg-gray-200 text-gray-700 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-300"
+                            >
+                              ↓
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="text-xs text-gray-400">–</div>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap" style={{ border: '2px solid #d1d5db' }}>
+                        <div className="flex items-center">
+                          <input
+                            type="checkbox"
+                            checked={pkg.isActive}
+                            onChange={(e) => updatePointPackage(pkg.id, 'isActive', e.target.checked)}
+                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          />
+                          <span className="ml-2 text-sm text-gray-600">
+                            {pkg.isActive ? '啟用' : '停用'}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap" style={{ border: '2px solid #d1d5db' }}>
+                        <input
+                          type="text"
+                          value={pkg.name}
+                          onChange={(e) => updatePointPackage(pkg.id, 'name', e.target.value)}
+                          disabled={editingPlanId !== pkg.id}
+                          className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
+                          placeholder="例如：入門包、超值包"
+                        />
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap" style={{ border: '2px solid #d1d5db' }}>
+                        <input
+                          type="number"
+                          value={pkg.points}
+                          onChange={(e) => updatePointPackage(pkg.id, 'points', parseInt(e.target.value) || 0)}
+                          disabled={editingPlanId !== pkg.id}
+                          className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
+                          placeholder="100"
+                        />
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap" style={{ border: '2px solid #d1d5db' }}>
+                        <input
+                          type="number"
+                          value={pkg.price}
+                          onChange={(e) => updatePointPackage(pkg.id, 'price', parseInt(e.target.value) || 0)}
+                          disabled={editingPlanId !== pkg.id}
+                          className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
+                          placeholder="1000"
+                        />
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap" style={{ border: '2px solid #d1d5db' }}>
+                        <input
+                          type="number"
+                          value={pkg.bonus || 0}
+                          onChange={(e) => updatePointPackage(pkg.id, 'bonus', parseInt(e.target.value) || 0)}
+                          disabled={editingPlanId !== pkg.id}
+                          className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
+                          placeholder="0"
+                        />
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap" style={{ border: '2px solid #d1d5db' }}>
+                        <input
+                          type="text"
+                          value={pkg.badge || ''}
+                          onChange={(e) => updatePointPackage(pkg.id, 'badge', e.target.value)}
+                          disabled={editingPlanId !== pkg.id}
+                          className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
+                          placeholder="推薦、熱門"
+                        />
+                      </td>
+                      <td className="px-6 py-4" style={{ border: '2px solid #d1d5db' }}>
+                        <input
+                          type="text"
+                          value={pkg.description || ''}
+                          onChange={(e) => updatePointPackage(pkg.id, 'description', e.target.value)}
+                          disabled={editingPlanId !== pkg.id}
+                          className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
+                          placeholder="套餐說明"
+                        />
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap" style={{ border: '2px solid #d1d5db' }}>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={async () => {
+                              if (editingPlanId === pkg.id) {
+                                await saveSettings();
+                                setEditingPlanId(null);
+                              } else {
+                                setEditingPlanId(pkg.id);
+                              }
+                            }}
+                            className={
+                              `px-3 py-1 text-sm rounded font-medium ` +
+                              (editingPlanId === pkg.id
+                                ? 'bg-green-600 text-white hover:bg-green-700'
+                                : 'bg-orange-500 text-white hover:bg-orange-600')
+                            }
+                          >
+                            {editingPlanId === pkg.id ? '儲存' : '編輯'}
+                          </button>
+                          {editingPlanId === pkg.id && (
+                            <button
+                              onClick={() => {
+                                if (window.confirm(`確定要刪除套餐「${pkg.name}」嗎？此操作無法復原。`)) {
+                                  removePointPackage(pkg.id);
+                                }
+                              }}
+                              className="px-3 py-1 text-sm bg-red-500 text-white rounded hover:bg-red-600"
+                            >
+                              刪除
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
 
       <div className="mt-8 flex justify-end">
         <button
           onClick={saveSettings}
-          disabled={saving}
+          disabled={saving || !hasChanges()}
           className="px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {saving ? '儲存中...' : '儲存設定'}

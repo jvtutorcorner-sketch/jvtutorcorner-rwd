@@ -22,23 +22,24 @@ export async function POST(req: Request) {
     if (!email || !password) {
       return NextResponse.json({ message: 'Email and password required' }, { status: 400 });
     }
-    // Validate captcha before attempting login
-    if (!verifyCaptcha(captchaToken, captchaValue)) {
-      return NextResponse.json({ message: 'captcha_incorrect' }, { status: 400 });
-    }
 
-    // Demo admin credentials (hardcoded for local/demo use only)
+    // Demo admin credentials (hardcoded for local/demo use only) - skip captcha for test accounts
     if (String(email).toLowerCase() === 'admin@jvtutorcorner.com' && password === '123456') {
       const publicProfile: any = { roid_id: 'admin', nickname: 'Administrator', plan: 'elite', role: 'admin' };
       publicProfile.id = publicProfile.roid_id;
       return NextResponse.json({ ok: true, profile: publicProfile });
     }
 
-    // Demo teacher credentials for local testing
+    // Demo teacher credentials for local testing - skip captcha for test accounts
     if (String(email).toLowerCase() === 'teacher@test.com' && password === '123456') {
       const publicProfile: any = { roid_id: 't3', nickname: '王老師', plan: 'pro', role: 'teacher', firstName: '王', lastName: '' };
       publicProfile.id = publicProfile.roid_id;
       return NextResponse.json({ ok: true, profile: publicProfile });
+    }
+
+    // Validate captcha for real user accounts
+    if (!verifyCaptcha(captchaToken, captchaValue)) {
+      return NextResponse.json({ message: 'captcha_incorrect' }, { status: 400 });
     }
 
     const PROFILES_TABLE = process.env.DYNAMODB_TABLE_PROFILES || process.env.PROFILES_TABLE || 'jvtutorcorner-profiles';

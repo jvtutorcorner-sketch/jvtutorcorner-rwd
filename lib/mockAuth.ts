@@ -10,37 +10,39 @@ export const PLAN_LABELS: Record<PlanId, string> = {
 };
 
 export const PLAN_DESCRIPTIONS: Record<PlanId, string> = {
-  basic: '入門體驗、最低價策略',
-  pro: '白板 + 錄影回放的主力方案',
-  elite: '高端師資與完整錄影的 VIP 方案',
+  basic: '入門體驗：1對1視訊，無白板',
+  pro: '主力方案：白板互動、小班制 2-6 人，錄影回放',
+  elite: 'VIP 方案：大班制最多 30 人，家長旁聽，學習報表',
   viewer: '新辦帳戶：僅提供查詢師資與課程的基本功能',
 };
 
 export const PLAN_PRICES: Record<PlanId, string> = {
-  basic: 'NT$0 / 月（試用）',
-  pro: 'NT$499 / 月',
-  elite: 'NT$1,999 / 月',
+  basic: 'NT$199 / 月',
+  pro: 'NT$599 / 月',
+  elite: 'NT$1,499 / 月',
   viewer: 'NT$0 / 月（新辦方案）',
 };
 
 export const PLAN_FEATURES: Record<PlanId, string[]> = {
   basic: [
     '可預約老師',
-    '一般畫質視訊上課',
-    '無內建白板（可自行使用紙本或截圖）',
+    '1對1 一般畫質視訊上課',
+    '無內建白板（Basic 方案不包含白板）',
     'App 基本功能：課表、通知、簡單評價',
   ],
   pro: [
-    '高畫質視訊（720p / 1080p 視實作而定）',
-    '內建線上白板，可畫圖、寫題目、標註重點',
-    '課後雲端錄影回放（保留 7–30 天，可再調整）',
+    '高畫質視訊（720p / 1080p）',
+    '內建對話白板，教師可授權學生白板書寫',
+    '小班制 2–6 人同課，下辫旁聽旁聽',
+    '課後雲端錄影回放（保留 7–30 天）',
     '優先客服：App 內客服／Line 客服',
     '老師選擇更多，可篩選專長、評價、時薪區間',
   ],
   elite: [
     '高速視訊、優先走高頻寬節點',
-    '支援並行串流：小班團體課＋家長旁聽',
-    '完整錄影，雲端保留 180–365 天，並可提供下載',
+    '大班制最多 30 人同時上課',
+    '家長旁聽連線（旁聽薪對總人數不占位）',
+    '完整錄影，雲端保留 180–365 天，可提供下載',
     '高端師資：資深老師、名校背景、雙語／全英教學',
     '專屬客服窗口與學習報表：出席率、時數、主題統計',
   ],
@@ -54,8 +56,8 @@ export const PLAN_FEATURES: Record<PlanId, string[]> = {
 export const PLAN_TARGETS: Record<PlanId, string> = {
   viewer: '僅供瀏覽與查詢師資／課程的使用者。',
   basic: '剛開始嘗試線上家教、想先試水溫的學生與家長。',
-  pro: '固定每週上課、重視白板與錄影回放的學生／家長。',
-  elite: '國際學校、補教體系或願意投資高額家教的 VIP 家長。',
+  pro: '固定每週上課、重視白板互動與小班制學習的學生／家長。',
+  elite: '國際學校、補教體系、願投資高額家教且想要家長旁聽的 VIP 家長。',
 };
 
 export const TEST_PASSWORD = '123456';

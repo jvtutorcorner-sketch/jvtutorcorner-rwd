@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 type PagePermission = { roleId: string; roleName: string; menuVisible: boolean; dropdownVisible?: boolean; pageVisible?: boolean };
 type PageConfig = { id: string; path: string; label?: string; permissions: PagePermission[] };
@@ -22,6 +22,7 @@ export default function MenuSettings({
   const [saving, setSaving] = useState(false);
   const [initialSettings, setInitialSettings] = useState<string>('');
   const [hasChanges, setHasChanges] = useState(false);
+  const isInitializedRef = useRef(false);
 
   // Monitor for changes
   useEffect(() => {
@@ -34,7 +35,12 @@ export default function MenuSettings({
   useEffect(() => {
     if (propsSettings && propsRoles) {
       setInternalSettings(propsSettings);
-      setInitialSettings(JSON.stringify(propsSettings));
+      // Only set baseline once — avoids silently discarding unsaved changes on parent reload
+      if (!isInitializedRef.current) {
+        setInitialSettings(JSON.stringify(propsSettings));
+        setHasChanges(false);
+        isInitializedRef.current = true;
+      }
       setInternalRoles(propsRoles);
       setLoading(false);
     } else {
@@ -76,6 +82,7 @@ export default function MenuSettings({
         setInternalSettings(savedSettings);
         setInitialSettings(JSON.stringify(savedSettings));
         setHasChanges(false);
+        isInitializedRef.current = true; // mark as initialized with fresh saved state
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new Event('tutor:admin-settings-changed'));
           alert('儲存成功');
@@ -140,7 +147,13 @@ export default function MenuSettings({
                               if (!prev) return prev;
                               const updated = prev.pageConfigs.map((pc: PageConfig) => {
                                 if (pc.path !== p.path) return pc;
-                                const permissions = pc.permissions.map(perm => perm.roleId === role.id ? { ...perm, menuVisible: e.target.checked } : perm);
+                                let permissions = [...pc.permissions];
+                                const idx = permissions.findIndex(pp => pp.roleId === role.id);
+                                if (idx >= 0) {
+                                  permissions[idx] = { ...permissions[idx], menuVisible: e.target.checked };
+                                } else {
+                                  permissions.push({ roleId: role.id, roleName: role.name, menuVisible: e.target.checked, dropdownVisible: false, pageVisible: true });
+                                }
                                 return { ...pc, permissions };
                               });
                               return { ...prev, pageConfigs: updated };

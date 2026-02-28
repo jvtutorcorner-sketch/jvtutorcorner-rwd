@@ -68,6 +68,8 @@ export default async function CourseDetailPage({ params }: { params: Promise<{ i
     totalSessions,
     seatsLeft,
     currency = 'TWD',
+    pointCost,
+    enrollmentType,
   } = course;
 
   const formatDate = (val: any) => {
@@ -170,6 +172,18 @@ export default async function CourseDetailPage({ params }: { params: Promise<{ i
               </div>
             )}
 
+            {/* 點數費用顯示 */}
+            {pointCost && (
+              <div className="info-row">
+                <span>💎 點數費用</span>
+                <span style={{ color: '#7c3aed', fontWeight: 600 }}>
+                  {pointCost} 點 / 堂
+                  {enrollmentType === 'both' && <span style={{ marginLeft: 6, fontSize: '0.8rem', color: '#6b7280' }}>(可用方案或點數)</span>}
+                  {enrollmentType === 'points' && <span style={{ marginLeft: 6, fontSize: '0.8rem', color: '#6b7280' }}>(限點數報名)</span>}
+                </span>
+              </div>
+            )}
+
             <div style={{ marginTop: 16 }}>
               <EnrollButton
                 courseId={course.id}
@@ -178,6 +192,8 @@ export default async function CourseDetailPage({ params }: { params: Promise<{ i
                 price={pricePerSession || 0}
                 currency={currency || 'TWD'}
                 durationMinutes={durationMinutes || 0}
+                pointCost={pointCost}
+                enrollmentType={enrollmentType}
               />
             </div>
 

@@ -11,16 +11,17 @@ import { CourseCard } from '@/components/CourseCard';
 import Tabs from '@/components/Tabs';
 import { getStoredUser, type StoredUser } from '@/lib/mockAuth';
 import { useT } from '@/components/IntlProvider'; // Client-side hook
+import { AIAssistantWidget } from '@/components/AIAssistantWidget';
 
 export default function ClientHomePage({ initialCarouselImages }: { initialCarouselImages: string[] }) {
   const t = useT();
   const router = useRouter();
   const [user, setUser] = useState<StoredUser | null>(null);
-  
+
   // Use initial images if provided, otherwise fallback to defaults (after hydration)
   const [carouselImages, setCarouselImages] = useState<string[]>(
-    initialCarouselImages.length > 0 
-      ? initialCarouselImages 
+    initialCarouselImages.length > 0
+      ? initialCarouselImages
       : [] // Will likely be updated by useEffect or default if empty
   );
 
@@ -101,6 +102,9 @@ export default function ClientHomePage({ initialCarouselImages }: { initialCarou
           ]}
         />
       </section>
+
+      {/* AI Assistant Chat Widget */}
+      <AIAssistantWidget />
     </div>
   );
 }
