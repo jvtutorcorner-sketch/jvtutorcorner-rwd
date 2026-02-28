@@ -507,45 +507,9 @@ export default function ClassroomWaitPage() {
     };
   }, [sessionReadyKey, syncStateFromServer]);
 
-  // Initialize session end time if not set
-  useEffect(() => {
-    if (!sessionReadyKey || !course) return;
-
-    async function initSessionTime() {
-      // At this point we know sessionReadyKey and course are not null due to the outer check
-      const uuid = sessionReadyKey!;
-      const courseData = course!;
-
-      try {
-        // Check if session time is already set
-        const response = await fetch(`/api/classroom/session?uuid=${encodeURIComponent(uuid)}`);
-        if (response.ok) {
-          const data = await response.json();
-          if (!data.endTs) {
-            // No end time set, initialize it based on course duration
-            const sessionDurationMinutes = courseData.sessionDurationMinutes || 50; // Default 50 minutes
-            const endTs = Date.now() + (sessionDurationMinutes * 60 * 1000);
-
-            const setResponse = await fetch('/api/classroom/session', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ uuid, endTs })
-            });
-
-            if (setResponse.ok) {
-              console.log('[WaitPage] Initialized session end time:', new Date(endTs).toISOString(), 'duration:', sessionDurationMinutes, 'minutes');
-            } else {
-              console.warn('[WaitPage] Failed to set session end time');
-            }
-          }
-        }
-      } catch (error) {
-        console.error('[WaitPage] Error initializing session time:', error);
-      }
-    }
-
-    initSessionTime();
-  }, [sessionReadyKey, course]);
+  // Initialization of session end time has been removed from WaitPage.
+  // The actual timer (based on order's remainingSeconds) is now strictly managed
+  // by ClientClassroom.tsx when both the teacher and student have fully entered the class.
 
   const hasTeacher = participants.some((p: { role: string; userId: string; present?: boolean }) => p.role === 'teacher' && p.present);
   const hasStudent = participants.some((p: { role: string; userId: string; present?: boolean }) => p.role === 'student' && p.present);

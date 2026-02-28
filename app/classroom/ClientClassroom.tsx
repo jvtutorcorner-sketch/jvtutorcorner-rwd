@@ -1411,12 +1411,13 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           const sessionResp = await fetch(`/api/classroom/session?uuid=${encodeURIComponent(sessionReadyKey)}`, { cache: 'no-store' });
           if (sessionResp.ok) {
             const sessionData = await sessionResp.json();
-            const serverEndTs = typeof sessionData.endTs === 'number' ? sessionData.endTs : null;
+            const serverEndTs = sessionData.endTs === undefined ? undefined : (typeof sessionData.endTs === 'number' ? sessionData.endTs : null);
 
             // 1. Exit if session ended on server (and we aren't the teacher who just ended it)
             // Safety: Only kick out if we actually have a session previously (endTsRef.current !== null).
             // This avoids kicking out students who enter before the session is initialized on the server.
-            if (sessionData.endTs === null && endTsRef.current !== null) {
+            // Also explicitly check serverEndTs === null (cleared explicitly) rather than undefined (missing file).
+            if (serverEndTs === null && endTsRef.current !== null) {
               const isTeacher = (urlRole === 'teacher' || computedRole === 'teacher');
               if (!isTeacher) {
                 console.log('[ClientClassroom] Session ended on server, student exiting via heartbeat check...');

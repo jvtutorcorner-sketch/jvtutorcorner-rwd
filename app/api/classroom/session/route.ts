@@ -10,11 +10,23 @@ async function dataPathFor(uuid: string) {
 
 async function readSession(uuid: string) {
   const p = await dataPathFor(uuid);
+  let fileExists = false;
+  try {
+    await fs.promises.access(p);
+    fileExists = true;
+  } catch (e) {
+    // File doesn't exist
+  }
+
+  if (!fileExists) {
+    return {}; // Missing file (ephemeral storage loss) shouldn't be confused with "cleared" session
+  }
+
   try {
     const txt = await fs.promises.readFile(p, 'utf8');
     return JSON.parse(txt) as { endTs?: number | null };
   } catch (e) {
-    return { endTs: null };
+    return {};
   }
 }
 
@@ -34,7 +46,7 @@ export async function GET(req: NextRequest) {
     const uuid = url.searchParams.get('uuid');
     if (!uuid) return NextResponse.json({ error: 'uuid required' }, { status: 400 });
     const s = await readSession(uuid);
-    return NextResponse.json({ endTs: s.endTs ?? null });
+    return NextResponse.json({ endTs: s.endTs !== undefined ? s.endTs : undefined });
   } catch (err: any) {
     console.error('/api/classroom/session GET error', err);
     return NextResponse.json({ error: 'unexpected' }, { status: 500 });

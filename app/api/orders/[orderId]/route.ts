@@ -2,7 +2,17 @@ import { NextResponse } from 'next/server';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
 
-const client = new DynamoDBClient({});
+const ddbRegion = process.env.CI_AWS_REGION || process.env.AWS_REGION;
+const ddbExplicitAccessKey = process.env.CI_AWS_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID;
+const ddbExplicitSecretKey = process.env.CI_AWS_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY;
+const ddbExplicitSessionToken = process.env.CI_AWS_SESSION_TOKEN || process.env.AWS_SESSION_TOKEN;
+const ddbExplicitCreds = ddbExplicitAccessKey && ddbExplicitSecretKey ? {
+  accessKeyId: ddbExplicitAccessKey as string,
+  secretAccessKey: ddbExplicitSecretKey as string,
+  ...(ddbExplicitSessionToken ? { sessionToken: ddbExplicitSessionToken as string } : {})
+} : undefined;
+
+const client = new DynamoDBClient({ region: ddbRegion, credentials: ddbExplicitCreds });
 const docClient = DynamoDBDocumentClient.from(client);
 
 export async function GET(request: Request, { params }: { params: Promise<{ orderId: string }> }) {
