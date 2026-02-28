@@ -1,0 +1,54 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'DynamoDB table for JVTutorCorner teacher review audit records'
+
+Resources:
+  TeacherReviewsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: jvtutorcorner-teacher-reviews
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: teacherId
+          AttributeType: S
+        - AttributeName: reviewedAt
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: teacherId-reviewedAt-index
+          KeySchema:
+            - AttributeName: teacherId
+              KeyType: HASH
+            - AttributeName: reviewedAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: reviewedAt-index
+          KeySchema:
+            - AttributeName: reviewedAt
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      Tags:
+        - Key: Application
+          Value: jvtutorcorner
+        - Key: Environment
+          Value: production
+        - Key: Purpose
+          Value: teacher-review-audit
+
+Outputs:
+  TableName:
+    Description: Name of the DynamoDB table
+    Value: !Ref TeacherReviewsTable
+    Export:
+      Name: !Sub '${AWS::StackName}-TableName'
+  
+  TableArn:
+    Description: ARN of the DynamoDB table
+    Value: !GetAtt TeacherReviewsTable.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-TableArn'

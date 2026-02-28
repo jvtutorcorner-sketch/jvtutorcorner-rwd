@@ -5,6 +5,175 @@ import { useRouter } from 'next/navigation';
 import { getStoredUser } from '@/lib/mockAuth';
 import Button from '@/components/UI/Button';
 
+// 比较数组差异，返回删除和新增的项
+function compareArrays(oldArr: string[] = [], newArr: string[] = []): { 
+    removed: string[]; 
+    added: string[]; 
+    unchanged: string[] 
+} {
+    const oldSet = new Set(oldArr);
+    const newSet = new Set(newArr);
+    
+    const removed = oldArr.filter(item => !newSet.has(item));
+    const added = newArr.filter(item => !oldSet.has(item));
+    const unchanged = oldArr.filter(item => newSet.has(item));
+    
+    return { removed, added, unchanged };
+}
+
+// 高亮显示数组差异
+function HighlightedArray({ oldValue, newValue }: { oldValue?: string[], newValue?: string[] }) {
+    const old = oldValue || [];
+    const newV = newValue || [];
+    const { removed, added, unchanged } = compareArrays(old, newV);
+    
+    return (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+            {unchanged.map((item, i) => (
+                <span key={`unchanged-${i}`} style={{
+                    padding: '4px 8px',
+                    borderRadius: '4px',
+                    background: '#f1f5f9',
+                    color: '#475569',
+                    fontSize: '0.9rem'
+                }}>{item}</span>
+            ))}
+            {removed.map((item, i) => (
+                <span key={`removed-${i}`} style={{
+                    padding: '4px 8px',
+                    borderRadius: '4px',
+                    background: '#fee2e2',
+                    color: '#991b1b',
+                    fontSize: '0.9rem',
+                    textDecoration: 'line-through'
+                }}>{item}</span>
+            ))}
+            {added.map((item, i) => (
+                <span key={`added-${i}`} style={{
+                    padding: '4px 8px',
+                    borderRadius: '4px',
+                    background: '#dcfce7',
+                    color: '#166534',
+                    fontSize: '0.9rem',
+                    fontWeight: '600'
+                }}>{item}</span>
+            ))}
+        </div>
+    );
+}
+
+// 简单的字符串差异高亮（逐字符比较）
+function highlightTextDiff(oldText: string = '', newText: string = '') {
+    if (oldText === newText) {
+        return <span>{newText}</span>;
+    }
+    
+    // 如果完全不同或差异太大，直接显示整个新文本为高亮
+    const similarity = calculateSimilarity(oldText, newText);
+    if (similarity < 0.3) {
+        return (
+            <span style={{ background: '#dcfce7', padding: '2px 4px', borderRadius: '3px', fontWeight: '600' }}>
+                {newText}
+            </span>
+        );
+    }
+    
+    // 逐字符比较并高亮差异
+    const maxLen = Math.max(oldText.length, newText.length);
+    const segments: React.ReactNode[] = [];
+    let currentSegment = '';
+    let isDifferent = false;
+    
+    for (let i = 0; i < maxLen; i++) {
+        const oldChar = oldText[i] || '';
+        const newChar = newText[i] || '';
+        
+        if (oldChar === newChar) {
+            if (isDifferent && currentSegment) {
+                segments.push(
+                    <span key={segments.length} style={{ 
+                        background: '#dcfce7', 
+                        padding: '2px 4px', 
+                        borderRadius: '3px',
+                        fontWeight: '600'
+                    }}>
+                        {currentSegment}
+                    </span>
+                );
+                currentSegment = '';
+            }
+            isDifferent = false;
+            currentSegment += newChar;
+        } else {
+            if (!isDifferent && currentSegment) {
+                segments.push(<span key={segments.length}>{currentSegment}</span>);
+                currentSegment = '';
+            }
+            isDifferent = true;
+            currentSegment += newChar;
+        }
+    }
+    
+    if (currentSegment) {
+        if (isDifferent) {
+            segments.push(
+                <span key={segments.length} style={{ 
+                    background: '#dcfce7', 
+                    padding: '2px 4px', 
+                    borderRadius: '3px',
+                    fontWeight: '600'
+                }}>
+                    {currentSegment}
+                </span>
+            );
+        } else {
+            segments.push(<span key={segments.length}>{currentSegment}</span>);
+        }
+    }
+    
+    return <>{segments}</>;
+}
+
+// 计算文本相似度
+function calculateSimilarity(str1: string, str2: string): number {
+    const longer = str1.length > str2.length ? str1 : str2;
+    const shorter = str1.length > str2.length ? str2 : str1;
+    
+    if (longer.length === 0) return 1.0;
+    
+    const editDistance = levenshteinDistance(str1, str2);
+    return (longer.length - editDistance) / longer.length;
+}
+
+// Levenshtein距离算法（简化版）
+function levenshteinDistance(str1: string, str2: string): number {
+    const matrix: number[][] = [];
+    
+    for (let i = 0; i <= str2.length; i++) {
+        matrix[i] = [i];
+    }
+    
+    for (let j = 0; j <= str1.length; j++) {
+        matrix[0][j] = j;
+    }
+    
+    for (let i = 1; i <= str2.length; i++) {
+        for (let j = 1; j <= str1.length; j++) {
+            if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
+                matrix[i][j] = matrix[i - 1][j - 1];
+            } else {
+                matrix[i][j] = Math.min(
+                    matrix[i - 1][j - 1] + 1,
+                    matrix[i][j - 1] + 1,
+                    matrix[i - 1][j] + 1
+                );
+            }
+        }
+    }
+    
+    return matrix[str2.length][str1.length];
+}
+
 export default function TeacherReviewsPage() {
     const router = useRouter();
     const [reviews, setReviews] = useState<any[]>([]);
@@ -83,6 +252,55 @@ export default function TeacherReviewsPage() {
                     <p style={{ color: '#64748b', fontSize: '1.1rem', marginTop: '8px' }}>
                         查看並核准老師提交的個人檔案修改申請
                     </p>
+                    
+                    {/* 颜色图例 */}
+                    <div style={{ 
+                        marginTop: '16px', 
+                        padding: '12px 16px', 
+                        background: '#f8fafc', 
+                        borderRadius: '8px',
+                        border: '1px solid #e2e8f0',
+                        display: 'flex',
+                        gap: '20px',
+                        flexWrap: 'wrap',
+                        fontSize: '0.85rem'
+                    }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ 
+                                padding: '2px 8px', 
+                                background: '#fee2e2', 
+                                color: '#991b1b',
+                                borderRadius: '4px',
+                                textDecoration: 'line-through'
+                            }}>
+                                原始資料
+                            </span>
+                            <span style={{ color: '#64748b' }}>= 左側顯示（即將被替換）</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ 
+                                padding: '2px 8px', 
+                                background: '#dcfce7', 
+                                color: '#166534',
+                                borderRadius: '4px',
+                                fontWeight: '600'
+                            }}>
+                                新增/修改
+                            </span>
+                            <span style={{ color: '#64748b' }}>= 右側高亮（變更內容）</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ 
+                                padding: '2px 8px', 
+                                background: '#f1f5f9', 
+                                color: '#475569',
+                                borderRadius: '4px'
+                            }}>
+                                保持不變
+                            </span>
+                            <span style={{ color: '#64748b' }}>= 右側顯示（未修改）</span>
+                        </div>
+                    </div>
                 </header>
 
                 {error && (
@@ -148,63 +366,85 @@ export default function TeacherReviewsPage() {
                                             {changes.name !== undefined && (
                                                 <div>
                                                     <span style={labelStyle}>名稱:</span>
-                                                    <div style={valueStyle}>{teacher.name || '-'}</div>
+                                                    <div style={{...valueStyle, textDecoration: 'line-through', background: '#fee2e2', color: '#991b1b', border: '1px solid #fecaca'}}>
+                                                        {teacher.name || '-'}
+                                                    </div>
                                                 </div>
                                             )}
 
                                             {changes.subjects !== undefined && (
                                                 <div>
                                                     <span style={labelStyle}>科目:</span>
-                                                    <div style={valueStyle}>{teacher.subjects?.join(', ') || '-'}</div>
+                                                    <div style={{...valueStyle, textDecoration: 'line-through', background: '#fee2e2', color: '#991b1b', border: '1px solid #fecaca'}}>
+                                                        {teacher.subjects?.join(', ') || '-'}
+                                                    </div>
                                                 </div>
                                             )}
 
                                             {changes.languages !== undefined && (
                                                 <div>
                                                     <span style={labelStyle}>語言:</span>
-                                                    <div style={valueStyle}>{teacher.languages?.join(', ') || '-'}</div>
+                                                    <div style={{...valueStyle, textDecoration: 'line-through', background: '#fee2e2', color: '#991b1b', border: '1px solid #fecaca'}}>
+                                                        {teacher.languages?.join(', ') || '-'}
+                                                    </div>
                                                 </div>
                                             )}
 
                                             {changes.intro !== undefined && (
                                                 <div>
                                                     <span style={labelStyle}>自我介紹:</span>
-                                                    <div style={{ ...valueStyle, whiteSpace: 'pre-wrap', maxHeight: '150px', overflowY: 'auto' }}>{teacher.intro || '-'}</div>
+                                                    <div style={{ ...valueStyle, whiteSpace: 'pre-wrap', maxHeight: '200px', overflowY: 'auto', textDecoration: 'line-through', background: '#fee2e2', color: '#991b1b', border: '1px solid #fecaca' }}>
+                                                        {teacher.intro || '-'}
+                                                    </div>
                                                 </div>
                                             )}
                                         </div>
 
                                         {/* Requested Changes */}
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingLeft: '32px', borderLeft: '1px solid #e2e8f0' }}>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingLeft: '32px', borderLeft: '2px solid #3b82f6' }}>
                                             <h3 style={{ fontSize: '1rem', fontWeight: '600', color: '#3b82f6', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                                                申請修改為
+                                                申請修改為 →
                                             </h3>
 
                                             {changes.name !== undefined && (
                                                 <div>
                                                     <span style={labelStyle}>名稱:</span>
-                                                    <div style={newValueStyle}>{changes.name}</div>
+                                                    <div style={{...newValueStyle, fontWeight: '600'}}>
+                                                        {highlightTextDiff(teacher.name || '', changes.name)}
+                                                    </div>
                                                 </div>
                                             )}
 
                                             {changes.subjects !== undefined && (
                                                 <div>
                                                     <span style={labelStyle}>科目:</span>
-                                                    <div style={newValueStyle}>{changes.subjects.join(', ')}</div>
+                                                    <div style={newValueStyle}>
+                                                        <HighlightedArray 
+                                                            oldValue={teacher.subjects} 
+                                                            newValue={changes.subjects}
+                                                        />
+                                                    </div>
                                                 </div>
                                             )}
 
                                             {changes.languages !== undefined && (
                                                 <div>
                                                     <span style={labelStyle}>語言:</span>
-                                                    <div style={newValueStyle}>{changes.languages.join(', ')}</div>
+                                                    <div style={newValueStyle}>
+                                                        <HighlightedArray 
+                                                            oldValue={teacher.languages} 
+                                                            newValue={changes.languages}
+                                                        />
+                                                    </div>
                                                 </div>
                                             )}
 
                                             {changes.intro !== undefined && (
                                                 <div>
                                                     <span style={labelStyle}>自我介紹:</span>
-                                                    <div style={{ ...newValueStyle, whiteSpace: 'pre-wrap', maxHeight: '150px', overflowY: 'auto' }}>{changes.intro}</div>
+                                                    <div style={{ ...newValueStyle, whiteSpace: 'pre-wrap', maxHeight: '200px', overflowY: 'auto', lineHeight: '1.6' }}>
+                                                        {highlightTextDiff(teacher.intro || '', changes.intro)}
+                                                    </div>
                                                 </div>
                                             )}
                                         </div>
