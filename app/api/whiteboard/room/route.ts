@@ -146,25 +146,33 @@ export async function POST(req: NextRequest) {
       roomUuid = requestedRoomUuid;
       console.log(`[WhiteboardAPI] Using requested room UUID: ${roomUuid}`);
     } else {
-      // 2. DynamoDB Lookup
-      const tableName = process.env.DYNAMODB_TABLE_COURSES || 'jvtutorcorner-courses';
-
-      if (!process.env.DYNAMODB_TABLE_COURSES) {
-        console.warn(`[WhiteboardAPI] WARNING: DYNAMODB_TABLE_COURSES env var is missing. Falling back to hardcoded: ${tableName}`);
-      }
-
       // Priority: use channelName if available (session-specific), fallback to courseId
       // This ensures that different orders for the same course get separate whiteboards.
       const { normalizeUuid } = await import('@/lib/whiteboardService');
-      let dbKey = channelName ? channelName : (courseId || 'default');
-      dbKey = normalizeUuid(dbKey);
+      let baseKey = channelName ? channelName : (courseId || 'default');
+      let dbKey = normalizeUuid(baseKey);
 
-      console.log(`[WhiteboardAPI] Querying DynamoDB Table: [REDACTED], Key: [REDACTED], Region: ${region}`);
+      // Determine correct table to save mapping based on whether it is a session key
+      const isSessionKey = dbKey.startsWith('session_') || dbKey.startsWith('classroom_') || dbKey.includes('session_ready');
+      const coursesTableName = process.env.DYNAMODB_TABLE_COURSES || 'jvtutorcorner-courses';
+      const whiteboardTableName = process.env.WHITEBOARD_TABLE || 'jvtutorcorner-whiteboard';
+
+      const tableName = isSessionKey ? whiteboardTableName : coursesTableName;
+
+      if (!isSessionKey && !process.env.DYNAMODB_TABLE_COURSES) {
+        console.warn(`[WhiteboardAPI] WARNING: DYNAMODB_TABLE_COURSES env var is missing. Falling back to hardcoded: ${tableName}`);
+      }
+
+      // If we use the whiteboard table to store the mapping, prepend 'mapping_'
+      // to avoid colliding with actual drawing data which uses Agora room UUIDs as ID
+      const ddbKeyId = isSessionKey ? `mapping_${dbKey}` : dbKey;
+
+      console.log(`[WhiteboardAPI] Querying DynamoDB Table: ${tableName}, Key: ${ddbKeyId}, Region: ${region}`);
 
       try {
         const getCmd = new GetCommand({
           TableName: tableName,
-          Key: { id: dbKey },
+          Key: { id: ddbKeyId },
           ConsistentRead: true
         });
         console.log('[WhiteboardAPI] Attempting DynamoDB GetCommand:', { tableName, dbKey: dbKey.substring(0, 10) + '...' });
@@ -222,13 +230,13 @@ export async function POST(req: NextRequest) {
         console.log(`[WhiteboardAPI] NEW Room Created in Agora. UUID: ${newRoomUuid}`);
 
         // 4. Atomic Save to DynamoDB
-        console.log(`[WhiteboardAPI] Attempting ATOMIC save to DynamoDB Table: ${tableName}, Key: ${dbKey}`);
+        console.log(`[WhiteboardAPI] Attempting ATOMIC save to DynamoDB Table: ${tableName}, Key: ${ddbKeyId}`);
 
         try {
           // Use UpdateCommand with ConditionExpression to ensure we don't overwrite if someone else created one simultaneously
           const updateParams = {
             TableName: tableName,
-            Key: { id: dbKey },
+            Key: { id: ddbKeyId },
             UpdateExpression: "SET whiteboardUuid = :w, updatedAt = :t",
             ConditionExpression: "attribute_not_exists(whiteboardUuid)",
             ExpressionAttributeValues: {
@@ -242,7 +250,7 @@ export async function POST(req: NextRequest) {
           const updateCmd = new UpdateCommand(updateParams);
           await docClient.send(updateCmd);
           roomUuid = newRoomUuid;
-          console.log(`[WhiteboardAPI] Successfully saved new room ${roomUuid} to DB for key ${dbKey}`);
+          console.log(`[WhiteboardAPI] Successfully saved new room ${roomUuid} to DB for key ${ddbKeyId}`);
 
           // Update Cache
           if (channelName) {
@@ -252,11 +260,11 @@ export async function POST(req: NextRequest) {
 
         } catch (dbWriteError: any) {
           if (dbWriteError.name === 'ConditionalCheckFailedException' || dbWriteError.__type === 'ConditionalCheckFailedException') {
-            console.log(`[WhiteboardAPI] Concurrency detected! Someone else saved a whiteboardUuid for ${dbKey} just now.`);
+            console.log(`[WhiteboardAPI] Concurrency detected! Someone else saved a whiteboardUuid for ${ddbKeyId} just now.`);
             // Fetch the one that was just saved by the other process
             const finalGetCmd = new GetCommand({
               TableName: tableName,
-              Key: { id: dbKey },
+              Key: { id: ddbKeyId },
               ConsistentRead: true
             });
             const finalGetResult = await docClient.send(finalGetCmd);
@@ -278,7 +286,7 @@ export async function POST(req: NextRequest) {
               error: 'Failed to persist whiteboard UUID to database',
               details: dbWriteError.message,
               tableName: tableName,
-              key: dbKey
+              key: ddbKeyId
             }, { status: 500 });
           }
         }
