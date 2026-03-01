@@ -15,14 +15,22 @@ export default function AddAppPage() {
 function AddAppForm() {
     const router = useRouter();
     const searchParams = useSearchParams();
-    const isPayment = searchParams.get('type') === 'payment';
+    const typeFromUrl = searchParams.get('type');
+    const isPayment = typeFromUrl === 'payment';
+    const isAI = typeFromUrl === 'ai';
+
+    const AI_MODEL_OPTIONS: Record<string, string[]> = {
+        OPENAI: ['gpt-5.2', 'gpt-5.2-pro', 'gpt-5-mini', 'gpt-5-nano', 'gpt-4.1', 'o3-deep-research', 'o1-pro'],
+        ANTHROPIC: ['claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001', 'claude-3-5-sonnet'],
+        GEMINI: ['gemini-3.1-pro-preview', 'gemini-3-flash', 'gemini-2.5-pro', 'gemini-2.5-flash']
+    };
 
     const [loading, setLoading] = useState(false);
 
     // Communication channel type selector - pre-select from URL ?channel=TELEGRAM
     const channelFromUrl = searchParams.get('channel')?.toUpperCase() || 'LINE';
     const [selectedChannelType, setSelectedChannelType] = useState(
-        ['LINE','TELEGRAM','WHATSAPP','MESSENGER','SLACK','TEAMS','DISCORD','WECHAT'].includes(channelFromUrl) ? channelFromUrl : 'LINE'
+        ['LINE', 'TELEGRAM', 'WHATSAPP', 'MESSENGER', 'SLACK', 'TEAMS', 'DISCORD', 'WECHAT'].includes(channelFromUrl) ? channelFromUrl : 'LINE'
     );
 
     // Payment provider from URL ?provider=STRIPE
@@ -58,7 +66,7 @@ function AddAppForm() {
 
     // For Payment
     const [selectedPaymentProvider, setSelectedPaymentProvider] = useState(
-        ['ECPAY','PAYPAL','STRIPE'].includes(providerFromUrl) ? providerFromUrl : 'ECPAY'
+        ['ECPAY', 'PAYPAL', 'STRIPE'].includes(providerFromUrl) ? providerFromUrl : 'ECPAY'
     );
     const [paymentData, setPaymentData] = useState({
         name: '',
@@ -71,6 +79,28 @@ function AddAppForm() {
         paypalClientId: '',
         paypalSecretKey: ''
     });
+
+    // For AI
+    const [selectedAIProvider, setSelectedAIProvider] = useState(
+        ['OPENAI', 'ANTHROPIC', 'GEMINI'].includes(providerFromUrl) ? providerFromUrl : 'OPENAI'
+    );
+    const [aiData, setAiData] = useState<{
+        name: string;
+        openaiApiKey: string;
+        anthropicApiKey: string;
+        geminiApiKey: string;
+        models: string[];
+    }>({
+        name: '',
+        openaiApiKey: '',
+        anthropicApiKey: '',
+        geminiApiKey: '',
+        models: []
+    });
+
+    const handleAiChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+        setAiData({ ...aiData, [e.target.name]: e.target.value });
+    };
 
     const handleChannelChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         setChannelData({ ...channelData, [e.target.name]: e.target.value });
@@ -194,6 +224,22 @@ function AddAppForm() {
                     name: paymentData.name || `${selectedPaymentProvider} 收款帳號`,
                     config
                 };
+            } else if (isAI) {
+                let config: any = {};
+                if (selectedAIProvider === 'OPENAI') {
+                    config = { apiKey: aiData.openaiApiKey, models: aiData.models };
+                } else if (selectedAIProvider === 'ANTHROPIC') {
+                    config = { apiKey: aiData.anthropicApiKey, models: aiData.models };
+                } else if (selectedAIProvider === 'GEMINI') {
+                    config = { apiKey: aiData.geminiApiKey, models: aiData.models };
+                }
+
+                payload = {
+                    userId,
+                    type: selectedAIProvider,
+                    name: aiData.name || `${selectedAIProvider} 模型服務`,
+                    config
+                };
             } else {
                 // 通訊渠道 - 依選擇的渠道類型取出對應 config 欄位
                 const channelCfg = CHANNEL_CONFIG_MAP[selectedChannelType];
@@ -224,7 +270,7 @@ function AddAppForm() {
                 throw new Error(errData.error || `HTTP ${res.status}`);
             }
 
-            alert(isPayment ? '金流設定新增成功！' : '應用程式新增成功！');
+            alert(isPayment ? '金流設定新增成功！' : isAI ? 'AI 服務新增成功！' : '應用程式新增成功！');
             router.push('/apps');
         } catch (error: any) {
             console.error('Save failed:', error);
@@ -238,7 +284,7 @@ function AddAppForm() {
     return (
         <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900 p-4">
             <div className="max-w-xl w-full bg-white dark:bg-gray-800 shadow-lg rounded-xl overflow-hidden">
-                <div className={`${isPayment ? 'bg-green-600' : 'bg-blue-600'} p-6 text-white relative`}>
+                <div className={`${isPayment ? 'bg-green-600' : isAI ? 'bg-indigo-600' : 'bg-blue-600'} p-6 text-white relative`}>
                     <Link
                         href="/apps"
                         className="absolute left-4 top-1/2 -translate-y-1/2 p-2 hover:bg-white/20 rounded-full transition-colors"
@@ -249,26 +295,30 @@ function AddAppForm() {
                         </svg>
                     </Link>
                     <div className="text-center">
-                        <h1 className="text-2xl font-bold">{isPayment ? '新增金流服務' : '新增應用程式'}</h1>
-                        <p className={`mt-2 ${isPayment ? 'text-green-100' : 'text-blue-100'}`}>
-                            {isPayment ? '設定您的 ECPay、Stripe 或 PayPal 金流服務設定' : '設定通訊渠道串接參數 (LINE、Telegram、WhatsApp 等)'}
+                        <h1 className="text-2xl font-bold">{isPayment ? '新增金流服務' : isAI ? '新增 AI 服務' : '新增應用程式'}</h1>
+                        <p className={`mt-2 ${isPayment ? 'text-green-100' : isAI ? 'text-indigo-100' : 'text-blue-100'}`}>
+                            {isPayment ? '設定您的 ECPay、Stripe 或 PayPal 金流服務設定' : isAI ? '設定您要串接的 AI 模型 API 金鑰' : '設定通訊渠道串接參數 (LINE、Telegram、WhatsApp 等)'}
                         </p>
                     </div>
                 </div>
 
                 <div className="p-8">
                     {/* 參數說明區塊 */}
-                    <div className={`${isPayment ? 'bg-green-50 border-green-200' : 'bg-blue-50 border-blue-200'} border rounded-lg p-6 mb-8`}>
-                        <h3 className={`${isPayment ? 'text-green-800' : 'text-blue-800'} font-bold mb-4 flex items-center`}>
+                    <div className={`${isPayment ? 'bg-green-50 border-green-200' : isAI ? 'bg-indigo-50 border-indigo-200' : 'bg-blue-50 border-blue-200'} border rounded-lg p-6 mb-8`}>
+                        <h3 className={`${isPayment ? 'text-green-800' : isAI ? 'text-indigo-800' : 'text-blue-800'} font-bold mb-4 flex items-center`}>
                             <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                             </svg>
-                            {isPayment ? '安全提示' : '參數說明'}
+                            {isPayment ? '安全提示' : isAI ? '安全提示' : '參數說明'}
                         </h3>
                         <div className="space-y-3">
                             {isPayment ? (
                                 <p className="text-sm text-green-800">
                                     此處填寫的金鑰將被安全加密儲存，專門用於您的課程結帳，確保學生的付款能直接匯入您的金流帳戶中。請勿將您的 HashKey 或 Secret Key 洩漏給他人。
+                                </p>
+                            ) : isAI ? (
+                                <p className="text-sm text-indigo-800">
+                                    請前往各 AI 服務提供商 (OpenAI, Anthropic 等) 獲取對應的 API Key。這些金鑰將被安全加密儲存，用於呼叫 AI 模型服務。
                                 </p>
                             ) : (
                                 <p className="text-sm text-blue-800">
@@ -376,6 +426,100 @@ function AddAppForm() {
                                     </div>
                                 )}
                             </>
+                        ) : isAI ? (
+                            <>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                        設定名稱 (僅供您辨識)
+                                    </label>
+                                    <input
+                                        type="text"
+                                        name="name"
+                                        value={aiData.name}
+                                        onChange={handleAiChange}
+                                        placeholder={`例如：我的 ${selectedAIProvider} 模型設定`}
+                                        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                        required
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                        選擇 AI 服務供應商 <span className="text-red-500">*</span>
+                                    </label>
+                                    <div className="relative">
+                                        <select
+                                            value={selectedAIProvider}
+                                            onChange={(e) => setSelectedAIProvider(e.target.value)}
+                                            className="w-full pl-4 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                        >
+                                            <option value="OPENAI">OpenAI (ChatGPT)</option>
+                                            <option value="ANTHROPIC">Anthropic (Claude)</option>
+                                            <option value="GEMINI">Google Gemini</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                {selectedAIProvider === 'OPENAI' && (
+                                    <div className="space-y-4 p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800/50">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                                API Key <span className="text-red-500">*</span>
+                                            </label>
+                                            <input type="password" name="openaiApiKey" value={aiData.openaiApiKey} onChange={handleAiChange} placeholder="sk-..." className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600" required />
+                                        </div>
+                                    </div>
+                                )}
+
+                                {selectedAIProvider === 'ANTHROPIC' && (
+                                    <div className="space-y-4 p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800/50">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                                API Key <span className="text-red-500">*</span>
+                                            </label>
+                                            <input type="password" name="anthropicApiKey" value={aiData.anthropicApiKey} onChange={handleAiChange} placeholder="sk-ant-..." className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600" required />
+                                        </div>
+                                    </div>
+                                )}
+
+                                {selectedAIProvider === 'GEMINI' && (
+                                    <div className="space-y-4 p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800/50">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                                API Key <span className="text-red-500">*</span>
+                                            </label>
+                                            <input type="password" name="geminiApiKey" value={aiData.geminiApiKey} onChange={handleAiChange} placeholder="AIza..." className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600" required />
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className="space-y-4 p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800/50 mt-4">
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                                        可使用的模型 (Models)
+                                        <p className="text-xs text-gray-500 font-normal mt-1">選取要開放在平台中使用的模型（可複選）</p>
+                                    </label>
+                                    <div className="flex flex-wrap gap-2 mt-2">
+                                        {(AI_MODEL_OPTIONS[selectedAIProvider] || []).map(model => (
+                                            <label key={model} className="flex items-center gap-1.5 bg-white dark:bg-gray-800 px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 select-none">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={aiData.models.includes(model)}
+                                                    onChange={(e) => {
+                                                        let newModels = [...aiData.models];
+                                                        if (e.target.checked) {
+                                                            if (!newModels.includes(model)) newModels.push(model);
+                                                        } else {
+                                                            newModels = newModels.filter(m => m !== model);
+                                                        }
+                                                        setAiData({ ...aiData, models: newModels });
+                                                    }}
+                                                    className="rounded text-indigo-600 focus:ring-indigo-500 bg-gray-100 border-gray-300"
+                                                />
+                                                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{model}</span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                </div>
+                            </>
                         ) : (
                             <>
                                 <div>
@@ -388,11 +532,10 @@ function AddAppForm() {
                                                 key={key}
                                                 type="button"
                                                 onClick={() => setSelectedChannelType(key)}
-                                                className={`px-3 py-2 text-sm rounded-lg border-2 font-medium transition-all ${
-                                                    selectedChannelType === key
-                                                        ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-400'
-                                                        : 'border-gray-200 bg-white text-gray-600 hover:border-blue-300 hover:bg-blue-50/50 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600'
-                                                }`}
+                                                className={`px-3 py-2 text-sm rounded-lg border-2 font-medium transition-all ${selectedChannelType === key
+                                                    ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-400'
+                                                    : 'border-gray-200 bg-white text-gray-600 hover:border-blue-300 hover:bg-blue-50/50 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600'
+                                                    }`}
                                             >
                                                 {label}
                                             </button>
@@ -462,7 +605,7 @@ function AddAppForm() {
                             <button
                                 type="submit"
                                 disabled={loading}
-                                className={`w-2/3 ${isPayment ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'} text-white font-bold py-3 px-4 rounded-lg transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed`}
+                                className={`w-2/3 ${isPayment ? 'bg-green-600 hover:bg-green-700' : isAI ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-blue-600 hover:bg-blue-700'} text-white font-bold py-3 px-4 rounded-lg transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed`}
                             >
                                 {loading ? (
                                     <>

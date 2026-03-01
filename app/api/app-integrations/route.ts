@@ -13,10 +13,12 @@
 //   課程報名 → jvtutorcorner-enrollments
 //   方案升級 → jvtutorcorner-plan-upgrades
 //   應用程式設定 → jvtutorcorner-app-integrations (本檔)
+//   PK: userId (HASH), type (RANGE)
+// ---------------------------------------------------------------------------
 
 import { NextResponse } from 'next/server';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, PutCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, PutCommand, ScanCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
 import { randomUUID } from 'crypto';
 import fs from 'fs';
 import resolveDataFile from '@/lib/localData';
@@ -191,5 +193,70 @@ export async function GET(request: Request) {
     } catch (error: any) {
         console.error('[app-integrations API] GET error:', error?.message || error);
         return NextResponse.json({ ok: false, error: 'Failed to fetch integrations.' }, { status: 500 });
+    }
+}
+
+// ---------------------------------------------------------------------------
+// PUT - 更新整合
+// ---------------------------------------------------------------------------
+export async function PUT(request: Request) {
+    try {
+        const body = await request.json();
+        console.log('[app-integrations API] PUT request body:', body);
+        const { integrationId, userId, type, config, name, status } = body || {};
+
+        if (!userId || !type) {
+            return NextResponse.json(
+                { ok: false, error: 'userId and type are required for primary key.' },
+                { status: 400 }
+            );
+        }
+
+        const now = new Date().toISOString();
+
+        if (useDynamo) {
+            // PK 是 userId (HASH) + type (RANGE)
+            const existing = await docClient.send(new GetCommand({
+                TableName: TABLE,
+                Key: { userId: String(userId), type: String(type).toUpperCase() }
+            }));
+
+            if (!existing.Item) {
+                return NextResponse.json({ ok: false, error: '整合項目不存在 (Not found by PK: userId+type)' }, { status: 404 });
+            }
+
+            const updatedItem = {
+                ...existing.Item,
+                integrationId: integrationId || existing.Item.integrationId,
+                name: name || existing.Item.name,
+                config: config || existing.Item.config,
+                status: status || existing.Item.status,
+                updatedAt: now,
+            };
+
+            await docClient.send(new PutCommand({ TableName: TABLE, Item: updatedItem }));
+            return NextResponse.json({ ok: true, integration: updatedItem });
+        } else {
+            await loadLocal();
+            const idx = LOCAL_INTEGRATIONS.findIndex(a =>
+                (a.integrationId === integrationId) ||
+                (a.userId === userId && a.type === type.toUpperCase())
+            );
+            if (idx === -1) return NextResponse.json({ ok: false, error: 'Local integration not found' }, { status: 404 });
+
+            LOCAL_INTEGRATIONS[idx] = {
+                ...LOCAL_INTEGRATIONS[idx],
+                name: name || LOCAL_INTEGRATIONS[idx].name,
+                config: config || LOCAL_INTEGRATIONS[idx].config,
+                status: status || LOCAL_INTEGRATIONS[idx].status,
+                updatedAt: now,
+            };
+            console.log('[app-integrations API] PUT local success:', LOCAL_INTEGRATIONS[idx]);
+            await saveLocal();
+            return NextResponse.json({ ok: true, integration: LOCAL_INTEGRATIONS[idx] });
+        }
+    } catch (error: any) {
+        console.error('[app-integrations API] PUT error:', error);
+        return NextResponse.json({ ok: false, error: `Failed to update integration: ${error.message}` }, { status: 500 });
     }
 }

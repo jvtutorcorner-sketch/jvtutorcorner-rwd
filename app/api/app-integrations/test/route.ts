@@ -21,7 +21,15 @@ async function testLINE(config: Record<string, string>) {
         });
         if (res.ok) {
             const data = await res.json();
-            return { success: true, message: `Bot 名稱: ${data.displayName || data.basicId || 'OK'}`, details: { displayName: data.displayName, basicId: data.basicId } };
+            return {
+                success: true,
+                message: `Bot 名稱: ${data.displayName || data.basicId || 'OK'}`,
+                details: {
+                    displayName: data.displayName,
+                    basicId: data.basicId,
+                    pictureUrl: data.pictureUrl
+                }
+            };
         }
         const err = await res.json().catch(() => ({}));
         return { success: false, message: `LINE API 回傳 ${res.status}: ${err.message || '驗證失敗'}` };
@@ -282,20 +290,167 @@ async function testPAYPAL(config: Record<string, string>) {
 }
 
 // ---------------------------------------------------------------------------
+// AI 服務的驗證邏輯
+// ---------------------------------------------------------------------------
+
+/** OpenAI: 呼叫 models list 或 chat completion 驗證 */
+async function testOPENAI(config: Record<string, any>, prompt?: string) {
+    const apiKey = config.apiKey;
+    if (!apiKey) return { success: false, message: '缺少 API Key' };
+
+    try {
+        if (prompt) {
+            const model = Array.isArray(config.models) && config.models.length > 0 ? config.models[0] : 'gpt-4o-mini';
+            const res = await fetch('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${apiKey}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    model,
+                    messages: [{ role: 'user', content: prompt }],
+                    max_tokens: 1000,
+                }),
+            });
+            const data = await res.json();
+            if (res.ok) {
+                return { success: true, message: data.choices?.[0]?.message?.content || '收到空回應', details: data };
+            }
+            return { success: false, message: `OpenAI API 錯誤: ${data.error?.message || '呼叫失敗'}` };
+        }
+
+        const res = await fetch('https://api.openai.com/v1/models', {
+            headers: { Authorization: `Bearer ${apiKey}` },
+        });
+        if (res.ok) {
+            return { success: true, message: 'OpenAI API Key 驗證成功' };
+        }
+        const err = await res.json().catch(() => ({}));
+        return { success: false, message: `OpenAI API 錯誤: ${err.error?.message || '驗證失敗'}` };
+    } catch (e: any) {
+        return { success: false, message: `連線失敗: ${e.message}` };
+    }
+}
+
+/** Anthropic: 呼叫 models list 或 messages 驗證 */
+async function testANTHROPIC(config: Record<string, any>, prompt?: string) {
+    const apiKey = config.apiKey;
+    if (!apiKey) return { success: false, message: '缺少 API Key' };
+
+    try {
+        if (prompt) {
+            const model = Array.isArray(config.models) && config.models.length > 0 ? config.models[0] : 'claude-3-5-haiku-20241022';
+            const res = await fetch('https://api.anthropic.com/v1/messages', {
+                method: 'POST',
+                headers: {
+                    'x-api-key': apiKey,
+                    'anthropic-version': '2023-06-01',
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    model,
+                    messages: [{ role: 'user', content: prompt }],
+                    max_tokens: 1000,
+                }),
+            });
+            const data = await res.json();
+            if (res.ok) {
+                return { success: true, message: data.content?.[0]?.text || '收到空回應', details: data };
+            }
+            return { success: false, message: `Anthropic API 錯誤: ${data.error?.message || '呼叫失敗'}` };
+        }
+
+        const res = await fetch('https://api.anthropic.com/v1/models', {
+            headers: {
+                'x-api-key': apiKey,
+                'anthropic-version': '2023-06-01'
+            },
+        });
+        if (res.ok) {
+            return { success: true, message: 'Anthropic API Key 驗證成功' };
+        }
+        const err = await res.json().catch(() => ({}));
+        return { success: false, message: `Anthropic API 錯誤: ${err.error?.message || '驗證失敗'}` };
+    } catch (e: any) {
+        return { success: false, message: `連線失敗: ${e.message}` };
+    }
+}
+
+async function testGEMINI(config: Record<string, any>, prompt?: string) {
+    const apiKey = (config.apiKey || config.geminiApiKey || '').trim();
+    if (!apiKey) return { success: false, message: '缺少 API Key' };
+
+    try {
+        if (prompt) {
+            // 使用已設定的模型，若無則 fallback
+            const model = Array.isArray(config.models) && config.models.length > 0 ? config.models[0] : 'gemini-1.5-flash';
+            console.log(`[testGEMINI] Prompt test with model: ${model}`);
+            const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: prompt }] }],
+                    generationConfig: { maxOutputTokens: 2048 }
+                }),
+            });
+            const data = await res.json();
+
+            if (!res.ok) {
+                const errMsg = data.error?.message || '呼叫失敗';
+                console.error(`[testGEMINI] API error (model=${model}):`, data.error);
+                // 若是模型不存在，提示使用者
+                if (data.error?.status === 'NOT_FOUND') {
+                    return { success: false, message: `模型 "${model}" 不存在或無法存取: ${errMsg}` };
+                }
+                return { success: false, message: `Gemini API 錯誤: ${errMsg}` };
+            }
+
+            // Gemini 可能回傳多個 candidates 和 parts
+            const candidate = data.candidates?.[0];
+            const finishReason = candidate?.finishReason;
+            const parts = candidate?.content?.parts || [];
+            const fullText = parts.map((p: any) => p.text || '').join('').trim();
+
+            console.log(`[testGEMINI] finishReason: ${finishReason}, text length: ${fullText.length}`);
+
+            // finishReason 說明: STOP=正常, MAX_TOKENS=達到上限被截斷, SAFETY=安全過濾
+            if (!fullText) {
+                return { success: false, message: `Gemini 回傳空內容 (finishReason: ${finishReason || '未知'}, 可能被安全過濾)` };
+            }
+            const suffix = finishReason === 'MAX_TOKENS' ? `\n\n[回應已達 Token 上限 (MAX_TOKENS)，內容可能未完整]` : '';
+            return { success: true, message: fullText + suffix, details: { finishReason, model, candidateCount: data.candidates?.length } };
+        }
+
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+        if (res.ok) {
+            return { success: true, message: 'Google Gemini API Key 驗證成功' };
+        }
+        const err = await res.json().catch(() => ({}));
+        return { success: false, message: `Gemini API 錯誤: ${err.error?.message || '驗證失敗'}` };
+    } catch (e: any) {
+        return { success: false, message: `連線失敗: ${e.message}` };
+    }
+}
+
+// ---------------------------------------------------------------------------
 // 測試分發器
 // ---------------------------------------------------------------------------
-const TEST_HANDLERS: Record<string, (config: Record<string, string>) => Promise<{ success: boolean; message: string; details?: any }>> = {
-    LINE: testLINE,
-    TELEGRAM: testTELEGRAM,
-    WHATSAPP: testWHATSAPP,
-    MESSENGER: testMESSENGER,
-    SLACK: testSLACK,
-    TEAMS: testTEAMS,
-    DISCORD: testDISCORD,
-    WECHAT: testWECHAT,
-    ECPAY: testECPAY,
-    STRIPE: testSTRIPE,
-    PAYPAL: testPAYPAL,
+const TEST_HANDLERS: Record<string, (config: Record<string, any>, prompt?: string) => Promise<{ success: boolean; message: string; details?: any }>> = {
+    LINE: (config) => testLINE(config as Record<string, string>),
+    TELEGRAM: (config) => testTELEGRAM(config as Record<string, string>),
+    WHATSAPP: (config) => testWHATSAPP(config as Record<string, string>),
+    MESSENGER: (config) => testMESSENGER(config as Record<string, string>),
+    SLACK: (config) => testSLACK(config as Record<string, string>),
+    TEAMS: (config) => testTEAMS(config as Record<string, string>),
+    DISCORD: (config) => testDISCORD(config as Record<string, string>),
+    WECHAT: (config) => testWECHAT(config as Record<string, string>),
+    ECPAY: (config) => testECPAY(config as Record<string, string>),
+    STRIPE: (config) => testSTRIPE(config as Record<string, string>),
+    PAYPAL: (config) => testPAYPAL(config as Record<string, string>),
+    OPENAI: testOPENAI,
+    ANTHROPIC: testANTHROPIC,
+    GEMINI: testGEMINI,
 };
 
 // ---------------------------------------------------------------------------
@@ -304,7 +459,7 @@ const TEST_HANDLERS: Record<string, (config: Record<string, string>) => Promise<
 export async function POST(request: Request) {
     try {
         const body = await request.json();
-        const { integrationId, type, config } = body || {};
+        const { integrationId, type, config, prompt } = body || {};
 
         if (!type) {
             return NextResponse.json({ ok: false, error: 'type is required.' }, { status: 400 });
@@ -329,7 +484,7 @@ export async function POST(request: Request) {
 
         console.log(`[app-integrations/test] Testing ${upperType} for integration ${integrationId || 'N/A'}`);
 
-        const result = await handler(config);
+        const result = await handler(config, prompt);
 
         console.log(`[app-integrations/test] ${upperType} result:`, result.success ? 'SUCCESS' : 'FAIL', result.message);
 
