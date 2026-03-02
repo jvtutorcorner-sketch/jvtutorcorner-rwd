@@ -212,8 +212,14 @@ export async function POST(request: Request, context: { params: Promise<{ integr
                             if (aiIntegration && aiIntegration.config?.apiKey) {
                                 console.log('[LINE Webhook] Forwarding message to Gemini...');
                                 const apiKey = aiIntegration.config.apiKey;
+                                const config = aiIntegration.config;
+                                // Use configured model or fallback
+                                const model = Array.isArray(config.models) && config.models.length > 0 ? config.models[0] : 'gemini-1.5-flash';
+
+                                console.log(`[LINE Webhook] Using model: ${model}`);
+
                                 // Simple Gemini completion call
-                                const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`, {
+                                const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
                                     body: JSON.stringify({
