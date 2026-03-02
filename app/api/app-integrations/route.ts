@@ -234,6 +234,7 @@ export async function PUT(request: Request) {
                 updatedAt: now,
             };
 
+            console.log('[app-integrations API] Saving updated item to DynamoDB:', JSON.stringify(updatedItem, null, 2));
             await docClient.send(new PutCommand({ TableName: TABLE, Item: updatedItem }));
             return NextResponse.json({ ok: true, integration: updatedItem });
         } else {

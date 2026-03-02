@@ -71,6 +71,23 @@ async function findUserProfileByEmail(email: string) {
     }
 }
 
+async function findProfileByLineUid(lineUid: string) {
+    if (!useDynamoForProfiles) {
+        return null;
+    }
+    try {
+        const { Items } = await docClient.send(new ScanCommand({
+            TableName: PROFILES_TABLE,
+            FilterExpression: 'lineUid = :lineUid',
+            ExpressionAttributeValues: { ':lineUid': lineUid }
+        }));
+        return Items && Items.length > 0 ? Items[0] : null;
+    } catch (err) {
+        console.error('[LINE Webhook] findProfileByLineUid error:', err);
+        return null;
+    }
+}
+
 async function updateUserProfileLineUid(profile: any, lineUid: string) {
     if (!useDynamoForProfiles) {
         console.warn('[LINE Webhook] DynamoDB for profiles not enabled; skipping local file update as requested.');
@@ -141,39 +158,65 @@ export async function POST(request: Request, context: { params: Promise<{ integr
 
             if (!replyToken || !lineUid) continue;
 
-            if (event.type === 'message' && event.message?.type === 'text') {
-                const text = event.message.text.trim();
+            if (event.type === 'message' || event.type === 'postback') {
+                // Check if user is already linked
+                const existingProfile = await findProfileByLineUid(lineUid);
 
-                // Email pattern for validation
-                const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-                let emailToBind: string | null = null;
+                if (existingProfile) {
+                    // Linked User: Allow direct conversation (Currently we can just do nothing or pass to AI)
+                    console.log(`[LINE Webhook] User ${lineUid} is linked to ${existingProfile.email}. Allowing conversation.`);
 
-                // Check if text starts with BIND or is a direct email input
-                if (text.toUpperCase().startsWith('BIND ')) {
-                    emailToBind = text.substring(5).trim();
-                } else if (emailPattern.test(text)) {
-                    // Direct email input detected
-                    emailToBind = text;
+                    // If it's a text message, we could potentially pass to Gemini here in the future.
+                    // For now, we just don't send the "Please bind" help message.
+                    continue;
                 }
 
-                if (emailToBind) {
-                    const profile = await findUserProfileByEmail(emailToBind);
+                // Not Linked: Only process text messages for binding, otherwise show help
+                if (event.type === 'message' && event.message?.type === 'text') {
+                    const text = event.message.text.trim();
 
-                    if (profile) {
-                        await updateUserProfileLineUid(profile, lineUid);
-                        const msg = {
-                            type: 'text',
-                            text: `✅ 綁定成功！\n您的 LINE 帳戶已與平台帳號 (${profile.email}) 連結。之後您可以直接透過 LINE 接收課程通知。`
-                        };
-                        if (isSimulation) {
-                            simulationReplies.push(msg);
+                    // Email pattern for validation
+                    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                    let emailToBind: string | null = null;
+
+                    // Check if text starts with BIND or is a direct email input
+                    if (text.toUpperCase().startsWith('BIND ')) {
+                        emailToBind = text.substring(5).trim();
+                    } else if (emailPattern.test(text)) {
+                        // Direct email input detected
+                        emailToBind = text;
+                    }
+
+                    if (emailToBind) {
+                        const profile = await findUserProfileByEmail(emailToBind);
+
+                        if (profile) {
+                            await updateUserProfileLineUid(profile, lineUid);
+                            const msg = {
+                                type: 'text',
+                                text: `✅ 綁定成功！\n您的 LINE 帳戶已與平台帳號 (${profile.email}) 連結。之後您可以直接透過 LINE 接收課程通知。`
+                            };
+                            if (isSimulation) {
+                                simulationReplies.push(msg);
+                            } else {
+                                await replyToLine(replyToken, [msg], channelAccessToken);
+                            }
                         } else {
-                            await replyToLine(replyToken, [msg], channelAccessToken);
+                            const msg = {
+                                type: 'text',
+                                text: `❌ 找不到該電子信箱 (${emailToBind}) 的帳號。\n\n請檢查：\n• 信箱是否正確\n• 帳號是否已在平台註冊\n\n如有問題，請聯絡客服。`
+                            };
+                            if (isSimulation) {
+                                simulationReplies.push(msg);
+                            } else {
+                                await replyToLine(replyToken, [msg], channelAccessToken);
+                            }
                         }
                     } else {
+                        // Not an email/BIND input, and not linked
                         const msg = {
                             type: 'text',
-                            text: `❌ 找不到該電子信箱 (${emailToBind}) 的帳號。\n\n請檢查：\n• 信箱是否正確\n• 帳號是否已在平台註冊\n\n如有問題，請聯絡客服。`
+                            text: '如需綁定平台帳號，請輸入：\nBIND 您的登入信箱'
                         };
                         if (isSimulation) {
                             simulationReplies.push(msg);
@@ -182,6 +225,7 @@ export async function POST(request: Request, context: { params: Promise<{ integr
                         }
                     }
                 } else {
+                    // Other event types for unlinked users (stickers, etc.)
                     const msg = {
                         type: 'text',
                         text: '如需綁定平台帳號，請輸入：\nBIND 您的登入信箱'

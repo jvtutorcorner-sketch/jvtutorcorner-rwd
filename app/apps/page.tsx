@@ -69,6 +69,8 @@ export default function AppsPage() {
     const [loading, setLoading] = useState(true);
     const [selectedAppConfig, setSelectedAppConfig] = useState<AppIntegration | null>(null);
     const [editedConfig, setEditedConfig] = useState<Record<string, any>>({});
+    const [editedName, setEditedName] = useState('');
+    const [editedStatus, setEditedStatus] = useState('ACTIVE');
     const [showSecret, setShowSecret] = useState(false);
     const [isSavingConfig, setIsSavingConfig] = useState(false);
     const [testingId, setTestingId] = useState<string | null>(null);   // integrationId currently testing
@@ -218,14 +220,6 @@ export default function AppsPage() {
         if (!selectedAppConfig) return;
         setIsSavingConfig(true);
         try {
-            console.log('[AppsPage] Saving config with body:', {
-                integrationId: selectedAppConfig.integrationId,
-                userId: selectedAppConfig.userId,
-                type: selectedAppConfig.type,
-                config: editedConfig,
-                name: selectedAppConfig.name,
-                status: selectedAppConfig.status
-            });
             const res = await fetch(`/api/app-integrations`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
@@ -234,14 +228,14 @@ export default function AppsPage() {
                     userId: selectedAppConfig.userId,
                     type: selectedAppConfig.type,
                     config: editedConfig,
-                    name: selectedAppConfig.name,
-                    status: selectedAppConfig.status
+                    name: editedName,
+                    status: editedStatus
                 })
             });
             const data = await res.json();
             if (data.ok) {
-                setApps(prev => prev.map(a => a.integrationId === selectedAppConfig.integrationId ? { ...a, config: editedConfig } : a));
-                setSelectedAppConfig(prev => prev ? { ...prev, config: editedConfig } : null);
+                setApps(prev => prev.map(a => a.integrationId === selectedAppConfig.integrationId ? { ...a, config: editedConfig, name: editedName, status: editedStatus } : a));
+                setSelectedAppConfig(prev => prev ? { ...prev, config: editedConfig, name: editedName, status: editedStatus } : null);
                 alert('設定儲存成功');
             } else {
                 alert(`儲存失敗: ${data.error}`);
@@ -747,6 +741,8 @@ export default function AppsPage() {
                                                             onClick={() => {
                                                                 setSelectedAppConfig(app);
                                                                 setEditedConfig(app.config ? { ...app.config } : {});
+                                                                setEditedName(app.name || '');
+                                                                setEditedStatus(app.status || 'ACTIVE');
                                                             }}
                                                             className="text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 dark:hover:bg-blue-900/50 font-medium py-2 px-4 rounded-lg transition-colors inline-block"
                                                         >
@@ -796,6 +792,32 @@ export default function AppsPage() {
                                             <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">
                                                 <strong>服務類型：</strong> {selectedAppConfig.type}
                                             </p>
+
+                                            <div className="space-y-4 mb-6">
+                                                <div className="flex flex-col gap-1.5">
+                                                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">服務名稱:</label>
+                                                    <input
+                                                        type="text"
+                                                        className="w-full bg-white dark:bg-gray-800 px-3 py-2 rounded border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                                                        value={editedName}
+                                                        onChange={(e) => setEditedName(e.target.value)}
+                                                        placeholder="例如: 我的 LINE 機器人"
+                                                    />
+                                                </div>
+                                                <div className="flex flex-col gap-1.5">
+                                                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">連線狀態:</label>
+                                                    <select
+                                                        className="w-full bg-white dark:bg-gray-800 px-3 py-2 rounded border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                                                        value={editedStatus}
+                                                        onChange={(e) => setEditedStatus(e.target.value)}
+                                                    >
+                                                        <option value="ACTIVE">啟用 (ACTIVE)</option>
+                                                        <option value="INACTIVE">停用 (INACTIVE)</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+
+                                            <h4 className="font-bold text-sm text-gray-800 dark:text-white mb-2 pb-1 border-b border-gray-100 dark:border-gray-700">進階配置參數</h4>
                                             {/* 測試結果 */}
                                             {testResults[selectedAppConfig.integrationId] && (
                                                 <div className={`text-sm p-3 rounded-lg mb-4 ${testResults[selectedAppConfig.integrationId].success ? 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-300 border border-green-200 dark:border-green-800' : 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300 border border-red-200 dark:border-red-800'}`}>
@@ -827,10 +849,15 @@ export default function AppsPage() {
                                                                 <span className="font-semibold w-full sm:w-1/3 text-gray-500 dark:text-gray-400 mb-1 sm:mb-0">{label}:</span>
                                                                 <input
                                                                     type={isSecretField && !showSecret ? 'password' : 'text'}
-                                                                    className="w-full sm:w-2/3 bg-white dark:bg-gray-800 px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                                    className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono text-sm pr-10"
                                                                     value={editedConfig[key] || ''}
                                                                     onChange={(e) => setEditedConfig({ ...editedConfig, [key]: e.target.value })}
                                                                 />
+                                                                {key === 'channelSecret' && (
+                                                                    <p className="mt-1 text-[10px] text-gray-400 dark:text-gray-500">
+                                                                        * 此欄位於 Webhook 驗證時使用，「測試連線」僅驗證 Token。
+                                                                    </p>
+                                                                )}
                                                             </li>
                                                         );
                                                     })}
@@ -1117,7 +1144,9 @@ export default function AppsPage() {
                                     onClick={handleSaveConfig}
                                     disabled={
                                         isSavingConfig ||
-                                        JSON.stringify(editedConfig) === JSON.stringify(selectedAppConfig.config || {}) ||
+                                        (JSON.stringify(editedConfig) === JSON.stringify(selectedAppConfig.config || {}) &&
+                                            editedName === selectedAppConfig.name &&
+                                            editedStatus === selectedAppConfig.status) ||
                                         (AI_TYPES.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) > 1) ||
                                         (AI_TYPES.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) === 0)
                                     }

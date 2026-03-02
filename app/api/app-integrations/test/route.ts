@@ -12,12 +12,21 @@ import { NextResponse } from 'next/server';
 
 /** LINE: 呼叫 Get Bot Info API 驗證 Channel Access Token */
 async function testLINE(config: Record<string, string>) {
-    const token = config.channelAccessToken;
+    const token = (config.channelAccessToken || '').trim();
+    const secret = (config.channelSecret || '').trim();
     if (!token) return { success: false, message: '缺少 Channel Access Token' };
+    if (!secret) return { success: false, message: '缺少 Channel Secret' };
+
+    // 基本格式檢查 (Channel Secret 應為 32 字元十六進制)
+    if (!/^[0-9a-f]{32}$/i.test(secret)) {
+        return { success: false, message: 'Channel Secret 格式不正確 (應為 32 位十六進制字元)' };
+    }
 
     try {
+        console.log(`[testLINE] Testing token: ${token.substring(0, 10)}...`);
         const res = await fetch('https://api.line.me/v2/bot/info', {
             headers: { Authorization: `Bearer ${token}` },
+            cache: 'no-store'
         });
         if (res.ok) {
             const data = await res.json();
@@ -44,7 +53,7 @@ async function testTELEGRAM(config: Record<string, string>) {
     if (!token) return { success: false, message: '缺少 Bot Token' };
 
     try {
-        const res = await fetch(`https://api.telegram.org/bot${token}/getMe`);
+        const res = await fetch(`https://api.telegram.org/bot${token}/getMe`, { cache: 'no-store' });
         const data = await res.json();
         if (data.ok) {
             return { success: true, message: `Bot: @${data.result.username} (${data.result.first_name})`, details: data.result };
@@ -64,6 +73,7 @@ async function testWHATSAPP(config: Record<string, string>) {
     try {
         const res = await fetch(`https://graph.facebook.com/v18.0/${phoneNumberId}`, {
             headers: { Authorization: `Bearer ${token}` },
+            cache: 'no-store'
         });
         if (res.ok) {
             const data = await res.json();
@@ -82,7 +92,7 @@ async function testMESSENGER(config: Record<string, string>) {
     if (!token) return { success: false, message: '缺少 Page Access Token' };
 
     try {
-        const res = await fetch(`https://graph.facebook.com/v18.0/me?access_token=${token}`);
+        const res = await fetch(`https://graph.facebook.com/v18.0/me?access_token=${token}`, { cache: 'no-store' });
         if (res.ok) {
             const data = await res.json();
             return { success: true, message: `粉絲專頁: ${data.name || data.id} 驗證成功`, details: data };
@@ -106,6 +116,7 @@ async function testSLACK(config: Record<string, string>) {
                 Authorization: `Bearer ${token}`,
                 'Content-Type': 'application/json',
             },
+            cache: 'no-store'
         });
         const data = await res.json();
         if (data.ok) {
@@ -134,6 +145,7 @@ async function testTEAMS(config: Record<string, string>) {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body: params.toString(),
+            cache: 'no-store'
         });
         if (res.ok) {
             return { success: true, message: `App ID ${appId} 驗證成功，已取得 Access Token` };
@@ -153,6 +165,7 @@ async function testDISCORD(config: Record<string, string>) {
     try {
         const res = await fetch('https://discord.com/api/v10/users/@me', {
             headers: { Authorization: `Bot ${token}` },
+            cache: 'no-store'
         });
         if (res.ok) {
             const data = await res.json();
@@ -172,7 +185,7 @@ async function testWECHAT(config: Record<string, string>) {
     if (!appId || !appSecret) return { success: false, message: '缺少 AppID 或 AppSecret' };
 
     try {
-        const res = await fetch(`https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=${appId}&secret=${appSecret}`);
+        const res = await fetch(`https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=${appId}&secret=${appSecret}`, { cache: 'no-store' });
         const data = await res.json();
         if (data.access_token) {
             return { success: true, message: `AppID ${appId} 驗證成功，已取得 access_token` };
@@ -208,6 +221,7 @@ async function testECPAY(config: Record<string, string>) {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body: `MerchantID=${merchantId}&TimeStamp=${Math.floor(Date.now() / 1000)}`,
+            cache: 'no-store'
         });
         // 即使回傳錯誤但有回應，表示能連上 ECPay 伺服器
         if (res.ok || res.status < 500) {
@@ -231,6 +245,7 @@ async function testSTRIPE(config: Record<string, string>) {
     try {
         const res = await fetch('https://api.stripe.com/v1/balance', {
             headers: { Authorization: `Bearer ${secretKey}` },
+            cache: 'no-store'
         });
         if (res.ok) {
             const data = await res.json();
@@ -261,6 +276,7 @@ async function testPAYPAL(config: Record<string, string>) {
                 'Content-Type': 'application/x-www-form-urlencoded',
             },
             body: 'grant_type=client_credentials',
+            cache: 'no-store'
         });
 
         if (res.ok) {
@@ -312,6 +328,7 @@ async function testOPENAI(config: Record<string, any>, prompt?: string) {
                     messages: [{ role: 'user', content: prompt }],
                     max_tokens: 1000,
                 }),
+                cache: 'no-store'
             });
             const data = await res.json();
             if (res.ok) {
@@ -322,6 +339,7 @@ async function testOPENAI(config: Record<string, any>, prompt?: string) {
 
         const res = await fetch('https://api.openai.com/v1/models', {
             headers: { Authorization: `Bearer ${apiKey}` },
+            cache: 'no-store'
         });
         if (res.ok) {
             return { success: true, message: 'OpenAI API Key 驗證成功' };
@@ -353,6 +371,7 @@ async function testANTHROPIC(config: Record<string, any>, prompt?: string) {
                     messages: [{ role: 'user', content: prompt }],
                     max_tokens: 1000,
                 }),
+                cache: 'no-store'
             });
             const data = await res.json();
             if (res.ok) {
@@ -366,6 +385,7 @@ async function testANTHROPIC(config: Record<string, any>, prompt?: string) {
                 'x-api-key': apiKey,
                 'anthropic-version': '2023-06-01'
             },
+            cache: 'no-store'
         });
         if (res.ok) {
             return { success: true, message: 'Anthropic API Key 驗證成功' };
@@ -393,6 +413,7 @@ async function testGEMINI(config: Record<string, any>, prompt?: string) {
                     contents: [{ parts: [{ text: prompt }] }],
                     generationConfig: { maxOutputTokens: 2048 }
                 }),
+                cache: 'no-store'
             });
             const data = await res.json();
 
@@ -422,7 +443,7 @@ async function testGEMINI(config: Record<string, any>, prompt?: string) {
             return { success: true, message: fullText + suffix, details: { finishReason, model, candidateCount: data.candidates?.length } };
         }
 
-        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`, { cache: 'no-store' });
         if (res.ok) {
             return { success: true, message: 'Google Gemini API Key 驗證成功' };
         }
@@ -459,12 +480,12 @@ const TEST_HANDLERS: Record<string, (config: Record<string, any>, prompt?: strin
 export async function POST(request: Request) {
     try {
         const body = await request.json();
+        console.log('[app-integrations API] TEST request body:', JSON.stringify(body, null, 2));
         const { integrationId, type, config, prompt } = body || {};
 
         if (!type) {
             return NextResponse.json({ ok: false, error: 'type is required.' }, { status: 400 });
         }
-
         const upperType = String(type).toUpperCase();
         const handler = TEST_HANDLERS[upperType];
 
@@ -483,6 +504,7 @@ export async function POST(request: Request) {
         }
 
         console.log(`[app-integrations/test] Testing ${upperType} for integration ${integrationId || 'N/A'}`);
+        console.log(`[app-integrations/test] Config received:`, JSON.stringify(config, null, 2));
 
         const result = await handler(config, prompt);
 
