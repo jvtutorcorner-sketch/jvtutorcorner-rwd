@@ -214,7 +214,7 @@ export async function POST(request: Request, context: { params: Promise<{ integr
                                 const apiKey = aiIntegration.config.apiKey;
                                 const config = aiIntegration.config;
                                 // Use configured model or fallback
-                                const model = Array.isArray(config.models) && config.models.length > 0 ? config.models[0] : 'gemini-1.5-flash';
+                                const model = Array.isArray(config.models) && config.models.length > 0 ? config.models[0] : 'gemini-2.5-flash';
 
                                 console.log(`[LINE Webhook] Using model: ${model}`);
 
