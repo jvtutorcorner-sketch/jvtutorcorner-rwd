@@ -184,7 +184,6 @@ export async function POST(request: Request, context: { params: Promise<{ integr
         const simulationReplies: any[] = [];
 
         for (const event of events) {
-            // Reply context
             const replyToken = event.replyToken;
             const lineUid = event.source?.userId;
             console.log(`[LINE Webhook] Event type: ${event.type}, userId: ${lineUid}`);
@@ -195,7 +194,6 @@ export async function POST(request: Request, context: { params: Promise<{ integr
             }
 
             if (event.type === 'message' || event.type === 'postback') {
-                // Check if user is already linked
                 const existingProfile = await findProfileByLineUid(lineUid);
 
                 if (existingProfile) {
@@ -206,7 +204,6 @@ export async function POST(request: Request, context: { params: Promise<{ integr
                         console.log(`[LINE Webhook] Received message from linked user: "${userText}"`);
 
                         try {
-                            // Find active Gemini integration
                             const aiIntegration = await getActiveAIIntegration();
 
                             if (aiIntegration && aiIntegration.config?.apiKey) {
@@ -218,13 +215,12 @@ export async function POST(request: Request, context: { params: Promise<{ integr
 
                                 console.log(`[LINE Webhook] Using model: ${model}`);
 
-                                // Simple Gemini completion call
                                 const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
                                     body: JSON.stringify({
                                         contents: [{ parts: [{ text: userText }] }],
-                                        generationConfig: { maxOutputTokens: 800 }
+                                        generationConfig: { maxOutputTokens: 4096 }
                                     }),
                                 });
 
@@ -233,9 +229,18 @@ export async function POST(request: Request, context: { params: Promise<{ integr
                                     const aiResponseText = data.candidates?.[0]?.content?.parts?.[0]?.text;
 
                                     if (aiResponseText) {
-                                        const msg = { type: 'text', text: aiResponseText };
-                                        if (isSimulation) simulationReplies.push(msg);
-                                        else await replyToLine(replyToken, [msg], channelAccessToken);
+                                        // LINE message limit 5000 chars
+                                        const chunks: string[] = [];
+                                        let currentText = aiResponseText;
+                                        while (currentText.length > 4500) {
+                                            chunks.push(currentText.substring(0, 4500));
+                                            currentText = currentText.substring(4500);
+                                        }
+                                        chunks.push(currentText);
+
+                                        const messages = chunks.map(c => ({ type: 'text', text: c }));
+                                        if (isSimulation) simulationReplies.push(...messages);
+                                        else await replyToLine(replyToken, messages, channelAccessToken);
                                     } else {
                                         console.warn('[LINE Webhook] Empty response from Gemini.');
                                         const msg = { type: 'text', text: '系統暫時無法處理您的訊息，請稍後再試。' };
@@ -261,19 +266,16 @@ export async function POST(request: Request, context: { params: Promise<{ integr
                             else await replyToLine(replyToken, [msg], channelAccessToken);
                         }
                     }
-                    continue; // Done processing for linked user
+                    continue;
                 }
 
-                // Not Linked: Only process text messages for binding, otherwise show help
                 if (event.type === 'message' && event.message?.type === 'text') {
                     const text = event.message.text.trim();
                     console.log(`[LINE Webhook] Received text message from unlinked user: "${text}"`);
 
-                    // Email pattern for validation
                     const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
                     let emailToBind: string | null = null;
 
-                    // Check if text starts with BIND or is a direct email input
                     if (text.toUpperCase().startsWith('BIND ')) {
                         emailToBind = text.substring(5).trim();
                     } else if (emailPattern.test(text)) {
@@ -282,7 +284,6 @@ export async function POST(request: Request, context: { params: Promise<{ integr
 
                     if (emailToBind) {
                         const profile = await findUserProfileByEmail(emailToBind);
-
                         if (profile) {
                             console.log(`[LINE Webhook] Binding user ${lineUid} to ${profile.email}`);
                             await updateUserProfileLineUid(profile, lineUid);
@@ -290,22 +291,16 @@ export async function POST(request: Request, context: { params: Promise<{ integr
                                 type: 'text',
                                 text: `✅ 綁定成功！\n您的 LINE 帳戶已與平台帳號 (${profile.email}) 連結。之後您可以直接透過 LINE 接收課程通知。`
                             };
-                            if (isSimulation) {
-                                simulationReplies.push(msg);
-                            } else {
-                                await replyToLine(replyToken, [msg], channelAccessToken);
-                            }
+                            if (isSimulation) simulationReplies.push(msg);
+                            else await replyToLine(replyToken, [msg], channelAccessToken);
                         } else {
                             console.log(`[LINE Webhook] Profile not found for email: ${emailToBind}`);
                             const msg = {
                                 type: 'text',
                                 text: `❌ 找不到該電子信箱 (${emailToBind}) 的帳號。\n\n請檢查：\n• 信箱是否正確\n• 帳號是否已在平台註冊\n\n如有問題，請聯絡客服。`
                             };
-                            if (isSimulation) {
-                                simulationReplies.push(msg);
-                            } else {
-                                await replyToLine(replyToken, [msg], channelAccessToken);
-                            }
+                            if (isSimulation) simulationReplies.push(msg);
+                            else await replyToLine(replyToken, [msg], channelAccessToken);
                         }
                     } else {
                         console.log(`[LINE Webhook] Sending help message to unlinked user ${lineUid}`);
@@ -313,23 +308,17 @@ export async function POST(request: Request, context: { params: Promise<{ integr
                             type: 'text',
                             text: '如需綁定平台帳號，請輸入：\nBIND 您的登入信箱'
                         };
-                        if (isSimulation) {
-                            simulationReplies.push(msg);
-                        } else {
-                            await replyToLine(replyToken, [msg], channelAccessToken);
-                        }
+                        if (isSimulation) simulationReplies.push(msg);
+                        else await replyToLine(replyToken, [msg], channelAccessToken);
                     }
                 } else {
-                    console.log(`[LINE Webhook] Non-text event or unlinked interaction from ${lineUid}`);
+                    console.log(`[LINE Webhook] Non-text event from ${lineUid}`);
                     const msg = {
                         type: 'text',
                         text: '如需綁定平台帳號，請輸入：\nBIND 您的登入信箱'
                     };
-                    if (isSimulation) {
-                        simulationReplies.push(msg);
-                    } else {
-                        await replyToLine(replyToken, [msg], channelAccessToken);
-                    }
+                    if (isSimulation) simulationReplies.push(msg);
+                    else await replyToLine(replyToken, [msg], channelAccessToken);
                 }
             }
         }
