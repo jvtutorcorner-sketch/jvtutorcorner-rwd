@@ -25,6 +25,9 @@ export default function LoginPage() {
   const [captchaImage, setCaptchaImage] = useState<string | null>(null);
   const [captchaValue, setCaptchaValue] = useState('');
   const [captchaLoading, setCaptchaLoading] = useState(false);
+  const [isForgotMode, setIsForgotMode] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotLoading, setForgotLoading] = useState(false);
   const [currentUser, setCurrentUser] = useState<StoredUser | null>(
     typeof window !== 'undefined' ? getStoredUser() : null,
   );
@@ -224,6 +227,38 @@ export default function LoginPage() {
     handleGoogleRedirect();
   }, [router, t]);
 
+  const handleForgotSubmit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setError(null);
+    if (!forgotEmail.trim()) {
+      setError('請輸入 Email');
+      return;
+    }
+    try {
+      setForgotLoading(true);
+      const res = await fetch('/api/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: forgotEmail.trim().toLowerCase() }),
+      });
+      const data = await res.json();
+      if (res.ok && data?.ok) {
+        if (data.emailSent) {
+          alert('新密碼已發送到您的信箱，請檢查收件匣或垃圾郵件匣。');
+        } else {
+          alert('密碼重置成功，但 Email 發送失敗。請聯繫管理員或確認 SMTP 設定。');
+        }
+        setIsForgotMode(false);
+      } else {
+        setError(data?.message ? t(data.message) : '發送失敗或查無此帳號');
+      }
+    } catch (err: any) {
+      console.error(err);
+      setError('發送失敗');
+    } finally {
+      setForgotLoading(false);
+    }
+  };
 
   const handleLogout = () => {
     clearStoredUser();
@@ -275,68 +310,103 @@ export default function LoginPage() {
       <section className="section">
         <div className="card">
           <h2>{t('login_heading')}</h2>
-          <form onSubmit={handleSubmit} className="modal-form">
-            <div className="field">
-              <label htmlFor="email">Email</label>
-              <input
-                id="email"
-                type="email"
-                value={email}
-                placeholder={t('email_placeholder')}
-                onChange={(e) => setEmail(e.target.value)}
-                autoComplete="email"
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="password">{t('password')}</label>
-              <input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                autoComplete="current-password"
-              />
-              {/* moved to the test accounts card */}
-            </div>
+          <form onSubmit={isForgotMode ? handleForgotSubmit : handleSubmit} className="modal-form">
+            {isForgotMode ? (
+              <>
+                <div className="field">
+                  <label htmlFor="forgotEmail">Email</label>
+                  <input
+                    id="forgotEmail"
+                    type="email"
+                    value={forgotEmail}
+                    onChange={(e) => setForgotEmail(e.target.value)}
+                    autoComplete="email"
+                    required
+                  />
+                  <p className="text-sm text-gray-500 mt-2">我們將會發送隨機新密碼至此 Email 信箱。</p>
+                </div>
 
-            <div className="field">
-              <label htmlFor="captcha">{t('captcha_label') || '驗證碼'}</label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                {captchaImage ? (
-                  <img src={captchaImage} alt="captcha" style={{ height: 48, border: '1px solid #ddd' }} />
-                ) : (
-                  <div style={{ width: 140, height: 48, background: '#f3f4f6' }} />
-                )}
-                <button type="button" className="card-button secondary" onClick={async () => await loadCaptcha()} disabled={captchaLoading}>
-                  {t('captcha_refresh') || '重新取得'}
-                </button>
-              </div>
-              <input
-                id="captcha"
-                type="text"
-                value={captchaValue}
-                placeholder={t('captcha_placeholder') || ''}
-                onChange={(e) => setCaptchaValue(e.target.value)}
-                autoComplete="off"
-              />
-            </div>
+                {error && <p className="form-error">{error}</p>}
 
-            {error && <p className="form-error">{error}</p>}
+                <div className="modal-actions">
+                  <button type="submit" className="modal-button primary" disabled={forgotLoading} onClick={(e) => { e.preventDefault(); handleForgotSubmit(e as any); }}>
+                    {forgotLoading ? '發送中...' : '發送密碼'}
+                  </button>
+                  <button type="button" className="modal-button secondary" onClick={() => { setIsForgotMode(false); setError(null); }}>
+                    返回登入
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="field">
+                  <label htmlFor="email">Email</label>
+                  <input
+                    id="email"
+                    name="email"
+                    type="email"
+                    value={email}
+                    placeholder=""
+                    onChange={(e) => setEmail(e.target.value)}
+                    autoComplete="email"
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="password">{t('password')}</label>
+                  <input
+                    id="password"
+                    name="password"
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    autoComplete="current-password"
+                  />
+                  {/* moved to the test accounts card */}
+                </div>
 
-            <div className="modal-actions">
-              <button type="submit" className="modal-button primary" disabled={captchaLoading || !captchaToken}>
-                {t('login')}
-              </button>
-              <Link href="/login/register" className="modal-button secondary">
-                {t('create_account')}
-              </Link>
-            </div>
+                <div className="field">
+                  <label htmlFor="captcha">{t('captcha_label') || '驗證碼'}</label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {captchaImage ? (
+                      <img src={captchaImage} alt="captcha" style={{ height: 48, border: '1px solid #ddd' }} />
+                    ) : (
+                      <div style={{ width: 140, height: 48, background: '#f3f4f6' }} />
+                    )}
+                    <button type="button" className="card-button secondary" onClick={async () => await loadCaptcha()} disabled={captchaLoading}>
+                      {t('captcha_refresh') || '重新取得'}
+                    </button>
+                  </div>
+                  <input
+                    id="captcha"
+                    type="text"
+                    value={captchaValue}
+                    placeholder={t('captcha_placeholder') || ''}
+                    onChange={(e) => setCaptchaValue(e.target.value)}
+                    autoComplete="off"
+                  />
+                </div>
+
+                {error && <p className="form-error">{error}</p>}
+
+                <div className="modal-actions">
+                  <button type="submit" className="modal-button primary" disabled={captchaLoading || !captchaToken}>
+                    {t('login')}
+                  </button>
+                  <Link href="/login/register" className="modal-button secondary">
+                    {t('create_account')}
+                  </Link>
+                  {/* <button type="button" className="modal-button secondary border-none shadow-none text-blue-600 bg-transparent hover:bg-blue-50" onClick={() => { setIsForgotMode(true); setError(null); }}>
+                    忘記密碼?
+                  </button> */}
+                </div>
+              </>
+            )}
 
 
           </form>
         </div>
-      </section>
+      </section >
 
-    </div>
+    </div >
   );
 }
