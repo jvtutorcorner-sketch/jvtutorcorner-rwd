@@ -85,6 +85,7 @@ export default function AppsPage() {
     const [pushMessage, setPushMessage] = useState('');
     const [pushTitle, setPushTitle] = useState('');
     const [pushResult, setPushResult] = useState<string | null>(null);
+    const [saveResult, setSaveResult] = useState<{ success: boolean; message: string } | null>(null);
     const router = useRouter();
 
     // 控制 body overflow 當 modal 打開時
@@ -246,12 +247,13 @@ export default function AppsPage() {
             if (data.ok) {
                 setApps(prev => prev.map(a => a.integrationId === selectedAppConfig.integrationId ? { ...a, config: updatedConfig, name: editedName, status: editedStatus } : a));
                 setSelectedAppConfig(prev => prev ? { ...prev, config: updatedConfig, name: editedName, status: editedStatus } : null);
-                alert('設定儲存成功');
+                setSaveResult({ success: true, message: '✅ 設定於系統中儲存成功' });
+                setTimeout(() => setSaveResult(null), 3000);
             } else {
-                alert(`儲存失敗: ${data.error}`);
+                setSaveResult({ success: false, message: `❌ 儲存失敗: ${data.error}` });
             }
         } catch (e: any) {
-            alert(`儲存失敗: ${e.message}`);
+            setSaveResult({ success: false, message: `❌ 系統錯誤: ${e.message}` });
         } finally {
             setIsSavingConfig(false);
         }
@@ -837,6 +839,16 @@ export default function AppsPage() {
                                                     <p className="mt-1 break-all">{testResults[selectedAppConfig.integrationId].message}</p>
                                                 </div>
                                             )}
+
+                                            {/* 儲存結果提示 */}
+                                            {saveResult && (
+                                                <div className={`text-sm p-3 rounded-lg mb-4 animate-in fade-in slide-in-from-top-1 duration-300 flex items-center justify-between ${saveResult.success ? 'bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-200 border border-green-200 dark:border-green-800' : 'bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-200 border border-red-200 dark:border-red-800'}`}>
+                                                    <div className="flex items-center gap-2 font-bold">
+                                                        <span>{saveResult.message}</span>
+                                                    </div>
+                                                    <button onClick={() => setSaveResult(null)} className="text-current opacity-50 hover:opacity-100">✕</button>
+                                                </div>
+                                            )}
                                             {/* 顯示/隱藏內容切換 */}
                                             <div className="flex items-center gap-2 mb-4 px-1">
                                                 <input
@@ -1177,6 +1189,7 @@ export default function AppsPage() {
                                         setPushMessage('');
                                         setPushTitle('');
                                         setPushResult(null);
+                                        setSaveResult(null);
                                     }}
                                 >
                                     關閉

@@ -11,15 +11,10 @@ import { CourseCard } from '@/components/CourseCard';
 import Tabs from '@/components/Tabs';
 import { getStoredUser, type StoredUser } from '@/lib/mockAuth';
 import { useT } from '@/components/IntlProvider'; // Client-side hook
-import { AIAssistantWidget } from '@/components/AIAssistantWidget';
-import type { AppConfig } from '@/lib/appPermissionsService';
-
 export default function ClientHomePage({
-  initialCarouselImages,
-  initialAppConfigs
+  initialCarouselImages
 }: {
   initialCarouselImages: string[];
-  initialAppConfigs: AppConfig[];
 }) {
   const t = useT();
   const router = useRouter();
@@ -48,16 +43,6 @@ export default function ClientHomePage({
 
   const recommendedTeachers = TEACHERS.slice(0, 3);
   const hotCourses = COURSES.slice(0, 3);
-
-  // Evaluate AI Widget Permissions
-  const aiWidgetConfig = initialAppConfigs.find(c => c.id === 'AI_ASSISTANT');
-  let isAiWidgetVisible = false;
-  if (aiWidgetConfig) {
-    const roleKey = user?.role || 'student';
-    const perm = aiWidgetConfig.permissions.find(p => p.roleId === roleKey);
-    // By default visible unless explicitly set to false
-    isAiWidgetVisible = perm ? perm.visible !== false : false;
-  }
 
   return (
     <div className="home">
@@ -119,9 +104,6 @@ export default function ClientHomePage({
           ]}
         />
       </section>
-
-      {/* AI Assistant Chat Widget */}
-      {isAiWidgetVisible && <AIAssistantWidget />}
     </div>
   );
 }

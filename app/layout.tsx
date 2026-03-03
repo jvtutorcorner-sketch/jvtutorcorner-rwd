@@ -12,17 +12,21 @@ import PageBreadcrumb from '@/components/PageBreadcrumb';
 import SessionTimer from '@/components/SessionTimer';
 import { AdminSettingsProvider } from '@/components/AdminSettingsProvider';
 import PermissionGuard from '@/components/auth/PermissionGuard';
+import { getAppPermissionsFromDynamoDB } from '@/lib/appPermissionsService';
+import GlobalAIAssistant from '@/components/GlobalAIAssistant';
 
 export const metadata: Metadata = {
   title: 'Tutor Platform',
   description: 'Online tutoring platform with video and whiteboard.',
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const appConfigs = await getAppPermissionsFromDynamoDB();
+
   return (
     <html lang="zh-TW">
       <body>
@@ -68,6 +72,8 @@ export default function RootLayout({
               <PageBreadcrumb />
               {children}
             </main>
+
+            <GlobalAIAssistant initialAppConfigs={appConfigs} />
           </AdminSettingsProvider>
 
           <footer className="site-footer">

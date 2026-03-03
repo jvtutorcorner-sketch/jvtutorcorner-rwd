@@ -1,5 +1,7 @@
 import { ddbDocClient } from './dynamo';
-import { ScanCommand, PutCommand, BatchWriteCommand } from '@aws-sdk/lib-dynamodb';
+import { ScanCommand, BatchWriteCommand } from '@aws-sdk/lib-dynamodb';
+import fs from 'fs/promises';
+import resolveDataFile from './localData';
 
 const APP_PERMISSIONS_TABLE = process.env.DYNAMODB_TABLE_APP_PERMISSIONS || 'jvtutorcorner-app-permissions';
 
@@ -78,115 +80,115 @@ const DEFAULT_APPS: AppConfig[] = [
     }
 ];
 
-export async function getAppPermissionsFromDynamoDB(): Promise<AppConfig[]> {
-    if (!APP_PERMISSIONS_TABLE) {
-        return DEFAULT_APPS;
-    }
-
+/**
+ * Read from local JSON file (fallback)
+ */
+async function readAppPermissionsFromJSON(): Promise<AppConfig[]> {
     try {
-        const scanRes = await ddbDocClient.send(new ScanCommand({
-            TableName: APP_PERMISSIONS_TABLE
-        }));
-
-        const items = (scanRes.Items || []) as AppConfig[];
-        console.log(`[appPermissionsService] Loaded ${items.length} app configs from DynamoDB`);
-
-        if (items.length === 0) {
-            console.log('[appPermissionsService] DynamoDB is empty, returning default apps');
-            return DEFAULT_APPS; // We return defaults, client can save them later
-        }
-
-        // Merge defaults to ensure new apps (like AI_ASSISTANT) are always present even if DB exists
-        const actualItems = [...items];
-        let hasNewDefaults = false;
-        for (const def of DEFAULT_APPS) {
-            if (!actualItems.find(i => i.id === def.id)) {
-                actualItems.push(def);
-                hasNewDefaults = true;
-            }
-        }
-        if (hasNewDefaults) {
-            console.log('[appPermissionsService] Added missing default apps to DB results.');
-        }
-
-        // Sort by sortOrder field to maintain custom ordering
-        const sorted = actualItems.sort((a, b) => {
-            const orderA = a.sortOrder ?? 999999;
-            const orderB = b.sortOrder ?? 999999;
-            return orderA - orderB;
-        });
-
-        return sorted;
+        const SETTINGS_FILE = await resolveDataFile('app_permissions.json');
+        const raw = await fs.readFile(SETTINGS_FILE, 'utf8');
+        const data = JSON.parse(raw);
+        return Array.isArray(data) ? data : data.appConfigs || [];
     } catch (e) {
-        console.error('[appPermissionsService] DynamoDB scan failed:', (e as any)?.message || e);
-        // Fallback to defaults to prevent app crash
-        return DEFAULT_APPS;
+        console.warn('[appPermissionsService] Failed to read from JSON file:', (e as any)?.message || e);
+        return [];
     }
 }
 
-export async function saveAppPermissionsToDynamoDB(appConfigs: AppConfig[]): Promise<boolean> {
-    if (!APP_PERMISSIONS_TABLE) {
-        console.log('[appPermissionsService] ⚠️  DynamoDB 未設定，跳過 DynamoDB 儲存');
-        return false;
+/**
+ * Write to local JSON file (sync/backup)
+ */
+async function writeAppPermissionsToJSON(appConfigs: AppConfig[]): Promise<void> {
+    try {
+        const SETTINGS_FILE = await resolveDataFile('app_permissions.json');
+        await fs.writeFile(SETTINGS_FILE, JSON.stringify(appConfigs, null, 2), 'utf8');
+        console.log(`[appPermissionsService] Saved to local JSON backup: ${SETTINGS_FILE}`);
+    } catch (e) {
+        console.error('[appPermissionsService] Local JSON write failed:', (e as any)?.message || e);
+    }
+}
+
+export async function getAppPermissionsFromDynamoDB(): Promise<AppConfig[]> {
+    let items: AppConfig[] = [];
+
+    // 1. Try DynamoDB
+    if (APP_PERMISSIONS_TABLE) {
+        try {
+            console.log(`[appPermissionsService] Scanning DynamoDB Table: ${APP_PERMISSIONS_TABLE}`);
+            const scanRes = await ddbDocClient.send(new ScanCommand({
+                TableName: APP_PERMISSIONS_TABLE
+            }));
+            items = (scanRes.Items || []) as AppConfig[];
+            console.log(`[appPermissionsService] Loaded ${items.length} app configs from DynamoDB`);
+        } catch (e) {
+            console.warn('[appPermissionsService] DynamoDB read failed, trying local JSON fallback:', (e as any)?.message || e);
+        }
     }
 
-    console.log(`[appPermissionsService] 嘗試儲存到 DynamoDB 表格: ${APP_PERMISSIONS_TABLE}`);
+    // 2. Fallback to Local JSON if DynamoDB empty or failed
+    if (items.length === 0) {
+        items = await readAppPermissionsFromJSON();
+        console.log(`[appPermissionsService] Loaded ${items.length} app configs from local JSON fallback`);
+    }
+
+    // 3. Last fallback to Hardcoded Defaults
+    if (items.length === 0) {
+        console.log('[appPermissionsService] No data found in DB or JSON, using hardcoded defaults');
+        items = [...DEFAULT_APPS];
+    }
+
+    // Ensure all default apps are present (merge logic)
+    DEFAULT_APPS.forEach(def => {
+        if (!items.find(i => i.id === def.id)) {
+            items.push(def);
+        }
+    });
+
+    // Sort and return
+    return items.sort((a, b) => (a.sortOrder ?? 999) - (b.sortOrder ?? 999));
+}
+
+export async function saveAppPermissionsToDynamoDB(appConfigs: AppConfig[]): Promise<boolean> {
+    const timestamp = new Date().toISOString();
+    const itemsToSave = appConfigs.map((pc, index) => ({
+        ...pc,
+        id: pc.id || pc.path,
+        path: pc.id || pc.path,
+        sortOrder: index,
+        updatedAt: timestamp
+    }));
+
+    // Always attempt to save to local backup first
+    await writeAppPermissionsToJSON(itemsToSave);
+
+    if (!APP_PERMISSIONS_TABLE) {
+        console.warn('[appPermissionsService] DYNAMODB_TABLE_APP_PERMISSIONS not set, local backup only.');
+        return true;
+    }
 
     try {
-        // 1. Get current items to identify what needs to be deleted
-        const currentItems = await getAppPermissionsFromDynamoDB();
-        // Since getAppPermissionsFromDynamoDB returns defaults if empty/error, we need an actual scan to find deletes.
-        // For apps, we might not delete often, but let's be safe.
-        let actualCurrentItems: AppConfig[] = [];
-        try {
-            const scanRes = await ddbDocClient.send(new ScanCommand({ TableName: APP_PERMISSIONS_TABLE }));
-            actualCurrentItems = (scanRes.Items || []) as AppConfig[];
-        } catch (e) { }
+        console.log(`[appPermissionsService] Syncing to DynamoDB: ${APP_PERMISSIONS_TABLE}`);
 
-        const currentPaths = new Set(actualCurrentItems.map(item => item.id));
-        const incomingPaths = new Set(appConfigs.map(pc => pc.id));
-        const pathsToDelete = Array.from(currentPaths).filter(id => !incomingPaths.has(id));
+        // Prepare Batch Write
+        const putRequests = itemsToSave.map(item => ({ PutRequest: { Item: item } }));
 
-        // 2. Prepare items to write
-        const timestamp = new Date().toISOString();
-        const itemsToPut = appConfigs.map((pc, index) => ({
-            ...pc,
-            id: pc.id || pc.path,
-            path: pc.id || pc.path, // ensure consistency
-            sortOrder: index,
-            updatedAt: timestamp
-        }));
-
-        // 3. Combine put and delete requests
-        const putRequests = itemsToPut.map(item => ({ PutRequest: { Item: item } }));
-        const deleteRequests = pathsToDelete.map(id => ({ DeleteRequest: { Key: { id: id } } }));
-
-        const allRequests = [...putRequests, ...deleteRequests];
-
-        // 4. Batch write in chunks of 25
+        // Chunks of 25 for BatchWrite
         const BATCH_SIZE = 25;
-        let totalProcessed = 0;
-
-        for (let i = 0; i < allRequests.length; i += BATCH_SIZE) {
-            const batch = allRequests.slice(i, i + BATCH_SIZE);
-            const response = await ddbDocClient.send(new BatchWriteCommand({
+        for (let i = 0; i < putRequests.length; i += BATCH_SIZE) {
+            const batch = putRequests.slice(i, i + BATCH_SIZE);
+            await ddbDocClient.send(new BatchWriteCommand({
                 RequestItems: {
                     [APP_PERMISSIONS_TABLE]: batch
                 }
             }));
-
-            const unprocessed = response.UnprocessedItems?.[APP_PERMISSIONS_TABLE];
-            if (unprocessed && unprocessed.length > 0) {
-                console.error(`[appPermissionsService] ⚠️  有 ${unprocessed.length} 個操作未成功`);
-                throw new Error(`Failed to process ${unprocessed.length} operations`);
-            }
-            totalProcessed += batch.length;
         }
 
-        console.log(`[appPermissionsService] ✅ DynamoDB 同步完成：共執行 ${totalProcessed} 個操作`);
+        console.log(`[appPermissionsService] successfully saved ${itemsToSave.length} items to DynamoDB.`);
         return true;
     } catch (e) {
-        console.error('[appPermissionsService] ❌ DynamoDB 同步失敗:', (e as any)?.message || e);
+        console.error('[appPermissionsService] DynamoDB save failed:', (e as any)?.message || e);
+        // Even if DB fails, we already saved to JSON, so we return true if we want to allow the UI to proceed,
+        // but strictly speaking, the save target failed. Let's return false to indicate DB specific failure.
         return false;
     }
 }

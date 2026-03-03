@@ -7,13 +7,12 @@ export const dynamic = 'force-dynamic'; // Ensure we fetch fresh data on each re
 
 export default async function HomePage() {
   // Fetch data directly on the server
-  const [images, appConfigs] = await Promise.all([
-    getCarouselImages(),
-    getAppPermissionsFromDynamoDB()
+  const [images] = await Promise.all([
+    getCarouselImages()
   ]);
   const imageUrls = images.map(img => img.url);
 
   console.log('[HomePage Server] Fetched images:', imageUrls.length);
 
-  return <ClientHomePage initialCarouselImages={imageUrls} initialAppConfigs={appConfigs} />;
+  return <ClientHomePage initialCarouselImages={imageUrls} />;
 }
