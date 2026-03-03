@@ -222,9 +222,9 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   const agoraConfig = useMemo(() => ({
     channelName: effectiveChannelName,
     // Map 'observer' and 'assistant' to actual Agora roles (teacher or student)
-    role: (urlRole === 'teacher' || urlRole === 'student') ? (urlRole as any as 'teacher' | 'student') : 
-          isAssistant ? 'teacher' : 
-          isObserver ? 'student' : 
+    role: (urlRole === 'teacher' || urlRole === 'student') ? (urlRole as any as 'teacher' | 'student') :
+      isAssistant ? 'teacher' :
+        isObserver ? 'student' :
           computedRole,
     isOneOnOne: false, // P3: Disable 1v1 mode to enable small class 2-6 people
     defaultQuality: 'high' as const // 默认高质量
@@ -261,7 +261,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     }
   }, [isRoleOccupied, joined, leave]);
 
-  const isTestPath = typeof window !== 'undefined' && window.location.pathname === '/classroom/test';
+  const isTestPath = typeof window !== 'undefined' && window.location.pathname === '/classroom/room';
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -340,7 +340,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   const remoteNameCacheRef = useRef<Record<string, string>>({});
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const isTestPath = window.location.pathname === '/classroom/test';
+    const isTestPath = window.location.pathname === '/classroom/room';
     const r = firstRemote;
     if (!r) {
       setRemoteName(null);
@@ -2165,7 +2165,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
         </div>
       )}
 
-      {/* Course Title (only on /classroom/test) */}
+      {/* Course Title (only on /classroom/room) */}
       {isTestPath && (
         <div style={{ background: '#fff', color: '#111827', fontSize: '18px', padding: '10px 12px', textAlign: 'center', fontWeight: 700, borderBottom: '1px solid #e5e7eb' }}>
           {courseTitle}
@@ -2483,8 +2483,8 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
 
                     role={(urlRole === 'teacher' || computedRole === 'teacher') ? 'teacher'
                       : isObserver ? 'observer'
-                      : isAssistant ? 'assistant'
-                      : 'student'}
+                        : isAssistant ? 'assistant'
+                          : 'student'}
                     canDraw={canStudentDraw}
                   />
                 ) : (
@@ -2724,7 +2724,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                   </div>
 
                   {/* Console Log Viewers for debugging */}
-                  {typeof window !== 'undefined' && window.location.pathname !== '/classroom/test' && (
+                  {typeof window !== 'undefined' && window.location.pathname !== '/classroom/room' && (
                     <>
                       <ConsoleLogViewer title={`${(urlRole === 'teacher' || computedRole === 'teacher') ? '老師' : '學生'} Console Log`} />
                       <ConsoleLogViewer title={`${(urlRole === 'teacher' || computedRole === 'teacher') ? '學生' : '老師'} Console Log`} />
@@ -2817,7 +2817,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                     )}
                   </div>
 
-                  {typeof window !== 'undefined' && window.location.pathname !== '/classroom/test' && (
+                  {typeof window !== 'undefined' && window.location.pathname !== '/classroom/room' && (
                     <>
                       {joined && (
                         <div style={{ marginTop: 6, fontSize: 11, color: '#ffeb3b', background: 'rgba(255,235,59,0.1)', padding: 4, borderRadius: 4 }}>

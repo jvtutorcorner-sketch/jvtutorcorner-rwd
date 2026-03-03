@@ -140,7 +140,7 @@ export default function ClassroomWaitPage() {
 
       // Check for role mismatches if session is valid — only apply for logged-in users with explicit roles
       // Removed: the old strict redirect which was kicking teachers/students from valid classroom links
-      // Role enforcement is now handled at the classroom page level and by the /classroom/test auto-correct logic.
+      // Role enforcement is now handled at the classroom page level and by the /classroom/room auto-correct logic.
 
       if (!sessionValid) {
         // Clear login complete flag if session has expired (storedUser is null)
@@ -524,7 +524,7 @@ export default function ClassroomWaitPage() {
     // We'll navigate first and let the classroom page / server decide
     // when to clear the session-ready list after users have joined.
 
-    const target = `/classroom/test?courseId=${encodeURIComponent(courseId)}${orderId ? `&orderId=${encodeURIComponent(orderId)}` : ''}${role ? `&role=${encodeURIComponent(role)}` : ''}${sessionReadyKey ? `&session=${encodeURIComponent(sessionReadyKey)}` : ''}`;
+    const target = `/classroom/room?courseId=${encodeURIComponent(courseId)}${orderId ? `&orderId=${encodeURIComponent(orderId)}` : ''}${role ? `&role=${encodeURIComponent(role)}` : ''}${sessionReadyKey ? `&session=${encodeURIComponent(sessionReadyKey)}` : ''}`;
     console.log('Redirecting to:', target);
     router.push(target);
   }, [courseId, orderId, role, sessionReadyKey, router]);

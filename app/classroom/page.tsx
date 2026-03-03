@@ -1,4 +1,4 @@
-// Classroom top-level route: redirect to /classroom/test
+// Classroom top-level route: redirect to /classroom/room
 'use client';
 
 import { useEffect, Suspense } from 'react';
@@ -10,7 +10,7 @@ function ClassroomRedirect() {
 
   useEffect(() => {
     const params = searchParams.toString();
-    const target = `/classroom/test${params ? `?${params}` : ''}`;
+    const target = `/classroom/room${params ? `?${params}` : ''}`;
     router.replace(target);
   }, [router, searchParams]);
 
