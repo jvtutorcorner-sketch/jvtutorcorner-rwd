@@ -64,6 +64,17 @@ const DEFAULT_APPS: AppConfig[] = [
             { roleId: 'teacher', roleName: 'Teacher', visible: true },
             { roleId: 'student', roleName: 'Student', visible: false }
         ]
+    },
+    {
+        id: 'AI_ASSISTANT',
+        path: 'AI_ASSISTANT',
+        label: 'AI 客服小幫手',
+        sortOrder: 4,
+        permissions: [
+            { roleId: 'admin', roleName: 'Admin', visible: true },
+            { roleId: 'teacher', roleName: 'Teacher', visible: true },
+            { roleId: 'student', roleName: 'Student', visible: true }
+        ]
     }
 ];
 
@@ -85,8 +96,21 @@ export async function getAppPermissionsFromDynamoDB(): Promise<AppConfig[]> {
             return DEFAULT_APPS; // We return defaults, client can save them later
         }
 
+        // Merge defaults to ensure new apps (like AI_ASSISTANT) are always present even if DB exists
+        const actualItems = [...items];
+        let hasNewDefaults = false;
+        for (const def of DEFAULT_APPS) {
+            if (!actualItems.find(i => i.id === def.id)) {
+                actualItems.push(def);
+                hasNewDefaults = true;
+            }
+        }
+        if (hasNewDefaults) {
+            console.log('[appPermissionsService] Added missing default apps to DB results.');
+        }
+
         // Sort by sortOrder field to maintain custom ordering
-        const sorted = items.sort((a, b) => {
+        const sorted = actualItems.sort((a, b) => {
             const orderA = a.sortOrder ?? 999999;
             const orderB = b.sortOrder ?? 999999;
             return orderA - orderB;

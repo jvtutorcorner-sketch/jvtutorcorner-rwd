@@ -12,8 +12,15 @@ import Tabs from '@/components/Tabs';
 import { getStoredUser, type StoredUser } from '@/lib/mockAuth';
 import { useT } from '@/components/IntlProvider'; // Client-side hook
 import { AIAssistantWidget } from '@/components/AIAssistantWidget';
+import type { AppConfig } from '@/lib/appPermissionsService';
 
-export default function ClientHomePage({ initialCarouselImages }: { initialCarouselImages: string[] }) {
+export default function ClientHomePage({
+  initialCarouselImages,
+  initialAppConfigs
+}: {
+  initialCarouselImages: string[];
+  initialAppConfigs: AppConfig[];
+}) {
   const t = useT();
   const router = useRouter();
   const [user, setUser] = useState<StoredUser | null>(null);
@@ -41,6 +48,16 @@ export default function ClientHomePage({ initialCarouselImages }: { initialCarou
 
   const recommendedTeachers = TEACHERS.slice(0, 3);
   const hotCourses = COURSES.slice(0, 3);
+
+  // Evaluate AI Widget Permissions
+  const aiWidgetConfig = initialAppConfigs.find(c => c.id === 'AI_ASSISTANT');
+  let isAiWidgetVisible = false;
+  if (aiWidgetConfig) {
+    const roleKey = user?.role || 'student';
+    const perm = aiWidgetConfig.permissions.find(p => p.roleId === roleKey);
+    // By default visible unless explicitly set to false
+    isAiWidgetVisible = perm ? perm.visible !== false : false;
+  }
 
   return (
     <div className="home">
@@ -104,7 +121,7 @@ export default function ClientHomePage({ initialCarouselImages }: { initialCarou
       </section>
 
       {/* AI Assistant Chat Widget */}
-      <AIAssistantWidget />
+      {isAiWidgetVisible && <AIAssistantWidget />}
     </div>
   );
 }

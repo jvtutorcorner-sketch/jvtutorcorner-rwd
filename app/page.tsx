@@ -1,5 +1,5 @@
-// app/page.tsx
 import { getCarouselImages } from '@/lib/carousel-db';
+import { getAppPermissionsFromDynamoDB } from '@/lib/appPermissionsService';
 import ClientHomePage from './ClientHomePage';
 
 // This is a Server Component
@@ -7,10 +7,13 @@ export const dynamic = 'force-dynamic'; // Ensure we fetch fresh data on each re
 
 export default async function HomePage() {
   // Fetch data directly on the server
-  const images = await getCarouselImages();
+  const [images, appConfigs] = await Promise.all([
+    getCarouselImages(),
+    getAppPermissionsFromDynamoDB()
+  ]);
   const imageUrls = images.map(img => img.url);
 
   console.log('[HomePage Server] Fetched images:', imageUrls.length);
 
-  return <ClientHomePage initialCarouselImages={imageUrls} />;
+  return <ClientHomePage initialCarouselImages={imageUrls} initialAppConfigs={appConfigs} />;
 }
