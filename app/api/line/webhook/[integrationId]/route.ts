@@ -4,6 +4,7 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, GetCommand, ScanCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
 import fs from 'fs';
 import resolveDataFile from '@/lib/localData';
+import { executeWebhookScript } from '@/lib/scriptExecutor';
 
 const ddbRegion = process.env.CI_AWS_REGION || process.env.AWS_REGION;
 const ddbExplicitAccessKey = process.env.CI_AWS_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID;
@@ -194,6 +195,38 @@ export async function POST(request: Request, context: { params: Promise<{ integr
             }
 
             if (event.type === 'message' || event.type === 'postback') {
+
+                // If the user has configured a custom webhook script, intercept here:
+                if (appInfo.config.customScript && appInfo.config.customScript.trim()) {
+                    console.log(`[LINE Webhook] Found custom script for ${integrationId}, executing...`);
+                    const execResult = await executeWebhookScript(appInfo.config.customScript, body);
+                    console.log(`[LINE Webhook] Script executed. Success: ${execResult.success}`);
+
+                    if (execResult.success && execResult.result) {
+                        // Attempt to format the generic result into Line messages
+                        let messages: any[] = [];
+                        if (typeof execResult.result === 'string') {
+                            messages = [{ type: 'text', text: execResult.result }];
+                        } else if (Array.isArray(execResult.result)) {
+                            messages = execResult.result;
+                        } else if (typeof execResult.result === 'object') {
+                            messages = [execResult.result];
+                        }
+
+                        if (messages.length > 0) {
+                            if (isSimulation) simulationReplies.push(...messages);
+                            else await replyToLine(replyToken, messages, channelAccessToken);
+                        }
+                    } else if (!execResult.success) {
+                        console.error(`[LINE Webhook] Custom Script failed via isolated-vm:`, execResult.error);
+                        console.error('Logs:', execResult.logs);
+                        const msg = { type: 'text', text: '[Webhook Error] 執行客製化腳本失敗，請聯絡管理員。' };
+                        if (isSimulation) simulationReplies.push(msg);
+                        else await replyToLine(replyToken, [msg], channelAccessToken);
+                    }
+                    continue; // Skip the rest of the standard AI binding logic because script handled it
+                }
+
                 const existingProfile = await findProfileByLineUid(lineUid);
 
                 if (existingProfile) {

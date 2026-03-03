@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect, Suspense, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import Editor from '@monaco-editor/react';
 
 export default function AddAppPage() {
     return (
@@ -62,6 +63,14 @@ function AddAppForm() {
         // WeChat
         wechatAppId: '',
         wechatAppSecret: '',
+        // Custom Scripting (for Webhooks)
+        enableCustomScript: false,
+        customScript: `function doPost(event) {
+  // Use event object from Webhook Provider
+  // return your reply payload
+  const incoming = event.events[0]?.message?.text;
+  return "You said: " + incoming;
+}`
     });
 
     // For Payment
@@ -243,12 +252,17 @@ function AddAppForm() {
             } else {
                 // 通訊渠道 - 依選擇的渠道類型取出對應 config 欄位
                 const channelCfg = CHANNEL_CONFIG_MAP[selectedChannelType];
-                const config: Record<string, string> = {};
+                const config: Record<string, any> = {};
                 if (channelCfg) {
                     for (const f of channelCfg.fields) {
                         const val = (channelData as any)[f.name];
                         if (val) config[f.name] = val;
                     }
+                }
+
+                // Attach custom script if enabled
+                if (channelData.enableCustomScript && channelData.customScript.trim()) {
+                    config.customScript = channelData.customScript;
                 }
 
                 payload = {
@@ -591,6 +605,44 @@ function AddAppForm() {
                                             )}
                                         </div>
                                     ))}
+
+                                    {/* Webhook Javascript Editor Feature */}
+                                    <div className="mt-6 border-t border-gray-200 dark:border-gray-700 pt-4">
+                                        <label className="flex items-center gap-2 cursor-pointer mb-2">
+                                            <input
+                                                type="checkbox"
+                                                checked={channelData.enableCustomScript}
+                                                onChange={(e) => setChannelData({ ...channelData, enableCustomScript: e.target.checked })}
+                                                className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+                                            />
+                                            <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">
+                                                啟用自訂 Webhook 腳本 (實驗性)
+                                            </span>
+                                        </label>
+                                        <p className="text-xs text-gray-500 mb-3 ml-6">
+                                            撰寫 JavaScript 程式碼來自訂接收到 Webhook 時的處理邏輯，類似 Google Apps Script 的結構。
+                                        </p>
+
+                                        {channelData.enableCustomScript && (
+                                            <div className="ml-6 border border-gray-300 dark:border-gray-600 rounded-md overflow-hidden">
+                                                <Editor
+                                                    height="300px"
+                                                    defaultLanguage="javascript"
+                                                    theme="vs-dark"
+                                                    value={channelData.customScript}
+                                                    onChange={(value) => setChannelData({ ...channelData, customScript: value || '' })}
+                                                    options={{
+                                                        minimap: { enabled: false },
+                                                        fontSize: 14,
+                                                        lineNumbers: 'on',
+                                                        scrollBeyondLastLine: false,
+                                                        automaticLayout: true
+                                                    }}
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
+
                                 </div>
                             </>
                         )}

@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import Editor from '@monaco-editor/react';
 
 interface AppIntegration {
     integrationId: string;
@@ -71,6 +72,8 @@ export default function AppsPage() {
     const [editedConfig, setEditedConfig] = useState<Record<string, any>>({});
     const [editedName, setEditedName] = useState('');
     const [editedStatus, setEditedStatus] = useState('ACTIVE');
+    const [editedScriptEnabled, setEditedScriptEnabled] = useState(false);
+    const [editedCustomScript, setEditedCustomScript] = useState('');
     const [showSecret, setShowSecret] = useState(false);
     const [isSavingConfig, setIsSavingConfig] = useState(false);
     const [testingId, setTestingId] = useState<string | null>(null);   // integrationId currently testing
@@ -220,6 +223,13 @@ export default function AppsPage() {
         if (!selectedAppConfig) return;
         setIsSavingConfig(true);
         try {
+            const updatedConfig = { ...editedConfig };
+            if (editedScriptEnabled && editedCustomScript.trim()) {
+                updatedConfig.customScript = editedCustomScript;
+            } else {
+                delete updatedConfig.customScript;
+            }
+
             const res = await fetch(`/api/app-integrations`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
@@ -227,15 +237,15 @@ export default function AppsPage() {
                     integrationId: selectedAppConfig.integrationId,
                     userId: selectedAppConfig.userId,
                     type: selectedAppConfig.type,
-                    config: editedConfig,
+                    config: updatedConfig,
                     name: editedName,
                     status: editedStatus
                 })
             });
             const data = await res.json();
             if (data.ok) {
-                setApps(prev => prev.map(a => a.integrationId === selectedAppConfig.integrationId ? { ...a, config: editedConfig, name: editedName, status: editedStatus } : a));
-                setSelectedAppConfig(prev => prev ? { ...prev, config: editedConfig, name: editedName, status: editedStatus } : null);
+                setApps(prev => prev.map(a => a.integrationId === selectedAppConfig.integrationId ? { ...a, config: updatedConfig, name: editedName, status: editedStatus } : a));
+                setSelectedAppConfig(prev => prev ? { ...prev, config: updatedConfig, name: editedName, status: editedStatus } : null);
                 alert('設定儲存成功');
             } else {
                 alert(`儲存失敗: ${data.error}`);
@@ -743,6 +753,8 @@ export default function AppsPage() {
                                                                 setEditedConfig(app.config ? { ...app.config } : {});
                                                                 setEditedName(app.name || '');
                                                                 setEditedStatus(app.status || 'ACTIVE');
+                                                                setEditedScriptEnabled(!!(app.config && app.config.customScript));
+                                                                setEditedCustomScript(app.config && app.config.customScript ? app.config.customScript : `function doPost(event) {\n  const incoming = event.events[0]?.message?.text;\n  return "You said: " + incoming;\n}`);
                                                             }}
                                                             className="text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 dark:hover:bg-blue-900/50 font-medium py-2 px-4 rounded-lg transition-colors inline-block"
                                                         >
@@ -892,225 +904,262 @@ export default function AppsPage() {
                                                         </div>
                                                     </div>
                                                 )}
-                                            </div>
 
-                                            {/* AI Prompt 測試區塊 */}
-                                            {AI_TYPES.includes(selectedAppConfig.type) && (
-                                                <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
-                                                    <h4 className="font-bold text-gray-800 dark:text-white mb-3 flex items-center gap-2">
-                                                        <span className="text-xl">💬</span> Prompt 功能測試
-                                                    </h4>
-                                                    <div className="space-y-3">
-                                                        <p className="text-xs text-gray-500 mb-2">您可以輸入一段文字，測試 AI 是否能正確回應內容。</p>
-                                                        <div className="flex flex-col gap-2">
-                                                            <textarea
-                                                                value={simInput}
-                                                                onChange={(e) => setSimInput(e.target.value)}
-                                                                placeholder="請輸入測試問題 (例如：你好，請自我介紹)"
-                                                                rows={3}
-                                                                className="w-full px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none resize-none"
-                                                                onKeyDown={(e) => {
-                                                                    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-                                                                        handleAiTestPrompt(selectedAppConfig);
-                                                                    }
-                                                                }}
-                                                            />
-                                                            <button
-                                                                onClick={() => handleAiTestPrompt(selectedAppConfig)}
-                                                                disabled={simulating || !simInput.trim()}
-                                                                className="w-full px-4 py-2 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-                                                            >
-                                                                {simulating ? (
-                                                                    <>
-                                                                        <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
-                                                                        AI 思考中...
-                                                                    </>
-                                                                ) : (
-                                                                    '🚀 傳送並測試 Prompt'
-                                                                )}
-                                                            </button>
-                                                        </div>
-                                                        <div className="text-[10px] text-gray-400 text-right">支援 Ctrl + Enter 快速傳送</div>
-
-                                                        {/* 回應內容區域 */}
-                                                        <div className="mt-4">
-                                                            <div className="flex items-center justify-between mb-2">
-                                                                <h5 className="text-sm font-bold text-gray-700 dark:text-gray-300 flex items-center gap-1">
-                                                                    <span className="text-base">📋</span> AI 回應內容
-                                                                </h5>
-                                                                {simReply && (
-                                                                    <button
-                                                                        onClick={() => {
-                                                                            navigator.clipboard.writeText(simReply.replace(/^❌ (錯誤|測試失敗)：/, ''));
-                                                                        }}
-                                                                        className="text-[10px] text-blue-600 hover:text-blue-700 dark:text-blue-400"
-                                                                    >
-                                                                        複製結果
-                                                                    </button>
-                                                                )}
-                                                            </div>
-                                                            <div className={`p-4 rounded-lg border-2 min-h-[120px] max-h-[400px] overflow-auto resize-y transition-all ${!simReply ? 'bg-gray-50 dark:bg-gray-900/50 border-gray-200 dark:border-gray-800 border-dashed' :
-                                                                simReply.startsWith('❌') ? 'bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-900/50' :
-                                                                    'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-900/50'
-                                                                }`}>
-                                                                {simulating ? (
-                                                                    <div className="flex flex-col items-center justify-center h-full min-h-[80px] text-gray-400 gap-3">
-                                                                        <svg className="animate-spin h-6 w-6 text-blue-500" fill="none" viewBox="0 0 24 24">
-                                                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                                                                        </svg>
-                                                                        <span className="text-xs font-medium animate-pulse">正在取得 AI 回應...</span>
-                                                                    </div>
-                                                                ) : simReply ? (
-                                                                    <div className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap font-medium leading-relaxed selection:bg-blue-100 dark:selection:bg-blue-900/40">
-                                                                        {simReply}
-                                                                    </div>
-                                                                ) : (
-                                                                    <div className="flex flex-col items-center justify-center h-full min-h-[80px] text-gray-400 italic">
-                                                                        <svg className="w-8 h-8 mb-2 opacity-20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-                                                                        </svg>
-                                                                        <p className="text-xs">尚未執行測試，在上方輸入內容並點擊傳送</p>
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            )}
-
-                                            {/* 測試按鈕 (金流服務和通訊渠道) */}
-                                            {(() => {
-                                                const PAYMENT_TYPES = ['ECPAY', 'PAYPAL', 'STRIPE'];
-                                                const CHANNEL_TYPES = ['LINE', 'TELEGRAM', 'WHATSAPP', 'MESSENGER', 'SLACK', 'TEAMS', 'DISCORD', 'WECHAT'];
-                                                const AI_TYPES = ['OPENAI', 'ANTHROPIC', 'GEMINI'];
-                                                const isPaymentService = PAYMENT_TYPES.includes(selectedAppConfig.type);
-                                                const isChannelService = CHANNEL_TYPES.includes(selectedAppConfig.type);
-                                                const isAIService = AI_TYPES.includes(selectedAppConfig.type);
-                                                return (isPaymentService || isChannelService || isAIService) ? (
-                                                    <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
-                                                        <button
-                                                            onClick={() => handleTest({ ...selectedAppConfig, config: editedConfig })}
-                                                            disabled={testingId === selectedAppConfig.integrationId}
-                                                            className={`w-full px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${testingId === selectedAppConfig.integrationId ? 'bg-gray-300 text-gray-600 cursor-wait dark:bg-gray-600' : 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:hover:bg-amber-900/50'}`}
-                                                        >
-                                                            {testingId === selectedAppConfig.integrationId ? (
-                                                                <span className="flex items-center justify-center gap-2">
-                                                                    <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
-                                                                    測試連線中...
+                                                {/* Webhook Script Editor inside Modal (Only for Channel integrations like LINE for now) */}
+                                                {!['STRIPE', 'PAYPAL', 'ECPAY', 'OPENAI', 'ANTHROPIC', 'GEMINI'].includes(selectedAppConfig.type) && (
+                                                    <div className="mt-8 pt-4 border-t border-gray-200 dark:border-gray-700">
+                                                        <div className="flex items-center justify-between mb-4">
+                                                            <label className="flex items-center gap-2 cursor-pointer">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={editedScriptEnabled}
+                                                                    onChange={(e) => setEditedScriptEnabled(e.target.checked)}
+                                                                    className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+                                                                />
+                                                                <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">
+                                                                    使用自訂 Webhook 腳本
                                                                 </span>
-                                                            ) : (
-                                                                '🔍 測試連線'
-                                                            )}
-                                                        </button>
+                                                            </label>
+                                                        </div>
+                                                        {editedScriptEnabled && (
+                                                            <div className="border border-gray-300 dark:border-gray-700 rounded overflow-hidden shadow-inner">
+                                                                <Editor
+                                                                    height="350px"
+                                                                    defaultLanguage="javascript"
+                                                                    theme="vs-dark"
+                                                                    value={editedCustomScript}
+                                                                    onChange={(val) => setEditedCustomScript(val || '')}
+                                                                    options={{
+                                                                        minimap: { enabled: false },
+                                                                        fontSize: 14,
+                                                                        scrollBeyondLastLine: false,
+                                                                        automaticLayout: true
+                                                                    }}
+                                                                />
+                                                            </div>
+                                                        )}
+                                                        <p className="text-xs text-gray-500 mt-2">勾選後將在收到訊息時優先執行此腳本，停止將訊息傳送給 AI 或原始處理函式。</p>
                                                     </div>
-                                                ) : null;
-                                            })()}
+                                                )}
 
-                                            {/* LINE 專端功能 */}
-                                            {selectedAppConfig.type.toUpperCase() === 'LINE' && (
-                                                <div className="space-y-6">
-                                                    {/* 模擬器 - 移到上方增加可見性 */}
-                                                    <div className="mt-6 border-t border-gray-100 dark:border-gray-700 pt-6">
+                                                {/* AI Prompt 測試區塊 */}
+                                                {AI_TYPES.includes(selectedAppConfig.type) && (
+                                                    <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
                                                         <h4 className="font-bold text-gray-800 dark:text-white mb-3 flex items-center gap-2">
-                                                            <span className="text-xl">🤖</span> 訊息模擬測試
+                                                            <span className="text-xl">💬</span> Prompt 功能測試
                                                         </h4>
                                                         <div className="space-y-3">
-                                                            <p className="text-xs text-gray-500 mb-2">您可以輸入指令測試帳號綁定（例如：<code>BIND 您的電子信箱</code>）</p>
-                                                            <div className="flex gap-2">
-                                                                <input
-                                                                    type="text"
+                                                            <p className="text-xs text-gray-500 mb-2">您可以輸入一段文字，測試 AI 是否能正確回應內容。</p>
+                                                            <div className="flex flex-col gap-2">
+                                                                <textarea
                                                                     value={simInput}
                                                                     onChange={(e) => setSimInput(e.target.value)}
-                                                                    placeholder="輸入指令..."
-                                                                    className="flex-1 px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
-                                                                    onKeyDown={(e) => e.key === 'Enter' && handleSimulateLine(selectedAppConfig)}
+                                                                    placeholder="請輸入測試問題 (例如：你好，請自我介紹)"
+                                                                    rows={3}
+                                                                    className="w-full px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none resize-none"
+                                                                    onKeyDown={(e) => {
+                                                                        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                                                                            handleAiTestPrompt(selectedAppConfig);
+                                                                        }
+                                                                    }}
                                                                 />
                                                                 <button
-                                                                    onClick={() => handleSimulateLine(selectedAppConfig)}
+                                                                    onClick={() => handleAiTestPrompt(selectedAppConfig)}
                                                                     disabled={simulating || !simInput.trim()}
-                                                                    className="px-4 py-2 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                                                                    className="w-full px-4 py-2 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                                                                 >
-                                                                    {simulating ? '...' : '模擬傳送'}
+                                                                    {simulating ? (
+                                                                        <>
+                                                                            <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                                                                            AI 思考中...
+                                                                        </>
+                                                                    ) : (
+                                                                        '🚀 傳送並測試 Prompt'
+                                                                    )}
                                                                 </button>
                                                             </div>
-                                                            {simReply && (
-                                                                <div className="p-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg border-2 border-green-200 dark:border-green-900/50 animate-in fade-in slide-in-from-top-1 transition-all">
-                                                                    <p className="text-[10px] font-bold text-green-600 dark:text-green-400 mb-1 uppercase tracking-wider">Bot 模擬回覆：</p>
-                                                                    <p className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap font-medium">{simReply}</p>
+                                                            <div className="text-[10px] text-gray-400 text-right">支援 Ctrl + Enter 快速傳送</div>
+
+                                                            {/* 回應內容區域 */}
+                                                            <div className="mt-4">
+                                                                <div className="flex items-center justify-between mb-2">
+                                                                    <h5 className="text-sm font-bold text-gray-700 dark:text-gray-300 flex items-center gap-1">
+                                                                        <span className="text-base">📋</span> AI 回應內容
+                                                                    </h5>
+                                                                    {simReply && (
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                navigator.clipboard.writeText(simReply.replace(/^❌ (錯誤|測試失敗)：/, ''));
+                                                                            }}
+                                                                            className="text-[10px] text-blue-600 hover:text-blue-700 dark:text-blue-400"
+                                                                        >
+                                                                            複製結果
+                                                                        </button>
+                                                                    )}
                                                                 </div>
-                                                            )}
+                                                                <div className={`p-4 rounded-lg border-2 min-h-[120px] max-h-[400px] overflow-auto resize-y transition-all ${!simReply ? 'bg-gray-50 dark:bg-gray-900/50 border-gray-200 dark:border-gray-800 border-dashed' :
+                                                                    simReply.startsWith('❌') ? 'bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-900/50' :
+                                                                        'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-900/50'
+                                                                    }`}>
+                                                                    {simulating ? (
+                                                                        <div className="flex flex-col items-center justify-center h-full min-h-[80px] text-gray-400 gap-3">
+                                                                            <svg className="animate-spin h-6 w-6 text-blue-500" fill="none" viewBox="0 0 24 24">
+                                                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                                                                            </svg>
+                                                                            <span className="text-xs font-medium animate-pulse">正在取得 AI 回應...</span>
+                                                                        </div>
+                                                                    ) : simReply ? (
+                                                                        <div className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap font-medium leading-relaxed selection:bg-blue-100 dark:selection:bg-blue-900/40">
+                                                                            {simReply}
+                                                                        </div>
+                                                                    ) : (
+                                                                        <div className="flex flex-col items-center justify-center h-full min-h-[80px] text-gray-400 italic">
+                                                                            <svg className="w-8 h-8 mb-2 opacity-20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                                                                            </svg>
+                                                                            <p className="text-xs">尚未執行測試，在上方輸入內容並點擊傳送</p>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </div>
                                                         </div>
                                                     </div>
+                                                )}
 
-                                                    {/* Webhook URL */}
-                                                    <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg">
-                                                        <h4 className="font-semibold text-blue-800 dark:text-blue-300 mb-2 flex items-center">
-                                                            <svg className="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg>
-                                                            Webhook URL 設定
-                                                        </h4>
-                                                        <p className="text-xs text-blue-700 dark:text-blue-400 mb-3 leading-relaxed">
-                                                            請將以下網址複製並貼上至 LINE Developers Console 的 <strong>Webhook settings</strong>，並開啟「Use webhook」。
-                                                        </p>
-                                                        <div className="flex items-center gap-2">
-                                                            <code className="flex-1 block bg-white dark:bg-gray-800 px-3 py-2 rounded shadow-inner border border-blue-200 dark:border-blue-700 text-[10px] font-mono text-gray-800 dark:text-gray-200 break-all">
-                                                                {typeof window !== 'undefined' ? `${window.location.origin}/api/line/webhook/${selectedAppConfig.integrationId}` : ''}
-                                                            </code>
+                                                {/* 測試按鈕 (金流服務和通訊渠道) */}
+                                                {(() => {
+                                                    const PAYMENT_TYPES = ['ECPAY', 'PAYPAL', 'STRIPE'];
+                                                    const CHANNEL_TYPES = ['LINE', 'TELEGRAM', 'WHATSAPP', 'MESSENGER', 'SLACK', 'TEAMS', 'DISCORD', 'WECHAT'];
+                                                    const AI_TYPES = ['OPENAI', 'ANTHROPIC', 'GEMINI'];
+                                                    const isPaymentService = PAYMENT_TYPES.includes(selectedAppConfig.type);
+                                                    const isChannelService = CHANNEL_TYPES.includes(selectedAppConfig.type);
+                                                    const isAIService = AI_TYPES.includes(selectedAppConfig.type);
+                                                    return (isPaymentService || isChannelService || isAIService) ? (
+                                                        <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
                                                             <button
-                                                                onClick={(e) => {
-                                                                    const btn = e.currentTarget;
-                                                                    navigator.clipboard.writeText(`${window.location.origin}/api/line/webhook/${selectedAppConfig.integrationId}`);
-                                                                    const oldText = btn.innerText;
-                                                                    btn.innerText = '已複製';
-                                                                    setTimeout(() => btn.innerText = oldText, 2000);
-                                                                }}
-                                                                className="px-3 py-1.5 bg-blue-600 text-white font-medium text-xs rounded hover:bg-blue-700 transition-colors whitespace-nowrap"
+                                                                onClick={() => handleTest({ ...selectedAppConfig, config: editedConfig })}
+                                                                disabled={testingId === selectedAppConfig.integrationId}
+                                                                className={`w-full px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${testingId === selectedAppConfig.integrationId ? 'bg-gray-300 text-gray-600 cursor-wait dark:bg-gray-600' : 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:hover:bg-amber-900/50'}`}
                                                             >
-                                                                複製
+                                                                {testingId === selectedAppConfig.integrationId ? (
+                                                                    <span className="flex items-center justify-center gap-2">
+                                                                        <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                                                                        測試連線中...
+                                                                    </span>
+                                                                ) : (
+                                                                    '🔍 測試連線'
+                                                                )}
                                                             </button>
                                                         </div>
-                                                    </div>
+                                                    ) : null;
+                                                })()}
 
-                                                    {/* LINE 推播測試 */}
-                                                    <div className="mt-6 p-4 bg-purple-50 dark:bg-purple-900/30 border border-purple-200 dark:border-purple-800 rounded-lg">
-                                                        <h4 className="font-semibold text-purple-800 dark:text-purple-300 mb-3 flex items-center">
-                                                            <svg className="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg>
-                                                            LINE 推播測試
-                                                        </h4>
-                                                        <p className="text-xs text-purple-700 dark:text-purple-400 mb-3">
-                                                            向所有已綁定 LINE 的使用者發送推播通知
-                                                        </p>
-                                                        <div className="space-y-3">
-                                                            <input
-                                                                type="text"
-                                                                value={pushTitle}
-                                                                onChange={(e) => setPushTitle(e.target.value)}
-                                                                placeholder="標題（可選）"
-                                                                className="w-full px-3 py-2 text-sm border border-purple-300 dark:border-purple-600 rounded-lg dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-purple-500 outline-none"
-                                                            />
-                                                            <textarea
-                                                                value={pushMessage}
-                                                                onChange={(e) => setPushMessage(e.target.value)}
-                                                                placeholder="推播訊息內容"
-                                                                rows={3}
-                                                                className="w-full px-3 py-2 text-sm border border-purple-300 dark:border-purple-600 rounded-lg dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-purple-500 outline-none resize-none"
-                                                            />
-                                                            <button
-                                                                onClick={handlePushLine}
-                                                                disabled={pushTesting || !pushMessage.trim()}
-                                                                className="w-full px-4 py-2 bg-purple-600 text-white text-sm font-bold rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                                            >
-                                                                {pushTesting ? '✉️ 推播中...' : '📤 發送推播'}
-                                                            </button>
-                                                            {pushResult && (
-                                                                <div className={`p-3 rounded-lg text-sm ${pushResult.startsWith('✅') ? 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300'}`}>
-                                                                    {pushResult}
+                                                {/* LINE 專端功能 */}
+                                                {selectedAppConfig.type.toUpperCase() === 'LINE' && (
+                                                    <div className="space-y-6">
+                                                        {/* 模擬器 - 移到上方增加可見性 */}
+                                                        <div className="mt-6 border-t border-gray-100 dark:border-gray-700 pt-6">
+                                                            <h4 className="font-bold text-gray-800 dark:text-white mb-3 flex items-center gap-2">
+                                                                <span className="text-xl">🤖</span> 訊息模擬測試
+                                                            </h4>
+                                                            <div className="space-y-3">
+                                                                <p className="text-xs text-gray-500 mb-2">您可以輸入指令測試帳號綁定（例如：<code>BIND 您的電子信箱</code>）</p>
+                                                                <div className="flex gap-2">
+                                                                    <input
+                                                                        type="text"
+                                                                        value={simInput}
+                                                                        onChange={(e) => setSimInput(e.target.value)}
+                                                                        placeholder="輸入指令..."
+                                                                        className="flex-1 px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                                                                        onKeyDown={(e) => e.key === 'Enter' && handleSimulateLine(selectedAppConfig)}
+                                                                    />
+                                                                    <button
+                                                                        onClick={() => handleSimulateLine(selectedAppConfig)}
+                                                                        disabled={simulating || !simInput.trim()}
+                                                                        className="px-4 py-2 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                                                                    >
+                                                                        {simulating ? '...' : '模擬傳送'}
+                                                                    </button>
                                                                 </div>
-                                                            )}
+                                                                {simReply && (
+                                                                    <div className="p-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg border-2 border-green-200 dark:border-green-900/50 animate-in fade-in slide-in-from-top-1 transition-all">
+                                                                        <p className="text-[10px] font-bold text-green-600 dark:text-green-400 mb-1 uppercase tracking-wider">Bot 模擬回覆：</p>
+                                                                        <p className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap font-medium">{simReply}</p>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Webhook URL */}
+                                                        <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg">
+                                                            <h4 className="font-semibold text-blue-800 dark:text-blue-300 mb-2 flex items-center">
+                                                                <svg className="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg>
+                                                                Webhook URL 設定
+                                                            </h4>
+                                                            <p className="text-xs text-blue-700 dark:text-blue-400 mb-3 leading-relaxed">
+                                                                請將以下網址複製並貼上至 LINE Developers Console 的 <strong>Webhook settings</strong>，並開啟「Use webhook」。
+                                                            </p>
+                                                            <div className="flex items-center gap-2">
+                                                                <code className="flex-1 block bg-white dark:bg-gray-800 px-3 py-2 rounded shadow-inner border border-blue-200 dark:border-blue-700 text-[10px] font-mono text-gray-800 dark:text-gray-200 break-all">
+                                                                    {typeof window !== 'undefined' ? `${window.location.origin}/api/line/webhook/${selectedAppConfig.integrationId}` : ''}
+                                                                </code>
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        const btn = e.currentTarget;
+                                                                        navigator.clipboard.writeText(`${window.location.origin}/api/line/webhook/${selectedAppConfig.integrationId}`);
+                                                                        const oldText = btn.innerText;
+                                                                        btn.innerText = '已複製';
+                                                                        setTimeout(() => btn.innerText = oldText, 2000);
+                                                                    }}
+                                                                    className="px-3 py-1.5 bg-blue-600 text-white font-medium text-xs rounded hover:bg-blue-700 transition-colors whitespace-nowrap"
+                                                                >
+                                                                    複製
+                                                                </button>
+                                                            </div>
+                                                        </div>
+
+                                                        {/* LINE 推播測試 */}
+                                                        <div className="mt-6 p-4 bg-purple-50 dark:bg-purple-900/30 border border-purple-200 dark:border-purple-800 rounded-lg">
+                                                            <h4 className="font-semibold text-purple-800 dark:text-purple-300 mb-3 flex items-center">
+                                                                <svg className="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg>
+                                                                LINE 推播測試
+                                                            </h4>
+                                                            <p className="text-xs text-purple-700 dark:text-purple-400 mb-3">
+                                                                向所有已綁定 LINE 的使用者發送推播通知
+                                                            </p>
+                                                            <div className="space-y-3">
+                                                                <input
+                                                                    type="text"
+                                                                    value={pushTitle}
+                                                                    onChange={(e) => setPushTitle(e.target.value)}
+                                                                    placeholder="標題（可選）"
+                                                                    className="w-full px-3 py-2 text-sm border border-purple-300 dark:border-purple-600 rounded-lg dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-purple-500 outline-none"
+                                                                />
+                                                                <textarea
+                                                                    value={pushMessage}
+                                                                    onChange={(e) => setPushMessage(e.target.value)}
+                                                                    placeholder="推播訊息內容"
+                                                                    rows={3}
+                                                                    className="w-full px-3 py-2 text-sm border border-purple-300 dark:border-purple-600 rounded-lg dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-purple-500 outline-none resize-none"
+                                                                />
+                                                                <button
+                                                                    onClick={handlePushLine}
+                                                                    disabled={pushTesting || !pushMessage.trim()}
+                                                                    className="w-full px-4 py-2 bg-purple-600 text-white text-sm font-bold rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                                                >
+                                                                    {pushTesting ? '✉️ 推播中...' : '📤 發送推播'}
+                                                                </button>
+                                                                {pushResult && (
+                                                                    <div className={`p-3 rounded-lg text-sm ${pushResult.startsWith('✅') ? 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300'}`}>
+                                                                        {pushResult}
+                                                                    </div>
+                                                                )}
+                                                            </div>
                                                         </div>
                                                     </div>
-                                                </div>
-                                            )}
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -1164,4 +1213,3 @@ export default function AppsPage() {
         </div>
     );
 }
-
