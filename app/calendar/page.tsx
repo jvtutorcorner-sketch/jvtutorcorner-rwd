@@ -408,9 +408,9 @@ export default function CalendarPage() {
   return (
     <div className="min-h-screen bg-white text-gray-800 font-sans">
       {/* 主要內容區 (Main Content) */}
-      <main className="p-4 md:p-8 bg-[#fdfdfd] min-h-screen overflow-y-auto">
+      <main className="p-2 md:p-8 bg-[#fdfdfd] min-h-screen flex flex-col items-stretch">
         {/* 操作按鈕 */}
-        <div className="flex gap-3 mb-6">
+        <div className="flex gap-3 mb-4 md:mb-6 px-2 md:px-0">
           <Link
             href="/calendar/reminders"
             className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition-colors font-medium text-sm"
@@ -421,8 +421,8 @@ export default function CalendarPage() {
         </div>
 
         {/* 行事曆區塊 */}
-        <div className="bg-white shadow-sm hover:shadow-md transition-shadow min-h-[500px] md:min-h-[700px] p-4 md:p-6 rounded-xl border border-gray-100 overflow-x-auto">
-          <div className="min-w-[700px] md:min-w-0">
+        <div className="bg-white shadow-sm hover:shadow-md transition-shadow flex-1 md:min-h-[700px] p-2 md:p-6 rounded-xl border border-gray-100 flex flex-col">
+          <div className="flex-1 w-full mx-auto">
             <Calendar events={events} view={view} onViewChange={setView} />
           </div>
         </div>

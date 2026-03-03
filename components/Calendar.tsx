@@ -131,16 +131,16 @@ const Calendar: React.FC<CalendarProps> = ({ events, view: controlledView, onVie
       // Custom format for week range if needed, or just show Month Year
       // Showing range: "2023年 10月 22日 - 10月 28日"
       return (
-        <div className="flex flex-col md:flex-row items-center justify-between px-4 py-4 bg-white border-b border-gray-200">
-          <div className="flex items-center space-x-4">
-            <h2 className="text-xl font-semibold text-gray-900">
+        <div className="flex flex-col xl:flex-row items-center justify-between px-2 sm:px-4 py-3 sm:py-4 bg-white border-b border-gray-200 gap-3">
+          <div className="flex flex-row items-center justify-between w-full xl:w-auto xl:space-x-4">
+            <h2 className="text-base sm:text-lg lg:text-xl font-semibold text-gray-900 leading-tight flex-1 text-center xl:text-left">
               {format(start, 'yyyy年MM月dd日', { locale: zhTW })} - {format(end, 'MM月dd日', { locale: zhTW })}
             </h2>
             {/* 檢視提醒按鈕 */}
             {Object.keys(reminders).length > 0 && (
               <Link
                 href="/calendar/reminders"
-                className="flex items-center space-x-1 px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-colors text-sm font-medium"
+                className="flex items-center space-x-1 px-2.5 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-colors text-xs sm:text-sm font-medium ml-2"
                 title="檢視所有提醒"
               >
                 <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
@@ -150,11 +150,11 @@ const Calendar: React.FC<CalendarProps> = ({ events, view: controlledView, onVie
               </Link>
             )}
           </div>
-          <div className="flex items-center space-x-2 mt-2 md:mt-0">
+          <div className="flex items-center space-x-2 w-full justify-center xl:w-auto overflow-x-auto pb-1 xl:pb-0">
             <select
               value={view}
               onChange={(e) => setView(e.target.value as ViewType)}
-              className="border border-gray-300 rounded-md text-sm px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="border border-gray-300 rounded-md text-xs sm:text-sm px-2 sm:px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 max-w-[100px] sm:max-w-none"
             >
               <option value="year">{t('calendar_view_year') || '年'}</option>
               <option value="month">{t('calendar_view_month') || '月'}</option>
@@ -162,17 +162,17 @@ const Calendar: React.FC<CalendarProps> = ({ events, view: controlledView, onVie
               <option value="day">{t('calendar_view_day') || '日'}</option>
             </select>
 
-            <div className="flex items-center space-x-1">
-              <Button onClick={prev} variant="outline" size="sm" className="p-1.5">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="flex items-center space-x-1 flex-shrink-0">
+              <Button onClick={prev} variant="outline" size="sm" className="p-1.5 sm:p-2 hover:bg-gray-100">
+                <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
               </Button>
-              <Button onClick={() => setCurrentDate(new Date())} variant="primary" size="sm" className="px-4">
+              <Button onClick={() => setCurrentDate(new Date())} variant="primary" size="sm" className="px-3 sm:px-4 text-xs sm:text-sm">
                 {t('today')}
               </Button>
-              <Button onClick={next} variant="outline" size="sm" className="p-1.5">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <Button onClick={next} variant="outline" size="sm" className="p-1.5 sm:p-2 hover:bg-gray-100">
+                <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                 </svg>
               </Button>
@@ -183,16 +183,16 @@ const Calendar: React.FC<CalendarProps> = ({ events, view: controlledView, onVie
     }
 
     return (
-      <div className="flex flex-col md:flex-row items-center justify-between px-4 py-4 bg-white border-b border-gray-200">
-        <div className="flex items-center space-x-4">
-          <h2 className="text-xl font-semibold text-gray-900">
+      <div className="flex flex-col xl:flex-row items-center justify-between px-2 sm:px-4 py-3 sm:py-4 bg-white border-b border-gray-200 gap-3">
+        <div className="flex flex-row items-center justify-between w-full xl:w-auto xl:space-x-4">
+          <h2 className="text-base sm:text-xl font-semibold text-gray-900 leading-tight">
             {format(currentDate, titleFormat, { locale: zhTW })}
           </h2>
           {/* 檢視提醒按鈕 */}
           {Object.keys(reminders).length > 0 && (
             <Link
               href="/calendar/reminders"
-              className="flex items-center space-x-1 px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-colors text-sm font-medium"
+              className="flex items-center space-x-1 px-2.5 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-colors text-xs sm:text-sm font-medium ml-2"
               title="檢視所有提醒"
             >
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
@@ -202,11 +202,11 @@ const Calendar: React.FC<CalendarProps> = ({ events, view: controlledView, onVie
             </Link>
           )}
         </div>
-        <div className="flex items-center space-x-2 mt-2 md:mt-0">
+        <div className="flex items-center space-x-2 w-full justify-center xl:w-auto overflow-x-auto pb-1 xl:pb-0">
           <select
             value={view}
             onChange={(e) => setView(e.target.value as ViewType)}
-            className="border border-gray-300 rounded-md text-sm px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="border border-gray-300 rounded-md text-xs sm:text-sm px-2 sm:px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 max-w-[100px] sm:max-w-none"
           >
             <option value="year">{t('calendar_view_year') || '年'}</option>
             <option value="month">{t('calendar_view_month') || '月'}</option>
@@ -214,17 +214,17 @@ const Calendar: React.FC<CalendarProps> = ({ events, view: controlledView, onVie
             <option value="day">{t('calendar_view_day') || '日'}</option>
           </select>
 
-          <div className="flex items-center space-x-1">
-            <Button onClick={prev} variant="outline" size="sm" className="p-1.5">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="flex items-center space-x-1 flex-shrink-0">
+            <Button onClick={prev} variant="outline" size="sm" className="p-1.5 sm:p-2 hover:bg-gray-100">
+              <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
             </Button>
-            <Button onClick={() => setCurrentDate(new Date())} variant="primary" size="sm" className="px-4">
+            <Button onClick={() => setCurrentDate(new Date())} variant="primary" size="sm" className="px-3 sm:px-4 text-xs sm:text-sm">
               {t('today')}
             </Button>
-            <Button onClick={next} variant="outline" size="sm" className="p-1.5">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <Button onClick={next} variant="outline" size="sm" className="p-1.5 sm:p-2 hover:bg-gray-100">
+              <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
               </svg>
             </Button>
@@ -406,39 +406,45 @@ const Calendar: React.FC<CalendarProps> = ({ events, view: controlledView, onVie
     const hours = Array.from({ length: 24 }, (_, i) => i);
 
     return (
-      <div className="flex flex-col h-full overflow-hidden">
-        {/* Header: Days of Week */}
-        <div className="grid grid-cols-8 border-b border-gray-200 bg-gray-50 flex-shrink-0">
-          <div className="py-2 text-xs font-medium text-center text-gray-500 border-r border-gray-200">
-            GMT+8
-          </div>
-          {weekDays.map((day) => (
-            <div
-              key={day.toString()}
-              className={`py-2 text-center border-r border-gray-200 cursor-pointer hover:bg-gray-100 ${isSameDay(day, new Date()) ? 'bg-blue-50' : ''}`}
-              onClick={() => {
-                setCurrentDate(day);
-                setView('day');
-              }}
-            >
-              <div className={`text-xs font-medium uppercase ${isSameDay(day, new Date()) ? 'text-blue-600' : 'text-gray-500'}`}>
-                {format(day, 'EEE', { locale: zhTW })}
-              </div>
-              <div className={`text-lg font-semibold ${isSameDay(day, new Date()) ? 'text-blue-600' : 'text-gray-900'}`}>
-                {format(day, 'd')}
-              </div>
+      <div className="flex flex-col h-full bg-white relative">
+        {/* Scrollable Container Container */}
+        <div className="flex-1 overflow-x-auto overflow-y-auto relative w-full h-[600px] md:h-auto">
+          {/* Header Matrix (Fixed to Top) */}
+          <div className="sticky top-0 z-30 bg-white grid grid-cols-[50px_repeat(7,minmax(80px,1fr))] md:grid-cols-[60px_repeat(7,minmax(120px,1fr))] border-b border-gray-200">
+            {/* Corner Cell (Time column header) */}
+            <div className="sticky left-0 z-40 bg-gray-50 border-r border-gray-200 flex items-center justify-center p-1 md:p-2 text-[10px] md:text-xs font-medium text-gray-500">
+              GMT+8
             </div>
-          ))}
-        </div>
 
-        {/* Scrollable Time Grid */}
-        <div className="flex-1 overflow-y-auto relative">
-          <div className="grid grid-cols-8 min-h-[1440px]"> {/* 24h * 60px/h = 1440px height */}
-            {/* Time Column */}
-            <div className="border-r border-gray-200 bg-white">
+            {/* Day Headers */}
+            {weekDays.map((day) => (
+              <div
+                key={day.toString()}
+                className={`p-1 md:p-2 border-r border-gray-200 text-center cursor-pointer min-w-[80px] md:min-w-[120px] transition-colors ${isSameDay(day, new Date()) ? 'bg-blue-50/80 sticky top-0 z-30 ring-1 ring-inset ring-blue-100' : 'bg-white hover:bg-gray-50'
+                  }`}
+                onClick={() => {
+                  setCurrentDate(day);
+                  setView('day');
+                }}
+              >
+                <div className={`text-[10px] sm:text-xs font-semibold uppercase tracking-wider mb-0.5 ${isSameDay(day, new Date()) ? 'text-blue-600' : 'text-gray-500'}`}>
+                  {format(day, 'EEE', { locale: zhTW })}
+                </div>
+                <div className={`text-base sm:text-xl font-bold flex items-center justify-center mx-auto w-6 h-6 sm:w-8 sm:h-8 rounded-full ${isSameDay(day, new Date()) ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-900'}`}>
+                  {format(day, 'd')}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Time Grid Matrix */}
+          <div className="relative grid grid-cols-[50px_repeat(7,minmax(80px,1fr))] md:grid-cols-[60px_repeat(7,minmax(120px,1fr))]">
+
+            {/* Sticky Time Column */}
+            <div className="sticky left-0 z-20 bg-white/95 backdrop-blur-sm border-r border-gray-200 h-[1440px]">
               {hours.map((hour) => (
-                <div key={hour} className="h-[60px] border-b border-gray-100 text-xs text-gray-400 text-right pr-2 relative -top-2.5">
-                  {hour}:00
+                <div key={hour} className="h-[60px] border-b border-gray-100 text-[10px] md:text-xs text-gray-400 text-right pr-1 md:pr-2 pt-0 md:pt-1 relative -top-[10px] md:-top-[28px] pointer-events-none">
+                  <span className="bg-white/95 px-1 leading-none inline-block">{hour}:00</span>
                 </div>
               ))}
             </div>
@@ -447,7 +453,7 @@ const Calendar: React.FC<CalendarProps> = ({ events, view: controlledView, onVie
             {weekDays.map((day) => {
               const dayEvents = events.filter((e) => isSameDay(e.start, day));
 
-              // Calculate overlapping events layout
+              // Calculate overlapping events layout (simplified standard algorithm)
               const sortedEvents = [...dayEvents].sort((a, b) => a.start.getTime() - b.start.getTime());
               const columns: CalendarEvent[][] = [];
               const eventLayouts = new Map<string, { col: number; totalCols: number }>();
@@ -467,9 +473,9 @@ const Calendar: React.FC<CalendarProps> = ({ events, view: controlledView, onVie
               }
 
               return (
-                <div key={day.toString()} className="border-r border-gray-200 relative bg-white">
+                <div key={day.toString()} className={`border-r border-gray-200 relative min-w-[80px] md:min-w-[120px] ${isSameDay(day, new Date()) ? 'bg-blue-50/20' : 'bg-transparent'}`}>
                   {hours.map((hour) => (
-                    <div key={hour} className="h-[60px] border-b border-gray-100"></div>
+                    <div key={hour} className="h-[60px] border-b border-gray-100 w-full"></div>
                   ))}
 
                   {/* Events Positioning */}
@@ -493,21 +499,21 @@ const Calendar: React.FC<CalendarProps> = ({ events, view: controlledView, onVie
                           e.stopPropagation();
                           setSelectedEvent(event);
                         }}
-                        className={`absolute rounded px-2 py-1 text-xs cursor-pointer overflow-hidden border flex flex-col ${getEventStyle(event)} hover:z-10 hover:shadow-md transition-all`}
+                        className={`absolute rounded md:rounded-md px-1 py-0.5 md:px-2 md:py-1 text-[10px] md:text-xs cursor-pointer overflow-hidden border flex flex-col ${getEventStyle(event)} hover:z-50 hover:shadow-lg transition-all inset-x-0.5`}
                         style={{
                           top: `${top}px`,
                           height: `${height}px`,
-                          left: `${left}%`,
-                          width: `${width}%`,
+                          left: `calc(${left}% + 1px)`,
+                          width: `calc(${width}% - 3px)`,
                         }}
                       >
-                        <div className="flex justify-between items-center w-full">
-                          <span className="font-semibold truncate">{event.title}</span>
-                          {event.teacherName && <span className="opacity-90 ml-1 text-[10px] whitespace-nowrap">{event.teacherName}</span>}
+                        <div className="flex flex-col md:flex-row md:justify-between items-start md:items-center w-full gap-0.5">
+                          <span className="font-semibold line-clamp-1 md:truncate break-all md:break-normal leading-tight w-full pointer-events-none">{event.title}</span>
+                          {event.teacherName && <span className="opacity-90 text-[9px] md:text-[10px] whitespace-nowrap bg-black/10 px-1 rounded-sm hidden md:inline-block pointer-events-none">{event.teacherName}</span>}
                         </div>
-                        <div className="flex justify-between items-start w-full mt-0.5 text-[10px]">
-                          <span className="whitespace-nowrap">{format(event.start, 'HH:mm')}</span>
-                          {event.studentName && <span className="truncate ml-1 opacity-90 text-right leading-tight">{event.studentName}</span>}
+                        <div className="flex justify-between items-end w-full mt-auto md:mt-0.5 text-[9px] md:text-[10px] pointer-events-none">
+                          <span className="whitespace-nowrap font-medium tracking-tight opacity-90">{format(event.start, 'HH:mm')}</span>
+                          {event.studentName && <span className="truncate ml-1 opacity-90 text-right leading-none hidden sm:inline-block bg-white/20 px-1 py-0.5 rounded-sm">{event.studentName}</span>}
                         </div>
                       </div>
                     );
@@ -526,14 +532,14 @@ const Calendar: React.FC<CalendarProps> = ({ events, view: controlledView, onVie
     const dayEvents = events.filter((e) => isSameDay(e.start, currentDate));
 
     return (
-      <div className="flex flex-col h-full overflow-hidden">
-        <div className="flex-1 overflow-y-auto relative">
-          <div className="flex min-h-[1440px]">
+      <div className="flex flex-col h-full bg-white relative">
+        <div className="flex-1 overflow-x-auto overflow-y-auto relative w-full h-[600px] md:h-auto">
+          <div className="grid grid-cols-[50px_1fr] md:grid-cols-[60px_1fr] relative h-[1440px]">
             {/* Time Column */}
-            <div className="w-16 flex-shrink-0 border-r border-gray-200 bg-white">
+            <div className="sticky left-0 z-20 bg-white/95 backdrop-blur-sm border-r border-gray-200 h-[1440px]">
               {hours.map((hour) => (
-                <div key={hour} className="h-[60px] border-b border-gray-100 text-xs text-gray-400 text-right pr-2 relative -top-2.5">
-                  {hour}:00
+                <div key={hour} className="h-[60px] border-b border-gray-100 text-[10px] md:text-xs text-gray-400 text-right pr-1 md:pr-2 pt-0 md:pt-1 relative -top-[10px] md:-top-[28px] pointer-events-none">
+                  <span className="bg-white/95 px-1 leading-none inline-block">{hour}:00</span>
                 </div>
               ))}
             </div>
@@ -581,25 +587,28 @@ const Calendar: React.FC<CalendarProps> = ({ events, view: controlledView, onVie
                         e.stopPropagation();
                         setSelectedEvent(event);
                       }}
-                      className={`absolute rounded px-3 py-2 text-sm cursor-pointer overflow-hidden border flex flex-col ${getEventStyle(event)} hover:z-10 hover:shadow-md transition-all`}
+                      className={`absolute rounded-md px-2 py-1 md:px-3 md:py-2 text-xs md:text-sm cursor-pointer overflow-hidden border flex flex-col justify-between shadow-sm hover:z-30 hover:shadow-lg transition-all inset-x-1 ${getEventStyle(event)}`}
                       style={{
                         top: `${top}px`,
                         height: `${height}px`,
-                        left: `${left}%`,
-                        width: `${width}%`
+                        left: `calc(${left}% + 2px)`,
+                        width: `calc(${width}% - 6px)`
                       }}
                     >
-                      <div className="flex justify-between items-center">
-                        <span className="font-bold text-base flex flex-row items-center gap-2">
-                          {event.title}
-                          {event.teacherName && <span className="font-normal text-sm opacity-90">({event.teacherName})</span>}
+                      <div className="flex justify-between items-start pointer-events-none">
+                        <span className="font-bold flex flex-row flex-wrap items-center gap-1 md:gap-2 w-full pr-1">
+                          <span className="line-clamp-2 md:line-clamp-1 break-words">{event.title}</span>
+                          {event.teacherName && <span className="font-normal text-[10px] md:text-xs opacity-90 bg-black/10 px-1 py-0.5 rounded">教: {event.teacherName}</span>}
                         </span>
-                        <div className="flex flex-row items-center gap-3 text-sm opacity-90">
-                          <span>{format(event.start, 'HH:mm')}</span>
-                          {event.studentName && <span className="bg-black/10 px-1.5 py-0.5 rounded font-medium">{event.studentName}</span>}
-                        </div>
                       </div>
-                      {event.description && <div className="text-xs mt-1 truncate">{event.description}</div>}
+                      <div className="flex flex-row items-center justify-between gap-1 w-full text-[10px] md:text-xs mt-auto font-medium opacity-95 pointer-events-none">
+                        <div className="flex items-center gap-1">
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                          <span>{format(event.start, 'HH:mm')}</span>
+                        </div>
+                        {event.studentName && <span className="bg-white/20 px-1.5 py-0.5 rounded text-[10px] max-w-[50%] truncate shrink-0 ml-auto flex items-center gap-1"><svg className="w-3 h-3 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" /></svg>{event.studentName}</span>}
+                      </div>
+                      {event.description && <div className="text-[10px] md:text-xs mt-1 truncate pointer-events-none opacity-80 mix-blend-plus-lighter">{event.description}</div>}
                     </div>
                   );
                 });
@@ -614,13 +623,13 @@ const Calendar: React.FC<CalendarProps> = ({ events, view: controlledView, onVie
 
   const handleSetReminder = async () => {
     if (!selectedEvent) return;
-    
+
     const user = getStoredUser();
     if (!user) {
       alert('請先登入');
       return;
     }
-    
+
     try {
       // Call API to save reminder
       const response = await fetch('/api/calendar/reminders', {
@@ -637,14 +646,14 @@ const Calendar: React.FC<CalendarProps> = ({ events, view: controlledView, onVie
           reminderMinutes: reminderTime
         })
       });
-      
+
       const data = await response.json();
-      
+
       if (data.ok) {
         // Also update localStorage for backward compatibility
         const newReminders = { ...reminders, [selectedEvent.id]: reminderTime };
         saveReminders(newReminders);
-        
+
         alert(`提醒已設定！將在課程開始前 ${reminderTime} 分鐘發送通知至您的信箱。`);
         setShowReminderModal(false);
       } else {
@@ -689,11 +698,13 @@ const Calendar: React.FC<CalendarProps> = ({ events, view: controlledView, onVie
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
-        {view === 'month' && renderMonth()}
-        {view === 'year' && renderYear()}
-        {view === 'week' && renderWeek()}
-        {view === 'day' && renderDay()}
+      <div className="flex-1 overflow-y-auto flex flex-col">
+        <div className="relative flex-1">
+          {view === 'month' && renderMonth()}
+          {view === 'year' && renderYear()}
+          {view === 'week' && renderWeek()}
+          {view === 'day' && renderDay()}
+        </div>
       </div>
 
       {/* Event Detail Modal */}
