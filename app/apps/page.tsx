@@ -44,6 +44,12 @@ const AI_META: Record<string, { badge: string; label: string; icon: string; desc
     GEMINI: { badge: 'bg-blue-100 text-blue-800', label: 'Google Gemini', icon: '✨', desc: 'Google 的強大原生多模態大模型' },
 };
 
+const EMAIL_TYPES = ['SMTP'];
+
+const EMAIL_META: Record<string, { badge: string; label: string; icon: string; desc: string }> = {
+    SMTP: { badge: 'bg-yellow-100 text-yellow-800', label: 'SMTP 郵件伺服器', icon: '✉️', desc: '自訂郵件伺服器，用於系統通知與密碼重置' },
+};
+
 const AI_MODEL_OPTIONS: Record<string, string[]> = {
     OPENAI: ['gpt-5.2', 'gpt-5.2-pro', 'gpt-5-mini', 'gpt-5-nano', 'gpt-4.1', 'o3-deep-research', 'o1-pro'],
     ANTHROPIC: ['claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001', 'claude-3-5-sonnet'],
@@ -62,6 +68,11 @@ const LABEL_MAP: Record<string, string> = {
     stripeSecretKey: 'Secret Key',
     paypalClientId: 'Client ID',
     paypalSecretKey: 'Secret Key',
+    smtpHost: 'SMTP 主機位置 (Host)',
+    smtpPort: '通訊埠 (Port)',
+    smtpUser: '使用者帳號 (User)',
+    smtpPass: '密碼 (Password)',
+    fromAddress: '寄件者信箱 (From Address)',
 };
 
 
@@ -691,6 +702,109 @@ export default function AppsPage() {
                         })}
                     </div>
 
+                    {/* ─────────── 郵件服務區塊 ─────────── */}
+                    <div className="flex justify-between items-center mb-6 border-b border-gray-200 dark:border-gray-700 pb-2">
+                        <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-100 flex items-center">
+                            <span className="text-xl mr-2">✉️</span>
+                            郵件服務設定
+                            <span className="ml-3 inline-flex items-center gap-2 text-sm font-normal text-gray-500 dark:text-gray-400">
+                                <span className="px-2.5 py-0.5 bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300 rounded-full text-xs font-semibold">
+                                    {apps.filter(a => EMAIL_TYPES.includes(a.type) && a.status === 'ACTIVE').length}/{apps.filter(a => EMAIL_TYPES.includes(a.type)).length}
+                                </span>
+                            </span>
+                        </h2>
+                        <Link href="/add-app?type=email" className="text-sm bg-yellow-100 hover:bg-yellow-200 text-yellow-800 font-semibold py-1.5 px-4 rounded-full transition-colors flex items-center">
+                            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+                            </svg>
+                            新增郵件服務設定
+                        </Link>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+                        {EMAIL_TYPES.map((type) => {
+                            const meta = EMAIL_META[type];
+                            const connected = getConnectedApps(type);
+                            const isConnected = connected.length > 0;
+                            const activeApp = connected.find(a => a.status === 'ACTIVE');
+                            const activeCount = connected.filter(a => a.status === 'ACTIVE').length;
+                            const inactiveCount = connected.filter(a => a.status !== 'ACTIVE').length;
+
+                            return (
+                                <div key={type} className={`relative bg-white dark:bg-gray-800 rounded-xl shadow-sm border-2 p-6 flex flex-col transition-all hover:shadow-md ${isConnected ? 'border-yellow-300 dark:border-yellow-600' : 'border-gray-200 dark:border-gray-700'}`}>
+                                    {/* 連線狀態 */}
+                                    <div className="absolute top-3 right-3">
+                                        {isConnected ? (
+                                            <span className="flex items-center gap-1 text-xs font-medium text-yellow-600 dark:text-yellow-400">
+                                                <span className="relative flex h-2.5 w-2.5">
+                                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75"></span>
+                                                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-yellow-500"></span>
+                                                </span>
+                                                已連接
+                                            </span>
+                                        ) : (
+                                            <span className="text-xs font-medium text-gray-400 dark:text-gray-500">未設定</span>
+                                        )}
+                                    </div>
+
+                                    {/* 圖標與名稱 */}
+                                    <div className="flex items-center gap-3 mb-3">
+                                        <span className="text-2xl">{meta.icon}</span>
+                                        <div>
+                                            <h3 className="font-bold text-gray-900 dark:text-white">{meta.label}</h3>
+                                        </div>
+                                    </div>
+
+                                    {/* 說明文字 */}
+                                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-4 flex-1">{meta.desc}</p>
+
+                                    {/* 已連接的名稱 */}
+                                    {activeApp && (
+                                        <p className="text-xs text-yellow-600 dark:text-yellow-400 mb-3 truncate">
+                                            ✓ {activeApp.name}
+                                            {activeApp.createdAt && (
+                                                <span className="text-gray-400 ml-1">· {new Date(activeApp.createdAt).toLocaleDateString()}</span>
+                                            )}
+                                        </p>
+                                    )}
+
+                                    {/* 設定狀態計數 */}
+                                    {connected.length > 0 && (
+                                        <div className="mb-3 p-2.5 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
+                                            <div className="flex justify-between text-xs text-gray-700 dark:text-gray-300">
+                                                <span>已設定: <strong className="text-yellow-600 dark:text-yellow-400">{activeCount}</strong></span>
+                                                <span>未設定: <strong className="text-orange-600 dark:text-orange-400">{inactiveCount}</strong></span>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* 操作按鈕 */}
+                                    <div className="space-y-2">
+                                        <div className="flex gap-2">
+                                            {isConnected ? (
+                                                <>
+                                                    <Link
+                                                        href={`/add-app?type=email&provider=${type}`}
+                                                        className="text-xs bg-gray-50 hover:bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 font-medium py-2 px-3 rounded-lg transition-colors w-full text-center"
+                                                    >
+                                                        新增服務
+                                                    </Link>
+                                                </>
+                                            ) : (
+                                                <Link
+                                                    href={`/add-app?type=email&provider=${type}`}
+                                                    className="w-full text-center text-xs bg-yellow-100 hover:bg-yellow-200 text-yellow-800 border border-yellow-300 font-semibold py-2 px-3 rounded-lg transition-colors"
+                                                >
+                                                    立即設定
+                                                </Link>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+
                     {/* ─────────── 已連接的整合列表 ─────────── */}
                     {apps.length > 0 && (
                         <div className="mt-8">
@@ -715,6 +829,7 @@ export default function AppsPage() {
                                         {apps.map((app) => {
                                             const isPayment = PAYMENT_TYPES.includes(app.type);
                                             const isAI = AI_TYPES.includes(app.type);
+                                            const isEmail = EMAIL_TYPES.includes(app.type);
 
                                             // Determine correct meta depending on type
                                             let meta;
@@ -722,6 +837,8 @@ export default function AppsPage() {
                                                 meta = PAYMENT_META[app.type];
                                             } else if (isAI) {
                                                 meta = AI_META[app.type];
+                                            } else if (isEmail) {
+                                                meta = EMAIL_META[app.type];
                                             } else {
                                                 meta = CHANNEL_META[app.type];
                                             }
@@ -1044,10 +1161,12 @@ export default function AppsPage() {
                                                     const PAYMENT_TYPES = ['ECPAY', 'PAYPAL', 'STRIPE'];
                                                     const CHANNEL_TYPES = ['LINE', 'TELEGRAM', 'WHATSAPP', 'MESSENGER', 'SLACK', 'TEAMS', 'DISCORD', 'WECHAT'];
                                                     const AI_TYPES = ['OPENAI', 'ANTHROPIC', 'GEMINI'];
+                                                    const EMAIL_TYPES = ['SMTP'];
                                                     const isPaymentService = PAYMENT_TYPES.includes(selectedAppConfig.type);
                                                     const isChannelService = CHANNEL_TYPES.includes(selectedAppConfig.type);
                                                     const isAIService = AI_TYPES.includes(selectedAppConfig.type);
-                                                    return (isPaymentService || isChannelService || isAIService) ? (
+                                                    const isEmailService = EMAIL_TYPES.includes(selectedAppConfig.type);
+                                                    return (isPaymentService || isChannelService || isAIService || isEmailService) ? (
                                                         <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
                                                             <button
                                                                 onClick={() => handleTest({ ...selectedAppConfig, config: editedConfig })}

@@ -19,6 +19,7 @@ function AddAppForm() {
     const typeFromUrl = searchParams.get('type');
     const isPayment = typeFromUrl === 'payment';
     const isAI = typeFromUrl === 'ai';
+    const isEmail = typeFromUrl === 'email';
 
     const AI_MODEL_OPTIONS: Record<string, string[]> = {
         OPENAI: ['gpt-5.2', 'gpt-5.2-pro', 'gpt-5-mini', 'gpt-5-nano', 'gpt-4.1', 'o3-deep-research', 'o1-pro'],
@@ -109,6 +110,23 @@ function AddAppForm() {
 
     const handleAiChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         setAiData({ ...aiData, [e.target.name]: e.target.value });
+    };
+
+    // For Email
+    const [selectedEmailProvider, setSelectedEmailProvider] = useState(
+        ['SMTP'].includes(providerFromUrl) ? providerFromUrl : 'SMTP'
+    );
+    const [emailData, setEmailData] = useState({
+        name: '',
+        smtpHost: '',
+        smtpPort: '',
+        smtpUser: '',
+        smtpPass: '',
+        fromAddress: ''
+    });
+
+    const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+        setEmailData({ ...emailData, [e.target.name]: e.target.value });
     };
 
     const handleChannelChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -249,6 +267,24 @@ function AddAppForm() {
                     name: aiData.name || `${selectedAIProvider} 模型服務`,
                     config
                 };
+            } else if (isEmail) {
+                let config: any = {};
+                if (selectedEmailProvider === 'SMTP') {
+                    config = {
+                        smtpHost: emailData.smtpHost,
+                        smtpPort: emailData.smtpPort,
+                        smtpUser: emailData.smtpUser,
+                        smtpPass: emailData.smtpPass,
+                        fromAddress: emailData.fromAddress,
+                    };
+                }
+
+                payload = {
+                    userId,
+                    type: selectedEmailProvider,
+                    name: emailData.name || `自訂 ${selectedEmailProvider} 服務`,
+                    config
+                };
             } else {
                 // 通訊渠道 - 依選擇的渠道類型取出對應 config 欄位
                 const channelCfg = CHANNEL_CONFIG_MAP[selectedChannelType];
@@ -284,7 +320,7 @@ function AddAppForm() {
                 throw new Error(errData.error || `HTTP ${res.status}`);
             }
 
-            alert(isPayment ? '金流設定新增成功！' : isAI ? 'AI 服務新增成功！' : '應用程式新增成功！');
+            alert(isPayment ? '金流設定新增成功！' : isAI ? 'AI 服務新增成功！' : isEmail ? '郵件服務新增成功！' : '應用程式新增成功！');
             router.push('/apps');
         } catch (error: any) {
             console.error('Save failed:', error);
@@ -298,7 +334,7 @@ function AddAppForm() {
     return (
         <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900 p-4">
             <div className="max-w-xl w-full bg-white dark:bg-gray-800 shadow-lg rounded-xl overflow-hidden">
-                <div className={`${isPayment ? 'bg-green-600' : isAI ? 'bg-indigo-600' : 'bg-blue-600'} p-6 text-white relative`}>
+                <div className={`${isPayment ? 'bg-green-600' : isAI ? 'bg-indigo-600' : isEmail ? 'bg-yellow-600' : 'bg-blue-600'} p-6 text-white relative`}>
                     <Link
                         href="/apps"
                         className="absolute left-4 top-1/2 -translate-y-1/2 p-2 hover:bg-white/20 rounded-full transition-colors"
@@ -309,21 +345,21 @@ function AddAppForm() {
                         </svg>
                     </Link>
                     <div className="text-center">
-                        <h1 className="text-2xl font-bold">{isPayment ? '新增金流服務' : isAI ? '新增 AI 服務' : '新增應用程式'}</h1>
-                        <p className={`mt-2 ${isPayment ? 'text-green-100' : isAI ? 'text-indigo-100' : 'text-blue-100'}`}>
-                            {isPayment ? '設定您的 ECPay、Stripe 或 PayPal 金流服務設定' : isAI ? '設定您要串接的 AI 模型 API 金鑰' : '設定通訊渠道串接參數 (LINE、Telegram、WhatsApp 等)'}
+                        <h1 className="text-2xl font-bold">{isPayment ? '新增金流服務' : isAI ? '新增 AI 服務' : isEmail ? '新增郵件服務' : '新增應用程式'}</h1>
+                        <p className={`mt-2 ${isPayment ? 'text-green-100' : isAI ? 'text-indigo-100' : isEmail ? 'text-yellow-100' : 'text-blue-100'}`}>
+                            {isPayment ? '設定您的 ECPay、Stripe 或 PayPal 金流服務設定' : isAI ? '設定您要串接的 AI 模型 API 金鑰' : isEmail ? '設定您的 SMTP 伺服器資訊以發送郵件' : '設定通訊渠道串接參數 (LINE、Telegram、WhatsApp 等)'}
                         </p>
                     </div>
                 </div>
 
                 <div className="p-8">
                     {/* 參數說明區塊 */}
-                    <div className={`${isPayment ? 'bg-green-50 border-green-200' : isAI ? 'bg-indigo-50 border-indigo-200' : 'bg-blue-50 border-blue-200'} border rounded-lg p-6 mb-8`}>
-                        <h3 className={`${isPayment ? 'text-green-800' : isAI ? 'text-indigo-800' : 'text-blue-800'} font-bold mb-4 flex items-center`}>
+                    <div className={`${isPayment ? 'bg-green-50 border-green-200' : isAI ? 'bg-indigo-50 border-indigo-200' : isEmail ? 'bg-yellow-50 border-yellow-200' : 'bg-blue-50 border-blue-200'} border rounded-lg p-6 mb-8`}>
+                        <h3 className={`${isPayment ? 'text-green-800' : isAI ? 'text-indigo-800' : isEmail ? 'text-yellow-800' : 'text-blue-800'} font-bold mb-4 flex items-center`}>
                             <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                             </svg>
-                            {isPayment ? '安全提示' : isAI ? '安全提示' : '參數說明'}
+                            {isPayment ? '安全提示' : isAI ? '安全提示' : isEmail ? '參數說明' : '參數說明'}
                         </h3>
                         <div className="space-y-3">
                             {isPayment ? (
@@ -333,6 +369,10 @@ function AddAppForm() {
                             ) : isAI ? (
                                 <p className="text-sm text-indigo-800">
                                     請前往各 AI 服務提供商 (OpenAI, Anthropic 等) 獲取對應的 API Key。這些金鑰將被安全加密儲存，用於呼叫 AI 模型服務。
+                                </p>
+                            ) : isEmail ? (
+                                <p className="text-sm text-yellow-800">
+                                    請填寫您的 SMTP 伺服器資訊，這將用於系統的密碼重置、通知信件等功能。密碼將被加密儲存。
                                 </p>
                             ) : (
                                 <p className="text-sm text-blue-800">
@@ -534,6 +574,72 @@ function AddAppForm() {
                                     </div>
                                 </div>
                             </>
+                        ) : isEmail ? (
+                            <>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                        設定名稱 (僅供您辨識)
+                                    </label>
+                                    <input
+                                        type="text"
+                                        name="name"
+                                        value={emailData.name}
+                                        onChange={handleEmailChange}
+                                        placeholder="例如：我的 SMTP 伺服器"
+                                        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                        required
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                        選擇郵件服務 <span className="text-red-500">*</span>
+                                    </label>
+                                    <div className="relative">
+                                        <select
+                                            value={selectedEmailProvider}
+                                            onChange={(e) => setSelectedEmailProvider(e.target.value)}
+                                            className="w-full pl-4 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                        >
+                                            <option value="SMTP">SMTP 伺服器</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                {selectedEmailProvider === 'SMTP' && (
+                                    <div className="space-y-4 p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800/50">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                                主機位置 (Host) <span className="text-red-500">*</span>
+                                            </label>
+                                            <input type="text" name="smtpHost" value={emailData.smtpHost} onChange={handleEmailChange} placeholder="smtp.gmail.com" className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600" required />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                                通訊埠 (Port) <span className="text-red-500">*</span>
+                                            </label>
+                                            <input type="text" name="smtpPort" value={emailData.smtpPort} onChange={handleEmailChange} placeholder="465 或 587" className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600" required />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                                使用者帳號 (User) <span className="text-red-500">*</span>
+                                            </label>
+                                            <input type="text" name="smtpUser" value={emailData.smtpUser} onChange={handleEmailChange} placeholder="user@example.com" className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600" required />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                                密碼 (Password) <span className="text-red-500">*</span>
+                                            </label>
+                                            <input type="password" name="smtpPass" value={emailData.smtpPass} onChange={handleEmailChange} placeholder="密碼或應用程式密碼" className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600" required />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                                寄件者信箱 (From Address) <span className="text-red-500">*</span>
+                                            </label>
+                                            <input type="text" name="fromAddress" value={emailData.fromAddress} onChange={handleEmailChange} placeholder="noreply@example.com" className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600" required />
+                                        </div>
+                                    </div>
+                                )}
+                            </>
                         ) : (
                             <>
                                 <div>
@@ -657,7 +763,7 @@ function AddAppForm() {
                             <button
                                 type="submit"
                                 disabled={loading}
-                                className={`w-2/3 ${isPayment ? 'bg-green-600 hover:bg-green-700' : isAI ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-blue-600 hover:bg-blue-700'} text-white font-bold py-3 px-4 rounded-lg transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed`}
+                                className={`w-2/3 ${isPayment ? 'bg-green-600 hover:bg-green-700' : isAI ? 'bg-indigo-600 hover:bg-indigo-700' : isEmail ? 'bg-yellow-600 hover:bg-yellow-700' : 'bg-blue-600 hover:bg-blue-700'} text-white font-bold py-3 px-4 rounded-lg transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed`}
                             >
                                 {loading ? (
                                     <>

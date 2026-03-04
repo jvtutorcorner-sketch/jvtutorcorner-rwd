@@ -99,10 +99,40 @@ export async function POST(req: Request) {
 
         // Send email with new password
         let emailSent = false;
-        const smtpHost = process.env.SMTP_HOST || 'smtp.gmail.com';
-        const smtpPort = parseInt(process.env.SMTP_PORT || '587', 10);
-        const smtpUser = process.env.SMTP_USER;
-        const smtpPass = process.env.SMTP_PASS;
+
+        let smtpHost = process.env.SMTP_HOST || 'smtp.gmail.com';
+        let smtpPort = parseInt(process.env.SMTP_PORT || '587', 10);
+        let smtpUser = process.env.SMTP_USER;
+        let smtpPass = process.env.SMTP_PASS;
+        let fromAddress = process.env.SMTP_USER;
+
+        const APPS_TABLE = process.env.DYNAMODB_TABLE_APP_INTEGRATIONS || 'jvtutorcorner-app-integrations';
+        const useAppsDynamo = typeof APPS_TABLE === 'string' && APPS_TABLE.length > 0 &&
+            (process.env.NODE_ENV === 'production' || !!(process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID));
+
+        if (useAppsDynamo) {
+            try {
+                const scanRes = await ddbDocClient.send(new ScanCommand({
+                    TableName: APPS_TABLE,
+                    FilterExpression: '#typ = :type AND #sts = :status',
+                    ExpressionAttributeNames: { '#typ': 'type', '#sts': 'status' },
+                    ExpressionAttributeValues: { ':type': 'SMTP', ':status': 'ACTIVE' }
+                }));
+                if (scanRes.Items && scanRes.Items.length > 0) {
+                    const smtpApp = scanRes.Items[0];
+                    if (smtpApp.config) {
+                        smtpHost = smtpApp.config.smtpHost || smtpHost;
+                        smtpPort = parseInt(smtpApp.config.smtpPort || String(smtpPort), 10);
+                        smtpUser = smtpApp.config.smtpUser || smtpUser;
+                        smtpPass = smtpApp.config.smtpPass || smtpPass;
+                        fromAddress = smtpApp.config.fromAddress || smtpUser;
+                        console.log('[forgot-password] Using SMTP config from database:', smtpApp.name);
+                    }
+                }
+            } catch (err) {
+                console.error('[forgot-password] Error fetching SMTP config from database', err);
+            }
+        }
 
         if (!smtpUser || !smtpPass) {
             console.warn('[forgot-password] SMTP credentials not configured. Password updated but email NOT sent. New password is:', newPassword);
@@ -125,7 +155,7 @@ export async function POST(req: Request) {
 
                 console.log(`[forgot-password] Sending email to ${targetEmail}...`);
                 const info = await transporter.sendMail({
-                    from: `"JV Tutor AI 助理" <${smtpUser}>`,
+                    from: `"JV Tutor AI 助理" <${fromAddress}>`,
                     to: targetEmail,
                     subject: '[JV Tutor] 您的密碼已重置',
                     html: `

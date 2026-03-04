@@ -3,6 +3,7 @@ import { GoogleGenerativeAI, FunctionDeclaration, SchemaType } from '@google/gen
 import { ddbDocClient } from '@/lib/dynamo';
 import { PutCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { v4 as uuidv4 } from 'uuid';
+import nodemailer from 'nodemailer';
 
 // Table for app integrations
 const APP_INTEGRATIONS_TABLE = process.env.DYNAMODB_TABLE_APP_INTEGRATIONS || 'jvtutorcorner-app-integrations';
@@ -234,6 +235,66 @@ ${JSON.stringify(dynamicTeachers, null, 2)}
                     }));
 
                     console.log(`[AI Agent] Created ticket ${ticketId} successfully.`);
+
+                    // Fetch SMTP config and send email notification
+                    try {
+                        let smtpHost = process.env.SMTP_HOST || 'smtp.gmail.com';
+                        let smtpPort = parseInt(process.env.SMTP_PORT || '587', 10);
+                        let smtpUser = process.env.SMTP_USER;
+                        let smtpPass = process.env.SMTP_PASS;
+                        let fromAddress = process.env.SMTP_USER;
+
+                        const scanRes = await ddbDocClient.send(new ScanCommand({
+                            TableName: APP_INTEGRATIONS_TABLE,
+                            FilterExpression: '#typ = :type AND #sts = :status',
+                            ExpressionAttributeNames: { '#typ': 'type', '#sts': 'status' },
+                            ExpressionAttributeValues: { ':type': 'SMTP', ':status': 'ACTIVE' }
+                        }));
+
+                        if (scanRes.Items && scanRes.Items.length > 0) {
+                            const smtpApp = scanRes.Items[0];
+                            if (smtpApp.config) {
+                                smtpHost = smtpApp.config.smtpHost || smtpHost;
+                                smtpPort = parseInt(smtpApp.config.smtpPort || String(smtpPort), 10);
+                                smtpUser = smtpApp.config.smtpUser || smtpUser;
+                                smtpPass = smtpApp.config.smtpPass || smtpPass;
+                                fromAddress = smtpApp.config.fromAddress || smtpUser;
+                            }
+                        }
+
+                        if (smtpUser && smtpPass) {
+                            const transporter = nodemailer.createTransport({
+                                host: smtpHost,
+                                port: smtpPort,
+                                secure: smtpPort === 465,
+                                auth: { user: smtpUser, pass: smtpPass },
+                            });
+
+                            const adminEmail = process.env.ADMIN_EMAIL || smtpUser;
+
+                            await transporter.sendMail({
+                                from: `"JV Tutor 系統通知" <${fromAddress}>`,
+                                to: adminEmail,
+                                subject: `[新客服工單 - ${department}] 來自 ${userContact}`,
+                                html: `
+                                    <div style="font-family: sans-serif; padding: 20px;">
+                                        <h2>收到新客服請求</h2>
+                                        <p><strong>聯絡方式:</strong> ${userContact}</p>
+                                        <p><strong>處理部門:</strong> ${department}</p>
+                                        <div style="margin: 20px 0; padding: 15px; background: #f3f4f6; border-radius: 8px;">
+                                            <p style="white-space: pre-wrap;">${message}</p>
+                                        </div>
+                                        <p style="color: #666; font-size: 12px;">工單編號: ${ticketId}</p>
+                                    </div>
+                                `
+                            });
+                            console.log(`[AI Agent] Email notification sent successfully to ${adminEmail}`);
+                        } else {
+                            console.warn('[AI Agent] SMTP credentials not configured. Email notification skipped.');
+                        }
+                    } catch (emailErr) {
+                        console.error('[AI Agent] Error sending email notification:', emailErr);
+                    }
 
                     const followUpResult = await chat.sendMessage([{
                         functionResponse: {
