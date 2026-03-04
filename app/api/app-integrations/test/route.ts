@@ -5,6 +5,7 @@
 // 回傳 { ok, type, result: { success, message, details? } }
 
 import { NextResponse } from 'next/server';
+import nodemailer from 'nodemailer';
 
 // ---------------------------------------------------------------------------
 // 各服務的驗證邏輯
@@ -454,10 +455,64 @@ async function testGEMINI(config: Record<string, any>, prompt?: string) {
     }
 }
 
+async function testSMTP(config: Record<string, string>, emailTest?: { to: string; subject: string; html: string; bcc?: string }) {
+    const host = config.smtpHost;
+    const port = parseInt(config.smtpPort, 10);
+    const user = config.smtpUser;
+    const pass = config.smtpPass;
+    const from = config.fromAddress || user;
+
+    if (!host || !port || !user || !pass) {
+        return { success: false, message: '缺少 SMTP 主機、通訊埠、帳號或密碼' };
+    }
+
+    try {
+        const transporter = nodemailer.createTransport({
+            host,
+            port,
+            secure: port === 465,
+            auth: { user, pass },
+            connectionTimeout: 10000,
+        });
+
+        // 1. 先驗證連線
+        await transporter.verify();
+
+        // 2. 如果有提供 emailTest，則執行寄送
+        if (emailTest && emailTest.to) {
+            console.log(`[testSMTP] Sending test email to: ${emailTest.to}`);
+            const sendInfo = await transporter.sendMail({
+                from: `"System Test" <${from}>`,
+                to: emailTest.to,
+                subject: emailTest.subject || '系統整合測試郵件',
+                html: emailTest.html || '<p>这是一封测试邮件，证明您的 SMTP/Resend 設定已生效。</p>',
+                bcc: emailTest.bcc,
+            });
+            return {
+                success: true,
+                message: `郵件已成功發送至 ${emailTest.to}`,
+                details: { messageId: sendInfo.messageId, response: sendInfo.response }
+            };
+        }
+
+        return { success: true, message: `SMTP 伺服器 (${host}) 連線測試成功` };
+    } catch (e: any) {
+        let errorMsg = e.message || '連線失敗';
+        if (host.includes('gmail.com') && (errorMsg.includes('Invalid login') || errorMsg.includes('auth'))) {
+            errorMsg += ' (若是 Gmail，請確認是否已使用「應用程式密碼」)';
+        } else if (host.includes('resend.com') && (errorMsg.includes('550') || errorMsg.toLowerCase().includes('domain is not verified'))) {
+            errorMsg = `Resend 網域未驗證: ${errorMsg}。如果您沒有自訂網域，請將寄件者改為 onboarding@resend.dev。驗證請至：https://resend.com/domains`;
+        } else if (host.includes('resend.com') && (errorMsg.includes('Invalid login') || errorMsg.includes('auth'))) {
+            errorMsg += ' (若是 Resend，請確認 User 為 "resend" 且 Password 為正確的 API Key)';
+        }
+        return { success: false, message: `SMTP 測試失敗: ${errorMsg}` };
+    }
+}
+
 // ---------------------------------------------------------------------------
 // 測試分發器
 // ---------------------------------------------------------------------------
-const TEST_HANDLERS: Record<string, (config: Record<string, any>, prompt?: string) => Promise<{ success: boolean; message: string; details?: any }>> = {
+const TEST_HANDLERS: Record<string, (config: Record<string, any>, prompt?: string, emailTest?: any) => Promise<{ success: boolean; message: string; details?: any }>> = {
     LINE: (config) => testLINE(config as Record<string, string>),
     TELEGRAM: (config) => testTELEGRAM(config as Record<string, string>),
     WHATSAPP: (config) => testWHATSAPP(config as Record<string, string>),
@@ -472,6 +527,8 @@ const TEST_HANDLERS: Record<string, (config: Record<string, any>, prompt?: strin
     OPENAI: testOPENAI,
     ANTHROPIC: testANTHROPIC,
     GEMINI: testGEMINI,
+    SMTP: (config, _, emailTest) => testSMTP(config as Record<string, string>, emailTest),
+    RESEND: (config, _, emailTest) => testSMTP(config as Record<string, string>, emailTest),
 };
 
 // ---------------------------------------------------------------------------
@@ -481,7 +538,7 @@ export async function POST(request: Request) {
     try {
         const body = await request.json();
         console.log('[app-integrations API] TEST request body:', JSON.stringify(body, null, 2));
-        const { integrationId, type, config, prompt } = body || {};
+        const { integrationId, type, config, prompt, emailTest } = body || {};
 
         if (!type) {
             return NextResponse.json({ ok: false, error: 'type is required.' }, { status: 400 });
@@ -506,7 +563,7 @@ export async function POST(request: Request) {
         console.log(`[app-integrations/test] Testing ${upperType} for integration ${integrationId || 'N/A'}`);
         console.log(`[app-integrations/test] Config received:`, JSON.stringify(config, null, 2));
 
-        const result = await handler(config, prompt);
+        const result = await handler(config, prompt, emailTest);
 
         console.log(`[app-integrations/test] ${upperType} result:`, result.success ? 'SUCCESS' : 'FAIL', result.message);
 

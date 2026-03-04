@@ -18,7 +18,7 @@
 
 import { NextResponse } from 'next/server';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, PutCommand, ScanCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, PutCommand, ScanCommand, GetCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
 import { randomUUID } from 'crypto';
 import fs from 'fs';
 import resolveDataFile from '@/lib/localData';
@@ -259,5 +259,40 @@ export async function PUT(request: Request) {
     } catch (error: any) {
         console.error('[app-integrations API] PUT error:', error);
         return NextResponse.json({ ok: false, error: `Failed to update integration: ${error.message}` }, { status: 500 });
+    }
+}
+
+// ---------------------------------------------------------------------------
+// DELETE - 刪除整合
+// ---------------------------------------------------------------------------
+export async function DELETE(request: Request) {
+    try {
+        const { searchParams } = new URL(request.url);
+        const userId = searchParams.get('userId');
+        const type = searchParams.get('type');
+
+        if (!userId || !type) {
+            return NextResponse.json({ ok: false, error: 'userId and type (PK) are required for deletion.' }, { status: 400 });
+        }
+
+        if (useDynamo) {
+            await docClient.send(new DeleteCommand({
+                TableName: TABLE,
+                Key: { userId: String(userId), type: String(type).toUpperCase() }
+            }));
+        } else {
+            await loadLocal();
+            const initialLen = LOCAL_INTEGRATIONS.length;
+            LOCAL_INTEGRATIONS = LOCAL_INTEGRATIONS.filter(a => !(a.userId === userId && a.type === type.toUpperCase()));
+            if (LOCAL_INTEGRATIONS.length === initialLen) {
+                return NextResponse.json({ ok: false, error: 'Integration not found' }, { status: 404 });
+            }
+            await saveLocal();
+        }
+
+        return NextResponse.json({ ok: true, message: 'Integration deleted successfully' });
+    } catch (error: any) {
+        console.error('[app-integrations API] DELETE error:', error);
+        return NextResponse.json({ ok: false, error: `Failed to delete integration: ${error.message}` }, { status: 500 });
     }
 }

@@ -44,10 +44,10 @@ const AI_META: Record<string, { badge: string; label: string; icon: string; desc
     GEMINI: { badge: 'bg-blue-100 text-blue-800', label: 'Google Gemini', icon: '✨', desc: 'Google 的強大原生多模態大模型' },
 };
 
-const EMAIL_TYPES = ['SMTP'];
+const EMAIL_TYPES = ['RESEND'];
 
 const EMAIL_META: Record<string, { badge: string; label: string; icon: string; desc: string }> = {
-    SMTP: { badge: 'bg-yellow-100 text-yellow-800', label: 'SMTP 郵件伺服器', icon: '✉️', desc: '自訂郵件伺服器，用於系統通知與密碼重置' },
+    RESEND: { badge: 'bg-indigo-100 text-indigo-800', label: 'Resend 郵件服務', icon: '🚀', desc: '專為開發者設計的現代郵件發送服務 (只需 API Key)' },
 };
 
 const AI_MODEL_OPTIONS: Record<string, string[]> = {
@@ -97,6 +97,15 @@ export default function AppsPage() {
     const [pushTitle, setPushTitle] = useState('');
     const [pushResult, setPushResult] = useState<string | null>(null);
     const [saveResult, setSaveResult] = useState<{ success: boolean; message: string } | null>(null);
+
+    const [showTestEmail, setShowTestEmail] = useState(false);
+    const [testEmailData, setTestEmailData] = useState({
+        to: '',
+        subject: 'JVTutorCorner 整合測試郵件',
+        html: '<p>這是一封從您的 Resend 整合發出的測試郵件。如果您收到這封信，代表您的 API Key 與寄件者設定已正確生效！</p>'
+    });
+    const [testSending, setTestSending] = useState(false);
+    const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
     const [syncPreview, setSyncPreview] = useState<{
         fetchedCount: number;
         currentCount: number;
@@ -295,6 +304,45 @@ export default function AppsPage() {
     };
 
     /** 模擬 LINE Webhook 訊息 */
+    const handleSendTestEmail_Edit = async (app: AppIntegration) => {
+        if (!editedConfig.smtpPass || !editedConfig.fromAddress || !testEmailData.to) {
+            alert('請填寫 API Key、寄件者以及收件者內容');
+            return;
+        }
+
+        setTestSending(true);
+        setTestResult(null);
+        try {
+            const res = await fetch('/api/app-integrations/test', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    integrationId: app.integrationId,
+                    type: 'RESEND',
+                    config: {
+                        smtpHost: 'smtp.resend.com',
+                        smtpPort: '465',
+                        smtpUser: 'resend',
+                        smtpPass: editedConfig.smtpPass,
+                        fromAddress: editedConfig.fromAddress,
+                    },
+                    emailTest: testEmailData
+                }),
+            });
+
+            const data = await res.json();
+            if (data.ok && data.result.success) {
+                setTestResult({ success: true, message: data.result.message });
+            } else {
+                setTestResult({ success: false, message: data.result?.message || data.error || '發送失敗' });
+            }
+        } catch (error: any) {
+            setTestResult({ success: false, message: `發送失敗: ${error.message}` });
+        } finally {
+            setTestSending(false);
+        }
+    };
+
     const handleSimulateLine = async (app: AppIntegration) => {
         if (!simInput.trim()) return;
         setSimulating(true);
@@ -1093,8 +1141,13 @@ export default function AppsPage() {
                                             <div className="bg-gray-50 dark:bg-gray-900 p-4 rounded-md border border-gray-200 dark:border-gray-700 overflow-x-auto text-sm">
                                                 <ul className="space-y-4 text-gray-700 dark:text-gray-300">
                                                     {Object.keys(editedConfig).filter(k => k !== 'models').map(key => {
-                                                        const label = LABEL_MAP[key] || (key.charAt(0).toUpperCase() + key.slice(1).replace(/([A-Z])/g, ' $1'));
-                                                        const isSecretField = key.toLowerCase().includes('secret') || key.toLowerCase().includes('key') || key.toLowerCase().includes('token') || key.toLowerCase().includes('password');
+                                                        // For RESEND, we only show API Key and From Address
+                                                        if (selectedAppConfig.type === 'RESEND' && !['smtpPass', 'fromAddress'].includes(key)) return null;
+
+                                                        const label = (selectedAppConfig.type === 'RESEND' && key === 'smtpPass') ? 'API Key' :
+                                                            LABEL_MAP[key] || (key.charAt(0).toUpperCase() + key.slice(1).replace(/([A-Z])/g, ' $1'));
+
+                                                        const isSecretField = key.toLowerCase().includes('secret') || key.toLowerCase().includes('key') || key.toLowerCase().includes('token') || key.toLowerCase().includes('password') || key === 'smtpPass';
                                                         return (
                                                             <li key={key} className="flex flex-col sm:flex-row sm:items-center">
                                                                 <span className="font-semibold w-full sm:w-1/3 text-gray-500 dark:text-gray-400 mb-1 sm:mb-0">{label}:</span>
@@ -1113,6 +1166,73 @@ export default function AppsPage() {
                                                         );
                                                     })}
                                                 </ul>
+
+                                                {selectedAppConfig.type === 'RESEND' && (
+                                                    <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setShowTestEmail(!showTestEmail)}
+                                                            className="flex items-center gap-2 text-sm font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 transition-colors"
+                                                        >
+                                                            <span>{showTestEmail ? '▼' : '▶'}</span>
+                                                            測試寄送實際郵件 (可選)
+                                                        </button>
+
+                                                        {showTestEmail && (
+                                                            <div className="mt-4 space-y-4 p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-inner">
+                                                                <div>
+                                                                    <label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 mb-1 uppercase tracking-wider">收件者 (To)</label>
+                                                                    <input
+                                                                        type="email"
+                                                                        value={testEmailData.to}
+                                                                        onChange={(e) => setTestEmailData({ ...testEmailData, to: e.target.value })}
+                                                                        placeholder="您的測試信箱"
+                                                                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                                                    />
+                                                                </div>
+                                                                <div>
+                                                                    <label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 mb-1 uppercase tracking-wider">主旨 (Subject)</label>
+                                                                    <input
+                                                                        type="text"
+                                                                        value={testEmailData.subject}
+                                                                        onChange={(e) => setTestEmailData({ ...testEmailData, subject: e.target.value })}
+                                                                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                                                    />
+                                                                </div>
+                                                                <div>
+                                                                    <label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 mb-1 uppercase tracking-wider">內容 (HTML / Text)</label>
+                                                                    <textarea
+                                                                        rows={3}
+                                                                        value={testEmailData.html}
+                                                                        onChange={(e) => setTestEmailData({ ...testEmailData, html: e.target.value })}
+                                                                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                                                    />
+                                                                </div>
+
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleSendTestEmail_Edit(selectedAppConfig)}
+                                                                    disabled={testSending || !testEmailData.to}
+                                                                    className={`w-full py-2 rounded-md text-sm font-bold transition-all flex items-center justify-center gap-2 ${testSending ? 'bg-indigo-200 text-indigo-400 cursor-wait' : 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'}`}
+                                                                >
+                                                                    {testSending ? (
+                                                                        <>
+                                                                            <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                                                                            正在發送測試郵件...
+                                                                        </>
+                                                                    ) : '🚀 發送測試郵件'}
+                                                                </button>
+
+                                                                {testResult && (
+                                                                    <div className={`p-3 rounded text-xs font-medium animate-in zoom-in-95 ${testResult.success ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-red-100 text-red-700 border border-red-200'}`}>
+                                                                        {testResult.success ? '✅ ' : '❌ '}{testResult.message}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+
 
                                                 {AI_TYPES.includes(selectedAppConfig.type) && (
                                                     <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
@@ -1280,7 +1400,7 @@ export default function AppsPage() {
                                                     const isPaymentService = PAYMENT_TYPES.includes(selectedAppConfig.type);
                                                     const isChannelService = CHANNEL_TYPES.includes(selectedAppConfig.type);
                                                     const isAIService = AI_TYPES.includes(selectedAppConfig.type);
-                                                    const isEmailService = EMAIL_TYPES.includes(selectedAppConfig.type);
+                                                    const isEmailService = EMAIL_TYPES.includes(selectedAppConfig.type) || selectedAppConfig.type === 'RESEND';
                                                     return (isPaymentService || isChannelService || isAIService || isEmailService) ? (
                                                         <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
                                                             <button

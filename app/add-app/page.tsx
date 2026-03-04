@@ -141,7 +141,7 @@ function AddAppForm() {
 
     // For Email
     const [selectedEmailProvider, setSelectedEmailProvider] = useState(
-        ['SMTP'].includes(providerFromUrl) ? providerFromUrl : 'SMTP'
+        ['RESEND'].includes(providerFromUrl) ? providerFromUrl : 'RESEND'
     );
     const [emailData, setEmailData] = useState({
         name: '',
@@ -151,6 +151,15 @@ function AddAppForm() {
         smtpPass: '',
         fromAddress: ''
     });
+
+    const [showTestEmail, setShowTestEmail] = useState(false);
+    const [testEmailData, setTestEmailData] = useState({
+        to: '',
+        subject: 'JVTutorCorner 整合測試郵件',
+        html: '<p>這是一封從您的 Resend 整合發出的測試郵件。如果您收到這封信，代表您的 API Key 與寄件者設定已正確生效！</p>'
+    });
+    const [testSending, setTestSending] = useState(false);
+    const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
     const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         setEmailData({ ...emailData, [e.target.name]: e.target.value });
@@ -234,6 +243,44 @@ function AddAppForm() {
         WECHAT: 'WeChat 微信',
     };
 
+    const handleSendTestEmail = async () => {
+        if (!emailData.smtpPass || !emailData.fromAddress || !testEmailData.to) {
+            alert('請填寫 API Key、寄件者以及收件者內容');
+            return;
+        }
+
+        setTestSending(true);
+        setTestResult(null);
+        try {
+            const res = await fetch('/api/app-integrations/test', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    type: 'RESEND',
+                    config: {
+                        smtpHost: 'smtp.resend.com',
+                        smtpPort: '465',
+                        smtpUser: 'resend',
+                        smtpPass: emailData.smtpPass,
+                        fromAddress: emailData.fromAddress,
+                    },
+                    emailTest: testEmailData
+                }),
+            });
+
+            const data = await res.json();
+            if (data.ok && data.result.success) {
+                setTestResult({ success: true, message: data.result.message });
+            } else {
+                setTestResult({ success: false, message: data.result?.message || data.error || '發送失敗' });
+            }
+        } catch (error: any) {
+            setTestResult({ success: false, message: `發送失敗: ${error.message}` });
+        } finally {
+            setTestSending(false);
+        }
+    };
+
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
@@ -302,6 +349,14 @@ function AddAppForm() {
                         smtpPort: emailData.smtpPort,
                         smtpUser: emailData.smtpUser,
                         smtpPass: emailData.smtpPass,
+                        fromAddress: emailData.fromAddress,
+                    };
+                } else if (selectedEmailProvider === 'RESEND') {
+                    config = {
+                        smtpHost: 'smtp.resend.com',
+                        smtpPort: '465',
+                        smtpUser: 'resend',
+                        smtpPass: emailData.smtpPass, // User enters API Key here
                         fromAddress: emailData.fromAddress,
                     };
                 }
@@ -634,42 +689,128 @@ function AddAppForm() {
                                             onChange={(e) => setSelectedEmailProvider(e.target.value)}
                                             className="w-full pl-4 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                                         >
-                                            <option value="SMTP">SMTP 伺服器</option>
+                                            <option value="RESEND">Resend 郵件服務 (推薦)</option>
                                         </select>
                                     </div>
                                 </div>
 
-                                {selectedEmailProvider === 'SMTP' && (
-                                    <div className="space-y-4 p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800/50">
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                                主機位置 (Host) <span className="text-red-500">*</span>
-                                            </label>
-                                            <input type="text" name="smtpHost" value={emailData.smtpHost} onChange={handleEmailChange} placeholder="smtp.gmail.com" className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600" required />
+
+                                {selectedEmailProvider === 'RESEND' && (
+                                    <div className="space-y-4">
+                                        <div className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-indigo-50 dark:bg-indigo-900/10">
+                                            <div className="flex items-center gap-3 mb-4">
+                                                <div className="text-3xl">🚀</div>
+                                                <div>
+                                                    <h4 className="text-sm font-bold text-gray-800 dark:text-white">Resend API 設定</h4>
+                                                    <p className="text-xs text-gray-500">專為開發者設計的現代郵件發送服務</p>
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-4">
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                                        API Key <span className="text-red-500">*</span>
+                                                    </label>
+                                                    <input
+                                                        type="password"
+                                                        name="smtpPass"
+                                                        value={emailData.smtpPass}
+                                                        onChange={handleEmailChange}
+                                                        placeholder="re_..."
+                                                        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono"
+                                                        required
+                                                    />
+                                                    <p className="mt-1 text-[10px] text-gray-400">
+                                                        取得 API Key：前往 <a href="https://resend.com/api-keys" target="_blank" rel="noreferrer" className="text-indigo-500 underline">Resend Dashboard</a>
+                                                    </p>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                                        寄件者信箱 (From Address) <span className="text-red-500">*</span>
+                                                    </label>
+                                                    <input
+                                                        type="text"
+                                                        name="fromAddress"
+                                                        value={emailData.fromAddress}
+                                                        onChange={handleEmailChange}
+                                                        placeholder="onboarding@resend.dev (或您的網域)"
+                                                        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                                        required
+                                                    />
+                                                    <p className="mt-1 text-[10px] text-gray-400">
+                                                        * 測試階段可使用 <code>onboarding@resend.dev</code>，發送正式郵件需驗證您的網域。
+                                                    </p>
+                                                </div>
+
+                                                {/* 測試寄送郵件區塊 */}
+                                                <div className="mt-6 pt-6 border-t border-gray-100 dark:border-gray-700">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setShowTestEmail(!showTestEmail)}
+                                                        className="flex items-center gap-2 text-sm font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 transition-colors"
+                                                    >
+                                                        <span>{showTestEmail ? '▼' : '▶'}</span>
+                                                        測試寄送實際郵件 (可選)
+                                                    </button>
+
+                                                    {showTestEmail && (
+                                                        <div className="mt-4 space-y-4 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700 animate-in fade-in slide-in-from-top-2">
+                                                            <div>
+                                                                <label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 mb-1 uppercase tracking-wider">收件者 (To)</label>
+                                                                <input
+                                                                    type="email"
+                                                                    value={testEmailData.to}
+                                                                    onChange={(e) => setTestEmailData({ ...testEmailData, to: e.target.value })}
+                                                                    placeholder="您的測試信箱"
+                                                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600"
+                                                                />
+                                                            </div>
+                                                            <div>
+                                                                <label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 mb-1 uppercase tracking-wider">主旨 (Subject)</label>
+                                                                <input
+                                                                    type="text"
+                                                                    value={testEmailData.subject}
+                                                                    onChange={(e) => setTestEmailData({ ...testEmailData, subject: e.target.value })}
+                                                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600"
+                                                                />
+                                                            </div>
+                                                            <div>
+                                                                <label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 mb-1 uppercase tracking-wider">內容 (HTML / Text)</label>
+                                                                <textarea
+                                                                    rows={3}
+                                                                    value={testEmailData.html}
+                                                                    onChange={(e) => setTestEmailData({ ...testEmailData, html: e.target.value })}
+                                                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600"
+                                                                />
+                                                            </div>
+
+                                                            <button
+                                                                type="button"
+                                                                onClick={handleSendTestEmail}
+                                                                disabled={testSending || !testEmailData.to}
+                                                                className={`w-full py-2 rounded-md text-sm font-bold transition-all flex items-center justify-center gap-2 ${testSending ? 'bg-indigo-200 text-indigo-400 cursor-wait' : 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'}`}
+                                                            >
+                                                                {testSending ? (
+                                                                    <>
+                                                                        <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                                                                        正在發送測試郵件...
+                                                                    </>
+                                                                ) : '🚀 發送測試郵件'}
+                                                            </button>
+
+                                                            {testResult && (
+                                                                <div className={`p-3 rounded text-xs font-medium animate-in zoom-in-95 ${testResult.success ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-red-100 text-red-700 border border-red-200'}`}>
+                                                                    {testResult.success ? '✅ ' : '❌ '}{testResult.message}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
                                         </div>
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                                通訊埠 (Port) <span className="text-red-500">*</span>
-                                            </label>
-                                            <input type="text" name="smtpPort" value={emailData.smtpPort} onChange={handleEmailChange} placeholder="465 或 587" className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600" required />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                                使用者帳號 (User) <span className="text-red-500">*</span>
-                                            </label>
-                                            <input type="text" name="smtpUser" value={emailData.smtpUser} onChange={handleEmailChange} placeholder="user@example.com" className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600" required />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                                密碼 (Password) <span className="text-red-500">*</span>
-                                            </label>
-                                            <input type="password" name="smtpPass" value={emailData.smtpPass} onChange={handleEmailChange} placeholder="密碼或應用程式密碼" className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600" required />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                                寄件者信箱 (From Address) <span className="text-red-500">*</span>
-                                            </label>
-                                            <input type="text" name="fromAddress" value={emailData.fromAddress} onChange={handleEmailChange} placeholder="noreply@example.com" className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600" required />
+
+                                        <div className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-4 rounded-lg text-xs text-gray-600 dark:text-gray-400">
+                                            💡 <strong>小提示：</strong> 雖然這是 Resend 介面，但後端仍使用 SMTP 協定發送，因此如果您日後更換主機，也可以無痛遷移。
                                         </div>
                                     </div>
                                 )}
