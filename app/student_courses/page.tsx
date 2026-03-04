@@ -453,8 +453,8 @@ function StudentCoursesContent() {
               <tbody>
                 {paginatedOrders.map((o) => (
                   <tr key={o.orderId}>
-                    <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.userId ? (userMap[o.userId]?.firstName && userMap[o.userId]?.lastName ? `${userMap[o.userId].firstName} ${userMap[o.userId].lastName}` : o.userId) : '-'}</td>
-                    <td style={{ border: '2px solid #ccc', padding: '6px' }}>
+                    <td data-label={t('student_courses_student')} style={{ border: '2px solid #ccc', padding: '6px' }}>{o.userId ? (userMap[o.userId]?.firstName && userMap[o.userId]?.lastName ? `${userMap[o.userId].firstName} ${userMap[o.userId].lastName}` : o.userId) : '-'}</td>
+                    <td data-label={t('student_courses_course_name')} style={{ border: '2px solid #ccc', padding: '6px' }}>
                       {o.courseId ? (
                         <Link href={`/courses/${encodeURIComponent(o.courseId)}`}>
                           {courseMap[o.courseId]?.title || o.courseId}
@@ -463,9 +463,9 @@ function StudentCoursesContent() {
                         '-'
                       )}
                     </td>
-                    <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.courseId ? (courseMap[o.courseId]?.teacherName || '-') : '-'}</td>
-                    <td style={{ border: '2px solid #ccc', padding: '6px' }}>{o.courseId ? (courseMap[o.courseId]?.durationMinutes ? `${courseMap[o.courseId]?.durationMinutes} m` : '-') : '-'}</td>
-                    <td style={{ border: '2px solid #ccc', padding: '6px' }}>
+                    <td data-label={t('student_courses_teacher')} style={{ border: '2px solid #ccc', padding: '6px' }}>{o.courseId ? (courseMap[o.courseId]?.teacherName || '-') : '-'}</td>
+                    <td data-label={t('session_duration_label')} style={{ border: '2px solid #ccc', padding: '6px' }}>{o.courseId ? (courseMap[o.courseId]?.durationMinutes ? `${courseMap[o.courseId]?.durationMinutes} m` : '-') : '-'}</td>
+                    <td data-label="剩餘課程數" style={{ border: '2px solid #ccc', padding: '6px' }}>
                       {(() => {
                         if (typeof (o as any).remainingSessions === 'number') {
                           return `${(o as any).remainingSessions}`;
@@ -478,7 +478,7 @@ function StudentCoursesContent() {
                         return `${Math.max(0, total - attended)}`;
                       })()}
                     </td>
-                    <td style={{ border: '2px solid #ccc', padding: '6px' }}>
+                    <td data-label="剩餘時間 (分)" style={{ border: '2px solid #ccc', padding: '6px' }}>
                       {(() => {
                         if (typeof (o as any).remainingSeconds === 'number') {
                           const sess = typeof (o as any).remainingSessions === 'number' ? (o as any).remainingSessions : 1;
@@ -497,7 +497,7 @@ function StudentCoursesContent() {
                         return `${remaining} m`;
                       })()}
                     </td>
-                    <td style={{ border: '2px solid #ccc', padding: '6px' }}>
+                    <td data-label={t('start_time_label')} style={{ border: '2px solid #ccc', padding: '6px' }}>
                       {(() => {
                         if (o.startTime) {
                           const isoDate = o.startTime.includes('T') ? o.startTime : `${o.startTime.split(' ')[0]}T${o.startTime.split(' ')[1] || '00:00:00'}`;
@@ -515,7 +515,7 @@ function StudentCoursesContent() {
                         return formatDateTime(`${datePart}T${timePart || '00:00:00'}`);
                       })()}
                     </td>
-                    <td style={{ border: '2px solid #ccc', padding: '6px' }}>
+                    <td data-label={t('end_time_label')} style={{ border: '2px solid #ccc', padding: '6px' }}>
                       {(() => {
                         if (o.endTime) {
                           const isoDate = o.endTime.includes('T') ? o.endTime : `${o.endTime.split(' ')[0]}T${o.endTime.split(' ')[1] || '00:00:00'}`;
@@ -533,7 +533,7 @@ function StudentCoursesContent() {
                         return formatDateTime(`${datePart}T${timePart || '00:00:00'}`);
                       })()}
                     </td>
-                    <td style={{ border: '2px solid #ccc', padding: '6px' }}>
+                    <td data-label={t('enter_classroom')} style={{ border: '2px solid #ccc', padding: '6px' }}>
                       {o.courseId ? (
                         ['basic', 'pro', 'elite'].includes(user?.plan || '') ? (
                           <Link
