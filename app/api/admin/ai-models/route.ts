@@ -23,13 +23,7 @@ export async function GET() {
 export async function POST(request: Request) {
     try {
         const body = await request.json();
-        const { provider, models, action } = body;
-
-        if (action === 'initialize') {
-            const { initializeAIModels } = await import('@/lib/aiModelsService');
-            await initializeAIModels();
-            return NextResponse.json({ ok: true, message: 'AI models initialized.' });
-        }
+        const { provider, models } = body;
 
         if (!provider || !Array.isArray(models)) {
             return NextResponse.json({ ok: false, error: 'Provider and models (array) are required.' }, { status: 400 });
