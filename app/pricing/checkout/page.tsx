@@ -122,6 +122,11 @@ function CheckoutContent() {
         // In production, the webhook or /api/orders PATCH handles backend truth,
         // and /student_courses sync handles frontend state upon returning.
         // For immediate UI feedback, we update localStorage if simulated directly.
+        if (planId?.startsWith('points_')) {
+            // we will grant points via api instead of updating localStorage
+            return;
+        }
+
         const updatedUser = { ...user, plan: planId as any };
         setStoredUser(updatedUser);
         setUser(updatedUser);
@@ -234,8 +239,27 @@ function CheckoutContent() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ status: 'PAID' }),
             });
+
+            if (planId?.startsWith('points_')) {
+                // Determine point amount from planId
+                const pointsMatch = planId.match(/\d+/);
+                const pointsAmount = pointsMatch ? parseInt(pointsMatch[0], 10) : 0;
+
+                await fetch('/api/points', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        userId: user.email,
+                        action: 'add',
+                        amount: pointsAmount,
+                        reason: `購買方案 ${planLabel}`,
+                    }),
+                });
+            } else {
+                syncPlanLocally();
+            }
+
             alert(t('payment_simulated') || '付款成功 (Demo)');
-            syncPlanLocally();
             router.push('/student_courses');
         } catch (err) {
             alert('Simulation error');

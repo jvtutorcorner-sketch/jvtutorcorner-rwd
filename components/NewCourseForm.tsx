@@ -16,6 +16,8 @@ export default function NewCourseForm({ onSuccess }: { onSuccess?: () => void })
     start_time: '',
     end_time: '',
     membershipPlan: '',
+    enrollmentType: 'plan',
+    pointCost: 0,
   });
 
   const [preview, setPreview] = useState<string | null>(null); // kept for compatibility if needed
@@ -68,6 +70,8 @@ export default function NewCourseForm({ onSuccess }: { onSuccess?: () => void })
         description: form.description,
         durationMinutes: Number(form.duration) || 50,
         membershipPlan: form.membershipPlan || null,
+        enrollmentType: form.enrollmentType,
+        pointCost: Number(form.pointCost) || 0,
         nextStartDate: form.start_time || null,
         endDate: form.end_time || null,
         status: form.status || '上架',
@@ -93,14 +97,14 @@ export default function NewCourseForm({ onSuccess }: { onSuccess?: () => void })
       // Refresh the current page so the dashboard re-fetches courses
       try {
         router.refresh();
-      } catch (e) {}
+      } catch (e) { }
 
       // notify other components in the window (e.g., TeacherDashboard) to reload
       try {
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('courses:updated'));
         }
-      } catch (e) {}
+      } catch (e) { }
 
       onSuccess?.();
     } catch (err) {
@@ -163,6 +167,30 @@ export default function NewCourseForm({ onSuccess }: { onSuccess?: () => void })
           </select>
           {planError && <p className="text-red-600 mt-2">{planError}</p>}
         </div>
+
+        <div>
+          <label className="block font-medium mb-2">報名方式</label>
+          <select name="enrollmentType" value={form.enrollmentType} onChange={handleChange} className="w-full border px-3 py-2 rounded">
+            <option value="plan">僅限方案報名</option>
+            <option value="points">僅限點數報名</option>
+            <option value="both">方案或點數皆可</option>
+          </select>
+        </div>
+
+        {form.enrollmentType !== 'plan' && (
+          <div>
+            <label className="block font-medium mb-2">所需點數 (每堂)</label>
+            <input
+              type="number"
+              name="pointCost"
+              value={form.pointCost}
+              onChange={handleChange}
+              min="0"
+              required
+              className="w-full border px-3 py-2 rounded"
+            />
+          </div>
+        )}
 
         <div className="flex items-center gap-3">
           <button type="submit" disabled={!!timeError || !!planError || !form.membershipPlan} className="py-2 px-4 bg-blue-600 text-white rounded disabled:opacity-60" >建立課程</button>

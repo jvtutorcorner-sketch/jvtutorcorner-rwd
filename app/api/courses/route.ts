@@ -133,6 +133,8 @@ export async function POST(req: Request) {
       seatsLeft: body.seatsLeft || null,
       currency: body.currency || 'TWD',
       membershipPlan: body.membershipPlan || null,
+      enrollmentType: body.enrollmentType || 'plan',
+      pointCost: body.pointCost || 0,
       createdAt: now,
       updatedAt: now,
     };

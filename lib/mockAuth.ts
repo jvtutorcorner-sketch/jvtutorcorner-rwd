@@ -1,12 +1,15 @@
 // lib/mockAuth.ts
 
-export type PlanId = 'basic' | 'pro' | 'elite' | 'viewer';
+export type PlanId = 'basic' | 'pro' | 'elite' | 'viewer' | 'points_100' | 'points_500' | 'points_1000';
 
 export const PLAN_LABELS: Record<PlanId, string> = {
   basic: 'Basic 普通會員',
   pro: 'Pro 中級會員',
   elite: 'Elite 高級會員',
   viewer: '新辦帳戶',
+  points_100: '100 點數方案',
+  points_500: '500 點數方案',
+  points_1000: '1000 點數方案',
 };
 
 export const PLAN_DESCRIPTIONS: Record<PlanId, string> = {
@@ -14,6 +17,9 @@ export const PLAN_DESCRIPTIONS: Record<PlanId, string> = {
   pro: '主力方案：白板互動、小班制 2-6 人，錄影回放',
   elite: 'VIP 方案：大班制最多 30 人，家長旁聽，學習報表',
   viewer: '新辦帳戶：僅提供查詢師資與課程的基本功能',
+  points_100: '輕量點數：適合單堂體驗與小額儲值',
+  points_500: '超值點數：適合常規上課，附贈額外紅利',
+  points_1000: '大額點數：適合長期規劃，享有最優惠匯率',
 };
 
 export const PLAN_PRICES: Record<PlanId, string> = {
@@ -21,6 +27,9 @@ export const PLAN_PRICES: Record<PlanId, string> = {
   pro: 'NT$599 / 月',
   elite: 'NT$1,499 / 月',
   viewer: 'NT$0 / 月（新辦方案）',
+  points_100: 'NT$100',
+  points_500: 'NT$480',
+  points_1000: 'NT$900',
 };
 
 export const PLAN_FEATURES: Record<PlanId, string[]> = {
@@ -51,6 +60,21 @@ export const PLAN_FEATURES: Record<PlanId, string[]> = {
     '無法預約或參與付費課程',
     '無白板與錄影回放功能',
   ],
+  points_100: [
+    '獲得 100 點',
+    '可用於報名「點數報名」之課程',
+    '點數無使用期限',
+  ],
+  points_500: [
+    '獲得 500 點',
+    '可用於報名「點數報名」之課程',
+    '點數無使用期限',
+  ],
+  points_1000: [
+    '獲得 1000 點',
+    '可用於報名「點數報名」之課程',
+    '點數無使用期限',
+  ],
 };
 
 export const PLAN_TARGETS: Record<PlanId, string> = {
@@ -58,6 +82,9 @@ export const PLAN_TARGETS: Record<PlanId, string> = {
   basic: '剛開始嘗試線上家教、想先試水溫的學生與家長。',
   pro: '固定每週上課、重視白板互動與小班制學習的學生／家長。',
   elite: '國際學校、補教體系、願投資高額家教且想要家長旁聽的 VIP 家長。',
+  points_100: '想先買少量點數試上一兩堂課的學生。',
+  points_500: '有固定上課需求，買剛好點數的學生。',
+  points_1000: '每週高度上課，想要以更划算價格買點數的學生。',
 };
 
 export const TEST_PASSWORD = '123456';

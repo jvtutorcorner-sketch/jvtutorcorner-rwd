@@ -83,6 +83,28 @@ export default function PricingPage() {
     },
   ];
 
+  const POINTS_PLANS: PlanConfig[] = [
+    {
+      id: 'points_100',
+      priceHint: PLAN_PRICES['points_100'],
+      target: PLAN_TARGETS['points_100'],
+      features: PLAN_FEATURES['points_100'],
+    },
+    {
+      id: 'points_500',
+      priceHint: PLAN_PRICES['points_500'],
+      badge: '熱門選擇',
+      target: PLAN_TARGETS['points_500'],
+      features: PLAN_FEATURES['points_500'],
+    },
+    {
+      id: 'points_1000',
+      priceHint: PLAN_PRICES['points_1000'],
+      target: PLAN_TARGETS['points_1000'],
+      features: PLAN_FEATURES['points_1000'],
+    },
+  ];
+
   useEffect(() => {
     setUser(getStoredUser());
     const u = getStoredUser();
@@ -179,6 +201,69 @@ export default function PricingPage() {
               </div>
             );
           })}
+        </div>
+      </section>
+
+      <section className="section" style={{ marginTop: '2rem' }}>
+        <header className="page-header" style={{ marginBottom: '2rem' }}>
+          <h2>點數方案</h2>
+          <p>單次購買點數，依特定課程需求彈性扣點，免綁約更自在。</p>
+        </header>
+
+        <div className="card-grid">
+          {POINTS_PLANS.map((plan) => (
+            <div
+              key={plan.id}
+              className={`card pricing-card ${plan.badge ? 'pricing-card-highlight' : ''}`}
+            >
+              <header className="pricing-header">
+                <h2>{PLAN_LABELS[plan.id]}</h2>
+                <p className="pricing-subtitle">
+                  {PLAN_DESCRIPTIONS[plan.id]}
+                </p>
+                {plan.badge && (
+                  <span className="tag tag-accent">{plan.badge}</span>
+                )}
+              </header>
+
+              <div className="pricing-price">
+                <p>{plan.priceHint}</p>
+                <small>一次性付費</small>
+              </div>
+
+              <div className="pricing-target">
+                <h3>{t('pricing_target_title')}</h3>
+                <p>{plan.target}</p>
+              </div>
+
+              <div className="pricing-features">
+                <h3>{t('pricing_features_title')}</h3>
+                <ul>
+                  {plan.features.map((f) => (
+                    <li key={f}>{f}</li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="card-actions">
+                {user ? (
+                  <Link
+                    href={`/pricing/checkout?plan=${plan.id}`}
+                    className="card-button primary"
+                  >
+                    購買點數
+                  </Link>
+                ) : (
+                  <Link
+                    href="/login"
+                    className="card-button primary"
+                  >
+                    {t('pricing_login_to_use')}
+                  </Link>
+                )}
+              </div>
+            </div>
+          ))}
         </div>
       </section>
       {/* 升級方案 / 付款 已移除 */}
