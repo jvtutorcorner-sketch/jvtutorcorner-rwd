@@ -21,13 +21,40 @@ function AddAppForm() {
     const isAI = typeFromUrl === 'ai';
     const isEmail = typeFromUrl === 'email';
 
-    const AI_MODEL_OPTIONS: Record<string, string[]> = {
-        OPENAI: ['gpt-5.2', 'gpt-5.2-pro', 'gpt-5-mini', 'gpt-5-nano', 'gpt-4.1', 'o3-deep-research', 'o1-pro'],
-        ANTHROPIC: ['claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001', 'claude-3-5-sonnet'],
-        GEMINI: ['gemini-3.1-pro-preview', 'gemini-3-flash', 'gemini-2.5-pro', 'gemini-2.5-flash']
-    };
+    // AI Model options fetched from DB
+    const [aiModelOptions, setAiModelOptions] = useState<Record<string, string[]>>({
+        OPENAI: [],
+        ANTHROPIC: [],
+        GEMINI: []
+    });
 
     const [loading, setLoading] = useState(false);
+    const [loadingModels, setLoadingModels] = useState(false);
+
+    // Fetch AI model options from API
+    useEffect(() => {
+        if (isAI) {
+            const fetchModels = async () => {
+                setLoadingModels(true);
+                try {
+                    const res = await fetch('/api/admin/ai-models');
+                    const json = await res.json();
+                    if (json.ok && json.data) {
+                        const options: Record<string, string[]> = {};
+                        json.data.forEach((item: any) => {
+                            options[item.provider] = item.models;
+                        });
+                        setAiModelOptions(options);
+                    }
+                } catch (error) {
+                    console.error('Failed to fetch AI models:', error);
+                } finally {
+                    setLoadingModels(false);
+                }
+            };
+            fetchModels();
+        }
+    }, [isAI]);
 
     // Communication channel type selector - pre-select from URL ?channel=TELEGRAM
     const channelFromUrl = searchParams.get('channel')?.toUpperCase() || 'LINE';
@@ -549,10 +576,14 @@ function AddAppForm() {
                                 <div className="space-y-4 p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800/50 mt-4">
                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                                         可使用的模型 (Models)
-                                        <p className="text-xs text-gray-500 font-normal mt-1">選取要開放在平台中使用的模型（可複選）</p>
+                                        {loadingModels ? (
+                                            <span className="text-xs text-gray-400 ml-2 animate-pulse">載入中...</span>
+                                        ) : (
+                                            <p className="text-xs text-gray-500 font-normal mt-1">選取要開放在平台中使用的模型（可複選）</p>
+                                        )}
                                     </label>
                                     <div className="flex flex-wrap gap-2 mt-2">
-                                        {(AI_MODEL_OPTIONS[selectedAIProvider] || []).map(model => (
+                                        {(aiModelOptions[selectedAIProvider] || []).map(model => (
                                             <label key={model} className="flex items-center gap-1.5 bg-white dark:bg-gray-800 px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 select-none">
                                                 <input
                                                     type="checkbox"
@@ -571,6 +602,9 @@ function AddAppForm() {
                                                 <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{model}</span>
                                             </label>
                                         ))}
+                                        {!loadingModels && (aiModelOptions[selectedAIProvider] || []).length === 0 && (
+                                            <p className="text-sm text-gray-400">尚無模型資料，請聯絡管理員。</p>
+                                        )}
                                     </div>
                                 </div>
                             </>
