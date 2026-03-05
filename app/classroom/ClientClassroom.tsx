@@ -63,6 +63,7 @@ const RemoteParticipantVideo: React.FC<{ user: any; label?: string }> = ({ user,
 
 const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) => {
   const params = useSearchParams();
+  const isDebug = params?.get('debug') === 'true' || params?.has('debug');
   const courseId = params?.get('courseId') ?? params?.get('courseid') ?? 'c1';
   const orderId = params?.get('orderId') ?? params?.get('orderid') ?? null;
   const sessionParam = params?.get('session');
@@ -2512,8 +2513,8 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                   onLeave={() => leave()}
                 />
               )}
-              {/* Boot-style overlay while not fullyInitialized */}
-              {joined && !fullyInitialized && (
+              {/* Boot-style overlay while not fullyInitialized - Only show if debug param is present */}
+              {joined && !fullyInitialized && isDebug && (
                 <div style={{ position: 'absolute', inset: 0, background: 'rgba(8,8,10,0.85)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 60 }}>
                   <div style={{ width: 520, padding: 24 }}>
                     <div style={{ fontFamily: 'monospace', fontSize: 14, marginBottom: 12 }}>systemd [classroom@{effectiveChannelName}] booting...</div>
