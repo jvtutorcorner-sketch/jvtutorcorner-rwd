@@ -41,7 +41,7 @@ async function getDynamicKnowledgeBase(): Promise<{ courses: any[]; teachers: an
  * Dynamically retrieves the Gemini configuration (API Key and Model).
  * Source of truth: Database integration (DynamoDB).
  */
-async function getGeminiConfig(): Promise<{ apiKey: string; model: string } | null> {
+async function getGeminiConfig(): Promise<{ apiKey: string; model: string; systemInstruction?: string } | null> {
     // 1. Check Database for an active GEMINI integration first (Source of truth)
     try {
         console.log(`[AI Chat API] Attempting to fetch config from ${APP_INTEGRATIONS_TABLE}...`);
@@ -78,7 +78,8 @@ async function getGeminiConfig(): Promise<{ apiKey: string; model: string } | nu
 
                 return {
                     apiKey: integration.config.apiKey,
-                    model: model
+                    model: model,
+                    systemInstruction: integration.config.systemInstruction
                 };
             }
         }
@@ -124,7 +125,7 @@ export async function POST(req: Request) {
             return NextResponse.json({ reply: '抱歉，系統尚未設定 AI API Key，無法啟動 AI 助理。請聯絡管理員設定 GEMINI_API_KEY 或在系統設定中完成 AI 串接。' });
         }
 
-        const { apiKey, model: modelName } = config;
+        const { apiKey, model: modelName, systemInstruction: customInstruction } = config;
 
         // Fetch Courses and Teachers dynamically from DynamoDB
         const { courses: dynamicCourses, teachers: dynamicTeachers } = await getDynamicKnowledgeBase();
@@ -193,6 +194,11 @@ ${JSON.stringify(dynamicTeachers, null, 2)}
 # 額外系統指令 (AGENT WORKFLOW):
 1. 如果使用者遇到嚴重問題、需要客服協助、或是明確要求轉接真人客服，請先禮貌詢問他們的聯絡方式（Email 或電話），若他們尚未提供。
 2. 取得聯絡方式後，請務必立即使用 'notify_department' 工具建立工單。系統確認工單建立後，請向使用者致歉並告知已通知相關部門處理。
+
+${customInstruction ? `
+# 管理員特別指令 (ADMIN CUSTOM INSTRUCTIONS):
+${customInstruction}
+` : ''}
 `;
 
         const model = genAI.getGenerativeModel({

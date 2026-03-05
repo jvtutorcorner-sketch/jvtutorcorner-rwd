@@ -328,11 +328,11 @@ function AddAppForm() {
             } else if (isAI) {
                 let config: any = {};
                 if (selectedAIProvider === 'OPENAI') {
-                    config = { apiKey: aiData.openaiApiKey, models: aiData.models };
+                    config = { apiKey: aiData.openaiApiKey, models: aiData.models, systemInstruction: (aiData as any).systemInstruction };
                 } else if (selectedAIProvider === 'ANTHROPIC') {
-                    config = { apiKey: aiData.anthropicApiKey, models: aiData.models };
+                    config = { apiKey: aiData.anthropicApiKey, models: aiData.models, systemInstruction: (aiData as any).systemInstruction };
                 } else if (selectedAIProvider === 'GEMINI') {
-                    config = { apiKey: aiData.geminiApiKey, models: aiData.models };
+                    config = { apiKey: aiData.geminiApiKey, models: aiData.models, systemInstruction: (aiData as any).systemInstruction };
                 }
 
                 payload = {
@@ -628,334 +628,318 @@ function AddAppForm() {
                                     </div>
                                 )}
 
-                                <div className="space-y-4 p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800/50 mt-4">
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                                        可使用的模型 (Models)
-                                        {loadingModels ? (
-                                            <span className="text-xs text-gray-400 ml-2 animate-pulse">載入中...</span>
-                                        ) : (
-                                            <p className="text-xs text-gray-500 font-normal mt-1">選取要開放在平台中使用的模型（可複選）</p>
-                                        )}
-                                    </label>
-                                    <div className="flex flex-wrap gap-2 mt-2">
-                                        {(aiModelOptions[selectedAIProvider] || []).map(model => (
-                                            <label key={model} className="flex items-center gap-1.5 bg-white dark:bg-gray-800 px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 select-none">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={aiData.models.includes(model)}
-                                                    onChange={(e) => {
-                                                        let newModels = [...aiData.models];
-                                                        if (e.target.checked) {
-                                                            if (!newModels.includes(model)) newModels.push(model);
-                                                        } else {
-                                                            newModels = newModels.filter(m => m !== model);
-                                                        }
-                                                        setAiData({ ...aiData, models: newModels });
-                                                    }}
-                                                    className="rounded text-indigo-600 focus:ring-indigo-500 bg-gray-100 border-gray-300"
-                                                />
-                                                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{model}</span>
-                                            </label>
-                                        ))}
-                                        {!loadingModels && (aiModelOptions[selectedAIProvider] || []).length === 0 && (
-                                            <p className="text-sm text-gray-400">尚無模型資料，請聯絡管理員。</p>
-                                        )}
-                                    </div>
+                            </div>
+                </div>
+
+                <div className="space-y-4 p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800/50 mt-4">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                        固定提示詞 (System Prompt)
+                    </label>
+                    <textarea
+                        name="systemInstruction"
+                        value={(aiData as any).systemInstruction || ''}
+                        onChange={(e) => setAiData({ ...aiData, [e.target.name]: e.target.value } as any)}
+                        placeholder="在此輸入 AI 的角色設定或指令 (例如：請用法文回覆我)..."
+                        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white min-h-[100px] resize-y"
+                    />
+                    <p className="text-[10px] text-gray-400 mt-1">
+                        * 這些指令將作為 AI 的核心準則，優先於使用者的提問。
+                    </p>
+                </div>
+            </>
+            ) : isEmail ? (
+            <>
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        設定名稱 (僅供您辨識)
+                    </label>
+                    <input
+                        type="text"
+                        name="name"
+                        value={emailData.name}
+                        onChange={handleEmailChange}
+                        placeholder="例如：我的 SMTP 伺服器"
+                        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                        required
+                    />
+                </div>
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        選擇郵件服務 <span className="text-red-500">*</span>
+                    </label>
+                    <div className="relative">
+                        <select
+                            value={selectedEmailProvider}
+                            onChange={(e) => setSelectedEmailProvider(e.target.value)}
+                            className="w-full pl-4 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                        >
+                            <option value="RESEND">Resend 郵件服務 (推薦)</option>
+                        </select>
+                    </div>
+                </div>
+
+
+                {selectedEmailProvider === 'RESEND' && (
+                    <div className="space-y-4">
+                        <div className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-indigo-50 dark:bg-indigo-900/10">
+                            <div className="flex items-center gap-3 mb-4">
+                                <div className="text-3xl">🚀</div>
+                                <div>
+                                    <h4 className="text-sm font-bold text-gray-800 dark:text-white">Resend API 設定</h4>
+                                    <p className="text-xs text-gray-500">專為開發者設計的現代郵件發送服務</p>
                                 </div>
-                            </>
-                        ) : isEmail ? (
-                            <>
+                            </div>
+
+                            <div className="space-y-4">
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                        設定名稱 (僅供您辨識)
+                                        API Key <span className="text-red-500">*</span>
                                     </label>
                                     <input
-                                        type="text"
-                                        name="name"
-                                        value={emailData.name}
+                                        type="password"
+                                        name="smtpPass"
+                                        value={emailData.smtpPass}
                                         onChange={handleEmailChange}
-                                        placeholder="例如：我的 SMTP 伺服器"
-                                        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-yellow-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                        placeholder="re_..."
+                                        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono"
                                         required
                                     />
+                                    <p className="mt-1 text-[10px] text-gray-400">
+                                        取得 API Key：前往 <a href="https://resend.com/api-keys" target="_blank" rel="noreferrer" className="text-indigo-500 underline">Resend Dashboard</a>
+                                    </p>
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                        選擇郵件服務 <span className="text-red-500">*</span>
-                                    </label>
-                                    <div className="relative">
-                                        <select
-                                            value={selectedEmailProvider}
-                                            onChange={(e) => setSelectedEmailProvider(e.target.value)}
-                                            className="w-full pl-4 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                                        >
-                                            <option value="RESEND">Resend 郵件服務 (推薦)</option>
-                                        </select>
-                                    </div>
-                                </div>
-
-
-                                {selectedEmailProvider === 'RESEND' && (
-                                    <div className="space-y-4">
-                                        <div className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-indigo-50 dark:bg-indigo-900/10">
-                                            <div className="flex items-center gap-3 mb-4">
-                                                <div className="text-3xl">🚀</div>
-                                                <div>
-                                                    <h4 className="text-sm font-bold text-gray-800 dark:text-white">Resend API 設定</h4>
-                                                    <p className="text-xs text-gray-500">專為開發者設計的現代郵件發送服務</p>
-                                                </div>
-                                            </div>
-
-                                            <div className="space-y-4">
-                                                <div>
-                                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                                        API Key <span className="text-red-500">*</span>
-                                                    </label>
-                                                    <input
-                                                        type="password"
-                                                        name="smtpPass"
-                                                        value={emailData.smtpPass}
-                                                        onChange={handleEmailChange}
-                                                        placeholder="re_..."
-                                                        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono"
-                                                        required
-                                                    />
-                                                    <p className="mt-1 text-[10px] text-gray-400">
-                                                        取得 API Key：前往 <a href="https://resend.com/api-keys" target="_blank" rel="noreferrer" className="text-indigo-500 underline">Resend Dashboard</a>
-                                                    </p>
-                                                </div>
-                                                <div>
-                                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                                        寄件者信箱 (From Address) <span className="text-red-500">*</span>
-                                                    </label>
-                                                    <input
-                                                        type="text"
-                                                        name="fromAddress"
-                                                        value={emailData.fromAddress}
-                                                        onChange={handleEmailChange}
-                                                        placeholder="onboarding@resend.dev (或您的網域)"
-                                                        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                                                        required
-                                                    />
-                                                    <p className="mt-1 text-[10px] text-gray-400">
-                                                        * 測試階段可使用 <code>onboarding@resend.dev</code>，發送正式郵件需驗證您的網域。
-                                                    </p>
-                                                </div>
-
-                                                {/* 測試寄送郵件區塊 */}
-                                                <div className="mt-6 pt-6 border-t border-gray-100 dark:border-gray-700">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setShowTestEmail(!showTestEmail)}
-                                                        className="flex items-center gap-2 text-sm font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 transition-colors"
-                                                    >
-                                                        <span>{showTestEmail ? '▼' : '▶'}</span>
-                                                        測試寄送實際郵件 (可選)
-                                                    </button>
-
-                                                    {showTestEmail && (
-                                                        <div className="mt-4 space-y-4 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700 animate-in fade-in slide-in-from-top-2">
-                                                            <div>
-                                                                <label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 mb-1 uppercase tracking-wider">收件者 (To)</label>
-                                                                <input
-                                                                    type="email"
-                                                                    value={testEmailData.to}
-                                                                    onChange={(e) => setTestEmailData({ ...testEmailData, to: e.target.value })}
-                                                                    placeholder="您的測試信箱"
-                                                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600"
-                                                                />
-                                                            </div>
-                                                            <div>
-                                                                <label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 mb-1 uppercase tracking-wider">主旨 (Subject)</label>
-                                                                <input
-                                                                    type="text"
-                                                                    value={testEmailData.subject}
-                                                                    onChange={(e) => setTestEmailData({ ...testEmailData, subject: e.target.value })}
-                                                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600"
-                                                                />
-                                                            </div>
-                                                            <div>
-                                                                <label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 mb-1 uppercase tracking-wider">內容 (HTML / Text)</label>
-                                                                <textarea
-                                                                    rows={3}
-                                                                    value={testEmailData.html}
-                                                                    onChange={(e) => setTestEmailData({ ...testEmailData, html: e.target.value })}
-                                                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600"
-                                                                />
-                                                            </div>
-
-                                                            <button
-                                                                type="button"
-                                                                onClick={handleSendTestEmail}
-                                                                disabled={testSending || !testEmailData.to}
-                                                                className={`w-full py-2 rounded-md text-sm font-bold transition-all flex items-center justify-center gap-2 ${testSending ? 'bg-indigo-200 text-indigo-400 cursor-wait' : 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'}`}
-                                                            >
-                                                                {testSending ? (
-                                                                    <>
-                                                                        <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
-                                                                        正在發送測試郵件...
-                                                                    </>
-                                                                ) : '🚀 發送測試郵件'}
-                                                            </button>
-
-                                                            {testResult && (
-                                                                <div className={`p-3 rounded text-xs font-medium animate-in zoom-in-95 ${testResult.success ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-red-100 text-red-700 border border-red-200'}`}>
-                                                                    {testResult.success ? '✅ ' : '❌ '}{testResult.message}
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <div className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-4 rounded-lg text-xs text-gray-600 dark:text-gray-400">
-                                            💡 <strong>小提示：</strong> 雖然這是 Resend 介面，但後端仍使用 SMTP 協定發送，因此如果您日後更換主機，也可以無痛遷移。
-                                        </div>
-                                    </div>
-                                )}
-                            </>
-                        ) : (
-                            <>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                        選擇通訊渠道 <span className="text-red-500">*</span>
-                                    </label>
-                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
-                                        {Object.entries(CHANNEL_LABELS).map(([key, label]) => (
-                                            <button
-                                                key={key}
-                                                type="button"
-                                                onClick={() => setSelectedChannelType(key)}
-                                                className={`px-3 py-2 text-sm rounded-lg border-2 font-medium transition-all ${selectedChannelType === key
-                                                    ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-400'
-                                                    : 'border-gray-200 bg-white text-gray-600 hover:border-blue-300 hover:bg-blue-50/50 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600'
-                                                    }`}
-                                            >
-                                                {label}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                        應用程式名稱
+                                        寄件者信箱 (From Address) <span className="text-red-500">*</span>
                                     </label>
                                     <input
                                         type="text"
-                                        name="name"
-                                        value={channelData.name}
-                                        onChange={handleChannelChange}
-                                        placeholder={`例如：我的 ${CHANNEL_LABELS[selectedChannelType]} 通知`}
-                                        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                        name="fromAddress"
+                                        value={emailData.fromAddress}
+                                        onChange={handleEmailChange}
+                                        placeholder="onboarding@resend.dev (或您的網域)"
+                                        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-yellow-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                                         required
                                     />
+                                    <p className="mt-1 text-[10px] text-gray-400">
+                                        * 測試階段可使用 <code>onboarding@resend.dev</code>，發送正式郵件需驗證您的網域。
+                                    </p>
                                 </div>
 
-                                {/* 動態渲染所選通訊渠道的設定欄位 */}
-                                <div className="space-y-4 p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800/50">
-                                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-                                        {CHANNEL_CONFIG_MAP[selectedChannelType]?.hint}
-                                    </p>
-                                    {CHANNEL_CONFIG_MAP[selectedChannelType]?.fields.map((field) => (
-                                        <div key={field.name}>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                                {field.label} {field.required && <span className="text-red-500">*</span>}
-                                            </label>
-                                            {field.type === 'textarea' ? (
-                                                <textarea
-                                                    name={field.name}
-                                                    value={(channelData as any)[field.name] || ''}
-                                                    onChange={handleChannelChange}
-                                                    placeholder={field.placeholder}
-                                                    rows={field.rows || 3}
-                                                    className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono text-sm"
-                                                    required={field.required}
-                                                />
-                                            ) : (
+                                {/* 測試寄送郵件區塊 */}
+                                <div className="mt-6 pt-6 border-t border-gray-100 dark:border-gray-700">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowTestEmail(!showTestEmail)}
+                                        className="flex items-center gap-2 text-sm font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 transition-colors"
+                                    >
+                                        <span>{showTestEmail ? '▼' : '▶'}</span>
+                                        測試寄送實際郵件 (可選)
+                                    </button>
+
+                                    {showTestEmail && (
+                                        <div className="mt-4 space-y-4 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700 animate-in fade-in slide-in-from-top-2">
+                                            <div>
+                                                <label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 mb-1 uppercase tracking-wider">收件者 (To)</label>
                                                 <input
-                                                    type={field.type}
-                                                    name={field.name}
-                                                    value={(channelData as any)[field.name] || ''}
-                                                    onChange={handleChannelChange}
-                                                    placeholder={field.placeholder}
-                                                    className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono text-sm"
-                                                    required={field.required}
+                                                    type="email"
+                                                    value={testEmailData.to}
+                                                    onChange={(e) => setTestEmailData({ ...testEmailData, to: e.target.value })}
+                                                    placeholder="您的測試信箱"
+                                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600"
                                                 />
+                                            </div>
+                                            <div>
+                                                <label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 mb-1 uppercase tracking-wider">主旨 (Subject)</label>
+                                                <input
+                                                    type="text"
+                                                    value={testEmailData.subject}
+                                                    onChange={(e) => setTestEmailData({ ...testEmailData, subject: e.target.value })}
+                                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 mb-1 uppercase tracking-wider">內容 (HTML / Text)</label>
+                                                <textarea
+                                                    rows={3}
+                                                    value={testEmailData.html}
+                                                    onChange={(e) => setTestEmailData({ ...testEmailData, html: e.target.value })}
+                                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600"
+                                                />
+                                            </div>
+
+                                            <button
+                                                type="button"
+                                                onClick={handleSendTestEmail}
+                                                disabled={testSending || !testEmailData.to}
+                                                className={`w-full py-2 rounded-md text-sm font-bold transition-all flex items-center justify-center gap-2 ${testSending ? 'bg-indigo-200 text-indigo-400 cursor-wait' : 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'}`}
+                                            >
+                                                {testSending ? (
+                                                    <>
+                                                        <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                                                        正在發送測試郵件...
+                                                    </>
+                                                ) : '🚀 發送測試郵件'}
+                                            </button>
+
+                                            {testResult && (
+                                                <div className={`p-3 rounded text-xs font-medium animate-in zoom-in-95 ${testResult.success ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-red-100 text-red-700 border border-red-200'}`}>
+                                                    {testResult.success ? '✅ ' : '❌ '}{testResult.message}
+                                                </div>
                                             )}
                                         </div>
-                                    ))}
-
-                                    {/* Webhook Javascript Editor Feature */}
-                                    <div className="mt-6 border-t border-gray-200 dark:border-gray-700 pt-4">
-                                        <label className="flex items-center gap-2 cursor-pointer mb-2">
-                                            <input
-                                                type="checkbox"
-                                                checked={channelData.enableCustomScript}
-                                                onChange={(e) => setChannelData({ ...channelData, enableCustomScript: e.target.checked })}
-                                                className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
-                                            />
-                                            <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">
-                                                啟用自訂 Webhook 腳本 (實驗性)
-                                            </span>
-                                        </label>
-                                        <p className="text-xs text-gray-500 mb-3 ml-6">
-                                            撰寫 JavaScript 程式碼來自訂接收到 Webhook 時的處理邏輯，類似 Google Apps Script 的結構。
-                                        </p>
-
-                                        {channelData.enableCustomScript && (
-                                            <div className="ml-6 border border-gray-300 dark:border-gray-600 rounded-md overflow-hidden">
-                                                <Editor
-                                                    height="300px"
-                                                    defaultLanguage="javascript"
-                                                    theme="vs-dark"
-                                                    value={channelData.customScript}
-                                                    onChange={(value) => setChannelData({ ...channelData, customScript: value || '' })}
-                                                    options={{
-                                                        minimap: { enabled: false },
-                                                        fontSize: 14,
-                                                        lineNumbers: 'on',
-                                                        scrollBeyondLastLine: false,
-                                                        automaticLayout: true
-                                                    }}
-                                                />
-                                            </div>
-                                        )}
-                                    </div>
-
+                                    )}
                                 </div>
-                            </>
+                            </div>
+                        </div>
+
+                        <div className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-4 rounded-lg text-xs text-gray-600 dark:text-gray-400">
+                            💡 <strong>小提示：</strong> 雖然這是 Resend 介面，但後端仍使用 SMTP 協定發送，因此如果您日後更換主機，也可以無痛遷移。
+                        </div>
+                    </div>
+                )}
+            </>
+            ) : (
+            <>
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        選擇通訊渠道 <span className="text-red-500">*</span>
+                    </label>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
+                        {Object.entries(CHANNEL_LABELS).map(([key, label]) => (
+                            <button
+                                key={key}
+                                type="button"
+                                onClick={() => setSelectedChannelType(key)}
+                                className={`px-3 py-2 text-sm rounded-lg border-2 font-medium transition-all ${selectedChannelType === key
+                                    ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-400'
+                                    : 'border-gray-200 bg-white text-gray-600 hover:border-blue-300 hover:bg-blue-50/50 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600'
+                                    }`}
+                            >
+                                {label}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        應用程式名稱
+                    </label>
+                    <input
+                        type="text"
+                        name="name"
+                        value={channelData.name}
+                        onChange={handleChannelChange}
+                        placeholder={`例如：我的 ${CHANNEL_LABELS[selectedChannelType]} 通知`}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                        required
+                    />
+                </div>
+
+                {/* 動態渲染所選通訊渠道的設定欄位 */}
+                <div className="space-y-4 p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800/50">
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                        {CHANNEL_CONFIG_MAP[selectedChannelType]?.hint}
+                    </p>
+                    {CHANNEL_CONFIG_MAP[selectedChannelType]?.fields.map((field) => (
+                        <div key={field.name}>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                {field.label} {field.required && <span className="text-red-500">*</span>}
+                            </label>
+                            {field.type === 'textarea' ? (
+                                <textarea
+                                    name={field.name}
+                                    value={(channelData as any)[field.name] || ''}
+                                    onChange={handleChannelChange}
+                                    placeholder={field.placeholder}
+                                    rows={field.rows || 3}
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono text-sm"
+                                    required={field.required}
+                                />
+                            ) : (
+                                <input
+                                    type={field.type}
+                                    name={field.name}
+                                    value={(channelData as any)[field.name] || ''}
+                                    onChange={handleChannelChange}
+                                    placeholder={field.placeholder}
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono text-sm"
+                                    required={field.required}
+                                />
+                            )}
+                        </div>
+                    ))}
+
+                    {/* Webhook Javascript Editor Feature */}
+                    <div className="mt-6 border-t border-gray-200 dark:border-gray-700 pt-4">
+                        <label className="flex items-center gap-2 cursor-pointer mb-2">
+                            <input
+                                type="checkbox"
+                                checked={channelData.enableCustomScript}
+                                onChange={(e) => setChannelData({ ...channelData, enableCustomScript: e.target.checked })}
+                                className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+                            />
+                            <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">
+                                啟用自訂 Webhook 腳本 (實驗性)
+                            </span>
+                        </label>
+                        <p className="text-xs text-gray-500 mb-3 ml-6">
+                            撰寫 JavaScript 程式碼來自訂接收到 Webhook 時的處理邏輯，類似 Google Apps Script 的結構。
+                        </p>
+
+                        {channelData.enableCustomScript && (
+                            <div className="ml-6 border border-gray-300 dark:border-gray-600 rounded-md overflow-hidden">
+                                <Editor
+                                    height="300px"
+                                    defaultLanguage="javascript"
+                                    theme="vs-dark"
+                                    value={channelData.customScript}
+                                    onChange={(value) => setChannelData({ ...channelData, customScript: value || '' })}
+                                    options={{
+                                        minimap: { enabled: false },
+                                        fontSize: 14,
+                                        lineNumbers: 'on',
+                                        scrollBeyondLastLine: false,
+                                        automaticLayout: true
+                                    }}
+                                />
+                            </div>
+                        )}
+                    </div>
+
+                </div>
+            </>
                         )}
 
-                        <div className="pt-4 flex gap-4">
-                            <Link
-                                href="/apps"
-                                className="w-1/3 bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold py-3 px-4 rounded-lg transition-colors flex items-center justify-center dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600"
-                            >
-                                返回列表
-                            </Link>
-                            <button
-                                type="submit"
-                                disabled={loading}
-                                className={`w-2/3 ${isPayment ? 'bg-green-600 hover:bg-green-700' : isAI ? 'bg-indigo-600 hover:bg-indigo-700' : isEmail ? 'bg-yellow-600 hover:bg-yellow-700' : 'bg-blue-600 hover:bg-blue-700'} text-white font-bold py-3 px-4 rounded-lg transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed`}
-                            >
-                                {loading ? (
-                                    <>
-                                        <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
-                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                        </svg>
-                                        儲存中...
-                                    </>
-                                ) : (
-                                    '確認新增'
-                                )}
-                            </button>
-                        </div>
-                    </form>
-                </div>
+            <div className="pt-4 flex gap-4">
+                <Link
+                    href="/apps"
+                    className="w-1/3 bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold py-3 px-4 rounded-lg transition-colors flex items-center justify-center dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600"
+                >
+                    返回列表
+                </Link>
+                <button
+                    type="submit"
+                    disabled={loading}
+                    className={`w-2/3 ${isPayment ? 'bg-green-600 hover:bg-green-700' : isAI ? 'bg-indigo-600 hover:bg-indigo-700' : isEmail ? 'bg-yellow-600 hover:bg-yellow-700' : 'bg-blue-600 hover:bg-blue-700'} text-white font-bold py-3 px-4 rounded-lg transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed`}
+                >
+                    {loading ? (
+                        <>
+                            <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            儲存中...
+                        </>
+                    ) : (
+                        '確認新增'
+                    )}
+                </button>
             </div>
-        </div>
+        </form>
+                </div >
+            </div >
+        </div >
     );
 }
