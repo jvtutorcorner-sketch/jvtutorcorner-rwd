@@ -178,157 +178,87 @@ export function AIAssistantWidget() {
                         </button>
                     </div>
 
-                    {/* Report Panel */}
+                    {/* Report Panel - Simplified */}
                     {activeTab === 'report' && (
-                        <div className="flex-1 p-4 overflow-y-auto bg-gray-50 flex flex-col gap-3">
-                            <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-                                <h4 className="font-semibold text-gray-800 mb-2 flex items-center gap-2">
-                                    <span>📊</span> 每日自動報告系統
-                                </h4>
-                                <p className="text-xs text-gray-500 mb-3">
-                                    系統每天 00:00 自動搜尋教育平台新聞、分析平台風險，並將報告寄送至指定信箱。
+                        <div className="flex-1 p-5 overflow-y-auto bg-gray-50 flex flex-col items-center justify-center text-center gap-4">
+                            <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center text-4xl shadow-inner">
+                                📊
+                            </div>
+                            <div>
+                                <h4 className="font-bold text-gray-900 mb-1 text-lg">AI 每日報告服務</h4>
+                                <p className="text-sm text-gray-500 leading-relaxed px-4">
+                                    此功能已移至獨立的專屬應用程式。您可以在那裡查看詳細狀態、手動生成報告。
                                 </p>
+                            </div>
 
-                                {/* Report Status */}
-                                <div className="bg-gray-50 rounded-lg p-3 mb-3">
-                                    <p className="text-xs font-medium text-gray-600 mb-1">報告狀態</p>
-                                    {reportStatus.loading ? (
-                                        <p className="text-xs text-gray-400">載入中...</p>
-                                    ) : reportStatus.lastReport ? (
-                                        <div className="space-y-1">
-                                            <div className="flex items-center gap-2">
-                                                <span className={`w-2 h-2 rounded-full ${reportStatus.lastReport.success ? 'bg-green-500' : 'bg-red-500'}`}></span>
-                                                <span className="text-xs text-gray-700">
-                                                    {reportStatus.lastReport.reportDate} — {reportStatus.lastReport.success ? '成功' : '失敗'}
-                                                </span>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                <span className={`w-2 h-2 rounded-full ${reportStatus.lastReport.emailSent ? 'bg-green-500' : 'bg-yellow-500'}`}></span>
-                                                <span className="text-xs text-gray-700">
-                                                    Email: {reportStatus.lastReport.emailSent ? '已發送' : '未發送'}
-                                                </span>
-                                            </div>
-                                            {reportStatus.lastReport.generatedAt && (
-                                                <p className="text-[10px] text-gray-400 mt-1">
-                                                    生成時間: {new Date(reportStatus.lastReport.generatedAt).toLocaleString('zh-TW')}
-                                                </p>
-                                            )}
-                                        </div>
-                                    ) : (
-                                        <p className="text-xs text-gray-400">今日尚未生成報告</p>
-                                    )}
-                                    {reportStatus.error && (
-                                        <p className="text-xs text-red-500 mt-1">❌ {reportStatus.error}</p>
-                                    )}
+                            <a
+                                href="/apps/daily-report"
+                                className="mt-2 py-3 px-6 bg-blue-600 text-white rounded-2xl text-sm font-bold hover:bg-blue-700 shadow-lg shadow-blue-500/20 active:scale-95 transition-all flex items-center gap-2"
+                            >
+                                立即前往查看報告 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3" /></svg>
+                            </a>
+
+                            <div className="mt-4 pt-4 border-t border-gray-200 w-full">
+                                <p className="text-[10px] text-gray-400 uppercase tracking-widest font-bold">目前狀態</p>
+                                <div className="mt-2 inline-flex items-center gap-2 px-3 py-1 bg-white border border-gray-100 rounded-full shadow-sm">
+                                    <span className="relative flex h-2 w-2">
+                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                                    </span>
+                                    <span className="text-[11px] font-medium text-gray-600">自動化服務運作中</span>
                                 </div>
-
-                                {/* Manual Trigger Button */}
-                                <button
-                                    onClick={triggerDailyReport}
-                                    disabled={reportStatus.generating}
-                                    className="w-full py-2.5 px-4 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
-                                >
-                                    {reportStatus.generating ? (
-                                        <>
-                                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                                            報告生成中...
-                                        </>
-                                    ) : (
-                                        <>🚀 立即生成報告</>
-                                    )}
-                                </button>
-                            </div>
-
-                            {/* Report Content Summary */}
-                            <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-                                <h4 className="font-semibold text-gray-800 mb-2 text-sm">報告內容包含</h4>
-                                <ul className="space-y-2 text-xs text-gray-600">
-                                    <li className="flex items-start gap-2">
-                                        <span className="mt-0.5">📰</span>
-                                        <div>
-                                            <p className="font-medium text-gray-700">教育平台新聞</p>
-                                            <p className="text-gray-400">全球 EdTech 趨勢、台灣數位學習動態、競爭對手消息</p>
-                                        </div>
-                                    </li>
-                                    <li className="flex items-start gap-2">
-                                        <span className="mt-0.5">⚠️</span>
-                                        <div>
-                                            <p className="font-medium text-gray-700">平台風險分析</p>
-                                            <p className="text-gray-400">過時套件、安全漏洞、架構風險、相容性問題</p>
-                                        </div>
-                                    </li>
-                                    <li className="flex items-start gap-2">
-                                        <span className="mt-0.5">🔮</span>
-                                        <div>
-                                            <p className="font-medium text-gray-700">技術趨勢建議</p>
-                                            <p className="text-gray-400">技術棧升級路徑、風險緩解方案、新技術評估</p>
-                                        </div>
-                                    </li>
-                                </ul>
-                            </div>
-
-                            {/* Configuration Info */}
-                            <div className="bg-blue-50 rounded-xl p-3 border border-blue-100">
-                                <p className="text-xs font-medium text-blue-800 mb-1">⚙️ 環境設定</p>
-                                <ul className="text-[10px] text-blue-600 space-y-0.5">
-                                    <li>• GEMINI_API_KEY — AI 新聞分析（必須）</li>
-                                    <li>• SMTP_USER / SMTP_PASS — Email 發送</li>
-                                    <li>• SMTP_HOST — SMTP 伺服器（預設 smtp.gmail.com）</li>
-                                    <li>• CRON_SECRET — Cron 請求驗證</li>
-                                    <li>• DAILY_REPORT_EMAIL — 收件人（預設 jvtutorcorner@gmail.com）</li>
-                                </ul>
                             </div>
                         </div>
                     )}
 
                     {/* Messages (Chat Tab) */}
                     {activeTab === 'chat' && (<>
-                    <div className="flex-1 p-4 overflow-y-auto bg-gray-50 flex flex-col gap-4 scroll-smooth">
-                        {messages.map((m) => (
-                            <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2 duration-300`}>
-                                <div className={`max-w-[85%] p-3.5 rounded-2xl shadow-sm text-[15px] leading-relaxed ${m.role === 'user'
+                        <div className="flex-1 p-4 overflow-y-auto bg-gray-50 flex flex-col gap-4 scroll-smooth">
+                            {messages.map((m) => (
+                                <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2 duration-300`}>
+                                    <div className={`max-w-[85%] p-3.5 rounded-2xl shadow-sm text-[15px] leading-relaxed ${m.role === 'user'
                                         ? 'bg-blue-600 text-white rounded-tr-sm'
                                         : 'bg-white text-gray-800 border border-gray-100 rounded-tl-sm ring-1 ring-black/5'
-                                    } whitespace-pre-wrap`}>
-                                    {m.content}
+                                        } whitespace-pre-wrap`}>
+                                        {m.content}
+                                    </div>
                                 </div>
-                            </div>
-                        ))}
-                        {isLoading && (
-                            <div className="flex justify-start animate-in fade-in">
-                                <div className="bg-white border border-gray-100 p-4 rounded-2xl rounded-tl-sm shadow-sm ring-1 ring-black/5 flex gap-1.5 items-center h-12">
-                                    <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce"></div>
-                                    <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0.15s' }}></div>
-                                    <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0.3s' }}></div>
+                            ))}
+                            {isLoading && (
+                                <div className="flex justify-start animate-in fade-in">
+                                    <div className="bg-white border border-gray-100 p-4 rounded-2xl rounded-tl-sm shadow-sm ring-1 ring-black/5 flex gap-1.5 items-center h-12">
+                                        <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce"></div>
+                                        <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0.15s' }}></div>
+                                        <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0.3s' }}></div>
+                                    </div>
                                 </div>
-                            </div>
-                        )}
-                        <div ref={messagesEndRef} className="h-1" />
-                    </div>
+                            )}
+                            <div ref={messagesEndRef} className="h-1" />
+                        </div>
 
-                    {/* Input */}
-                    <div className="p-3 bg-white border-t border-gray-100 shadow-[0_-4px_10px_-5px_rgba(0,0,0,0.05)]">
-                        <div className="flex gap-2 relative group">
-                            <input
-                                type="text"
-                                value={input}
-                                onChange={(e) => setInput(e.target.value)}
-                                onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
-                                placeholder="輸入您的問題..."
-                                className="flex-1 pl-4 pr-12 py-3 bg-gray-50 border border-transparent hover:border-gray-200 focus:bg-white rounded-full focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 text-[15px] transition-all"
-                            />
-                            <button
-                                onClick={sendMessage}
-                                disabled={!input.trim() || isLoading}
-                                className="absolute right-1.5 top-1.5 bottom-1.5 w-9 flex items-center justify-center bg-blue-600 text-white rounded-full disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed hover:bg-blue-700 hover:shadow-md transition-all active:scale-95"
-                            >
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="ml-0.5"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
-                            </button>
+                        {/* Input */}
+                        <div className="p-3 bg-white border-t border-gray-100 shadow-[0_-4px_10px_-5px_rgba(0,0,0,0.05)]">
+                            <div className="flex gap-2 relative group">
+                                <input
+                                    type="text"
+                                    value={input}
+                                    onChange={(e) => setInput(e.target.value)}
+                                    onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
+                                    placeholder="輸入您的問題..."
+                                    className="flex-1 pl-4 pr-12 py-3 bg-gray-50 border border-transparent hover:border-gray-200 focus:bg-white rounded-full focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 text-[15px] transition-all"
+                                />
+                                <button
+                                    onClick={sendMessage}
+                                    disabled={!input.trim() || isLoading}
+                                    className="absolute right-1.5 top-1.5 bottom-1.5 w-9 flex items-center justify-center bg-blue-600 text-white rounded-full disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed hover:bg-blue-700 hover:shadow-md transition-all active:scale-95"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="ml-0.5"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                                </button>
+                            </div>
+                            <div className="text-center mt-2">
+                                <span className="text-[10px] text-gray-400">Powered by Gemini AI Agent</span>
+                            </div>
                         </div>
-                        <div className="text-center mt-2">
-                            <span className="text-[10px] text-gray-400">Powered by Gemini AI Agent</span>
-                        </div>
-                    </div>
                     </>)}
                 </div>
             )}

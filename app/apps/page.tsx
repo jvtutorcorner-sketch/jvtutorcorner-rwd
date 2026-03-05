@@ -146,6 +146,10 @@ export default function AppsPage() {
         };
     }, [selectedAppConfig]);
 
+    const handleOpenReport = () => {
+        router.push('/apps/daily-report');
+    };
+
     useEffect(() => {
         const fetchApps = async () => {
             try {
@@ -717,26 +721,20 @@ export default function AppsPage() {
                                                         {testingId === connected[0].integrationId ? (
                                                             <><svg className="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>測試中...</>
                                                         ) : (
-                                                            <>🔍 測試連線</>
+                                                            <>🔍 測試連線代碼</>
                                                         )}
                                                     </button>
                                                     <button
                                                         onClick={() => setSelectedAppConfig(connected[0])}
-                                                        className="text-xs bg-green-50 hover:bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 dark:hover:bg-green-900/50 font-medium py-2 px-3 rounded-lg transition-colors"
+                                                        className="text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 dark:hover:bg-blue-900/50 font-medium py-2 px-3 rounded-lg transition-colors"
                                                     >
                                                         設定
                                                     </button>
-                                                    <Link
-                                                        href={`/add-app?type=payment&provider=${type}`}
-                                                        className="text-xs bg-gray-50 hover:bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 font-medium py-2 px-3 rounded-lg transition-colors"
-                                                    >
-                                                        新增
-                                                    </Link>
                                                 </>
                                             ) : (
                                                 <Link
-                                                    href={`/add-app?type=payment&provider=${type}`}
-                                                    className="w-full text-center text-xs bg-green-100 hover:bg-green-200 text-green-700 border border-green-300 font-semibold py-2 px-3 rounded-lg transition-colors"
+                                                    href={`/add-app?type=ai&provider=${type}`}
+                                                    className="w-full text-center text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 border border-blue-300 font-semibold py-2 px-3 rounded-lg transition-colors"
                                                 >
                                                     立即設定
                                                 </Link>
@@ -746,6 +744,44 @@ export default function AppsPage() {
                                 </div>
                             );
                         })}
+                    </div>
+
+                    {/* ─────────── 自動化服務區塊 (新增) ─────────── */}
+                    <div className="flex justify-between items-center mb-6 border-b border-gray-200 dark:border-gray-700 pb-2">
+                        <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-100 flex items-center">
+                            <span className="text-xl mr-2">⚡</span>
+                            自動化服務助理
+                        </h2>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
+                        <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-lg transition-all group flex flex-col justify-between">
+                            <div>
+                                <div className="flex items-center gap-4 mb-4">
+                                    <div className="w-12 h-12 bg-indigo-100 dark:bg-indigo-900/30 rounded-xl flex items-center justify-center text-indigo-600 dark:text-indigo-400 text-2xl group-hover:scale-110 transition-transform">
+                                        📊
+                                    </div>
+                                    <h3 className="text-lg font-bold text-gray-900 dark:text-white">AI 每日自動報告</h3>
+                                </div>
+                                <p className="text-sm text-gray-600 dark:text-gray-400 mb-6 leading-relaxed">
+                                    自動搜尋全球教育技術新聞、進行平台架構風險分析，並每日定時寄送摘要報告。
+                                </p>
+                            </div>
+                            <button
+                                onClick={handleOpenReport}
+                                className="w-full py-3 px-4 bg-gray-900 dark:bg-white dark:text-gray-900 text-white rounded-xl text-sm font-bold hover:bg-gray-800 dark:hover:bg-gray-100 transition-colors flex items-center justify-center gap-2"
+                            >
+                                進入報告面板 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
+                            </button>
+                        </div>
+
+                        <div className="bg-gray-50/50 dark:bg-gray-900/20 rounded-2xl p-6 border-2 border-dashed border-gray-200 dark:border-gray-800 flex flex-col items-center justify-center text-center">
+                            <div className="w-12 h-12 bg-white dark:bg-gray-800 rounded-full flex items-center justify-center text-gray-400 mb-3 shadow-inner">
+                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
+                            </div>
+                            <p className="text-sm font-medium text-gray-500">更多自動化工具</p>
+                            <p className="text-xs text-gray-400 mt-1">即將推出</p>
+                        </div>
                     </div>
 
                     {/* ─────────── AI 工具區塊 ─────────── */}
