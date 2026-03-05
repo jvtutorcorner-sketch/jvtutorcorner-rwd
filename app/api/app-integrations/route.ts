@@ -20,8 +20,6 @@ import { NextResponse } from 'next/server';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, PutCommand, ScanCommand, GetCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
 import { randomUUID } from 'crypto';
-import fs from 'fs';
-import resolveDataFile from '@/lib/localData';
 
 const ddbRegion = process.env.CI_AWS_REGION || process.env.AWS_REGION;
 const ddbExplicitAccessKey = process.env.CI_AWS_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID;
@@ -38,45 +36,10 @@ const docClient = DynamoDBDocumentClient.from(client);
 
 const TABLE = process.env.DYNAMODB_TABLE_APP_INTEGRATIONS || 'jvtutorcorner-app-integrations';
 
-const useDynamo =
-    typeof TABLE === 'string' && TABLE.length > 0 && (
-        process.env.NODE_ENV === 'production' || !!(process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID)
-    );
-
-// Local dev fallback
-let LOCAL_INTEGRATIONS: AppIntegrationRecord[] = [];
-
-async function loadLocal() {
-    try {
-        const FILE = await resolveDataFile('app-integrations.json');
-        console.log('[app-integrations API] Loading from:', FILE);
-        if (fs.existsSync(FILE)) {
-            const content = fs.readFileSync(FILE, 'utf8');
-            LOCAL_INTEGRATIONS = JSON.parse(content || '[]');
-            console.log('[app-integrations API] Loaded records:', LOCAL_INTEGRATIONS.length);
-        } else {
-            console.log('[app-integrations API] File does not exist yet.');
-            LOCAL_INTEGRATIONS = [];
-        }
-    } catch (e) {
-        console.error('[app-integrations API] loadLocal error:', e);
-        LOCAL_INTEGRATIONS = [];
-    }
-}
-
-async function saveLocal() {
-    try {
-        const FILE = await resolveDataFile('app-integrations.json');
-        console.log('[app-integrations API] Saving to:', FILE);
-        fs.writeFileSync(FILE, JSON.stringify(LOCAL_INTEGRATIONS, null, 2), 'utf8');
-    } catch (e) {
-        console.warn('[app-integrations API] failed to save local data', e);
-    }
-}
+const useDynamo = typeof TABLE === 'string' && TABLE.length > 0;
 
 if (!useDynamo) {
-    console.warn(`[app-integrations API] Dev mode: local fallback. Table: ${TABLE}`);
-    loadLocal().catch(() => { });
+    console.warn(`[app-integrations API] DYNAMODB_TABLE_APP_INTEGRATIONS is not set!`);
 } else {
     console.log(`[app-integrations API] Using DynamoDB Table: ${TABLE}`);
 }
@@ -138,12 +101,7 @@ export async function POST(request: Request) {
             updatedAt: now,
         };
 
-        if (useDynamo) {
-            await docClient.send(new PutCommand({ TableName: TABLE, Item: item }));
-        } else {
-            LOCAL_INTEGRATIONS.unshift(item);
-            await saveLocal();
-        }
+        await docClient.send(new PutCommand({ TableName: TABLE, Item: item }));
 
         return NextResponse.json({ ok: true, integration: item }, { status: 201 });
     } catch (error: any) {
@@ -161,13 +119,7 @@ export async function GET(request: Request) {
         const userId = searchParams.get('userId');
         const type = searchParams.get('type');
 
-        if (!useDynamo) {
-            await loadLocal();
-            let results = LOCAL_INTEGRATIONS;
-            if (userId) results = results.filter((a) => a.userId === userId);
-            if (type) results = results.filter((a) => a.type === type.toUpperCase());
-            return NextResponse.json({ ok: true, total: results.length, data: results });
-        }
+        // Removed local JSON fallback, strictly using DynamoDB
 
         const filters: string[] = [];
         const ExpressionAttributeValues: Record<string, any> = {};
@@ -214,48 +166,27 @@ export async function PUT(request: Request) {
 
         const now = new Date().toISOString();
 
-        if (useDynamo) {
-            // PK 是 userId (HASH) + type (RANGE)
-            const existing = await docClient.send(new GetCommand({
-                TableName: TABLE,
-                Key: { userId: String(userId), type: String(type).toUpperCase() }
-            }));
+        const existing = await docClient.send(new GetCommand({
+            TableName: TABLE,
+            Key: { userId: String(userId), type: String(type).toUpperCase() }
+        }));
 
-            if (!existing.Item) {
-                return NextResponse.json({ ok: false, error: '整合項目不存在 (Not found by PK: userId+type)' }, { status: 404 });
-            }
-
-            const updatedItem = {
-                ...existing.Item,
-                integrationId: integrationId || existing.Item.integrationId,
-                name: name || existing.Item.name,
-                config: config || existing.Item.config,
-                status: status || existing.Item.status,
-                updatedAt: now,
-            };
-
-            console.log('[app-integrations API] Saving updated item to DynamoDB:', JSON.stringify(updatedItem, null, 2));
-            await docClient.send(new PutCommand({ TableName: TABLE, Item: updatedItem }));
-            return NextResponse.json({ ok: true, integration: updatedItem });
-        } else {
-            await loadLocal();
-            const idx = LOCAL_INTEGRATIONS.findIndex(a =>
-                (a.integrationId === integrationId) ||
-                (a.userId === userId && a.type === type.toUpperCase())
-            );
-            if (idx === -1) return NextResponse.json({ ok: false, error: 'Local integration not found' }, { status: 404 });
-
-            LOCAL_INTEGRATIONS[idx] = {
-                ...LOCAL_INTEGRATIONS[idx],
-                name: name || LOCAL_INTEGRATIONS[idx].name,
-                config: config || LOCAL_INTEGRATIONS[idx].config,
-                status: status || LOCAL_INTEGRATIONS[idx].status,
-                updatedAt: now,
-            };
-            console.log('[app-integrations API] PUT local success:', LOCAL_INTEGRATIONS[idx]);
-            await saveLocal();
-            return NextResponse.json({ ok: true, integration: LOCAL_INTEGRATIONS[idx] });
+        if (!existing.Item) {
+            return NextResponse.json({ ok: false, error: '整合項目不存在 (Not found by PK: userId+type)' }, { status: 404 });
         }
+
+        const updatedItem = {
+            ...existing.Item,
+            integrationId: integrationId || existing.Item.integrationId,
+            name: name || existing.Item.name,
+            config: config || existing.Item.config,
+            status: status || existing.Item.status,
+            updatedAt: now,
+        };
+
+        console.log('[app-integrations API] Saving updated item to DynamoDB:', JSON.stringify(updatedItem, null, 2));
+        await docClient.send(new PutCommand({ TableName: TABLE, Item: updatedItem }));
+        return NextResponse.json({ ok: true, integration: updatedItem });
     } catch (error: any) {
         console.error('[app-integrations API] PUT error:', error);
         return NextResponse.json({ ok: false, error: `Failed to update integration: ${error.message}` }, { status: 500 });
@@ -275,20 +206,10 @@ export async function DELETE(request: Request) {
             return NextResponse.json({ ok: false, error: 'userId and type (PK) are required for deletion.' }, { status: 400 });
         }
 
-        if (useDynamo) {
-            await docClient.send(new DeleteCommand({
-                TableName: TABLE,
-                Key: { userId: String(userId), type: String(type).toUpperCase() }
-            }));
-        } else {
-            await loadLocal();
-            const initialLen = LOCAL_INTEGRATIONS.length;
-            LOCAL_INTEGRATIONS = LOCAL_INTEGRATIONS.filter(a => !(a.userId === userId && a.type === type.toUpperCase()));
-            if (LOCAL_INTEGRATIONS.length === initialLen) {
-                return NextResponse.json({ ok: false, error: 'Integration not found' }, { status: 404 });
-            }
-            await saveLocal();
-        }
+        await docClient.send(new DeleteCommand({
+            TableName: TABLE,
+            Key: { userId: String(userId), type: String(type).toUpperCase() }
+        }));
 
         return NextResponse.json({ ok: true, message: 'Integration deleted successfully' });
     } catch (error: any) {

@@ -121,6 +121,7 @@ export default function AppsPage() {
         APP_CATEGORY_PAYMENT: true,
         APP_CATEGORY_AUTOMATION: true,
         APP_CATEGORY_AI: true,
+        APP_CATEGORY_AI_CHATROOM: true,
         APP_CATEGORY_EMAIL: true
     });
 
@@ -160,7 +161,7 @@ export default function AppsPage() {
             try {
                 let userId = 'anonymous';
                 let userRole = 'student'; // Default safe fallback
-                const raw = localStorage.getItem('tutor_user');
+                const raw = localStorage.getItem('tutor_mock_user');
                 if (raw) {
                     const stored = JSON.parse(raw);
                     userId = stored.id || stored.email || 'anonymous';
@@ -178,6 +179,7 @@ export default function AppsPage() {
                         'APP_CATEGORY_PAYMENT',
                         'APP_CATEGORY_AUTOMATION',
                         'APP_CATEGORY_AI',
+                        'APP_CATEGORY_AI_CHATROOM',
                         'APP_CATEGORY_EMAIL'
                     ];
 
@@ -199,7 +201,7 @@ export default function AppsPage() {
                     setCategoryPermissions(newPerms);
                 }
 
-                const res = await fetch(`/api/app-integrations?userId=${userId}`);
+                const res = await fetch(`/api/app-integrations`);
                 const result = await res.json();
 
                 console.log('[AppsPage] Fetch result:', { userId, ok: result.ok, total: result.total, data: result.data });
@@ -537,6 +539,13 @@ export default function AppsPage() {
             setIsSyncing(false);
         }
     };
+    // Visibility derived from permissions OR existing connected apps
+    const showChannels = categoryPermissions.APP_CATEGORY_CHANNEL || apps.some(a => CHANNEL_TYPES.includes(a.type));
+    const showPayments = categoryPermissions.APP_CATEGORY_PAYMENT || apps.some(a => PAYMENT_TYPES.includes(a.type));
+    const showAI = categoryPermissions.APP_CATEGORY_AI || apps.some(a => aiTypes.filter(t => t !== 'AI_CHATROOM').includes(a.type));
+    const showAIChatroom = categoryPermissions.APP_CATEGORY_AI_CHATROOM || apps.some(a => a.type === 'AI_CHATROOM');
+    const showEmail = categoryPermissions.APP_CATEGORY_EMAIL || apps.some(a => EMAIL_TYPES.includes(a.type));
+    const showAutomation = categoryPermissions.APP_CATEGORY_AUTOMATION; // Automation is special, keeping permission-based for now unless it has a connection record
 
     return (
         <div className="page p-6 max-w-5xl mx-auto">
@@ -562,7 +571,7 @@ export default function AppsPage() {
             ) : (
                 <>
                     {/* ─────────── 通訊渠道區塊 ─────────── */}
-                    {categoryPermissions.APP_CATEGORY_CHANNEL && (<>
+                    {showChannels && (<>
                         <div className="flex justify-between items-center mb-6 border-b border-gray-200 dark:border-gray-700 pb-2">
                             <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-100 flex items-center">
                                 <svg className="w-5 h-5 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -666,7 +675,7 @@ export default function AppsPage() {
                     </>)}
 
                     {/* ─────────── 金流服務區塊 ─────────── */}
-                    {categoryPermissions.APP_CATEGORY_PAYMENT && (<>
+                    {showPayments && (<>
                         <div className="flex justify-between items-center mb-6 border-b border-gray-200 dark:border-gray-700 pb-2">
                             <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-100 flex items-center">
                                 <svg className="w-5 h-5 mr-2 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -795,7 +804,7 @@ export default function AppsPage() {
                     </>)}
 
                     {/* ─────────── 自動化服務區塊 (新增) ─────────── */}
-                    {categoryPermissions.APP_CATEGORY_AUTOMATION && (<>
+                    {showAutomation && (<>
                         <div className="flex justify-between items-center mb-6 border-b border-gray-200 dark:border-gray-700 pb-2">
                             <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-100 flex items-center">
                                 <span className="text-xl mr-2">⚡</span>
@@ -835,14 +844,14 @@ export default function AppsPage() {
                     </>)}
 
                     {/* ─────────── AI 工具區塊 ─────────── */}
-                    {categoryPermissions.APP_CATEGORY_AI && (<>
+                    {showAI && (<>
                         <div className="flex justify-between items-center mb-6 border-b border-gray-200 dark:border-gray-700 pb-2">
                             <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-100 flex items-center">
                                 <span className="text-xl mr-2">🤖</span>
                                 AI 工具串接
                                 <span className="ml-3 inline-flex items-center gap-2 text-sm font-normal text-gray-500 dark:text-gray-400">
                                     <span className="px-2.5 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-full text-xs font-semibold">
-                                        {apps.filter(a => aiTypes.includes(a.type) && a.status === 'ACTIVE').length}/{apps.filter(a => aiTypes.includes(a.type)).length}
+                                        {apps.filter(a => aiTypes.filter(t => t !== 'AI_CHATROOM').includes(a.type) && a.status === 'ACTIVE').length}/{apps.filter(a => aiTypes.filter(t => t !== 'AI_CHATROOM').includes(a.type)).length}
                                     </span>
                                 </span>
                             </h2>
@@ -863,7 +872,7 @@ export default function AppsPage() {
                         </div>
 
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-                            {aiTypes.map((type: string) => {
+                            {aiTypes.filter(t => t !== 'AI_CHATROOM').map((type: string) => {
                                 const meta = AI_META[type];
                                 const connected = getConnectedApps(type);
                                 const isConnected = connected.length > 0;
@@ -890,14 +899,14 @@ export default function AppsPage() {
 
                                         {/* 圖標與名稱 */}
                                         <div className="flex items-center gap-3 mb-3">
-                                            <span className="text-2xl">{meta.icon}</span>
+                                            <span className="text-2xl">{meta?.icon}</span>
                                             <div>
-                                                <h3 className="font-bold text-gray-900 dark:text-white">{meta.label}</h3>
+                                                <h3 className="font-bold text-gray-900 dark:text-white">{meta?.label || type}</h3>
                                             </div>
                                         </div>
 
                                         {/* 說明文字 */}
-                                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4 flex-1">{meta.desc}</p>
+                                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4 flex-1">{meta?.desc}</p>
 
                                         {/* 已連接的名稱 */}
                                         {activeApp && (
@@ -948,8 +957,114 @@ export default function AppsPage() {
                         </div>
                     </>)}
 
+                    {/* ─────────── AI 聊天室區塊 ─────────── */}
+                    {showAIChatroom && (<>
+                        <div className="flex justify-between items-center mb-6 border-b border-gray-200 dark:border-gray-700 pb-2">
+                            <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-100 flex items-center">
+                                <span className="text-xl mr-2">💬</span>
+                                AI 聊天室
+                                <span className="ml-3 inline-flex items-center gap-2 text-sm font-normal text-gray-500 dark:text-gray-400">
+                                    <span className="px-2.5 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded-full text-xs font-semibold">
+                                        {apps.filter(a => a.type === 'AI_CHATROOM' && a.status === 'ACTIVE').length}/{apps.filter(a => a.type === 'AI_CHATROOM').length}
+                                    </span>
+                                </span>
+                            </h2>
+                            <Link href="/add-app?type=ai&provider=AI_CHATROOM" className="text-sm bg-purple-100 hover:bg-purple-200 text-purple-700 font-semibold py-1.5 px-4 rounded-full transition-colors flex items-center">
+                                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+                                </svg>
+                                新增 AI 聊天室設定
+                            </Link>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+                            {(() => {
+                                const type = 'AI_CHATROOM';
+                                const meta = AI_META[type];
+                                const connected = getConnectedApps(type);
+                                const isConnected = connected.length > 0;
+                                const activeApp = connected.find(a => a.status === 'ACTIVE');
+                                const activeCount = connected.filter(a => a.status === 'ACTIVE').length;
+                                const inactiveCount = connected.filter(a => a.status !== 'ACTIVE').length;
+
+                                return (
+                                    <div key={type} className={`relative bg-white dark:bg-gray-800 rounded-xl shadow-sm border-2 p-6 flex flex-col transition-all hover:shadow-md ${isConnected ? 'border-purple-300 dark:border-purple-600' : 'border-gray-200 dark:border-gray-700'}`}>
+                                        {/* 連線狀態 */}
+                                        <div className="absolute top-3 right-3">
+                                            {isConnected ? (
+                                                <span className="flex items-center gap-1 text-xs font-medium text-purple-600 dark:text-purple-400">
+                                                    <span className="relative flex h-2.5 w-2.5">
+                                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
+                                                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-purple-500"></span>
+                                                    </span>
+                                                    已連接
+                                                </span>
+                                            ) : (
+                                                <span className="text-xs font-medium text-gray-400 dark:text-gray-500">未設定</span>
+                                            )}
+                                        </div>
+
+                                        {/* 圖標與名稱 */}
+                                        <div className="flex items-center gap-3 mb-3">
+                                            <span className="text-2xl">{meta?.icon}</span>
+                                            <div>
+                                                <h3 className="font-bold text-gray-900 dark:text-white">{meta?.label || 'AI 聊天室'}</h3>
+                                            </div>
+                                        </div>
+
+                                        {/* 說明文字 */}
+                                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4 flex-1">{meta?.desc}</p>
+
+                                        {/* 已連接的名稱 */}
+                                        {activeApp && (
+                                            <p className="text-xs text-purple-600 dark:text-purple-400 mb-3 truncate">
+                                                ✓ {activeApp.name}
+                                                {activeApp.createdAt && (
+                                                    <span className="text-gray-400 ml-1">· {new Date(activeApp.createdAt).toLocaleDateString()}</span>
+                                                )}
+                                            </p>
+                                        )}
+
+                                        {/* 設定狀態計數 */}
+                                        {connected.length > 0 && (
+                                            <div className="mb-3 p-2.5 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-800">
+                                                <div className="flex justify-between text-xs text-gray-700 dark:text-gray-300">
+                                                    <span>已設定: <strong className="text-purple-600 dark:text-purple-400">{activeCount}</strong></span>
+                                                    <span>未設定: <strong className="text-orange-600 dark:text-orange-400">{inactiveCount}</strong></span>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* 操作按鈕 */}
+                                        <div className="space-y-2">
+                                            <div className="flex gap-2">
+                                                {isConnected ? (
+                                                    <>
+                                                        <Link
+                                                            href={`/add-app?type=ai&provider=${type}`}
+                                                            className="text-xs bg-gray-50 hover:bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 font-medium py-2 px-3 rounded-lg transition-colors w-full text-center"
+                                                        >
+                                                            新增服務
+                                                        </Link>
+                                                    </>
+                                                ) : (
+                                                    <Link
+                                                        href={`/add-app?type=ai&provider=${type}`}
+                                                        className="w-full text-center text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 border border-blue-300 font-semibold py-2 px-3 rounded-lg transition-colors"
+                                                    >
+                                                        立即設定
+                                                    </Link>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
+                        </div>
+                    </>)}
+
                     {/* ─────────── 郵件服務區塊 ─────────── */}
-                    {categoryPermissions.APP_CATEGORY_EMAIL && (<>
+                    {showEmail && (<>
                         <div className="flex justify-between items-center mb-6 border-b border-gray-200 dark:border-gray-700 pb-2">
                             <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-100 flex items-center">
                                 <span className="text-xl mr-2">✉️</span>
@@ -1230,7 +1345,18 @@ export default function AppsPage() {
 
                                             <div className="bg-gray-50 dark:bg-gray-900 p-4 rounded-md border border-gray-200 dark:border-gray-700 overflow-x-auto text-sm">
                                                 <ul className="space-y-4 text-gray-700 dark:text-gray-300">
-                                                    {Object.keys(editedConfig).filter(k => k !== 'models').map(key => {
+                                                    {Object.keys(editedConfig).filter(key => {
+                                                        if (key === 'models') return false;
+                                                        if (selectedAppConfig.type === 'RESEND' && !['smtpPass', 'fromAddress'].includes(key)) return false;
+
+                                                        // Filter out AI-specific fields that are handled by the specialized block below
+                                                        if (aiTypes.includes(selectedAppConfig.type)) {
+                                                            if (key === 'systemInstruction') return false;
+                                                            if (selectedAppConfig.type === 'AI_CHATROOM' && key === 'linkedServiceId') return false;
+                                                        }
+
+                                                        return true;
+                                                    }).map(key => {
                                                         // For RESEND, we only show API Key and From Address
                                                         if (selectedAppConfig.type === 'RESEND' && !['smtpPass', 'fromAddress'].includes(key)) return null;
 
@@ -1684,11 +1810,13 @@ export default function AppsPage() {
                                 <button
                                     type="button"
                                     className={`inline-flex justify-center items-center rounded-md border border-transparent shadow-sm px-4 py-2 text-base font-medium text-white transition-colors sm:text-sm ${isSavingConfig ||
-                                        JSON.stringify(editedConfig) === JSON.stringify(selectedAppConfig.config || {}) ||
-                                        (aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) > 1) ||
-                                        (aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) === 0)
-                                        ? 'bg-gray-400 cursor-not-allowed'
-                                        : 'bg-blue-600 hover:bg-blue-700'
+                                            (JSON.stringify(editedConfig) === JSON.stringify(selectedAppConfig.config || {}) &&
+                                                editedName === selectedAppConfig.name &&
+                                                editedStatus === selectedAppConfig.status) ||
+                                            (selectedAppConfig.type !== 'AI_CHATROOM' && aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) > 1) ||
+                                            (selectedAppConfig.type !== 'AI_CHATROOM' && aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) === 0)
+                                            ? 'bg-gray-400 cursor-not-allowed'
+                                            : 'bg-blue-600 hover:bg-blue-700'
                                         }`}
                                     onClick={handleSaveConfig}
                                     disabled={
@@ -1696,13 +1824,13 @@ export default function AppsPage() {
                                         (JSON.stringify(editedConfig) === JSON.stringify(selectedAppConfig.config || {}) &&
                                             editedName === selectedAppConfig.name &&
                                             editedStatus === selectedAppConfig.status) ||
-                                        (aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) > 1) ||
-                                        (aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) === 0)
+                                        (selectedAppConfig.type !== 'AI_CHATROOM' && aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) > 1) ||
+                                        (selectedAppConfig.type !== 'AI_CHATROOM' && aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) === 0)
                                     }
                                 >
                                     {isSavingConfig ? '儲存中...' : (
-                                        (aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) > 1) ? '模型限選一個' :
-                                            (aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) === 0) ? '請選擇模型' :
+                                        (selectedAppConfig.type !== 'AI_CHATROOM' && aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) > 1) ? '模型限選一個' :
+                                            (selectedAppConfig.type !== 'AI_CHATROOM' && aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) === 0) ? '請選擇模型' :
                                                 '儲存設定')}
                                 </button>
                             </div>

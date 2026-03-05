@@ -28,6 +28,9 @@ function AddAppForm() {
         GEMINI: []
     });
 
+    const [allApps, setAllApps] = useState<any[]>([]);
+    const [loadingApps, setLoadingApps] = useState(false);
+
     const [loading, setLoading] = useState(false);
     const [loadingModels, setLoadingModels] = useState(false);
 
@@ -53,8 +56,30 @@ function AddAppForm() {
                 }
             };
             fetchModels();
+
+            // Fetch app integrations to find active AI tools
+            const fetchApps = async () => {
+                setLoadingApps(true);
+                try {
+                    const res = await fetch('/api/app-integrations');
+                    const json = await res.json();
+                    if (json.ok) {
+                        setAllApps(json.data || []);
+                    }
+                } catch (error) {
+                    console.error('Failed to fetch apps:', error);
+                } finally {
+                    setLoadingApps(false);
+                }
+            };
+            fetchApps();
         }
     }, [isAI]);
+
+    const activeAIApps = allApps.filter(a =>
+        ['OPENAI', 'ANTHROPIC', 'GEMINI'].includes(a.type) &&
+        a.status === 'ACTIVE'
+    );
 
     // Communication channel type selector - pre-select from URL ?channel=TELEGRAM
     const channelFromUrl = searchParams.get('channel')?.toUpperCase() || 'LINE';
@@ -117,23 +142,41 @@ function AddAppForm() {
         paypalSecretKey: ''
     });
 
+    // Gemini default prompt
+    const GEMINI_DEFAULT_PROMPT = `# 角色設定
+你是「jvtutorcorner」語言學習平台的專屬 AI 助教。你的任務是透過 LINE 提供高品質的語言指導，同時引導學生善用平台的線上教學資源。你的語氣必須親切、專業、充滿鼓勵，就像一位真實且充滿熱忱的家教。
+
+# 核心任務
+1. 語言解答 (純文字)：精準回答學生的單字、文法或翻譯問題。每次解答請務必提供 1 到 2 個實用的生活化英文例句，並附上中文翻譯。
+2. 視覺學習 (圖片支援)：若學生傳送圖片，請仔細觀察圖片細節，挑選 3 到 5 個最相關的核心英文單字（附詞性與中文解釋），並利用其中一個單字造一個與圖片情境相符的句子。
+3. 平台特色引導：在適當的教學時機，自然地提醒學生「語言需要實際開口練習」。主動引導並鼓勵他們預約 jvtutorcorner 的「1對1視訊教學」課程，並提及上課時可以利用專屬的「互動白板」與老師進行視覺化的即時演練，讓學習更有成效。
+
+# 回覆限制與排版格式
+- 內容必須條列式、段落分明，絕對避免產生密密麻麻的長篇大論，確保極佳的 LINE 手機閱讀體驗。
+- 適度使用表情符號（如 💡、🗣️、✨、📸）增加對話的溫度與互動感。
+- 每次回覆的結尾，請務必拋出一個與剛剛學習內容相關的「簡單英文問句」，引導學生繼續在 LINE 上用英文回覆你，達成連續互動。
+- 若學生詢問與語言學習或平台操作完全無關的話題，請幽默且禮貌地將話題導回學習本身。`;
+
     // For AI
-    const [selectedAIProvider, setSelectedAIProvider] = useState(
-        ['OPENAI', 'ANTHROPIC', 'GEMINI', 'AI_CHATROOM'].includes(providerFromUrl) ? providerFromUrl : 'OPENAI'
-    );
+    const predefinedAIProvider = (providerFromUrl === 'AI_CHATROOM' || ['OPENAI', 'ANTHROPIC', 'GEMINI'].includes(providerFromUrl)) ? providerFromUrl : '';
+    const [selectedAIProvider, setSelectedAIProvider] = useState(predefinedAIProvider);
     const [aiData, setAiData] = useState<{
         name: string;
         openaiApiKey: string;
         anthropicApiKey: string;
         geminiApiKey: string;
         models: string[];
+        systemInstruction: string;
+        linkedServiceId: string;
     }>({
         name: '',
         openaiApiKey: '',
         anthropicApiKey: '',
         geminiApiKey: '',
-        models: []
-    });
+        models: [],
+        systemInstruction: selectedAIProvider === 'AI_CHATROOM' ? GEMINI_DEFAULT_PROMPT : '',
+        linkedServiceId: ''
+    } as any);
 
     const handleAiChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         setAiData({ ...aiData, [e.target.name]: e.target.value });
@@ -288,7 +331,7 @@ function AddAppForm() {
             let userId = 'anonymous';
             if (typeof window !== 'undefined') {
                 try {
-                    const raw = localStorage.getItem('tutor_user');
+                    const raw = localStorage.getItem('tutor_mock_user');
                     if (raw) {
                         const stored = JSON.parse(raw);
                         userId = stored.id || stored.email || 'anonymous';
@@ -334,7 +377,10 @@ function AddAppForm() {
                 } else if (selectedAIProvider === 'GEMINI') {
                     config = { apiKey: aiData.geminiApiKey, models: aiData.models, systemInstruction: (aiData as any).systemInstruction };
                 } else if (selectedAIProvider === 'AI_CHATROOM') {
-                    config = { linkedServiceId: '' };
+                    config = {
+                        linkedServiceId: (aiData as any).linkedServiceId,
+                        systemInstruction: (aiData as any).systemInstruction
+                    };
                 }
 
                 payload = {
@@ -429,9 +475,11 @@ function AddAppForm() {
                         </svg>
                     </Link>
                     <div className="text-center">
-                        <h1 className="text-2xl font-bold">{isPayment ? '新增金流服務' : isAI ? '新增 AI 服務' : isEmail ? '新增郵件服務' : '新增應用程式'}</h1>
+                        <h1 className="text-2xl font-bold">
+                            {isPayment ? '新增金流服務' : (isAI && selectedAIProvider === 'AI_CHATROOM' ? '新增 AI 聊天室' : isAI ? '新增 AI 服務' : isEmail ? '新增郵件服務' : '新增應用程式')}
+                        </h1>
                         <p className={`mt-2 ${isPayment ? 'text-green-100' : isAI ? 'text-indigo-100' : isEmail ? 'text-yellow-100' : 'text-blue-100'}`}>
-                            {isPayment ? '設定您的 ECPay、Stripe 或 PayPal 金流服務設定' : isAI ? '設定您要串接的 AI 模型 API 金鑰' : isEmail ? '設定您的 SMTP 伺服器資訊以發送郵件' : '設定通訊渠道串接參數 (LINE、Telegram、WhatsApp 等)'}
+                            {isPayment ? '設定您的 ECPay、Stripe 或 PayPal 金流服務設定' : (isAI && selectedAIProvider === 'AI_CHATROOM' ? '配置您的專屬 AI 聊天室入口' : isAI ? '設定您要串接的 AI 模型 API 金鑰' : isEmail ? '設定您的 SMTP 伺服器資訊以發送郵件' : '設定通訊渠道串接參數 (LINE、Telegram、WhatsApp 等)')}
                         </p>
                     </div>
                 </div>
@@ -580,23 +628,32 @@ function AddAppForm() {
                                         required
                                     />
                                 </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                        選擇 AI 服務供應商 <span className="text-red-500">*</span>
-                                    </label>
-                                    <div className="relative">
-                                        <select
-                                            value={selectedAIProvider}
-                                            onChange={(e) => setSelectedAIProvider(e.target.value)}
-                                            className="w-full pl-4 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                                        >
-                                            <option value="OPENAI">OpenAI (ChatGPT)</option>
-                                            <option value="ANTHROPIC">Anthropic (Claude)</option>
-                                            <option value="GEMINI">Google Gemini</option>
-                                            <option value="AI_CHATROOM">工程專屬 AI 聊天室</option>
-                                        </select>
+                                {selectedAIProvider !== 'AI_CHATROOM' && (
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                            選擇 AI 服務供應商 <span className="text-red-500">*</span>
+                                        </label>
+                                        <div className="relative">
+                                            <select
+                                                value={selectedAIProvider}
+                                                onChange={(e) => setSelectedAIProvider(e.target.value)}
+                                                className="w-full pl-4 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                                required
+                                            >
+                                                <option value="">請選擇</option>
+                                                {providerFromUrl === 'AI_CHATROOM' ? (
+                                                    <option value="AI_CHATROOM">工程專屬 AI 聊天室</option>
+                                                ) : (
+                                                    <>
+                                                        <option value="OPENAI">OpenAI (ChatGPT)</option>
+                                                        <option value="ANTHROPIC">Anthropic (Claude)</option>
+                                                        <option value="GEMINI">Google Gemini</option>
+                                                    </>
+                                                )}
+                                            </select>
+                                        </div>
                                     </div>
-                                </div>
+                                )}
 
                                 {selectedAIProvider === 'OPENAI' && (
                                     <div className="space-y-4 p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800/50">
@@ -633,9 +690,28 @@ function AddAppForm() {
 
                                 {selectedAIProvider === 'AI_CHATROOM' && (
                                     <div className="space-y-4 p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800/50">
-                                        <p className="text-sm text-gray-600 dark:text-gray-400">
-                                            此功能將建立一個專用的 AI 聊天室入口。建立後，請前往系統設定頁面，在該項目的「詳細設定」中選擇實際提供服務的 AI 供應商（如 OpenAI 或 Gemini）。
-                                        </p>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                                選擇已連線的 AI 服務供應商 <span className="text-red-500">*</span>
+                                            </label>
+                                            <select
+                                                name="linkedServiceId"
+                                                value={(aiData as any).linkedServiceId || ''}
+                                                onChange={handleAiChange}
+                                                className="w-full pl-4 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                                required
+                                            >
+                                                <option value="">請選擇</option>
+                                                {activeAIApps.map(app => (
+                                                    <option key={app.integrationId} value={app.integrationId}>
+                                                        {app.name} ({app.type})
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                                                * 僅顯示目前已啟用 (ACTIVE) 的 AI 工具。若無選項，請先建立並啟用 OpenAI 或 Gemini 等服務。
+                                            </p>
+                                        </div>
                                     </div>
                                 )}
 

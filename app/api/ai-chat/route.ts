@@ -66,7 +66,7 @@ async function getAIConfig(): Promise<{ provider: string; apiKey: string; model:
             };
         }
     } catch (dbError: any) {
-        console.error('[Eng API] Database lookup for config failed:', dbError.message);
+        console.error('[AI Chat API] Database lookup for config failed:', dbError.message);
     }
 
     return null;
@@ -78,36 +78,20 @@ export async function POST(req: Request) {
 
         if (!config || !config.apiKey) {
             console.error("AI Configuration or API Key missing in Database");
-            return NextResponse.json({ reply: '抱歉，系統尚未設定 AI 服務串接，無法啟動工程 AI 助理。請前往系統設定完成「AI 工具串接」配置。' });
+            return NextResponse.json({ reply: '抱歉，系統尚未設定 AI 服務串接，無法啟動 AI 聊天室。請前往系統設定完成「AI 工具串接」配置。' });
         }
 
         const { provider, apiKey, model: modelName, systemInstruction: dbSystemInstruction } = config;
         const { messages } = await req.json();
 
-        // Build the system prompt specifically for engineering tasks
-        const defaultSystemPrompt = `
-# 角色設定
-你是 JV Tutor 平台的「專屬工程 AI 助理」。你的服務對象是平台管理階層與工程人員。
-你的核心任務是協助工程人員進行系統架構規劃、版本更新評估、套件與網路調研、以及提供專業的技術諮詢與解決方案。
-你的語氣必須嚴謹、專業且具有洞察力，能針對複雜技術問題給出明確的利弊分析與建議。
+        // Default system prompt (generic, customizable via DB)
+        const defaultSystemPrompt = `你是一個智慧、友善且樂於助人的 AI 助理。請以清楚、簡潔且準確的方式回答使用者的問題。`;
 
-# 核心任務
-1. 系統架構評估：根據提供的現有架構或需求，分析效能瓶頸、安全性及擴展性，並提供最佳實踐建議。
-2. 版本與套件分析：針對前端框架（如 Next.js, React）、後端技術或串接服務（如 Agora, DynamoDB 等），評估更新風險與依賴衝突。
-3. 網路與技術調研：根據工程需求，提供相關技術的市佔、社區活躍度及替代方案對比。
-4. 專業解答：程式碼優化建議、伺服器配置、資料庫索引優化等技術問題。
-
-# 回覆限制與排版格式
-- 內容必須條列清楚、層次分明，適合工程師閱讀的 Markdown 格式，適當使用標題、程式碼區塊（code blocks）及粗體強調重點。
-- 可以使用如 🚀、⚙️、🔍、⚠️ 等表情符號標示重點分類，提升閱讀效率，但不要過於花俏。
-- 若分析指出潛在風險，請務必提供「風險緩解方案」或「替代選項」。
-- 如果使用者的問題不明確，請向專業工程師一樣釐清問題的上下文與環境變數。
-`;
-
-        const finalSystemPrompt = dbSystemInstruction ? `${dbSystemInstruction}\n\n${defaultSystemPrompt}` : defaultSystemPrompt;
+        const finalSystemPrompt = dbSystemInstruction
+            ? `${dbSystemInstruction}\n\n${defaultSystemPrompt}`
+            : defaultSystemPrompt;
 
         if (provider === 'GEMINI') {
-            // Initialize Gemini with the retrieved key
             const genAI = new GoogleGenerativeAI(apiKey);
 
             // Convert generic chat history to Gemini's format
@@ -129,7 +113,7 @@ export async function POST(req: Request) {
 
             const latestMessage = messages[messages.length - 1]?.content || "";
             if (!latestMessage) {
-                return NextResponse.json({ reply: '您好！我是專屬的工程 AI 助理，有什麼可以為您評估的架構或套件問題嗎？' });
+                return NextResponse.json({ reply: '您好！我是 AI 助理，有什麼可以幫您的嗎？' });
             }
 
             const model = genAI.getGenerativeModel({
@@ -144,7 +128,6 @@ export async function POST(req: Request) {
             return NextResponse.json({ reply: response.text() });
 
         } else if (provider === 'OPENAI') {
-            // Call OpenAI API via fetch
             const openAiMessages = [
                 { role: 'system', content: finalSystemPrompt },
                 ...messages.map((m: any) => ({ role: m.role, content: m.content }))
@@ -172,14 +155,13 @@ export async function POST(req: Request) {
             return NextResponse.json({ reply: data.choices[0].message.content });
 
         } else if (provider === 'ANTHROPIC') {
-            // Basic support for Anthropic if needed later
             return NextResponse.json({ reply: '目前尚未完全支援 Anthropic (Claude) 串接，請優先選用 Gemini 或 OpenAI。' });
         }
 
         return NextResponse.json({ reply: '不支援的 AI 供應商類型。' });
 
     } catch (error: any) {
-        console.error('❌ [Eng API] Global Error:', error);
+        console.error('❌ [AI Chat API] Global Error:', error);
         return NextResponse.json(
             {
                 reply: '抱歉，系統遭遇錯誤，請稍後再試。',

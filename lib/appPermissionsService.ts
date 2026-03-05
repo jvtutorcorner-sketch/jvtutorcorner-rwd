@@ -1,7 +1,5 @@
 import { ddbDocClient } from './dynamo';
 import { ScanCommand, BatchWriteCommand } from '@aws-sdk/lib-dynamodb';
-import fs from 'fs/promises';
-import resolveDataFile from './localData';
 
 const APP_PERMISSIONS_TABLE = process.env.DYNAMODB_TABLE_APP_PERMISSIONS || 'jvtutorcorner-app-permissions';
 
@@ -124,10 +122,21 @@ const DEFAULT_APPS: AppConfig[] = [
         ]
     },
     {
+        id: 'APP_CATEGORY_AI_CHATROOM',
+        path: 'APP_CATEGORY_AI_CHATROOM',
+        label: '分類: AI 聊天室 (主選單)',
+        sortOrder: 9,
+        permissions: [
+            { roleId: 'admin', roleName: 'Admin', visible: true },
+            { roleId: 'teacher', roleName: 'Teacher', visible: true },
+            { roleId: 'student', roleName: 'Student', visible: true }
+        ]
+    },
+    {
         id: 'APP_CATEGORY_EMAIL',
         path: 'APP_CATEGORY_EMAIL',
         label: '分類: 郵件服務設定 (主選單)',
-        sortOrder: 9,
+        sortOrder: 10,
         permissions: [
             { roleId: 'admin', roleName: 'Admin', visible: true },
             { roleId: 'teacher', roleName: 'Teacher', visible: false },
@@ -136,33 +145,7 @@ const DEFAULT_APPS: AppConfig[] = [
     }
 ];
 
-/**
- * Read from local JSON file (fallback)
- */
-async function readAppPermissionsFromJSON(): Promise<AppConfig[]> {
-    try {
-        const SETTINGS_FILE = await resolveDataFile('app_permissions.json');
-        const raw = await fs.readFile(SETTINGS_FILE, 'utf8');
-        const data = JSON.parse(raw);
-        return Array.isArray(data) ? data : data.appConfigs || [];
-    } catch (e) {
-        console.warn('[appPermissionsService] Failed to read from JSON file:', (e as any)?.message || e);
-        return [];
-    }
-}
-
-/**
- * Write to local JSON file (sync/backup)
- */
-async function writeAppPermissionsToJSON(appConfigs: AppConfig[]): Promise<void> {
-    try {
-        const SETTINGS_FILE = await resolveDataFile('app_permissions.json');
-        await fs.writeFile(SETTINGS_FILE, JSON.stringify(appConfigs, null, 2), 'utf8');
-        console.log(`[appPermissionsService] Saved to local JSON backup: ${SETTINGS_FILE}`);
-    } catch (e) {
-        console.error('[appPermissionsService] Local JSON write failed:', (e as any)?.message || e);
-    }
-}
+// Removed JSON fallback functions as we are now exclusively using DynamoDB
 
 export async function getAppPermissionsFromDynamoDB(): Promise<AppConfig[]> {
     let items: AppConfig[] = [];
@@ -181,17 +164,12 @@ export async function getAppPermissionsFromDynamoDB(): Promise<AppConfig[]> {
         }
     }
 
-    // 2. Fallback to Local JSON if DynamoDB empty or failed
+    // 2. Fallback to Hardcoded Defaults if DynamoDB empty or failed
     if (items.length === 0) {
-        items = await readAppPermissionsFromJSON();
-        console.log(`[appPermissionsService] Loaded ${items.length} app configs from local JSON fallback`);
-    }
-
-    // 3. Last fallback to Hardcoded Defaults
-    if (items.length === 0) {
-        console.log('[appPermissionsService] No data found in DB or JSON, using hardcoded defaults');
+        console.log('[appPermissionsService] No data found in DynamoDB, using hardcoded defaults');
         items = [...DEFAULT_APPS];
     }
+
 
     // Ensure all default apps are present (merge logic)
     DEFAULT_APPS.forEach(def => {
@@ -214,8 +192,7 @@ export async function saveAppPermissionsToDynamoDB(appConfigs: AppConfig[]): Pro
         updatedAt: timestamp
     }));
 
-    // Always attempt to save to local backup first
-    await writeAppPermissionsToJSON(itemsToSave);
+    // Removed writeAppPermissionsToJSON as we are now exclusively using DynamoDB
 
     if (!APP_PERMISSIONS_TABLE) {
         console.warn('[appPermissionsService] DYNAMODB_TABLE_APP_PERMISSIONS not set, local backup only.');
