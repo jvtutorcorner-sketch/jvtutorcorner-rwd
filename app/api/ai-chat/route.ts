@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { ddbDocClient } from '@/lib/dynamo';
 import { ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { getSkillById } from '@/lib/ai-skills';
 
 // Table for app integrations (source of truth for API keys)
 const APP_INTEGRATIONS_TABLE = process.env.DYNAMODB_TABLE_APP_INTEGRATIONS || 'jvtutorcorner-app-integrations';
@@ -10,7 +11,7 @@ const APP_INTEGRATIONS_TABLE = process.env.DYNAMODB_TABLE_APP_INTEGRATIONS || 'j
  * Dynamically retrieves the AI configuration (API Key, Model, Provider).
  * Source of truth: Database integration (DynamoDB).
  */
-async function getAIConfig(): Promise<{ provider: string; apiKey: string; model: string; systemInstruction?: string } | null> {
+async function getAIConfig(): Promise<{ provider: string; apiKey: string; model: string; systemInstruction?: string; linkedSkillId?: string; linkedDatabaseId?: string } | null> {
     try {
         // 1. Check for AI_CHATROOM integration first
         const chatroomRes = await ddbDocClient.send(new ScanCommand({
@@ -62,7 +63,9 @@ async function getAIConfig(): Promise<{ provider: string; apiKey: string; model:
                 provider,
                 apiKey: config.apiKey || config.openaiApiKey || config.geminiApiKey || config.anthropicApiKey,
                 model,
-                systemInstruction: config.systemInstruction
+                systemInstruction: config.systemInstruction,
+                linkedSkillId: config.linkedSkillId,
+                linkedDatabaseId: chatroom?.config?.linkedDatabaseId
             };
         }
     } catch (dbError: any) {
@@ -81,15 +84,62 @@ export async function POST(req: Request) {
             return NextResponse.json({ reply: '抱歉，系統尚未設定 AI 服務串接，無法啟動 AI 聊天室。請前往系統設定完成「AI 工具串接」配置。' });
         }
 
-        const { provider, apiKey, model: modelName, systemInstruction: dbSystemInstruction } = config;
+        const { provider, apiKey, model: modelName, systemInstruction: dbSystemInstruction, linkedSkillId, linkedDatabaseId } = config;
         const { messages } = await req.json();
 
         // Default system prompt (generic, customizable via DB)
         const defaultSystemPrompt = `你是一個智慧、友善且樂於助人的 AI 助理。請以清楚、簡潔且準確的方式回答使用者的問題。`;
 
-        const finalSystemPrompt = dbSystemInstruction
-            ? `${dbSystemInstruction}\n\n${defaultSystemPrompt}`
-            : defaultSystemPrompt;
+        // Fetch knowledge base / database context if linked
+        let knowledgeContext = '';
+        if (linkedDatabaseId) {
+            try {
+                const dbConfigRes = await ddbDocClient.send(new ScanCommand({
+                    TableName: APP_INTEGRATIONS_TABLE,
+                    FilterExpression: 'integrationId = :id',
+                    ExpressionAttributeValues: { ':id': linkedDatabaseId }
+                }));
+                
+                const database = dbConfigRes.Items?.[0];
+                if (database) {
+                    if (database.type === 'DYNAMODB' && database.config?.tableName) {
+                        // Query DynamoDB table for knowledge data
+                        try {
+                            const tableRes = await ddbDocClient.send(new ScanCommand({
+                                TableName: database.config.tableName,
+                                Limit: 10 // Limit to avoid oversized prompts
+                            }));
+                            
+                            if (tableRes.Items && tableRes.Items.length > 0) {
+                                const entries = tableRes.Items
+                                    .slice(0, 5) // Take first 5 items
+                                    .map((item: any) => JSON.stringify(item))
+                                    .join('\n');
+                                
+                                knowledgeContext = `[知識庫資料 - from ${database.name}]\n${entries}\n`;
+                            }
+                        } catch (scanErr: any) {
+                            console.warn(`[AI Chat API] Failed to scan DynamoDB table ${database.config.tableName}:`, scanErr.message);
+                        }
+                    } else if (database.type === 'KNOWLEDGE_BASE') {
+                        // For knowledge base, use the description or stored entries
+                        if (database.config?.description) {
+                            knowledgeContext = `[知識庫資料 - ${database.name}]\n${database.config.description}\n`;
+                        }
+                        // In a real implementation, you'd store and retrieve knowledge base entries
+                        // For now, we just use the description from config
+                    }
+                }
+            } catch (dbErr: any) {
+                console.warn('[AI Chat API] Failed to fetch linked database:', dbErr.message);
+            }
+        }
+
+        // Prepend Skill Prompt if linked
+        const skill = linkedSkillId ? getSkillById(linkedSkillId) : null;
+        const skillPrompt = skill ? `[你的當前技能：${skill.label}]\n${skill.prompt}\n\n` : '';
+
+        const finalSystemPrompt = `${knowledgeContext}${skillPrompt}${dbSystemInstruction ? `${dbSystemInstruction}\n\n` : ''}${defaultSystemPrompt}`;
 
         if (provider === 'GEMINI') {
             const genAI = new GoogleGenerativeAI(apiKey);

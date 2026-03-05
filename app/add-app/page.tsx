@@ -4,6 +4,7 @@ import React, { useState, useEffect, Suspense, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Editor from '@monaco-editor/react';
+import { AI_SKILLS, getSkillById } from '@/lib/ai-skills';
 
 export default function AddAppPage() {
     return (
@@ -20,6 +21,7 @@ function AddAppForm() {
     const isPayment = typeFromUrl === 'payment';
     const isAI = typeFromUrl === 'ai';
     const isEmail = typeFromUrl === 'email';
+    const isDatabase = typeFromUrl === 'database';
 
     // AI Model options fetched from DB
     const [aiModelOptions, setAiModelOptions] = useState<Record<string, string[]>>({
@@ -159,6 +161,9 @@ function AddAppForm() {
 
     // For AI
     const predefinedAIProvider = (providerFromUrl === 'AI_CHATROOM' || ['OPENAI', 'ANTHROPIC', 'GEMINI'].includes(providerFromUrl)) ? providerFromUrl : '';
+    const presetPrompt = searchParams.get('prompt') || '';
+    const presetName = searchParams.get('name') || '';
+
     const [selectedAIProvider, setSelectedAIProvider] = useState(predefinedAIProvider);
     const [aiData, setAiData] = useState<{
         name: string;
@@ -169,13 +174,14 @@ function AddAppForm() {
         systemInstruction: string;
         linkedServiceId: string;
     }>({
-        name: '',
+        name: presetName,
         openaiApiKey: '',
         anthropicApiKey: '',
         geminiApiKey: '',
         models: [],
-        systemInstruction: selectedAIProvider === 'AI_CHATROOM' ? GEMINI_DEFAULT_PROMPT : '',
-        linkedServiceId: ''
+        systemInstruction: presetPrompt ? presetPrompt : (selectedAIProvider === 'AI_CHATROOM' ? GEMINI_DEFAULT_PROMPT : ''),
+        linkedServiceId: '',
+        linkedSkillId: ''
     } as any);
 
     const handleAiChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -206,6 +212,23 @@ function AddAppForm() {
 
     const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         setEmailData({ ...emailData, [e.target.name]: e.target.value });
+    };
+
+    // For Database
+    const [selectedDatabaseType, setSelectedDatabaseType] = useState(
+        ['DYNAMODB', 'KNOWLEDGE_BASE'].includes(providerFromUrl) ? providerFromUrl : ''
+    );
+    const [databaseData, setDatabaseData] = useState({
+        name: '',
+        tableName: '',
+        partitionKey: '',
+        sortKey: '',
+        region: 'us-east-1',
+        description: ''
+    });
+
+    const handleDatabaseChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+        setDatabaseData({ ...databaseData, [e.target.name]: e.target.value });
     };
 
     const handleChannelChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -379,6 +402,7 @@ function AddAppForm() {
                 } else if (selectedAIProvider === 'AI_CHATROOM') {
                     config = {
                         linkedServiceId: (aiData as any).linkedServiceId,
+                        linkedSkillId: (aiData as any).linkedSkillId,
                         systemInstruction: (aiData as any).systemInstruction
                     };
                 }
@@ -413,6 +437,27 @@ function AddAppForm() {
                     userId,
                     type: selectedEmailProvider,
                     name: emailData.name || `自訂 ${selectedEmailProvider} 服務`,
+                    config
+                };
+            } else if (isDatabase) {
+                let config: any = {};
+                if (selectedDatabaseType === 'DYNAMODB') {
+                    config = {
+                        tableName: databaseData.tableName,
+                        partitionKey: databaseData.partitionKey,
+                        sortKey: databaseData.sortKey,
+                        region: databaseData.region,
+                    };
+                } else if (selectedDatabaseType === 'KNOWLEDGE_BASE') {
+                    config = {
+                        description: databaseData.description,
+                    };
+                }
+
+                payload = {
+                    userId,
+                    type: selectedDatabaseType,
+                    name: databaseData.name || `${selectedDatabaseType} 資料庫`,
                     config
                 };
             } else {
@@ -450,7 +495,7 @@ function AddAppForm() {
                 throw new Error(errData.error || `HTTP ${res.status}`);
             }
 
-            alert(isPayment ? '金流設定新增成功！' : isAI ? 'AI 服務新增成功！' : isEmail ? '郵件服務新增成功！' : '應用程式新增成功！');
+            alert(isPayment ? '金流設定新增成功！' : isAI ? 'AI 服務新增成功！' : isEmail ? '郵件服務新增成功！' : isDatabase ? '資料庫設定新增成功！' : '應用程式新增成功！');
             router.push('/apps');
         } catch (error: any) {
             console.error('Save failed:', error);
@@ -464,7 +509,7 @@ function AddAppForm() {
     return (
         <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900 p-4">
             <div className="max-w-xl w-full bg-white dark:bg-gray-800 shadow-lg rounded-xl overflow-hidden">
-                <div className={`${isPayment ? 'bg-green-600' : isAI ? 'bg-indigo-600' : isEmail ? 'bg-yellow-600' : 'bg-blue-600'} p-6 text-white relative`}>
+                <div className={`${isPayment ? 'bg-green-600' : isAI ? 'bg-indigo-600' : isEmail ? 'bg-yellow-600' : isDatabase ? 'bg-orange-600' : 'bg-blue-600'} p-6 text-white relative`}>
                     <Link
                         href="/apps"
                         className="absolute left-4 top-1/2 -translate-y-1/2 p-2 hover:bg-white/20 rounded-full transition-colors"
@@ -476,10 +521,10 @@ function AddAppForm() {
                     </Link>
                     <div className="text-center">
                         <h1 className="text-2xl font-bold">
-                            {isPayment ? '新增金流服務' : (isAI && selectedAIProvider === 'AI_CHATROOM' ? '新增 AI 聊天室' : isAI ? '新增 AI 服務' : isEmail ? '新增郵件服務' : '新增應用程式')}
+                            {isPayment ? '新增金流服務' : (isAI && selectedAIProvider === 'AI_CHATROOM' ? '新增 AI 聊天室' : isAI ? '新增 AI 服務' : isEmail ? '新增郵件服務' : isDatabase ? '新增資料庫' : '新增應用程式')}
                         </h1>
-                        <p className={`mt-2 ${isPayment ? 'text-green-100' : isAI ? 'text-indigo-100' : isEmail ? 'text-yellow-100' : 'text-blue-100'}`}>
-                            {isPayment ? '設定您的 ECPay、Stripe 或 PayPal 金流服務設定' : (isAI && selectedAIProvider === 'AI_CHATROOM' ? '配置您的專屬 AI 聊天室入口' : isAI ? '設定您要串接的 AI 模型 API 金鑰' : isEmail ? '設定您的 SMTP 伺服器資訊以發送郵件' : '設定通訊渠道串接參數 (LINE、Telegram、WhatsApp 等)')}
+                        <p className={`mt-2 ${isPayment ? 'text-green-100' : isAI ? 'text-indigo-100' : isEmail ? 'text-yellow-100' : isDatabase ? 'text-orange-100' : 'text-blue-100'}`}>
+                            {isPayment ? '設定您的 ECPay、Stripe 或 PayPal 金流服務設定' : (isAI && selectedAIProvider === 'AI_CHATROOM' ? '配置您的專屬 AI 聊天室入口' : isAI ? '設定您要串接的 AI 模型 API 金鑰' : isEmail ? '設定您的 SMTP 伺服器資訊以發送郵件' : isDatabase ? '設定 DynamoDB 或知識庫作為 AI 聊天室的資料來源' : '設定通訊渠道串接參數 (LINE、Telegram、WhatsApp 等)')}
                         </p>
                     </div>
                 </div>
@@ -688,17 +733,24 @@ function AddAppForm() {
                                     </div>
                                 )}
 
-                                {selectedAIProvider === 'AI_CHATROOM' && (
-                                    <div className="space-y-4 p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800/50">
+                                {selectedAIProvider === 'AI_CHATROOM' && (() => {
+                                    const selectedSkill = (aiData as any).linkedSkillId ? getSkillById((aiData as any).linkedSkillId) : null;
+                                    const defaultSystemPrompt = `你是一個智慧、友善且樂於助人的 AI 助理。請以清楚、簡潔且準確的方式回答使用者的問題。`;
+                                    const skillPrompt = selectedSkill ? `[你的當前技能：${selectedSkill.label}]\n${selectedSkill.prompt}\n\n` : '';
+                                    const finalSystemPrompt = `${skillPrompt}${(aiData as any).systemInstruction ? `${(aiData as any).systemInstruction}\n\n` : ''}${defaultSystemPrompt}`;
+                                    
+                                    return (
+                                    <div className="space-y-4 p-4 border border-indigo-200 dark:border-indigo-800 rounded-lg bg-indigo-50/50 dark:bg-indigo-900/10">
+                                        {/* 已連線的 AI 服務 */}
                                         <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                                選擇已連線的 AI 服務供應商 <span className="text-red-500">*</span>
+                                            <label className="block text-sm font-semibold text-indigo-900 dark:text-indigo-100 mb-2 flex items-center gap-2">
+                                                <span className="text-lg">🔗</span> 選擇已連線的 AI 服務供應商 <span className="text-red-500">*</span>
                                             </label>
                                             <select
                                                 name="linkedServiceId"
                                                 value={(aiData as any).linkedServiceId || ''}
                                                 onChange={handleAiChange}
-                                                className="w-full pl-4 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                                className="w-full pl-4 pr-10 py-2 text-base border-2 border-indigo-300 dark:border-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent sm:text-sm rounded-md dark:bg-gray-700 dark:text-white bg-white transition-all"
                                                 required
                                             >
                                                 <option value="">請選擇</option>
@@ -708,29 +760,226 @@ function AddAppForm() {
                                                     </option>
                                                 ))}
                                             </select>
-                                            <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                                                * 僅顯示目前已啟用 (ACTIVE) 的 AI 工具。若無選項，請先建立並啟用 OpenAI 或 Gemini 等服務。
+                                            <p className="mt-1.5 text-xs text-indigo-700 dark:text-indigo-300 font-medium">
+                                                ✓ 選擇後 AI 將使用該服務的 API 與模型進行回應
                                             </p>
+                                        </div>
+
+                                        {/* 技能選擇與預覽 */}
+                                        <div className="border-t border-indigo-200 dark:border-indigo-800 pt-4">
+                                            <label className="block text-sm font-semibold text-indigo-900 dark:text-indigo-100 mb-2 flex items-center gap-2">
+                                                <span className="text-lg">✨</span> 串接 AI 技能 (選填)
+                                            </label>
+                                            <select
+                                                name="linkedSkillId"
+                                                value={(aiData as any).linkedSkillId || ''}
+                                                onChange={handleAiChange}
+                                                className="w-full pl-4 pr-10 py-2 text-base border-2 border-indigo-200 dark:border-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent sm:text-sm rounded-md dark:bg-gray-700 dark:text-white bg-white transition-all"
+                                            >
+                                                <option value="">-- 不使用特定技能 (通用客服) --</option>
+                                                {AI_SKILLS.map(skill => (
+                                                    <option key={skill.id} value={skill.id}>
+                                                        {skill.icon} {skill.label} - {skill.desc}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            <p className="mt-1.5 text-xs text-indigo-700 dark:text-indigo-300 font-medium">
+                                                💡 技能會為 AI 注入專屬角色與指令。不選時 AI 將提供通用客服。
+                                            </p>
+
+                                            {/* 技能預覽框 */}
+                                            {selectedSkill && (
+                                                <div className="mt-3 p-3 bg-white dark:bg-gray-800 border border-indigo-100 dark:border-indigo-700 rounded-lg">
+                                                    <div className="flex items-start gap-3">
+                                                        <span className="text-2xl leading-none mt-0.5">{selectedSkill.icon}</span>
+                                                        <div className="flex-1">
+                                                            <p className="font-semibold text-gray-900 dark:text-white text-sm">{selectedSkill.label}</p>
+                                                            <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">{selectedSkill.desc}</p>
+                                                            <p className="text-[11px] text-indigo-600 dark:text-indigo-400 mt-2 line-clamp-2 font-medium">專屬指令已準備就緒 →</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                    );
+                                })()} 
+
+
+                                {(() => {
+                                    const selectedSkill = (aiData as any).linkedSkillId ? getSkillById((aiData as any).linkedSkillId) : null;
+                                    const defaultSystemPrompt = `你是一個智慧、友善且樂於助人的 AI 助理。請以清楚、簡潔且準確的方式回答使用者的問題。`;
+                                    const skillPrompt = selectedSkill ? `[你的當前技能：${selectedSkill.label}]\n${selectedSkill.prompt}\n\n` : '';
+                                    const finalSystemPrompt = `${skillPrompt}${(aiData as any).systemInstruction ? `${(aiData as any).systemInstruction}\n\n` : ''}${defaultSystemPrompt}`;
+                                    
+                                    return (
+                                    <>
+                                        {/* 固定提示詞輸入 */}
+                                        <div className="space-y-4 p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800/50 mt-4">
+                                            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-2">
+                                                <span className="text-lg">📝</span> 固定提示詞 (選填)
+                                            </label>
+                                            <textarea
+                                                name="systemInstruction"
+                                                value={(aiData as any).systemInstruction || ''}
+                                                onChange={(e) => setAiData({ ...aiData, [e.target.name]: e.target.value } as any)}
+                                                placeholder="在此輸入 AI 的角色設定或指令 (例如：請用法文回覆我)...\n\n若選擇了技能，此欄可留空。"
+                                                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white min-h-[100px] resize-y"
+                                            />
+                                            <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">
+                                                ℹ️ <strong>可選項目</strong> - 若選擇了技能，系統將優先使用該技能的指令。若輸入此欄，則會結合技能指令一起使用。
+                                            </p>
+                                        </div>
+
+                                        {/* 最終提示詞預覽 */}
+                                        {(selectedSkill || (aiData as any).systemInstruction) && (
+                                            <div className="mt-4 p-4 border-2 border-indigo-300 dark:border-indigo-600 rounded-lg bg-indigo-50 dark:bg-indigo-950/30">
+                                                <div className="flex items-center gap-2 mb-3">
+                                                    <span className="text-lg">👀</span>
+                                                    <h4 className="font-semibold text-indigo-900 dark:text-indigo-100">最終系統提示詞預覽</h4>
+                                                </div>
+                                                <div className="bg-white dark:bg-gray-800 border border-indigo-200 dark:border-indigo-700 rounded p-3 font-mono text-xs leading-relaxed text-gray-700 dark:text-gray-300 max-h-[200px] overflow-y-auto">
+                                                    {finalSystemPrompt.split('\n').map((line, idx) => (
+                                                        <div key={idx} className="whitespace-pre-wrap break-words">
+                                                            {line || ' '}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                                <p className="text-[11px] text-indigo-700 dark:text-indigo-300 mt-2 font-medium">
+                                                    💡 此為 AI 將收到的完整系統指令。技能指令 → 您的自訂指令 → 預設指令
+                                                </p>
+                                            </div>
+                                        )}
+                                    </>
+                                    );
+                                })()} 
+                            </>
+                        ) : isDatabase ? (
+                            <>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                        設定名稱 (僅供您辨識)
+                                    </label>
+                                    <input
+                                        type="text"
+                                        name="name"
+                                        value={databaseData.name}
+                                        onChange={handleDatabaseChange}
+                                        placeholder="例如：課程知識庫"
+                                        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-orange-500 focus:border-orange-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                        required
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                        選擇資料庫類型 <span className="text-red-500">*</span>
+                                    </label>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        {['DYNAMODB', 'KNOWLEDGE_BASE'].map((dbType) => (
+                                            <button
+                                                key={dbType}
+                                                type="button"
+                                                onClick={() => setSelectedDatabaseType(dbType)}
+                                                className={`px-4 py-3 rounded-lg border-2 font-medium text-sm transition-all flex flex-col items-center gap-1 ${selectedDatabaseType === dbType
+                                                    ? 'border-orange-500 bg-orange-50 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-400'
+                                                    : 'border-gray-200 bg-white text-gray-600 hover:border-orange-300 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600'}`}
+                                            >
+                                                <span className="text-2xl">{dbType === 'DYNAMODB' ? '🗄️' : '📚'}</span>
+                                                <span>{dbType === 'DYNAMODB' ? 'DynamoDB 資料庫' : '知識庫'}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {selectedDatabaseType === 'DYNAMODB' && (
+                                    <div className="space-y-4 p-4 border border-orange-200 dark:border-orange-800 rounded-lg bg-orange-50/50 dark:bg-orange-900/10">
+                                        <p className="text-xs text-orange-700 dark:text-orange-300 font-medium">
+                                            🗄️ 設定要讓 AI 查詢的 AWS DynamoDB 資料表
+                                        </p>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                                資料表名稱 (Table Name) <span className="text-red-500">*</span>
+                                            </label>
+                                            <input
+                                                type="text"
+                                                name="tableName"
+                                                value={databaseData.tableName}
+                                                onChange={handleDatabaseChange}
+                                                placeholder="例如：jvtutorcorner-courses"
+                                                className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono text-sm"
+                                                required
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                                主鍵 (Partition Key) <span className="text-red-500">*</span>
+                                            </label>
+                                            <input
+                                                type="text"
+                                                name="partitionKey"
+                                                value={databaseData.partitionKey}
+                                                onChange={handleDatabaseChange}
+                                                placeholder="例如：courseId"
+                                                className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono text-sm"
+                                                required
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                                排序鍵 (Sort Key) <span className="text-gray-400">選填</span>
+                                            </label>
+                                            <input
+                                                type="text"
+                                                name="sortKey"
+                                                value={databaseData.sortKey}
+                                                onChange={handleDatabaseChange}
+                                                placeholder="例如：createdAt"
+                                                className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono text-sm"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                                AWS 區域 (Region) <span className="text-red-500">*</span>
+                                            </label>
+                                            <select
+                                                name="region"
+                                                value={databaseData.region}
+                                                onChange={handleDatabaseChange}
+                                                className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                            >
+                                                <option value="us-east-1">us-east-1 (美東)</option>
+                                                <option value="us-west-2">us-west-2 (美西)</option>
+                                                <option value="ap-northeast-1">ap-northeast-1 (東京)</option>
+                                                <option value="ap-southeast-1">ap-southeast-1 (新加坡)</option>
+                                                <option value="eu-west-1">eu-west-1 (愛爾蘭)</option>
+                                            </select>
                                         </div>
                                     </div>
                                 )}
 
-
-                                <div className="space-y-4 p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800/50 mt-4">
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                                        固定提示詞 (System Prompt)
-                                    </label>
-                                    <textarea
-                                        name="systemInstruction"
-                                        value={(aiData as any).systemInstruction || ''}
-                                        onChange={(e) => setAiData({ ...aiData, [e.target.name]: e.target.value } as any)}
-                                        placeholder="在此輸入 AI 的角色設定或指令 (例如：請用法文回覆我)..."
-                                        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white min-h-[100px] resize-y"
-                                    />
-                                    <p className="text-[10px] text-gray-400 mt-1">
-                                        * 這些指令將作為 AI 的核心準則，優先於使用者的提問。
-                                    </p>
-                                </div>
+                                {selectedDatabaseType === 'KNOWLEDGE_BASE' && (
+                                    <div className="space-y-4 p-4 border border-purple-200 dark:border-purple-800 rounded-lg bg-purple-50/50 dark:bg-purple-900/10">
+                                        <p className="text-xs text-purple-700 dark:text-purple-300 font-medium">
+                                            📚 建立自訂知識庫，讓 AI 在回答問題時能參考您提供的資料
+                                        </p>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                                知識庫描述 <span className="text-gray-400">選填</span>
+                                            </label>
+                                            <textarea
+                                                name="description"
+                                                value={databaseData.description}
+                                                onChange={handleDatabaseChange}
+                                                placeholder="描述此知識庫的用途，例如：平台課程 FAQ 與教師資訊"
+                                                rows={3}
+                                                className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white resize-none"
+                                            />
+                                        </div>
+                                        <div className="p-3 bg-purple-100 dark:bg-purple-900/20 rounded-lg text-xs text-purple-700 dark:text-purple-300">
+                                            💡 建立此知識庫後，您可以在 <strong>/apps</strong> 的 AI 聊天室設定中將其連結，AI 將在回答時優先參考這些內容。
+                                        </div>
+                                    </div>
+                                )}
                             </>
                         ) : isEmail ? (
                             <>
@@ -1007,7 +1256,7 @@ function AddAppForm() {
                             <button
                                 type="submit"
                                 disabled={loading}
-                                className={`w-2/3 ${isPayment ? 'bg-green-600 hover:bg-green-700' : isAI ? 'bg-indigo-600 hover:bg-indigo-700' : isEmail ? 'bg-yellow-600 hover:bg-yellow-700' : 'bg-blue-600 hover:bg-blue-700'} text-white font-bold py-3 px-4 rounded-lg transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed`}
+                                className={`w-2/3 ${isPayment ? 'bg-green-600 hover:bg-green-700' : isAI ? 'bg-indigo-600 hover:bg-indigo-700' : isEmail ? 'bg-yellow-600 hover:bg-yellow-700' : isDatabase ? 'bg-orange-600 hover:bg-orange-700' : 'bg-blue-600 hover:bg-blue-700'} text-white font-bold py-3 px-4 rounded-lg transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed`}
                             >
                                 {loading ? (
                                     <>
@@ -1025,6 +1274,6 @@ function AddAppForm() {
                     </form>
                 </div>
             </div>
-        </div>
+        </div >
     );
 }

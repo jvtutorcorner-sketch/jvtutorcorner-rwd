@@ -1,6 +1,10 @@
 'use client';
 
 import React, { useEffect, useState, useRef } from 'react';
+import { ddbDocClient } from '@/lib/dynamo';
+import { ScanCommand, PutCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
+import { v4 as uuidv4 } from 'uuid';
+import { AI_SKILLS, getSkillById } from '@/lib/ai-skills';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import Editor from '@monaco-editor/react';
@@ -19,6 +23,7 @@ interface AppIntegration {
 const PAYMENT_TYPES = ['ECPAY', 'PAYPAL', 'STRIPE'];
 const CHANNEL_TYPES = ['LINE', 'TELEGRAM', 'WHATSAPP', 'MESSENGER', 'SLACK', 'TEAMS', 'DISCORD', 'WECHAT'];
 const EMAIL_TYPES = ['RESEND'];
+const DATABASE_TYPES = ['DYNAMODB', 'KNOWLEDGE_BASE'];
 
 /** 各通訊渠道的顏色、圖標與顯示名稱 */
 const CHANNEL_META: Record<string, { badge: string; label: string; icon: string; desc: string }> = {
@@ -42,11 +47,16 @@ const AI_META: Record<string, { badge: string; label: string; icon: string; desc
     OPENAI: { badge: 'bg-gray-100 text-gray-800', label: 'OpenAI ChatGPT', icon: '🧠', desc: '強大的通用大語言模型' },
     ANTHROPIC: { badge: 'bg-orange-100 text-orange-800', label: 'Anthropic (Claude)', icon: '🎭', desc: '專注於安全性與長文本理解的 AI 模型' },
     GEMINI: { badge: 'bg-blue-100 text-blue-800', label: 'Google Gemini', icon: '✨', desc: 'Google 的強大原生多模態大模型' },
-    AI_CHATROOM: { badge: 'bg-purple-100 text-purple-800', label: 'AI 聊天室', icon: '💬', desc: '配置工程專屬 AI 聊天室的串接服務' },
+    AI_CHATROOM: { badge: 'bg-indigo-100 text-indigo-800', label: 'AI 聊天室', icon: '🤖', desc: '智慧問答聊天室，即時回覆學員問題，提升服務品質與效率' },
 };
 
 const EMAIL_META: Record<string, { badge: string; label: string; icon: string; desc: string }> = {
     RESEND: { badge: 'bg-indigo-100 text-indigo-800', label: 'Resend 郵件服務', icon: '🚀', desc: '專為開發者設計的現代郵件發送服務 (只需 API Key)' },
+};
+
+const DATABASE_META: Record<string, { badge: string; label: string; icon: string; desc: string }> = {
+    DYNAMODB: { badge: 'bg-orange-100 text-orange-800', label: 'DynamoDB 資料庫', icon: '🗄️', desc: 'AWS 無伺服器資料庫，為 AI 聊天室提供高速知識庫搜尋' },
+    KNOWLEDGE_BASE: { badge: 'bg-purple-100 text-purple-800', label: '知識庫', icon: '📚', desc: '自訂知識庫，儲存組織特定資訊供 AI 聊天室參考' },
 };
 
 const LABEL_MAP: Record<string, string> = {
@@ -67,6 +77,11 @@ const LABEL_MAP: Record<string, string> = {
     smtpPass: '密碼 (Password)',
     fromAddress: '寄件者信箱 (From Address)',
     linkedServiceId: '串接的 AI 服務',
+    tableName: '資料表名稱',
+    partitionKey: '分割鍵 (Partition Key)',
+    sortKey: '排序鍵 (Sort Key)',
+    region: 'AWS 區域 (Region)',
+    databasePath: '資料庫路徑',
 };
 
 
@@ -122,7 +137,8 @@ export default function AppsPage() {
         APP_CATEGORY_AUTOMATION: true,
         APP_CATEGORY_AI: true,
         APP_CATEGORY_AI_CHATROOM: true,
-        APP_CATEGORY_EMAIL: true
+        APP_CATEGORY_EMAIL: true,
+        APP_CATEGORY_DATABASE: true
     });
 
     const router = useRouter();
@@ -180,7 +196,8 @@ export default function AppsPage() {
                         'APP_CATEGORY_AUTOMATION',
                         'APP_CATEGORY_AI',
                         'APP_CATEGORY_AI_CHATROOM',
-                        'APP_CATEGORY_EMAIL'
+                        'APP_CATEGORY_EMAIL',
+                        'APP_CATEGORY_DATABASE'
                     ];
 
                     relevantCategories.forEach(catId => {
@@ -318,7 +335,8 @@ export default function AppsPage() {
         if (!selectedAppConfig) return;
         setIsSavingConfig(true);
         try {
-            const updatedConfig = { ...editedConfig };
+            // 合併原始 config 與編輯的字段，避免覆蓋未編輯的欄位
+            const updatedConfig = { ...selectedAppConfig.config, ...editedConfig };
             if (editedScriptEnabled && editedCustomScript.trim()) {
                 updatedConfig.customScript = editedCustomScript;
             } else {
@@ -545,7 +563,9 @@ export default function AppsPage() {
     const showAI = categoryPermissions.APP_CATEGORY_AI || apps.some(a => aiTypes.filter(t => t !== 'AI_CHATROOM').includes(a.type));
     const showAIChatroom = categoryPermissions.APP_CATEGORY_AI_CHATROOM || apps.some(a => a.type === 'AI_CHATROOM');
     const showEmail = categoryPermissions.APP_CATEGORY_EMAIL || apps.some(a => EMAIL_TYPES.includes(a.type));
+    const showDatabase = categoryPermissions.APP_CATEGORY_DATABASE || apps.some(a => DATABASE_TYPES.includes(a.type));
     const showAutomation = categoryPermissions.APP_CATEGORY_AUTOMATION; // Automation is special, keeping permission-based for now unless it has a connection record
+    const showSkills = categoryPermissions.APP_CATEGORY_SKILLS ?? true;
 
     return (
         <div className="page p-6 max-w-5xl mx-auto">
@@ -843,6 +863,154 @@ export default function AppsPage() {
                         </div>
                     </>)}
 
+                    {/* ─────────── 實用技能區塊 (新增) ─────────── */}
+                    {showSkills && (<>
+                        <div className="flex justify-between items-center mb-6 border-b border-gray-200 dark:border-gray-700 pb-2">
+                            <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-100 flex items-center">
+                                <span className="text-xl mr-2">✨</span>
+                                實用 AI 技能 (Skills)
+                            </h2>
+                            <span className="text-sm text-gray-500 dark:text-gray-400">熱門社群推薦</span>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
+                            {/* Skill 1 */}
+                            <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-lg transition-all group flex flex-col justify-between">
+                                <div>
+                                    <div className="flex items-center gap-4 mb-4">
+                                        <div className="w-12 h-12 bg-orange-100 dark:bg-orange-900/30 rounded-xl flex items-center justify-center text-orange-600 dark:text-orange-400 text-2xl group-hover:scale-110 transition-transform">
+                                            🗣️
+                                        </div>
+                                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">外語口說教練</h3>
+                                    </div>
+                                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-6 leading-relaxed">
+                                        依據雅思/托福評分標準，提供即時情境會話對練與文法糾正，有效提升口語流暢度。
+                                    </p>
+                                </div>
+                                <Link
+                                    href={`/add-app?type=ai&provider=OPENAI&name=${encodeURIComponent('外語口說教練')}&prompt=${encodeURIComponent('你是「外語口說教練」。請依據雅思/托福評分標準，提供即時情境會話對練與文法糾正，有效提升口語流暢度。')}`}
+                                    className="w-full py-3 px-4 bg-orange-50 text-orange-700 dark:bg-orange-900/20 dark:text-orange-400 rounded-xl text-sm font-bold hover:bg-orange-100 dark:hover:bg-orange-900/40 transition-colors flex items-center justify-center gap-2"
+                                >
+                                    預覽技能配置 <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
+                                </Link>
+                            </div>
+
+                            {/* Skill 2 */}
+                            <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-lg transition-all group flex flex-col justify-between">
+                                <div>
+                                    <div className="flex items-center gap-4 mb-4">
+                                        <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-xl flex items-center justify-center text-blue-600 dark:text-blue-400 text-2xl group-hover:scale-110 transition-transform">
+                                            💻
+                                        </div>
+                                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">程式碼審查助手</h3>
+                                    </div>
+                                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-6 leading-relaxed">
+                                        串接 GitHub/GitLab 專案，自動審查 PR 並檢查潛在 Bug，提供最佳實踐優化建議。
+                                    </p>
+                                </div>
+                                <Link
+                                    href={`/add-app?type=ai&provider=OPENAI&name=${encodeURIComponent('程式碼審查助手')}&prompt=${encodeURIComponent('你是「程式碼審查助手」。請串接 GitHub/GitLab 專案，自動審查 PR 並檢查潛在 Bug，提供最佳實踐優化建議。')}`}
+                                    className="w-full py-3 px-4 bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400 rounded-xl text-sm font-bold hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors flex items-center justify-center gap-2"
+                                >
+                                    預覽技能配置 <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
+                                </Link>
+                            </div>
+
+                            {/* Skill 3 */}
+                            <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-lg transition-all group flex flex-col justify-between">
+                                <div>
+                                    <div className="flex items-center gap-4 mb-4">
+                                        <div className="w-12 h-12 bg-pink-100 dark:bg-pink-900/30 rounded-xl flex items-center justify-center text-pink-600 dark:text-pink-400 text-2xl group-hover:scale-110 transition-transform">
+                                            🚀
+                                        </div>
+                                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">社群行銷寫手</h3>
+                                    </div>
+                                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-6 leading-relaxed">
+                                        輸入產品關鍵字，自動轉換為符合 IG/Threads/FB 演算法與受眾口味的爆款文案。
+                                    </p>
+                                </div>
+                                <Link
+                                    href={`/add-app?type=ai&provider=OPENAI&name=${encodeURIComponent('社群行銷寫手')}&prompt=${encodeURIComponent('你是「社群行銷寫手」。請將輸入產品關鍵字，自動轉換為符合 IG/Threads/FB 演算法與受眾口味的爆款文案。')}`}
+                                    className="w-full py-3 px-4 bg-pink-50 text-pink-700 dark:bg-pink-900/20 dark:text-pink-400 rounded-xl text-sm font-bold hover:bg-pink-100 dark:hover:bg-pink-900/40 transition-colors flex items-center justify-center gap-2"
+                                >
+                                    預覽技能配置 <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
+                                </Link>
+                            </div>
+
+                            {/* Skill 4 */}
+                            <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-lg transition-all group flex flex-col justify-between">
+                                <div>
+                                    <div className="flex items-center gap-4 mb-4">
+                                        <div className="w-12 h-12 bg-teal-100 dark:bg-teal-900/30 rounded-xl flex items-center justify-center text-teal-600 dark:text-teal-400 text-2xl group-hover:scale-110 transition-transform">
+                                            📄
+                                        </div>
+                                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">履歷/面試教練</h3>
+                                    </div>
+                                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-6 leading-relaxed">
+                                        上傳履歷自動抓出亮點並採用 STAR 原則重寫，並由 AI 擔任面試官進行針對性模擬面試。
+                                    </p>
+                                </div>
+                                <Link
+                                    href={`/add-app?type=ai&provider=OPENAI&name=${encodeURIComponent('履歷/面試教練')}&prompt=${encodeURIComponent('你是「履歷/面試教練」。請上傳履歷自動抓出亮點並採用 STAR 原則重寫，並由 AI 擔任面試官進行針對性模擬面試。')}`}
+                                    className="w-full py-3 px-4 bg-teal-50 text-teal-700 dark:bg-teal-900/20 dark:text-teal-400 rounded-xl text-sm font-bold hover:bg-teal-100 dark:hover:bg-teal-900/40 transition-colors flex items-center justify-center gap-2"
+                                >
+                                    預覽技能配置 <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
+                                </Link>
+                            </div>
+
+                            {/* Skill 5 */}
+                            <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-lg transition-all group flex flex-col justify-between">
+                                <div>
+                                    <div className="flex items-center gap-4 mb-4">
+                                        <div className="w-12 h-12 bg-yellow-100 dark:bg-yellow-900/30 rounded-xl flex items-center justify-center text-yellow-600 dark:text-yellow-400 text-2xl group-hover:scale-110 transition-transform">
+                                            📚
+                                        </div>
+                                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">讀書重點摘要助理</h3>
+                                    </div>
+                                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-6 leading-relaxed">
+                                        處理 PDF 教材或長篇 YouTube 影片，迅速萃取核心概念，並自動產出複習心智圖與選擇測驗題。
+                                    </p>
+                                </div>
+                                <Link
+                                    href={`/add-app?type=ai&provider=OPENAI&name=${encodeURIComponent('讀書重點摘要助理')}&prompt=${encodeURIComponent('你是「讀書重點摘要助理」。請處理被提供的內容，迅速萃取核心概念，並自動產出複習心智圖與選擇測驗題。')}`}
+                                    className="w-full py-3 px-4 bg-yellow-50 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400 rounded-xl text-sm font-bold hover:bg-yellow-100 dark:hover:bg-yellow-900/40 transition-colors flex items-center justify-center gap-2"
+                                >
+                                    預覽技能配置 <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
+                                </Link>
+                            </div>
+
+                            {/* Skill 6 */}
+                            <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-lg transition-all group flex flex-col justify-between">
+                                <div>
+                                    <div className="flex items-center gap-4 mb-4">
+                                        <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900/30 rounded-xl flex items-center justify-center text-purple-600 dark:text-purple-400 text-2xl group-hover:scale-110 transition-transform">
+                                            👨‍💻
+                                        </div>
+                                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">工程專屬 AI 聊天室</h3>
+                                    </div>
+                                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-6 leading-relaxed">
+                                        專屬工程師的技術對話空間，協助進行系統架構規劃、版本更新追蹤與技術難點突破。
+                                    </p>
+                                </div>
+                                <Link
+                                    href={`/add-app?type=ai&provider=AI_CHATROOM&name=${encodeURIComponent('工程專屬 AI 聊天室')}&prompt=${encodeURIComponent('你是「工程專屬 AI 聊天室」的技術專家。請協助工程師進行系統架構設計、版本差異分析、以及套件生態研究，並提供具體可行的技術方案與程式碼指引。')}`}
+                                    className="w-full py-3 px-4 bg-purple-50 text-purple-700 dark:bg-purple-900/20 dark:text-purple-400 rounded-xl text-sm font-bold hover:bg-purple-100 dark:hover:bg-purple-900/40 transition-colors flex items-center justify-center gap-2"
+                                >
+                                    預覽技能配置 <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
+                                </Link>
+                            </div>
+
+                            {/* Additional Skills placeholder */}
+                            <div className="bg-gray-50/50 dark:bg-gray-900/20 rounded-2xl p-6 border-2 border-dashed border-gray-200 dark:border-gray-800 flex flex-col items-center justify-center text-center">
+                                <div className="w-12 h-12 bg-white dark:bg-gray-800 rounded-full flex items-center justify-center text-gray-400 mb-3 shadow-inner">
+                                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
+                                </div>
+                                <p className="text-sm font-medium text-gray-500">更多實用技能</p>
+                                <p className="text-xs text-gray-400 mt-1">開發者社群持續徵集中...</p>
+                            </div>
+                        </div>
+                    </>)}
+
                     {/* ─────────── AI 工具區塊 ─────────── */}
                     {showAI && (<>
                         <div className="flex justify-between items-center mb-6 border-b border-gray-200 dark:border-gray-700 pb-2">
@@ -961,19 +1129,19 @@ export default function AppsPage() {
                     {showAIChatroom && (<>
                         <div className="flex justify-between items-center mb-6 border-b border-gray-200 dark:border-gray-700 pb-2">
                             <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-100 flex items-center">
-                                <span className="text-xl mr-2">💬</span>
+                                <span className="text-xl mr-2">🤖</span>
                                 AI 聊天室
                                 <span className="ml-3 inline-flex items-center gap-2 text-sm font-normal text-gray-500 dark:text-gray-400">
-                                    <span className="px-2.5 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded-full text-xs font-semibold">
+                                    <span className="px-2.5 py-0.5 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded-full text-xs font-semibold">
                                         {apps.filter(a => a.type === 'AI_CHATROOM' && a.status === 'ACTIVE').length}/{apps.filter(a => a.type === 'AI_CHATROOM').length}
                                     </span>
                                 </span>
                             </h2>
-                            <Link href="/add-app?type=ai&provider=AI_CHATROOM" className="text-sm bg-purple-100 hover:bg-purple-200 text-purple-700 font-semibold py-1.5 px-4 rounded-full transition-colors flex items-center">
+                            <Link href="/add-app?type=ai&provider=AI_CHATROOM" className="text-sm bg-indigo-100 hover:bg-indigo-200 text-indigo-700 font-semibold py-1.5 px-4 rounded-full transition-colors flex items-center">
                                 <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
                                 </svg>
-                                新增 AI 聊天室設定
+                                新增聊天室設定
                             </Link>
                         </div>
 
@@ -988,14 +1156,14 @@ export default function AppsPage() {
                                 const inactiveCount = connected.filter(a => a.status !== 'ACTIVE').length;
 
                                 return (
-                                    <div key={type} className={`relative bg-white dark:bg-gray-800 rounded-xl shadow-sm border-2 p-6 flex flex-col transition-all hover:shadow-md ${isConnected ? 'border-purple-300 dark:border-purple-600' : 'border-gray-200 dark:border-gray-700'}`}>
+                                    <div key={type} className={`relative bg-white dark:bg-gray-800 rounded-xl shadow-sm border-2 p-6 flex flex-col transition-all hover:shadow-md ${isConnected ? 'border-indigo-300 dark:border-indigo-600' : 'border-gray-200 dark:border-gray-700'}`}>
                                         {/* 連線狀態 */}
                                         <div className="absolute top-3 right-3">
                                             {isConnected ? (
-                                                <span className="flex items-center gap-1 text-xs font-medium text-purple-600 dark:text-purple-400">
+                                                <span className="flex items-center gap-1 text-xs font-medium text-indigo-600 dark:text-indigo-400">
                                                     <span className="relative flex h-2.5 w-2.5">
-                                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
-                                                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-purple-500"></span>
+                                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                                                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-indigo-500"></span>
                                                     </span>
                                                     已連接
                                                 </span>
@@ -1015,21 +1183,38 @@ export default function AppsPage() {
                                         {/* 說明文字 */}
                                         <p className="text-xs text-gray-500 dark:text-gray-400 mb-4 flex-1">{meta?.desc}</p>
 
-                                        {/* 已連接的名稱 */}
-                                        {activeApp && (
-                                            <p className="text-xs text-purple-600 dark:text-purple-400 mb-3 truncate">
-                                                ✓ {activeApp.name}
-                                                {activeApp.createdAt && (
-                                                    <span className="text-gray-400 ml-1">· {new Date(activeApp.createdAt).toLocaleDateString()}</span>
-                                                )}
-                                            </p>
-                                        )}
+                                        {/* 已連接的名稱與串接的模型/Skill */}
+                                        {activeApp && (() => {
+                                            const linked = apps.find(a => a.integrationId === activeApp.config?.linkedServiceId);
+                                            const skill = getSkillById(activeApp.config?.linkedSkillId);
+                                            const model = Array.isArray(linked?.config?.models) ? linked?.config?.models[0] : typeof linked?.config?.models === 'string' ? linked?.config?.models.split(',').filter(Boolean)[0] : null;
+                                            return (
+                                                <div className="mb-3 space-y-1">
+                                                    <p className="text-xs text-indigo-600 dark:text-indigo-400 truncate">
+                                                        ✓ {activeApp.name}
+                                                        {activeApp.createdAt && (
+                                                            <span className="text-gray-400 ml-1">· {new Date(activeApp.createdAt).toLocaleDateString()}</span>
+                                                        )}
+                                                    </p>
+                                                    {linked && (
+                                                        <p className="text-[10px] text-gray-500 dark:text-gray-400 flex items-center gap-1">
+                                                            {AI_META[linked.type]?.icon} {linked.name}{model ? ` · ${model}` : ''}
+                                                        </p>
+                                                    )}
+                                                    {skill && (
+                                                        <p className="text-[10px] text-indigo-500 dark:text-indigo-400 flex items-center gap-1 font-medium">
+                                                            {skill.icon} 串接技能：{skill.label}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            );
+                                        })()}
 
                                         {/* 設定狀態計數 */}
                                         {connected.length > 0 && (
-                                            <div className="mb-3 p-2.5 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-800">
+                                            <div className="mb-3 p-2.5 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg border border-indigo-200 dark:border-indigo-800">
                                                 <div className="flex justify-between text-xs text-gray-700 dark:text-gray-300">
-                                                    <span>已設定: <strong className="text-purple-600 dark:text-purple-400">{activeCount}</strong></span>
+                                                    <span>已設定: <strong className="text-indigo-600 dark:text-indigo-400">{activeCount}</strong></span>
                                                     <span>未設定: <strong className="text-orange-600 dark:text-orange-400">{inactiveCount}</strong></span>
                                                 </div>
                                             </div>
@@ -1037,25 +1222,32 @@ export default function AppsPage() {
 
                                         {/* 操作按鈕 */}
                                         <div className="space-y-2">
-                                            <div className="flex gap-2">
-                                                {isConnected ? (
-                                                    <>
-                                                        <Link
-                                                            href={`/add-app?type=ai&provider=${type}`}
-                                                            className="text-xs bg-gray-50 hover:bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 font-medium py-2 px-3 rounded-lg transition-colors w-full text-center"
-                                                        >
-                                                            新增服務
-                                                        </Link>
-                                                    </>
-                                                ) : (
+                                            {isConnected ? (
+                                                <>
+                                                    <Link
+                                                        href="/apps/ai-chat"
+                                                        className="w-full text-center text-xs bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-semibold py-2 px-3 rounded-lg transition-all shadow-sm flex items-center justify-center gap-1.5"
+                                                    >
+                                                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                                                        </svg>
+                                                        開啟聊天室
+                                                    </Link>
                                                     <Link
                                                         href={`/add-app?type=ai&provider=${type}`}
-                                                        className="w-full text-center text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 border border-blue-300 font-semibold py-2 px-3 rounded-lg transition-colors"
+                                                        className="text-xs bg-gray-50 hover:bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 font-medium py-2 px-3 rounded-lg transition-colors w-full text-center block"
                                                     >
-                                                        立即設定
+                                                        新增服務
                                                     </Link>
-                                                )}
-                                            </div>
+                                                </>
+                                            ) : (
+                                                <Link
+                                                    href={`/add-app?type=ai&provider=${type}`}
+                                                    className="w-full text-center text-xs bg-indigo-100 hover:bg-indigo-200 text-indigo-700 border border-indigo-300 font-semibold py-2 px-3 rounded-lg transition-colors"
+                                                >
+                                                    立即設定
+                                                </Link>
+                                            )}
                                         </div>
                                     </div>
                                 );
@@ -1168,6 +1360,111 @@ export default function AppsPage() {
                         </div>
                     </>)}
 
+                    {/* ─────────── 資料庫管理區塊 ─────────── */}
+                    {showDatabase && (<>
+                        <div className="flex justify-between items-center mb-6 border-b border-gray-200 dark:border-gray-700 pb-2">
+                            <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-100 flex items-center">
+                                <span className="text-xl mr-2">🗄️</span>
+                                資料庫管理
+                                <span className="ml-3 inline-flex items-center gap-2 text-sm font-normal text-gray-500 dark:text-gray-400">
+                                    <span className="px-2.5 py-0.5 bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 rounded-full text-xs font-semibold">
+                                        {apps.filter(a => DATABASE_TYPES.includes(a.type) && a.status === 'ACTIVE').length}/{apps.filter(a => DATABASE_TYPES.includes(a.type)).length}
+                                    </span>
+                                </span>
+                            </h2>
+                            <Link href="/add-app?type=database" className="text-sm bg-orange-100 hover:bg-orange-200 text-orange-700 font-semibold py-1.5 px-4 rounded-full transition-colors flex items-center">
+                                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+                                </svg>
+                                新增資料庫
+                            </Link>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+                            {DATABASE_TYPES.map((type) => {
+                                const meta = DATABASE_META[type];
+                                const connected = getConnectedApps(type);
+                                const isConnected = connected.length > 0;
+                                const activeApp = connected.find(a => a.status === 'ACTIVE');
+                                const activeCount = connected.filter(a => a.status === 'ACTIVE').length;
+                                const inactiveCount = connected.filter(a => a.status !== 'ACTIVE').length;
+
+                                return (
+                                    <div key={type} className={`relative bg-white dark:bg-gray-800 rounded-xl shadow-sm border-2 p-6 flex flex-col transition-all hover:shadow-md ${isConnected ? 'border-orange-300 dark:border-orange-600' : 'border-gray-200 dark:border-gray-700'}`}>
+                                        {/* 連線狀態 */}
+                                        <div className="absolute top-3 right-3">
+                                            {isConnected ? (
+                                                <span className="flex items-center gap-1 text-xs font-medium text-orange-600 dark:text-orange-400">
+                                                    <span className="relative flex h-2.5 w-2.5">
+                                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
+                                                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-orange-500"></span>
+                                                    </span>
+                                                    已連接
+                                                </span>
+                                            ) : (
+                                                <span className="text-xs font-medium text-gray-400 dark:text-gray-500">未設定</span>
+                                            )}
+                                        </div>
+
+                                        {/* 圖標與名稱 */}
+                                        <div className="flex items-center gap-3 mb-3">
+                                            <span className="text-2xl">{meta.icon}</span>
+                                            <div>
+                                                <h3 className="font-bold text-gray-900 dark:text-white">{meta.label}</h3>
+                                            </div>
+                                        </div>
+
+                                        {/* 說明文字 */}
+                                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4 flex-1">{meta.desc}</p>
+
+                                        {/* 已連接的名稱 */}
+                                        {activeApp && (
+                                            <p className="text-xs text-orange-600 dark:text-orange-400 mb-3 truncate">
+                                                ✓ {activeApp.name}
+                                                {activeApp.createdAt && (
+                                                    <span className="text-gray-400 ml-1">· {new Date(activeApp.createdAt).toLocaleDateString()}</span>
+                                                )}
+                                            </p>
+                                        )}
+
+                                        {/* 設定狀態計數 */}
+                                        {connected.length > 0 && (
+                                            <div className="mb-3 p-2.5 bg-orange-50 dark:bg-orange-900/20 rounded-lg border border-orange-200 dark:border-orange-800">
+                                                <div className="flex justify-between text-xs text-gray-700 dark:text-gray-300">
+                                                    <span>已設定: <strong className="text-orange-600 dark:text-orange-400">{activeCount}</strong></span>
+                                                    <span>未設定: <strong className="text-orange-600 dark:text-orange-400">{inactiveCount}</strong></span>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* 操作按鈕 */}
+                                        <div className="space-y-2">
+                                            <div className="flex gap-2">
+                                                {isConnected ? (
+                                                    <>
+                                                        <Link
+                                                            href={`/add-app?type=database&provider=${type}`}
+                                                            className="text-xs bg-gray-50 hover:bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 font-medium py-2 px-3 rounded-lg transition-colors w-full text-center"
+                                                        >
+                                                            新增資料庫
+                                                        </Link>
+                                                    </>
+                                                ) : (
+                                                    <Link
+                                                        href={`/add-app?type=database&provider=${type}`}
+                                                        className="w-full text-center text-xs bg-orange-100 hover:bg-orange-200 text-orange-700 border border-orange-300 font-semibold py-2 px-3 rounded-lg transition-colors"
+                                                    >
+                                                        立即設定
+                                                    </Link>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </>)}
+
                     {/* ─────────── 已連接的整合列表 ─────────── */}
                     {apps.length > 0 && (
                         <div className="mt-8">
@@ -1219,6 +1516,17 @@ export default function AppsPage() {
                                                     </td>
                                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
                                                         {app.name}
+                                                        {app.type === 'AI_CHATROOM' && app.config?.linkedServiceId && (() => {
+                                                            const linked = apps.find(a => a.integrationId === app.config?.linkedServiceId);
+                                                            const model = Array.isArray(linked?.config?.models) ? linked?.config?.models[0] : typeof linked?.config?.models === 'string' ? linked?.config?.models.split(',')[0] : null;
+                                                            return linked ? (
+                                                                <div className="flex items-center gap-1 mt-0.5">
+                                                                    <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-medium">
+                                                                        {AI_META[linked.type]?.icon} {linked.name}{model ? ` · ${model}` : ''}
+                                                                    </span>
+                                                                </div>
+                                                            ) : null;
+                                                        })()}
                                                     </td>
                                                     <td className="px-6 py-4 whitespace-nowrap text-sm">
                                                         <span className={`px-2 py-1 text-xs font-bold rounded ${app.status === 'ACTIVE' ? 'bg-green-500 text-white' : 'bg-gray-400 text-white'}`}>
@@ -1229,19 +1537,21 @@ export default function AppsPage() {
                                                         {new Date(app.createdAt).toLocaleDateString()}
                                                     </td>
                                                     <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
-                                                        <button
-                                                            onClick={() => {
-                                                                setSelectedAppConfig(app);
-                                                                setEditedConfig(app.config ? { ...app.config } : {});
-                                                                setEditedName(app.name || '');
-                                                                setEditedStatus(app.status || 'ACTIVE');
-                                                                setEditedScriptEnabled(!!(app.config && app.config.customScript));
-                                                                setEditedCustomScript(app.config && app.config.customScript ? app.config.customScript : `function doPost(event) {\n  const incoming = event.events[0]?.message?.text;\n  return "You said: " + incoming;\n}`);
-                                                            }}
-                                                            className="text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 dark:hover:bg-blue-900/50 font-medium py-2 px-4 rounded-lg transition-colors inline-block"
-                                                        >
-                                                            詳細
-                                                        </button>
+                                                        <div className="flex items-center justify-center gap-2">
+                                                            <button
+                                                                onClick={() => {
+                                                                    setSelectedAppConfig(app);
+                                                                    setEditedConfig(app.config ? { ...app.config } : {});
+                                                                    setEditedName(app.name || '');
+                                                                    setEditedStatus(app.status || 'ACTIVE');
+                                                                    setEditedScriptEnabled(!!(app.config && app.config.customScript));
+                                                                    setEditedCustomScript(app.config && app.config.customScript ? app.config.customScript : `function doPost(event) {\n  const incoming = event.events[0]?.message?.text;\n  return "You said: " + incoming;\n}`);
+                                                                }}
+                                                                className="text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 dark:hover:bg-blue-900/50 font-medium py-2 px-4 rounded-lg transition-colors inline-block"
+                                                            >
+                                                                詳細
+                                                            </button>
+                                                        </div>
                                                     </td>
                                                 </tr>
                                             );
@@ -1453,28 +1763,114 @@ export default function AppsPage() {
                                                 {aiTypes.includes(selectedAppConfig.type) && (
                                                     <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                                                         {selectedAppConfig.type === 'AI_CHATROOM' ? (
-                                                            <div className="mb-4">
-                                                                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
-                                                                    串接的 AI 服務:
-                                                                </label>
-                                                                <select
-                                                                    className="w-full bg-white dark:bg-gray-800 px-3 py-2 rounded border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                                                                    value={editedConfig.linkedServiceId || ''}
-                                                                    onChange={(e) => setEditedConfig({ ...editedConfig, linkedServiceId: e.target.value })}
-                                                                >
-                                                                    <option value="">-- 請選擇已設定的 AI 服務 --</option>
-                                                                    {apps
-                                                                        .filter(app => aiTypes.filter(t => t !== 'AI_CHATROOM').includes(app.type) && app.status === 'ACTIVE')
-                                                                        .map(app => (
-                                                                            <option key={app.integrationId} value={app.integrationId}>
-                                                                                {app.name} ({app.type})
+                                                            <div className="mb-4 space-y-4">
+                                                                {/* Linked service info card */}
+                                                                {editedConfig.linkedServiceId && (() => {
+                                                                    const linked = apps.find(a => a.integrationId === editedConfig.linkedServiceId);
+                                                                    const model = Array.isArray(linked?.config?.models) ? linked?.config?.models[0] : typeof linked?.config?.models === 'string' ? linked?.config?.models.split(',').filter(Boolean)[0] : null;
+                                                                    return linked ? (
+                                                                        <div className="flex items-center gap-3 p-3 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg border border-indigo-200 dark:border-indigo-800">
+                                                                            <span className="text-2xl">{AI_META[linked.type]?.icon || '🤖'}</span>
+                                                                            <div className="flex-1 min-w-0">
+                                                                                <p className="text-xs font-bold text-indigo-800 dark:text-indigo-300">{linked.name}</p>
+                                                                                <p className="text-[11px] text-indigo-600 dark:text-indigo-400">{AI_META[linked.type]?.label || linked.type}</p>
+                                                                                {model && (
+                                                                                    <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 rounded text-[10px] font-mono font-bold">
+                                                                                        🧩 {model}
+                                                                                    </span>
+                                                                                )}
+                                                                            </div>
+                                                                            <span className="flex h-2.5 w-2.5 shrink-0">
+                                                                                <span className="animate-ping absolute inline-flex h-2.5 w-2.5 rounded-full bg-green-400 opacity-75"></span>
+                                                                                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
+                                                                            </span>
+                                                                        </div>
+                                                                    ) : null;
+                                                                })()}
+                                                                <div>
+                                                                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
+                                                                        串接的 AI 服務:
+                                                                    </label>
+                                                                    <select
+                                                                        className="w-full bg-white dark:bg-gray-800 px-3 py-2 rounded border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                                                                        value={editedConfig.linkedServiceId || ''}
+                                                                        onChange={(e) => setEditedConfig({ ...editedConfig, linkedServiceId: e.target.value })}
+                                                                    >
+                                                                        <option value="">-- 請選擇已設定的 AI 服務 --</option>
+                                                                        {apps
+                                                                            .filter(app => aiTypes.filter(t => t !== 'AI_CHATROOM').includes(app.type) && app.status === 'ACTIVE')
+                                                                            .map(app => {
+                                                                                const m = Array.isArray(app.config?.models) ? app.config?.models[0] : typeof app.config?.models === 'string' ? app.config?.models.split(',').filter(Boolean)[0] : null;
+                                                                                return (
+                                                                                    <option key={app.integrationId} value={app.integrationId}>
+                                                                                        {AI_META[app.type]?.icon} {app.name} ({app.type}){m ? ` · ${m}` : ''}
+                                                                                    </option>
+                                                                                );
+                                                                            })
+                                                                        }
+                                                                    </select>
+                                                                    <p className="text-[10px] text-gray-400 mt-1">
+                                                                        * 請先在 AI 工具串接區塊完成 OpenAI、Gemini 等服務的設定，才能在此選擇。
+                                                                    </p>
+                                                                </div>
+
+                                                                {/* 串接 Skill 選項 */}
+                                                                <div className="mt-4">
+                                                                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-1">
+                                                                        <span className="text-base">✨</span> 串接 AI 技能 (Skill):
+                                                                    </label>
+                                                                    <select
+                                                                        className="w-full bg-white dark:bg-gray-800 px-3 py-2 rounded-lg border border-indigo-300 dark:border-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm shadow-sm transition-all"
+                                                                        value={editedConfig.linkedSkillId || ''}
+                                                                        onChange={(e) => setEditedConfig({ ...editedConfig, linkedSkillId: e.target.value })}
+                                                                    >
+                                                                        <option value="">-- 不使用特定技能 (通用客服) --</option>
+                                                                        {AI_SKILLS.map(skill => (
+                                                                            <option key={skill.id} value={skill.id}>
+                                                                                {skill.icon} {skill.label} - {skill.desc}
                                                                             </option>
-                                                                        ))
-                                                                    }
-                                                                </select>
-                                                                <p className="text-[10px] text-gray-400 mt-1">
-                                                                    * 請先在下方 AI 整合區塊完成 OpenAI、Gemini 等服務的設定，才能在此選擇。
-                                                                </p>
+                                                                        ))}
+                                                                    </select>
+                                                                    {editedConfig.linkedSkillId && (() => {
+                                                                        const skill = getSkillById(editedConfig.linkedSkillId);
+                                                                        return skill ? (
+                                                                            <div className="mt-2 p-3 bg-indigo-50/50 dark:bg-indigo-900/10 rounded-lg border border-dashed border-indigo-200 dark:border-indigo-800">
+                                                                                <p className="text-[11px] text-indigo-600 dark:text-indigo-400 leading-relaxed font-medium">
+                                                                                    💡 啟用此技能後，AI 將扮演「{skill.label}」並遵循專屬指令。
+                                                                                </p>
+                                                                            </div>
+                                                                        ) : null;
+                                                                    })()}
+                                                                </div>
+
+                                                                {/* 串接資料庫選項 */}
+                                                                <div className="mt-4">
+                                                                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-1">
+                                                                        <span className="text-base">🗄️</span> 串接資料庫 (選填):
+                                                                    </label>
+                                                                    <select
+                                                                        className="w-full bg-white dark:bg-gray-800 px-3 py-2 rounded-lg border border-orange-300 dark:border-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-500 text-sm shadow-sm transition-all"
+                                                                        value={editedConfig.linkedDatabaseId || ''}
+                                                                        onChange={(e) => setEditedConfig({ ...editedConfig, linkedDatabaseId: e.target.value })}
+                                                                    >
+                                                                        <option value="">-- 不使用資料庫 (僅用通用知識回答) --</option>
+                                                                        {apps.filter(a => DATABASE_TYPES.includes(a.type) && a.status === 'ACTIVE').map(db => (
+                                                                            <option key={db.integrationId} value={db.integrationId}>
+                                                                                {DATABASE_META[db.type]?.icon} {db.name} ({db.type})
+                                                                            </option>
+                                                                        ))}
+                                                                    </select>
+                                                                    {editedConfig.linkedDatabaseId && (() => {
+                                                                        const database = apps.find(a => a.integrationId === editedConfig.linkedDatabaseId);
+                                                                        return database ? (
+                                                                            <div className="mt-2 p-3 bg-orange-50/50 dark:bg-orange-900/10 rounded-lg border border-dashed border-orange-200 dark:border-orange-800">
+                                                                                <p className="text-[11px] text-orange-600 dark:text-orange-400 leading-relaxed font-medium">
+                                                                                    💡 啟用此資料庫後，AI 在回答時將優先參考「{database.name}」中的內容。
+                                                                                </p>
+                                                                            </div>
+                                                                        ) : null;
+                                                                    })()}
+                                                                </div>
                                                             </div>
                                                         ) : (
                                                             <div className="flex justify-between items-center mb-3">
@@ -1810,13 +2206,13 @@ export default function AppsPage() {
                                 <button
                                     type="button"
                                     className={`inline-flex justify-center items-center rounded-md border border-transparent shadow-sm px-4 py-2 text-base font-medium text-white transition-colors sm:text-sm ${isSavingConfig ||
-                                            (JSON.stringify(editedConfig) === JSON.stringify(selectedAppConfig.config || {}) &&
-                                                editedName === selectedAppConfig.name &&
-                                                editedStatus === selectedAppConfig.status) ||
-                                            (selectedAppConfig.type !== 'AI_CHATROOM' && aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) > 1) ||
-                                            (selectedAppConfig.type !== 'AI_CHATROOM' && aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) === 0)
-                                            ? 'bg-gray-400 cursor-not-allowed'
-                                            : 'bg-blue-600 hover:bg-blue-700'
+                                        (JSON.stringify(editedConfig) === JSON.stringify(selectedAppConfig.config || {}) &&
+                                            editedName === selectedAppConfig.name &&
+                                            editedStatus === selectedAppConfig.status) ||
+                                        (selectedAppConfig.type !== 'AI_CHATROOM' && aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) > 1) ||
+                                        (selectedAppConfig.type !== 'AI_CHATROOM' && aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) === 0)
+                                        ? 'bg-gray-400 cursor-not-allowed'
+                                        : 'bg-blue-600 hover:bg-blue-700'
                                         }`}
                                     onClick={handleSaveConfig}
                                     disabled={
