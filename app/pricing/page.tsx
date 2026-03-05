@@ -30,13 +30,50 @@ export default function PricingPage() {
   const t = useT();
   const [user, setUser] = useState<StoredUser | null>(null);
   const [plan, setPlan] = useState<PlanId | ''>('');
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [settings, setSettings] = useState<any>(null);
   const [upgrades, setUpgrades] = useState<any[]>([]);
   const [loadingUpgrades, setLoadingUpgrades] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const router = useRouter();
 
-  const PLANS: PlanConfig[] = [
+  useEffect(() => {
+    setUser(getStoredUser());
+    const u = getStoredUser();
+    if (u) {
+      setPlan(u.plan);
+      fetchUpgrades(u.email);
+    }
+    fetchSettings();
+  }, []);
+
+  async function fetchSettings() {
+    try {
+      setLoading(true);
+      const res = await fetch('/api/admin/pricing');
+      const data = await res.json();
+      if (data.ok && data.settings) {
+        setSettings(data.settings);
+      }
+    } catch (err) {
+      console.error('Failed to fetch pricing settings:', err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const dynamicPlans = settings?.plans?.filter((p: any) => p.isActive).sort((a: any, b: any) => a.order - b.order) || [];
+  const dynamicPointsPlans = settings?.pointPackages?.filter((p: any) => p.isActive).sort((a: any, b: any) => a.order - b.order) || [];
+
+  const PLANS: any[] = dynamicPlans.length > 0 ? dynamicPlans.map((p: any) => ({
+    id: p.id,
+    label: p.label,
+    badge: p.badge,
+    priceHint: p.priceHint,
+    target: p.targetAudience,
+    features: p.features || (p.includedFeatures ? p.includedFeatures.split('、') : []),
+    description: p.includedFeatures,
+  })) : [
     {
       id: 'viewer',
       badge: t('plan_viewer_badge'),
@@ -86,7 +123,15 @@ export default function PricingPage() {
     },
   ];
 
-  const POINTS_PLANS: PlanConfig[] = [
+  const POINTS_PLANS: any[] = dynamicPointsPlans.length > 0 ? dynamicPointsPlans.map((p: any) => ({
+    id: p.id,
+    label: p.name,
+    priceHint: `NT$ ${p.price}`,
+    target: p.description || '',
+    features: [`${p.points} 點${p.bonus ? ` + 贈送 ${p.bonus} 點` : ''}`],
+    badge: p.badge,
+    description: p.description,
+  })) : [
     {
       id: 'points_100',
       priceHint: PLAN_PRICES['points_100'],
@@ -107,15 +152,6 @@ export default function PricingPage() {
       features: PLAN_FEATURES['points_1000'],
     },
   ];
-
-  useEffect(() => {
-    setUser(getStoredUser());
-    const u = getStoredUser();
-    if (u) {
-      setPlan(u.plan);
-      fetchUpgrades(u.email);
-    }
-  }, []);
 
   async function fetchUpgrades(email: string) {
     setLoadingUpgrades(true);
@@ -154,9 +190,9 @@ export default function PricingPage() {
   return (
     <div className="page">
       <header className="page-header">
-        <h1>{t('pricing_title')}</h1>
+        <h1>{settings?.pageTitle || t('pricing_title')}</h1>
         <p>
-          {t('pricing_description')}
+          {settings?.pageDescription || t('pricing_description')}
         </p>
 
 
@@ -175,9 +211,9 @@ export default function PricingPage() {
                   }`}
               >
                 <header className="pricing-header">
-                  <h2>{PLAN_LABELS[plan.id]}</h2>
+                  <h2>{plan.label || (PLAN_LABELS as any)[plan.id] || plan.id}</h2>
                   <p className="pricing-subtitle">
-                    {PLAN_DESCRIPTIONS[plan.id]}
+                    {plan.description || (PLAN_DESCRIPTIONS as any)[plan.id] || ''}
                   </p>
                   {plan.badge && (
                     <span className="tag tag-accent">{plan.badge}</span>
@@ -197,7 +233,7 @@ export default function PricingPage() {
                 <div className="pricing-features">
                   <h3>{t('pricing_features_title')}</h3>
                   <ul>
-                    {plan.features.map((f) => (
+                    {plan.features.map((f: string) => (
                       <li key={f}>{f}</li>
                     ))}
                   </ul>
@@ -243,9 +279,9 @@ export default function PricingPage() {
               className={`card pricing-card ${plan.badge ? 'pricing-card-highlight' : ''}`}
             >
               <header className="pricing-header">
-                <h2>{PLAN_LABELS[plan.id]}</h2>
+                <h2>{plan.label || (PLAN_LABELS as any)[plan.id] || plan.id}</h2>
                 <p className="pricing-subtitle">
-                  {PLAN_DESCRIPTIONS[plan.id]}
+                  {plan.description || (PLAN_DESCRIPTIONS as any)[plan.id] || ''}
                 </p>
                 {plan.badge && (
                   <span className="tag tag-accent">{plan.badge}</span>
@@ -265,7 +301,7 @@ export default function PricingPage() {
               <div className="pricing-features">
                 <h3>{t('pricing_features_title')}</h3>
                 <ul>
-                  {plan.features.map((f) => (
+                  {plan.features.map((f: string) => (
                     <li key={f}>{f}</li>
                   ))}
                 </ul>

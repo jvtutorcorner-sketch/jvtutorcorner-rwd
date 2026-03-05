@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { PLAN_TARGETS, PLAN_LABELS, PLAN_DESCRIPTIONS, PLAN_FEATURES, PLAN_PRICES } from '@/lib/mockAuth';
 
 type PlanConfig = {
@@ -8,8 +9,8 @@ type PlanConfig = {
   label: string;
   priceHint?: string;
   badge?: string;
-  targetAudience: string; // 適合對象
-  includedFeatures: string; // 包含功能
+  targetAudience: string;
+  includedFeatures: string;
   features: string[];
   isActive: boolean;
   order: number;
@@ -17,12 +18,12 @@ type PlanConfig = {
 
 type PointPackage = {
   id: string;
-  name: string; // 套餐名稱（例如：入門包、超值包）
-  points: number; // 點數數量
-  price: number; // 價格
-  bonus?: number; // 贈送點數
-  description?: string; // 描述
-  badge?: string; // 徽章（推薦、熱門等）
+  name: string;
+  points: number;
+  price: number;
+  bonus?: number;
+  description?: string;
+  badge?: string;
   isActive: boolean;
   order: number;
 };
@@ -30,9 +31,9 @@ type PointPackage = {
 type PricingSettings = {
   pageTitle: string;
   pageDescription: string;
-  mode: 'subscription' | 'points'; // 新增：模式選擇
-  plans: PlanConfig[]; // 訂閱方案
-  pointPackages: PointPackage[]; // 點數套餐
+  mode: 'subscription' | 'points';
+  plans: PlanConfig[];
+  pointPackages: PointPackage[];
 };
 
 export default function PricingSettingsPage() {
@@ -63,7 +64,6 @@ export default function PricingSettingsPage() {
     }
   };
 
-  // Load current pricing data
   useEffect(() => {
     const loadPricingData = async () => {
       try {
@@ -72,7 +72,6 @@ export default function PricingSettingsPage() {
         if (response.ok && data.ok) {
           const loadedSettings = data.settings as PricingSettings;
           setSettings(loadedSettings);
-          // If no plans exist, suggest importing from mockAuth or public page
           if (!loadedSettings.plans || loadedSettings.plans.length === 0) {
             setMessage('💡 尚未設定任何方案，您可以使用「從 mockAuth 新增方案」或「匯入公開頁內容」按鈕來初始化方案資料');
           }
@@ -90,24 +89,20 @@ export default function PricingSettingsPage() {
     loadPricingData();
   }, []);
 
-  // Set originalSettings after loading is complete
   useEffect(() => {
     if (!loading && originalSettings === null) {
       setOriginalSettings(JSON.parse(JSON.stringify(settings)));
     }
   }, [loading]);
 
-  // Import content from the public /pricing page into admin fields
   const importFromPublicPricing = async (base?: PricingSettings) => {
     try {
       const html = await (await fetch('/pricing')).text();
       const doc = new DOMParser().parseFromString(html, 'text/html');
 
-      // header paragraph -> pageDescription
       const headerP = doc.querySelector('header.page-header p');
       const pageDescription = headerP ? headerP.textContent?.trim() || '' : '';
 
-      // Map plan cards by label (h2) to plan entries
       const cards = Array.from(doc.querySelectorAll('.card.pricing-card'));
       const currentPlans = base ? [...base.plans] : [...settings.plans];
 
@@ -129,11 +124,9 @@ export default function PricingSettingsPage() {
 
         const featureLis = Array.from(card.querySelectorAll('.pricing-features ul li'));
         const features = featureLis.map(li => li.textContent?.trim() || '').filter(Boolean);
-        
-        // includedFeatures: use subtitle if present, otherwise use the first 2-3 features joined
+
         const includedSummary = subtitleText || (features.length > 0 ? features.slice(0, 2).join('、') : '');
 
-        // Find matching plan by label
         const planIndex = currentPlans.findIndex(p => p.label === label);
         if (planIndex !== -1) {
           currentPlans[planIndex] = {
@@ -165,10 +158,9 @@ export default function PricingSettingsPage() {
     setSettings(prev => {
       const existingIds = new Set(prev.plans.map(p => p.id));
       const maxOrder = prev.plans.length > 0 ? Math.max(...prev.plans.map(p => p.order)) : 0;
-      
-      // 定義固定順序，避免 Object.entries() 順序不確定
+
       const planOrder = ['viewer', 'basic', 'pro', 'elite'];
-      
+
       const plansToAdd: PlanConfig[] = [];
       planOrder.forEach((id, index) => {
         if (!existingIds.has(id)) {
@@ -185,7 +177,7 @@ export default function PricingSettingsPage() {
           });
         }
       });
-      
+
       return {
         ...prev,
         plans: [...prev.plans, ...plansToAdd]
@@ -193,7 +185,6 @@ export default function PricingSettingsPage() {
     });
     setMessage('已從 mockAuth 匯入新方案');
     setTimeout(() => setMessage(''), 3000);
-    // 在一小段時間後滾動到頁面底部，讓用戶看到新方案
     setTimeout(() => {
       window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' });
     }, 100);
@@ -248,7 +239,6 @@ export default function PricingSettingsPage() {
     const newPlans = [...settings.plans];
     [newPlans[currentIndex], newPlans[newIndex]] = [newPlans[newIndex], newPlans[currentIndex]];
 
-    // Update order values
     newPlans.forEach((plan, index) => {
       plan.order = index + 1;
     });
@@ -256,7 +246,6 @@ export default function PricingSettingsPage() {
     setSettings(prev => ({ ...prev, plans: newPlans }));
   };
 
-  // 點數套餐管理函數
   const addPointPackage = () => {
     const newPackage: PointPackage = {
       id: `points_${Date.now()}`,
@@ -277,7 +266,7 @@ export default function PricingSettingsPage() {
 
   const addMockPointPackages = () => {
     const maxOrder = Math.max(...(settings.pointPackages?.map(p => p.order) || [0]), 0);
-    
+
     const mockPackages: PointPackage[] = [
       {
         id: `points_${Date.now()}_1`,
@@ -324,16 +313,15 @@ export default function PricingSettingsPage() {
         order: maxOrder + 4
       }
     ];
-    
+
     setSettings(prev => ({
       ...prev,
       pointPackages: [...(prev.pointPackages || []), ...mockPackages]
     }));
-    
+
     setMessage('已新增 4 個模擬點數套餐');
     setTimeout(() => setMessage(''), 3000);
-    
-    // 滾動到頁面底部
+
     setTimeout(() => {
       window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' });
     }, 100);
@@ -366,7 +354,6 @@ export default function PricingSettingsPage() {
     const newPackages = [...packages];
     [newPackages[currentIndex], newPackages[newIndex]] = [newPackages[newIndex], newPackages[currentIndex]];
 
-    // Update order values
     newPackages.forEach((pkg, index) => {
       pkg.order = index + 1;
     });
@@ -390,7 +377,6 @@ export default function PricingSettingsPage() {
 
       if (response.ok && data.ok) {
         setMessage('方案設定已儲存！');
-        // Update originalSettings after successful save
         setOriginalSettings(JSON.parse(JSON.stringify(settings)));
       } else {
         setMessage(data.error || '儲存失敗，請重試');
@@ -406,495 +392,433 @@ export default function PricingSettingsPage() {
 
   if (loading) {
     return (
-      <div className="p-6">
-        <div className="text-center">載入中...</div>
+      <div className="flex h-[80vh] w-full items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="h-12 w-12 animate-spin rounded-full border-4 border-blue-600 border-t-transparent shadow-md"></div>
+          <p className="text-gray-500 font-medium">載入設定中...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
-      <div className="mb-6">
-        <div className="mb-4">
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            頁面標題
-          </label>
-          <input
-            type="text"
-            value={settings.pageTitle}
-            onChange={(e) => updateSettings('pageTitle', e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-xl font-bold"
-          />
-        </div>
-        <div className="mb-4">
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            頁面描述
-          </label>
-          <textarea
-            value={settings.pageDescription}
-            onChange={(e) => updateSettings('pageDescription', e.target.value)}
-            rows={2}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
+    <div className="min-h-screen bg-gray-50/50 p-6 md:p-8">
+      <div className="mx-auto max-w-5xl space-y-8">
 
-        {/* 模式選擇 */}
-        <div className="mb-4">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            收費模式
-          </label>
-          <div className="flex gap-4">
-            <button
-              onClick={() => updateSettings('mode', 'subscription')}
-              className={`px-6 py-3 rounded-lg font-medium transition-colors ${
-                settings.mode === 'subscription'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-              }`}
-            >
-              📅 訂閱方案
-            </button>
-            <button
-              onClick={() => updateSettings('mode', 'points')}
-              className={`px-6 py-3 rounded-lg font-medium transition-colors ${
-                settings.mode === 'points'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-              }`}
-            >
-              💎 點數購買
-            </button>
+        {/* Banner */}
+        <div className="bg-gradient-to-r from-blue-700 to-indigo-800 rounded-2xl p-6 md:p-8 text-white shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6 overflow-hidden relative">
+          <div className="absolute -top-24 -right-24 w-80 h-80 bg-white/10 blur-3xl rounded-full pointer-events-none"></div>
+          <div className="absolute -bottom-24 -left-24 w-60 h-60 bg-blue-500/20 blur-3xl rounded-full pointer-events-none"></div>
+
+          <div className="relative z-10">
+            <h2 className="text-2xl font-bold mb-2 flex items-center gap-2 tracking-tight">
+              <svg className="w-6 h-6 text-yellow-300 drop-shadow-sm" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              解鎖完整的商業收款能力
+            </h2>
+            <p className="text-blue-100 max-w-xl text-sm md:text-base leading-relaxed">
+              希望讓學生無縫付費嗎？前往「系統設定」頁面，即可輕鬆串接 Stripe、ECPay、PayPal 等多種在地與國際金流服務，自動處理帳務。
+            </p>
           </div>
-          <p className="mt-2 text-sm text-gray-500">
-            {settings.mode === 'subscription' 
-              ? '訂閱方案：學員定期付費取得課程存取權' 
-              : '點數購買：學員購買點數，每次上課扣除相應點數'}
-          </p>
+          <div className="shrink-0 relative z-10">
+            <Link
+              href="/apps?type=payment"
+              className="inline-flex items-center gap-2 bg-white text-blue-700 hover:bg-blue-50 px-6 py-3 rounded-xl font-bold transition-all shadow-md hover:shadow-lg hover:-translate-y-0.5"
+            >
+              前往金流設定
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+              </svg>
+            </Link>
+          </div>
         </div>
-      </div>
 
-      {message && (
-        <div className={`mb-6 p-4 rounded-md ${message.includes('失敗') ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
-          {message}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <h1 className="text-3xl font-bold text-gray-900 tracking-tight">方案與價格設定</h1>
+          <button
+            onClick={saveSettings}
+            disabled={saving || !hasChanges()}
+            className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow transition-all"
+          >
+            {saving ? (
+              <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+            ) : (
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg>
+            )}
+            {saving ? '儲存中...' : '儲存全部變更'}
+          </button>
         </div>
-      )}
 
-      {/* 訂閱方案管理 */}
-      {settings.mode === 'subscription' && (
-        <>
-          <div className="mb-6">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-semibold text-gray-900">訂閱方案管理</h2>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => syncTargets(true)}
-                  className="px-3 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
-                >
-                  同步適合對象
+        {message && (
+          <div className={`p-4 rounded-xl shadow-sm border ${message.includes('失敗') ? 'bg-red-50 text-red-800 border-red-200' : 'bg-emerald-50 text-emerald-800 border-emerald-200'} animate-in fade-in slide-in-from-top-2`}>
+            {message}
+          </div>
+        )}
+
+        {/* 基本設定 Card */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 md:p-8">
+          <h2 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
+            <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+            公開頁面顯示設定
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <label className="text-sm font-semibold text-gray-700">頁面大標題 (H1)</label>
+              <input
+                type="text"
+                value={settings.pageTitle}
+                onChange={(e) => updateSettings('pageTitle', e.target.value)}
+                className="w-full px-4 py-3 bg-gray-50/50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all text-gray-900"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-semibold text-gray-700">頁面副標題描述 (Description)</label>
+              <textarea
+                value={settings.pageDescription}
+                onChange={(e) => updateSettings('pageDescription', e.target.value)}
+                rows={2}
+                className="w-full px-4 py-3 bg-gray-50/50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all text-gray-900 resize-none"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* 模式切換 Segmented Tabs */}
+        <div className="flex bg-gray-100/80 p-1.5 rounded-2xl w-fit drop-shadow-sm border border-gray-200/50">
+          <button
+            onClick={() => updateSettings('mode', 'subscription')}
+            className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold transition-all ${settings.mode === 'subscription'
+                ? 'bg-white text-blue-700 shadow-sm ring-1 ring-black/5'
+                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
+              }`}
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            維護訂閱方案
+          </button>
+          <button
+            onClick={() => updateSettings('mode', 'points')}
+            className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold transition-all ${settings.mode === 'points'
+                ? 'bg-white text-blue-700 shadow-sm ring-1 ring-black/5'
+                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
+              }`}
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            維護點數購買
+          </button>
+        </div>
+
+        {/* 訂閱方案管理區塊 */}
+        {settings.mode === 'subscription' && (
+          <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-xl font-bold text-gray-900">訂閱方案管理</h3>
+                <p className="text-sm text-gray-500 mt-1">學員定期付費取得課程存取權。調整下方卡片即可動態更改定價資訊。</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button onClick={() => syncTargets(true)} className="px-3 py-2 bg-white border border-gray-200 text-gray-700 text-sm font-semibold rounded-lg hover:bg-gray-50 shadow-sm">
+                  同步對象
                 </button>
-                <button
-                  onClick={() => importFromPublicPricing()}
-                  className="px-3 py-2 bg-yellow-500 text-white rounded-md hover:bg-yellow-600"
-                >
-                  匯入公開頁內容
+                <button onClick={() => importFromPublicPricing()} className="px-3 py-2 bg-white border border-yellow-200 text-yellow-700 text-sm font-semibold rounded-lg hover:bg-yellow-50 shadow-sm">
+                  匯入公開頁
                 </button>
-                <button
-                  onClick={() => importFromMockAuth()}
-                  className="px-3 py-2 bg-purple-500 text-white rounded-md hover:bg-purple-600"
-                >
-                  從 mockAuth 新增方案
+                <button onClick={() => importFromMockAuth()} className="px-3 py-2 bg-white border border-purple-200 text-purple-700 text-sm font-semibold rounded-lg hover:bg-purple-50 shadow-sm">
+                  匯入 mockAuth
                 </button>
-                <button
-                  onClick={addPlan}
-                  className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
-                >
+                <button onClick={addPlan} className="px-4 py-2 bg-gray-900 text-white text-sm font-bold rounded-lg hover:bg-gray-800 shadow-sm">
                   + 新增方案
                 </button>
               </div>
             </div>
-          </div>
 
-          <div className="bg-white border-2 border-gray-300 rounded-lg shadow-sm overflow-hidden">
-            <div className="overflow-x-auto">
-          <table className="min-w-full border-collapse" style={{ borderCollapse: 'collapse' }}>
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ border: '2px solid #d1d5db' }}>
-                  排序
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ border: '2px solid #d1d5db' }}>
-                  狀態
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ border: '2px solid #d1d5db' }}>
-                  方案標籤
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ border: '2px solid #d1d5db' }}>
-                  價格提示
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ border: '2px solid #d1d5db' }}>
-                  適合對象
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ border: '2px solid #d1d5db' }}>
-                  包含功能
-                </th>
-                
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ border: '2px solid #d1d5db' }}>
-                  操作
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white">
+            <div className="space-y-4">
               {settings.plans
                 .sort((a, b) => a.order - b.order)
                 .map((plan, index) => (
-                <tr key={plan.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap" style={{ border: '2px solid #d1d5db' }}>
-                    {editingPlanId === plan.id ? (
-                      <div className="flex flex-col gap-1">
-                        <button
-                          onClick={() => {
-                            if (window.confirm('確定要上移此方案順序嗎？')) {
-                              movePlan(plan.id, 'up');
-                            }
-                          }}
-                          disabled={index === 0}
-                          className="px-2 py-1 text-xs bg-gray-200 text-gray-700 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-300"
-                        >
-                          ↑
-                        </button>
-                        <button
-                          onClick={() => {
-                            if (window.confirm('確定要下移此方案順序嗎？')) {
-                              movePlan(plan.id, 'down');
-                            }
-                          }}
-                          disabled={index === settings.plans.length - 1}
-                          className="px-2 py-1 text-xs bg-gray-200 text-gray-700 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-300"
-                        >
-                          ↓
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="text-xs text-gray-400">–</div>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap" style={{ border: '2px solid #d1d5db' }}>
-                    <div className="flex items-center">
-                      <input
-                        type="checkbox"
-                        checked={plan.isActive}
-                        onChange={(e) => updatePlan(plan.id, 'isActive', e.target.checked)}
-                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                      />
-                      <span className="ml-2 text-sm text-gray-600">
-                        {plan.isActive ? '啟用' : '停用'}
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap" style={{ border: '2px solid #d1d5db' }}>
-                    <input
-                      type="text"
-                      value={plan.label}
-                      onChange={(e) => updatePlan(plan.id, 'label', e.target.value)}
-                      disabled={editingPlanId !== plan.id}
-                      className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
-                    />
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap" style={{ border: '2px solid #d1d5db' }}>
-                    <input
-                      type="text"
-                      value={plan.priceHint || ''}
-                      onChange={(e) => updatePlan(plan.id, 'priceHint', e.target.value)}
-                      disabled={editingPlanId !== plan.id}
-                      className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
-                      placeholder="例如：主力方案／推薦／試用"
-                    />
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap" style={{ border: '2px solid #d1d5db' }}>
-                    <input
-                      type="text"
-                      value={plan.targetAudience}
-                      onChange={(e) => updatePlan(plan.id, 'targetAudience', e.target.value)}
-                      disabled={editingPlanId !== plan.id}
-                      className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
-                      placeholder="例如：初學者、專業學生"
-                    />
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap" style={{ border: '2px solid #d1d5db' }}>
-                    <input
-                      type="text"
-                      value={plan.includedFeatures}
-                      onChange={(e) => updatePlan(plan.id, 'includedFeatures', e.target.value)}
-                      disabled={editingPlanId !== plan.id}
-                      className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
-                      placeholder="例如：白板功能、錄影回放"
-                    />
-                  </td>
-                  
-                  <td className="px-6 py-4 whitespace-nowrap" style={{ border: '2px solid #d1d5db' }}>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={async () => {
-                          if (editingPlanId === plan.id) {
-                            // currently editing: save and exit edit mode
-                            await saveSettings();
-                            setEditingPlanId(null);
-                          } else {
-                            // enable editing for this plan
-                            setEditingPlanId(plan.id);
-                          }
-                        }}
-                        className={
-                          `px-3 py-1 text-sm rounded font-medium ` +
-                          (editingPlanId === plan.id
-                            ? 'bg-green-600 text-white hover:bg-green-700'
-                            : 'bg-orange-500 text-white hover:bg-orange-600')
-                        }
-                      >
-                        {editingPlanId === plan.id ? '儲存' : '編輯'}
-                      </button>
-                      {editingPlanId === plan.id && (
-                        <button
-                          onClick={() => {
-                            if (window.confirm(`確定要刪除方案「${plan.label}」嗎？此操作無法復原。`)) {
-                              removePlan(plan.id);
-                            }
-                          }}
-                          className="px-3 py-1 text-sm bg-red-500 text-white rounded hover:bg-red-600"
-                        >
-                          刪除
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-        </>
-      )}
+                  <div key={plan.id} className={`bg-white rounded-2xl p-5 md:p-6 transition-all border ${editingPlanId === plan.id ? 'border-blue-400 shadow-md ring-4 ring-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
+                    <div className="flex flex-col lg:flex-row gap-6">
 
-      {/* 點數套餐管理 */}
-      {settings.mode === 'points' && (
-        <>
-          <div className="mb-6">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-semibold text-gray-900">點數套餐管理</h2>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={addMockPointPackages}
-                  className="px-4 py-2 bg-purple-500 text-white rounded-md hover:bg-purple-600"
-                >
+                      {/* Left Block: Controls */}
+                      <div className="flex lg:flex-col items-center justify-between lg:justify-start gap-4 lg:w-32 lg:shrink-0 lg:border-r border-gray-100 lg:pr-6">
+                        <div className="flex lg:flex-col gap-1.5 opacity-60 hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={() => { if (window.confirm('確定要上移此方案順序嗎？')) movePlan(plan.id, 'up'); }}
+                            disabled={index === 0}
+                            className="p-1.5 bg-gray-100 text-gray-600 rounded-md disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-200 transition-colors"
+                          >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg>
+                          </button>
+                          <button
+                            onClick={() => { if (window.confirm('確定要下移此方案順序嗎？')) movePlan(plan.id, 'down'); }}
+                            disabled={index === settings.plans.length - 1}
+                            className="p-1.5 bg-gray-100 text-gray-600 rounded-md disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-200 transition-colors"
+                          >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                          </button>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={plan.isActive}
+                            onChange={(e) => updatePlan(plan.id, 'isActive', e.target.checked)}
+                            className="sr-only peer"
+                          />
+                          <div className="w-10 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"></div>
+                          <span className="ml-3 text-sm font-bold text-gray-700">{plan.isActive ? '啟用中' : '已停用'}</span>
+                        </label>
+                      </div>
+
+                      {/* Middle Block: Form Fields */}
+                      <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">方案標籤 (Label)</label>
+                          <input
+                            type="text"
+                            value={plan.label}
+                            onChange={(e) => updatePlan(plan.id, 'label', e.target.value)}
+                            disabled={editingPlanId !== plan.id}
+                            className={`w-full px-3 py-2 rounded-lg text-sm transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 border ${editingPlanId === plan.id ? 'bg-white border-gray-300' : 'bg-transparent border-transparent text-gray-900 font-medium px-0'}`}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">價格及週期 (Price Hint)</label>
+                          <input
+                            type="text"
+                            value={plan.priceHint || ''}
+                            onChange={(e) => updatePlan(plan.id, 'priceHint', e.target.value)}
+                            disabled={editingPlanId !== plan.id}
+                            placeholder="例如：NT$ 800 / 月"
+                            className={`w-full px-3 py-2 rounded-lg text-sm transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 border ${editingPlanId === plan.id ? 'bg-white border-gray-300' : 'bg-transparent border-transparent text-gray-900 font-medium px-0'}`}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">適合對象 (Target Audience)</label>
+                          <input
+                            type="text"
+                            value={plan.targetAudience}
+                            onChange={(e) => updatePlan(plan.id, 'targetAudience', e.target.value)}
+                            disabled={editingPlanId !== plan.id}
+                            className={`w-full px-3 py-2 rounded-lg text-sm transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 border ${editingPlanId === plan.id ? 'bg-white border-gray-300' : 'bg-transparent border-transparent text-gray-900 font-medium px-0'}`}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">包含功能概述 (Included Features)</label>
+                          <input
+                            type="text"
+                            value={plan.includedFeatures}
+                            onChange={(e) => updatePlan(plan.id, 'includedFeatures', e.target.value)}
+                            disabled={editingPlanId !== plan.id}
+                            className={`w-full px-3 py-2 rounded-lg text-sm transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 border ${editingPlanId === plan.id ? 'bg-white border-gray-300' : 'bg-transparent border-transparent text-gray-900 font-medium px-0'}`}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Right Block: Actions */}
+                      <div className="flex lg:flex-col items-center lg:items-end justify-center lg:justify-start gap-2 lg:w-24 lg:shrink-0 lg:pl-4">
+                        <button
+                          onClick={async () => {
+                            if (editingPlanId === plan.id) {
+                              await saveSettings();
+                              setEditingPlanId(null);
+                            } else {
+                              setEditingPlanId(plan.id);
+                            }
+                          }}
+                          className={`w-full px-4 py-2 text-sm font-bold rounded-lg transition-colors ${editingPlanId === plan.id
+                              ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-md'
+                              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                            }`}
+                        >
+                          {editingPlanId === plan.id ? '完成編輯' : '編輯內容'}
+                        </button>
+                        {editingPlanId === plan.id && (
+                          <button
+                            onClick={() => {
+                              if (window.confirm(`確定要刪除這筆方案嗎？此操作無法復原。`)) {
+                                removePlan(plan.id);
+                              }
+                            }}
+                            className="w-full px-4 py-2 text-sm font-bold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"
+                          >
+                            刪除
+                          </button>
+                        )}
+                      </div>
+
+                    </div>
+                  </div>
+                ))}
+            </div>
+          </div>
+        )}
+
+        {/* 點數套餐管理區塊 */}
+        {settings.mode === 'points' && (
+          <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-xl font-bold text-gray-900">點數套餐管理</h3>
+                <p className="text-sm text-gray-500 mt-1">學員購買點數後可用於報名課程，點數消耗由課程扣點設定決定。</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button onClick={addMockPointPackages} className="px-3 py-2 bg-white border border-purple-200 text-purple-700 text-sm font-semibold rounded-lg hover:bg-purple-50 shadow-sm">
                   📊 新增模擬資料
                 </button>
-                <button
-                  onClick={addPointPackage}
-                  className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
-                >
+                <button onClick={addPointPackage} className="px-4 py-2 bg-gray-900 text-white text-sm font-bold rounded-lg hover:bg-gray-800 shadow-sm">
                   + 新增套餐
                 </button>
               </div>
             </div>
-            <p className="mt-2 text-sm text-gray-600">
-              管理點數購買套餐，學員購買點數後可用於報名課程，點數消耗由課程扣點設定決定
-            </p>
-          </div>
 
-          <div className="bg-white border-2 border-gray-300 rounded-lg shadow-sm overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="min-w-full border-collapse" style={{ borderCollapse: 'collapse' }}>
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ border: '2px solid #d1d5db' }}>
-                      排序
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ border: '2px solid #d1d5db' }}>
-                      狀態
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ border: '2px solid #d1d5db' }}>
-                      套餐名稱
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ border: '2px solid #d1d5db' }}>
-                      點數
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ border: '2px solid #d1d5db' }}>
-                      價格 (NT$)
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ border: '2px solid #d1d5db' }}>
-                      贈送點數
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ border: '2px solid #d1d5db' }}>
-                      徽章
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ border: '2px solid #d1d5db' }}>
-                      描述
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ border: '2px solid #d1d5db' }}>
-                      操作
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white">
-                  {(settings.pointPackages || [])
-                    .sort((a, b) => a.order - b.order)
-                    .map((pkg, index) => (
-                    <tr key={pkg.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap" style={{ border: '2px solid #d1d5db' }}>
-                        {editingPlanId === pkg.id ? (
-                          <div className="flex flex-col gap-1">
-                            <button
-                              onClick={() => {
-                                if (window.confirm('確定要上移此套餐順序嗎？')) {
-                                  movePointPackage(pkg.id, 'up');
-                                }
-                              }}
-                              disabled={index === 0}
-                              className="px-2 py-1 text-xs bg-gray-200 text-gray-700 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-300"
-                            >
-                              ↑
-                            </button>
-                            <button
-                              onClick={() => {
-                                if (window.confirm('確定要下移此套餐順序嗎？')) {
-                                  movePointPackage(pkg.id, 'down');
-                                }
-                              }}
-                              disabled={index === (settings.pointPackages || []).length - 1}
-                              className="px-2 py-1 text-xs bg-gray-200 text-gray-700 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-300"
-                            >
-                              ↓
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="text-xs text-gray-400">–</div>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap" style={{ border: '2px solid #d1d5db' }}>
-                        <div className="flex items-center">
+            <div className="space-y-4">
+              {(settings.pointPackages || [])
+                .sort((a, b) => a.order - b.order)
+                .map((pkg, index) => (
+                  <div key={pkg.id} className={`bg-white rounded-2xl p-5 md:p-6 transition-all border ${editingPlanId === pkg.id ? 'border-indigo-400 shadow-md ring-4 ring-indigo-50' : 'border-gray-200 hover:border-gray-300'}`}>
+                    <div className="flex flex-col lg:flex-row gap-6">
+
+                      {/* Left Block: Controls */}
+                      <div className="flex lg:flex-col items-center justify-between lg:justify-start gap-4 lg:w-32 lg:shrink-0 lg:border-r border-gray-100 lg:pr-6">
+                        <div className="flex lg:flex-col gap-1.5 opacity-60 hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={() => { if (window.confirm('確定要上移此套餐順序嗎？')) movePointPackage(pkg.id, 'up'); }}
+                            disabled={index === 0}
+                            className="p-1.5 bg-gray-100 text-gray-600 rounded-md disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-200 transition-colors"
+                          >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg>
+                          </button>
+                          <button
+                            onClick={() => { if (window.confirm('確定要下移此套餐順序嗎？')) movePointPackage(pkg.id, 'down'); }}
+                            disabled={index === (settings.pointPackages?.length || 0) - 1}
+                            className="p-1.5 bg-gray-100 text-gray-600 rounded-md disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-200 transition-colors"
+                          >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                          </button>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
                           <input
                             type="checkbox"
                             checked={pkg.isActive}
                             onChange={(e) => updatePointPackage(pkg.id, 'isActive', e.target.checked)}
-                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                            className="sr-only peer"
                           />
-                          <span className="ml-2 text-sm text-gray-600">
-                            {pkg.isActive ? '啟用' : '停用'}
-                          </span>
+                          <div className="w-10 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-500"></div>
+                          <span className="ml-3 text-sm font-bold text-gray-700">{pkg.isActive ? '上架中' : '未上架'}</span>
+                        </label>
+                      </div>
+
+                      {/* Middle Block: Form Fields */}
+                      <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">套餐名稱</label>
+                          <input
+                            type="text"
+                            value={pkg.name}
+                            onChange={(e) => updatePointPackage(pkg.id, 'name', e.target.value)}
+                            disabled={editingPlanId !== pkg.id}
+                            className={`w-full px-3 py-2 rounded-lg text-sm transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500 border ${editingPlanId === pkg.id ? 'bg-white border-gray-300' : 'bg-transparent border-transparent text-gray-900 font-bold px-0'}`}
+                          />
                         </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap" style={{ border: '2px solid #d1d5db' }}>
-                        <input
-                          type="text"
-                          value={pkg.name}
-                          onChange={(e) => updatePointPackage(pkg.id, 'name', e.target.value)}
-                          disabled={editingPlanId !== pkg.id}
-                          className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
-                          placeholder="例如：入門包、超值包"
-                        />
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap" style={{ border: '2px solid #d1d5db' }}>
-                        <input
-                          type="number"
-                          value={pkg.points}
-                          onChange={(e) => updatePointPackage(pkg.id, 'points', parseInt(e.target.value) || 0)}
-                          disabled={editingPlanId !== pkg.id}
-                          className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
-                          placeholder="100"
-                        />
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap" style={{ border: '2px solid #d1d5db' }}>
-                        <input
-                          type="number"
-                          value={pkg.price}
-                          onChange={(e) => updatePointPackage(pkg.id, 'price', parseInt(e.target.value) || 0)}
-                          disabled={editingPlanId !== pkg.id}
-                          className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
-                          placeholder="1000"
-                        />
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap" style={{ border: '2px solid #d1d5db' }}>
-                        <input
-                          type="number"
-                          value={pkg.bonus || 0}
-                          onChange={(e) => updatePointPackage(pkg.id, 'bonus', parseInt(e.target.value) || 0)}
-                          disabled={editingPlanId !== pkg.id}
-                          className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
-                          placeholder="0"
-                        />
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap" style={{ border: '2px solid #d1d5db' }}>
-                        <input
-                          type="text"
-                          value={pkg.badge || ''}
-                          onChange={(e) => updatePointPackage(pkg.id, 'badge', e.target.value)}
-                          disabled={editingPlanId !== pkg.id}
-                          className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
-                          placeholder="推薦、熱門"
-                        />
-                      </td>
-                      <td className="px-6 py-4" style={{ border: '2px solid #d1d5db' }}>
-                        <input
-                          type="text"
-                          value={pkg.description || ''}
-                          onChange={(e) => updatePointPackage(pkg.id, 'description', e.target.value)}
-                          disabled={editingPlanId !== pkg.id}
-                          className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
-                          placeholder="套餐說明"
-                        />
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap" style={{ border: '2px solid #d1d5db' }}>
-                        <div className="flex gap-2">
+                        <div className="space-y-1">
+                          <label className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">點數數量</label>
+                          <input
+                            type="number"
+                            value={pkg.points}
+                            onChange={(e) => updatePointPackage(pkg.id, 'points', parseInt(e.target.value) || 0)}
+                            disabled={editingPlanId !== pkg.id}
+                            className={`w-full px-3 py-2 rounded-lg text-sm transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500 border ${editingPlanId === pkg.id ? 'bg-white border-gray-300' : 'bg-transparent border-transparent text-gray-900 font-medium px-0'}`}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">價格 (NT$)</label>
+                          <input
+                            type="number"
+                            value={pkg.price}
+                            onChange={(e) => updatePointPackage(pkg.id, 'price', parseInt(e.target.value) || 0)}
+                            disabled={editingPlanId !== pkg.id}
+                            className={`w-full px-3 py-2 rounded-lg text-sm transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500 border ${editingPlanId === pkg.id ? 'bg-white border-gray-300' : 'bg-transparent border-transparent text-gray-900 font-medium px-0'}`}
+                          />
+                        </div>
+                        <div className="space-y-1 shadow-sm sm:shadow-none bg-yellow-50/50 sm:bg-transparent -mx-5 px-5 sm:mx-0 sm:px-0 py-2 sm:py-0 border-y border-yellow-100 sm:border-0">
+                          <label className="text-[11px] font-bold text-orange-400 uppercase tracking-widest">贈送點數 (Bonus)</label>
+                          <input
+                            type="number"
+                            value={pkg.bonus || 0}
+                            onChange={(e) => updatePointPackage(pkg.id, 'bonus', parseInt(e.target.value) || 0)}
+                            disabled={editingPlanId !== pkg.id}
+                            className={`w-full px-3 py-2 rounded-lg text-sm transition-all focus:outline-none focus:ring-2 focus:ring-orange-500 border ${editingPlanId === pkg.id ? 'bg-white border-orange-200' : 'bg-transparent border-transparent text-orange-700 font-bold px-0'}`}
+                          />
+                        </div>
+
+                        <div className="space-y-1 sm:col-span-2 lg:col-span-3">
+                          <label className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">套餐描述</label>
+                          <input
+                            type="text"
+                            value={pkg.description || ''}
+                            onChange={(e) => updatePointPackage(pkg.id, 'description', e.target.value)}
+                            disabled={editingPlanId !== pkg.id}
+                            className={`w-full px-3 py-2 rounded-lg text-sm transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500 border ${editingPlanId === pkg.id ? 'bg-white border-gray-300' : 'bg-transparent border-transparent text-gray-600 px-0'}`}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">促銷推廣徽章</label>
+                          <input
+                            type="text"
+                            value={pkg.badge || ''}
+                            onChange={(e) => updatePointPackage(pkg.id, 'badge', e.target.value)}
+                            disabled={editingPlanId !== pkg.id}
+                            placeholder="如：熱銷、最划算"
+                            className={`w-full px-3 py-2 rounded-lg text-sm transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500 border ${editingPlanId === pkg.id ? 'bg-white border-gray-300' : 'bg-transparent border-transparent text-indigo-600 font-semibold px-0'}`}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Right Block: Actions */}
+                      <div className="flex lg:flex-col items-center lg:items-end justify-center lg:justify-start gap-2 lg:w-24 lg:shrink-0 lg:pl-4">
+                        <button
+                          onClick={async () => {
+                            if (editingPlanId === pkg.id) {
+                              await saveSettings();
+                              setEditingPlanId(null);
+                            } else {
+                              setEditingPlanId(pkg.id);
+                            }
+                          }}
+                          className={`w-full px-4 py-2 text-sm font-bold rounded-lg transition-colors ${editingPlanId === pkg.id
+                              ? 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-md'
+                              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                            }`}
+                        >
+                          {editingPlanId === pkg.id ? '完成編輯' : '編輯內容'}
+                        </button>
+                        {editingPlanId === pkg.id && (
                           <button
-                            onClick={async () => {
-                              if (editingPlanId === pkg.id) {
-                                await saveSettings();
-                                setEditingPlanId(null);
-                              } else {
-                                setEditingPlanId(pkg.id);
+                            onClick={() => {
+                              if (window.confirm(`確定要刪除這筆套餐嗎？此操作無法復原。`)) {
+                                removePointPackage(pkg.id);
                               }
                             }}
-                            className={
-                              `px-3 py-1 text-sm rounded font-medium ` +
-                              (editingPlanId === pkg.id
-                                ? 'bg-green-600 text-white hover:bg-green-700'
-                                : 'bg-orange-500 text-white hover:bg-orange-600')
-                            }
+                            className="w-full px-4 py-2 text-sm font-bold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"
                           >
-                            {editingPlanId === pkg.id ? '儲存' : '編輯'}
+                            刪除
                           </button>
-                          {editingPlanId === pkg.id && (
-                            <button
-                              onClick={() => {
-                                if (window.confirm(`確定要刪除套餐「${pkg.name}」嗎？此操作無法復原。`)) {
-                                  removePointPackage(pkg.id);
-                                }
-                              }}
-                              className="px-3 py-1 text-sm bg-red-500 text-white rounded hover:bg-red-600"
-                            >
-                              刪除
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                        )}
+                      </div>
+
+                    </div>
+                  </div>
+                ))}
             </div>
           </div>
-        </>
-      )}
+        )}
 
-      <div className="mt-8 flex justify-end">
-        <button
-          onClick={saveSettings}
-          disabled={saving || !hasChanges()}
-          className="px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {saving ? '儲存中...' : '儲存設定'}
-        </button>
       </div>
     </div>
   );
