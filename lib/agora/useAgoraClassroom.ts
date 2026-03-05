@@ -10,6 +10,7 @@ import type {
 } from 'agora-rtc-sdk-ng';
 // don't import types from white-web-sdk (we load it from CDN at runtime)
 type Room = any;
+import { logAgoraConnection } from './connectionLog';
 
 export type ClassroomRole = 'teacher' | 'student';
 
@@ -403,6 +404,19 @@ export function useAgoraClassroom({
       console.log('[Agora] Attempting client.join', { appId: data.appId, channelName: data.channelName, uid: data.uid });
       await client.join(data.appId, data.channelName, data.token, data.uid);
       console.log('[Agora] client.join succeeded', { channelName: data.channelName, uid: data.uid });
+
+      // Log the connection to DynamoDB
+      const courseIdObj = channelName.split('_').pop();
+      try {
+        await logAgoraConnection({
+          page: '/classroom/room',
+          userId: typeof window !== 'undefined' ? sessionStorage.getItem('tutor_mock_user') ? JSON.parse(sessionStorage.getItem('tutor_mock_user') || '{}')?.email : 'unknown' : 'unknown',
+          courseId: courseIdObj || channelName,
+          role: role,
+        });
+      } catch (err) {
+        console.warn('[Agora] logAgoraConnection failed silently', err);
+      }
 
       // Safety check: if there are already remote users publishing, trigger handlers manually
       // (though registering before join should have caught them)

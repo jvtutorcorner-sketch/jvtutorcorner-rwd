@@ -8,6 +8,7 @@ import { COURSES } from '@/data/courses';
 import { getStoredUser } from '@/lib/mockAuth';
 import { useT } from '@/components/IntlProvider';
 import { useOneTimeEntry } from '@/lib/hooks/useOneTimeEntry';
+import { logAgoraConnection } from '@/lib/agora/connectionLog';
 
 export default function ClassroomWaitPage() {
   // 一次性進入控制
@@ -343,6 +344,21 @@ export default function ClassroomWaitPage() {
         syncStateFromServer(true);
       })
       .finally(() => {
+        // Log the connection to DynamoDB
+        if (nextReadyState) {
+          try {
+            logAgoraConnection({
+              page: '/classroom/wait',
+              userId: userId,
+              courseId: courseId,
+              role: role,
+              orderId: orderId,
+            });
+          } catch (err) {
+            console.warn('[Wait Sync] logAgoraConnection failed silently', err);
+          }
+        }
+
         // 5. Unlock the button
         setIsUpdating(false);
         isUpdatingRef.current = false;
