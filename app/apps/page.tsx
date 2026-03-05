@@ -15,8 +15,10 @@ interface AppIntegration {
     createdAt: string;
 }
 
+// Hardcoded types moved to state inside component or kept for specific categories
 const PAYMENT_TYPES = ['ECPAY', 'PAYPAL', 'STRIPE'];
 const CHANNEL_TYPES = ['LINE', 'TELEGRAM', 'WHATSAPP', 'MESSENGER', 'SLACK', 'TEAMS', 'DISCORD', 'WECHAT'];
+const EMAIL_TYPES = ['RESEND'];
 
 /** 各通訊渠道的顏色、圖標與顯示名稱 */
 const CHANNEL_META: Record<string, { badge: string; label: string; icon: string; desc: string }> = {
@@ -35,7 +37,6 @@ const PAYMENT_META: Record<string, { badge: string; label: string; icon: string;
     PAYPAL: { badge: 'bg-blue-100 text-blue-800', label: 'PayPal', icon: '🅿️', desc: '全球最大線上支付平台' },
     STRIPE: { badge: 'bg-indigo-100 text-indigo-800', label: 'Stripe', icon: '💳', desc: '全球開發者首選線上刷卡服務' },
 };
-const AI_TYPES = ['OPENAI', 'ANTHROPIC', 'GEMINI', 'AI_CHATROOM'];
 
 const AI_META: Record<string, { badge: string; label: string; icon: string; desc: string }> = {
     OPENAI: { badge: 'bg-gray-100 text-gray-800', label: 'OpenAI ChatGPT', icon: '🧠', desc: '強大的通用大語言模型' },
@@ -44,16 +45,8 @@ const AI_META: Record<string, { badge: string; label: string; icon: string; desc
     AI_CHATROOM: { badge: 'bg-purple-100 text-purple-800', label: 'AI 聊天室', icon: '💬', desc: '配置工程專屬 AI 聊天室的串接服務' },
 };
 
-const EMAIL_TYPES = ['RESEND'];
-
 const EMAIL_META: Record<string, { badge: string; label: string; icon: string; desc: string }> = {
     RESEND: { badge: 'bg-indigo-100 text-indigo-800', label: 'Resend 郵件服務', icon: '🚀', desc: '專為開發者設計的現代郵件發送服務 (只需 API Key)' },
-};
-
-const AI_MODEL_OPTIONS: Record<string, string[]> = {
-    OPENAI: ['gpt-5.2', 'gpt-5.2-pro', 'gpt-5-mini', 'gpt-5-nano', 'gpt-4.1', 'o3-deep-research', 'o1-pro'],
-    ANTHROPIC: ['claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001', 'claude-3-5-sonnet'],
-    GEMINI: ['gemini-3.1-pro-preview', 'gemini-3-flash', 'gemini-2.5-pro', 'gemini-2.5-flash']
 };
 
 const LABEL_MAP: Record<string, string> = {
@@ -118,6 +111,7 @@ export default function AppsPage() {
     const [isSyncing, setIsSyncing] = useState(false);
     const [syncActionStatus, setSyncActionStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
     const [aiModelOptions, setAiModelOptions] = useState<Record<string, string[]>>({});
+    const [aiTypes, setAiTypes] = useState<string[]>(['AI_CHATROOM']);
     const [showSyncModal, setShowSyncModal] = useState(false);
     const [selectedSyncProvider, setSelectedSyncProvider] = useState<string>('GEMINI');
 
@@ -219,10 +213,15 @@ export default function AppsPage() {
                 const aiResult = await aiRes.json();
                 if (aiResult.ok) {
                     const modelsMap: Record<string, string[]> = {};
+                    const typesFromDb: string[] = ['AI_CHATROOM'];
                     aiResult.data.forEach((model: any) => {
                         modelsMap[model.provider] = model.models;
+                        if (!typesFromDb.includes(model.provider)) {
+                            typesFromDb.push(model.provider);
+                        }
                     });
                     setAiModelOptions(modelsMap);
+                    setAiTypes(typesFromDb);
                 }
             } catch (err) {
                 console.error('Failed to fetch data:', err);
@@ -843,7 +842,7 @@ export default function AppsPage() {
                                 AI 工具串接
                                 <span className="ml-3 inline-flex items-center gap-2 text-sm font-normal text-gray-500 dark:text-gray-400">
                                     <span className="px-2.5 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-full text-xs font-semibold">
-                                        {apps.filter(a => AI_TYPES.includes(a.type) && a.status === 'ACTIVE').length}/{apps.filter(a => AI_TYPES.includes(a.type)).length}
+                                        {apps.filter(a => aiTypes.includes(a.type) && a.status === 'ACTIVE').length}/{apps.filter(a => aiTypes.includes(a.type)).length}
                                     </span>
                                 </span>
                             </h2>
@@ -864,7 +863,7 @@ export default function AppsPage() {
                         </div>
 
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-                            {AI_TYPES.map((type) => {
+                            {aiTypes.map((type: string) => {
                                 const meta = AI_META[type];
                                 const connected = getConnectedApps(type);
                                 const isConnected = connected.length > 0;
@@ -1077,7 +1076,7 @@ export default function AppsPage() {
                                     <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                                         {apps.map((app) => {
                                             const isPayment = PAYMENT_TYPES.includes(app.type);
-                                            const isAI = AI_TYPES.includes(app.type);
+                                            const isAI = aiTypes.includes(app.type);
                                             const isEmail = EMAIL_TYPES.includes(app.type);
 
                                             // Determine correct meta depending on type
@@ -1325,7 +1324,7 @@ export default function AppsPage() {
                                                 )}
 
 
-                                                {AI_TYPES.includes(selectedAppConfig.type) && (
+                                                {aiTypes.includes(selectedAppConfig.type) && (
                                                     <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                                                         {selectedAppConfig.type === 'AI_CHATROOM' ? (
                                                             <div className="mb-4">
@@ -1339,7 +1338,7 @@ export default function AppsPage() {
                                                                 >
                                                                     <option value="">-- 請選擇已設定的 AI 服務 --</option>
                                                                     {apps
-                                                                        .filter(app => ['OPENAI', 'ANTHROPIC', 'GEMINI'].includes(app.type) && app.status === 'ACTIVE')
+                                                                        .filter(app => aiTypes.filter(t => t !== 'AI_CHATROOM').includes(app.type) && app.status === 'ACTIVE')
                                                                         .map(app => (
                                                                             <option key={app.integrationId} value={app.integrationId}>
                                                                                 {app.name} ({app.type})
@@ -1405,7 +1404,7 @@ export default function AppsPage() {
                                                 )}
 
                                                 {/* Webhook Script Editor inside Modal (Only for Channel integrations like LINE for now) */}
-                                                {!['STRIPE', 'PAYPAL', 'ECPAY', 'OPENAI', 'ANTHROPIC', 'GEMINI'].includes(selectedAppConfig.type) && (
+                                                {!['STRIPE', 'PAYPAL', 'ECPAY', ...aiTypes.filter(t => t !== 'AI_CHATROOM')].includes(selectedAppConfig.type) && (
                                                     <div className="mt-8 pt-4 border-t border-gray-200 dark:border-gray-700">
                                                         <div className="flex items-center justify-between mb-4">
                                                             <label className="flex items-center gap-2 cursor-pointer">
@@ -1442,7 +1441,7 @@ export default function AppsPage() {
                                                 )}
 
                                                 {/* AI Prompt 測試區塊 */}
-                                                {AI_TYPES.includes(selectedAppConfig.type) && (
+                                                {aiTypes.includes(selectedAppConfig.type) && (
                                                     <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
                                                         <h4 className="font-bold text-gray-800 dark:text-white mb-3 flex items-center gap-2">
                                                             <span className="text-xl">💬</span> Prompt 功能測試
@@ -1530,11 +1529,10 @@ export default function AppsPage() {
                                                 {(() => {
                                                     const PAYMENT_TYPES = ['ECPAY', 'PAYPAL', 'STRIPE'];
                                                     const CHANNEL_TYPES = ['LINE', 'TELEGRAM', 'WHATSAPP', 'MESSENGER', 'SLACK', 'TEAMS', 'DISCORD', 'WECHAT'];
-                                                    const AI_TYPES = ['OPENAI', 'ANTHROPIC', 'GEMINI'];
                                                     const EMAIL_TYPES = ['SMTP'];
                                                     const isPaymentService = PAYMENT_TYPES.includes(selectedAppConfig.type);
                                                     const isChannelService = CHANNEL_TYPES.includes(selectedAppConfig.type);
-                                                    const isAIService = AI_TYPES.includes(selectedAppConfig.type);
+                                                    const isAIService = aiTypes.includes(selectedAppConfig.type);
                                                     const isEmailService = EMAIL_TYPES.includes(selectedAppConfig.type) || selectedAppConfig.type === 'RESEND';
                                                     return (isPaymentService || isChannelService || isAIService || isEmailService) ? (
                                                         <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
@@ -1687,8 +1685,8 @@ export default function AppsPage() {
                                     type="button"
                                     className={`inline-flex justify-center items-center rounded-md border border-transparent shadow-sm px-4 py-2 text-base font-medium text-white transition-colors sm:text-sm ${isSavingConfig ||
                                         JSON.stringify(editedConfig) === JSON.stringify(selectedAppConfig.config || {}) ||
-                                        (AI_TYPES.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) > 1) ||
-                                        (AI_TYPES.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) === 0)
+                                        (aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) > 1) ||
+                                        (aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) === 0)
                                         ? 'bg-gray-400 cursor-not-allowed'
                                         : 'bg-blue-600 hover:bg-blue-700'
                                         }`}
@@ -1698,14 +1696,14 @@ export default function AppsPage() {
                                         (JSON.stringify(editedConfig) === JSON.stringify(selectedAppConfig.config || {}) &&
                                             editedName === selectedAppConfig.name &&
                                             editedStatus === selectedAppConfig.status) ||
-                                        (AI_TYPES.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) > 1) ||
-                                        (AI_TYPES.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) === 0)
+                                        (aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) > 1) ||
+                                        (aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) === 0)
                                     }
                                 >
-                                    {isSavingConfig ? '儲存中...' :
-                                        (AI_TYPES.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) > 1) ? '模型限選一個' :
-                                            (AI_TYPES.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) === 0) ? '請選擇模型' :
-                                                '儲存設定'}
+                                    {isSavingConfig ? '儲存中...' : (
+                                        (aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) > 1) ? '模型限選一個' :
+                                            (aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) === 0) ? '請選擇模型' :
+                                                '儲存設定')}
                                 </button>
                             </div>
                         </div>
