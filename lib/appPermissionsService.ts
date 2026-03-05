@@ -77,6 +77,62 @@ const DEFAULT_APPS: AppConfig[] = [
             { roleId: 'teacher', roleName: 'Teacher', visible: true },
             { roleId: 'student', roleName: 'Student', visible: true }
         ]
+    },
+    // --- Category Level Permissions for /apps Page ---
+    {
+        id: 'APP_CATEGORY_CHANNEL',
+        path: 'APP_CATEGORY_CHANNEL',
+        label: '分類: 通訊渠道 (主選單)',
+        sortOrder: 5,
+        permissions: [
+            { roleId: 'admin', roleName: 'Admin', visible: true },
+            { roleId: 'teacher', roleName: 'Teacher', visible: true },
+            { roleId: 'student', roleName: 'Student', visible: false }
+        ]
+    },
+    {
+        id: 'APP_CATEGORY_PAYMENT',
+        path: 'APP_CATEGORY_PAYMENT',
+        label: '分類: 金流服務設定 (主選單)',
+        sortOrder: 6,
+        permissions: [
+            { roleId: 'admin', roleName: 'Admin', visible: true },
+            { roleId: 'teacher', roleName: 'Teacher', visible: true },
+            { roleId: 'student', roleName: 'Student', visible: false }
+        ]
+    },
+    {
+        id: 'APP_CATEGORY_AUTOMATION',
+        path: 'APP_CATEGORY_AUTOMATION',
+        label: '分類: 自動化服務助理 (主選單)',
+        sortOrder: 7,
+        permissions: [
+            { roleId: 'admin', roleName: 'Admin', visible: true },
+            { roleId: 'teacher', roleName: 'Teacher', visible: true },
+            { roleId: 'student', roleName: 'Student', visible: false }
+        ]
+    },
+    {
+        id: 'APP_CATEGORY_AI',
+        path: 'APP_CATEGORY_AI',
+        label: '分類: AI 工具串接 (主選單)',
+        sortOrder: 8,
+        permissions: [
+            { roleId: 'admin', roleName: 'Admin', visible: true },
+            { roleId: 'teacher', roleName: 'Teacher', visible: true },
+            { roleId: 'student', roleName: 'Student', visible: false }
+        ]
+    },
+    {
+        id: 'APP_CATEGORY_EMAIL',
+        path: 'APP_CATEGORY_EMAIL',
+        label: '分類: 郵件服務設定 (主選單)',
+        sortOrder: 9,
+        permissions: [
+            { roleId: 'admin', roleName: 'Admin', visible: true },
+            { roleId: 'teacher', roleName: 'Teacher', visible: false },
+            { roleId: 'student', roleName: 'Student', visible: false }
+        ]
     }
 ];
 
