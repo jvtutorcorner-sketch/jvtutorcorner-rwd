@@ -35,13 +35,13 @@ const PAYMENT_META: Record<string, { badge: string; label: string; icon: string;
     PAYPAL: { badge: 'bg-blue-100 text-blue-800', label: 'PayPal', icon: '🅿️', desc: '全球最大線上支付平台' },
     STRIPE: { badge: 'bg-indigo-100 text-indigo-800', label: 'Stripe', icon: '💳', desc: '全球開發者首選線上刷卡服務' },
 };
-
-const AI_TYPES = ['OPENAI', 'ANTHROPIC', 'GEMINI'];
+const AI_TYPES = ['OPENAI', 'ANTHROPIC', 'GEMINI', 'AI_CHATROOM'];
 
 const AI_META: Record<string, { badge: string; label: string; icon: string; desc: string }> = {
     OPENAI: { badge: 'bg-gray-100 text-gray-800', label: 'OpenAI ChatGPT', icon: '🧠', desc: '強大的通用大語言模型' },
     ANTHROPIC: { badge: 'bg-orange-100 text-orange-800', label: 'Anthropic (Claude)', icon: '🎭', desc: '專注於安全性與長文本理解的 AI 模型' },
     GEMINI: { badge: 'bg-blue-100 text-blue-800', label: 'Google Gemini', icon: '✨', desc: 'Google 的強大原生多模態大模型' },
+    AI_CHATROOM: { badge: 'bg-purple-100 text-purple-800', label: 'AI 聊天室', icon: '💬', desc: '配置工程專屬 AI 聊天室的串接服務' },
 };
 
 const EMAIL_TYPES = ['RESEND'];
@@ -73,6 +73,7 @@ const LABEL_MAP: Record<string, string> = {
     smtpUser: '使用者帳號 (User)',
     smtpPass: '密碼 (Password)',
     fromAddress: '寄件者信箱 (From Address)',
+    linkedServiceId: '串接的 AI 服務',
 };
 
 
@@ -1326,36 +1327,64 @@ export default function AppsPage() {
 
                                                 {AI_TYPES.includes(selectedAppConfig.type) && (
                                                     <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-                                                        <div className="flex justify-between items-center mb-3">
-                                                            <span className="block font-semibold text-gray-500 dark:text-gray-400">可使用的模型 (Models):</span>
-                                                        </div>
+                                                        {selectedAppConfig.type === 'AI_CHATROOM' ? (
+                                                            <div className="mb-4">
+                                                                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
+                                                                    串接的 AI 服務:
+                                                                </label>
+                                                                <select
+                                                                    className="w-full bg-white dark:bg-gray-800 px-3 py-2 rounded border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                                                                    value={editedConfig.linkedServiceId || ''}
+                                                                    onChange={(e) => setEditedConfig({ ...editedConfig, linkedServiceId: e.target.value })}
+                                                                >
+                                                                    <option value="">-- 請選擇已設定的 AI 服務 --</option>
+                                                                    {apps
+                                                                        .filter(app => ['OPENAI', 'ANTHROPIC', 'GEMINI'].includes(app.type) && app.status === 'ACTIVE')
+                                                                        .map(app => (
+                                                                            <option key={app.integrationId} value={app.integrationId}>
+                                                                                {app.name} ({app.type})
+                                                                            </option>
+                                                                        ))
+                                                                    }
+                                                                </select>
+                                                                <p className="text-[10px] text-gray-400 mt-1">
+                                                                    * 請先在下方 AI 整合區塊完成 OpenAI、Gemini 等服務的設定，才能在此選擇。
+                                                                </p>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="flex justify-between items-center mb-3">
+                                                                <span className="block font-semibold text-gray-500 dark:text-gray-400">可使用的模型 (Models):</span>
+                                                            </div>
+                                                        )}
 
 
 
-                                                        <div className="flex flex-wrap gap-2">
-                                                            {(aiModelOptions[selectedAppConfig.type] || []).map(model => {
-                                                                const selectedModels = Array.isArray(editedConfig.models) ? editedConfig.models : (typeof editedConfig.models === 'string' ? editedConfig.models.split(',').filter(Boolean) : []);
-                                                                const isChecked = selectedModels.includes(model);
-                                                                return (
-                                                                    <label key={model} className="flex items-center gap-1.5 bg-white dark:bg-gray-800 px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 select-none">
-                                                                        <input
-                                                                            type="checkbox"
-                                                                            checked={isChecked}
-                                                                            onChange={(e) => {
-                                                                                // 限制只能選擇一個模型 (User requirement: Only one model at a time)
-                                                                                if (e.target.checked) {
-                                                                                    setEditedConfig({ ...editedConfig, models: [model] });
-                                                                                } else {
-                                                                                    setEditedConfig({ ...editedConfig, models: [] });
-                                                                                }
-                                                                            }}
-                                                                            className="rounded text-blue-600 focus:ring-blue-500 bg-gray-100 border-gray-300"
-                                                                        />
-                                                                        <span>{model}</span>
-                                                                    </label>
-                                                                );
-                                                            })}
-                                                        </div>
+                                                        {selectedAppConfig.type !== 'AI_CHATROOM' && (
+                                                            <div className="flex flex-wrap gap-2">
+                                                                {(aiModelOptions[selectedAppConfig.type] || []).map(model => {
+                                                                    const selectedModels = Array.isArray(editedConfig.models) ? editedConfig.models : (typeof editedConfig.models === 'string' ? editedConfig.models.split(',').filter(Boolean) : []);
+                                                                    const isChecked = selectedModels.includes(model);
+                                                                    return (
+                                                                        <label key={model} className="flex items-center gap-1.5 bg-white dark:bg-gray-800 px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 select-none">
+                                                                            <input
+                                                                                type="checkbox"
+                                                                                checked={isChecked}
+                                                                                onChange={(e) => {
+                                                                                    // 限制只能選擇一個模型 (User requirement: Only one model at a time)
+                                                                                    if (e.target.checked) {
+                                                                                        setEditedConfig({ ...editedConfig, models: [model] });
+                                                                                    } else {
+                                                                                        setEditedConfig({ ...editedConfig, models: [] });
+                                                                                    }
+                                                                                }}
+                                                                                className="rounded text-blue-600 focus:ring-blue-500 bg-gray-100 border-gray-300"
+                                                                            />
+                                                                            <span>{model}</span>
+                                                                        </label>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        )}
 
                                                         {/* Fixed Prompt / System Instruction */}
                                                         <div className="mt-4">

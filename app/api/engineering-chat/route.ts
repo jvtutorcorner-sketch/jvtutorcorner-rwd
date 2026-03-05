@@ -7,40 +7,63 @@ import { ScanCommand } from '@aws-sdk/lib-dynamodb';
 const APP_INTEGRATIONS_TABLE = process.env.DYNAMODB_TABLE_APP_INTEGRATIONS || 'jvtutorcorner-app-integrations';
 
 /**
- * Dynamically retrieves the Gemini configuration (API Key and Model).
+ * Dynamically retrieves the AI configuration (API Key, Model, Provider).
  * Source of truth: Database integration (DynamoDB).
  */
-async function getGeminiConfig(): Promise<{ apiKey: string; model: string } | null> {
+async function getAIConfig(): Promise<{ provider: string; apiKey: string; model: string; systemInstruction?: string } | null> {
     try {
-        const result = await ddbDocClient.send(new ScanCommand({
+        // 1. Check for AI_CHATROOM integration first
+        const chatroomRes = await ddbDocClient.send(new ScanCommand({
             TableName: APP_INTEGRATIONS_TABLE,
             FilterExpression: '#type = :type AND #status = :status',
-            ExpressionAttributeNames: {
-                '#type': 'type',
-                '#status': 'status'
-            },
-            ExpressionAttributeValues: {
-                ':type': 'GEMINI',
-                ':status': 'ACTIVE'
-            }
+            ExpressionAttributeNames: { '#type': 'type', '#status': 'status' },
+            ExpressionAttributeValues: { ':type': 'AI_CHATROOM', ':status': 'ACTIVE' }
         }));
 
-        const items = result.Items || [];
-        if (items.length > 0) {
-            const integration = items.find(item => item.config?.apiKey);
-            if (integration) {
-                let model = "gemini-1.5-pro"; // Recommend higher reasoning model for engineering
-                if (Array.isArray(integration.config.models) && integration.config.models.length > 0) {
-                    model = integration.config.models[0];
-                } else if (integration.config.model) {
-                    model = integration.config.model;
-                }
+        const chatroom = chatroomRes.Items?.[0];
+        let targetServiceId = chatroom?.config?.linkedServiceId;
 
-                return {
-                    apiKey: integration.config.apiKey,
-                    model: model
-                };
+        // 2. Fetch the target service (Gemini, OpenAI, etc.)
+        let integration: any = null;
+
+        if (targetServiceId) {
+            const getRes = await ddbDocClient.send(new ScanCommand({
+                TableName: APP_INTEGRATIONS_TABLE,
+                FilterExpression: 'integrationId = :id',
+                ExpressionAttributeValues: { ':id': targetServiceId }
+            }));
+            integration = getRes.Items?.[0];
+        }
+
+        // 3. Fallback: If no AI_CHATROOM linked, look for an active GEMINI integration
+        if (!integration) {
+            const fallbackRes = await ddbDocClient.send(new ScanCommand({
+                TableName: APP_INTEGRATIONS_TABLE,
+                FilterExpression: '#type = :type AND #status = :status',
+                ExpressionAttributeNames: { '#type': 'type', '#status': 'status' },
+                ExpressionAttributeValues: { ':type': 'GEMINI', ':status': 'ACTIVE' }
+            }));
+            integration = fallbackRes.Items?.find(item => item.config?.apiKey);
+        }
+
+        if (integration) {
+            const provider = integration.type;
+            const config = integration.config;
+            let model = config.models?.[0] || config.model;
+
+            // Default models if none selected
+            if (!model) {
+                if (provider === 'GEMINI') model = 'gemini-1.5-pro';
+                else if (provider === 'OPENAI') model = 'gpt-4o';
+                else if (provider === 'ANTHROPIC') model = 'claude-3-5-sonnet-20240620';
             }
+
+            return {
+                provider,
+                apiKey: config.apiKey || config.openaiApiKey || config.geminiApiKey || config.anthropicApiKey,
+                model,
+                systemInstruction: config.systemInstruction
+            };
         }
     } catch (dbError: any) {
         console.error('[Eng API] Database lookup for config failed:', dbError.message);
@@ -51,53 +74,18 @@ async function getGeminiConfig(): Promise<{ apiKey: string; model: string } | nu
 
 export async function POST(req: Request) {
     try {
-        const config = await getGeminiConfig();
+        const config = await getAIConfig();
 
         if (!config || !config.apiKey) {
-            console.error("Gemini API Key missing in Database");
-            return NextResponse.json({ reply: '抱歉，系統尚未設定 AI API Key，無法啟動工程 AI 助理。請聯絡管理員設定 GEMINI_API_KEY 或在系統設定中完成 AI 串接。' });
+            console.error("AI Configuration or API Key missing in Database");
+            return NextResponse.json({ reply: '抱歉，系統尚未設定 AI 服務串接，無法啟動工程 AI 助理。請前往系統設定完成「AI 工具串接」配置。' });
         }
 
-        const { apiKey, model: modelName } = config;
-
-        // Initialize Gemini with the retrieved key
-        const genAI = new GoogleGenerativeAI(apiKey);
+        const { provider, apiKey, model: modelName, systemInstruction: dbSystemInstruction } = config;
         const { messages } = await req.json();
 
-        // Convert generic chat history to Gemini's format
-        // CRITICAL: Gemini history must start with 'user' and alternate roles.
-        const history: { role: string; parts: { text: string }[] }[] = [];
-
-        let startIndex = 0;
-        if (messages.length > 0 && messages[0].role === 'assistant') {
-            startIndex = 1;
-        }
-
-        // Process up to the second to last message for history
-        for (let i = startIndex; i < messages.length - 1; i++) {
-            const msg = messages[i];
-            const role = msg.role === 'assistant' ? 'model' : 'user';
-
-            // Avoid consecutive roles (Gemini requirement)
-            if (history.length > 0 && history[history.length - 1].role === role) {
-                // If same role, merge content
-                history[history.length - 1].parts[0].text += '\n' + msg.content;
-            } else {
-                history.push({
-                    role,
-                    parts: [{ text: msg.content }],
-                });
-            }
-        }
-
-        const latestMessage = messages[messages.length - 1]?.content || "";
-
-        if (!latestMessage) {
-            return NextResponse.json({ reply: '您好！我是專屬的工程 AI 助理，有什麼可以為您評估的架構或套件問題嗎？' });
-        }
-
         // Build the system prompt specifically for engineering tasks
-        const systemPrompt = `
+        const defaultSystemPrompt = `
 # 角色設定
 你是 JV Tutor 平台的「專屬工程 AI 助理」。你的服務對象是平台管理階層與工程人員。
 你的核心任務是協助工程人員進行系統架構規劃、版本更新評估、套件與網路調研、以及提供專業的技術諮詢與解決方案。
@@ -116,19 +104,79 @@ export async function POST(req: Request) {
 - 如果使用者的問題不明確，請向專業工程師一樣釐清問題的上下文與環境變數。
 `;
 
-        const model = genAI.getGenerativeModel({
-            model: modelName,
-            systemInstruction: systemPrompt
-        });
+        const finalSystemPrompt = dbSystemInstruction ? `${dbSystemInstruction}\n\n${defaultSystemPrompt}` : defaultSystemPrompt;
 
-        const chat = model.startChat({
-            history,
-        });
+        if (provider === 'GEMINI') {
+            // Initialize Gemini with the retrieved key
+            const genAI = new GoogleGenerativeAI(apiKey);
 
-        const result = await chat.sendMessage(latestMessage);
-        const response = result.response;
+            // Convert generic chat history to Gemini's format
+            const history: { role: string; parts: { text: string }[] }[] = [];
+            let startIndex = 0;
+            if (messages.length > 0 && messages[0].role === 'assistant') {
+                startIndex = 1;
+            }
 
-        return NextResponse.json({ reply: response.text() });
+            for (let i = startIndex; i < messages.length - 1; i++) {
+                const msg = messages[i];
+                const role = msg.role === 'assistant' ? 'model' : 'user';
+                if (history.length > 0 && history[history.length - 1].role === role) {
+                    history[history.length - 1].parts[0].text += '\n' + msg.content;
+                } else {
+                    history.push({ role, parts: [{ text: msg.content }] });
+                }
+            }
+
+            const latestMessage = messages[messages.length - 1]?.content || "";
+            if (!latestMessage) {
+                return NextResponse.json({ reply: '您好！我是專屬的工程 AI 助理，有什麼可以為您評估的架構或套件問題嗎？' });
+            }
+
+            const model = genAI.getGenerativeModel({
+                model: modelName,
+                systemInstruction: finalSystemPrompt
+            });
+
+            const chat = model.startChat({ history });
+            const result = await chat.sendMessage(latestMessage);
+            const response = result.response;
+
+            return NextResponse.json({ reply: response.text() });
+
+        } else if (provider === 'OPENAI') {
+            // Call OpenAI API via fetch
+            const openAiMessages = [
+                { role: 'system', content: finalSystemPrompt },
+                ...messages.map((m: any) => ({ role: m.role, content: m.content }))
+            ];
+
+            const response = await fetch('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}`
+                },
+                body: JSON.stringify({
+                    model: modelName,
+                    messages: openAiMessages,
+                    temperature: 0.7,
+                })
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(`OpenAI API error: ${errorData.error?.message || response.statusText}`);
+            }
+
+            const data = await response.json();
+            return NextResponse.json({ reply: data.choices[0].message.content });
+
+        } else if (provider === 'ANTHROPIC') {
+            // Basic support for Anthropic if needed later
+            return NextResponse.json({ reply: '目前尚未完全支援 Anthropic (Claude) 串接，請優先選用 Gemini 或 OpenAI。' });
+        }
+
+        return NextResponse.json({ reply: '不支援的 AI 供應商類型。' });
 
     } catch (error: any) {
         console.error('❌ [Eng API] Global Error:', error);

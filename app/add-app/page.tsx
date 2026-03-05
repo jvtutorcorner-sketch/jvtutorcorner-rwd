@@ -119,7 +119,7 @@ function AddAppForm() {
 
     // For AI
     const [selectedAIProvider, setSelectedAIProvider] = useState(
-        ['OPENAI', 'ANTHROPIC', 'GEMINI'].includes(providerFromUrl) ? providerFromUrl : 'OPENAI'
+        ['OPENAI', 'ANTHROPIC', 'GEMINI', 'AI_CHATROOM'].includes(providerFromUrl) ? providerFromUrl : 'OPENAI'
     );
     const [aiData, setAiData] = useState<{
         name: string;
@@ -333,6 +333,8 @@ function AddAppForm() {
                     config = { apiKey: aiData.anthropicApiKey, models: aiData.models, systemInstruction: (aiData as any).systemInstruction };
                 } else if (selectedAIProvider === 'GEMINI') {
                     config = { apiKey: aiData.geminiApiKey, models: aiData.models, systemInstruction: (aiData as any).systemInstruction };
+                } else if (selectedAIProvider === 'AI_CHATROOM') {
+                    config = { linkedServiceId: '' };
                 }
 
                 payload = {
@@ -591,6 +593,7 @@ function AddAppForm() {
                                             <option value="OPENAI">OpenAI (ChatGPT)</option>
                                             <option value="ANTHROPIC">Anthropic (Claude)</option>
                                             <option value="GEMINI">Google Gemini</option>
+                                            <option value="AI_CHATROOM">工程專屬 AI 聊天室</option>
                                         </select>
                                     </div>
                                 </div>
@@ -625,6 +628,14 @@ function AddAppForm() {
                                             </label>
                                             <input type="password" name="geminiApiKey" value={aiData.geminiApiKey} onChange={handleAiChange} placeholder="AIza..." className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600" required />
                                         </div>
+                                    </div>
+                                )}
+
+                                {selectedAIProvider === 'AI_CHATROOM' && (
+                                    <div className="space-y-4 p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800/50">
+                                        <p className="text-sm text-gray-600 dark:text-gray-400">
+                                            此功能將建立一個專用的 AI 聊天室入口。建立後，請前往系統設定頁面，在該項目的「詳細設定」中選擇實際提供服務的 AI 供應商（如 OpenAI 或 Gemini）。
+                                        </p>
                                     </div>
                                 )}
 
