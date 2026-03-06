@@ -48,6 +48,7 @@ const AI_META: Record<string, { badge: string; label: string; icon: string; desc
     ANTHROPIC: { badge: 'bg-orange-100 text-orange-800', label: 'Anthropic (Claude)', icon: '🎭', desc: '專注於安全性與長文本理解的 AI 模型' },
     GEMINI: { badge: 'bg-blue-100 text-blue-800', label: 'Google Gemini', icon: '✨', desc: 'Google 的強大原生多模態大模型' },
     AI_CHATROOM: { badge: 'bg-indigo-100 text-indigo-800', label: 'AI 聊天室', icon: '🤖', desc: '智慧問答聊天室，即時回覆學員問題，提升服務品質與效率' },
+    ASK_PLAN_AGENT: { badge: 'bg-purple-100 text-purple-800', label: 'Ask Plan Agent', icon: '🧠', desc: '多階段推理 AI，可分別設定探索、規劃與執行模型，客製化複雜任務處理' },
 };
 
 const EMAIL_META: Record<string, { badge: string; label: string; icon: string; desc: string }> = {
@@ -77,6 +78,9 @@ const LABEL_MAP: Record<string, string> = {
     smtpPass: '密碼 (Password)',
     fromAddress: '寄件者信箱 (From Address)',
     linkedServiceId: '串接的 AI 服務',
+    askLinkedServiceId: 'Ask 階段 AI 服務',
+    planLinkedServiceId: 'Plan 階段 AI 服務',
+    agentLinkedServiceId: 'Agent 階段 AI 服務',
     tableName: '資料表名稱',
     partitionKey: '分割鍵 (Partition Key)',
     sortKey: '排序鍵 (Sort Key)',
@@ -126,7 +130,7 @@ export default function AppsPage() {
     const [isSyncing, setIsSyncing] = useState(false);
     const [syncActionStatus, setSyncActionStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
     const [aiModelOptions, setAiModelOptions] = useState<Record<string, string[]>>({});
-    const [aiTypes, setAiTypes] = useState<string[]>(['AI_CHATROOM']);
+    const [aiTypes, setAiTypes] = useState<string[]>(['AI_CHATROOM', 'ASK_PLAN_AGENT']);
     const [showSyncModal, setShowSyncModal] = useState(false);
     const [selectedSyncProvider, setSelectedSyncProvider] = useState<string>('GEMINI');
 
@@ -137,6 +141,7 @@ export default function AppsPage() {
         APP_CATEGORY_AUTOMATION: true,
         APP_CATEGORY_AI: true,
         APP_CATEGORY_AI_CHATROOM: true,
+        APP_CATEGORY_ASK_PLAN_AGENT: true,
         APP_CATEGORY_EMAIL: true,
         APP_CATEGORY_DATABASE: true
     });
@@ -196,6 +201,7 @@ export default function AppsPage() {
                         'APP_CATEGORY_AUTOMATION',
                         'APP_CATEGORY_AI',
                         'APP_CATEGORY_AI_CHATROOM',
+                        'APP_CATEGORY_ASK_PLAN_AGENT',
                         'APP_CATEGORY_EMAIL',
                         'APP_CATEGORY_DATABASE'
                     ];
@@ -232,7 +238,7 @@ export default function AppsPage() {
                 const aiResult = await aiRes.json();
                 if (aiResult.ok) {
                     const modelsMap: Record<string, string[]> = {};
-                    const typesFromDb: string[] = ['AI_CHATROOM'];
+                    const typesFromDb: string[] = ['AI_CHATROOM', 'ASK_PLAN_AGENT'];
                     aiResult.data.forEach((model: any) => {
                         modelsMap[model.provider] = model.models;
                         if (!typesFromDb.includes(model.provider)) {
@@ -560,8 +566,9 @@ export default function AppsPage() {
     // Visibility derived from permissions OR existing connected apps
     const showChannels = categoryPermissions.APP_CATEGORY_CHANNEL || apps.some(a => CHANNEL_TYPES.includes(a.type));
     const showPayments = categoryPermissions.APP_CATEGORY_PAYMENT || apps.some(a => PAYMENT_TYPES.includes(a.type));
-    const showAI = categoryPermissions.APP_CATEGORY_AI || apps.some(a => aiTypes.filter(t => t !== 'AI_CHATROOM').includes(a.type));
+    const showAI = categoryPermissions.APP_CATEGORY_AI || apps.some(a => aiTypes.filter(t => !['AI_CHATROOM', 'ASK_PLAN_AGENT'].includes(t)).includes(a.type));
     const showAIChatroom = categoryPermissions.APP_CATEGORY_AI_CHATROOM || apps.some(a => a.type === 'AI_CHATROOM');
+    const showAskPlanAgent = categoryPermissions.APP_CATEGORY_ASK_PLAN_AGENT || apps.some(a => a.type === 'ASK_PLAN_AGENT');
     const showEmail = categoryPermissions.APP_CATEGORY_EMAIL || apps.some(a => EMAIL_TYPES.includes(a.type));
     const showDatabase = categoryPermissions.APP_CATEGORY_DATABASE || apps.some(a => DATABASE_TYPES.includes(a.type));
     const showAutomation = categoryPermissions.APP_CATEGORY_AUTOMATION; // Automation is special, keeping permission-based for now unless it has a connection record
@@ -1019,7 +1026,7 @@ export default function AppsPage() {
                                 AI 工具串接
                                 <span className="ml-3 inline-flex items-center gap-2 text-sm font-normal text-gray-500 dark:text-gray-400">
                                     <span className="px-2.5 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-full text-xs font-semibold">
-                                        {apps.filter(a => aiTypes.filter(t => t !== 'AI_CHATROOM').includes(a.type) && a.status === 'ACTIVE').length}/{apps.filter(a => aiTypes.filter(t => t !== 'AI_CHATROOM').includes(a.type)).length}
+                                        {apps.filter(a => aiTypes.filter(t => !['AI_CHATROOM', 'ASK_PLAN_AGENT'].includes(t)).includes(a.type) && a.status === 'ACTIVE').length}/{apps.filter(a => aiTypes.filter(t => !['AI_CHATROOM', 'ASK_PLAN_AGENT'].includes(t)).includes(a.type)).length}
                                     </span>
                                 </span>
                             </h2>
@@ -1040,7 +1047,7 @@ export default function AppsPage() {
                         </div>
 
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-                            {aiTypes.filter(t => t !== 'AI_CHATROOM').map((type: string) => {
+                            {aiTypes.filter(t => !['AI_CHATROOM', 'ASK_PLAN_AGENT'].includes(t)).map((type: string) => {
                                 const meta = AI_META[type];
                                 const connected = getConnectedApps(type);
                                 const isConnected = connected.length > 0;
@@ -1244,6 +1251,107 @@ export default function AppsPage() {
                                                 <Link
                                                     href={`/add-app?type=ai&provider=${type}`}
                                                     className="w-full text-center text-xs bg-indigo-100 hover:bg-indigo-200 text-indigo-700 border border-indigo-300 font-semibold py-2 px-3 rounded-lg transition-colors"
+                                                >
+                                                    立即設定
+                                                </Link>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })()}
+                        </div>
+                    </>)}
+
+                    {/* ─────────── Ask Plan Agent 區塊 ─────────── */}
+                    {showAskPlanAgent && (<>
+                        <div className="flex justify-between items-center mb-6 border-b border-gray-200 dark:border-gray-700 pb-2">
+                            <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-100 flex items-center">
+                                <span className="text-xl mr-2">🧠</span>
+                                Ask Plan Agent
+                                <span className="ml-3 inline-flex items-center gap-2 text-sm font-normal text-gray-500 dark:text-gray-400">
+                                    <span className="px-2.5 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded-full text-xs font-semibold">
+                                        {apps.filter(a => a.type === 'ASK_PLAN_AGENT' && a.status === 'ACTIVE').length}/{apps.filter(a => a.type === 'ASK_PLAN_AGENT').length}
+                                    </span>
+                                </span>
+                            </h2>
+                            <Link href="/add-app?type=ai&provider=ASK_PLAN_AGENT" className="text-sm bg-purple-100 hover:bg-purple-200 text-purple-700 font-semibold py-1.5 px-4 rounded-full transition-colors flex items-center">
+                                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+                                </svg>
+                                新增 Ask Plan Agent
+                            </Link>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+                            {(() => {
+                                const type = 'ASK_PLAN_AGENT';
+                                const meta = AI_META[type];
+                                const connected = getConnectedApps(type);
+                                const isConnected = connected.length > 0;
+                                const activeApp = connected.find(a => a.status === 'ACTIVE');
+                                const activeCount = connected.filter(a => a.status === 'ACTIVE').length;
+                                const inactiveCount = connected.filter(a => a.status !== 'ACTIVE').length;
+
+                                return (
+                                    <div key={type} className={`relative bg-white dark:bg-gray-800 rounded-xl shadow-sm border-2 p-6 flex flex-col transition-all hover:shadow-md ${isConnected ? 'border-purple-300 dark:border-purple-600' : 'border-gray-200 dark:border-gray-700'}`}>
+                                        {/* 連線狀態 */}
+                                        <div className="absolute top-3 right-3">
+                                            {isConnected ? (
+                                                <span className="flex items-center gap-1 text-xs font-medium text-purple-600 dark:text-purple-400">
+                                                    <span className="relative flex h-2.5 w-2.5">
+                                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
+                                                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-purple-500"></span>
+                                                    </span>
+                                                    已連接
+                                                </span>
+                                            ) : (
+                                                <span className="text-xs font-medium text-gray-400 dark:text-gray-500">未設定</span>
+                                            )}
+                                        </div>
+
+                                        {/* 圖標與名稱 */}
+                                        <div className="flex items-center gap-3 mb-3 mt-2">
+                                            <span className="text-2xl">{meta.icon}</span>
+                                            <div>
+                                                <h3 className="font-bold text-gray-900 dark:text-white">{meta.label}</h3>
+                                            </div>
+                                        </div>
+
+                                        {/* 說明文字 */}
+                                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4 flex-1">{meta.desc}</p>
+
+                                        {/* 已連接的名稱 */}
+                                        {activeApp && (
+                                            <p className="text-xs text-purple-600 dark:text-purple-400 mb-3 truncate font-medium">
+                                                ✓ {activeApp.name}
+                                            </p>
+                                        )}
+
+                                        {/* 設定狀態計數 */}
+                                        {connected.length > 0 && (
+                                            <div className="mb-4 p-2.5 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-800">
+                                                <div className="flex justify-between text-xs text-gray-700 dark:text-gray-300">
+                                                    <span>已設定: <strong className="text-purple-600 dark:text-purple-400">{activeCount}</strong></span>
+                                                    <span>未設定: <strong className="text-orange-600 dark:text-orange-400">{inactiveCount}</strong></span>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* 操作按鈕 */}
+                                        <div className="mt-auto space-y-2">
+                                            {isConnected ? (
+                                                <>
+                                                    <Link
+                                                        href={`/add-app?type=ai&provider=${type}`}
+                                                        className="text-xs bg-gray-50 hover:bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 font-medium py-2 px-3 rounded-lg transition-colors w-full text-center block"
+                                                    >
+                                                        新增服務
+                                                    </Link>
+                                                </>
+                                            ) : (
+                                                <Link
+                                                    href={`/add-app?type=ai&provider=${type}`}
+                                                    className="w-full text-center text-xs bg-purple-100 hover:bg-purple-200 text-purple-700 border border-purple-300 font-semibold py-2 px-3 rounded-lg transition-colors"
                                                 >
                                                     立即設定
                                                 </Link>
@@ -1798,7 +1906,7 @@ export default function AppsPage() {
                                                                     >
                                                                         <option value="">-- 請選擇已設定的 AI 服務 --</option>
                                                                         {apps
-                                                                            .filter(app => aiTypes.filter(t => t !== 'AI_CHATROOM').includes(app.type) && app.status === 'ACTIVE')
+                                                                            .filter(app => aiTypes.filter(t => !['AI_CHATROOM', 'ASK_PLAN_AGENT'].includes(t)).includes(app.type) && app.status === 'ACTIVE')
                                                                             .map(app => {
                                                                                 const m = Array.isArray(app.config?.models) ? app.config?.models[0] : typeof app.config?.models === 'string' ? app.config?.models.split(',').filter(Boolean)[0] : null;
                                                                                 return (
@@ -1872,6 +1980,70 @@ export default function AppsPage() {
                                                                     })()}
                                                                 </div>
                                                             </div>
+                                                        ) : selectedAppConfig.type === 'ASK_PLAN_AGENT' ? (
+                                                            <div className="mb-4 space-y-4">
+                                                                {/* Ask Plan Agent 特定設定 */}
+                                                                <div className="p-4 bg-purple-50 dark:bg-purple-900/10 rounded-lg border border-purple-100 dark:border-purple-800 space-y-3">
+                                                                    <label className="block text-[12px] font-bold text-purple-700 dark:text-purple-300 uppercase tracking-wider">Ask 階段 AI 服務 (探索與釐清)</label>
+                                                                    <select
+                                                                        className="w-full bg-white dark:bg-gray-800 px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm"
+                                                                        value={editedConfig.askLinkedServiceId || ''}
+                                                                        onChange={(e) => setEditedConfig({ ...editedConfig, askLinkedServiceId: e.target.value })}
+                                                                    >
+                                                                        <option value="">-- 請選擇 --</option>
+                                                                        {apps.filter(app => aiTypes.filter(t => !['AI_CHATROOM', 'ASK_PLAN_AGENT'].includes(t)).includes(app.type) && app.status === 'ACTIVE').map(app => (
+                                                                            <option key={app.integrationId} value={app.integrationId}>{AI_META[app.type]?.icon} {app.name} ({app.type})</option>
+                                                                        ))}
+                                                                    </select>
+                                                                    <input
+                                                                        type="text"
+                                                                        placeholder="Ask 階段 System Prompt"
+                                                                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                                                        value={editedConfig.askSystemPrompt || ''}
+                                                                        onChange={(e) => setEditedConfig({ ...editedConfig, askSystemPrompt: e.target.value })}
+                                                                    />
+                                                                </div>
+                                                                <div className="p-4 bg-indigo-50 dark:bg-indigo-900/10 rounded-lg border border-indigo-100 dark:border-indigo-800 space-y-3">
+                                                                    <label className="block text-[12px] font-bold text-indigo-700 dark:text-indigo-300 uppercase tracking-wider">Plan 階段 AI 服務 (規劃與拆解目標)</label>
+                                                                    <select
+                                                                        className="w-full bg-white dark:bg-gray-800 px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                                                                        value={editedConfig.planLinkedServiceId || ''}
+                                                                        onChange={(e) => setEditedConfig({ ...editedConfig, planLinkedServiceId: e.target.value })}
+                                                                    >
+                                                                        <option value="">-- 請選擇 --</option>
+                                                                        {apps.filter(app => aiTypes.filter(t => !['AI_CHATROOM', 'ASK_PLAN_AGENT'].includes(t)).includes(app.type) && app.status === 'ACTIVE').map(app => (
+                                                                            <option key={app.integrationId} value={app.integrationId}>{AI_META[app.type]?.icon} {app.name} ({app.type})</option>
+                                                                        ))}
+                                                                    </select>
+                                                                    <input
+                                                                        type="text"
+                                                                        placeholder="Plan 階段 System Prompt"
+                                                                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                                                        value={editedConfig.planSystemPrompt || ''}
+                                                                        onChange={(e) => setEditedConfig({ ...editedConfig, planSystemPrompt: e.target.value })}
+                                                                    />
+                                                                </div>
+                                                                <div className="p-4 bg-blue-50 dark:bg-blue-900/10 rounded-lg border border-blue-100 dark:border-blue-800 space-y-3">
+                                                                    <label className="block text-[12px] font-bold text-blue-700 dark:text-blue-300 uppercase tracking-wider">Agent 階段 AI 服務 (執行與產出)</label>
+                                                                    <select
+                                                                        className="w-full bg-white dark:bg-gray-800 px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                                                                        value={editedConfig.agentLinkedServiceId || ''}
+                                                                        onChange={(e) => setEditedConfig({ ...editedConfig, agentLinkedServiceId: e.target.value })}
+                                                                    >
+                                                                        <option value="">-- 請選擇 --</option>
+                                                                        {apps.filter(app => aiTypes.filter(t => !['AI_CHATROOM', 'ASK_PLAN_AGENT'].includes(t)).includes(app.type) && app.status === 'ACTIVE').map(app => (
+                                                                            <option key={app.integrationId} value={app.integrationId}>{AI_META[app.type]?.icon} {app.name} ({app.type})</option>
+                                                                        ))}
+                                                                    </select>
+                                                                    <input
+                                                                        type="text"
+                                                                        placeholder="Agent 階段 System Prompt"
+                                                                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                                                        value={editedConfig.agentSystemPrompt || ''}
+                                                                        onChange={(e) => setEditedConfig({ ...editedConfig, agentSystemPrompt: e.target.value })}
+                                                                    />
+                                                                </div>
+                                                            </div>
                                                         ) : (
                                                             <div className="flex justify-between items-center mb-3">
                                                                 <span className="block font-semibold text-gray-500 dark:text-gray-400">可使用的模型 (Models):</span>
@@ -1880,7 +2052,7 @@ export default function AppsPage() {
 
 
 
-                                                        {selectedAppConfig.type !== 'AI_CHATROOM' && (
+                                                        {!['AI_CHATROOM', 'ASK_PLAN_AGENT'].includes(selectedAppConfig.type) && (
                                                             <div className="flex flex-wrap gap-2">
                                                                 {(aiModelOptions[selectedAppConfig.type] || []).map(model => {
                                                                     const selectedModels = Array.isArray(editedConfig.models) ? editedConfig.models : (typeof editedConfig.models === 'string' ? editedConfig.models.split(',').filter(Boolean) : []);
@@ -1926,7 +2098,7 @@ export default function AppsPage() {
                                                 )}
 
                                                 {/* Webhook Script Editor inside Modal (Only for Channel integrations like LINE for now) */}
-                                                {!['STRIPE', 'PAYPAL', 'ECPAY', ...aiTypes.filter(t => t !== 'AI_CHATROOM')].includes(selectedAppConfig.type) && (
+                                                {!['STRIPE', 'PAYPAL', 'ECPAY', ...aiTypes.filter(t => !['AI_CHATROOM', 'ASK_PLAN_AGENT'].includes(t))].includes(selectedAppConfig.type) && (
                                                     <div className="mt-8 pt-4 border-t border-gray-200 dark:border-gray-700">
                                                         <div className="flex items-center justify-between mb-4">
                                                             <label className="flex items-center gap-2 cursor-pointer">
@@ -2209,8 +2381,8 @@ export default function AppsPage() {
                                         (JSON.stringify(editedConfig) === JSON.stringify(selectedAppConfig.config || {}) &&
                                             editedName === selectedAppConfig.name &&
                                             editedStatus === selectedAppConfig.status) ||
-                                        (selectedAppConfig.type !== 'AI_CHATROOM' && aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) > 1) ||
-                                        (selectedAppConfig.type !== 'AI_CHATROOM' && aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) === 0)
+                                        (!['AI_CHATROOM', 'ASK_PLAN_AGENT'].includes(selectedAppConfig.type) && aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) > 1) ||
+                                        (!['AI_CHATROOM', 'ASK_PLAN_AGENT'].includes(selectedAppConfig.type) && aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) === 0)
                                         ? 'bg-gray-400 cursor-not-allowed'
                                         : 'bg-blue-600 hover:bg-blue-700'
                                         }`}
@@ -2220,13 +2392,13 @@ export default function AppsPage() {
                                         (JSON.stringify(editedConfig) === JSON.stringify(selectedAppConfig.config || {}) &&
                                             editedName === selectedAppConfig.name &&
                                             editedStatus === selectedAppConfig.status) ||
-                                        (selectedAppConfig.type !== 'AI_CHATROOM' && aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) > 1) ||
-                                        (selectedAppConfig.type !== 'AI_CHATROOM' && aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) === 0)
+                                        (!['AI_CHATROOM', 'ASK_PLAN_AGENT'].includes(selectedAppConfig.type) && aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) > 1) ||
+                                        (!['AI_CHATROOM', 'ASK_PLAN_AGENT'].includes(selectedAppConfig.type) && aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) === 0)
                                     }
                                 >
                                     {isSavingConfig ? '儲存中...' : (
-                                        (selectedAppConfig.type !== 'AI_CHATROOM' && aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) > 1) ? '模型限選一個' :
-                                            (selectedAppConfig.type !== 'AI_CHATROOM' && aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) === 0) ? '請選擇模型' :
+                                        (!['AI_CHATROOM', 'ASK_PLAN_AGENT'].includes(selectedAppConfig.type) && aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) > 1) ? '模型限選一個' :
+                                            (!['AI_CHATROOM', 'ASK_PLAN_AGENT'].includes(selectedAppConfig.type) && aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) === 0) ? '請選擇模型' :
                                                 '儲存設定')}
                                 </button>
                             </div>
