@@ -178,7 +178,7 @@ export default function TeacherDashboard({ teacherId, teacherName }: Props) {
                   <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left', backgroundColor: '#f3f4f6', fontWeight: 600 }}>時長</th>
                   <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left', backgroundColor: '#f3f4f6', fontWeight: 600 }}>{t('start_date') || 'Start Date'}</th>
                   <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left', backgroundColor: '#f3f4f6', fontWeight: 600 }}>結束時間</th>
-                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left', backgroundColor: '#f3f4f6', fontWeight: 600 }}>{t('membership_plan') || 'Plan'}</th>
+                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left', backgroundColor: '#f3f4f6', fontWeight: 600 }}>需消耗點數</th>
                   <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left', backgroundColor: '#f3f4f6', fontWeight: 600 }}>狀態</th>
                   <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left', backgroundColor: '#f3f4f6', fontWeight: 600 }}>{t('actions') || 'Actions'}</th>
                 </tr>
@@ -195,8 +195,19 @@ export default function TeacherDashboard({ teacherId, teacherName }: Props) {
                     <td style={{ border: '2px solid #ccc', padding: '8px' }}>{c.durationMinutes ? `${c.durationMinutes} 分鐘` : '-'}</td>
                     <td style={{ border: '2px solid #ccc', padding: '8px' }}>{formatDateTime(c.nextStartDate || c.startDate)}</td>
                     <td style={{ border: '2px solid #ccc', padding: '8px' }}>{formatDateTime(c.endDate)}</td>
-                    <td style={{ border: '2px solid #ccc', padding: '8px' }}>{c.membershipPlan || '-'}</td>
-                    <td style={{ border: '2px solid #ccc', padding: '8px' }}>{c.status || '-'}</td>
+                    <td style={{ border: '2px solid #ccc', padding: '8px' }}>{c.pointCost || 0} 點</td>
+                    <td style={{ border: '2px solid #ccc', padding: '8px' }}>
+                      <span style={{
+                        color: c.status === '上架' ? '#059669' : '#dc2626',
+                        fontWeight: 600,
+                        backgroundColor: c.status === '上架' ? '#f0fdf4' : '#fef2f2',
+                        padding: '2px 8px',
+                        borderRadius: '4px',
+                        fontSize: '0.875rem'
+                      }}>
+                        {c.status || '-'}
+                      </span>
+                    </td>
                     <td style={{ border: '2px solid #ccc', padding: '8px' }}>
                       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                         <Button

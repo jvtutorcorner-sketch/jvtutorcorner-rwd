@@ -11,8 +11,9 @@ export default function EditCoursePage() {
   const courseId = params?.id as string | undefined;
   const [loading, setLoading] = useState(false);
   const [course, setCourse] = useState<any | null>(null);
-  const [form, setForm] = useState<any>({ title: '', description: '', durationMinutes: '', startDateTime: '', endDateTime: '', membershipPlan: '', status: '' });
+  const [form, setForm] = useState<any>({ title: '', description: '', durationMinutes: '', startDateTime: '', endDateTime: '', membershipPlan: '', pointCost: 0, status: '' });
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [success, setSuccess] = useState<string | null>(null);
 
   useEffect(() => {
@@ -71,6 +72,7 @@ export default function EditCoursePage() {
             startDateTime: toDateTimeInput(normalizedStart),
             endDateTime: toDateTimeInput(normalizedEnd),
             membershipPlan: c.membershipPlan || '',
+            pointCost: c.pointCost != null ? Number(c.pointCost) : 0,
             status: c.status || '上架',
           });
         } else {
@@ -95,6 +97,13 @@ export default function EditCoursePage() {
       setError('找不到課程');
       return;
     }
+    const pointCostNum = Number(form.pointCost);
+    if (isNaN(pointCostNum) || pointCostNum < 7 || pointCostNum > 40) {
+      setFieldErrors({ pointCost: '需消耗點數必須在 7 至 40 之間' });
+      return;
+    }
+    setFieldErrors({});
+
     const updates: any = {};
     if (form.title !== undefined) updates.title = form.title;
     updates.description = form.description || '';
@@ -107,6 +116,7 @@ export default function EditCoursePage() {
       updates.endDate = new Date(form.endDateTime).toISOString();
     }
     if (form.membershipPlan !== undefined) updates.membershipPlan = form.membershipPlan || null;
+    if (form.pointCost !== undefined) updates.pointCost = Number(form.pointCost) || 0;
     if (form.status !== undefined) updates.status = form.status || '上架';
 
     try {
@@ -205,7 +215,7 @@ export default function EditCoursePage() {
 
         {/* totalSessions and seatsLeft removed per request */}
 
-        <div>
+        <div style={{ display: 'none' }}>
           <label style={{ display: 'block', fontWeight: 600 }}>會員方案</label>
           <select value={form.membershipPlan ?? ''} onChange={(e) => setForm({ ...form, membershipPlan: e.target.value })} style={{ width: '100%', padding: 8, backgroundColor: 'white' }}>
             <option value="">
@@ -219,6 +229,20 @@ export default function EditCoursePage() {
                 </option>
               ))}
           </select>
+        </div>
+
+        <div>
+          <label style={{ display: 'block', fontWeight: 600 }}>需消耗點數</label>
+          <input
+            type="number"
+            value={form.pointCost ?? 0}
+            onChange={(e) => {
+              setForm({ ...form, pointCost: e.target.value });
+              if (fieldErrors.pointCost) setFieldErrors({ ...fieldErrors, pointCost: '' });
+            }}
+            style={{ width: '100%', padding: 8, backgroundColor: 'white', border: fieldErrors.pointCost ? '1px solid crimson' : '1px solid #ccc' }}
+          />
+          {fieldErrors.pointCost && <div style={{ color: 'crimson', fontSize: '0.875rem', marginTop: 4 }}>{fieldErrors.pointCost}</div>}
         </div>
 
         <div>

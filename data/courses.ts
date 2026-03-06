@@ -14,6 +14,8 @@ export type Course = {
   mode: 'online' | 'onsite';
   description?: string;
   nextStartDate?: string;
+  startDate?: string;
+  endDate?: string;
   totalSessions?: number;
   seatsLeft?: number;
   currency?: string;

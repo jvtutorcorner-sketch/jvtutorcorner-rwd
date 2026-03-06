@@ -151,6 +151,16 @@ export default async function CourseDetailPage({ params }: { params: Promise<{ i
                 {formatDate(startDate || nextStartDate)} ~ {formatDate(endDate)}
               </span>
             </div>
+            {pointCost && (
+              <div className="info-row">
+                <span>💎 需消耗點數</span>
+                <span style={{ color: '#7c3aed', fontWeight: 600 }}>
+                  {pointCost} 點 / 堂
+                  {enrollmentType === 'both' && <span style={{ marginLeft: 6, fontSize: '0.8rem', color: '#6b7280' }}>(可用方案或點數)</span>}
+                  {enrollmentType === 'points' && <span style={{ marginLeft: 6, fontSize: '0.8rem', color: '#6b7280' }}>(限點數報名)</span>}
+                </span>
+              </div>
+            )}
             {(startTime || endTime) && (
               <div className="info-row">
                 <span>課程時間</span>
@@ -172,17 +182,6 @@ export default async function CourseDetailPage({ params }: { params: Promise<{ i
               </div>
             )}
 
-            {/* 點數費用顯示 */}
-            {pointCost && (
-              <div className="info-row">
-                <span>💎 點數費用</span>
-                <span style={{ color: '#7c3aed', fontWeight: 600 }}>
-                  {pointCost} 點 / 堂
-                  {enrollmentType === 'both' && <span style={{ marginLeft: 6, fontSize: '0.8rem', color: '#6b7280' }}>(可用方案或點數)</span>}
-                  {enrollmentType === 'points' && <span style={{ marginLeft: 6, fontSize: '0.8rem', color: '#6b7280' }}>(限點數報名)</span>}
-                </span>
-              </div>
-            )}
 
             <div style={{ marginTop: 16 }}>
               <EnrollButton
@@ -194,6 +193,8 @@ export default async function CourseDetailPage({ params }: { params: Promise<{ i
                 durationMinutes={durationMinutes || 0}
                 pointCost={pointCost}
                 enrollmentType={enrollmentType}
+                startDate={startDate || nextStartDate}
+                endDate={endDate}
               />
             </div>
 

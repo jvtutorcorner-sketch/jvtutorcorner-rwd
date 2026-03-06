@@ -19,7 +19,19 @@ export default async function TeachersPage({ searchParams }: { searchParams: Pro
     const TEACHERS_TABLE = process.env.DYNAMODB_TABLE_TEACHERS || 'jvtutorcorner-teachers';
     const scanCmd = new ScanCommand({ TableName: TEACHERS_TABLE });
     const result = await ddbDocClient.send(scanCmd);
-    teachers = result.Items || [];
+
+    // Deduplicate by ID to prevent multiple entries (e.g., from old review data or sync issues)
+    const rawTeachers = result.Items || [];
+    const uniqueMap = new Map();
+    // Sort so newer/approved items overwrite older ones if duplicates exist
+    rawTeachers.sort((a, b) => (new Date(a.updatedAt || 0).getTime()) - (new Date(b.updatedAt || 0).getTime()));
+
+    rawTeachers.forEach(t => {
+      const id = t.id || t.roid_id;
+      if (id) uniqueMap.set(id, t);
+    });
+
+    teachers = Array.from(uniqueMap.values());
   } catch (e) {
     console.error('[TeachersPage] DynamoDB scan error:', e);
   }

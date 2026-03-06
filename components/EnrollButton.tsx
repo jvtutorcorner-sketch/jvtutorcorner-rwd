@@ -17,6 +17,8 @@ interface EnrollButtonProps {
   durationMinutes?: number;
   pointCost?: number;          // 每堂所需點數
   enrollmentType?: 'plan' | 'points' | 'both';  // 報名方式
+  startDate?: string;
+  endDate?: string;
 }
 
 type Enrollment = {
@@ -37,6 +39,8 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
   durationMinutes = 0,
   pointCost,
   enrollmentType = 'plan',
+  startDate,
+  endDate,
 }) => {
   const t = useT();
   const router = useRouter();
@@ -73,7 +77,7 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
     fetch(`/api/points?userId=${encodeURIComponent(storedUser.email)}`)
       .then(r => r.json())
       .then(d => { if (d.ok) setUserPoints(d.balance); })
-      .catch(() => {});
+      .catch(() => { });
   }, [storedUser, enrollmentType]);
 
   const handleEnrollAndOrder = async () => {
@@ -243,10 +247,19 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
   // 是否可用方案報名
   const canUsePlan = enrollmentType !== 'points';
 
+  // 是否在課程期間
+  const now = new Date();
+  const start = startDate ? new Date(startDate) : null;
+  const end = endDate ? new Date(endDate) : null;
+  // If dates are not set, assume it's enrollable for now (or handle as TBD)
+  // But per request, we should check if it's WITHIN the range if range exists
+  const isDateValid = (!start || now >= start) && (!end || now <= end);
+
   // 按鈕是否可用
   const isEnrollable = storedUser &&
     storedUser.role !== 'teacher' &&
-    (canUsePlan ? isPlanSufficient : canUsePoints);
+    (canUsePlan ? isPlanSufficient : canUsePoints) &&
+    isDateValid;
 
   return (
     <>
@@ -259,14 +272,16 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
             ? t('enroll_title_login')
             : storedUser.role === 'teacher'
               ? '老師帳號無法報名學生課程'
-              : !canUsePlan && !canUsePoints
-                ? '此課程目前不開放報名'
-                : canUsePlan && !isPlanSufficient && !canUsePoints
-                  ? `需要 ${requiredPlan.charAt(0).toUpperCase() + requiredPlan.slice(1)} 方案才能報名此課程`
-                  : `${t('enroll_title_logged_prefix')} ${storedUser.email} ${t('enroll_title_logged_suffix')}`
+              : !isDateValid
+                ? '目前不在課程期間，請選擇其他可報名的課程'
+                : !canUsePlan && !canUsePoints
+                  ? '此課程目前不開放報名'
+                  : canUsePlan && !isPlanSufficient && !canUsePoints
+                    ? `需要 ${requiredPlan.charAt(0).toUpperCase() + requiredPlan.slice(1)} 方案才能報名此課程`
+                    : `${t('enroll_title_logged_prefix')} ${storedUser.email} ${t('enroll_title_logged_suffix')}`
         }
       >
-        {isSubmitting ? t('loading') : isSuccess ? '報名成功！正在跳轉...' : t('enroll_button_label')}
+        {isSubmitting ? t('loading') : isSuccess ? '報名成功！正在跳轉...' : !isDateValid ? '請選擇其他可報名的課程' : t('enroll_button_label')}
       </button>
 
       {/* 點數餘額顯示 */}

@@ -41,13 +41,13 @@ export default async function CoursesPage(props?: CoursesPageProps) {
   // Fetch courses from DynamoDB
   let persisted: any[] = [];
   let dbError: string | null = null;
-  
+
   try {
     const COURSES_TABLE = process.env.DYNAMODB_TABLE_COURSES || 'jvtutorcorner-courses';
     const TEACHERS_TABLE = process.env.DYNAMODB_TABLE_TEACHERS || 'jvtutorcorner-teachers';
 
     console.log('[CoursesPage] Loading courses from table:', COURSES_TABLE);
-    
+
     const scanCmd = new ScanCommand({ TableName: COURSES_TABLE });
     const result = await ddbDocClient.send(scanCmd);
     persisted = result.Items || [];
@@ -81,7 +81,7 @@ export default async function CoursesPage(props?: CoursesPageProps) {
 
   // Strategy: Use ONLY DynamoDB data if available; fallback to local data only if DynamoDB is empty
   let merged: any[] = [];
-  
+
   if (persisted.length > 0) {
     // ✅ DynamoDB has data: use it exclusively
     console.log(`[CoursesPage] Using ${persisted.length} courses from DynamoDB (ignoring local data)`);
@@ -103,6 +103,8 @@ export default async function CoursesPage(props?: CoursesPageProps) {
     if (languageTrim && !(c.language || '').toLowerCase().includes(languageTrim)) return false;
     if (teacherTrim && !(c.teacherName || '').toLowerCase().includes(teacherTrim)) return false;
     if (mode && c.mode !== mode) return false;
+    // 僅顯示「上架」課程
+    if (c.status && c.status !== '上架') return false;
     return true;
   });
 
