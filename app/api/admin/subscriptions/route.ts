@@ -40,6 +40,20 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
     try {
         const body = await request.json();
+
+        if (body.subscriptions && Array.isArray(body.subscriptions)) {
+            // Bulk save
+            const savedSubscriptions = [];
+            for (const sub of body.subscriptions) {
+                if (!sub || !sub.id || !sub.label || !sub.type) {
+                    continue; // Skip invalid
+                }
+                const saved = await upsertSubscription(sub as SubscriptionConfig);
+                savedSubscriptions.push(saved);
+            }
+            return NextResponse.json({ ok: true, subscriptions: savedSubscriptions });
+        }
+
         const { subscription } = body;
 
         if (!subscription || !subscription.id || !subscription.label || !subscription.type) {
@@ -52,6 +66,7 @@ export async function POST(request: Request) {
         const saved = await upsertSubscription(subscription as SubscriptionConfig);
 
         return NextResponse.json({ ok: true, subscription: saved });
+
     } catch (error: any) {
         console.error('POST /api/admin/subscriptions error:', error);
         return NextResponse.json(

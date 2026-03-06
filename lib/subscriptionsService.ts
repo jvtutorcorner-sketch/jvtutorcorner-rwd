@@ -20,7 +20,11 @@ export interface SubscriptionConfig {
     type: SubscriptionType;
     label: string;
     priceHint?: string;
+    price?: number; // New: explicit checkout price
+    currency?: string; // New: 'TWD', 'USD', etc.
+    interval?: 'month' | 'year' | 'one-time'; // New: billing cycle
     badge?: string;
+
     targetAudience: string;
     includedFeatures: string;
     features: string[]; // List of strings for display
@@ -38,10 +42,15 @@ export async function getAllSubscriptions(): Promise<SubscriptionConfig[]> {
         });
         const response = await ddbDocClient.send(command);
         return (response.Items as SubscriptionConfig[]) || [];
-    } catch (error) {
+    } catch (error: any) {
+        if (error.name === 'ResourceNotFoundException') {
+            console.warn(`[subscriptionsService] Table ${TABLE_NAME} not found. Returning empty list.`);
+            return [];
+        }
         console.error('Error in getAllSubscriptions:', error);
         throw error;
     }
+
 }
 
 export async function getSubscriptionById(id: string): Promise<SubscriptionConfig | null> {

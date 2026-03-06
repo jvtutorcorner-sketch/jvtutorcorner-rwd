@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+export const dynamic = 'force-dynamic';
+
 import {
   getPricingSettings,
   savePricingSettings,
@@ -8,7 +10,7 @@ import {
 export async function GET() {
   try {
     const settings = await getPricingSettings();
-    
+
     if (!settings) {
       // Return empty structure if no data exists in DynamoDB
       return NextResponse.json({
@@ -26,9 +28,9 @@ export async function GET() {
     return NextResponse.json({ ok: true, settings });
   } catch (err: any) {
     console.error('[Pricing API] Failed to read pricing settings:', err);
-    return NextResponse.json({ 
-      ok: false, 
-      error: err?.message || 'Failed to read settings' 
+    return NextResponse.json({
+      ok: false,
+      error: err?.message || 'Failed to read settings'
     }, { status: 500 });
   }
 }
@@ -86,9 +88,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, settings });
   } catch (err: any) {
     console.error('[Pricing API] Failed to save pricing settings:', err);
-    return NextResponse.json({ 
-      ok: false, 
-      error: err?.message || 'Failed to save settings' 
+    return NextResponse.json({
+      ok: false,
+      error: err?.message || 'Failed to save settings'
     }, { status: 500 });
   }
 }
