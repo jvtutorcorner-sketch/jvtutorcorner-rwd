@@ -31,7 +31,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         // Prepare review record data
         const pendingChanges = teacher.pendingProfileChanges || {};
         const originalData: Record<string, any> = {};
-        
+
         // Extract original data for changed fields
         Object.keys(pendingChanges).forEach((key) => {
             if (key !== 'requestedAt') {
@@ -58,8 +58,17 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
                     const attrValue = `:${key}`;
                     updateExpression.push(`${attrName} = ${attrValue}`);
                     expressionAttributeNames[attrName] = key;
-                    expressionAttributeValues[attrValue] = pendingChanges[key];
-                    console.log(`[teacher-reviews] Will update ${key} to:`, pendingChanges[key]);
+
+                    let valueToSet = pendingChanges[key];
+                    // Clean name/displayName if needed
+                    if ((key === 'name' || key === 'displayName') && typeof valueToSet === 'string') {
+                        // Remove both half-width and full-width suffixes
+                        valueToSet = valueToSet.replace(/[\(（]更新[\)）]$/g, '').trim();
+                        console.log(`[teacher-reviews] Cleaned ${key} from ${pendingChanges[key]} to ${valueToSet}`);
+                    }
+
+                    expressionAttributeValues[attrValue] = valueToSet;
+                    console.log(`[teacher-reviews] Will update ${key} to:`, valueToSet);
                 }
             });
 
@@ -112,10 +121,48 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
                 // Don't fail the whole operation if audit logging fails
             }
 
-            return NextResponse.json({ 
-                ok: true, 
+            // Update the teacher name in related courses to keep /courses page in sync
+            if (pendingChanges.name || pendingChanges.displayName) {
+                let newName = pendingChanges.name || pendingChanges.displayName;
+                // Ensure the name used for course update is also cleaned
+                if (typeof newName === 'string') {
+                    newName = newName.replace(/[\(（]更新[\)）]$/g, '').trim();
+                }
+                console.log(`[teacher-reviews] Teacher name changed, updating courses for teacher ${id} to ${newName}`);
+                try {
+                    const COURSES_TABLE = process.env.DYNAMODB_TABLE_COURSES || 'jvtutorcorner-courses';
+                    const { ScanCommand, UpdateCommand: CourseUpdateCommand } = require('@aws-sdk/lib-dynamodb');
+
+                    const scanCoursesCmd = new ScanCommand({
+                        TableName: COURSES_TABLE,
+                        FilterExpression: 'teacherId = :tid',
+                        ExpressionAttributeValues: { ':tid': id }
+                    });
+
+                    const coursesRes: any = await ddbDocClient.send(scanCoursesCmd);
+                    const courses = coursesRes.Items || [];
+
+                    console.log(`[teacher-reviews] Found ${courses.length} courses to update for teacher ${id}`);
+
+                    for (const course of courses) {
+                        const courseUpdateCmd = new CourseUpdateCommand({
+                            TableName: COURSES_TABLE,
+                            Key: { id: course.id },
+                            UpdateExpression: 'SET teacherName = :name',
+                            ExpressionAttributeValues: { ':name': newName }
+                        });
+                        await ddbDocClient.send(courseUpdateCmd);
+                    }
+                    console.log(`[teacher-reviews] Successfully updated ${courses.length} courses with new teacher name`);
+                } catch (courseError) {
+                    console.error('[teacher-reviews] Failed to update related courses (non-critical):', courseError);
+                }
+            }
+
+            return NextResponse.json({
+                ok: true,
                 message: 'Request approved successfully',
-                updatedTeacher: updateResult.Attributes 
+                updatedTeacher: updateResult.Attributes
             });
 
         } else if (action === 'reject') {
@@ -156,10 +203,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
                 // Don't fail the whole operation if audit logging fails
             }
 
-            return NextResponse.json({ 
-                ok: true, 
+            return NextResponse.json({
+                ok: true,
                 message: 'Request rejected successfully',
-                updatedTeacher: updateResult.Attributes 
+                updatedTeacher: updateResult.Attributes
             });
         }
     } catch (err: any) {
