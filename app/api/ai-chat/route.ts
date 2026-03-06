@@ -3,6 +3,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { ddbDocClient } from '@/lib/dynamo';
 import { ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { getSkillById } from '@/lib/ai-skills';
+import { getAgentById } from '@/lib/platform-agents';
 
 // Table for app integrations (source of truth for API keys)
 const APP_INTEGRATIONS_TABLE = process.env.DYNAMODB_TABLE_APP_INTEGRATIONS || 'jvtutorcorner-app-integrations';
@@ -85,7 +86,32 @@ export async function POST(req: Request) {
         }
 
         const { provider, apiKey, model: modelName, systemInstruction: dbSystemInstruction, linkedSkillId, linkedDatabaseId } = config;
-        const { messages } = await req.json();
+        const { messages, agentId } = await req.json();
+
+        // Platform Agent override — if agentId provided, use agent's dedicated prompt
+        const platformAgent = agentId ? getAgentById(agentId) : null;
+        
+        // For ASK_PLAN_AGENT, check if it's stored as an app integration with executionEnvironment
+        let executionEnvironment = 'local'; // Default execution environment
+        let askPlanAgentConfig: any = null;
+        
+        if (agentId) {
+            try {
+                const agentRes = await ddbDocClient.send(new ScanCommand({
+                    TableName: APP_INTEGRATIONS_TABLE,
+                    FilterExpression: '#type = :type AND #status = :status',
+                    ExpressionAttributeNames: { '#type': 'type', '#status': 'status' },
+                    ExpressionAttributeValues: { ':type': 'ASK_PLAN_AGENT', ':status': 'ACTIVE' }
+                }));
+                
+                askPlanAgentConfig = agentRes.Items?.find((item: any) => item.config?.name === agentId || item.integrationId === agentId);
+                if (askPlanAgentConfig?.config?.executionEnvironment) {
+                    executionEnvironment = askPlanAgentConfig.config.executionEnvironment;
+                }
+            } catch (err) {
+                console.warn('[AI Chat API] Failed to fetch ASK_PLAN_AGENT config:', err);
+            }
+        }
 
         // Default system prompt (generic, customizable via DB)
         const defaultSystemPrompt = `你是一個智慧、友善且樂於助人的 AI 助理。請以清楚、簡潔且準確的方式回答使用者的問題。`;
@@ -139,7 +165,10 @@ export async function POST(req: Request) {
         const skill = linkedSkillId ? getSkillById(linkedSkillId) : null;
         const skillPrompt = skill ? `[你的當前技能：${skill.label}]\n${skill.prompt}\n\n` : '';
 
-        const finalSystemPrompt = `${knowledgeContext}${skillPrompt}${dbSystemInstruction ? `${dbSystemInstruction}\n\n` : ''}${defaultSystemPrompt}`;
+        // Platform Agent overrides skill + DB instruction when agentId is provided
+        const finalSystemPrompt = platformAgent
+            ? `${knowledgeContext}${platformAgent.singlePrompt}`
+            : `${knowledgeContext}${skillPrompt}${dbSystemInstruction ? `${dbSystemInstruction}\n\n` : ''}${defaultSystemPrompt}`;
 
         if (provider === 'GEMINI') {
             const genAI = new GoogleGenerativeAI(apiKey);
@@ -175,7 +204,11 @@ export async function POST(req: Request) {
             const result = await chat.sendMessage(latestMessage);
             const response = result.response;
 
-            return NextResponse.json({ reply: response.text() });
+            return NextResponse.json({ 
+                reply: response.text(),
+                executionEnvironment,
+                agentId: platformAgent?.id || agentId
+            });
 
         } else if (provider === 'OPENAI') {
             const openAiMessages = [
@@ -202,7 +235,11 @@ export async function POST(req: Request) {
             }
 
             const data = await response.json();
-            return NextResponse.json({ reply: data.choices[0].message.content });
+            return NextResponse.json({ 
+                reply: data.choices[0].message.content,
+                executionEnvironment,
+                agentId: platformAgent?.id || agentId
+            });
 
         } else if (provider === 'ANTHROPIC') {
             return NextResponse.json({ reply: '目前尚未完全支援 Anthropic (Claude) 串接，請優先選用 Gemini 或 OpenAI。' });

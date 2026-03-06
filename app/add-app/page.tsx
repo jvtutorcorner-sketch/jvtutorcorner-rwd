@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Editor from '@monaco-editor/react';
 import { AI_SKILLS, getSkillById } from '@/lib/ai-skills';
+import { ExecutionEnvironment, EXECUTION_ENVIRONMENT_META } from '@/lib/platform-agents';
 
 export default function AddAppPage() {
     return (
@@ -22,6 +23,8 @@ function AddAppForm() {
     const isAI = typeFromUrl === 'ai';
     const isEmail = typeFromUrl === 'email';
     const isDatabase = typeFromUrl === 'database';
+    const providerPreCheck = searchParams.get('provider')?.toUpperCase() || '';
+    const isAskPlanAgent = isAI && providerPreCheck === 'ASK_PLAN_AGENT';
 
     // AI Model options fetched from DB
     const [aiModelOptions, setAiModelOptions] = useState<Record<string, string[]>>({
@@ -158,6 +161,62 @@ function AddAppForm() {
 - 適度使用表情符號（如 💡、🗣️、✨、📸）增加對話的溫度與互動感。
 - 每次回覆的結尾，請務必拋出一個與剛剛學習內容相關的「簡單英文問句」，引導學生繼續在 LINE 上用英文回覆你，達成連續互動。
 - 若學生詢問與語言學習或平台操作完全無關的話題，請幽默且禮貌地將話題導回學習本身。`;
+
+    // ─── Ask Plan Agent Presets & State ──────────────────────────────────────
+    const AGENT_PRESET_TEMPLATES = [
+        {
+            id: 'general', icon: '🤖', label: '通用助理', color: 'blue',
+            desc: '適用於各類問答與任務協助',
+            ask: '你是一個問題釐清專家。你的任務是理解用戶的真實意圖，識別問題的核心，並整理出需要解決的關鍵要點。請以條列式方式輸出問題摘要與識別到的潛在需求。',
+            plan: '你是一個任務規劃師。基於 Ask 階段分析的問題，制定清晰的多步驟執行計劃。請將複雜任務拆解為可執行的子任務，並標注每個步驟的優先級和預期產出。',
+            execute: '你是一個執行專家。根據 Plan 階段制定的計劃，逐步執行並生成高品質的完整答案。請確保回答準確、有條理，並提供具體的行動建議。',
+        },
+        {
+            id: 'code_review', icon: '💻', label: '程式碼審查', color: 'green',
+            desc: '自動審查 PR、發現 Bug 與最佳化建議',
+            ask: '你是一個程式碼分析師。仔細閱讀提交的程式碼，識別潛在問題類型（安全性、性能、可維護性、邏輯錯誤），並整理出需要深入審查的重點區域與文件範圍。',
+            plan: '你是一個技術架構師。基於程式碼分析結果，制定系統性審查計劃：(1) 安全漏洞掃描 (2) 性能瓶頸分析 (3) 最佳實踐合規 (4) 測試覆蓋率評估。請列出具體審查項目清單。',
+            execute: '你是一個資深工程師。執行程式碼審查計劃，為每個問題提供：問題描述、嚴重等級（🔴高/🟡中/🟢低）、具體修改建議與範例代碼。輸出結構化的審查報告。',
+        },
+        {
+            id: 'teaching', icon: '📚', label: '教學助手', color: 'purple',
+            desc: '個人化教學設計與學習引導',
+            ask: '你是一個教育評估師。分析學生的問題，評估其當前知識水平與學習難點。識別是概念理解、練習應用還是延伸探索問題，整理出教學需聚焦的核心概念清單。',
+            plan: '你是一個課程設計師。基於學生需求分析，設計個性化教學方案：選擇合適的教學方法（類比、示例、逐步說明），規劃知識點講解順序，設計互動檢核題目。',
+            execute: '你是一個優秀家教老師。執行教學計劃，使用清晰語言、生動例子與逐步引導，幫助學生真正理解概念。結尾提供 1-2 道練習題以確認學習效果，並給予正向鼓勵。',
+        },
+        {
+            id: 'research', icon: '🔍', label: '研究分析', color: 'orange',
+            desc: '多角度深度研究與報告生成',
+            ask: '你是一個研究問題分析師。深入解析研究問題的範圍、關鍵概念與研究角度。識別需要收集哪些類型資訊，以及分析此問題所需的專業知識領域，列出研究子問題清單。',
+            plan: '你是一個研究策略師。制定系統性研究計劃：確定研究框架（SWOT / 比較分析 / 文獻回顧），規劃信息來源策略與數據收集方法，以及最終報告結構大綱。',
+            execute: '你是一個分析師。執行研究計劃，整合多角度資訊進行深度分析，輸出結構化研究報告，包含：核心發現、數據支持、多方觀點比較、結論與行動建議。',
+        },
+    ];
+
+    // Agent Tab State
+    const [agentActiveTab, setAgentActiveTab] = useState<'basic' | 'stages' | 'behavior' | 'tools'>('basic');
+    const [agentData, setAgentData] = useState({
+        name: '',
+        askSystemPrompt: '',
+        planSystemPrompt: '',
+        executeSystemPrompt: '',
+        askLinkedServiceId: '',
+        planLinkedServiceId: '',
+        agentLinkedServiceId: '',
+        maxLoops: 5,
+        outputFormat: 'markdown',
+        verbosity: 'standard',
+        responseLanguage: 'zh-TW',
+        allowDatabaseQuery: true,
+        allowKnowledgeBase: true,
+        allowWebSearch: false,
+        allowCodeExecution: false,
+        allowMathCalculation: true,
+        agentPersonality: '',
+        agentDomain: '',
+        executionEnvironment: 'local' as ExecutionEnvironment,
+    });
 
     // For AI
     const predefinedAIProvider = (providerFromUrl === 'AI_CHATROOM' || ['OPENAI', 'ANTHROPIC', 'GEMINI'].includes(providerFromUrl)) ? providerFromUrl : '';
@@ -391,6 +450,39 @@ function AddAppForm() {
                     name: paymentData.name || `${selectedPaymentProvider} 收款帳號`,
                     config
                 };
+            } else if (isAskPlanAgent) {
+                if (!agentData.askLinkedServiceId || !agentData.planLinkedServiceId || !agentData.agentLinkedServiceId) {
+                    alert('請在「階段設定」中為 Ask、Plan、Execute 三個階段各選擇 AI 服務');
+                    setLoading(false);
+                    return;
+                }
+                payload = {
+                    userId,
+                    type: 'ASK_PLAN_AGENT',
+                    name: agentData.name || 'Ask Plan Agent',
+                    config: {
+                        executionEnvironment: agentData.executionEnvironment,
+                        askLinkedServiceId: agentData.askLinkedServiceId,
+                        planLinkedServiceId: agentData.planLinkedServiceId,
+                        agentLinkedServiceId: agentData.agentLinkedServiceId,
+                        askSystemPrompt: agentData.askSystemPrompt,
+                        planSystemPrompt: agentData.planSystemPrompt,
+                        agentSystemPrompt: agentData.executeSystemPrompt,
+                        maxLoops: agentData.maxLoops,
+                        outputFormat: agentData.outputFormat,
+                        verbosity: agentData.verbosity,
+                        responseLanguage: agentData.responseLanguage,
+                        tools: {
+                            databaseQuery: agentData.allowDatabaseQuery,
+                            knowledgeBase: agentData.allowKnowledgeBase,
+                            webSearch: agentData.allowWebSearch,
+                            codeExecution: agentData.allowCodeExecution,
+                            mathCalculation: agentData.allowMathCalculation,
+                        },
+                        agentPersonality: agentData.agentPersonality,
+                        agentDomain: agentData.agentDomain,
+                    }
+                };
             } else if (isAI) {
                 let config: any = {};
                 if (selectedAIProvider === 'OPENAI') {
@@ -495,7 +587,7 @@ function AddAppForm() {
                 throw new Error(errData.error || `HTTP ${res.status}`);
             }
 
-            alert(isPayment ? '金流設定新增成功！' : isAI ? 'AI 服務新增成功！' : isEmail ? '郵件服務新增成功！' : isDatabase ? '資料庫設定新增成功！' : '應用程式新增成功！');
+            alert(isPayment ? '金流設定新增成功！' : isAskPlanAgent ? 'Ask Plan Agent 新增成功！' : isAI ? 'AI 服務新增成功！' : isEmail ? '郵件服務新增成功！' : isDatabase ? '資料庫設定新增成功！' : '應用程式新增成功！');
             router.push('/apps');
         } catch (error: any) {
             console.error('Save failed:', error);
@@ -509,7 +601,7 @@ function AddAppForm() {
     return (
         <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900 p-4">
             <div className="max-w-xl w-full bg-white dark:bg-gray-800 shadow-lg rounded-xl overflow-hidden">
-                <div className={`${isPayment ? 'bg-green-600' : isAI ? 'bg-indigo-600' : isEmail ? 'bg-yellow-600' : isDatabase ? 'bg-orange-600' : 'bg-blue-600'} p-6 text-white relative`}>
+                <div className={`${isPayment ? 'bg-green-600' : isAskPlanAgent ? 'bg-purple-700' : isAI ? 'bg-indigo-600' : isEmail ? 'bg-yellow-600' : isDatabase ? 'bg-orange-600' : 'bg-blue-600'} p-6 text-white relative`}>
                     <Link
                         href="/apps"
                         className="absolute left-4 top-1/2 -translate-y-1/2 p-2 hover:bg-white/20 rounded-full transition-colors"
@@ -521,28 +613,46 @@ function AddAppForm() {
                     </Link>
                     <div className="text-center">
                         <h1 className="text-2xl font-bold">
-                            {isPayment ? '新增金流服務' : (isAI && selectedAIProvider === 'AI_CHATROOM' ? '新增 AI 聊天室' : isAI ? '新增 AI 服務' : isEmail ? '新增郵件服務' : isDatabase ? '新增資料庫' : '新增應用程式')}
+                            {isPayment ? '新增金流服務' : isAskPlanAgent ? '🧠 新增 Ask Plan Agent' : (isAI && selectedAIProvider === 'AI_CHATROOM' ? '新增 AI 聊天室' : isAI ? '新增 AI 服務' : isEmail ? '新增郵件服務' : isDatabase ? '新增資料庫' : '新增應用程式')}
                         </h1>
-                        <p className={`mt-2 ${isPayment ? 'text-green-100' : isAI ? 'text-indigo-100' : isEmail ? 'text-yellow-100' : isDatabase ? 'text-orange-100' : 'text-blue-100'}`}>
-                            {isPayment ? '設定您的 ECPay、Stripe 或 PayPal 金流服務設定' : (isAI && selectedAIProvider === 'AI_CHATROOM' ? '配置您的專屬 AI 聊天室入口' : isAI ? '設定您要串接的 AI 模型 API 金鑰' : isEmail ? '設定您的 SMTP 伺服器資訊以發送郵件' : isDatabase ? '設定 DynamoDB 或知識庫作為 AI 聊天室的資料來源' : '設定通訊渠道串接參數 (LINE、Telegram、WhatsApp 等)')}
+                        <p className={`mt-2 ${isPayment ? 'text-green-100' : isAskPlanAgent ? 'text-purple-100' : isAI ? 'text-indigo-100' : isEmail ? 'text-yellow-100' : isDatabase ? 'text-orange-100' : 'text-blue-100'}`}>
+                            {isPayment ? '設定您的 ECPay、Stripe 或 PayPal 金流服務設定' : isAskPlanAgent ? '設定多階段推理 Agent — 探索 → 規劃 → 執行，讓 AI 更聰明地完成複雜任務' : (isAI && selectedAIProvider === 'AI_CHATROOM' ? '配置您的專屬 AI 聊天室入口' : isAI ? '設定您要串接的 AI 模型 API 金鑰' : isEmail ? '設定您的 SMTP 伺服器資訊以發送郵件' : isDatabase ? '設定 DynamoDB 或知識庫作為 AI 聊天室的資料來源' : '設定通訊渠道串接參數 (LINE、Telegram、WhatsApp 等)')}
                         </p>
                     </div>
                 </div>
 
                 <div className="p-8">
                     {/* 參數說明區塊 */}
-                    <div className={`${isPayment ? 'bg-green-50 border-green-200' : isAI ? 'bg-indigo-50 border-indigo-200' : isEmail ? 'bg-yellow-50 border-yellow-200' : 'bg-blue-50 border-blue-200'} border rounded-lg p-6 mb-8`}>
-                        <h3 className={`${isPayment ? 'text-green-800' : isAI ? 'text-indigo-800' : isEmail ? 'text-yellow-800' : 'text-blue-800'} font-bold mb-4 flex items-center`}>
+                    <div className={`${isPayment ? 'bg-green-50 border-green-200' : isAskPlanAgent ? 'bg-purple-50 border-purple-200' : isAI ? 'bg-indigo-50 border-indigo-200' : isEmail ? 'bg-yellow-50 border-yellow-200' : 'bg-blue-50 border-blue-200'} border rounded-lg p-6 mb-8`}>
+                        <h3 className={`${isPayment ? 'text-green-800' : isAskPlanAgent ? 'text-purple-800' : isAI ? 'text-indigo-800' : isEmail ? 'text-yellow-800' : 'text-blue-800'} font-bold mb-4 flex items-center`}>
                             <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                             </svg>
-                            {isPayment ? '安全提示' : isAI ? '安全提示' : isEmail ? '參數說明' : '參數說明'}
+                            {isPayment ? '安全提示' : isAskPlanAgent ? '🧠 Ask Plan Agent 說明' : isAI ? '安全提示' : isEmail ? '參數說明' : '參數說明'}
                         </h3>
                         <div className="space-y-3">
                             {isPayment ? (
                                 <p className="text-sm text-green-800">
                                     此處填寫的金鑰將被安全加密儲存，專門用於您的課程結帳，確保學生的付款能直接匯入您的金流帳戶中。請勿將您的 HashKey 或 Secret Key 洩漏給他人。
                                 </p>
+                            ) : isAskPlanAgent ? (
+                                <div className="text-sm text-purple-800 space-y-2">
+                                    <p>Ask Plan Agent 採用三階段推理架構，靈感來自 Cursor、Claude Projects 等主流 IDE 的 Agent 模式：</p>
+                                    <div className="grid grid-cols-3 gap-2 mt-2">
+                                        {[
+                                            { icon: '❓', stage: 'Ask', desc: '探索用戶意圖，釐清問題核心' },
+                                            { icon: '📋', stage: 'Plan', desc: '拆解任務，制定執行計劃' },
+                                            { icon: '⚡', stage: 'Execute', desc: '逐步執行，輸出高品質結果' },
+                                        ].map(s => (
+                                            <div key={s.stage} className="bg-white/60 rounded-lg p-2 text-center border border-purple-100">
+                                                <div className="text-lg">{s.icon}</div>
+                                                <div className="font-bold text-xs mt-0.5">{s.stage}</div>
+                                                <div className="text-[10px] text-purple-600 mt-0.5 leading-tight">{s.desc}</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <p className="text-[11px] text-purple-600 mt-2">💡 每個階段可使用不同的 AI 模型（例如 Ask 用輕量模型，Execute 用強力模型），優化性能與成本</p>
+                                </div>
                             ) : isAI ? (
                                 <p className="text-sm text-indigo-800">
                                     請前往各 AI 服務提供商 (OpenAI, Anthropic 等) 獲取對應的 API Key。這些金鑰將被安全加密儲存，用於呼叫 AI 模型服務。
@@ -654,6 +764,437 @@ function AddAppForm() {
                                             </label>
                                             <input type="password" name="paypalSecretKey" value={paymentData.paypalSecretKey} onChange={handlePaymentChange} className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600" required />
                                         </div>
+                                    </div>
+                                )}
+                            </>
+                        ) : isAskPlanAgent ? (
+                            <>
+                                {/* ─── IDE-style Agent Builder Tabs ─── */}
+                                <div className="flex gap-1 p-1 bg-gray-100 dark:bg-gray-700/50 rounded-xl mb-2">
+                                    {([
+                                        { id: 'basic', icon: '🎯', label: '基本設定' },
+                                        { id: 'stages', icon: '🔄', label: '階段設定' },
+                                        { id: 'behavior', icon: '⚙️', label: '行為設定' },
+                                        { id: 'tools', icon: '🔧', label: '工具授權' },
+                                    ] as const).map(tab => (
+                                        <button
+                                            key={tab.id}
+                                            type="button"
+                                            onClick={() => setAgentActiveTab(tab.id)}
+                                            className={`flex-1 py-2 px-1 text-xs font-semibold rounded-lg transition-all flex flex-col items-center gap-0.5 ${agentActiveTab === tab.id
+                                                ? 'bg-white dark:bg-gray-800 text-purple-700 dark:text-purple-300 shadow-sm'
+                                                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}
+                                        >
+                                            <span className="text-base">{tab.icon}</span>
+                                            <span className="hidden sm:inline">{tab.label}</span>
+                                        </button>
+                                    ))}
+                                </div>
+
+                                {/* Progress indicator */}
+                                <div className="flex items-center gap-1.5 mb-4 px-1">
+                                    {(['basic', 'stages', 'behavior', 'tools'] as const).map((tab, i) => (
+                                        <div key={tab} className={`h-1 flex-1 rounded-full transition-all ${agentActiveTab === tab ? 'bg-purple-600' : i < (['basic', 'stages', 'behavior', 'tools'] as const).indexOf(agentActiveTab) ? 'bg-purple-300' : 'bg-gray-200 dark:bg-gray-600'}`} />
+                                    ))}
+                                </div>
+
+                                {/* ── Tab: Basic ── */}
+                                {agentActiveTab === 'basic' && (
+                                    <div className="space-y-5">
+                                        <div>
+                                            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                                                🏷️ Agent 名稱 <span className="text-red-500">*</span>
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={agentData.name}
+                                                onChange={(e) => setAgentData({ ...agentData, name: e.target.value })}
+                                                placeholder="例如：課程輔導智慧助手"
+                                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                                required
+                                            />
+                                        </div>
+
+                                        {/* Preset Templates — like Cursor's mode selector */}
+                                        <div>
+                                            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-2">
+                                                <span>⚡</span> 快速套用模板
+                                                <span className="text-xs font-normal text-gray-400">( 類似 Cursor Modes )</span>
+                                            </label>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                {AGENT_PRESET_TEMPLATES.map(tpl => (
+                                                    <button
+                                                        key={tpl.id}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setAgentData({
+                                                                ...agentData,
+                                                                name: agentData.name || tpl.label,
+                                                                askSystemPrompt: tpl.ask,
+                                                                planSystemPrompt: tpl.plan,
+                                                                executeSystemPrompt: tpl.execute,
+                                                            });
+                                                            setAgentActiveTab('stages');
+                                                        }}
+                                                        className="flex items-center gap-2 p-3 bg-white dark:bg-gray-700 border-2 border-gray-200 dark:border-gray-600 hover:border-purple-400 dark:hover:border-purple-500 rounded-xl text-left transition-all group"
+                                                    >
+                                                        <span className="text-xl shrink-0">{tpl.icon}</span>
+                                                        <div>
+                                                            <p className="text-xs font-bold text-gray-800 dark:text-white group-hover:text-purple-700 dark:group-hover:text-purple-300">{tpl.label}</p>
+                                                            <p className="text-[10px] text-gray-400 leading-tight mt-0.5">{tpl.desc}</p>
+                                                        </div>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                            <p className="text-[11px] text-gray-400 mt-2">💡 套用後可在「階段設定」分頁進行細部調整</p>
+                                        </div>
+
+                                        {/* Persona — like GitHub Copilot Custom Instructions */}
+                                        <div>
+                                            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-2">
+                                                <span>🎭</span> Agent 個性描述
+                                                <span className="text-xs font-normal text-gray-400">( 類似 Copilot Custom Instructions )</span>
+                                            </label>
+                                            <textarea
+                                                value={agentData.agentPersonality}
+                                                onChange={(e) => setAgentData({ ...agentData, agentPersonality: e.target.value })}
+                                                placeholder="描述 Agent 的溝通風格與個性特質，例如：專業且耐心，善用具體例子，鼓勵主動思考。這些設定將套用於所有階段..."
+                                                rows={3}
+                                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white text-sm resize-none"
+                                            />
+                                        </div>
+
+                                        {/* Domain expertise */}
+                                        <div>
+                                            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                                                🎓 專業領域 <span className="text-xs font-normal text-gray-400">( 選填 )</span>
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={agentData.agentDomain}
+                                                onChange={(e) => setAgentData({ ...agentData, agentDomain: e.target.value })}
+                                                placeholder="例如：語言學習、程式教學、數學輔導、商業英語..."
+                                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                            />
+                                        </div>
+
+                                        {/* Execution Environment */}
+                                        <div>
+                                            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2.5">
+                                                ⚙️ 執行環境 <span className="text-red-500">*</span>
+                                            </label>
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                                {(Object.keys(EXECUTION_ENVIRONMENT_META) as ExecutionEnvironment[]).map((env) => {
+                                                    const meta = EXECUTION_ENVIRONMENT_META[env];
+                                                    return (
+                                                        <button
+                                                            key={env}
+                                                            type="button"
+                                                            onClick={() => setAgentData({ ...agentData, executionEnvironment: env })}
+                                                            className={`relative p-4 rounded-lg border-2 transition-all overflow-hidden group ${
+                                                                agentData.executionEnvironment === env
+                                                                    ? `border-purple-600 ${
+                                                                        env === 'local'
+                                                                            ? 'bg-blue-50 dark:bg-blue-900/20'
+                                                                            : env === 'background'
+                                                                            ? 'bg-amber-50 dark:bg-amber-900/20'
+                                                                            : 'bg-purple-50 dark:bg-purple-900/20'
+                                                                    }`
+                                                                    : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 bg-white dark:bg-gray-800'
+                                                            }`}
+                                                        >
+                                                            {/* Checkmark indicator */}
+                                                            {agentData.executionEnvironment === env && (
+                                                                <div className="absolute top-2 right-2 w-5 h-5 bg-purple-600 rounded-full flex items-center justify-center">
+                                                                    <span className="text-white text-xs font-bold">✓</span>
+                                                                </div>
+                                                            )}
+                                                            
+                                                            {/* Content */}
+                                                            <div className="text-left">
+                                                                <div className="flex items-center gap-2 mb-2">
+                                                                    <span className="text-2xl">{meta.icon}</span>
+                                                                    <h3 className="font-bold text-gray-800 dark:text-white group-hover:text-purple-700 dark:group-hover:text-purple-300">
+                                                                        {meta.label}
+                                                                    </h3>
+                                                                </div>
+                                                                <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
+                                                                    {meta.desc}
+                                                                </p>
+                                                                
+                                                                {/* Pros & Cons */}
+                                                                <div className="space-y-2">
+                                                                    <div className="space-y-1">
+                                                                        <p className="text-[11px] font-semibold text-green-700 dark:text-green-400">優勢：</p>
+                                                                        {meta.pros.map((pro, i) => (
+                                                                            <p key={i} className="text-[11px] text-gray-600 dark:text-gray-400 flex items-center gap-1">
+                                                                                <span>✔</span> {pro}
+                                                                            </p>
+                                                                        ))}
+                                                                    </div>
+                                                                    <div className="space-y-1">
+                                                                        <p className="text-[11px] font-semibold text-amber-700 dark:text-amber-400">考量：</p>
+                                                                        {meta.cons.map((con, i) => (
+                                                                            <p key={i} className="text-[11px] text-gray-600 dark:text-gray-400 flex items-center gap-1">
+                                                                                <span>⚠</span> {con}
+                                                                            </p>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                            <p className="text-[11px] text-gray-400 mt-2">
+                                                💡 選擇最適合您 Agent 的執行環境。可稍後在調試時調整。
+                                            </p>
+                                        </div>
+
+                                        <button
+                                            type="button"
+                                            onClick={() => setAgentActiveTab('stages')}
+                                            className="w-full py-2.5 bg-purple-600 hover:bg-purple-700 text-white text-sm font-bold rounded-lg transition-colors flex items-center justify-center gap-2"
+                                        >
+                                            下一步：設定階段 →
+                                        </button>
+                                    </div>
+                                )}
+
+                                {/* ── Tab: Stages (3-stage pipeline) ── */}
+                                {agentActiveTab === 'stages' && (
+                                    <div className="space-y-4">
+                                        {/* Pipeline visualization */}
+                                        <div className="flex items-center justify-center gap-2 p-3 bg-purple-50 dark:bg-purple-900/10 rounded-xl border border-purple-200 dark:border-purple-800">
+                                            <span className="px-2.5 py-1 bg-purple-600 text-white rounded-full text-xs font-bold">❓ Ask</span>
+                                            <span className="text-purple-400 font-bold">──▶</span>
+                                            <span className="px-2.5 py-1 bg-indigo-600 text-white rounded-full text-xs font-bold">📋 Plan</span>
+                                            <span className="text-indigo-400 font-bold">──▶</span>
+                                            <span className="px-2.5 py-1 bg-blue-600 text-white rounded-full text-xs font-bold">⚡ Execute</span>
+                                        </div>
+
+                                        {/* Stage Cards */}
+                                        {[
+                                            {
+                                                serviceKey: 'askLinkedServiceId' as const,
+                                                promptKey: 'askSystemPrompt' as const,
+                                                icon: '❓', label: 'Ask 階段', subtitle: '探索與釐清用戶意圖',
+                                                border: 'border-purple-200 dark:border-purple-800', bg: 'bg-purple-50/50 dark:bg-purple-900/10',
+                                                labelCls: 'text-purple-900 dark:text-purple-100', ring: 'focus:ring-purple-500',
+                                                hint: '負責理解用戶真實需求、識別問題核心',
+                                                placeholder: '你是一個需求分析專家。仔細閱讀用戶的輸入，識別核心問題與隱含需求...',
+                                            },
+                                            {
+                                                serviceKey: 'planLinkedServiceId' as const,
+                                                promptKey: 'planSystemPrompt' as const,
+                                                icon: '📋', label: 'Plan 階段', subtitle: '規劃與拆解目標',
+                                                border: 'border-indigo-200 dark:border-indigo-800', bg: 'bg-indigo-50/50 dark:bg-indigo-900/10',
+                                                labelCls: 'text-indigo-900 dark:text-indigo-100', ring: 'focus:ring-indigo-500',
+                                                hint: '將複雜任務分解為可執行步驟，制定執行策略',
+                                                placeholder: '你是一個任務規劃師。根據 Ask 階段的分析結果，制定結構化的執行計劃...',
+                                            },
+                                            {
+                                                serviceKey: 'agentLinkedServiceId' as const,
+                                                promptKey: 'executeSystemPrompt' as const,
+                                                icon: '⚡', label: 'Execute 階段', subtitle: '執行任務並輸出結果',
+                                                border: 'border-blue-200 dark:border-blue-800', bg: 'bg-blue-50/50 dark:bg-blue-900/10',
+                                                labelCls: 'text-blue-900 dark:text-blue-100', ring: 'focus:ring-blue-500',
+                                                hint: '按照計劃逐步執行，生成高品質的最終輸出',
+                                                placeholder: '你是一個執行專家。依照 Plan 中的步驟，逐項執行並生成完整答案...',
+                                            },
+                                        ].map((stage) => {
+                                            const prompt: string = agentData[stage.promptKey];
+                                            const tokenEstimate = Math.max(1, Math.ceil(prompt.length / 4));
+                                            return (
+                                                <div key={stage.serviceKey} className={`p-4 border-2 ${stage.border} ${stage.bg} rounded-xl space-y-3`}>
+                                                    <div className="flex items-start justify-between">
+                                                        <div>
+                                                            <h4 className={`text-sm font-bold ${stage.labelCls} flex items-center gap-2`}>
+                                                                <span className="text-base">{stage.icon}</span>
+                                                                {stage.label}
+                                                            </h4>
+                                                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{stage.subtitle}</p>
+                                                        </div>
+                                                        <span className="text-[10px] px-2 py-0.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-full text-gray-500 dark:text-gray-400 shrink-0">
+                                                            ~{tokenEstimate} tokens
+                                                        </span>
+                                                    </div>
+                                                    <div className="text-[11px] text-gray-500 dark:text-gray-400 bg-white/60 dark:bg-gray-800/40 rounded-lg px-3 py-2 border border-dashed border-gray-200 dark:border-gray-600">
+                                                        💡 {stage.hint}
+                                                    </div>
+                                                    <div>
+                                                        <label className={`block text-xs font-semibold ${stage.labelCls} mb-1`}>
+                                                            AI 服務 <span className="text-red-500">*</span>
+                                                        </label>
+                                                        <select
+                                                            value={agentData[stage.serviceKey]}
+                                                            onChange={(e) => setAgentData({ ...agentData, [stage.serviceKey]: e.target.value })}
+                                                            className={`w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 dark:text-white focus:outline-none ${stage.ring} focus:ring-2`}
+                                                            required
+                                                        >
+                                                            <option value="">-- 請選擇 AI 服務 --</option>
+                                                            {activeAIApps.map(app => (
+                                                                <option key={app.integrationId} value={app.integrationId}>
+                                                                    {app.name} ({app.type})
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                        {activeAIApps.length === 0 && (
+                                                            <p className="text-[11px] text-orange-600 dark:text-orange-400 mt-1">
+                                                                ⚠️ 尚無已連線的 AI 服務，請先
+                                                                <Link href="/add-app?type=ai&provider=OPENAI" className="underline font-bold mx-1">新增 AI 服務</Link>
+                                                                後再回來設定
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                    <div>
+                                                        <label className={`block text-xs font-semibold ${stage.labelCls} mb-1 flex items-center justify-between`}>
+                                                            <span>系統提示詞 System Prompt</span>
+                                                            <span className="font-normal text-gray-400 tabular-nums">{prompt.length} 字 / ~{tokenEstimate} tokens</span>
+                                                        </label>
+                                                        <textarea
+                                                            value={prompt}
+                                                            onChange={(e) => setAgentData({ ...agentData, [stage.promptKey]: e.target.value })}
+                                                            placeholder={stage.placeholder}
+                                                            rows={4}
+                                                            className={`w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 dark:text-white focus:outline-none ${stage.ring} focus:ring-2 resize-y font-mono leading-relaxed`}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+
+                                        <div className="flex gap-2">
+                                            <button type="button" onClick={() => setAgentActiveTab('basic')} className="flex-1 py-2.5 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 text-sm font-semibold rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">← 返回基本設定</button>
+                                            <button type="button" onClick={() => setAgentActiveTab('behavior')} className="flex-1 py-2.5 bg-purple-600 hover:bg-purple-700 text-white text-sm font-bold rounded-lg transition-colors">下一步：行為設定 →</button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* ── Tab: Behavior ── */}
+                                {agentActiveTab === 'behavior' && (
+                                    <div className="space-y-5">
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                                                    🔁 最大推理輪次
+                                                </label>
+                                                <select
+                                                    value={agentData.maxLoops}
+                                                    onChange={(e) => setAgentData({ ...agentData, maxLoops: Number(e.target.value) })}
+                                                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-purple-500"
+                                                >
+                                                    <option value={3}>3 輪（快速）</option>
+                                                    <option value={5}>5 輪（標準）</option>
+                                                    <option value={10}>10 輪（深度）</option>
+                                                    <option value={0}>不限制</option>
+                                                </select>
+                                                <p className="text-[10px] text-gray-400 mt-1">類似 Cursor Max Iterations</p>
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                                                    📄 輸出格式
+                                                </label>
+                                                <select
+                                                    value={agentData.outputFormat}
+                                                    onChange={(e) => setAgentData({ ...agentData, outputFormat: e.target.value })}
+                                                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-purple-500"
+                                                >
+                                                    <option value="markdown">Markdown（推薦）</option>
+                                                    <option value="plain">純文字</option>
+                                                    <option value="json">JSON 結構化</option>
+                                                    <option value="html">HTML</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                                                    📊 回應詳細度
+                                                </label>
+                                                <select
+                                                    value={agentData.verbosity}
+                                                    onChange={(e) => setAgentData({ ...agentData, verbosity: e.target.value })}
+                                                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-purple-500"
+                                                >
+                                                    <option value="concise">簡潔（重點摘要）</option>
+                                                    <option value="standard">標準（平衡詳細）</option>
+                                                    <option value="detailed">詳細（完整解說）</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                                                    🌐 回應語言
+                                                </label>
+                                                <select
+                                                    value={agentData.responseLanguage}
+                                                    onChange={(e) => setAgentData({ ...agentData, responseLanguage: e.target.value })}
+                                                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-purple-500"
+                                                >
+                                                    <option value="zh-TW">繁體中文</option>
+                                                    <option value="zh-CN">簡體中文</option>
+                                                    <option value="en">English</option>
+                                                    <option value="auto">自動偵測</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        {/* Summary card like IDE settings preview */}
+                                        <div className="p-4 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700 space-y-2">
+                                            <h4 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">⚙️ 當前行為設定摘要</h4>
+                                            <div className="text-xs text-gray-600 dark:text-gray-400 space-y-1.5">
+                                                <p>• 推理最多執行 <strong className="text-gray-800 dark:text-gray-200">{agentData.maxLoops === 0 ? '不限' : `${agentData.maxLoops} 輪`}</strong>，每輪依次呼叫 Ask → Plan → Execute</p>
+                                                <p>• 輸出格式：<strong className="text-gray-800 dark:text-gray-200">{{ markdown: 'Markdown', plain: '純文字', json: 'JSON', html: 'HTML' }[agentData.outputFormat] || agentData.outputFormat}</strong></p>
+                                                <p>• 詳細度：<strong className="text-gray-800 dark:text-gray-200">{{ concise: '簡潔', standard: '標準', detailed: '詳細' }[agentData.verbosity] || agentData.verbosity}</strong></p>
+                                                <p>• 語言：<strong className="text-gray-800 dark:text-gray-200">{{ 'zh-TW': '繁體中文', 'zh-CN': '簡體中文', en: '英文', auto: '自動偵測' }[agentData.responseLanguage] || agentData.responseLanguage}</strong></p>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex gap-2">
+                                            <button type="button" onClick={() => setAgentActiveTab('stages')} className="flex-1 py-2.5 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 text-sm font-semibold rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">← 階段設定</button>
+                                            <button type="button" onClick={() => setAgentActiveTab('tools')} className="flex-1 py-2.5 bg-purple-600 hover:bg-purple-700 text-white text-sm font-bold rounded-lg transition-colors">下一步：工具授權 →</button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* ── Tab: Tools ── */}
+                                {agentActiveTab === 'tools' && (
+                                    <div className="space-y-4">
+                                        <p className="text-xs text-gray-500 dark:text-gray-400 bg-purple-50 dark:bg-purple-900/10 border border-purple-200 dark:border-purple-800 rounded-lg px-4 py-3">
+                                            🔧 控制 Agent 可使用的工具與能力，類似 Claude Projects 工具設定與 Cursor 的 MCP 工具啟用
+                                        </p>
+                                        <div className="space-y-2">
+                                            {[
+                                                { key: 'allowDatabaseQuery' as const, icon: '🗄️', label: '資料庫查詢', desc: '允許 Agent 從連結的 DynamoDB 資料庫讀取資料，適合回答結構化資訊問題' },
+                                                { key: 'allowKnowledgeBase' as const, icon: '📚', label: '知識庫讀取', desc: '允許 Agent 參照已建立的知識庫作為回答依據，提升 RAG 準確度' },
+                                                { key: 'allowWebSearch' as const, icon: '🌐', label: '網路搜尋', desc: '允許 Agent 搜尋最新網路資訊（需設定 Serper / Tavily API 金鑰）' },
+                                                { key: 'allowCodeExecution' as const, icon: '💻', label: '程式碼執行', desc: '允許 Agent 在沙盒中執行程式碼以進行計算或驗證輸出結果' },
+                                                { key: 'allowMathCalculation' as const, icon: '🔢', label: '數學計算', desc: '啟用精確數學表達式計算，避免 LLM 的計算不準確問題' },
+                                            ].map(tool => (
+                                                <label
+                                                    key={tool.key}
+                                                    className={`flex items-start gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all ${agentData[tool.key]
+                                                        ? 'border-purple-300 dark:border-purple-700 bg-purple-50/50 dark:bg-purple-900/10'
+                                                        : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/50 hover:border-gray-300 dark:hover:border-gray-500'}`}
+                                                >
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={agentData[tool.key]}
+                                                        onChange={(e) => setAgentData({ ...agentData, [tool.key]: e.target.checked })}
+                                                        className="mt-0.5 w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                                                    />
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="flex items-center gap-2 flex-wrap">
+                                                            <span className="text-base">{tool.icon}</span>
+                                                            <span className="text-sm font-semibold text-gray-800 dark:text-white">{tool.label}</span>
+                                                            {agentData[tool.key] && (
+                                                                <span className="text-[10px] px-1.5 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded-full font-bold">啟用</span>
+                                                            )}
+                                                        </div>
+                                                        <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 leading-snug">{tool.desc}</p>
+                                                    </div>
+                                                </label>
+                                            ))}
+                                        </div>
+                                        <button type="button" onClick={() => setAgentActiveTab('behavior')} className="w-full py-2 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 text-sm font-semibold rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">← 返回行為設定</button>
                                     </div>
                                 )}
                             </>
@@ -1256,7 +1797,7 @@ function AddAppForm() {
                             <button
                                 type="submit"
                                 disabled={loading}
-                                className={`w-2/3 ${isPayment ? 'bg-green-600 hover:bg-green-700' : isAI ? 'bg-indigo-600 hover:bg-indigo-700' : isEmail ? 'bg-yellow-600 hover:bg-yellow-700' : isDatabase ? 'bg-orange-600 hover:bg-orange-700' : 'bg-blue-600 hover:bg-blue-700'} text-white font-bold py-3 px-4 rounded-lg transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed`}
+                                className={`w-2/3 ${isPayment ? 'bg-green-600 hover:bg-green-700' : isAskPlanAgent ? 'bg-purple-700 hover:bg-purple-800' : isAI ? 'bg-indigo-600 hover:bg-indigo-700' : isEmail ? 'bg-yellow-600 hover:bg-yellow-700' : isDatabase ? 'bg-orange-600 hover:bg-orange-700' : 'bg-blue-600 hover:bg-blue-700'} text-white font-bold py-3 px-4 rounded-lg transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed`}
                             >
                                 {loading ? (
                                     <>
@@ -1266,6 +1807,8 @@ function AddAppForm() {
                                         </svg>
                                         儲存中...
                                     </>
+                                ) : isAskPlanAgent ? (
+                                    '🧠 建立 Ask Plan Agent'
                                 ) : (
                                     '確認新增'
                                 )}
