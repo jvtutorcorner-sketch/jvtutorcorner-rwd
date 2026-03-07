@@ -34,6 +34,7 @@ export default function PricingPage() {
   const [plan, setPlan] = useState<PlanId | ''>('');
   const [loading, setLoading] = useState(true);
   const [settings, setSettings] = useState<any>(null);
+  const [userPoints, setUserPoints] = useState<number | null>(null);
   const [upgrades, setUpgrades] = useState<any[]>([]);
   const [loadingUpgrades, setLoadingUpgrades] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -45,6 +46,11 @@ export default function PricingPage() {
     if (u) {
       setPlan(u.plan);
       fetchUpgrades(u.email);
+      // fetch points balance for logged in demo user
+      fetch(`/api/points?userId=${encodeURIComponent(u.email)}`)
+        .then(r => r.json())
+        .then(d => { if (d?.ok) setUserPoints(d.balance); })
+        .catch(() => { setUserPoints(null); });
     }
     fetchSettings();
     fetchSubs();
@@ -249,6 +255,24 @@ export default function PricingPage() {
 
         {/* Auth tag removed from Pricing page per request */}
       </header>
+
+        <div className="mb-6 p-4 bg-white dark:bg-gray-800 rounded-lg border">
+          {user ? (
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="font-bold text-lg">{user.displayName || user.email.split('@')[0] || user.email}</div>
+                <div className="text-sm text-gray-500">{user.email}</div>
+                <div className="text-sm text-gray-500">方案：{user.plan}</div>
+              </div>
+              <div className="text-right">
+                <div className="text-sm text-gray-500">點數餘額</div>
+                <div className="text-2xl font-bold text-indigo-600">{userPoints !== null ? `${userPoints} 點` : '—'}</div>
+              </div>
+            </div>
+          ) : (
+            <div className="text-sm text-gray-600">請登入以檢視帳戶與點數資訊。 <Link href="/login" className="underline">登入</Link></div>
+          )}
+        </div>
 
       {mergedPlans.length > 0 && (
         <section className="section">

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getStoredUser, StoredUser, PLAN_LABELS } from '@/lib/mockAuth';
 import { useT } from '@/components/IntlProvider';
@@ -83,39 +83,323 @@ export default function PlansPage() {
         });
     };
 
-    const getEndTime = (upgrade: PlanUpgrade) => {
-        const isPoint = upgrade.planId.startsWith('points_');
-        if (isPoint) return '永久有效';
-
-        // Subscription plans: 1 month duration
+    /** 取得訂閱方案的結束日期 */
+    const getSubscriptionEndDate = (upgrade: PlanUpgrade): string => {
+        if (!pricingSettings) {
+            // fallback: 1 month
+            const date = new Date(upgrade.createdAt);
+            date.setMonth(date.getMonth() + 1);
+            return formatDate(date.toISOString());
+        }
+        const plan = pricingSettings.plans?.find((p: any) => p.id === upgrade.planId);
+        const durationDays = plan?.durationDays;
         const date = new Date(upgrade.createdAt);
-        date.setMonth(date.getMonth() + 1);
+        if (durationDays) {
+            date.setDate(date.getDate() + durationDays);
+        } else {
+            date.setMonth(date.getMonth() + 1);
+        }
         return formatDate(date.toISOString());
     };
 
     const getPlanLabel = (planId: string) => {
-        // 1. Check mock auth labels
         if ((PLAN_LABELS as any)[planId]) return (PLAN_LABELS as any)[planId];
-
-        // 2. Check dynamic pricing settings
         if (pricingSettings) {
             const plan = pricingSettings.plans?.find((p: any) => p.id === planId);
             if (plan) return plan.label;
-
             const pkg = pricingSettings.pointPackages?.find((p: any) => p.id === planId);
             if (pkg) return pkg.name;
         }
-
         return planId;
     };
 
-    if (loading) {
+    /** 取得點數套餐購買的點數數量 */
+    const getPointsAmount = (planId: string): number | null => {
+        if (!pricingSettings) return null;
+        const pkg = pricingSettings.pointPackages?.find((p: any) => p.id === planId);
+        return pkg?.points ?? null;
+    };
+
+    /** 取得關聯的應用方案列表 */
+    const getAssociatedAppPlans = (planId: string) => {
+        if (!pricingSettings) return [];
+
+        let appPlanIds: string[] = [];
+        const plan = pricingSettings.plans?.find((p: any) => p.id === planId);
+        if (plan) {
+            appPlanIds = plan.appPlanIds || [];
+        } else {
+            const pkg = pricingSettings.pointPackages?.find((p: any) => p.id === planId);
+            if (pkg) appPlanIds = pkg.appPlanIds || [];
+        }
+
+        if (appPlanIds.length === 0) return [];
+
+        return appPlanIds.map(id => {
+            const appPlan = pricingSettings.appPlans?.find((ap: any) => ap.id === id);
+            if (!appPlan) return { name: id, durationDays: null, pointsCost: null };
+            return {
+                name: appPlan.name,
+                durationDays: appPlan.durationDays ?? null,
+                pointsCost: appPlan.pointsCost ?? null,
+            };
+        });
+    };
+
+    const subscriptionUpgrades = upgrades.filter(u => !u.planId.startsWith('points_'));
+    const pointUpgrades = upgrades.filter(u => u.planId.startsWith('points_'));
+
+    const StatusBadge = ({ status }: { status: string }) => (
+        <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${status === 'PAID' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+            }`}>
+            {status === 'PAID' ? '已付款' : '處理中'}
+        </span>
+    );
+
+    /** 渲染「訂閱方案」表格 */
+    const renderSubscriptionTable = (data: PlanUpgrade[]) => {
+        // columns: 購買時間 | [使用者] | 項目 | 金額 | 生效日期 | 結束日期 | 狀態
+        const colCount = user?.role === 'admin' ? 7 : 6;
         return (
-            <div className="flex justify-center items-center min-h-[400px]">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+            <div className="bg-white shadow-md rounded-lg overflow-hidden border border-gray-200 mb-12">
+                <div className="bg-indigo-50 border-b border-indigo-100 px-6 py-4 flex items-center gap-3">
+                    <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-indigo-100 text-indigo-600">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                    </span>
+                    <div>
+                        <h2 className="text-xl font-bold text-indigo-900">訂閱方案紀錄</h2>
+                        <p className="text-xs text-indigo-500 mt-0.5">包含訂閱期間與金額資訊</p>
+                    </div>
+                </div>
+                <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50/50">
+                            <tr>
+                                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">購買時間</th>
+                                {user?.role === 'admin' && (
+                                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">使用者</th>
+                                )}
+                                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">訂閱方案</th>
+                                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">金額</th>
+                                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">生效日期</th>
+                                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">結束日期</th>
+                                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">狀態</th>
+                            </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                            {data.length > 0 ? data.map((upgrade) => {
+                                const appPlans = getAssociatedAppPlans(upgrade.planId);
+                                return (
+                                    <React.Fragment key={upgrade.upgradeId}>
+                                        <tr className="hover:bg-indigo-50/30 transition-colors">
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                                                {formatDate(upgrade.createdAt)}
+                                            </td>
+                                            {user?.role === 'admin' && (
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                                    {upgrade.userId}
+                                                </td>
+                                            )}
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm">
+                                                <span className="font-semibold text-indigo-600">
+                                                    {getPlanLabel(upgrade.planId)}
+                                                </span>
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                                {upgrade.currency} {upgrade.amount.toLocaleString()}
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                                                {formatDate(upgrade.createdAt)}
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                                                {getSubscriptionEndDate(upgrade)}
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap">
+                                                <StatusBadge status={upgrade.status} />
+                                            </td>
+                                        </tr>
+                                        {appPlans.length > 0 && (
+                                            <tr className="bg-indigo-50/20">
+                                                <td colSpan={colCount} className="px-12 py-3 border-t border-indigo-100/50">
+                                                    <div className="flex flex-col space-y-2 border-l-2 border-indigo-300/40 pl-4 py-1">
+                                                        <span className="text-xs font-bold text-indigo-400 uppercase tracking-widest">
+                                                            關聯應用方案
+                                                        </span>
+                                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                                            {appPlans.map((ap: any, idx: number) => (
+                                                                <div key={idx} className="flex flex-col p-2.5 bg-white rounded border border-indigo-100 shadow-sm">
+                                                                    <span className="text-sm font-semibold text-gray-800">{ap.name}</span>
+                                                                    <div className="flex flex-wrap gap-2 mt-1.5">
+                                                                        {ap.durationDays != null && (
+                                                                            <span className="inline-flex items-center gap-1 text-xs bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded">
+                                                                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                                                                        d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                                                </svg>
+                                                                                有效期 {ap.durationDays} 天
+                                                                            </span>
+                                                                        )}
+                                                                        {ap.pointsCost != null && ap.pointsCost > 0 && (
+                                                                            <span className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded">
+                                                                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                                                                        d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                                                </svg>
+                                                                                消耗 {ap.pointsCost} 點
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </React.Fragment>
+                                );
+                            }) : (
+                                <tr>
+                                    <td colSpan={colCount} className="px-6 py-8 text-center text-gray-400 italic">
+                                        尚無訂閱方案紀錄
+                                    </td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
             </div>
         );
-    }
+    };
+
+    /** 渲染「點數購買」表格 */
+    const renderPointsTable = (data: PlanUpgrade[]) => {
+        // columns: 購買時間 | [使用者] | 點數套餐 | 購買點數 | 金額 | 狀態
+        const colCount = user?.role === 'admin' ? 6 : 5;
+        return (
+            <div className="bg-white shadow-md rounded-lg overflow-hidden border border-gray-200 mb-12">
+                <div className="bg-blue-50 border-b border-blue-100 px-6 py-4 flex items-center gap-3">
+                    <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-blue-100 text-blue-600">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                    </span>
+                    <div>
+                        <h2 className="text-xl font-bold text-blue-900">點數購買紀錄</h2>
+                        <p className="text-xs text-blue-500 mt-0.5">點數無使用期限，購買後永久有效</p>
+                    </div>
+                </div>
+                <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50/50">
+                            <tr>
+                                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">購買時間</th>
+                                {user?.role === 'admin' && (
+                                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">使用者</th>
+                                )}
+                                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">點數套餐</th>
+                                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">購買點數</th>
+                                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">金額</th>
+                                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">狀態</th>
+                            </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                            {data.length > 0 ? data.map((upgrade) => {
+                                const points = getPointsAmount(upgrade.planId);
+                                const appPlans = getAssociatedAppPlans(upgrade.planId);
+                                return (
+                                    <React.Fragment key={upgrade.upgradeId}>
+                                        <tr className="hover:bg-blue-50/30 transition-colors">
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                                                {formatDate(upgrade.createdAt)}
+                                            </td>
+                                            {user?.role === 'admin' && (
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                                    {upgrade.userId}
+                                                </td>
+                                            )}
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm">
+                                                <span className="font-semibold text-blue-600">
+                                                    {getPlanLabel(upgrade.planId)}
+                                                </span>
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm">
+                                                {points != null ? (
+                                                    <span className="inline-flex items-center gap-1.5 font-bold text-blue-700">
+                                                        <svg className="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                                                d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                        </svg>
+                                                        {points.toLocaleString()} 點
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-gray-400">—</span>
+                                                )}
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                                {upgrade.currency} {upgrade.amount.toLocaleString()}
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap">
+                                                <StatusBadge status={upgrade.status} />
+                                            </td>
+                                        </tr>
+                                        {appPlans.length > 0 && (
+                                            <tr className="bg-blue-50/20">
+                                                <td colSpan={colCount} className="px-12 py-3 border-t border-blue-100/50">
+                                                    <div className="flex flex-col space-y-2 border-l-2 border-blue-300/40 pl-4 py-1">
+                                                        <span className="text-xs font-bold text-blue-400 uppercase tracking-widest">
+                                                            關聯應用方案
+                                                        </span>
+                                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                                            {appPlans.map((ap: any, idx: number) => (
+                                                                <div key={idx} className="flex flex-col p-2.5 bg-white rounded border border-blue-100 shadow-sm">
+                                                                    <span className="text-sm font-semibold text-gray-800">{ap.name}</span>
+                                                                    <div className="flex flex-wrap gap-2 mt-1.5">
+                                                                        {ap.durationDays != null && (
+                                                                            <span className="inline-flex items-center gap-1 text-xs bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded">
+                                                                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                                                                        d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                                                </svg>
+                                                                                有效期 {ap.durationDays} 天
+                                                                            </span>
+                                                                        )}
+                                                                        {ap.pointsCost != null && ap.pointsCost > 0 && (
+                                                                            <span className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded">
+                                                                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                                                                        d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                                                </svg>
+                                                                                消耗 {ap.pointsCost} 點
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </React.Fragment>
+                                );
+                            }) : (
+                                <tr>
+                                    <td colSpan={colCount} className="px-6 py-8 text-center text-gray-400 italic">
+                                        尚無點數購買紀錄
+                                    </td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        );
+    };
 
     return (
         <div className="page max-w-7xl mx-auto p-6">
@@ -149,88 +433,16 @@ export default function PlansPage() {
                 </div>
             )}
 
-            <div className="bg-white shadow-md rounded-lg overflow-hidden border border-gray-200">
-                <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-200">
-                        <thead className="bg-gray-50">
-                            <tr>
-                                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                                    購買時間
-                                </th>
-                                {user?.role === 'admin' && (
-                                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                                        使用者
-                                    </th>
-                                )}
-                                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                                    項目
-                                </th>
-                                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                                    金額
-                                </th>
-                                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                                    生效日期
-                                </th>
-                                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                                    結束日期
-                                </th>
-                                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                                    狀態
-                                </th>
-                            </tr>
-                        </thead>
-                        <tbody className="bg-white divide-y divide-gray-200">
-                            {upgrades.length > 0 ? (
-                                upgrades.map((upgrade) => (
-                                    <tr key={upgrade.upgradeId} className="hover:bg-gray-50 transition-colors">
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                                            {formatDate(upgrade.createdAt)}
-                                        </td>
-                                        {user?.role === 'admin' && (
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                                {upgrade.userId}
-                                            </td>
-                                        )}
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                            <span className={`font-semibold ${upgrade.planId.startsWith('points_') ? 'text-blue-600' : 'text-indigo-600'}`}>
-                                                {getPlanLabel(upgrade.planId)}
-                                            </span>
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                            {upgrade.currency} {upgrade.amount.toLocaleString()}
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                                            {formatDate(upgrade.createdAt)}
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                                            {getEndTime(upgrade)}
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${upgrade.status === 'PAID'
-                                                ? 'bg-green-100 text-green-800'
-                                                : 'bg-yellow-100 text-yellow-800'
-                                                }`}>
-                                                {upgrade.status === 'PAID' ? '已付款' : '處理中'}
-                                            </span>
-                                        </td>
-                                    </tr>
-                                ))
-                            ) : (
-                                <tr>
-                                    <td colSpan={user?.role === 'admin' ? 7 : 6} className="px-6 py-12 text-center text-gray-500">
-                                        <div className="flex flex-col items-center">
-                                            <svg className="h-12 w-12 text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-                                            </svg>
-                                            <p className="text-lg font-medium">尚無購買紀錄</p>
-                                        </div>
-                                    </td>
-                                </tr>
-                            )}
-                        </tbody>
-                    </table>
+            {loading ? (
+                <div className="flex justify-center items-center py-20">
+                    <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-500" />
                 </div>
-            </div>
+            ) : (
+                <>
+                    {renderSubscriptionTable(subscriptionUpgrades)}
+                    {renderPointsTable(pointUpgrades)}
+                </>
+            )}
         </div>
     );
 }
