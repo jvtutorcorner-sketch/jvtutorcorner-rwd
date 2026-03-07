@@ -131,8 +131,10 @@ export default function EditCoursePage() {
       const json = await res.json();
       if (res.ok && json?.ok) {
         if (json.course) setCourse(json.course);
-        setSuccess('已更新課程');
-        router.push('/courses_manage');
+        setSuccess('課程已更新（狀態變更需等待審核）');
+        setTimeout(() => {
+          router.push('/courses_manage');
+        }, 1500);
       } else {
         const msg = json?.message || '更新失敗';
         console.warn('[EditCourse] patch failed', msg);

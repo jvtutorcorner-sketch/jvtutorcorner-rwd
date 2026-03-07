@@ -121,9 +121,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       expressionAttributeValues[':teacherId'] = body.teacherId;
     }
     if (body.status !== undefined) {
-      updateExpressionParts.push('#status = :status');
-      expressionAttributeNames['#status'] = 'status';
-      expressionAttributeValues[':status'] = body.status;
+      updateExpressionParts.push('reviewRequestedStatus = :reviewRequestedStatus');
+      expressionAttributeValues[':reviewRequestedStatus'] = body.status;
+
+      updateExpressionParts.push('reviewStatus = :reviewStatus');
+      expressionAttributeValues[':reviewStatus'] = 'pending';
+
+      // If the course is already in '待審核', we can update the requested status but keep the main status.
+      // If we wanted to allow direct status updates (e.g. for admin), we'd need a flag or role check.
+      // For now, let's assume any PATCH with status from the teacher dashboard needs review.
     }
     if (body.pointCost !== undefined) {
       updateExpressionParts.push('pointCost = :pointCost');

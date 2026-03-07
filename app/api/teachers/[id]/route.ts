@@ -23,7 +23,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         const { id } = await params;
         const body = await req.json();
 
-        const allowedFields = ['intro', 'languages', 'subjects', 'name', 'avatarUrl', 'hourlyRate', 'location'];
+        const allowedFields = ['intro', 'languages', 'subjects', 'name', 'avatarUrl', 'hourlyRate', 'location', 'status'];
         const updateExpression: string[] = [];
         const expressionAttributeNames: Record<string, string> = {};
         const expressionAttributeValues: Record<string, any> = {};

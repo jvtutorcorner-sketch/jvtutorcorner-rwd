@@ -43,6 +43,9 @@ export default async function TeachersPage({ searchParams }: { searchParams: Pro
 
   // Client-side filtering (simulated on server for searchParams)
   const filteredTeachers = teachers.filter(t => {
+    // Hide resigned teachers
+    if (t.status === 'resigned') return false;
+
     const name = (t.name || t.displayName || '').toLowerCase();
     const lats = (t.languages || []).map((l: string) => l.toLowerCase());
 

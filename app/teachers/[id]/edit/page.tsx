@@ -26,7 +26,7 @@ export default function TeacherEditPage() {
 
     useEffect(() => {
         const user = getStoredUser();
-        if (!user || user.role !== 'teacher') {
+        if (!user || (user.role !== 'teacher' && user.role !== 'admin')) {
             router.push('/login');
             return;
         }

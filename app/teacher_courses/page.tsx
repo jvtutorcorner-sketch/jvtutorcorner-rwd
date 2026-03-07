@@ -20,6 +20,7 @@ type Order = {
   startTime?: string;
   endTime?: string;
   createdAt?: string;
+  status?: string;
   durationMinutes?: number;
 };
 
@@ -108,8 +109,29 @@ function TeacherCoursesContent() {
   }
   useEffect(() => {
     if (!mounted || !user) return;
-    if (user.role !== 'teacher') return;
+    if (user.role !== 'teacher' && user.role !== 'admin') return;
     setLoading(true);
+
+    if (user.role === 'admin') {
+      // Admin sees all orders
+      fetch(`/api/orders?limit=100`)
+        .then((r) => r.json())
+        .then((data) => {
+          let list: Order[] = [];
+          if (data && data.ok) list = data.data || data || [];
+          else if (data && data.data) list = data.data || [];
+          const uniqueOrders = list.filter((order, index, self) => index === self.findIndex((o) => o.orderId === order.orderId))
+            .filter(order => order.status !== 'FAILED');
+          setOrders(uniqueOrders);
+
+          // build courseId -> title map
+          const ids = Array.from(new Set(uniqueOrders.map((o) => o.courseId).filter(Boolean)));
+          fetchCourseNames(ids);
+        })
+        .catch((err) => setError(String(err?.message || err)))
+        .finally(() => setLoading(false));
+      return;
+    }
 
     // Fetch teacher's courses, then fetch orders for those courses
     const teacherId = (user as any).teacherId || '';
@@ -166,48 +188,7 @@ function TeacherCoursesContent() {
             setOrders(uniqueOrders);
             // build courseId -> title map
             const ids = Array.from(new Set(uniqueOrders.map((o) => o.courseId).filter(Boolean)));
-            if (ids.length === 0) {
-              setCourseMap({});
-              return;
-            }
-            const courseFetches = ids.map((cid) =>
-              fetch(`/api/courses?id=${encodeURIComponent(cid)}`)
-                .then((r) => r.json())
-                .then((j) => (j && j.ok && j.course ? {
-                  title: j.course.title,
-                  teacherName: j.course.teacherName || j.course.teacher || null,
-                  durationMinutes: j.course.durationMinutes,
-                  totalSessions: j.course.totalSessions,
-                  startDate: j.course.startDate || null,
-                  nextStartDate: j.course.nextStartDate || null,
-                  endDate: j.course.endDate || null,
-                  startTime: j.course.startTime || null,
-                  endTime: j.course.endTime || null
-                } : null))
-                .catch(() => null),
-            );
-            Promise.all(courseFetches)
-              .then((results) => {
-                const map: Record<string, { title?: string; teacherName?: string; durationMinutes?: number; totalSessions?: number; startDate?: string; nextStartDate?: string; endDate?: string; startTime?: string; endTime?: string }> = {};
-                ids.forEach((id, idx) => {
-                  const t = results[idx] as any | null;
-                  if (t) map[id] = {
-                    title: t.title,
-                    teacherName: t.teacherName,
-                    durationMinutes: t.durationMinutes,
-                    totalSessions: t.totalSessions,
-                    startDate: t.startDate,
-                    nextStartDate: t.nextStartDate,
-                    endDate: t.endDate,
-                    startTime: t.startTime,
-                    endTime: t.endTime
-                  };
-                });
-                setCourseMap(map);
-              })
-              .catch(() => {
-                // ignore errors building the map
-              });
+            fetchCourseNames(ids);
           })
           .catch((err) => setError(String(err?.message || err)))
           .finally(() => setLoading(false));
@@ -217,6 +198,51 @@ function TeacherCoursesContent() {
         setLoading(false);
       });
   }, [user, mounted]);
+
+  function fetchCourseNames(ids: any[]) {
+    if (ids.length === 0) {
+      setCourseMap({});
+      return;
+    }
+    const courseFetches = ids.map((cid) =>
+      fetch(`/api/courses?id=${encodeURIComponent(cid)}`)
+        .then((r) => r.json())
+        .then((j) => (j && j.ok && j.course ? {
+          title: j.course.title,
+          teacherName: j.course.teacherName || j.course.teacher || null,
+          durationMinutes: j.course.durationMinutes,
+          totalSessions: j.course.totalSessions,
+          startDate: j.course.startDate || null,
+          nextStartDate: j.course.nextStartDate || null,
+          endDate: j.course.endDate || null,
+          startTime: j.course.startTime || null,
+          endTime: j.course.endTime || null
+        } : null))
+        .catch(() => null),
+    );
+    Promise.all(courseFetches)
+      .then((results) => {
+        const map: Record<string, { title?: string; teacherName?: string; durationMinutes?: number; totalSessions?: number; startDate?: string; nextStartDate?: string; endDate?: string; startTime?: string; endTime?: string }> = {};
+        ids.forEach((id, idx) => {
+          const t = results[idx] as any | null;
+          if (t) map[id] = {
+            title: t.title,
+            teacherName: t.teacherName,
+            durationMinutes: t.durationMinutes,
+            totalSessions: t.totalSessions,
+            startDate: t.startDate,
+            nextStartDate: t.nextStartDate,
+            endDate: t.endDate,
+            startTime: t.startTime,
+            endTime: t.endTime
+          };
+        });
+        setCourseMap(map);
+      })
+      .catch(() => {
+        // ignore errors building the map
+      });
+  }
 
   // When orders change, fetch user details for any userIds found
   useEffect(() => {
@@ -254,7 +280,7 @@ function TeacherCoursesContent() {
       </p>
     </div>
   );
-  if (user.role !== 'teacher') return <div>{t('teacher_only_feature')}</div>;
+  if (user.role !== 'teacher' && user.role !== 'admin') return <div>{t('teacher_only_feature')}</div>;
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -328,7 +354,7 @@ function TeacherCoursesContent() {
   return (
     <div className="page">
       <section className="section">
-        <h2 style={{ marginBottom: '16px' }}>{t('course_orders')}</h2>
+        <h2 style={{ marginBottom: '16px' }}>{getPageTitle()}</h2>
 
         {/* Search Bar matching /courses */}
         <form onSubmit={handleSearch} style={{ display: 'flex', gap: '16px', marginBottom: '24px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
@@ -505,15 +531,68 @@ function TeacherCoursesContent() {
                       })()}
                     </td>
                     <td data-label={t('enter_classroom')} style={{ border: '2px solid #ccc', padding: '6px' }}>
-                      {o.courseId ? (
-                        <Link
-                          href={`/classroom/wait?courseId=${encodeURIComponent(o.courseId)}&orderId=${encodeURIComponent(o.orderId || (o as any).id || '')}&orderid=${encodeURIComponent(o.orderId || (o as any).id || '')}`}
-                          className="btn btn-primary"
-                          style={{ padding: '4px 8px', fontSize: '12px' }}
-                        >
-                          {t('enter_classroom')}
-                        </Link>
-                      ) : '-'}
+                      {(() => {
+                        if (!o.courseId) return '-';
+
+                        // Resolve start time
+                        let startTs = 0;
+                        if (o.startTime) {
+                          const isoDate = o.startTime.includes('T') ? o.startTime : `${o.startTime.split(' ')[0]}T${o.startTime.split(' ')[1] || '00:00:00'}`;
+                          startTs = new Date(isoDate).getTime();
+                        } else if (o.createdAt) {
+                          startTs = new Date(o.createdAt).getTime();
+                        } else {
+                          const c = courseMap[o.courseId];
+                          if (c) {
+                            const rawStart = c.nextStartDate || c.startDate;
+                            if (rawStart) {
+                              if (rawStart.includes('T')) {
+                                startTs = new Date(rawStart).getTime();
+                              } else {
+                                const datePart = rawStart.split('T')[0];
+                                let timePart = c.startTime || '00:00:00';
+                                timePart = timePart.replace(/[上下]午/g, '').trim();
+                                startTs = new Date(`${datePart}T${timePart}`).getTime();
+                              }
+                            }
+                          }
+                        }
+
+                        // Resolve end time
+                        let endTs = 0;
+                        if (o.endTime) {
+                          const isoDate = o.endTime.includes('T') ? o.endTime : `${o.endTime.split(' ')[0]}T${o.endTime.split(' ')[1] || '00:00:00'}`;
+                          endTs = new Date(isoDate).getTime();
+                        } else {
+                          const c = courseMap[o.courseId];
+                          if (c && c.endDate) {
+                            if (c.endDate.includes('T')) {
+                              endTs = new Date(c.endDate).getTime();
+                            } else {
+                              const datePart = c.endDate.split('T')[0];
+                              let timePart = c.endTime || '00:00:00';
+                              timePart = timePart.replace(/[上下]午/g, '').trim();
+                              endTs = new Date(`${datePart}T${timePart}`).getTime();
+                            }
+                          }
+                        }
+
+                        const now = Date.now();
+                        // If we have both, check range. If we only have start, check if started.
+                        const isVisible = (startTs && endTs) ? (now >= startTs && now <= endTs) : (startTs ? now >= startTs : true);
+
+                        if (!isVisible) return '-';
+
+                        return (
+                          <Link
+                            href={`/classroom/wait?courseId=${encodeURIComponent(o.courseId)}&orderId=${encodeURIComponent(o.orderId || (o as any).id || '')}&orderid=${encodeURIComponent(o.orderId || (o as any).id || '')}`}
+                            className="btn btn-primary"
+                            style={{ padding: '4px 8px', fontSize: '12px' }}
+                          >
+                            {t('enter_classroom')}
+                          </Link>
+                        );
+                      })()}
                     </td>
                   </tr>
                 ))}

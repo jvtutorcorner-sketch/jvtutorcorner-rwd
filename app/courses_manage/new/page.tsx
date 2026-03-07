@@ -97,11 +97,11 @@ export default function NewCoursePage() {
             });
             const json = await res.json();
             if (res.ok && json?.ok) {
-                setSuccess('已建立課程');
+                setSuccess('課程已提交審核，請等待管理員核准');
                 // Redirect to dashboard after short delay
                 setTimeout(() => {
-                    router.push('/dashboard/teacher');
-                }, 1000);
+                    router.push('/teacher/dashboard');
+                }, 1500);
             } else {
                 const msg = json?.message || '建立失敗';
                 setError(msg);
@@ -118,7 +118,7 @@ export default function NewCoursePage() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
                 <h1 style={{ fontSize: 22, fontWeight: 700 }}>新增課程</h1>
                 <div>
-                    <button type="button" onClick={() => router.push('/dashboard/teacher')} className="py-2 px-4 bg-blue-600 text-white rounded">回到儀表板</button>
+                    <button type="button" onClick={() => router.push('/teacher/dashboard')} className="py-2 px-4 bg-blue-600 text-white rounded">回到儀表板</button>
                 </div>
             </div>
 

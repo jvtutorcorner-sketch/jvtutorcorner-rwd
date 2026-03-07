@@ -1,8 +1,10 @@
-"use client";
-
-import React from 'react';
 import TeacherDashboard from './TeacherDashboard';
+import { Suspense } from 'react';
 
 export default function TeacherDashboardClient(props: any) {
-  return <TeacherDashboard {...props} />;
+  return (
+    <Suspense fallback={<div>Loading dashboard...</div>}>
+      <TeacherDashboard {...props} />
+    </Suspense>
+  );
 }

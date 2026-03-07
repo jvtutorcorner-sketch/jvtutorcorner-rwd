@@ -140,7 +140,7 @@ async function readSettings() {
           ]
         },
         {
-          id: '/dashboard/teacher', path: '/dashboard/teacher', label: '教師儀表板', permissions: [
+          id: '/teacher/dashboard', path: '/teacher/dashboard', label: '教師儀表板', permissions: [
             { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
             { roleId: 'teacher', roleName: 'Teacher', menuVisible: true, dropdownVisible: true, pageVisible: true },
             { roleId: 'student', roleName: 'Student', menuVisible: false, dropdownVisible: false, pageVisible: false }
