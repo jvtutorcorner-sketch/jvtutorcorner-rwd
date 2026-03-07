@@ -21,10 +21,10 @@ export default function EcpaySuccessPage() {
                 </p>
 
                 <Link
-                    href="/student_courses"
+                    href="/plans"
                     className="inline-block w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg transition-colors"
                 >
-                    前往儀表板
+                    前往方案紀錄
                 </Link>
             </div>
         </div>

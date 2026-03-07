@@ -149,6 +149,7 @@ export type StoredUser = {
   teacherId?: string;
   // roid_id is used for DynamoDB primary key matching
   roid_id?: string;
+  id?: string;
   // optional display/name fields used in various UIs
   displayName?: string;
   firstName?: string;

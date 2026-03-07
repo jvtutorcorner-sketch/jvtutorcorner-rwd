@@ -34,9 +34,23 @@ export type PointPackage = {
   price: number; // Final calculated price
   manualDiscount: number; // New: manual flat discount
   discountPlanId?: string; // New: reference to global discount plan
+  appPlanIds?: string[]; // New: reference to app plans
+  prePurchasePointsCost?: number; // New: total points cost from bound app plans
   bonus?: number; // Kept for legacy compatibility
   description?: string;
   badge?: string;
+  isActive: boolean;
+  order: number;
+};
+
+export type AppPlan = {
+  id: string;
+  name: string;
+  description: string;
+  appId: string;
+  appName?: string;
+  durationDays?: number;
+  pointsCost?: number; // New: points required to use this app plan
   isActive: boolean;
   order: number;
 };
@@ -49,6 +63,7 @@ export type PricingSettings = {
   pointPackages: PointPackage[];
   discountPlans?: DiscountPlan[]; // global discount plans
   extensions?: any[]; // For storing extension subscriptions in the same table
+  appPlans?: AppPlan[]; // For storing app plan configurations
 };
 
 /**

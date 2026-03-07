@@ -31,7 +31,9 @@ export interface SubscriptionConfig {
     isActive: boolean;
     order: number;
     discountPlanId?: string; // New: reference to global discount plan
+    durationDays?: number; // New: billing cycle in days (replaces interval)
     durationMonths?: number; // Optional duration for extensions
+    appPlanIds?: string[]; // New: linked app plan IDs
     createdAt?: string;
     updatedAt?: string;
 }

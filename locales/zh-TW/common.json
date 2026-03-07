@@ -333,7 +333,7 @@
   "no_enrollments": "目前沒有報名紀錄。",
   "create_order": "建立訂單",
   "simulate_payment": "模擬付款",
-  "confirm_payment": "確認付款（再模擬）",
+  "confirm_payment": "確認付款",
   "course_active": "課程已生效",
   "cancel_enrollment": "取消報名",
   "cancelled_or_refunded": "已取消 / 已退款",

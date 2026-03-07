@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
             } catch (e) {
                 console.error('[PayPal Return Mock] Error updating order status:', e);
             }
-            return NextResponse.redirect(`${baseURL}/student_courses`, 302);
+            return NextResponse.redirect(`${baseURL}/plans`, 302);
         }
 
         const accessToken = await generateAccessToken();
@@ -68,7 +68,7 @@ export async function GET(req: NextRequest) {
                 console.warn('[PayPal Return] No custom_id (orderId) found in PayPal response.');
             }
 
-            return NextResponse.redirect(`${baseURL}/student_courses`, 302);
+            return NextResponse.redirect(`${baseURL}/plans`, 302);
         } else {
             console.error('[PayPal Return] Capture Failed:', data);
             return NextResponse.redirect(`${baseURL}/paypal/failure?reason=capture_failed`, 302);

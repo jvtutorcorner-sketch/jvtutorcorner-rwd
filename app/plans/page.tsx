@@ -52,9 +52,10 @@ export default function PlansPage() {
         setError(null);
         try {
             const isAdmin = currentUser.role === 'admin';
+            const userId = currentUser.roid_id || currentUser.id || currentUser.email;
             const url = isAdmin
                 ? '/api/plan-upgrades'
-                : `/api/plan-upgrades?userId=${encodeURIComponent(currentUser.email)}`;
+                : `/api/plan-upgrades?userId=${encodeURIComponent(userId)}`;
 
             const res = await fetch(url);
             const data = await res.json();

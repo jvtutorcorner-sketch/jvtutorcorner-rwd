@@ -20,9 +20,11 @@ const UPGRADES_TABLE = process.env.DYNAMODB_TABLE_PLAN_UPGRADES || 'jvtutorcorne
 
 export async function POST(request: Request) {
     try {
-        const { planId, amount, currency, userId } = await request.json();
+        const { planId, amount, currency, userId, itemType, planLabel } = await request.json();
+        console.log('[plan-upgrades API] POST request:', { planId, amount, currency, userId, itemType });
 
         if (!planId || !userId) {
+            console.warn('[plan-upgrades API] Missing planId or userId');
             return NextResponse.json({ error: 'Plan ID and User ID are required' }, { status: 400 });
         }
 
@@ -33,6 +35,8 @@ export async function POST(request: Request) {
             upgradeId,
             userId,
             planId,
+            itemType: itemType || (planId.startsWith('points_') ? 'POINTS' : 'PLAN'),
+            planLabel: planLabel || planId,
             amount: amount || 0,
             currency: currency || 'TWD',
             status: 'PENDING',
@@ -40,11 +44,15 @@ export async function POST(request: Request) {
             updatedAt: createdAt,
         };
 
+        console.log('[plan-upgrades API] Saving upgrade:', upgrade);
+
         const command = new PutCommand({
             TableName: UPGRADES_TABLE,
             Item: upgrade,
         });
         await docClient.send(command);
+
+        console.log('[plan-upgrades API] Upgrade created successfully:', upgradeId);
 
         return NextResponse.json({
             message: 'Upgrade order created successfully',
@@ -52,8 +60,8 @@ export async function POST(request: Request) {
         }, { status: 201 });
 
     } catch (error: any) {
-        console.error('Error creating upgrade:', error?.message || error);
-        return NextResponse.json({ error: 'Failed to create upgrade' }, { status: 500 });
+        console.error('[plan-upgrades API] Error creating upgrade:', error);
+        return NextResponse.json({ error: 'Failed to create upgrade', details: error.message }, { status: 500 });
     }
 }
 

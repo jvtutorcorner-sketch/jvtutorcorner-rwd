@@ -5,6 +5,25 @@ import Link from 'next/link';
 import { PLAN_TARGETS, PLAN_LABELS, PLAN_DESCRIPTIONS, PLAN_FEATURES, PLAN_PRICES } from '@/lib/mockAuth';
 import { SubscriptionConfig, SubscriptionType } from '@/lib/subscriptionsService';
 
+type ConnectedApp = {
+  integrationId: string;
+  name: string;
+  type: string;
+  status: string;
+};
+
+export type AppPlan = {
+  id: string;
+  name: string;
+  description: string;
+  appId: string; // integrationId of connected app
+  appName?: string; // display name
+  durationDays?: number;
+  pointsCost?: number; // points required to use this app plan
+  isActive: boolean;
+  order: number;
+};
+
 export type DiscountPlan = {
   id: string;
   name: string;
@@ -14,6 +33,7 @@ export type DiscountPlan = {
   order: number;
 };
 
+
 type PointPackage = {
   id: string;
   name: string;
@@ -22,6 +42,8 @@ type PointPackage = {
   price: number;
   manualDiscount: number;
   discountPlanId?: string;
+  appPlanIds?: string[];
+  prePurchasePointsCost?: number; // total points cost from bound app plans
   bonus?: number;
   description?: string;
   badge?: string;
@@ -32,10 +54,11 @@ type PointPackage = {
 type PricingSettings = {
   pageTitle: string;
   pageDescription: string;
-  mode: 'subscription' | 'points' | 'discounts';
+  mode: 'subscription' | 'points' | 'discounts' | 'app-plans';
   plans?: any[]; // For backward compatibility
   pointPackages: PointPackage[];
   discountPlans?: DiscountPlan[];
+  appPlans?: AppPlan[];
   extensions?: any[];
 };
 
@@ -47,9 +70,11 @@ export default function PricingSettingsPage() {
     mode: 'subscription',
     pointPackages: [],
     discountPlans: [],
+    appPlans: [],
     extensions: []
   });
   const [subscriptions, setSubscriptions] = useState<SubscriptionConfig[]>([]);
+  const [connectedApps, setConnectedApps] = useState<ConnectedApp[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
@@ -78,20 +103,27 @@ export default function PricingSettingsPage() {
   useEffect(() => {
     const loadPricingData = async () => {
       try {
-        const [pricingRes, subsRes] = await Promise.all([
+        const [pricingRes, subsRes, appsRes] = await Promise.all([
           fetch('/api/admin/pricing'),
-          fetch('/api/admin/subscriptions')
+          fetch('/api/admin/subscriptions'),
+          fetch('/api/app-integrations')
         ]);
 
         const pricingData = await pricingRes.json();
         const subsData = await subsRes.json();
+        const appsData = await appsRes.json();
+
+        // Load connected apps for app plan selection
+        if (appsRes.ok && appsData.ok) {
+          setConnectedApps((appsData.data || []).filter((a: ConnectedApp) => a.status === 'ACTIVE'));
+        }
 
         let loadedSettings: PricingSettings | null = null;
         let loadedSubs: SubscriptionConfig[] = [];
 
         if (pricingRes.ok && pricingData.ok) {
           loadedSettings = pricingData.settings as PricingSettings;
-          setSettings(loadedSettings);
+          setSettings(prev => ({ ...prev, ...loadedSettings, mode: prev.mode }));
 
           // Populate subscriptions state from consolidated pricing data
           const consolidatedSubs: SubscriptionConfig[] = [
@@ -278,6 +310,7 @@ export default function PricingSettingsPage() {
     if (normalize(subscriptions) !== normalize(originalSubscriptions)) return true;
     if (normalize(settings.pointPackages) !== normalize(originalSettings.pointPackages)) return true;
     if (normalize(settings.discountPlans) !== normalize(originalSettings.discountPlans)) return true;
+    if (normalize(settings.appPlans) !== normalize(originalSettings.appPlans)) return true;
 
     return false;
   };
@@ -301,16 +334,65 @@ export default function PricingSettingsPage() {
       price: isPlan ? 990 : 100,
       currency: 'TWD',
       interval: isPlan ? 'month' : 'one-time',
+      durationDays: isPlan ? 30 : undefined,
       badge: '',
       targetAudience: '目標用戶',
       includedFeatures: '包含的功能',
       features: ['功能特色 1', '功能特色 2'],
+      appPlanIds: [],
       isActive: true,
       order: maxOrder + 1
     };
 
     setSubscriptions(prev => [...prev, newSub]);
     setEditingPlanId(newSub.id);
+  };
+
+  // ─── App Plans helpers ───
+  const addAppPlan = () => {
+    const newPlan: AppPlan = {
+      id: `app_plan_${Date.now()}`,
+      name: '新應用程式方案',
+      description: '',
+      appId: '',
+      durationDays: 30,
+      isActive: true,
+      order: Math.max(...(settings.appPlans?.map(p => p.order) || [0]), 0) + 1
+    };
+    setSettings(prev => ({ ...prev, appPlans: [...(prev.appPlans || []), newPlan] }));
+    setEditingPlanId(newPlan.id);
+  };
+
+  const removeAppPlan = (planId: string) => {
+    setSettings(prev => ({ ...prev, appPlans: (prev.appPlans || []).filter(p => p.id !== planId) }));
+  };
+
+  const updateAppPlan = (planId: string, field: keyof AppPlan, value: any) => {
+    setSettings(prev => ({
+      ...prev,
+      appPlans: (prev.appPlans || []).map(p => {
+        if (p.id !== planId) return p;
+        const updated = { ...p, [field]: value };
+        // Auto-fill appName when appId changes
+        if (field === 'appId') {
+          const app = connectedApps.find(a => a.integrationId === value);
+          updated.appName = app ? app.name : '';
+        }
+        return updated;
+      })
+    }));
+  };
+
+  const moveAppPlan = (planId: string, direction: 'up' | 'down') => {
+    const plans = settings.appPlans || [];
+    const currentIndex = plans.findIndex(p => p.id === planId);
+    if (currentIndex === -1) return;
+    const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+    if (newIndex < 0 || newIndex >= plans.length) return;
+    const newPlans = [...plans];
+    [newPlans[currentIndex], newPlans[newIndex]] = [newPlans[newIndex], newPlans[currentIndex]];
+    newPlans.forEach((p, i) => { p.order = i + 1; });
+    setSettings(prev => ({ ...prev, appPlans: newPlans }));
   };
 
   const removeSubscription = (id: string) => {
@@ -348,6 +430,7 @@ export default function PricingSettingsPage() {
       unitPrice: 10,
       price: 1000,
       manualDiscount: 0,
+      prePurchasePointsCost: 0,
       description: '套餐描述',
       badge: '',
       isActive: true,
@@ -371,6 +454,7 @@ export default function PricingSettingsPage() {
         unitPrice: 10,
         price: 500,
         manualDiscount: 0,
+        prePurchasePointsCost: 0,
         description: '適合新手體驗的基礎套餐',
         badge: '推薦新手',
         isActive: true,
@@ -383,6 +467,7 @@ export default function PricingSettingsPage() {
         unitPrice: 9,
         price: 900,
         manualDiscount: 0,
+        prePurchasePointsCost: 0,
         description: '性價比最好的熱銷套餐',
         badge: '熱銷',
         isActive: true,
@@ -395,6 +480,7 @@ export default function PricingSettingsPage() {
         unitPrice: 8,
         price: 2000,
         manualDiscount: 0,
+        prePurchasePointsCost: 0,
         description: '大量購買享優惠',
         badge: '推薦',
         isActive: true,
@@ -407,6 +493,7 @@ export default function PricingSettingsPage() {
         unitPrice: 7,
         price: 3500,
         manualDiscount: 0,
+        prePurchasePointsCost: 0,
         description: '專為忠實用戶設計的頂級套餐',
         badge: 'VIP',
         isActive: true,
@@ -439,6 +526,15 @@ export default function PricingSettingsPage() {
       const newPackages = (prev.pointPackages || []).map(pkg => {
         if (pkg.id === packageId) {
           const updatedPkg = { ...pkg, [field]: value };
+
+          // Auto-calculate prePurchasePointsCost when appPlanIds changes
+          if (field === 'appPlanIds') {
+            const totalCost = (value || []).reduce((sum: number, appPlanId: string) => {
+              const appPlan = prev.appPlans?.find(ap => ap.id === appPlanId);
+              return sum + (appPlan?.pointsCost || 0);
+            }, 0);
+            updatedPkg.prePurchasePointsCost = totalCost;
+          }
 
           // Recalculate price
           const basePrice = updatedPkg.unitPrice * updatedPkg.points;
@@ -553,7 +649,51 @@ export default function PricingSettingsPage() {
           features: e.features || []
         }));
 
-      const pricingPayload = { ...settings, plans: plansForPricing, extensions: extensionsForPricing };
+      const pricingPayload = { ...settings, plans: plansForPricing, extensions: extensionsForPricing, appPlans: settings.appPlans || [] };
+
+      // Pre-save validation: Check for data consistency
+      const issues: string[] = [];
+      
+      // Check subscription plans with app bindings
+      plansForPricing.forEach((p: any) => {
+        if (p.appPlanIds?.length > 0) {
+          p.appPlanIds.forEach((apId: string) => {
+            const ap = settings.appPlans?.find(ap => ap.id === apId);
+            if (!ap) {
+              issues.push(`訂閱方案 "${p.label}" 參考了不存在的應用程式方案 ${apId}`);
+            }
+          });
+        }
+      });
+      
+      // Check point packages with app bindings
+      pricingPayload.pointPackages?.forEach((pkg: any) => {
+        if (pkg.appPlanIds?.length > 0) {
+          pkg.appPlanIds.forEach((apId: string) => {
+            const ap = settings.appPlans?.find(ap => ap.id === apId);
+            if (!ap) {
+              issues.push(`點數套餐 "${pkg.name}" 參考了不存在的應用程式方案 ${apId}`);
+            }
+          });
+        }
+      });
+      
+      // Log the data being saved
+      console.log('[Settings] Pre-save data validation:', {
+        plansCount: plansForPricing.length,
+        extensionsCount: extensionsForPricing.length,
+        pointPackagesCount: pricingPayload.pointPackages?.length || 0,
+        appPlansCount: settings.appPlans?.length || 0,
+        appBindingsInPlans: plansForPricing.filter((p: any) => (p.appPlanIds?.length || 0) > 0).length,
+        appBindingsInPackages: pricingPayload.pointPackages?.filter((pkg: any) => (pkg.appPlanIds?.length || 0) > 0).length,
+        validationIssues: issues
+      });
+
+      if (issues.length > 0) {
+        setMessage(`驗證失敗: ${issues.join('; ')}`);
+        setSaving(false);
+        return;
+      }
 
       const pricingRes = await fetch('/api/admin/pricing', {
         method: 'POST',
@@ -579,6 +719,14 @@ export default function PricingSettingsPage() {
         ];
         setSubscriptions(updatedSubs);
         setOriginalSubscriptions(updatedSubs);
+
+        // Verify data was saved correctly
+        console.log('[Settings] Data verified after save:', {
+          plansCount: updatedSettings.plans?.length,
+          appPlansCount: updatedSettings.appPlans?.length,
+          plansWithBindings: updatedSettings.plans?.filter((p: any) => (p.appPlanIds?.length || 0) > 0).length,
+          appPlansWithDuration: updatedSettings.appPlans?.filter((ap: any) => ap.durationDays).length,
+        });
       } else {
         setMessage(pricingData.error || '儲存失敗，請重試');
       }
@@ -728,6 +876,19 @@ export default function PricingSettingsPage() {
             </svg>
             折扣方案
           </button>
+
+          <button
+            onClick={() => updateSettings('mode', 'app-plans')}
+            className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold transition-all ${settings.mode === 'app-plans'
+              ? 'bg-white text-violet-700 shadow-sm ring-1 ring-black/5'
+              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
+              }`}
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+            </svg>
+            應用程式方案
+          </button>
         </div>
 
         {/* 訂閱方案管理區塊 */}
@@ -830,17 +991,19 @@ export default function PricingSettingsPage() {
 
                         <div className="space-y-1 flex gap-2">
                           <div className="flex-1">
-                            <label className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">週期 (Interval)</label>
-                            <select
-                              value={plan.interval || 'month'}
-                              onChange={(e) => updateSubscription(plan.id, 'interval', e.target.value)}
-                              disabled={editingPlanId !== plan.id}
-                              className={`w-full px-3 py-2 rounded-lg text-sm transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 border ${editingPlanId === plan.id ? 'bg-white border-gray-300' : 'bg-transparent border-transparent text-gray-900 font-medium px-0 appearance-none'}`}
-                            >
-                              <option value="month">月 (Month)</option>
-                              <option value="year">年 (Year)</option>
-                              <option value="one-time">單次 (One-time)</option>
-                            </select>
+                            <label className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">週期天數 (Days)</label>
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="number"
+                                min={1}
+                                max={999}
+                                value={(plan as any).durationDays ?? 30}
+                                onChange={(e) => updateSubscription(plan.id, 'durationDays' as any, Math.min(999, Math.max(1, parseInt(e.target.value) || 1)))}
+                                disabled={editingPlanId !== plan.id}
+                                className={`w-full px-3 py-2 rounded-lg text-sm transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 border ${editingPlanId === plan.id ? 'bg-white border-gray-300' : 'bg-transparent border-transparent text-gray-900 font-medium px-0'}`}
+                              />
+                              <span className="text-xs text-gray-500 shrink-0">天</span>
+                            </div>
                           </div>
                           <div className="flex-1">
                             <label className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">折扣方案 (Discount)</label>
@@ -858,6 +1021,47 @@ export default function PricingSettingsPage() {
                               ))}
                             </select>
                           </div>
+                        </div>
+
+                        {/* 應用程式方案 */}
+                        <div className="space-y-1 sm:col-span-2">
+                          <label className="text-[11px] font-bold text-violet-500 uppercase tracking-widest">應用程式方案 (App Plans)</label>
+                          {(settings.appPlans || []).length === 0 ? (
+                            <p className="text-[11px] text-gray-400 italic">尚未建立任何應用程式方案，請至「應用程式方案」tab 新增</p>
+                          ) : (
+                            <div className={`grid grid-cols-1 gap-3 ${editingPlanId !== plan.id ? 'opacity-70' : ''}`}>
+                              {(settings.appPlans || []).map(ap => {
+                                const checked = ((plan as any).appPlanIds || []).includes(ap.id);
+                                const days = ap.durationDays ?? 0;
+                                const startDate = new Date();
+                                const endDate = new Date(startDate);
+                                endDate.setDate(startDate.getDate() + Math.max(days, 1));
+                                const dateRange = `${startDate.toLocaleDateString('zh-TW')} → ${endDate.toLocaleDateString('zh-TW')}`;
+                                return (
+                                  <label key={ap.id} className={`flex items-start gap-3 px-4 py-3 rounded-lg border cursor-pointer transition-all ${checked ? 'bg-violet-50 border-violet-300 text-violet-800' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
+                                    } ${editingPlanId !== plan.id ? 'pointer-events-none' : ''}`}>
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      disabled={editingPlanId !== plan.id}
+                                      onChange={(e) => {
+                                        const cur: string[] = (plan as any).appPlanIds || [];
+                                        const next = e.target.checked ? [...cur, ap.id] : cur.filter(x => x !== ap.id);
+                                        updateSubscription(plan.id, 'appPlanIds' as any, next);
+                                      }}
+                                      className="accent-violet-600 mt-1"
+                                    />
+                                    <div className="flex-1">
+                                      <div className="font-bold text-sm truncate">{ap.name}</div>
+                                      {ap.appName && <div className="text-xs text-gray-500 mt-1">服務：{ap.appName}</div>}
+                                      <div className="text-sm text-blue-600 font-semibold mt-1">{dateRange}</div>
+                                      <div className="text-xs text-gray-500 mt-0.5">{days || 1}天</div>
+                                    </div>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
 
                         <div className="space-y-1">
@@ -1215,11 +1419,83 @@ export default function PricingSettingsPage() {
                           )}
                         </div>
 
+                        {/* 應用程式方案 */}
+                        <div className="space-y-2 sm:col-span-2 lg:col-span-2 bg-violet-50/60 border border-violet-100 rounded-xl p-4">
+                          <label className="text-[11px] font-bold text-violet-600 uppercase tracking-widest">應用程式方案 (App Plans)</label>
+                          {(settings.appPlans || []).length === 0 ? (
+                            <p className="text-[11px] text-gray-400 italic">尚未建立任何應用程式方案，請至「應用程式方案」tab 新增</p>
+                          ) : (
+                            <div className={`grid grid-cols-1 gap-3 ${editingPlanId !== pkg.id ? 'opacity-70' : ''}`}>
+                              {(settings.appPlans || []).map(ap => {
+                                const checked = (pkg.appPlanIds || []).includes(ap.id);
+                                const days = ap.durationDays ?? 0;
+                                const startDate = new Date();
+                                const endDate = new Date(startDate);
+                                endDate.setDate(startDate.getDate() + Math.max(days, 1));
+                                const dateRange = `${startDate.toLocaleDateString('zh-TW')} → ${endDate.toLocaleDateString('zh-TW')}`;
+                                return (
+                                  <label key={ap.id} className={`flex items-start gap-3 px-4 py-3 rounded-lg border cursor-pointer transition-all ${checked ? 'bg-violet-100 border-violet-300 text-violet-800' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
+                                    } ${editingPlanId !== pkg.id ? 'pointer-events-none' : ''}`}>
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      disabled={editingPlanId !== pkg.id}
+                                      onChange={(e) => {
+                                        const cur = pkg.appPlanIds || [];
+                                        const next = e.target.checked ? [...cur, ap.id] : cur.filter(x => x !== ap.id);
+                                        updatePointPackage(pkg.id, 'appPlanIds', next);
+                                      }}
+                                      className="accent-violet-600 mt-1"
+                                    />
+                                    <div className="flex-1">
+                                      <div className="font-bold text-sm truncate">{ap.name}</div>
+                                      {ap.appName && <div className="text-xs text-gray-500 mt-1">服務：{ap.appName}</div>}
+                                      <div className="text-sm text-blue-600 font-semibold mt-1">{dateRange}</div>
+                                      <div className="text-xs text-gray-500 mt-0.5">{days || 1}天</div>
+                                    </div>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+
                         <div className="space-y-1 bg-green-50/50 -mx-5 px-5 py-2 sm:mx-0 sm:px-3 sm:py-2 border-y border-green-100 sm:border sm:rounded-lg flex flex-col justify-center">
                           <label className="text-[11px] font-bold text-green-600 uppercase tracking-widest">計算後總價 (Final Price)</label>
                           <div className="text-xl font-bold text-green-700 mt-1">
                             NT$ {pkg.price ?? 0}
                           </div>
+                        </div>
+
+                        <div className="space-y-1 bg-orange-50/50 rounded-xl p-4 border border-orange-100 sm:col-span-2 lg:col-span-3">
+                          <label className="text-[11px] font-bold text-orange-600 uppercase tracking-widest">點數消耗計算 (Points Calculation)</label>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
+                            <div className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-orange-200">
+                              <span className="text-xs text-gray-600">購買前需扣點數：</span>
+                              <span className="text-lg font-bold text-orange-600">{pkg.prePurchasePointsCost ?? 0}</span>
+                            </div>
+                            <div className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-green-200">
+                              <span className="text-xs text-gray-600">購買後可用點數：</span>
+                              <span className="text-lg font-bold text-green-600">{(pkg.points ?? 0) - (pkg.prePurchasePointsCost ?? 0)}</span>
+                            </div>
+                          </div>
+                          {((pkg.appPlanIds || []).length) === 0 && (
+                            <p className="text-[11px] text-gray-400 italic mt-2">尚未綁定任何應用程式方案</p>
+                          )}
+                          {((pkg.appPlanIds || []).length) > 0 && (
+                            <div className="text-[11px] text-gray-600 mt-2">
+                              已綁定 {(pkg.appPlanIds || []).length} 個應用程式方案
+                              {/* Show which app plans are bound */}
+                              {(pkg.appPlanIds || []).map(apId => {
+                                const ap = settings.appPlans?.find(a => a.id === apId);
+                                return ap ? (
+                                  <div key={apId} className="ml-3 text-xs mt-1">
+                                    • {ap.name}: {ap.pointsCost ?? 0} 點
+                                  </div>
+                                ) : null;
+                              })}
+                            </div>
+                          )}
                         </div>
 
                         <div className="space-y-1 sm:col-span-2 lg:col-span-3">
@@ -1426,6 +1702,169 @@ export default function PricingSettingsPage() {
                           </button>
                         )}
                       </div>
+                    </div>
+                  </div>
+                ))}
+            </div>
+          </div>
+        )}
+
+        {/* 應用程式方案管理區塊 */}
+        {settings.mode === 'app-plans' && (
+          <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-xl font-bold text-gray-900">應用程式方案管理</h3>
+                <p className="text-sm text-gray-500 mt-1">建立應用程式方案，將已連接的服務整合到訂閱方案或點數套餐中。</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button onClick={addAppPlan} className="px-4 py-2 bg-violet-900 text-white text-sm font-bold rounded-lg hover:bg-violet-800 shadow-sm">
+                  + 新增應用程式方案
+                </button>
+              </div>
+            </div>
+
+            {connectedApps.length === 0 && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
+                <strong>⚠ 尚未連接任何應用程式服務。</strong>
+                <Link href="/apps" className="ml-2 underline hover:text-amber-900">前往 /apps 頁面連接服務</Link>
+              </div>
+            )}
+
+            <div className="space-y-4">
+              {(settings.appPlans || [])
+                .sort((a, b) => a.order - b.order)
+                .map((plan, index, arr) => (
+                  <div key={plan.id} className={`bg-white rounded-2xl p-5 md:p-6 transition-all border ${editingPlanId === plan.id ? 'border-violet-400 shadow-md ring-4 ring-violet-50' : 'border-gray-200 hover:border-gray-300'}`}>
+                    <div className="flex flex-col lg:flex-row gap-6">
+
+                      {/* Left Block: Controls */}
+                      <div className="flex lg:flex-col items-center justify-between lg:justify-start gap-4 lg:w-32 lg:shrink-0 lg:border-r border-gray-100 lg:pr-6">
+                        <div className="flex lg:flex-col gap-1.5 opacity-60 hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={() => { if (window.confirm('確定要上移此順序嗎？')) moveAppPlan(plan.id, 'up'); }}
+                            disabled={index === 0}
+                            className="p-1.5 bg-gray-100 text-gray-600 rounded-md disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-200 transition-colors"
+                          >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg>
+                          </button>
+                          <button
+                            onClick={() => { if (window.confirm('確定要下移此順序嗎？')) moveAppPlan(plan.id, 'down'); }}
+                            disabled={index === arr.length - 1}
+                            className="p-1.5 bg-gray-100 text-gray-600 rounded-md disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-200 transition-colors"
+                          >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                          </button>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={plan.isActive}
+                            onChange={(e) => updateAppPlan(plan.id, 'isActive', e.target.checked)}
+                            className="sr-only peer"
+                          />
+                          <div className="w-10 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-violet-500"></div>
+                          <span className="ml-3 text-sm font-bold text-gray-700">{plan.isActive ? '啟用中' : '已停用'}</span>
+                        </label>
+                      </div>
+
+                      {/* Middle Block: Form Fields */}
+                      <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">方案名稱</label>
+                          <input
+                            type="text"
+                            value={plan.name ?? ''}
+                            onChange={(e) => updateAppPlan(plan.id, 'name', e.target.value)}
+                            disabled={editingPlanId !== plan.id}
+                            className={`w-full px-3 py-2 rounded-lg text-sm transition-all focus:outline-none focus:ring-2 focus:ring-violet-500 border ${editingPlanId === plan.id ? 'bg-white border-gray-300' : 'bg-transparent border-transparent text-gray-900 font-bold px-0'}`}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[11px] font-bold text-violet-500 uppercase tracking-widest">綁定應用程式服務</label>
+                          <select
+                            value={plan.appId || ''}
+                            onChange={(e) => updateAppPlan(plan.id, 'appId', e.target.value)}
+                            disabled={editingPlanId !== plan.id}
+                            className={`w-full px-3 py-2 rounded-lg text-sm transition-all focus:outline-none focus:ring-2 focus:ring-violet-500 border ${editingPlanId === plan.id ? 'bg-white border-violet-300' : 'bg-transparent border-transparent text-gray-900 font-medium px-0 appearance-none'}`}
+                          >
+                            <option value="">-- 請選擇已連接的服務 --</option>
+                            {connectedApps.map(app => (
+                              <option key={app.integrationId} value={app.integrationId}>
+                                [{app.type}] {app.name}
+                              </option>
+                            ))}
+                          </select>
+                          {plan.appId && !connectedApps.find(a => a.integrationId === plan.appId) && (
+                            <p className="text-[10px] text-amber-600">⚠ 此服務可能已被移除或停用</p>
+                          )}
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[11px] font-bold text-violet-500 uppercase tracking-widest">綁定期限 (天數)</label>
+                          <input
+                            type="number"
+                            min={1}
+                            value={plan.durationDays ?? 30}
+                            onChange={(e) => updateAppPlan(plan.id, 'durationDays' as any, Math.max(1, parseInt(e.target.value) || 1))}
+                            disabled={editingPlanId !== plan.id}
+                            className={`w-full px-3 py-2 rounded-lg text-sm transition-all focus:outline-none focus:ring-2 focus:ring-violet-500 border ${editingPlanId === plan.id ? 'bg-white border-violet-300' : 'bg-transparent border-transparent text-gray-900 font-medium px-0'}`}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[11px] font-bold text-orange-500 uppercase tracking-widest">需消耗點數 (Points Cost)</label>
+                          <input
+                            type="number"
+                            min={0}
+                            value={plan.pointsCost ?? 0}
+                            onChange={(e) => updateAppPlan(plan.id, 'pointsCost' as any, Math.max(0, parseInt(e.target.value) || 0))}
+                            disabled={editingPlanId !== plan.id}
+                            className={`w-full px-3 py-2 rounded-lg text-sm transition-all focus:outline-none focus:ring-2 focus:ring-orange-500 border ${editingPlanId === plan.id ? 'bg-white border-orange-300' : 'bg-transparent border-transparent text-gray-900 font-medium px-0'}`}
+                          />
+                        </div>
+                        <div className="space-y-1 sm:col-span-2">
+                          <label className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">方案描述</label>
+                          <input
+                            type="text"
+                            value={plan.description ?? ''}
+                            onChange={(e) => updateAppPlan(plan.id, 'description', e.target.value)}
+                            disabled={editingPlanId !== plan.id}
+                            placeholder="描述此應用程式方案的用途"
+                            className={`w-full px-3 py-2 rounded-lg text-sm transition-all focus:outline-none focus:ring-2 focus:ring-violet-500 border ${editingPlanId === plan.id ? 'bg-white border-gray-300' : 'bg-transparent border-transparent text-gray-600 px-0'}`}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Right Block: Actions */}
+                      <div className="flex lg:flex-col items-center lg:items-end justify-center lg:justify-start gap-2 lg:w-24 lg:shrink-0 lg:pl-4">
+                        <button
+                          onClick={() => {
+                            if (editingPlanId === plan.id) {
+                              setEditingPlanId(null);
+                            } else {
+                              setEditingPlanId(plan.id);
+                            }
+                          }}
+                          className={`w-full px-4 py-2 text-sm font-bold rounded-lg transition-colors ${editingPlanId === plan.id
+                            ? 'bg-violet-600 text-white hover:bg-violet-700 shadow-md'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                            }`}
+                        >
+                          {editingPlanId === plan.id ? '完成編輯' : '編輯內容'}
+                        </button>
+                        {editingPlanId === plan.id && (
+                          <button
+                            onClick={() => {
+                              if (window.confirm(`確定要刪除這筆應用程式方案嗎？此操作無法復原。`)) {
+                                removeAppPlan(plan.id);
+                              }
+                            }}
+                            className="w-full px-4 py-2 text-sm font-bold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"
+                          >
+                            刪除
+                          </button>
+                        )}
+                      </div>
+
                     </div>
                   </div>
                 ))}

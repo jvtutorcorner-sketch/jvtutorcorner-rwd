@@ -91,6 +91,16 @@ export default function PricingPage() {
   mergedPlans.sort((a: any, b: any) => (a.order || 0) - (b.order || 0));
 
   const dynamicPointsPlans = settings?.pointPackages?.filter((p: any) => p.isActive).sort((a: any, b: any) => a.order - b.order) || [];
+  const appPlansFromSettings = settings?.appPlans || [];
+
+  const formatDate = (d?: Date | string) => {
+    if (!d) return '';
+    try {
+      return new Date(d).toLocaleDateString('zh-TW');
+    } catch (e) {
+      return String(d);
+    }
+  };
 
   const PLANS: any[] = mergedPlans.length > 0 ? mergedPlans.map((p: any) => ({
     id: p.id,
@@ -101,6 +111,7 @@ export default function PricingPage() {
     features: p.features || (p.includedFeatures ? p.includedFeatures.split('、') : []),
     description: p.includedFeatures,
     discountPlanId: p.discountPlanId,
+    appPlanIds: p.appPlanIds || [],
   })) : [
     {
       id: 'viewer',
@@ -167,6 +178,9 @@ export default function PricingPage() {
       badge: p.badge,
       description: p.description,
       discountPlan: discountPlan,
+      appPlanIds: p.appPlanIds || [],
+      prePurchasePointsCost: p.prePurchasePointsCost || 0,
+      points: p.points,
     };
   }) : [
     {
@@ -291,6 +305,33 @@ export default function PricingPage() {
                     </ul>
                   </div>
 
+                  {plan.appPlanIds && plan.appPlanIds.length > 0 && (
+                    <div className="mt-3">
+                      <h3 className="text-sm font-medium text-gray-600">綁定應用服務</h3>
+                      <ul className="text-sm text-gray-700 mt-1">
+                        {plan.appPlanIds.map((apid: string) => {
+                          const ap = appPlansFromSettings.find((a: any) => a.id === apid);
+                          const days = ap?.durationDays || ap?.duration || ap?.days;
+                          let period = null;
+                          if (days && typeof days === 'number') {
+                            const start = new Date();
+                            const end = new Date(start);
+                            end.setDate(start.getDate() + days);
+                            period = `${formatDate(start)} → ${formatDate(end)}`;
+                          }
+                          const pointsCost = ap?.pointsCost;
+                          return (
+                            <li key={apid} className="truncate">
+                              {ap?.name || apid}{ap?.appName ? ` — ${ap.appName}` : ''}
+                              {period && <div className="text-xs text-gray-500">{period}</div>}
+                              {pointsCost && pointsCost > 0 && <div className="text-xs text-orange-500">💰 需消耗 {pointsCost} 點</div>}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  )}
+
                   <div className="card-actions">
                     {isCurrent ? (
                       <button className="card-button" disabled>
@@ -367,6 +408,40 @@ export default function PricingPage() {
                     ))}
                   </ul>
                 </div>
+
+                {plan.appPlanIds && plan.appPlanIds.length > 0 && (
+                  <div className="mt-3">
+                    <h3 className="text-sm font-medium text-gray-600">綁定應用服務</h3>
+                    <ul className="text-sm text-gray-700 mt-1">
+                      {plan.appPlanIds.map((apid: string) => {
+                        const ap = appPlansFromSettings.find((a: any) => a.id === apid);
+                        const days = ap?.durationDays || ap?.duration || ap?.days;
+                        let period = null;
+                        if (days && typeof days === 'number') {
+                          const start = new Date();
+                          const end = new Date(start);
+                          end.setDate(start.getDate() + days);
+                          period = `${formatDate(start)} → ${formatDate(end)}`;
+                        }
+                        const pointsCost = ap?.pointsCost;
+                        return (
+                          <li key={apid} className="truncate">
+                            {ap?.name || apid}{ap?.appName ? ` — ${ap.appName}` : ''}
+                            {period && <div className="text-xs text-gray-500">{period}</div>}
+                            {pointsCost && pointsCost > 0 && <div className="text-xs text-orange-500">💰 需消耗 {pointsCost} 點</div>}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                    
+                    {/* 顯示點數購買前消耗和購買後剩餘 */}
+                    {plan.prePurchasePointsCost && plan.prePurchasePointsCost > 0 && (
+                      <div className="mt-2 text-xs text-orange-600 bg-orange-50 p-2 rounded">
+                        購買前消耗 {plan.prePurchasePointsCost} 點 → 購買 {plan.points} 點後可用 {Math.max(0, (plan.points || 0) - (plan.prePurchasePointsCost || 0))} 點
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <div className="card-actions">
                   {user ? (

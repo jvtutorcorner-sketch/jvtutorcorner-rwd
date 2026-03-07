@@ -23,6 +23,8 @@ function CheckoutContent() {
     const [user, setUser] = useState<StoredUser | null>(null);
     const [mounted, setMounted] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [activePaymentMethods, setActivePaymentMethods] = useState<string[]>([]);
+    const [loadingPayments, setLoadingPayments] = useState(true);
 
     // Extract from query params
     const planId = searchParams.get('plan');
@@ -50,6 +52,25 @@ function CheckoutContent() {
             router.push('/pricing');
             return;
         }
+
+        // Fetch enabled payment methods
+        const fetchPaymentMethods = async () => {
+            try {
+                const res = await fetch('/api/app-integrations');
+                const data = await res.json();
+                if (data.ok && Array.isArray(data.data)) {
+                    const activeTypes = data.data
+                        .filter((app: any) => app.status === 'ACTIVE')
+                        .map((app: any) => app.type);
+                    setActivePaymentMethods(activeTypes);
+                }
+            } catch (err) {
+                console.error('Failed to fetch payment methods', err);
+            } finally {
+                setLoadingPayments(false);
+            }
+        };
+        fetchPaymentMethods();
 
         if (!isMockPlan) {
             setLoadingData(true);
@@ -128,16 +149,20 @@ function CheckoutContent() {
         planFeatures = itemData.features;
     }
 
+    const itemType: 'PLAN' | 'POINTS' = (!isMockPlan && itemData) ? itemData.type : 'PLAN';
+
     const handleCreateOrder = async (method: string) => {
         try {
             const res = await fetch('/api/plan-upgrades', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    userId: user.email,
+                    userId: user.roid_id || user.id || user.email,
                     planId: planId,
                     amount: price,
                     currency: 'TWD',
+                    itemType,
+                    planLabel,
                 }),
             });
 
@@ -294,7 +319,7 @@ function CheckoutContent() {
             }
 
             alert(t('payment_simulated') || '付款成功 (Demo)');
-            router.push('/student_courses');
+            router.push('/plans');
         } catch (err) {
             alert('Simulation error');
             setIsSubmitting(false);
@@ -328,42 +353,54 @@ function CheckoutContent() {
 
                     <h3>選擇付款方式</h3>
                     <div className="payment-options" style={{ display: 'grid', gap: '12px', marginTop: '16px' }}>
-                        <button
-                            type="button"
-                            className="modal-button primary"
-                            onClick={handlePaymentEcpay}
-                            disabled={isSubmitting}
-                            style={{ background: '#40b070' }}
-                        >
-                            {t('payment_method_ecpay')}
-                        </button>
-                        <button
-                            type="button"
-                            className="modal-button primary"
-                            onClick={handlePaymentStripe}
-                            disabled={isSubmitting}
-                            style={{ background: '#635bff' }}
-                        >
-                            {t('payment_method_stripe')}
-                        </button>
-                        <button
-                            type="button"
-                            className="modal-button primary"
-                            onClick={handlePaymentPaypal}
-                            disabled={isSubmitting}
-                            style={{ background: '#0070ba' }}
-                        >
-                            {t('payment_method_paypal')}
-                        </button>
-                        <button
-                            type="button"
-                            className="modal-button primary"
-                            onClick={handlePaymentSimulated}
-                            disabled={isSubmitting}
-                            style={{ background: '#ffa000' }}
-                        >
-                            {t('payment_method_simulated')}
-                        </button>
+                        {loadingPayments ? (
+                            <p className="text-sm text-gray-500">{t('loading') || '載入中...'}</p>
+                        ) : (
+                            <>
+                                {activePaymentMethods.includes('ECPAY') && (
+                                    <button
+                                        type="button"
+                                        className="modal-button primary"
+                                        onClick={handlePaymentEcpay}
+                                        disabled={isSubmitting}
+                                        style={{ background: '#40b070' }}
+                                    >
+                                        {t('payment_method_ecpay')}
+                                    </button>
+                                )}
+                                {activePaymentMethods.includes('STRIPE') && (
+                                    <button
+                                        type="button"
+                                        className="modal-button primary"
+                                        onClick={handlePaymentStripe}
+                                        disabled={isSubmitting}
+                                        style={{ background: '#635bff' }}
+                                    >
+                                        {t('payment_method_stripe')}
+                                    </button>
+                                )}
+                                {activePaymentMethods.includes('PAYPAL') && (
+                                    <button
+                                        type="button"
+                                        className="modal-button primary"
+                                        onClick={handlePaymentPaypal}
+                                        disabled={isSubmitting}
+                                        style={{ background: '#0070ba' }}
+                                    >
+                                        {t('payment_method_paypal')}
+                                    </button>
+                                )}
+                                <button
+                                    type="button"
+                                    className="modal-button primary"
+                                    onClick={handlePaymentSimulated}
+                                    disabled={isSubmitting}
+                                    style={{ background: '#ffa000' }}
+                                >
+                                    {t('payment_method_simulated')}
+                                </button>
+                            </>
+                        )}
 
                         <Link
                             href="/pricing"
