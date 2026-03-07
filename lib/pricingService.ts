@@ -17,12 +17,24 @@ export type PlanConfig = {
   order: number;
 };
 
+export type DiscountPlan = {
+  id: string;
+  name: string;
+  type: 'percentage' | 'fixed';
+  value: number;
+  isActive: boolean;
+  order: number;
+};
+
 export type PointPackage = {
   id: string;
   name: string;
   points: number;
-  price: number;
-  bonus?: number;
+  unitPrice: number; // New: price per point
+  price: number; // Final calculated price
+  manualDiscount: number; // New: manual flat discount
+  discountPlanId?: string; // New: reference to global discount plan
+  bonus?: number; // Kept for legacy compatibility
   description?: string;
   badge?: string;
   isActive: boolean;
@@ -35,6 +47,7 @@ export type PricingSettings = {
   mode: 'subscription' | 'points';
   plans: PlanConfig[];
   pointPackages: PointPackage[];
+  discountPlans?: DiscountPlan[]; // New: global discount plans
 };
 
 /**
@@ -53,7 +66,7 @@ export async function getPricingSettings(): Promise<PricingSettings | null> {
     });
 
     const response = await ddbDocClient.send(command);
-    
+
     if (!response.Item) {
       console.log('[pricingService] No pricing config found in DynamoDB');
       return null;

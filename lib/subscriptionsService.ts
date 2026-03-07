@@ -30,6 +30,7 @@ export interface SubscriptionConfig {
     features: string[]; // List of strings for display
     isActive: boolean;
     order: number;
+    discountPlanId?: string; // New: reference to global discount plan
     durationMonths?: number; // Optional duration for extensions
     createdAt?: string;
     updatedAt?: string;

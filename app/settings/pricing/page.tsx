@@ -5,11 +5,23 @@ import Link from 'next/link';
 import { PLAN_TARGETS, PLAN_LABELS, PLAN_DESCRIPTIONS, PLAN_FEATURES, PLAN_PRICES } from '@/lib/mockAuth';
 import { SubscriptionConfig, SubscriptionType } from '@/lib/subscriptionsService';
 
+export type DiscountPlan = {
+  id: string;
+  name: string;
+  type: 'percentage' | 'fixed';
+  value: number;
+  isActive: boolean;
+  order: number;
+};
+
 type PointPackage = {
   id: string;
   name: string;
   points: number;
+  unitPrice: number;
   price: number;
+  manualDiscount: number;
+  discountPlanId?: string;
   bonus?: number;
   description?: string;
   badge?: string;
@@ -20,10 +32,10 @@ type PointPackage = {
 type PricingSettings = {
   pageTitle: string;
   pageDescription: string;
-  mode: 'subscription' | 'points';
+  mode: 'subscription' | 'points' | 'discounts';
   plans?: any[]; // For backward compatibility
   pointPackages: PointPackage[];
-
+  discountPlans?: DiscountPlan[];
 };
 
 
@@ -32,7 +44,8 @@ export default function PricingSettingsPage() {
     pageTitle: '方案與價格設定',
     pageDescription: '管理會員方案的標籤、價格和功能特色',
     mode: 'subscription',
-    pointPackages: []
+    pointPackages: [],
+    discountPlans: []
   });
   const [subscriptions, setSubscriptions] = useState<SubscriptionConfig[]>([]);
   const [loading, setLoading] = useState(true);
@@ -41,6 +54,7 @@ export default function PricingSettingsPage() {
   const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
   const [originalSettings, setOriginalSettings] = useState<PricingSettings | null>(null);
   const [originalSubscriptions, setOriginalSubscriptions] = useState<SubscriptionConfig[] | null>(null);
+  const [packageDiscountTypes, setPackageDiscountTypes] = useState<Record<string, 'none' | 'manual' | 'plan'>>({});
 
   const syncTargets = async (autoSave = true) => {
     setSubscriptions(prev => {
@@ -76,6 +90,15 @@ export default function PricingSettingsPage() {
         if (pricingRes.ok && pricingData.ok) {
           loadedSettings = pricingData.settings as PricingSettings;
           setSettings(loadedSettings);
+
+          // Initialize discount types state
+          const types: Record<string, 'none' | 'manual' | 'plan'> = {};
+          loadedSettings.pointPackages?.forEach(pkg => {
+            if (pkg.discountPlanId) types[pkg.id] = 'plan';
+            else if (pkg.manualDiscount > 0) types[pkg.id] = 'manual';
+            else types[pkg.id] = 'none';
+          });
+          setPackageDiscountTypes(types);
         } else {
           setMessage('無法載入方案資料：' + (pricingData.error || '未知錯誤'));
         }
@@ -102,8 +125,11 @@ export default function PricingSettingsPage() {
           }
         }
 
-        if ((!loadedSubs || loadedSubs.length === 0) && (!loadedSettings?.plans || loadedSettings.plans.length === 0)) {
-          setMessage('💡 尚未設定任何方案，您可以使用「從 mockAuth 新增方案」或「匯入公開頁內容」按鈕來初始化方案資料');
+        if ((pricingRes.ok && pricingData.ok) || (subsRes.ok && subsData.ok)) {
+          const hasAnyData = (loadedSubs && loadedSubs.length > 0) || (loadedSettings?.plans && loadedSettings.plans.length > 0) || (loadedSettings?.pointPackages && loadedSettings.pointPackages.length > 0);
+          if (!hasAnyData) {
+            setMessage('💡 尚未設定任何方案，您可以使用「匯入 mockAuth」按鈕來快速初始化方案資料');
+          }
         }
       } catch (error) {
         console.error('Failed to load pricing data:', error);
@@ -293,8 +319,9 @@ export default function PricingSettingsPage() {
       id: `points_${Date.now()}`,
       name: '新套餐',
       points: 100,
+      unitPrice: 10,
       price: 1000,
-      bonus: 0,
+      manualDiscount: 0,
       description: '套餐描述',
       badge: '',
       isActive: true,
@@ -304,6 +331,7 @@ export default function PricingSettingsPage() {
       ...prev,
       pointPackages: [...(prev.pointPackages || []), newPackage]
     }));
+    setPackageDiscountTypes(prev => ({ ...prev, [newPackage.id]: 'none' }));
   };
 
   const addMockPointPackages = () => {
@@ -314,8 +342,9 @@ export default function PricingSettingsPage() {
         id: `points_${Date.now()}_1`,
         name: '入門包',
         points: 50,
+        unitPrice: 10,
         price: 500,
-        bonus: 0,
+        manualDiscount: 0,
         description: '適合新手體驗的基礎套餐',
         badge: '推薦新手',
         isActive: true,
@@ -325,8 +354,9 @@ export default function PricingSettingsPage() {
         id: `points_${Date.now()}_2`,
         name: '普通包',
         points: 100,
+        unitPrice: 9,
         price: 900,
-        bonus: 10,
+        manualDiscount: 0,
         description: '性價比最好的熱銷套餐',
         badge: '熱銷',
         isActive: true,
@@ -336,8 +366,9 @@ export default function PricingSettingsPage() {
         id: `points_${Date.now()}_3`,
         name: '超值包',
         points: 250,
+        unitPrice: 8,
         price: 2000,
-        bonus: 50,
+        manualDiscount: 0,
         description: '大量購買享優惠',
         badge: '推薦',
         isActive: true,
@@ -347,8 +378,9 @@ export default function PricingSettingsPage() {
         id: `points_${Date.now()}_4`,
         name: 'VIP 尊享包',
         points: 500,
+        unitPrice: 7,
         price: 3500,
-        bonus: 150,
+        manualDiscount: 0,
         description: '專為忠實用戶設計的頂級套餐',
         badge: 'VIP',
         isActive: true,
@@ -376,13 +408,84 @@ export default function PricingSettingsPage() {
     }));
   };
 
-  const updatePointPackage = (packageId: string, field: keyof PointPackage, value: string | number | boolean) => {
+  const updatePointPackage = (packageId: string, field: keyof PointPackage, value: any) => {
+    setSettings(prev => {
+      const newPackages = (prev.pointPackages || []).map(pkg => {
+        if (pkg.id === packageId) {
+          const updatedPkg = { ...pkg, [field]: value };
+
+          // Recalculate price
+          const basePrice = updatedPkg.unitPrice * updatedPkg.points;
+          let finalPrice = basePrice - (updatedPkg.manualDiscount || 0);
+
+          // Apply global discount plan if any
+          if (updatedPkg.discountPlanId) {
+            const plan = prev.discountPlans?.find(p => p.id === updatedPkg.discountPlanId);
+            if (plan && plan.isActive) {
+              if (plan.type === 'percentage') {
+                finalPrice = finalPrice * (1 - plan.value / 100);
+              } else {
+                finalPrice = Math.max(0, finalPrice - plan.value);
+              }
+            }
+          }
+
+          updatedPkg.price = Math.round(finalPrice);
+          return updatedPkg;
+        }
+        return pkg;
+      });
+      return { ...prev, pointPackages: newPackages };
+    });
+  };
+
+  const addDiscountPlan = () => {
+    const newPlan: DiscountPlan = {
+      id: `discount_${Date.now()}`,
+      name: '新折扣方案',
+      type: 'percentage',
+      value: 10,
+      isActive: true,
+      order: Math.max(...(settings.discountPlans?.map(p => p.order) || [0]), 0) + 1
+    };
     setSettings(prev => ({
       ...prev,
-      pointPackages: (prev.pointPackages || []).map(pkg =>
-        pkg.id === packageId ? { ...pkg, [field]: value } : pkg
+      discountPlans: [...(prev.discountPlans || []), newPlan]
+    }));
+  };
+
+  const removeDiscountPlan = (planId: string) => {
+    setSettings(prev => ({
+      ...prev,
+      discountPlans: (prev.discountPlans || []).filter(p => p.id !== planId)
+    }));
+  };
+
+  const updateDiscountPlan = (planId: string, field: keyof DiscountPlan, value: any) => {
+    setSettings(prev => ({
+      ...prev,
+      discountPlans: (prev.discountPlans || []).map(p =>
+        p.id === planId ? { ...p, [field]: value } : p
       )
     }));
+  };
+
+  const moveDiscountPlan = (planId: string, direction: 'up' | 'down') => {
+    const plans = settings.discountPlans || [];
+    const currentIndex = plans.findIndex(p => p.id === planId);
+    if (currentIndex === -1) return;
+
+    const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+    if (newIndex < 0 || newIndex >= plans.length) return;
+
+    const newPlans = [...plans];
+    [newPlans[currentIndex], newPlans[newIndex]] = [newPlans[newIndex], newPlans[currentIndex]];
+
+    newPlans.forEach((p, index) => {
+      p.order = index + 1;
+    });
+
+    setSettings(prev => ({ ...prev, discountPlans: newPlans }));
   };
 
   const movePointPackage = (packageId: string, direction: 'up' | 'down') => {
@@ -409,20 +512,28 @@ export default function PricingSettingsPage() {
     setMessage('');
 
     try {
-      // Create settings object without plans for backward compatibility or pure settings layout
-      const pricingPayload = { ...settings };
-      // Even if settings doesn't have plans, we pass it just to be safe if the DB model historically requires it
-      // but according to interface we updated, plans is removed. Wait, we removed it from the local type.
-      // API validation might fail if it strictly checks, let's look at api/admin/pricing.
-      // API checks `if (!settings || !settings.pageTitle ...)` wait, we better check the API.
-      // No, we will also update api/admin/pricing to not require plans, wait, if we leave plans as [] to bypass validation, it's safer.
-      const payloadWithFallback = { ...pricingPayload, plans: [] as any[] };
+      // Map subscriptions (type PLAN) to the plans array for jvtutorcorner-pricing table
+      const plansForPricing = subscriptions
+        .filter(s => s.type === 'PLAN')
+        .map(p => ({
+          id: p.id,
+          label: p.label,
+          priceHint: p.priceHint,
+          badge: p.badge,
+          targetAudience: p.targetAudience,
+          includedFeatures: p.includedFeatures,
+          features: p.features || [],
+          isActive: p.isActive,
+          order: p.order
+        }));
+
+      const pricingPayload = { ...settings, plans: plansForPricing };
 
       const [pricingRes, subsRes] = await Promise.all([
         fetch('/api/admin/pricing', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ settings: payloadWithFallback }),
+          body: JSON.stringify({ settings: pricingPayload }),
         }),
         fetch('/api/admin/subscriptions', {
           method: 'POST',
@@ -548,7 +659,7 @@ export default function PricingSettingsPage() {
         </div>
 
         {/* 模式切換 Segmented Tabs */}
-        <div className="flex bg-gray-100/80 p-1.5 rounded-2xl w-fit drop-shadow-sm border border-gray-200/50">
+        <div className="flex flex-wrap bg-gray-100/80 p-1.5 rounded-2xl w-fit drop-shadow-sm border border-gray-200/50 gap-1">
           <button
             onClick={() => updateSettings('mode', 'subscription')}
             className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold transition-all ${settings.mode === 'subscription'
@@ -559,8 +670,9 @@ export default function PricingSettingsPage() {
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
-            維護訂閱方案
+            訂閱方案
           </button>
+
           <button
             onClick={() => updateSettings('mode', 'points')}
             className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold transition-all ${settings.mode === 'points'
@@ -569,9 +681,22 @@ export default function PricingSettingsPage() {
               }`}
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.407 2.67 1M12 17c-1.12 0-2.09-.411-2.67-1M12 8v1m0 8v1" />
             </svg>
-            維護點數購買
+            點數購買
+          </button>
+
+          <button
+            onClick={() => updateSettings('mode', 'discounts')}
+            className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold transition-all ${settings.mode === 'discounts'
+              ? 'bg-white text-blue-700 shadow-sm ring-1 ring-black/5'
+              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
+              }`}
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" />
+            </svg>
+            折扣方案
           </button>
         </div>
 
@@ -643,7 +768,7 @@ export default function PricingSettingsPage() {
                           <label className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">方案標籤 (Label)</label>
                           <input
                             type="text"
-                            value={plan.label}
+                            value={plan.label ?? ''}
                             onChange={(e) => updateSubscription(plan.id, 'label', e.target.value)}
                             disabled={editingPlanId !== plan.id}
                             className={`w-full px-3 py-2 rounded-lg text-sm transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 border ${editingPlanId === plan.id ? 'bg-white border-gray-300' : 'bg-transparent border-transparent text-gray-900 font-medium px-0'}`}
@@ -653,7 +778,7 @@ export default function PricingSettingsPage() {
                           <label className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">價格短述 (Price Hint)</label>
                           <input
                             type="text"
-                            value={plan.priceHint || ''}
+                            value={plan.priceHint ?? ''}
                             onChange={(e) => updateSubscription(plan.id, 'priceHint', e.target.value)}
                             disabled={editingPlanId !== plan.id}
                             placeholder="例如：NT$ 800 / 月"
@@ -672,6 +797,7 @@ export default function PricingSettingsPage() {
                             className={`w-full px-3 py-2 rounded-lg text-sm transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 border ${editingPlanId === plan.id ? 'bg-white border-green-300' : 'bg-transparent border-transparent text-green-700 font-bold px-0'}`}
                           />
                         </div>
+
                         <div className="space-y-1 flex gap-2">
                           <div className="flex-1">
                             <label className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">週期 (Interval)</label>
@@ -686,13 +812,29 @@ export default function PricingSettingsPage() {
                               <option value="one-time">單次 (One-time)</option>
                             </select>
                           </div>
+                          <div className="flex-1">
+                            <label className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">折扣方案 (Discount)</label>
+                            <select
+                              value={plan.discountPlanId || ''}
+                              onChange={(e) => updateSubscription(plan.id, 'discountPlanId', e.target.value)}
+                              disabled={editingPlanId !== plan.id}
+                              className={`w-full px-3 py-2 rounded-lg text-sm transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 border ${editingPlanId === plan.id ? 'bg-white border-gray-300' : 'bg-transparent border-transparent text-gray-900 font-medium px-0 appearance-none'}`}
+                            >
+                              <option value="">無折扣</option>
+                              {settings.discountPlans?.map(dp => (
+                                <option key={dp.id} value={dp.id}>
+                                  {dp.name} ({dp.type === 'percentage' ? `${dp.value}%` : `NT$ ${dp.value}`})
+                                </option>
+                              ))}
+                            </select>
+                          </div>
                         </div>
 
                         <div className="space-y-1">
                           <label className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">適合對象 (Target Audience)</label>
                           <input
                             type="text"
-                            value={plan.targetAudience}
+                            value={plan.targetAudience ?? ''}
                             onChange={(e) => updateSubscription(plan.id, 'targetAudience', e.target.value)}
                             disabled={editingPlanId !== plan.id}
                             className={`w-full px-3 py-2 rounded-lg text-sm transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 border ${editingPlanId === plan.id ? 'bg-white border-gray-300' : 'bg-transparent border-transparent text-gray-900 font-medium px-0'}`}
@@ -702,7 +844,7 @@ export default function PricingSettingsPage() {
                           <label className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">包含功能概述 (Included Features)</label>
                           <input
                             type="text"
-                            value={plan.includedFeatures}
+                            value={plan.includedFeatures ?? ''}
                             onChange={(e) => updateSubscription(plan.id, 'includedFeatures', e.target.value)}
                             disabled={editingPlanId !== plan.id}
                             className={`w-full px-3 py-2 rounded-lg text-sm transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 border ${editingPlanId === plan.id ? 'bg-white border-gray-300' : 'bg-transparent border-transparent text-gray-900 font-medium px-0'}`}
@@ -741,7 +883,6 @@ export default function PricingSettingsPage() {
                           </button>
                         )}
                       </div>
-
                     </div>
                   </div>
                 ))}
@@ -947,54 +1088,128 @@ export default function PricingSettingsPage() {
                       </div>
 
                       {/* Middle Block: Form Fields */}
-                      <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                      <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                         <div className="space-y-1">
                           <label className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">套餐名稱</label>
                           <input
                             type="text"
-                            value={pkg.name}
+                            value={pkg.name ?? ''}
                             onChange={(e) => updatePointPackage(pkg.id, 'name', e.target.value)}
                             disabled={editingPlanId !== pkg.id}
                             className={`w-full px-3 py-2 rounded-lg text-sm transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500 border ${editingPlanId === pkg.id ? 'bg-white border-gray-300' : 'bg-transparent border-transparent text-gray-900 font-bold px-0'}`}
                           />
                         </div>
                         <div className="space-y-1">
-                          <label className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">點數數量</label>
+                          <label className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">點數單位售價 (Unit Price)</label>
                           <input
                             type="number"
-                            value={pkg.points}
-                            onChange={(e) => updatePointPackage(pkg.id, 'points', parseInt(e.target.value) || 0)}
+                            value={pkg.unitPrice ?? 0}
+                            onChange={(e) => updatePointPackage(pkg.id, 'unitPrice', parseFloat(e.target.value) || 0)}
                             disabled={editingPlanId !== pkg.id}
                             className={`w-full px-3 py-2 rounded-lg text-sm transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500 border ${editingPlanId === pkg.id ? 'bg-white border-gray-300' : 'bg-transparent border-transparent text-gray-900 font-medium px-0'}`}
                           />
                         </div>
                         <div className="space-y-1">
-                          <label className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">價格 (NT$)</label>
+                          <label className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">點數數量 (Quantity)</label>
                           <input
                             type="number"
-                            value={pkg.price}
-                            onChange={(e) => updatePointPackage(pkg.id, 'price', parseInt(e.target.value) || 0)}
+                            value={pkg.points ?? 0}
+                            onChange={(e) => updatePointPackage(pkg.id, 'points', parseInt(e.target.value) || 0)}
                             disabled={editingPlanId !== pkg.id}
                             className={`w-full px-3 py-2 rounded-lg text-sm transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500 border ${editingPlanId === pkg.id ? 'bg-white border-gray-300' : 'bg-transparent border-transparent text-gray-900 font-medium px-0'}`}
                           />
                         </div>
-                        <div className="space-y-1 shadow-sm sm:shadow-none bg-yellow-50/50 sm:bg-transparent -mx-5 px-5 sm:mx-0 sm:px-0 py-2 sm:py-0 border-y border-yellow-100 sm:border-0">
-                          <label className="text-[11px] font-bold text-orange-400 uppercase tracking-widest">贈送點數 (Bonus)</label>
-                          <input
-                            type="number"
-                            value={pkg.bonus || 0}
-                            onChange={(e) => updatePointPackage(pkg.id, 'bonus', parseInt(e.target.value) || 0)}
-                            disabled={editingPlanId !== pkg.id}
-                            className={`w-full px-3 py-2 rounded-lg text-sm transition-all focus:outline-none focus:ring-2 focus:ring-orange-500 border ${editingPlanId === pkg.id ? 'bg-white border-orange-200' : 'bg-transparent border-transparent text-orange-700 font-bold px-0'}`}
-                          />
+
+                        <div className="space-y-3 sm:col-span-2 lg:col-span-2 bg-gray-50 border border-gray-200 rounded-xl p-4">
+                          <div className="flex items-center justify-between">
+                            <label className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">折扣設定 (Discount)</label>
+                            <div className="flex gap-2">
+                              {['none', 'manual', 'plan'].map((type) => (
+                                <button
+                                  key={type}
+                                  onClick={() => {
+                                    setPackageDiscountTypes(prev => ({ ...prev, [pkg.id]: type as any }));
+                                    if (type === 'none') {
+                                      updatePointPackage(pkg.id, 'manualDiscount', 0);
+                                      updatePointPackage(pkg.id, 'discountPlanId', '');
+                                    } else if (type === 'manual') {
+                                      updatePointPackage(pkg.id, 'discountPlanId', '');
+                                    } else {
+                                      updatePointPackage(pkg.id, 'manualDiscount', 0);
+                                    }
+                                  }}
+                                  disabled={editingPlanId !== pkg.id}
+                                  className={`px-3 py-1 text-[10px] font-bold rounded-full border transition-all ${packageDiscountTypes[pkg.id] === type
+                                    ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
+                                    : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
+                                    }`}
+                                >
+                                  {type === 'none' ? '無' : type === 'manual' ? '自定義金額' : '選擇方案'}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          {packageDiscountTypes[pkg.id] === 'manual' && (
+                            <div className="space-y-1 animate-in fade-in slide-in-from-top-1 duration-200">
+                              <label className="text-[10px] font-bold text-orange-500/80 uppercase">手動折抵金額 (NT$)</label>
+                              <input
+                                type="number"
+                                value={pkg.manualDiscount ?? 0}
+                                onChange={(e) => updatePointPackage(pkg.id, 'manualDiscount', parseInt(e.target.value) || 0)}
+                                disabled={editingPlanId !== pkg.id}
+                                className="w-full px-3 py-2 rounded-lg text-sm bg-white border border-orange-200 focus:ring-2 focus:ring-orange-500 focus:outline-none font-bold text-orange-700"
+                              />
+                            </div>
+                          )}
+
+                          {packageDiscountTypes[pkg.id] === 'plan' && (
+                            <div className="space-y-1 animate-in fade-in slide-in-from-top-1 duration-200">
+                              <label className="text-[10px] font-bold text-indigo-500/80 uppercase">選取折扣方案</label>
+                              <select
+                                value={pkg.discountPlanId ?? ''}
+                                onChange={(e) => updatePointPackage(pkg.id, 'discountPlanId', e.target.value)}
+                                disabled={editingPlanId !== pkg.id}
+                                className="w-full px-3 py-2 rounded-lg text-sm bg-white border border-indigo-200 focus:ring-2 focus:ring-indigo-500 focus:outline-none font-medium text-gray-900"
+                              >
+                                <option value="">請選擇方案...</option>
+                                {settings.discountPlans?.map(dp => (
+                                  <option key={dp.id} value={dp.id}>
+                                    {dp.name} ({dp.type === 'percentage' ? `${dp.value}%` : `NT$ ${dp.value}`})
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
+
+                          {packageDiscountTypes[pkg.id] === 'none' && (
+                            <p className="text-[11px] text-gray-400 italic">目前未設定任何折扣</p>
+                          )}
+                        </div>
+
+                        <div className="space-y-1 bg-green-50/50 -mx-5 px-5 py-2 sm:mx-0 sm:px-3 sm:py-2 border-y border-green-100 sm:border sm:rounded-lg flex flex-col justify-center">
+                          <label className="text-[11px] font-bold text-green-600 uppercase tracking-widest">計算後總價 (Final Price)</label>
+                          <div className="text-xl font-bold text-green-700 mt-1">
+                            NT$ {pkg.price ?? 0}
+                          </div>
                         </div>
 
                         <div className="space-y-1 sm:col-span-2 lg:col-span-3">
                           <label className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">套餐描述</label>
                           <input
                             type="text"
-                            value={pkg.description || ''}
+                            value={pkg.description ?? ''}
                             onChange={(e) => updatePointPackage(pkg.id, 'description', e.target.value)}
+                            disabled={editingPlanId !== pkg.id}
+                            className={`w-full px-3 py-2 rounded-lg text-sm transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500 border ${editingPlanId === pkg.id ? 'bg-white border-gray-300' : 'bg-transparent border-transparent text-gray-600 px-0'}`}
+                          />
+                        </div>
+                        <div className="space-y-1 sm:col-span-2 lg:col-span-3">
+                          <label className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">徽章文字 (例如：熱銷、最划算)</label>
+                          <input
+                            type="text"
+                            value={pkg.badge ?? ''}
+                            onChange={(e) => updatePointPackage(pkg.id, 'badge', e.target.value)}
                             disabled={editingPlanId !== pkg.id}
                             className={`w-full px-3 py-2 rounded-lg text-sm transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500 border ${editingPlanId === pkg.id ? 'bg-white border-gray-300' : 'bg-transparent border-transparent text-gray-600 px-0'}`}
                           />
@@ -1051,6 +1266,146 @@ export default function PricingSettingsPage() {
           </div>
         )}
 
+        {/* 折扣方案管理區塊 */}
+        {settings.mode === 'discounts' && (
+          <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-xl font-bold text-gray-900">折扣方案管理</h3>
+                <p className="text-sm text-gray-500 mt-1">建立全域可用的折扣方案，套用到訂閱方案或點數套餐上。</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={addDiscountPlan}
+                  className="px-4 py-2 bg-blue-900 text-white text-sm font-bold rounded-lg hover:bg-blue-800 shadow-sm"
+                >
+                  + 新增折扣方案
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              {(settings.discountPlans || [])
+                .sort((a, b) => a.order - b.order)
+                .map((plan, index) => (
+                  <div
+                    key={plan.id}
+                    className={`bg-white rounded-2xl p-5 md:p-6 transition-all border ${editingPlanId === plan.id ? 'border-blue-400 shadow-md ring-4 ring-blue-50' : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                  >
+                    <div className="flex flex-col lg:flex-row gap-6">
+                      {/* Left Block: Controls */}
+                      <div className="flex lg:flex-col items-center justify-between lg:justify-start gap-4 lg:w-32 lg:shrink-0 lg:border-r border-gray-100 lg:pr-6">
+                        <div className="flex lg:flex-col gap-1.5 opacity-60 hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={() => {
+                              if (window.confirm('確定要上移此折扣方案順序嗎？')) moveDiscountPlan(plan.id, 'up');
+                            }}
+                            disabled={index === 0}
+                            className="p-1.5 bg-gray-100 text-gray-600 rounded-md disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-200 transition-colors"
+                          >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                            </svg>
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (window.confirm('確定要下移此折扣方案順序嗎？')) moveDiscountPlan(plan.id, 'down');
+                            }}
+                            disabled={index === (settings.discountPlans?.length || 0) - 1}
+                            className="p-1.5 bg-gray-100 text-gray-600 rounded-md disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-200 transition-colors"
+                          >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                            </svg>
+                          </button>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={plan.isActive}
+                            onChange={(e) => updateDiscountPlan(plan.id, 'isActive', e.target.checked)}
+                            className="sr-only peer"
+                          />
+                          <div className="w-10 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"></div>
+                          <span className="ml-3 text-sm font-bold text-gray-700">{plan.isActive ? '啟用中' : '已停用'}</span>
+                        </label>
+                      </div>
+
+                      {/* Middle Block: Form Fields */}
+                      <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">方案名稱</label>
+                          <input
+                            type="text"
+                            value={plan.name ?? ''}
+                            onChange={(e) => updateDiscountPlan(plan.id, 'name', e.target.value)}
+                            disabled={editingPlanId !== plan.id}
+                            className={`w-full px-3 py-2 rounded-lg text-sm transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 border ${editingPlanId === plan.id ? 'bg-white border-gray-300' : 'bg-transparent border-transparent text-gray-900 font-bold px-0'
+                              }`}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">折扣類型</label>
+                          <select
+                            value={plan.type ?? 'percentage'}
+                            onChange={(e) => updateDiscountPlan(plan.id, 'type', e.target.value)}
+                            disabled={editingPlanId !== plan.id}
+                            className={`w-full px-3 py-2 rounded-lg text-sm transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 border ${editingPlanId === plan.id ? 'bg-white border-gray-300' : 'bg-transparent border-transparent text-gray-900 font-medium px-0 appearance-none'
+                              }`}
+                          >
+                            <option value="percentage">百分比 (%)</option>
+                            <option value="fixed">固定金額 (NT$)</option>
+                          </select>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">折扣數值</label>
+                          <input
+                            type="number"
+                            value={plan.value ?? 0}
+                            onChange={(e) => updateDiscountPlan(plan.id, 'value', parseInt(e.target.value) || 0)}
+                            disabled={editingPlanId !== plan.id}
+                            className={`w-full px-3 py-2 rounded-lg text-sm transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 border ${editingPlanId === plan.id ? 'bg-white border-gray-300' : 'bg-transparent border-transparent text-gray-900 font-medium px-0'
+                              }`}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Right Block: Actions */}
+                      <div className="flex lg:flex-col items-center lg:items-end justify-center lg:justify-start gap-2 lg:w-24 lg:shrink-0 lg:pl-4">
+                        <button
+                          onClick={async () => {
+                            if (editingPlanId === plan.id) {
+                              await saveSettings();
+                              setEditingPlanId(null);
+                            } else {
+                              setEditingPlanId(plan.id);
+                            }
+                          }}
+                          className={`w-full px-4 py-2 text-sm font-bold rounded-lg transition-colors ${editingPlanId === plan.id ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-md' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                            }`}
+                        >
+                          {editingPlanId === plan.id ? '完成編輯' : '編輯內容'}
+                        </button>
+                        {editingPlanId === plan.id && (
+                          <button
+                            onClick={() => {
+                              if (window.confirm(`確定要刪除這筆折扣方案嗎？此操作無法復原。`)) {
+                                removeDiscountPlan(plan.id);
+                              }
+                            }}
+                            className="w-full px-4 py-2 text-sm font-bold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"
+                          >
+                            刪除
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

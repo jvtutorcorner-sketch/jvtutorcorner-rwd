@@ -47,6 +47,7 @@ export default function PricingPage() {
       fetchUpgrades(u.email);
     }
     fetchSettings();
+    fetchSubs();
   }, []);
 
   async function fetchSettings() {
@@ -64,10 +65,34 @@ export default function PricingPage() {
     }
   }
 
-  const dynamicPlans = settings?.plans?.filter((p: any) => p.isActive).sort((a: any, b: any) => a.order - b.order) || [];
+  const [dynamicSubs, setDynamicSubs] = useState<any[]>([]);
+  async function fetchSubs() {
+    try {
+      const res = await fetch('/api/admin/subscriptions');
+      const data = await res.json();
+      if (data.ok && data.subscriptions) {
+        setDynamicSubs(data.subscriptions);
+      }
+    } catch (err) {
+      console.error('Failed to fetch subscriptions:', err);
+    }
+  }
+
+  const dynamicPlansFromSettings = settings?.plans?.filter((p: any) => p.isActive) || [];
+  const dynamicPlansFromSubs = dynamicSubs.filter((p: any) => p.type === 'PLAN' && p.isActive) || [];
+
+  // Combine, preferring subscriptions as the newer source
+  const mergedPlans = [...dynamicPlansFromSubs];
+  dynamicPlansFromSettings.forEach((p: any) => {
+    if (!mergedPlans.find(m => m.id === p.id)) {
+      mergedPlans.push(p);
+    }
+  });
+  mergedPlans.sort((a: any, b: any) => (a.order || 0) - (b.order || 0));
+
   const dynamicPointsPlans = settings?.pointPackages?.filter((p: any) => p.isActive).sort((a: any, b: any) => a.order - b.order) || [];
 
-  const PLANS: any[] = dynamicPlans.length > 0 ? dynamicPlans.map((p: any) => ({
+  const PLANS: any[] = mergedPlans.length > 0 ? mergedPlans.map((p: any) => ({
     id: p.id,
     label: p.label,
     badge: p.badge,
@@ -75,6 +100,7 @@ export default function PricingPage() {
     target: p.targetAudience,
     features: p.features || (p.includedFeatures ? p.includedFeatures.split('、') : []),
     description: p.includedFeatures,
+    discountPlanId: p.discountPlanId,
   })) : [
     {
       id: 'viewer',
@@ -125,15 +151,24 @@ export default function PricingPage() {
     },
   ];
 
-  const POINTS_PLANS: any[] = dynamicPointsPlans.length > 0 ? dynamicPointsPlans.map((p: any) => ({
-    id: p.id,
-    label: p.name,
-    priceHint: `NT$ ${p.price}`,
-    target: p.description || '',
-    features: [`${p.points} 點${p.bonus ? ` + 贈送 ${p.bonus} 點` : ''}`],
-    badge: p.badge,
-    description: p.description,
-  })) : [
+  const POINTS_PLANS: any[] = dynamicPointsPlans.length > 0 ? dynamicPointsPlans.map((p: any) => {
+    const discountPlan = settings.discountPlans?.find((dp: any) => dp.id === p.discountPlanId && dp.isActive);
+    let finalPrice = p.price; // p.price is already calculated in the setting save, but we can re-verify if needed
+
+    return {
+      id: p.id,
+      label: p.name,
+      originalPrice: p.unitPrice * p.points,
+      manualDiscount: p.manualDiscount || 0,
+      price: p.price,
+      priceHint: `NT$ ${p.price}`,
+      target: p.description || '',
+      features: [`${p.points} 點${p.manualDiscount ? ` (已省 NT$ ${p.manualDiscount})` : ''}`],
+      badge: p.badge,
+      description: p.description,
+      discountPlan: discountPlan,
+    };
+  }) : [
     {
       id: 'points_100',
       priceHint: PLAN_PRICES['points_100'],
@@ -201,8 +236,12 @@ export default function PricingPage() {
         {/* Auth tag removed from Pricing page per request */}
       </header>
 
-      {(settings?.mode === 'subscription' || !settings?.mode) && (
+      {PLANS.filter(p => p.id !== 'viewer').length > 0 && (
         <section className="section">
+          <header className="page-header" style={{ marginBottom: '2rem' }}>
+            <h2>訂閱方案</h2>
+            <p>訂閱方案可享有特定期間內的完整功能與服務。</p>
+          </header>
           <div className="card-grid">
             {PLANS.filter(p => p.id !== 'viewer').map((plan) => {
               const isCurrent = user?.plan === plan.id;
@@ -224,7 +263,17 @@ export default function PricingPage() {
                   </header>
 
                   <div className="pricing-price">
-                    <p>{plan.priceHint}</p>
+                    {(() => {
+                      const discountPlan = settings?.discountPlans?.find((dp: any) => dp.id === plan.discountPlanId && dp.isActive);
+                      // In the current implementation, plan.price is the final price saved in DB. 
+                      // However, if we want to show "Original vs Discounted", we might need the original price.
+                      // For now, let's assume we show the price as is, but if there's a discountPlan, we can add a note.
+                      return (
+                        <>
+                          <p>{plan.priceHint}</p>
+                        </>
+                      );
+                    })()}
                     <small>{t('pricing_price_note')}</small>
                   </div>
 
@@ -270,7 +319,7 @@ export default function PricingPage() {
         </section>
       )}
 
-      {(settings?.mode === 'points' || !settings?.mode) && (
+      {POINTS_PLANS.length > 0 && (
         <section className="section" style={{ marginTop: '2rem' }}>
           <header className="page-header" style={{ marginBottom: '2rem' }}>
             <h2>點數方案</h2>
@@ -294,7 +343,14 @@ export default function PricingPage() {
                 </header>
 
                 <div className="pricing-price">
-                  <p>{plan.priceHint}</p>
+                  {plan.originalPrice > plan.price ? (
+                    <div className="flex flex-col">
+                      <span className="text-sm text-gray-400 line-through">NT$ {plan.originalPrice}</span>
+                      <p className="text-green-600 font-bold">{plan.priceHint}</p>
+                    </div>
+                  ) : (
+                    <p>{plan.priceHint}</p>
+                  )}
                   <small>一次性付費</small>
                 </div>
 

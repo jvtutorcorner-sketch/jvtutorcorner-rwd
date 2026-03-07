@@ -72,7 +72,9 @@ export async function POST(req: Request) {
         typeof pkg.name === 'string' &&
         typeof pkg.points === 'number' &&
         typeof pkg.price === 'number' &&
-        (typeof pkg.bonus === 'number' || typeof pkg.bonus === 'undefined') &&
+        typeof pkg.unitPrice === 'number' &&
+        (typeof pkg.manualDiscount === 'number' || typeof pkg.manualDiscount === 'undefined') &&
+        (typeof pkg.discountPlanId === 'string' || typeof pkg.discountPlanId === 'undefined' || pkg.discountPlanId === null) &&
         (typeof pkg.description === 'string' || typeof pkg.description === 'undefined') &&
         (typeof pkg.badge === 'string' || typeof pkg.badge === 'undefined') &&
         typeof pkg.isActive === 'boolean' &&
@@ -81,6 +83,26 @@ export async function POST(req: Request) {
 
       if (!isValidPointPackages) {
         return NextResponse.json({ ok: false, error: 'Invalid point package data structure' }, { status: 400 });
+      }
+    }
+
+    // Validate discount plans if present
+    if (settings.discountPlans && !Array.isArray(settings.discountPlans)) {
+      return NextResponse.json({ ok: false, error: 'Invalid discountPlans structure' }, { status: 400 });
+    }
+
+    if (settings.discountPlans) {
+      const isValidDiscountPlans = settings.discountPlans.every((plan: any) =>
+        typeof plan.id === 'string' &&
+        typeof plan.name === 'string' &&
+        (plan.type === 'percentage' || plan.type === 'fixed') &&
+        typeof plan.value === 'number' &&
+        typeof plan.isActive === 'boolean' &&
+        typeof plan.order === 'number'
+      );
+
+      if (!isValidDiscountPlans) {
+        return NextResponse.json({ ok: false, error: 'Invalid discount plan data structure' }, { status: 400 });
       }
     }
 
