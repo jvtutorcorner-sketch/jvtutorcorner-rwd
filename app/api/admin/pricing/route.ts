@@ -21,6 +21,8 @@ export async function GET() {
           mode: 'subscription',
           plans: [],
           pointPackages: [],
+          discountPlans: [],
+          extensions: [],
         }
       });
     }
@@ -49,12 +51,16 @@ export async function POST(req: Request) {
       typeof plan.id === 'string' &&
       typeof plan.label === 'string' &&
       (typeof plan.priceHint === 'string' || typeof plan.priceHint === 'undefined') &&
+      (typeof plan.price === 'number' || typeof plan.price === 'undefined') &&
+      (typeof plan.currency === 'string' || typeof plan.currency === 'undefined') &&
+      (typeof plan.interval === 'string' || typeof plan.interval === 'undefined') &&
       (typeof plan.badge === 'string' || typeof plan.badge === 'undefined') &&
-      typeof plan.targetAudience === 'string' &&
-      typeof plan.includedFeatures === 'string' &&
-      Array.isArray(plan.features) &&
+      (typeof plan.targetAudience === 'string' || typeof plan.targetAudience === 'undefined') &&
+      (typeof plan.includedFeatures === 'string' || typeof plan.includedFeatures === 'undefined') &&
+      (Array.isArray(plan.features) || typeof plan.features === 'undefined') &&
       typeof plan.isActive === 'boolean' &&
-      typeof plan.order === 'number'
+      typeof plan.order === 'number' &&
+      (typeof plan.discountPlanId === 'string' || typeof plan.discountPlanId === 'undefined' || plan.discountPlanId === null)
     );
 
     if (!isValid) {
@@ -104,6 +110,11 @@ export async function POST(req: Request) {
       if (!isValidDiscountPlans) {
         return NextResponse.json({ ok: false, error: 'Invalid discount plan data structure' }, { status: 400 });
       }
+    }
+
+    // Validate extensions if present
+    if (settings.extensions && !Array.isArray(settings.extensions)) {
+      return NextResponse.json({ ok: false, error: 'Invalid extensions structure' }, { status: 400 });
     }
 
     await savePricingSettings(settings);

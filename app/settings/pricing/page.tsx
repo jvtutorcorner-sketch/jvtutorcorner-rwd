@@ -36,6 +36,7 @@ type PricingSettings = {
   plans?: any[]; // For backward compatibility
   pointPackages: PointPackage[];
   discountPlans?: DiscountPlan[];
+  extensions?: any[];
 };
 
 
@@ -45,7 +46,8 @@ export default function PricingSettingsPage() {
     pageDescription: '管理會員方案的標籤、價格和功能特色',
     mode: 'subscription',
     pointPackages: [],
-    discountPlans: []
+    discountPlans: [],
+    extensions: []
   });
   const [subscriptions, setSubscriptions] = useState<SubscriptionConfig[]>([]);
   const [loading, setLoading] = useState(true);
@@ -91,6 +93,16 @@ export default function PricingSettingsPage() {
           loadedSettings = pricingData.settings as PricingSettings;
           setSettings(loadedSettings);
 
+          // Populate subscriptions state from consolidated pricing data
+          const consolidatedSubs: SubscriptionConfig[] = [
+            ...(loadedSettings.plans || []).map(p => ({ ...p, type: 'PLAN' as const })),
+            ...(loadedSettings.extensions || []).map(e => ({ ...e, type: 'EXTENSION' as const }))
+          ];
+
+          if (consolidatedSubs.length > 0) {
+            setSubscriptions(consolidatedSubs);
+          }
+
           // Initialize discount types state
           const types: Record<string, 'none' | 'manual' | 'plan'> = {};
           loadedSettings.pointPackages?.forEach(pkg => {
@@ -103,25 +115,13 @@ export default function PricingSettingsPage() {
           setMessage('無法載入方案資料：' + (pricingData.error || '未知錯誤'));
         }
 
+        // We still fetch subscriptions for migration/backup purposes, 
+        // but we prioritize pricing table for settings.
         if (subsRes.ok && subsData.ok) {
-          loadedSubs = subsData.subscriptions || [];
-          if (loadedSubs.length > 0) {
-            setSubscriptions(loadedSubs);
-          } else if (loadedSettings?.plans && Array.isArray(loadedSettings.plans)) {
-            // Migration from old data format
-            const migratedSubs: SubscriptionConfig[] = loadedSettings.plans.map((p: any) => ({
-              id: p.id,
-              type: 'PLAN',
-              label: p.label,
-              priceHint: p.priceHint,
-              badge: p.badge,
-              targetAudience: p.targetAudience,
-              includedFeatures: p.includedFeatures,
-              features: p.features || [],
-              isActive: p.isActive,
-              order: p.order
-            }));
-            setSubscriptions(migratedSubs);
+          const remoteSubs = subsData.subscriptions || [];
+          if (remoteSubs.length > 0 && (!loadedSettings?.plans || loadedSettings.plans.length === 0)) {
+            // Only use legacy subs if pricing table is empty (migration case)
+            setSubscriptions(remoteSubs);
           }
         }
 
@@ -252,8 +252,34 @@ export default function PricingSettingsPage() {
 
   const hasChanges = (): boolean => {
     if (!originalSettings || !originalSubscriptions) return false;
-    return JSON.stringify(settings) !== JSON.stringify(originalSettings) ||
-      JSON.stringify(subscriptions) !== JSON.stringify(originalSubscriptions);
+
+    // Check global fields (with fallbacks to empty strings to avoid undefined comparisons)
+    if ((settings.pageTitle || '').trim() !== (originalSettings.pageTitle || '').trim() ||
+      (settings.pageDescription || '').trim() !== (originalSettings.pageDescription || '').trim()) {
+      return true;
+    }
+
+    // Helper for robust comparison that ignores timestamps and metadata
+    const normalize = (val: any): string => {
+      if (!val) return '[]';
+      const items = Array.isArray(val) ? val : [val];
+      const normalized = items.map(item => {
+        const { updatedAt, createdAt, _id, ...rest } = item;
+        // Sort keys to ensure consistent stringification
+        return Object.keys(rest).sort().reduce((obj: any, key) => {
+          obj[key] = rest[key];
+          return obj;
+        }, {});
+      });
+      return JSON.stringify(normalized);
+    };
+
+    // Check ALL data regardless of current tab — saveSettings always saves everything
+    if (normalize(subscriptions) !== normalize(originalSubscriptions)) return true;
+    if (normalize(settings.pointPackages) !== normalize(originalSettings.pointPackages)) return true;
+    if (normalize(settings.discountPlans) !== normalize(originalSettings.discountPlans)) return true;
+
+    return false;
   };
 
   const updateSubscription = (id: string, field: keyof SubscriptionConfig, value: any) => {
@@ -516,41 +542,45 @@ export default function PricingSettingsPage() {
       const plansForPricing = subscriptions
         .filter(s => s.type === 'PLAN')
         .map(p => ({
-          id: p.id,
-          label: p.label,
-          priceHint: p.priceHint,
-          badge: p.badge,
-          targetAudience: p.targetAudience,
-          includedFeatures: p.includedFeatures,
-          features: p.features || [],
-          isActive: p.isActive,
-          order: p.order
+          ...p,
+          features: p.features || []
         }));
 
-      const pricingPayload = { ...settings, plans: plansForPricing };
+      const extensionsForPricing = subscriptions
+        .filter(s => s.type === 'EXTENSION')
+        .map(e => ({
+          ...e,
+          features: e.features || []
+        }));
 
-      const [pricingRes, subsRes] = await Promise.all([
-        fetch('/api/admin/pricing', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ settings: pricingPayload }),
-        }),
-        fetch('/api/admin/subscriptions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ subscriptions: subscriptions }),
-        })
-      ]);
+      const pricingPayload = { ...settings, plans: plansForPricing, extensions: extensionsForPricing };
+
+      const pricingRes = await fetch('/api/admin/pricing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ settings: pricingPayload }),
+      });
 
       const pricingData = await pricingRes.json();
-      const subsData = await subsRes.json();
 
-      if (pricingRes.ok && pricingData.ok && subsRes.ok && subsData.ok) {
+      if (pricingRes.ok && pricingData.ok) {
         setMessage('方案設定與訂閱資料已儲存！');
-        setOriginalSettings(JSON.parse(JSON.stringify(settings)));
-        setOriginalSubscriptions(JSON.parse(JSON.stringify(subscriptions)));
+
+        const updatedSettings = JSON.parse(JSON.stringify(pricingData.settings)) as PricingSettings;
+
+        // Sync local settings
+        setSettings(updatedSettings);
+        setOriginalSettings(updatedSettings);
+
+        // Sync local subscriptions from consolidated data
+        const updatedSubs: SubscriptionConfig[] = [
+          ...(updatedSettings.plans || []).map(p => ({ ...p, type: 'PLAN' as const })),
+          ...(updatedSettings.extensions || []).map(e => ({ ...e, type: 'EXTENSION' as const }))
+        ];
+        setSubscriptions(updatedSubs);
+        setOriginalSubscriptions(updatedSubs);
       } else {
-        setMessage((pricingData.error || subsData.error) || '儲存失敗，請重試');
+        setMessage(pricingData.error || '儲存失敗，請重試');
       }
     } catch (error) {
       console.error('Save error:', error);
@@ -618,7 +648,7 @@ export default function PricingSettingsPage() {
             ) : (
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg>
             )}
-            {saving ? '儲存中...' : '儲存全部變更'}
+            {saving ? '儲存中...' : '儲存變更'}
           </button>
         </div>
 
@@ -855,9 +885,8 @@ export default function PricingSettingsPage() {
                       {/* Right Block: Actions */}
                       <div className="flex lg:flex-col items-center lg:items-end justify-center lg:justify-start gap-2 lg:w-24 lg:shrink-0 lg:pl-4">
                         <button
-                          onClick={async () => {
+                          onClick={() => {
                             if (editingPlanId === plan.id) {
-                              await saveSettings();
                               setEditingPlanId(null);
                             } else {
                               setEditingPlanId(plan.id);
@@ -996,9 +1025,8 @@ export default function PricingSettingsPage() {
                       {/* Right Block: Actions */}
                       <div className="flex lg:flex-col items-center lg:items-end justify-center lg:justify-start gap-2 lg:w-24 lg:shrink-0 lg:pl-4">
                         <button
-                          onClick={async () => {
+                          onClick={() => {
                             if (editingPlanId === ext.id) {
-                              await saveSettings();
                               setEditingPlanId(null);
                             } else {
                               setEditingPlanId(ext.id);
@@ -1083,7 +1111,7 @@ export default function PricingSettingsPage() {
                             className="sr-only peer"
                           />
                           <div className="w-10 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-500"></div>
-                          <span className="ml-3 text-sm font-bold text-gray-700">{pkg.isActive ? '上架中' : '未上架'}</span>
+                          <span className="ml-3 text-sm font-bold text-gray-700">{pkg.isActive ? '啟用中' : '已停用'}</span>
                         </label>
                       </div>
 
@@ -1230,9 +1258,8 @@ export default function PricingSettingsPage() {
                       {/* Right Block: Actions */}
                       <div className="flex lg:flex-col items-center lg:items-end justify-center lg:justify-start gap-2 lg:w-24 lg:shrink-0 lg:pl-4">
                         <button
-                          onClick={async () => {
+                          onClick={() => {
                             if (editingPlanId === pkg.id) {
-                              await saveSettings();
                               setEditingPlanId(null);
                             } else {
                               setEditingPlanId(pkg.id);
@@ -1374,9 +1401,8 @@ export default function PricingSettingsPage() {
                       {/* Right Block: Actions */}
                       <div className="flex lg:flex-col items-center lg:items-end justify-center lg:justify-start gap-2 lg:w-24 lg:shrink-0 lg:pl-4">
                         <button
-                          onClick={async () => {
+                          onClick={() => {
                             if (editingPlanId === plan.id) {
-                              await saveSettings();
                               setEditingPlanId(null);
                             } else {
                               setEditingPlanId(plan.id);

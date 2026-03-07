@@ -44,10 +44,11 @@ export type PointPackage = {
 export type PricingSettings = {
   pageTitle: string;
   pageDescription: string;
-  mode: 'subscription' | 'points';
+  mode: 'subscription' | 'points' | 'discounts';
   plans: PlanConfig[];
   pointPackages: PointPackage[];
-  discountPlans?: DiscountPlan[]; // New: global discount plans
+  discountPlans?: DiscountPlan[]; // global discount plans
+  extensions?: any[]; // For storing extension subscriptions in the same table
 };
 
 /**

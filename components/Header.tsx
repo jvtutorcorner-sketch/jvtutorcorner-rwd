@@ -295,7 +295,8 @@ export default function Header() {
                                     p === '/student_courses' ? t('orders_my_orders') :
                                       p === '/teacher_courses' ? t('course_orders') :
                                         p === '/courses_manage' ? t('my_courses') :
-                                          p === '/calendar' ? t('calendar_label') : p);
+                                          p === '/calendar' ? t('calendar_label') :
+                                            p === '/plans' ? (user?.role === 'admin' ? '全站購買紀錄' : '我的方案紀錄') : p);
 
                                   return (
                                     <li key={p}>
@@ -304,11 +305,6 @@ export default function Header() {
                                   );
                                 })
                             }
-                            <li key="/plans">
-                              <span role="menuitem" tabIndex={0} className="menu-link" onClick={() => { setMenuOpen(false); router.push('/plans'); }}>
-                                {user?.role === 'admin' ? '全站購買紀錄' : '我的方案紀錄'}
-                              </span>
-                            </li>
                             <li style={{ borderTop: '1px solid #f3f4f6', marginTop: 8, paddingTop: 8 }}>
                               <Button onClick={() => { setMenuOpen(false); handleLogout(); }} variant="outline" className="w-full text-left">{t('logout')}</Button>
                             </li>
@@ -397,11 +393,6 @@ export default function Header() {
                         );
                       })
                   }
-                  <li key="/plans" style={{ marginBottom: 8 }}>
-                    <Button variant="outline" className="w-full text-left" onClick={() => { setMobileMenuOpen(false); router.push('/plans'); }}>
-                      {user?.role === 'admin' ? '全站購買紀錄' : '我的方案紀錄'}
-                    </Button>
-                  </li>
                 </ul>
               ) : null}
             </div>

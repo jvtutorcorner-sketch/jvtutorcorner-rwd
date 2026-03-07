@@ -27,8 +27,14 @@ function CheckoutContent() {
     // Extract from query params
     const planId = searchParams.get('plan');
     const isMockPlan = planId ? Boolean((PLAN_LABELS as Record<string, string>)[planId]) : false;
-    const [subData, setSubData] = useState<SubscriptionConfig | null>(null);
-    const [loadingSub, setLoadingSub] = useState(false);
+    const [itemData, setItemData] = useState<{
+        type: 'PLAN' | 'POINTS';
+        label: string;
+        price: number;
+        features: string[];
+        description?: string;
+    } | null>(null);
+    const [loadingData, setLoadingData] = useState(false);
 
     useEffect(() => {
         setMounted(true);
@@ -46,29 +52,59 @@ function CheckoutContent() {
         }
 
         if (!isMockPlan) {
-            // It's a dynamic subscription
-            setLoadingSub(true);
-            const fetchSub = async () => {
+            setLoadingData(true);
+            const fetchData = async () => {
                 try {
-                    const res = await fetch(`/api/admin/subscriptions?id=${planId}`);
-                    const data = await res.json();
-                    if (data.ok && data.subscription) {
-                        setSubData(data.subscription);
-                    } else {
-                        router.push('/pricing');
+                    // 1. Try fetching as a subscription first
+                    const subsRes = await fetch(`/api/admin/subscriptions?id=${planId}`);
+                    const subsData = await subsRes.json();
+
+                    if (subsRes.ok && subsData.ok && subsData.subscription) {
+                        const sub = subsData.subscription;
+                        setItemData({
+                            type: 'PLAN',
+                            label: sub.label,
+                            price: sub.price || 0,
+                            features: sub.features || [],
+                            description: sub.includedFeatures,
+                        });
+                        setLoadingData(false);
+                        return;
                     }
+
+                    // 2. If not found in subscriptions, check pricing settings (for point packages)
+                    const pricingRes = await fetch('/api/admin/pricing');
+                    const pricingData = await pricingRes.json();
+
+                    if (pricingRes.ok && pricingData.ok && pricingData.settings) {
+                        const pkg = pricingData.settings.pointPackages?.find((p: any) => p.id === planId);
+                        if (pkg) {
+                            setItemData({
+                                type: 'POINTS',
+                                label: pkg.name,
+                                price: pkg.price,
+                                features: [`${pkg.points} 點`, pkg.description].filter(Boolean) as string[],
+                                description: pkg.description,
+                            });
+                            setLoadingData(false);
+                            return;
+                        }
+                    }
+
+                    // If neither found, go back
+                    router.push('/pricing');
                 } catch (err) {
-                    console.error('Failed to load sub info', err);
+                    console.error('Failed to load item info', err);
                     router.push('/pricing');
                 } finally {
-                    setLoadingSub(false);
+                    setLoadingData(false);
                 }
             };
-            fetchSub();
+            fetchData();
         }
     }, [planId, isMockPlan, router]);
 
-    if (!mounted || !user || !planId || (isMockPlan && !PLAN_LABELS[planId as PlanId]) || (!isMockPlan && loadingSub) || (!isMockPlan && !subData)) {
+    if (!mounted || !user || !planId || (isMockPlan && !PLAN_LABELS[planId as PlanId]) || (!isMockPlan && loadingData) || (!isMockPlan && !itemData)) {
         return <div className="page section"><p>{t('loading')}</p></div>;
     }
 
@@ -85,13 +121,11 @@ function CheckoutContent() {
         itemName = `Plan Upgrade: ${PLAN_LABELS[id]}`;
         planLabel = PLAN_LABELS[id];
         planFeatures = PLAN_FEATURES[id];
-    } else if (subData) {
-        const priceString = subData.priceHint || '0';
-        const priceMatch = priceString.match(/(\d+,?\d*)/);
-        price = priceMatch ? parseInt(priceMatch[0].replace(/,/g, ''), 10) : 0;
-        itemName = `Plan Upgrade: ${subData.label}`;
-        planLabel = subData.label;
-        planFeatures = subData.features;
+    } else if (itemData) {
+        price = itemData.price;
+        itemName = `${itemData.type === 'PLAN' ? 'Plan Upgrade' : 'Points Purchase'}: ${itemData.label}`;
+        planLabel = itemData.label;
+        planFeatures = itemData.features;
     }
 
     const handleCreateOrder = async (method: string) => {

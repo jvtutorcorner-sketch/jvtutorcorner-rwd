@@ -236,7 +236,7 @@ export default function PricingPage() {
         {/* Auth tag removed from Pricing page per request */}
       </header>
 
-      {PLANS.filter(p => p.id !== 'viewer').length > 0 && (
+      {mergedPlans.length > 0 && (
         <section className="section">
           <header className="page-header" style={{ marginBottom: '2rem' }}>
             <h2>訂閱方案</h2>
@@ -319,7 +319,7 @@ export default function PricingPage() {
         </section>
       )}
 
-      {POINTS_PLANS.length > 0 && (
+      {dynamicPointsPlans.length > 0 && (
         <section className="section" style={{ marginTop: '2rem' }}>
           <header className="page-header" style={{ marginBottom: '2rem' }}>
             <h2>點數方案</h2>
