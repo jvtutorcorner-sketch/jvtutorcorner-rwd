@@ -9,6 +9,7 @@ export type Teacher = {
   hourlyRate: number;
   location: string;
   intro: string;
+  status?: 'active' | 'resigned';
 };
 
 export const TEACHERS: Teacher[] = [
