@@ -6,6 +6,7 @@
 
 import { NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
+import crypto from 'crypto';
 
 // ---------------------------------------------------------------------------
 // 各服務的驗證邏輯
@@ -306,6 +307,135 @@ async function testPAYPAL(config: Record<string, string>) {
     }
 }
 
+/** Line Pay: 透過 /v3/payments/request 驗證 Channel ID 和 Secret */
+async function testLINEPAY(config: Record<string, string>, testParams?: any) {
+    const channelId = config.linePayChannelId;
+    const channelSecret = config.linePayChannelSecret;
+    if (!channelId || !channelSecret) return { success: false, message: '缺少 Channel ID 或 Channel Secret' };
+
+    const amount = Number(testParams?.amount || 1);
+    const productName = testParams?.productName || '測試商品';
+    const orderId = `TEST_${Date.now()}`;
+
+    const body = {
+        amount,
+        currency: 'TWD',
+        orderId,
+        packages: [
+            {
+                id: 'pkg_1',
+                amount,
+                name: 'Test Package',
+                products: [
+                    {
+                        name: productName,
+                        quantity: 1,
+                        price: amount
+                    }
+                ]
+            }
+        ],
+        redirectUrls: {
+            confirmUrl: 'https://example.com/confirm',
+            cancelUrl: 'https://example.com/cancel'
+        }
+    };
+
+    const uri = '/v3/payments/request';
+    const nonce = crypto.randomUUID();
+    const signature = crypto
+        .createHmac('sha256', channelSecret)
+        .update(channelSecret + uri + JSON.stringify(body) + nonce)
+        .digest('base64');
+
+    const tryFetch = async (endpoint: string) => {
+        return await fetch(`${endpoint}${uri}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-LINE-ChannelId': channelId,
+                'X-LINE-Authorization-Nonce': nonce,
+                'X-LINE-Authorization': signature
+            },
+            body: JSON.stringify(body),
+            cache: 'no-store'
+        });
+    };
+
+    try {
+        let res = await tryFetch('https://api-pay.line.me');
+        if (!res.ok && res.status === 401) {
+            res = await tryFetch('https://sandbox-api-pay.line.me');
+        }
+
+        const data = await res.json();
+        if (data.returnCode === '0000') {
+            const isSandbox = res.url.includes('sandbox');
+            return {
+                success: true,
+                message: `Line Pay ${isSandbox ? 'Sandbox ' : '生產環境'}驗證成功！已成功建立測試交易。`,
+                details: data
+            };
+        }
+        return { success: false, message: `Line Pay API 錯誤: [${data.returnCode}] ${data.returnMessage}` };
+    } catch (e: any) {
+        return { success: false, message: `Line Pay 連線失敗: ${e.message}` };
+    }
+}
+
+/** 街口支付: 建立訂單驗證 API 金鑰 */
+async function testJKOPAY(config: Record<string, string>, testParams?: any) {
+    const merchantId = config.jkopayMerchantId;
+    const secretKey = config.jkopaySecretKey;
+    if (!merchantId || !secretKey) return { success: false, message: '缺少 Merchant ID 或 Secret Key' };
+
+    const amount = Number(testParams?.amount || 1);
+    const productName = testParams?.productName || '測試商品';
+    const orderId = `TEST_${Date.now()}`;
+
+    const body = {
+        result_display_url: 'https://example.com/result',
+        final_result_url: 'https://example.com/final',
+        merchant_order_no: orderId,
+        order_amount: amount,
+        currency: 'TWD',
+        order_products: [
+            {
+                name: productName,
+                quantity: 1,
+                price: amount
+            }
+        ]
+    };
+
+    const bodyStr = JSON.stringify(body);
+    const signature = crypto
+        .createHmac('sha256', secretKey)
+        .update(bodyStr)
+        .digest('hex');
+
+    try {
+        const res = await fetch('https://api.jkopay.com/v1/orders', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'API-KEY': merchantId,
+                'DIGEST': signature
+            },
+            body: bodyStr,
+            cache: 'no-store'
+        });
+
+        const data = await res.json();
+        if (data.result === 'INITIAL') {
+            return { success: true, message: '街口支付驗證成功！已成功建立測試訂單。', details: data };
+        }
+        return { success: false, message: `街口支付 API 錯誤: ${data.message || '驗證失敗'}` };
+    } catch (e: any) {
+        return { success: false, message: `街口支付連線失敗: ${e.message}` };
+    }
+}
+
 // ---------------------------------------------------------------------------
 // AI 服務的驗證邏輯
 // ---------------------------------------------------------------------------
@@ -504,6 +634,8 @@ async function testSMTP(config: Record<string, string>, emailTest?: { to: string
             errorMsg = `Resend 網域未驗證: ${errorMsg}。如果您沒有自訂網域，請將寄件者改為 onboarding@resend.dev。驗證請至：https://resend.com/domains`;
         } else if (host.includes('resend.com') && (errorMsg.includes('Invalid login') || errorMsg.includes('auth'))) {
             errorMsg += ' (若是 Resend，請確認 User 為 "resend" 且 Password 為正確的 API Key)';
+        } else if (host.includes('brevo.com') && (errorMsg.includes('Invalid login') || errorMsg.includes('auth'))) {
+            errorMsg += ' (若是 Brevo，請確認 User 為您的登入信箱，且 Password 為正確的 SMTP Key)';
         }
         return { success: false, message: `SMTP 測試失敗: ${errorMsg}` };
     }
@@ -512,7 +644,7 @@ async function testSMTP(config: Record<string, string>, emailTest?: { to: string
 // ---------------------------------------------------------------------------
 // 測試分發器
 // ---------------------------------------------------------------------------
-const TEST_HANDLERS: Record<string, (config: Record<string, any>, prompt?: string, emailTest?: any) => Promise<{ success: boolean; message: string; details?: any }>> = {
+const TEST_HANDLERS: Record<string, (config: Record<string, any>, prompt?: string, emailTest?: any, testParams?: any) => Promise<{ success: boolean; message: string; details?: any }>> = {
     LINE: (config) => testLINE(config as Record<string, string>),
     TELEGRAM: (config) => testTELEGRAM(config as Record<string, string>),
     WHATSAPP: (config) => testWHATSAPP(config as Record<string, string>),
@@ -524,11 +656,14 @@ const TEST_HANDLERS: Record<string, (config: Record<string, any>, prompt?: strin
     ECPAY: (config) => testECPAY(config as Record<string, string>),
     STRIPE: (config) => testSTRIPE(config as Record<string, string>),
     PAYPAL: (config) => testPAYPAL(config as Record<string, string>),
+    LINEPAY: (config, _, __, testParams) => testLINEPAY(config as Record<string, string>, testParams),
+    JKOPAY: (config, _, __, testParams) => testJKOPAY(config as Record<string, string>, testParams),
     OPENAI: testOPENAI,
     ANTHROPIC: testANTHROPIC,
     GEMINI: testGEMINI,
     SMTP: (config, _, emailTest) => testSMTP(config as Record<string, string>, emailTest),
     RESEND: (config, _, emailTest) => testSMTP(config as Record<string, string>, emailTest),
+    BREVO: (config, _, emailTest) => testSMTP(config as Record<string, string>, emailTest),
 };
 
 // ---------------------------------------------------------------------------
@@ -538,7 +673,7 @@ export async function POST(request: Request) {
     try {
         const body = await request.json();
         console.log('[app-integrations API] TEST request body:', JSON.stringify(body, null, 2));
-        const { integrationId, type, config, prompt, emailTest } = body || {};
+        const { integrationId, type, config, prompt, emailTest, testParams } = body || {};
 
         if (!type) {
             return NextResponse.json({ ok: false, error: 'type is required.' }, { status: 400 });
@@ -562,8 +697,9 @@ export async function POST(request: Request) {
 
         console.log(`[app-integrations/test] Testing ${upperType} for integration ${integrationId || 'N/A'}`);
         console.log(`[app-integrations/test] Config received:`, JSON.stringify(config, null, 2));
+        if (testParams) console.log(`[app-integrations/test] Test params received:`, JSON.stringify(testParams, null, 2));
 
-        const result = await handler(config, prompt, emailTest);
+        const result = await handler(config, prompt, emailTest, testParams);
 
         console.log(`[app-integrations/test] ${upperType} result:`, result.success ? 'SUCCESS' : 'FAIL', result.message);
 

@@ -133,7 +133,7 @@ function AddAppForm() {
 
     // For Payment
     const [selectedPaymentProvider, setSelectedPaymentProvider] = useState(
-        ['ECPAY', 'PAYPAL', 'STRIPE'].includes(providerFromUrl) ? providerFromUrl : 'ECPAY'
+        ['ECPAY', 'PAYPAL', 'STRIPE', 'LINEPAY', 'JKOPAY'].includes(providerFromUrl) ? providerFromUrl : 'ECPAY'
     );
     const [paymentData, setPaymentData] = useState({
         name: '',
@@ -144,7 +144,11 @@ function AddAppForm() {
         stripePublicKey: '',
         stripeSecretKey: '',
         paypalClientId: '',
-        paypalSecretKey: ''
+        paypalSecretKey: '',
+        linePayChannelId: '',
+        linePayChannelSecret: '',
+        jkopayMerchantId: '',
+        jkopaySecretKey: ''
     });
 
     // Gemini default prompt
@@ -249,7 +253,7 @@ function AddAppForm() {
 
     // For Email
     const [selectedEmailProvider, setSelectedEmailProvider] = useState(
-        ['RESEND'].includes(providerFromUrl) ? providerFromUrl : 'RESEND'
+        ['RESEND', 'BREVO'].includes(providerFromUrl) ? providerFromUrl : 'RESEND'
     );
     const [emailData, setEmailData] = useState({
         name: '',
@@ -268,6 +272,22 @@ function AddAppForm() {
     });
     const [testSending, setTestSending] = useState(false);
     const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+
+    // 當切換郵件服務商時，若內容尚未被修改，則自動切換測試郵件範本
+    useEffect(() => {
+        if (isEmail) {
+            const resendTpl = '<p>這是一封從您的 Resend 整合發出的測試郵件。如果您收到這封信，代表您的 API Key 與寄件者設定已正確生效！</p>';
+            const brevoTpl = '<p>這是一封從您的 Brevo 整合發出的測試郵件。如果您收到這封信，代表您的 SMTP 帳號與密碼設定已正確生效！</p>';
+
+            if (selectedEmailProvider === 'RESEND' && testEmailData.html === brevoTpl) {
+                setTestEmailData(prev => ({ ...prev, html: resendTpl }));
+            } else if (selectedEmailProvider === 'BREVO' && (testEmailData.html === resendTpl || testEmailData.html === '')) {
+                setTestEmailData(prev => ({ ...prev, html: brevoTpl }));
+            } else if (selectedEmailProvider === 'RESEND' && (testEmailData.html === '')) {
+                setTestEmailData(prev => ({ ...prev, html: resendTpl }));
+            }
+        }
+    }, [selectedEmailProvider, isEmail]);
 
     const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         setEmailData({ ...emailData, [e.target.name]: e.target.value });
@@ -370,25 +390,44 @@ function AddAppForm() {
 
     const handleSendTestEmail = async () => {
         if (!emailData.smtpPass || !emailData.fromAddress || !testEmailData.to) {
-            alert('請填寫 API Key、寄件者以及收件者內容');
+            alert('請填寫必填欄位 (密碼/API Key, 寄件者信箱, 收件者)');
+            return;
+        }
+
+        if (selectedEmailProvider === 'BREVO' && !emailData.smtpUser) {
+            alert('請填寫 SMTP 使用者名稱');
             return;
         }
 
         setTestSending(true);
         setTestResult(null);
+
+        let testConfig: any = {};
+        if (selectedEmailProvider === 'RESEND') {
+            testConfig = {
+                smtpHost: 'smtp.resend.com',
+                smtpPort: '465',
+                smtpUser: 'resend',
+                smtpPass: emailData.smtpPass,
+                fromAddress: emailData.fromAddress,
+            };
+        } else if (selectedEmailProvider === 'BREVO') {
+            testConfig = {
+                smtpHost: 'smtp-relay.brevo.com',
+                smtpPort: '587',
+                smtpUser: emailData.smtpUser,
+                smtpPass: emailData.smtpPass,
+                fromAddress: emailData.fromAddress,
+            };
+        }
+
         try {
             const res = await fetch('/api/app-integrations/test', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    type: 'RESEND',
-                    config: {
-                        smtpHost: 'smtp.resend.com',
-                        smtpPort: '465',
-                        smtpUser: 'resend',
-                        smtpPass: emailData.smtpPass,
-                        fromAddress: emailData.fromAddress,
-                    },
+                    type: selectedEmailProvider,
+                    config: testConfig,
                     emailTest: testEmailData
                 }),
             });
@@ -441,6 +480,16 @@ function AddAppForm() {
                     config = {
                         clientId: paymentData.paypalClientId,
                         secretKey: paymentData.paypalSecretKey
+                    };
+                } else if (selectedPaymentProvider === 'LINEPAY') {
+                    config = {
+                        linePayChannelId: paymentData.linePayChannelId,
+                        linePayChannelSecret: paymentData.linePayChannelSecret
+                    };
+                } else if (selectedPaymentProvider === 'JKOPAY') {
+                    config = {
+                        jkopayMerchantId: paymentData.jkopayMerchantId,
+                        jkopaySecretKey: paymentData.jkopaySecretKey
                     };
                 }
 
@@ -523,6 +572,14 @@ function AddAppForm() {
                         smtpPass: emailData.smtpPass, // User enters API Key here
                         fromAddress: emailData.fromAddress,
                     };
+                } else if (selectedEmailProvider === 'BREVO') {
+                    config = {
+                        smtpHost: 'smtp-relay.brevo.com',
+                        smtpPort: '587',
+                        smtpUser: emailData.smtpUser,
+                        smtpPass: emailData.smtpPass,
+                        fromAddress: emailData.fromAddress,
+                    };
                 }
 
                 payload = {
@@ -592,7 +649,7 @@ function AddAppForm() {
                 throw new Error(errData.error || `HTTP ${res.status}`);
             }
 
-            alert(isPayment ? '金流設定新增成功！' : isAskPlanAgent ? 'Ask Plan Agent 新增成功！' : isAI ? 'AI 服務新增成功！' : isEmail ? '郵件服務新增成功！' : isDatabase ? '資料庫設定新增成功！' : '應用程式新增成功！');
+            alert(isPayment ? '金流設定新增成功！' : isAskPlanAgent ? '策略思維規劃代理 (Ask-Plan-Agent) 新增成功！' : isAI ? 'AI 服務新增成功！' : isEmail ? '郵件服務新增成功！' : isDatabase ? '資料庫設定新增成功！' : '應用程式新增成功！');
             router.push('/apps');
         } catch (error: any) {
             console.error('Save failed:', error);
@@ -618,10 +675,10 @@ function AddAppForm() {
                     </Link>
                     <div className="text-center">
                         <h1 className="text-2xl font-bold">
-                            {isPayment ? '新增金流服務' : isAskPlanAgent ? '🧠 新增 Ask Plan Agent' : (isAI && selectedAIProvider === 'AI_CHATROOM' ? '新增 AI 聊天室' : isAI ? '新增 AI 服務' : isEmail ? '新增郵件服務' : isDatabase ? '新增資料庫' : '新增應用程式')}
+                            {isPayment ? '新增金流服務' : isAskPlanAgent ? '🧠 新增 策略思維規劃代理 (Ask-Plan-Agent)' : (isAI && selectedAIProvider === 'AI_CHATROOM' ? '新增 AI 聊天室' : isAI ? '新增 AI 服務' : isEmail ? '新增郵件服務' : isDatabase ? '新增資料庫' : '新增應用程式')}
                         </h1>
                         <p className={`mt-2 ${isPayment ? 'text-green-100' : isAskPlanAgent ? 'text-purple-100' : isAI ? 'text-indigo-100' : isEmail ? 'text-yellow-100' : isDatabase ? 'text-orange-100' : 'text-blue-100'}`}>
-                            {isPayment ? '設定您的 ECPay、Stripe 或 PayPal 金流服務設定' : isAskPlanAgent ? '設定多階段推理 Agent — 探索 → 規劃 → 執行，讓 AI 更聰明地完成複雜任務' : (isAI && selectedAIProvider === 'AI_CHATROOM' ? '配置您的專屬 AI 聊天室入口' : isAI ? '設定您要串接的 AI 模型 API 金鑰' : isEmail ? '設定您的 SMTP 伺服器資訊以發送郵件' : isDatabase ? '設定 DynamoDB 或知識庫作為 AI 聊天室的資料來源' : '設定通訊渠道串接參數 (LINE、Telegram、WhatsApp 等)')}
+                            {isPayment ? '設定您的 ECPay、Stripe 或 PayPal 金流服務設定' : isAskPlanAgent ? '設定多階段推理代理 — 諮詢 → 規劃 → 執行，讓 AI 更聰明地完成複雜任務' : (isAI && selectedAIProvider === 'AI_CHATROOM' ? '配置您的專屬 AI 聊天室入口' : isAI ? '設定您要串接的 AI 模型 API 金鑰' : isEmail ? '設定您的 SMTP 伺服器資訊以發送郵件' : isDatabase ? '設定 DynamoDB 或知識庫作為 AI 聊天室的資料來源' : '設定通訊渠道串接參數 (LINE、Telegram、WhatsApp 等)')}
                         </p>
                     </div>
                 </div>
@@ -633,7 +690,7 @@ function AddAppForm() {
                             <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                             </svg>
-                            {isPayment ? '安全提示' : isAskPlanAgent ? '🧠 Ask Plan Agent 說明' : isAI ? '安全提示' : isEmail ? '參數說明' : '參數說明'}
+                            {isPayment ? '安全提示' : isAskPlanAgent ? '🧠 策略思維規劃代理 (Ask-Plan-Agent) 說明' : isAI ? '安全提示' : isEmail ? '參數說明' : '參數說明'}
                         </h3>
                         <div className="space-y-3">
                             {isPayment ? (
@@ -642,16 +699,16 @@ function AddAppForm() {
                                 </p>
                             ) : isAskPlanAgent ? (
                                 <div className="text-sm text-purple-800 space-y-2">
-                                    <p>Ask Plan Agent 採用三階段推理架構，靈感來自 Cursor、Claude Projects 等主流 IDE 的 Agent 模式：</p>
+                                    <p>策略思維規劃代理採用三階段推理架構，靈感來自 Cursor、Claude Projects 等主流 IDE 的 Agent 模式：</p>
                                     <div className="grid grid-cols-3 gap-2 mt-2">
                                         {[
-                                            { icon: '❓', stage: 'Ask', desc: '探索用戶意圖，釐清問題核心' },
-                                            { icon: '📋', stage: 'Plan', desc: '拆解任務，制定執行計劃' },
-                                            { icon: '⚡', stage: 'Execute', desc: '逐步執行，輸出高品質結果' },
+                                            { icon: '🕵️‍♂️', stage: '諮詢', desc: '探索用戶意圖，釐清問題核心' },
+                                            { icon: '📋', stage: '規劃', desc: '拆解任務，制定執行計劃' },
+                                            { icon: '⚡', stage: '執行', desc: '逐步執行，輸出高品質結果' },
                                         ].map(s => (
                                             <div key={s.stage} className="bg-white/60 rounded-lg p-2 text-center border border-purple-100">
                                                 <div className="text-lg">{s.icon}</div>
-                                                <div className="font-bold text-xs mt-0.5">{s.stage}</div>
+                                                <div className="font-bold text-xs mt-0.5">{s.stage}階段</div>
                                                 <div className="text-[10px] text-purple-600 mt-0.5 leading-tight">{s.desc}</div>
                                             </div>
                                         ))}
@@ -705,6 +762,8 @@ function AddAppForm() {
                                             <option value="ECPAY">綠界科技 (ECPay)</option>
                                             <option value="STRIPE">Stripe</option>
                                             <option value="PAYPAL">PayPal</option>
+                                            <option value="LINEPAY">Line Pay</option>
+                                            <option value="JKOPAY">街口支付 (JkoPay)</option>
                                         </select>
                                     </div>
                                 </div>
@@ -768,6 +827,40 @@ function AddAppForm() {
                                                 Secret Key <span className="text-red-500">*</span>
                                             </label>
                                             <input type="password" name="paypalSecretKey" value={paymentData.paypalSecretKey} onChange={handlePaymentChange} className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600" required />
+                                        </div>
+                                    </div>
+                                )}
+
+                                {selectedPaymentProvider === 'LINEPAY' && (
+                                    <div className="space-y-4 p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800/50">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                                Line Pay Channel ID <span className="text-red-500">*</span>
+                                            </label>
+                                            <input type="text" name="linePayChannelId" value={paymentData.linePayChannelId} onChange={handlePaymentChange} className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600" required />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                                Line Pay Channel Secret <span className="text-red-500">*</span>
+                                            </label>
+                                            <input type="password" name="linePayChannelSecret" value={paymentData.linePayChannelSecret} onChange={handlePaymentChange} className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600" required />
+                                        </div>
+                                    </div>
+                                )}
+
+                                {selectedPaymentProvider === 'JKOPAY' && (
+                                    <div className="space-y-4 p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800/50">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                                街口特店編號 (Merchant ID) <span className="text-red-500">*</span>
+                                            </label>
+                                            <input type="text" name="jkopayMerchantId" value={paymentData.jkopayMerchantId} onChange={handlePaymentChange} className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600" required />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                                街口 Secret Key <span className="text-red-500">*</span>
+                                            </label>
+                                            <input type="password" name="jkopaySecretKey" value={paymentData.jkopaySecretKey} onChange={handlePaymentChange} className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600" required />
                                         </div>
                                     </div>
                                 )}
@@ -897,13 +990,13 @@ function AddAppForm() {
                                                             type="button"
                                                             onClick={() => setAgentData({ ...agentData, executionEnvironment: env })}
                                                             className={`relative p-4 rounded-lg border-2 transition-all overflow-hidden group ${agentData.executionEnvironment === env
-                                                                    ? `border-purple-600 ${env === 'local'
-                                                                        ? 'bg-blue-50 dark:bg-blue-900/20'
-                                                                        : env === 'background'
-                                                                            ? 'bg-amber-50 dark:bg-amber-900/20'
-                                                                            : 'bg-purple-50 dark:bg-purple-900/20'
-                                                                    }`
-                                                                    : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 bg-white dark:bg-gray-800'
+                                                                ? `border-purple-600 ${env === 'local'
+                                                                    ? 'bg-blue-50 dark:bg-blue-900/20'
+                                                                    : env === 'background'
+                                                                        ? 'bg-amber-50 dark:bg-amber-900/20'
+                                                                        : 'bg-purple-50 dark:bg-purple-900/20'
+                                                                }`
+                                                                : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 bg-white dark:bg-gray-800'
                                                                 }`}
                                                         >
                                                             {/* Checkmark indicator */}
@@ -969,11 +1062,11 @@ function AddAppForm() {
                                     <div className="space-y-4">
                                         {/* Pipeline visualization */}
                                         <div className="flex items-center justify-center gap-2 p-3 bg-purple-50 dark:bg-purple-900/10 rounded-xl border border-purple-200 dark:border-purple-800">
-                                            <span className="px-2.5 py-1 bg-purple-600 text-white rounded-full text-xs font-bold">❓ Ask</span>
+                                            <span className="px-2.5 py-1 bg-purple-600 text-white rounded-full text-xs font-bold">🕵️‍♂️ 諮詢</span>
                                             <span className="text-purple-400 font-bold">──▶</span>
-                                            <span className="px-2.5 py-1 bg-indigo-600 text-white rounded-full text-xs font-bold">📋 Plan</span>
+                                            <span className="px-2.5 py-1 bg-indigo-600 text-white rounded-full text-xs font-bold">📋 規劃</span>
                                             <span className="text-indigo-400 font-bold">──▶</span>
-                                            <span className="px-2.5 py-1 bg-blue-600 text-white rounded-full text-xs font-bold">⚡ Execute</span>
+                                            <span className="px-2.5 py-1 bg-blue-600 text-white rounded-full text-xs font-bold">⚡ 執行</span>
                                         </div>
 
                                         {/* Stage Cards */}
@@ -981,29 +1074,29 @@ function AddAppForm() {
                                             {
                                                 serviceKey: 'askLinkedServiceId' as const,
                                                 promptKey: 'askSystemPrompt' as const,
-                                                icon: '❓', label: 'Ask 階段', subtitle: '探索與釐清用戶意圖',
+                                                icon: '🕵️‍♂️', label: '階段一：諮詢釐清 (Ask Phase)', subtitle: '探索與釐清用戶意圖',
                                                 border: 'border-purple-200 dark:border-purple-800', bg: 'bg-purple-50/50 dark:bg-purple-900/10',
                                                 labelCls: 'text-purple-900 dark:text-purple-100', ring: 'focus:ring-purple-500',
-                                                hint: '負責理解用戶真實需求、識別問題核心',
-                                                placeholder: '你是一個需求分析專家。仔細閱讀用戶的輸入，識別核心問題與隱含需求...',
+                                                hint: '負責理解用戶真實需求、識別問題核心 (Ask Phase)',
+                                                placeholder: '你是一個需求分析專家。仔細閱讀用戶的輸入，識別核心問題與隱含需求。在需要時主動詢問用戶以釐清模糊地帶...',
                                             },
                                             {
                                                 serviceKey: 'planLinkedServiceId' as const,
                                                 promptKey: 'planSystemPrompt' as const,
-                                                icon: '📋', label: 'Plan 階段', subtitle: '規劃與拆解目標',
+                                                icon: '📋', label: '階段二：策略規劃 (Plan Phase)', subtitle: '規劃與拆解目標',
                                                 border: 'border-indigo-200 dark:border-indigo-800', bg: 'bg-indigo-50/50 dark:bg-indigo-900/10',
                                                 labelCls: 'text-indigo-900 dark:text-indigo-100', ring: 'focus:ring-indigo-500',
-                                                hint: '將複雜任務分解為可執行步驟，制定執行策略',
-                                                placeholder: '你是一個任務規劃師。根據 Ask 階段的分析結果，制定結構化的執行計劃...',
+                                                hint: '將複雜任務分解為可執行步驟，制定執行策略 (Plan Phase)',
+                                                placeholder: '你是一個任務規劃師。根據諮詢階段的分析結果，制定結構化的執行計劃，並確保邏輯嚴密且具備可行性...',
                                             },
                                             {
                                                 serviceKey: 'agentLinkedServiceId' as const,
                                                 promptKey: 'executeSystemPrompt' as const,
-                                                icon: '⚡', label: 'Execute 階段', subtitle: '執行任務並輸出結果',
+                                                icon: '⚡', label: '階段三：任務執行 (Execute Phase)', subtitle: '執行任務並輸出結果',
                                                 border: 'border-blue-200 dark:border-blue-800', bg: 'bg-blue-50/50 dark:bg-blue-900/10',
                                                 labelCls: 'text-blue-900 dark:text-blue-100', ring: 'focus:ring-blue-500',
-                                                hint: '按照計劃逐步執行，生成高品質的最終輸出',
-                                                placeholder: '你是一個執行專家。依照 Plan 中的步驟，逐項執行並生成完整答案...',
+                                                hint: '依照計劃逐步執行，生成高品質的最終輸出 (Execute Phase)',
+                                                placeholder: '你是一個執行專家。依照策略規劃中的步驟，逐項執行並生成完整答案。確保內容準確且格式符合要求...',
                                             },
                                         ].map((stage) => {
                                             const prompt: string = agentData[stage.promptKey];
@@ -1144,7 +1237,7 @@ function AddAppForm() {
                                         <div className="p-4 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700 space-y-2">
                                             <h4 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">⚙️ 當前行為設定摘要</h4>
                                             <div className="text-xs text-gray-600 dark:text-gray-400 space-y-1.5">
-                                                <p>• 推理最多執行 <strong className="text-gray-800 dark:text-gray-200">{agentData.maxLoops === 0 ? '不限' : `${agentData.maxLoops} 輪`}</strong>，每輪依次呼叫 Ask → Plan → Execute</p>
+                                                <p>• 推理最多執行 <strong className="text-gray-800 dark:text-gray-200">{agentData.maxLoops === 0 ? '不限' : `${agentData.maxLoops} 輪`}</strong>，每輪依次呼叫 諮詢 → 規劃 → 執行</p>
                                                 <p>• 輸出格式：<strong className="text-gray-800 dark:text-gray-200">{{ markdown: 'Markdown', plain: '純文字', json: 'JSON', html: 'HTML' }[agentData.outputFormat] || agentData.outputFormat}</strong></p>
                                                 <p>• 詳細度：<strong className="text-gray-800 dark:text-gray-200">{{ concise: '簡潔', standard: '標準', detailed: '詳細' }[agentData.verbosity] || agentData.verbosity}</strong></p>
                                                 <p>• 語言：<strong className="text-gray-800 dark:text-gray-200">{{ 'zh-TW': '繁體中文', 'zh-CN': '簡體中文', en: '英文', auto: '自動偵測' }[agentData.responseLanguage] || agentData.responseLanguage}</strong></p>
@@ -1552,6 +1645,7 @@ function AddAppForm() {
                                             className="w-full pl-4 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                                         >
                                             <option value="RESEND">Resend 郵件服務 (推薦)</option>
+                                            <option value="BREVO">Brevo 郵件服務</option>
                                         </select>
                                     </div>
                                 </div>
@@ -1673,6 +1767,137 @@ function AddAppForm() {
 
                                         <div className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-4 rounded-lg text-xs text-gray-600 dark:text-gray-400">
                                             💡 <strong>小提示：</strong> 雖然這是 Resend 介面，但後端仍使用 SMTP 協定發送，因此如果您日後更換主機，也可以無痛遷移。
+                                        </div>
+                                    </div>
+                                )}
+
+                                {selectedEmailProvider === 'BREVO' && (
+                                    <div className="space-y-4">
+                                        <div className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-blue-50 dark:bg-blue-900/10">
+                                            <div className="flex items-center gap-3 mb-4">
+                                                <div className="text-3xl">📧</div>
+                                                <div>
+                                                    <h4 className="text-sm font-bold text-gray-800 dark:text-white">Brevo SMTP 設定</h4>
+                                                    <p className="text-xs text-gray-500">提供每日 300 封免費額度，開通即可發信</p>
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-4">
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                                        SMTP 使用者名稱 (Login) <span className="text-red-500">*</span>
+                                                    </label>
+                                                    <input
+                                                        type="text"
+                                                        name="smtpUser"
+                                                        value={emailData.smtpUser}
+                                                        onChange={handleEmailChange}
+                                                        placeholder="您的 Brevo 登入信箱"
+                                                        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono"
+                                                        required
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                                        SMTP 密碼 (Password) <span className="text-red-500">*</span>
+                                                    </label>
+                                                    <input
+                                                        type="password"
+                                                        name="smtpPass"
+                                                        value={emailData.smtpPass}
+                                                        onChange={handleEmailChange}
+                                                        placeholder="SMTP Key..."
+                                                        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono"
+                                                        required
+                                                    />
+                                                    <p className="mt-1 text-[10px] text-gray-400">
+                                                        取得 SMTP Key：前往 <a href="https://app.brevo.com/settings/keys/smtp" target="_blank" rel="noreferrer" className="text-blue-500 underline">Brevo SMTP & API</a>
+                                                    </p>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                                        寄件者信箱 (From Address) <span className="text-red-500">*</span>
+                                                    </label>
+                                                    <input
+                                                        type="text"
+                                                        name="fromAddress"
+                                                        value={emailData.fromAddress}
+                                                        onChange={handleEmailChange}
+                                                        placeholder="例如: no-reply@yourdomain.com"
+                                                        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                                        required
+                                                    />
+                                                </div>
+
+                                                {/* 測試寄送郵件區塊 */}
+                                                <div className="mt-6 pt-6 border-t border-gray-100 dark:border-gray-700">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setShowTestEmail(!showTestEmail)}
+                                                        className="flex items-center gap-2 text-sm font-bold text-blue-600 dark:text-blue-400 hover:text-blue-700 transition-colors"
+                                                    >
+                                                        <span>{showTestEmail ? '▼' : '▶'}</span>
+                                                        測試寄送實際郵件 (可選)
+                                                    </button>
+
+                                                    {showTestEmail && (
+                                                        <div className="mt-4 space-y-4 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700 animate-in fade-in slide-in-from-top-2">
+                                                            <div>
+                                                                <label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 mb-1 uppercase tracking-wider">收件者 (To)</label>
+                                                                <input
+                                                                    type="email"
+                                                                    value={testEmailData.to}
+                                                                    onChange={(e) => setTestEmailData({ ...testEmailData, to: e.target.value })}
+                                                                    placeholder="您的測試信箱"
+                                                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600"
+                                                                />
+                                                            </div>
+                                                            <div>
+                                                                <label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 mb-1 uppercase tracking-wider">主旨 (Subject)</label>
+                                                                <input
+                                                                    type="text"
+                                                                    value={testEmailData.subject}
+                                                                    onChange={(e) => setTestEmailData({ ...testEmailData, subject: e.target.value })}
+                                                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600"
+                                                                />
+                                                            </div>
+                                                            <div>
+                                                                <label className="block text-[11px] font-bold text-gray-500 dark:text-gray-400 mb-1 uppercase tracking-wider">內容 (HTML / Text)</label>
+                                                                <textarea
+                                                                    rows={3}
+                                                                    value={testEmailData.html}
+                                                                    onChange={(e) => setTestEmailData({ ...testEmailData, html: e.target.value })}
+                                                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600"
+                                                                />
+                                                            </div>
+
+                                                            <button
+                                                                type="button"
+                                                                onClick={handleSendTestEmail}
+                                                                disabled={testSending || !testEmailData.to}
+                                                                className={`w-full py-2 rounded-md text-sm font-bold transition-all flex items-center justify-center gap-2 ${testSending ? 'bg-blue-200 text-blue-400 cursor-wait' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'}`}
+                                                            >
+                                                                {testSending ? (
+                                                                    <>
+                                                                        <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                                                                        正在發送測試郵件...
+                                                                    </>
+                                                                ) : '🚀 發送測試郵件'}
+                                                            </button>
+
+                                                            {testResult && (
+                                                                <div className={`p-3 rounded text-xs font-medium animate-in zoom-in-95 ${testResult.success ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-red-100 text-red-700 border border-red-200'}`}>
+                                                                    {testResult.success ? '✅ ' : '❌ '}{testResult.message}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-4 rounded-lg text-xs text-gray-600 dark:text-gray-400">
+                                            💡 <strong>小提示：</strong> 申請 Brevo 帳戶即可獲得每日 300 封免費發信額度。無須繁雜的網域認證也能使用。
                                         </div>
                                     </div>
                                 )}
@@ -1811,7 +2036,7 @@ function AddAppForm() {
                                         儲存中...
                                     </>
                                 ) : isAskPlanAgent ? (
-                                    '🧠 建立 Ask Plan Agent'
+                                    '🧠 建立 策略思維規劃代理'
                                 ) : (
                                     '確認新增'
                                 )}
