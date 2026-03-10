@@ -28,10 +28,24 @@ export async function POST(req: NextRequest) {
             // Transaction Successful
             console.log('Capture Success:', data);
 
-            // TODO: Update Database
-            // const userId = ... (get from session or Custom ID if passed in create)
-            // updateOrder(orderID, 'PAID');
-            // grantAccess(userId);
+            // Update Database
+            if (orderID) {
+                try {
+                    const base = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+                    const res = await fetch(`${base}/api/orders/${encodeURIComponent(orderID)}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ status: 'PAID' }),
+                    });
+                    if (!res.ok) {
+                        console.error('[PayPal Capture] Failed to update order status via API', res.status);
+                    } else {
+                        console.log(`[PayPal Capture] Successfully updated order ${orderID} to PAID`);
+                    }
+                } catch (e) {
+                    console.error('[PayPal Capture] Error updating order status:', e);
+                }
+            }
 
             return NextResponse.json({ success: true, data });
         } else {

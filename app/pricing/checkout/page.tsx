@@ -283,6 +283,39 @@ function CheckoutContent() {
         }
     };
 
+    const handlePaymentLinePay = async () => {
+        setIsSubmitting(true);
+        const upgrade = await handleCreateOrder('linepay');
+        if (!upgrade) {
+            setIsSubmitting(false);
+            return;
+        }
+
+        try {
+            const res = await fetch('/api/linepay/checkout', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    amount: price,
+                    currency: 'TWD',
+                    itemName: itemName,
+                    orderId: upgrade.upgradeId,
+                    userId: user.roid_id || user.id || user.email,
+                }),
+            });
+            const data = await res.json();
+            if (data.url) {
+                window.location.href = data.url;
+            } else {
+                alert('Line Pay initiation error');
+            }
+        } catch (err) {
+            alert('Line Pay error');
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
     const handlePaymentSimulated = async () => {
         setIsSubmitting(true);
         const upgrade = await handleCreateOrder('simulated');
@@ -388,6 +421,17 @@ function CheckoutContent() {
                                         style={{ background: '#0070ba' }}
                                     >
                                         {t('payment_method_paypal')}
+                                    </button>
+                                )}
+                                {activePaymentMethods.includes('LINEPAY') && (
+                                    <button
+                                        type="button"
+                                        className="modal-button primary"
+                                        onClick={handlePaymentLinePay}
+                                        disabled={isSubmitting}
+                                        style={{ background: '#00C300' }}
+                                    >
+                                        LINE Pay
                                     </button>
                                 )}
                                 <button

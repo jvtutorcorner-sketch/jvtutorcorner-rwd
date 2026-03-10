@@ -89,23 +89,23 @@ export async function POST(req: NextRequest) {
 
 /**
  * Handle checkout.session.completed
- * Triggered when a subscription is successfully created via Stripe Checkout.
+ * Triggered when a subscription or payment is successfully created via Stripe Checkout.
  * Logic:
  * 1. Retrieve user ID from metadata.
- * 2. Update user profile with subscription ID, status, and price ID.
+ * 2. Update user profile with subscription ID and status (if subscription).
+ * 3. Update Order status.
  */
 async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) {
     const userId = session.metadata?.userId;
-    const subscriptionId = session.subscription as string;
-    const customerId = session.customer as string;
     const orderId = session.metadata?.orderId;
+    const checkoutMode = session.mode; // 'payment' or 'subscription'
 
     if (!userId) {
         console.warn('Missing userId in session metadata');
         return;
     }
 
-    console.log(`[Stripe Webhook] Checkout completed for user ${userId}, matching Order ${orderId}`);
+    console.log(`[Stripe Webhook] Checkout completed for user ${userId}, Mode: ${checkoutMode}, matching Order ${orderId}`);
 
     // Update DB Order Status
     if (orderId) {
@@ -126,21 +126,23 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) 
         }
     }
 
-    // Retrieve subscription details to get status and period end
-    const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+    // If it's a subscription, save the details to profile
+    if (checkoutMode === 'subscription' && session.subscription) {
+        const subscriptionId = session.subscription as string;
+        const customerId = session.customer as string;
+        const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+        const subData: any = subscription;
 
-    // Fix: Handle usage of subscription object where it might be typed as Response<Subscription>
-    const subData: any = subscription;
-
-    await profilesService.putProfile({
-        id: userId,
-        stripeCustomerId: customerId,
-        subscriptionId: subData.id,
-        subscriptionStatus: subData.status,
-        priceId: subData.items.data[0].price.id,
-        currentPeriodEnd: new Date(subData.current_period_end * 1000).toISOString(),
-        cancelAtPeriodEnd: subData.cancel_at_period_end,
-    });
+        await profilesService.putProfile({
+            id: userId,
+            stripeCustomerId: customerId,
+            subscriptionId: subData.id,
+            subscriptionStatus: subData.status,
+            priceId: subData.items.data[0].price.id,
+            currentPeriodEnd: new Date(subData.current_period_end * 1000).toISOString(),
+            cancelAtPeriodEnd: subData.cancel_at_period_end,
+        });
+    }
 }
 
 /**
