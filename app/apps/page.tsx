@@ -51,6 +51,7 @@ const AI_META: Record<string, { badge: string; label: string; icon: string; desc
     OPENAI: { badge: 'bg-gray-100 text-gray-800', label: 'OpenAI ChatGPT', icon: '🧠', desc: '強大的通用大語言模型' },
     ANTHROPIC: { badge: 'bg-orange-100 text-orange-800', label: 'Anthropic (Claude)', icon: '🎭', desc: '專注於安全性與長文本理解的 AI 模型' },
     GEMINI: { badge: 'bg-blue-100 text-blue-800', label: 'Google Gemini', icon: '✨', desc: 'Google 的強大原生多模態大模型' },
+    SMART_ROUTER: { badge: 'bg-cyan-100 text-cyan-800', label: '智能模型路由 (Smart Router)', icon: '🔀', desc: '根據對話複雜度，自動切換極速與高階模型，以節省 Token 成本並保持最佳效能' },
     AI_CHATROOM: { badge: 'bg-indigo-100 text-indigo-800', label: 'AI 聊天室', icon: '🤖', desc: '智慧問答聊天室，即時回覆學員問題，提升服務品質與效率' },
     ASK_PLAN_AGENT: { badge: 'bg-purple-100 text-purple-800', label: '策略思維規劃代理 (Ask-Plan-Agent)', icon: '🕵️‍♂️', desc: '三階段推理 AI：諮詢釐清、策略規劃、任務執行，能處理複雜的教學與維運任務' },
 };
@@ -150,7 +151,7 @@ export default function AppsPage() {
     const [isSyncing, setIsSyncing] = useState(false);
     const [syncActionStatus, setSyncActionStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
     const [aiModelOptions, setAiModelOptions] = useState<Record<string, string[]>>({});
-    const [aiTypes, setAiTypes] = useState<string[]>(['AI_CHATROOM', 'ASK_PLAN_AGENT']);
+    const [aiTypes, setAiTypes] = useState<string[]>(['AI_CHATROOM', 'ASK_PLAN_AGENT', 'SMART_ROUTER']);
     const [showSyncModal, setShowSyncModal] = useState(false);
     const [selectedSyncProvider, setSelectedSyncProvider] = useState<string>('GEMINI');
 
@@ -220,7 +221,7 @@ export default function AppsPage() {
             const aiResult = await aiRes.json();
             if (aiResult.ok) {
                 const modelsMap: Record<string, string[]> = {};
-                const typesFromDb: string[] = ['AI_CHATROOM', 'ASK_PLAN_AGENT'];
+                const typesFromDb: string[] = ['AI_CHATROOM', 'ASK_PLAN_AGENT', 'SMART_ROUTER'];
                 aiResult.data.forEach((model: any) => {
                     modelsMap[model.provider] = model.models;
                     if (!typesFromDb.includes(model.provider)) {
@@ -606,7 +607,7 @@ export default function AppsPage() {
     // Visibility derived from permissions OR existing connected apps
     const showChannels = categoryPermissions.APP_CATEGORY_CHANNEL || apps.some(a => CHANNEL_TYPES.includes(a.type));
     const showPayments = categoryPermissions.APP_CATEGORY_PAYMENT || apps.some(a => PAYMENT_TYPES.includes(a.type));
-    const showAI = categoryPermissions.APP_CATEGORY_AI || apps.some(a => aiTypes.filter(t => !['AI_CHATROOM', 'ASK_PLAN_AGENT'].includes(t)).includes(a.type));
+    const showAI = categoryPermissions.APP_CATEGORY_AI || apps.some(a => aiTypes.filter(t => !['AI_CHATROOM', 'ASK_PLAN_AGENT', 'SMART_ROUTER'].includes(t)).includes(a.type));
     const showAIChatroom = categoryPermissions.APP_CATEGORY_AI_CHATROOM || apps.some(a => a.type === 'AI_CHATROOM');
     const showAskPlanAgent = categoryPermissions.APP_CATEGORY_ASK_PLAN_AGENT || apps.some(a => a.type === 'ASK_PLAN_AGENT');
     const showEmail = categoryPermissions.APP_CATEGORY_EMAIL || apps.some(a => EMAIL_TYPES.includes(a.type));
@@ -1113,7 +1114,7 @@ export default function AppsPage() {
                                 AI 工具串接
                                 <span className="ml-3 inline-flex items-center gap-2 text-sm font-normal text-gray-500 dark:text-gray-400">
                                     <span className="px-2.5 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-full text-xs font-semibold">
-                                        {apps.filter(a => aiTypes.filter(t => !['AI_CHATROOM', 'ASK_PLAN_AGENT'].includes(t)).includes(a.type) && a.status === 'ACTIVE').length}/{apps.filter(a => aiTypes.filter(t => !['AI_CHATROOM', 'ASK_PLAN_AGENT'].includes(t)).includes(a.type)).length}
+                                        {apps.filter(a => aiTypes.filter(t => !['AI_CHATROOM', 'ASK_PLAN_AGENT', 'SMART_ROUTER'].includes(t)).includes(a.type) && a.status === 'ACTIVE').length}/{apps.filter(a => aiTypes.filter(t => !['AI_CHATROOM', 'ASK_PLAN_AGENT', 'SMART_ROUTER'].includes(t)).includes(a.type)).length}
                                     </span>
                                 </span>
                             </h2>
@@ -1134,7 +1135,7 @@ export default function AppsPage() {
                         </div>
 
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-                            {aiTypes.filter(t => !['AI_CHATROOM', 'ASK_PLAN_AGENT'].includes(t)).map((type: string) => {
+                            {aiTypes.filter(t => !['AI_CHATROOM', 'ASK_PLAN_AGENT', 'SMART_ROUTER'].includes(t)).map((type: string) => {
                                 const meta = AI_META[type];
                                 const connected = getConnectedApps(type);
                                 const isConnected = connected.length > 0;
@@ -2057,7 +2058,7 @@ export default function AppsPage() {
                                                                     >
                                                                         <option value="">-- 請選擇已設定的 AI 服務 --</option>
                                                                         {apps
-                                                                            .filter(app => aiTypes.filter(t => !['AI_CHATROOM', 'ASK_PLAN_AGENT'].includes(t)).includes(app.type) && app.status === 'ACTIVE')
+                                                                            .filter(app => aiTypes.filter(t => !['AI_CHATROOM', 'ASK_PLAN_AGENT', 'SMART_ROUTER'].includes(t)).includes(app.type) && app.status === 'ACTIVE')
                                                                             .map(app => {
                                                                                 const m = Array.isArray(app.config?.models) ? app.config?.models[0] : typeof app.config?.models === 'string' ? app.config?.models.split(',').filter(Boolean)[0] : null;
                                                                                 return (
@@ -2142,7 +2143,7 @@ export default function AppsPage() {
                                                                         onChange={(e) => setEditedConfig({ ...editedConfig, askLinkedServiceId: e.target.value })}
                                                                     >
                                                                         <option value="">-- 請選擇推理模型 --</option>
-                                                                        {apps.filter(app => aiTypes.filter(t => !['AI_CHATROOM', 'ASK_PLAN_AGENT'].includes(t)).includes(app.type) && app.status === 'ACTIVE').map(app => (
+                                                                        {apps.filter(app => aiTypes.filter(t => !['AI_CHATROOM', 'ASK_PLAN_AGENT', 'SMART_ROUTER'].includes(t)).includes(app.type) && app.status === 'ACTIVE').map(app => (
                                                                             <option key={app.integrationId} value={app.integrationId}>{AI_META[app.type]?.icon} {app.name} ({app.type})</option>
                                                                         ))}
                                                                     </select>
@@ -2161,7 +2162,7 @@ export default function AppsPage() {
                                                                         onChange={(e) => setEditedConfig({ ...editedConfig, planLinkedServiceId: e.target.value })}
                                                                     >
                                                                         <option value="">-- 請選擇思維模型 --</option>
-                                                                        {apps.filter(app => aiTypes.filter(t => !['AI_CHATROOM', 'ASK_PLAN_AGENT'].includes(t)).includes(app.type) && app.status === 'ACTIVE').map(app => (
+                                                                        {apps.filter(app => aiTypes.filter(t => !['AI_CHATROOM', 'ASK_PLAN_AGENT', 'SMART_ROUTER'].includes(t)).includes(app.type) && app.status === 'ACTIVE').map(app => (
                                                                             <option key={app.integrationId} value={app.integrationId}>{AI_META[app.type]?.icon} {app.name} ({app.type})</option>
                                                                         ))}
                                                                     </select>
@@ -2180,7 +2181,7 @@ export default function AppsPage() {
                                                                         onChange={(e) => setEditedConfig({ ...editedConfig, agentLinkedServiceId: e.target.value })}
                                                                     >
                                                                         <option value="">-- 請選擇執行模型 --</option>
-                                                                        {apps.filter(app => aiTypes.filter(t => !['AI_CHATROOM', 'ASK_PLAN_AGENT'].includes(t)).includes(app.type) && app.status === 'ACTIVE').map(app => (
+                                                                        {apps.filter(app => aiTypes.filter(t => !['AI_CHATROOM', 'ASK_PLAN_AGENT', 'SMART_ROUTER'].includes(t)).includes(app.type) && app.status === 'ACTIVE').map(app => (
                                                                             <option key={app.integrationId} value={app.integrationId}>{AI_META[app.type]?.icon} {app.name} ({app.type})</option>
                                                                         ))}
                                                                     </select>
@@ -2192,6 +2193,48 @@ export default function AppsPage() {
                                                                     />
                                                                 </div>
                                                             </div>
+                                                        ) : selectedAppConfig.type === 'SMART_ROUTER' ? (
+                                                            <div className="mb-4 space-y-4">
+                                                                <div className="p-4 bg-emerald-50 dark:bg-emerald-900/10 rounded-lg border border-emerald-100 dark:border-emerald-800 space-y-3">
+                                                                    <label className="block text-[12px] font-bold text-emerald-700 dark:text-emerald-300 uppercase tracking-wider">Fast Model (極速模型) - 適合簡短寒暄與基本問答</label>
+                                                                    <select
+                                                                        className="w-full bg-white dark:bg-gray-800 px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm"
+                                                                        value={editedConfig.fastModelId || ''}
+                                                                        onChange={(e) => setEditedConfig({ ...editedConfig, fastModelId: e.target.value })}
+                                                                    >
+                                                                        <option value="">-- 請選擇 Fast 模型 --</option>
+                                                                        {apps.filter(app => aiTypes.filter(t => !['AI_CHATROOM', 'ASK_PLAN_AGENT', 'SMART_ROUTER'].includes(t)).includes(app.type) && app.status === 'ACTIVE').map(app => (
+                                                                            <option key={app.integrationId} value={app.integrationId}>{AI_META[app.type]?.icon} {app.name} ({app.type})</option>
+                                                                        ))}
+                                                                    </select>
+                                                                </div>
+                                                                <div className="p-4 bg-blue-50 dark:bg-blue-900/10 rounded-lg border border-blue-100 dark:border-blue-800 space-y-3">
+                                                                    <label className="block text-[12px] font-bold text-blue-700 dark:text-blue-300 uppercase tracking-wider">Balanced Model (平衡模型) - 適合一般處理與常規任務</label>
+                                                                    <select
+                                                                        className="w-full bg-white dark:bg-gray-800 px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                                                                        value={editedConfig.balancedModelId || ''}
+                                                                        onChange={(e) => setEditedConfig({ ...editedConfig, balancedModelId: e.target.value })}
+                                                                    >
+                                                                        <option value="">-- 請選擇 Balanced 模型 --</option>
+                                                                        {apps.filter(app => aiTypes.filter(t => !['AI_CHATROOM', 'ASK_PLAN_AGENT', 'SMART_ROUTER'].includes(t)).includes(app.type) && app.status === 'ACTIVE').map(app => (
+                                                                            <option key={app.integrationId} value={app.integrationId}>{AI_META[app.type]?.icon} {app.name} ({app.type})</option>
+                                                                        ))}
+                                                                    </select>
+                                                                </div>
+                                                                <div className="p-4 bg-purple-50 dark:bg-purple-900/10 rounded-lg border border-purple-100 dark:border-purple-800 space-y-3">
+                                                                    <label className="block text-[12px] font-bold text-purple-700 dark:text-purple-300 uppercase tracking-wider">Complex Model (複雜模型) - 適合長文本、寫作與困難推理</label>
+                                                                    <select
+                                                                        className="w-full bg-white dark:bg-gray-800 px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm"
+                                                                        value={editedConfig.complexModelId || ''}
+                                                                        onChange={(e) => setEditedConfig({ ...editedConfig, complexModelId: e.target.value })}
+                                                                    >
+                                                                        <option value="">-- 請選擇 Complex 模型 --</option>
+                                                                        {apps.filter(app => aiTypes.filter(t => !['AI_CHATROOM', 'ASK_PLAN_AGENT', 'SMART_ROUTER'].includes(t)).includes(app.type) && app.status === 'ACTIVE').map(app => (
+                                                                            <option key={app.integrationId} value={app.integrationId}>{AI_META[app.type]?.icon} {app.name} ({app.type})</option>
+                                                                        ))}
+                                                                    </select>
+                                                                </div>
+                                                            </div>
                                                         ) : (
                                                             <div className="flex justify-between items-center mb-3">
                                                                 <span className="block font-semibold text-gray-500 dark:text-gray-400">可使用的模型 (Models):</span>
@@ -2200,7 +2243,7 @@ export default function AppsPage() {
 
 
 
-                                                        {!['AI_CHATROOM', 'ASK_PLAN_AGENT'].includes(selectedAppConfig.type) && (
+                                                        {!['AI_CHATROOM', 'ASK_PLAN_AGENT', 'SMART_ROUTER'].includes(selectedAppConfig.type) && (
                                                             <div className="flex flex-wrap gap-2">
                                                                 {(aiModelOptions[selectedAppConfig.type] || []).map(model => {
                                                                     const selectedModels = Array.isArray(editedConfig.models) ? editedConfig.models : (typeof editedConfig.models === 'string' ? editedConfig.models.split(',').filter(Boolean) : []);
@@ -2246,7 +2289,7 @@ export default function AppsPage() {
                                                 )}
 
                                                 {/* Webhook Script Editor inside Modal (Only for Channel integrations like LINE for now) */}
-                                                {!['STRIPE', 'PAYPAL', 'ECPAY', ...aiTypes.filter(t => !['AI_CHATROOM', 'ASK_PLAN_AGENT'].includes(t))].includes(selectedAppConfig.type) && (
+                                                {!['STRIPE', 'PAYPAL', 'ECPAY', ...aiTypes.filter(t => !['AI_CHATROOM', 'ASK_PLAN_AGENT', 'SMART_ROUTER'].includes(t))].includes(selectedAppConfig.type) && (
                                                     <div className="mt-8 pt-4 border-t border-gray-200 dark:border-gray-700">
                                                         <div className="flex items-center justify-between mb-4">
                                                             <label className="flex items-center gap-2 cursor-pointer">
@@ -2565,8 +2608,8 @@ export default function AppsPage() {
                                         (JSON.stringify(editedConfig) === JSON.stringify(selectedAppConfig.config || {}) &&
                                             editedName === selectedAppConfig.name &&
                                             editedStatus === selectedAppConfig.status) ||
-                                        (!['AI_CHATROOM', 'ASK_PLAN_AGENT'].includes(selectedAppConfig.type) && aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) > 1) ||
-                                        (!['AI_CHATROOM', 'ASK_PLAN_AGENT'].includes(selectedAppConfig.type) && aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) === 0)
+                                        (!['AI_CHATROOM', 'ASK_PLAN_AGENT', 'SMART_ROUTER'].includes(selectedAppConfig.type) && aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) > 1) ||
+                                        (!['AI_CHATROOM', 'ASK_PLAN_AGENT', 'SMART_ROUTER'].includes(selectedAppConfig.type) && aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) === 0)
                                         ? 'bg-gray-400 cursor-not-allowed'
                                         : 'bg-blue-600 hover:bg-blue-700'
                                         }`}
@@ -2576,13 +2619,13 @@ export default function AppsPage() {
                                         (JSON.stringify(editedConfig) === JSON.stringify(selectedAppConfig.config || {}) &&
                                             editedName === selectedAppConfig.name &&
                                             editedStatus === selectedAppConfig.status) ||
-                                        (!['AI_CHATROOM', 'ASK_PLAN_AGENT'].includes(selectedAppConfig.type) && aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) > 1) ||
-                                        (!['AI_CHATROOM', 'ASK_PLAN_AGENT'].includes(selectedAppConfig.type) && aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) === 0)
+                                        (!['AI_CHATROOM', 'ASK_PLAN_AGENT', 'SMART_ROUTER'].includes(selectedAppConfig.type) && aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) > 1) ||
+                                        (!['AI_CHATROOM', 'ASK_PLAN_AGENT', 'SMART_ROUTER'].includes(selectedAppConfig.type) && aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) === 0)
                                     }
                                 >
                                     {isSavingConfig ? '儲存中...' : (
-                                        (!['AI_CHATROOM', 'ASK_PLAN_AGENT'].includes(selectedAppConfig.type) && aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) > 1) ? '模型限選一個' :
-                                            (!['AI_CHATROOM', 'ASK_PLAN_AGENT'].includes(selectedAppConfig.type) && aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) === 0) ? '請選擇模型' :
+                                        (!['AI_CHATROOM', 'ASK_PLAN_AGENT', 'SMART_ROUTER'].includes(selectedAppConfig.type) && aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) > 1) ? '模型限選一個' :
+                                            (!['AI_CHATROOM', 'ASK_PLAN_AGENT', 'SMART_ROUTER'].includes(selectedAppConfig.type) && aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) === 0) ? '請選擇模型' :
                                                 '儲存設定')}
                                 </button>
                             </div>
