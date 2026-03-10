@@ -4,7 +4,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { ddbDocClient } from '@/lib/dynamo';
 import { ScanCommand, PutCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
 import { v4 as uuidv4 } from 'uuid';
-import { AI_SKILLS, getSkillById } from '@/lib/ai-skills';
+import { AI_SKILLS, getSkillById, AISkill } from '@/lib/ai-skills';
 import Link from 'next/link';
 import { PLATFORM_AGENTS, ExecutionEnvironment, EXECUTION_ENVIRONMENT_META } from '@/lib/platform-agents';
 import { useRouter } from 'next/navigation';
@@ -18,12 +18,13 @@ interface AppIntegration {
     config?: Record<string, any>;
     status: string;
     createdAt: string;
+    testParams?: any;
 }
 
 // Hardcoded types moved to state inside component or kept for specific categories
-const PAYMENT_TYPES = ['ECPAY', 'PAYPAL', 'STRIPE'];
+const PAYMENT_TYPES = ['ECPAY', 'PAYPAL', 'STRIPE', 'LINEPAY', 'JKOPAY'];
 const CHANNEL_TYPES = ['LINE', 'TELEGRAM', 'WHATSAPP', 'MESSENGER', 'SLACK', 'TEAMS', 'DISCORD', 'WECHAT'];
-const EMAIL_TYPES = ['RESEND'];
+const EMAIL_TYPES = ['RESEND', 'BREVO'];
 const DATABASE_TYPES = ['DYNAMODB', 'LANCEDB', 'KNOWLEDGE_BASE'];
 
 /** 各通訊渠道的顏色、圖標與顯示名稱 */
@@ -42,6 +43,8 @@ const PAYMENT_META: Record<string, { badge: string; label: string; icon: string;
     ECPAY: { badge: 'bg-emerald-100 text-emerald-800', label: '綠界科技 ECPay', icon: '🏦', desc: '台灣本地金流，支援超商/ATM/信用卡' },
     PAYPAL: { badge: 'bg-blue-100 text-blue-800', label: 'PayPal', icon: '🅿️', desc: '全球最大線上支付平台' },
     STRIPE: { badge: 'bg-indigo-100 text-indigo-800', label: 'Stripe', icon: '💳', desc: '全球開發者首選線上刷卡服務' },
+    LINEPAY: { badge: 'bg-green-100 text-green-800', label: 'Line Pay', icon: '🟢', desc: 'LINE Pay 行動支付服務' },
+    JKOPAY: { badge: 'bg-red-100 text-red-800', label: '街口支付 (JkoPay)', icon: '💴', desc: '台灣在地行動支付領導品牌' },
 };
 
 const AI_META: Record<string, { badge: string; label: string; icon: string; desc: string }> = {
@@ -49,11 +52,12 @@ const AI_META: Record<string, { badge: string; label: string; icon: string; desc
     ANTHROPIC: { badge: 'bg-orange-100 text-orange-800', label: 'Anthropic (Claude)', icon: '🎭', desc: '專注於安全性與長文本理解的 AI 模型' },
     GEMINI: { badge: 'bg-blue-100 text-blue-800', label: 'Google Gemini', icon: '✨', desc: 'Google 的強大原生多模態大模型' },
     AI_CHATROOM: { badge: 'bg-indigo-100 text-indigo-800', label: 'AI 聊天室', icon: '🤖', desc: '智慧問答聊天室，即時回覆學員問題，提升服務品質與效率' },
-    ASK_PLAN_AGENT: { badge: 'bg-purple-100 text-purple-800', label: 'Ask Plan Agent', icon: '🧠', desc: '多階段推理 AI，可分別設定探索、規劃與執行模型，客製化複雜任務處理' },
+    ASK_PLAN_AGENT: { badge: 'bg-purple-100 text-purple-800', label: '策略思維規劃代理 (Ask-Plan-Agent)', icon: '🕵️‍♂️', desc: '三階段推理 AI：諮詢釐清、策略規劃、任務執行，能處理複雜的教學與維運任務' },
 };
 
 const EMAIL_META: Record<string, { badge: string; label: string; icon: string; desc: string }> = {
     RESEND: { badge: 'bg-indigo-100 text-indigo-800', label: 'Resend 郵件服務', icon: '🚀', desc: '專為開發者設計的現代郵件發送服務 (只需 API Key)' },
+    BREVO: { badge: 'bg-blue-100 text-blue-800', label: 'Brevo 郵件服務', icon: '📧', desc: '全方位的電子郵件與行銷平台，提供高免費額度' },
 };
 
 const DATABASE_META: Record<string, { badge: string; label: string; icon: string; desc: string }> = {
@@ -77,17 +81,21 @@ const LABEL_MAP: Record<string, string> = {
     smtpHost: 'SMTP 主機位置 (Host)',
     smtpPort: '通訊埠 (Port)',
     smtpUser: '使用者帳號 (User)',
-    smtpPass: '密碼 (Password)',
+    smtpPass: 'API Key / 密碼',
     fromAddress: '寄件者信箱 (From Address)',
     linkedServiceId: '串接的 AI 服務',
-    askLinkedServiceId: 'Ask 階段 AI 服務',
-    planLinkedServiceId: 'Plan 階段 AI 服務',
-    agentLinkedServiceId: 'Agent 階段 AI 服務',
+    askLinkedServiceId: '諮詢釐清階段 (Ask Phase) AI 服務',
+    planLinkedServiceId: '策略規劃階段 (Plan Phase) AI 服務',
+    agentLinkedServiceId: '任務執行階段 (Execute Phase) AI 服務',
     tableName: '資料表名稱',
     partitionKey: '分割鍵 (Partition Key)',
     sortKey: '排序鍵 (Sort Key)',
     region: 'AWS 區域 (Region)',
     databasePath: '資料庫路徑',
+    linePayChannelId: 'Line Pay Channel ID',
+    linePayChannelSecret: 'Line Pay Channel Secret',
+    jkopayMerchantId: '街口特店編號 (Merchant ID)',
+    jkopaySecretKey: '街口 Secret Key',
 };
 
 
@@ -112,6 +120,16 @@ export default function AppsPage() {
     const [pushTitle, setPushTitle] = useState('');
     const [pushResult, setPushResult] = useState<string | null>(null);
     const [saveResult, setSaveResult] = useState<{ success: boolean; message: string } | null>(null);
+    const [selectedSkillPreview, setSelectedSkillPreview] = useState<AISkill | null>(null);
+    const [copySuccess, setCopySuccess] = useState<string | null>(null);
+    const [testPayAmount, setTestPayAmount] = useState('1');
+    const [testPayProductName, setTestPayProductName] = useState('測試商品');
+
+    const handleCopyToken = (text: string, type: string) => {
+        navigator.clipboard.writeText(text);
+        setCopySuccess(type);
+        setTimeout(() => setCopySuccess(null), 2000);
+    };
 
     const [showTestEmail, setShowTestEmail] = useState(false);
     const [testEmailData, setTestEmailData] = useState({
@@ -136,6 +154,22 @@ export default function AppsPage() {
     const [showSyncModal, setShowSyncModal] = useState(false);
     const [selectedSyncProvider, setSelectedSyncProvider] = useState<string>('GEMINI');
 
+    const [cronStatus, setCronStatus] = useState<{ hasReport: boolean; report?: any; message?: string } | null>(null);
+    const [fetchingCronStatus, setFetchingCronStatus] = useState(false);
+
+    const fetchCronStatus = async () => {
+        setFetchingCronStatus(true);
+        try {
+            const res = await fetch('/api/cron/daily-report/status');
+            const data = await res.json();
+            setCronStatus(data);
+        } catch (error) {
+            console.error('Failed to fetch cron status:', error);
+        } finally {
+            setFetchingCronStatus(false);
+        }
+    };
+
     // Category permissions state
     const [categoryPermissions, setCategoryPermissions] = useState<Record<string, boolean>>({
         APP_CATEGORY_CHANNEL: true,
@@ -152,12 +186,13 @@ export default function AppsPage() {
 
     // 控制 body overflow 當 modal 打開時
     useEffect(() => {
-        if (selectedAppConfig) {
+        if (selectedAppConfig || selectedSkillPreview) {
             document.body.style.overflow = 'hidden';
             // 按ESC鍵關閉Modal
             const handleEscape = (e: KeyboardEvent) => {
                 if (e.key === 'Escape') {
                     setSelectedAppConfig(null);
+                    setSelectedSkillPreview(null);
                     setSimInput('');
                     setSimReply(null);
                 }
@@ -177,6 +212,27 @@ export default function AppsPage() {
 
     const handleOpenReport = () => {
         router.push('/apps/daily-report');
+    };
+
+    const fetchAiModels = async () => {
+        try {
+            const aiRes = await fetch('/api/admin/ai-models');
+            const aiResult = await aiRes.json();
+            if (aiResult.ok) {
+                const modelsMap: Record<string, string[]> = {};
+                const typesFromDb: string[] = ['AI_CHATROOM', 'ASK_PLAN_AGENT'];
+                aiResult.data.forEach((model: any) => {
+                    modelsMap[model.provider] = model.models;
+                    if (!typesFromDb.includes(model.provider)) {
+                        typesFromDb.push(model.provider);
+                    }
+                });
+                setAiModelOptions(modelsMap);
+                setAiTypes(typesFromDb);
+            }
+        } catch (err) {
+            console.error('Failed to fetch AI models:', err);
+        }
     };
 
     useEffect(() => {
@@ -211,7 +267,6 @@ export default function AppsPage() {
                     relevantCategories.forEach(catId => {
                         const appConf = configs.find((c: any) => c.id === catId);
                         if (appConf) {
-                            // admin always sees everything, otherwise check role
                             if (userRole === 'admin') {
                                 newPerms[catId] = true;
                             } else {
@@ -219,7 +274,6 @@ export default function AppsPage() {
                                 newPerms[catId] = rolePerm ? rolePerm.visible : false;
                             }
                         } else {
-                            // Default to visible if not found in DB just in case, or true for admin
                             newPerms[catId] = userRole === 'admin';
                         }
                     });
@@ -228,36 +282,19 @@ export default function AppsPage() {
 
                 const res = await fetch(`/api/app-integrations`);
                 const result = await res.json();
-
-                console.log('[AppsPage] Fetch result:', { userId, ok: result.ok, total: result.total, data: result.data });
-
                 if (result.ok) {
                     setApps(result.data);
                 }
-
-                // Fetch AI models
-                const aiRes = await fetch('/api/admin/ai-models');
-                const aiResult = await aiRes.json();
-                if (aiResult.ok) {
-                    const modelsMap: Record<string, string[]> = {};
-                    const typesFromDb: string[] = ['AI_CHATROOM', 'ASK_PLAN_AGENT'];
-                    aiResult.data.forEach((model: any) => {
-                        modelsMap[model.provider] = model.models;
-                        if (!typesFromDb.includes(model.provider)) {
-                            typesFromDb.push(model.provider);
-                        }
-                    });
-                    setAiModelOptions(modelsMap);
-                    setAiTypes(typesFromDb);
-                }
             } catch (err) {
-                console.error('Failed to fetch data:', err);
+                console.error('Failed to fetch apps:', err);
             } finally {
                 setLoading(false);
             }
         };
 
         fetchApps();
+        fetchAiModels();
+        fetchCronStatus();
     }, []);
 
     /** 取得指定類型已連接的整合記錄 */
@@ -283,6 +320,7 @@ export default function AppsPage() {
                     integrationId: id,
                     type: app.type,
                     config: app.config,
+                    testParams: app.testParams
                 }),
             });
             const data = await res.json();
@@ -818,7 +856,7 @@ export default function AppsPage() {
                                                     </>
                                                 ) : (
                                                     <Link
-                                                        href={`/add-app?type=ai&provider=${type}`}
+                                                        href={`/add-app?type=payment&provider=${type}`}
                                                         className="w-full text-center text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 border border-blue-300 font-semibold py-2 px-3 rounded-lg transition-colors"
                                                     >
                                                         立即設定
@@ -872,6 +910,149 @@ export default function AppsPage() {
                         </div>
                     </>)}
 
+                    {/* ─────────── 自動化與排程管理 (Automation Hub) ─────────── */}
+                    {showAutomation && (<>
+                        <div className="flex justify-between items-center mb-6 border-b border-gray-200 dark:border-gray-700 pb-2">
+                            <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-100 flex items-center">
+                                <span className="text-2xl mr-2">⚙️</span>
+                                自動化與排程管理 (Automation Hub)
+                            </h2>
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm text-gray-500 dark:text-gray-400 italic">適合 AWS Amplify 部署環境</span>
+                                <button
+                                    onClick={fetchCronStatus}
+                                    disabled={fetchingCronStatus}
+                                    className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors text-gray-500"
+                                    title="重新整理狀態"
+                                >
+                                    <svg className={`w-5 h-5 ${fetchingCronStatus ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden mb-12">
+                            <div className="p-6">
+                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                                    {/* Webhook URLs */}
+                                    <div className="lg:col-span-2 space-y-6">
+                                        <div>
+                                            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                                                <span className="w-2.5 h-2.5 bg-indigo-500 rounded-full"></span>
+                                                外部觸發 Webhook 網址
+                                            </h3>
+                                            <div className="space-y-3">
+                                                {[
+                                                    { label: '系統健康檢查 (Health)', tier: 'health', desc: '建議每 6 小時觸發一次' },
+                                                    { label: '每日摘要報告 (Daily)', tier: 'daily', desc: '建議每日 00:00 觸發' },
+                                                    { label: '每週分析與趨勢 (Weekly)', tier: 'weekly', desc: '建議週一 00:00 觸發' },
+                                                ].map((hook) => (
+                                                    <div key={hook.tier} className="bg-gray-50 dark:bg-gray-900/50 p-5 rounded-xl border border-gray-100 dark:border-gray-700 group hover:border-indigo-200 dark:hover:border-indigo-900 transition-colors">
+                                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                                            <div>
+                                                                <div className="flex items-center gap-3">
+                                                                    <span className="text-base font-bold text-gray-800 dark:text-gray-200">{hook.label}</span>
+                                                                    <span className="text-xs px-2 py-0.5 bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 rounded uppercase font-mono font-bold">POST</span>
+                                                                </div>
+                                                                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1.5">{hook.desc}</p>
+                                                            </div>
+                                                            <div className="flex items-center gap-2 bg-white dark:bg-gray-800 p-2 rounded-xl border border-gray-200 dark:border-gray-700">
+                                                                <code className="text-sm text-indigo-600 dark:text-indigo-400 font-mono truncate max-w-[200px] sm:max-w-md px-3">
+                                                                    {`${typeof window !== 'undefined' ? window.location.origin : ''}/api/cron/daily-report?tier=${hook.tier}`}
+                                                                </code>
+                                                                <button
+                                                                    onClick={() => handleCopyToken(`${window.location.origin}/api/cron/daily-report?tier=${hook.tier}`, hook.tier)}
+                                                                    className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                                                                >
+                                                                    {copySuccess === hook.tier ? (
+                                                                        <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" /></svg>
+                                                                    ) : (
+                                                                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                                                                    )}
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Status & Security */}
+                                    <div className="space-y-6">
+                                        <div>
+                                            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                                                <span className="w-2.5 h-2.5 bg-emerald-500 rounded-full"></span>
+                                                排程執行狀態
+                                            </h3>
+                                            <div className="bg-gray-900 rounded-2xl p-6 border border-gray-800 shadow-xl overflow-hidden relative">
+                                                {/* Background decoration */}
+                                                <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-600/10 blur-3xl rounded-full -mr-16 -mt-16"></div>
+
+                                                <div className="relative z-10 space-y-6">
+                                                    <div className="flex justify-between items-start">
+                                                        <span className="text-xs text-gray-400 uppercase tracking-widest font-bold">上次執行結果</span>
+                                                        {fetchingCronStatus ? (
+                                                            <span className="animate-pulse text-xs text-indigo-400">更新中...</span>
+                                                        ) : (
+                                                            <span className={`text-xs px-3 py-1 rounded-full font-black ${cronStatus?.hasReport ? (cronStatus.report.success ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20') : 'bg-gray-800 text-gray-500'}`}>
+                                                                {cronStatus?.hasReport ? (cronStatus.report.success ? 'SUCCESS' : 'FAILED') : 'NO DATA'}
+                                                            </span>
+                                                        )}
+                                                    </div>
+
+                                                    <div className="space-y-2">
+                                                        <p className="text-3xl font-black text-white flex items-baseline gap-3">
+                                                            {cronStatus?.hasReport
+                                                                ? new Date(cronStatus.report.generatedAt).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' })
+                                                                : '--:--'
+                                                            }
+                                                            <small className="text-xs text-gray-500 font-normal">
+                                                                {cronStatus?.hasReport ? new Date(cronStatus.report.reportDate).toLocaleDateString() : '尚未執行'}
+                                                            </small>
+                                                        </p>
+                                                        <p className="text-sm text-gray-400 truncate">
+                                                            {cronStatus?.hasReport
+                                                                ? `總結: ${cronStatus.report.tier} tier · ${cronStatus.report.emailSent ? '已發送' : '未發送'}`
+                                                                : '尚無報告紀錄'
+                                                            }
+                                                        </p>
+                                                    </div>
+
+                                                    <div className="pt-5 border-t border-gray-800 flex items-center justify-between">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className={`w-2 h-2 rounded-full ${cronStatus?.hasReport && cronStatus.report.success ? 'bg-emerald-400' : 'bg-gray-600 animate-pulse'}`}></div>
+                                                            <span className="text-xs text-gray-500 uppercase font-black tracking-tight">System Pulse</span>
+                                                        </div>
+                                                        <button
+                                                            onClick={handleOpenReport}
+                                                            className="text-sm text-indigo-400 hover:text-indigo-300 font-black transition-colors"
+                                                        >
+                                                            詳情面板 →
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="bg-amber-50 dark:bg-amber-900/10 p-5 rounded-2xl border border-amber-100 dark:border-amber-900/30">
+                                            <div className="flex gap-4">
+                                                <div className="text-amber-500 text-xl">🔒</div>
+                                                <div>
+                                                    <h4 className="text-sm font-black text-amber-800 dark:text-amber-400 mb-1.5 underline decoration-amber-500/30 underline-offset-4">安全性提醒</h4>
+                                                    <p className="text-xs text-amber-700/80 dark:text-amber-500/80 leading-relaxed font-medium">
+                                                        Webhook 觸發需要 `Authorization` 標頭 (Bearer Token)。請確保在 AWS Amplify 的「環境變數」中已正確設定 `CRON_SECRET`。
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </>)}
+
                     {/* ─────────── 實用技能區塊 (新增) ─────────── */}
                     {showSkills && (<>
                         <div className="flex justify-between items-center mb-6 border-b border-gray-200 dark:border-gray-700 pb-2">
@@ -883,131 +1064,35 @@ export default function AppsPage() {
                         </div>
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
-                            {/* Skill 1 */}
-                            <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-lg transition-all group flex flex-col justify-between">
-                                <div>
-                                    <div className="flex items-center gap-4 mb-4">
-                                        <div className="w-12 h-12 bg-orange-100 dark:bg-orange-900/30 rounded-xl flex items-center justify-center text-orange-600 dark:text-orange-400 text-2xl group-hover:scale-110 transition-transform">
-                                            🗣️
+                            {AI_SKILLS.map((skill) => (
+                                <div key={skill.id} className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-lg transition-all group flex flex-col justify-between">
+                                    <div>
+                                        <div className="flex items-center gap-4 mb-4">
+                                            <div className="w-12 h-12 bg-indigo-100 dark:bg-indigo-900/30 rounded-xl flex items-center justify-center text-indigo-600 dark:text-indigo-400 text-2xl group-hover:scale-110 transition-transform">
+                                                {skill.icon}
+                                            </div>
+                                            <h3 className="text-lg font-bold text-gray-900 dark:text-white">{skill.label}</h3>
                                         </div>
-                                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">外語口說教練</h3>
+                                        <p className="text-sm text-gray-600 dark:text-gray-400 mb-6 leading-relaxed">
+                                            {skill.desc}
+                                        </p>
                                     </div>
-                                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-6 leading-relaxed">
-                                        依據雅思/托福評分標準，提供即時情境會話對練與文法糾正，有效提升口語流暢度。
-                                    </p>
-                                </div>
-                                <Link
-                                    href={`/add-app?type=ai&provider=OPENAI&name=${encodeURIComponent('外語口說教練')}&prompt=${encodeURIComponent('你是「外語口說教練」。請依據雅思/托福評分標準，提供即時情境會話對練與文法糾正，有效提升口語流暢度。')}`}
-                                    className="w-full py-3 px-4 bg-orange-50 text-orange-700 dark:bg-orange-900/20 dark:text-orange-400 rounded-xl text-sm font-bold hover:bg-orange-100 dark:hover:bg-orange-900/40 transition-colors flex items-center justify-center gap-2"
-                                >
-                                    預覽技能配置 <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
-                                </Link>
-                            </div>
-
-                            {/* Skill 2 */}
-                            <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-lg transition-all group flex flex-col justify-between">
-                                <div>
-                                    <div className="flex items-center gap-4 mb-4">
-                                        <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-xl flex items-center justify-center text-blue-600 dark:text-blue-400 text-2xl group-hover:scale-110 transition-transform">
-                                            💻
-                                        </div>
-                                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">程式碼審查助手</h3>
+                                    <div className="space-y-2">
+                                        <button
+                                            onClick={() => setSelectedSkillPreview(skill)}
+                                            className="w-full py-3 px-4 bg-indigo-50 text-indigo-700 dark:bg-indigo-900/20 dark:text-indigo-400 rounded-xl text-sm font-bold hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors flex items-center justify-center gap-2"
+                                        >
+                                            查看技能指令 <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                                        </button>
+                                        <Link
+                                            href={`/add-app?type=ai&provider=AI_CHATROOM&name=${encodeURIComponent(skill.label)}&prompt=${encodeURIComponent(skill.prompt)}`}
+                                            className="w-full py-2 px-4 text-center text-[11px] text-gray-400 hover:text-indigo-500 transition-colors"
+                                        >
+                                            直接串接為 AI 聊天室
+                                        </Link>
                                     </div>
-                                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-6 leading-relaxed">
-                                        串接 GitHub/GitLab 專案，自動審查 PR 並檢查潛在 Bug，提供最佳實踐優化建議。
-                                    </p>
                                 </div>
-                                <Link
-                                    href={`/add-app?type=ai&provider=OPENAI&name=${encodeURIComponent('程式碼審查助手')}&prompt=${encodeURIComponent('你是「程式碼審查助手」。請串接 GitHub/GitLab 專案，自動審查 PR 並檢查潛在 Bug，提供最佳實踐優化建議。')}`}
-                                    className="w-full py-3 px-4 bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400 rounded-xl text-sm font-bold hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors flex items-center justify-center gap-2"
-                                >
-                                    預覽技能配置 <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
-                                </Link>
-                            </div>
-
-                            {/* Skill 3 */}
-                            <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-lg transition-all group flex flex-col justify-between">
-                                <div>
-                                    <div className="flex items-center gap-4 mb-4">
-                                        <div className="w-12 h-12 bg-pink-100 dark:bg-pink-900/30 rounded-xl flex items-center justify-center text-pink-600 dark:text-pink-400 text-2xl group-hover:scale-110 transition-transform">
-                                            🚀
-                                        </div>
-                                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">社群行銷寫手</h3>
-                                    </div>
-                                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-6 leading-relaxed">
-                                        輸入產品關鍵字，自動轉換為符合 IG/Threads/FB 演算法與受眾口味的爆款文案。
-                                    </p>
-                                </div>
-                                <Link
-                                    href={`/add-app?type=ai&provider=OPENAI&name=${encodeURIComponent('社群行銷寫手')}&prompt=${encodeURIComponent('你是「社群行銷寫手」。請將輸入產品關鍵字，自動轉換為符合 IG/Threads/FB 演算法與受眾口味的爆款文案。')}`}
-                                    className="w-full py-3 px-4 bg-pink-50 text-pink-700 dark:bg-pink-900/20 dark:text-pink-400 rounded-xl text-sm font-bold hover:bg-pink-100 dark:hover:bg-pink-900/40 transition-colors flex items-center justify-center gap-2"
-                                >
-                                    預覽技能配置 <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
-                                </Link>
-                            </div>
-
-                            {/* Skill 4 */}
-                            <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-lg transition-all group flex flex-col justify-between">
-                                <div>
-                                    <div className="flex items-center gap-4 mb-4">
-                                        <div className="w-12 h-12 bg-teal-100 dark:bg-teal-900/30 rounded-xl flex items-center justify-center text-teal-600 dark:text-teal-400 text-2xl group-hover:scale-110 transition-transform">
-                                            📄
-                                        </div>
-                                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">履歷/面試教練</h3>
-                                    </div>
-                                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-6 leading-relaxed">
-                                        上傳履歷自動抓出亮點並採用 STAR 原則重寫，並由 AI 擔任面試官進行針對性模擬面試。
-                                    </p>
-                                </div>
-                                <Link
-                                    href={`/add-app?type=ai&provider=OPENAI&name=${encodeURIComponent('履歷/面試教練')}&prompt=${encodeURIComponent('你是「履歷/面試教練」。請上傳履歷自動抓出亮點並採用 STAR 原則重寫，並由 AI 擔任面試官進行針對性模擬面試。')}`}
-                                    className="w-full py-3 px-4 bg-teal-50 text-teal-700 dark:bg-teal-900/20 dark:text-teal-400 rounded-xl text-sm font-bold hover:bg-teal-100 dark:hover:bg-teal-900/40 transition-colors flex items-center justify-center gap-2"
-                                >
-                                    預覽技能配置 <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
-                                </Link>
-                            </div>
-
-                            {/* Skill 5 */}
-                            <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-lg transition-all group flex flex-col justify-between">
-                                <div>
-                                    <div className="flex items-center gap-4 mb-4">
-                                        <div className="w-12 h-12 bg-yellow-100 dark:bg-yellow-900/30 rounded-xl flex items-center justify-center text-yellow-600 dark:text-yellow-400 text-2xl group-hover:scale-110 transition-transform">
-                                            📚
-                                        </div>
-                                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">讀書重點摘要助理</h3>
-                                    </div>
-                                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-6 leading-relaxed">
-                                        處理 PDF 教材或長篇 YouTube 影片，迅速萃取核心概念，並自動產出複習心智圖與選擇測驗題。
-                                    </p>
-                                </div>
-                                <Link
-                                    href={`/add-app?type=ai&provider=OPENAI&name=${encodeURIComponent('讀書重點摘要助理')}&prompt=${encodeURIComponent('你是「讀書重點摘要助理」。請處理被提供的內容，迅速萃取核心概念，並自動產出複習心智圖與選擇測驗題。')}`}
-                                    className="w-full py-3 px-4 bg-yellow-50 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400 rounded-xl text-sm font-bold hover:bg-yellow-100 dark:hover:bg-yellow-900/40 transition-colors flex items-center justify-center gap-2"
-                                >
-                                    預覽技能配置 <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
-                                </Link>
-                            </div>
-
-                            {/* Skill 6 */}
-                            <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-lg transition-all group flex flex-col justify-between">
-                                <div>
-                                    <div className="flex items-center gap-4 mb-4">
-                                        <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900/30 rounded-xl flex items-center justify-center text-purple-600 dark:text-purple-400 text-2xl group-hover:scale-110 transition-transform">
-                                            👨‍💻
-                                        </div>
-                                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">工程專屬 AI 聊天室</h3>
-                                    </div>
-                                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-6 leading-relaxed">
-                                        專屬工程師的技術對話空間，協助進行系統架構規劃、版本更新追蹤與技術難點突破。
-                                    </p>
-                                </div>
-                                <Link
-                                    href={`/add-app?type=ai&provider=AI_CHATROOM&name=${encodeURIComponent('工程專屬 AI 聊天室')}&prompt=${encodeURIComponent('你是「工程專屬 AI 聊天室」的技術專家。請協助工程師進行系統架構設計、版本差異分析、以及套件生態研究，並提供具體可行的技術方案與程式碼指引。')}`}
-                                    className="w-full py-3 px-4 bg-purple-50 text-purple-700 dark:bg-purple-900/20 dark:text-purple-400 rounded-xl text-sm font-bold hover:bg-purple-100 dark:hover:bg-purple-900/40 transition-colors flex items-center justify-center gap-2"
-                                >
-                                    預覽技能配置 <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
-                                </Link>
-                            </div>
+                            ))}
 
                             {/* Additional Skills placeholder */}
                             <div className="bg-gray-50/50 dark:bg-gray-900/20 rounded-2xl p-6 border-2 border-dashed border-gray-200 dark:border-gray-800 flex flex-col items-center justify-center text-center">
@@ -2050,61 +2135,58 @@ export default function AppsPage() {
                                                             <div className="mb-4 space-y-4">
                                                                 {/* Ask Plan Agent 特定設定 */}
                                                                 <div className="p-4 bg-purple-50 dark:bg-purple-900/10 rounded-lg border border-purple-100 dark:border-purple-800 space-y-3">
-                                                                    <label className="block text-[12px] font-bold text-purple-700 dark:text-purple-300 uppercase tracking-wider">Ask 階段 AI 服務 (探索與釐清)</label>
+                                                                    <label className="block text-[12px] font-bold text-purple-700 dark:text-purple-300 uppercase tracking-wider">階段一：諮詢釐清 (Ask Phase - 探索與需求對齊)</label>
                                                                     <select
                                                                         className="w-full bg-white dark:bg-gray-800 px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm"
                                                                         value={editedConfig.askLinkedServiceId || ''}
                                                                         onChange={(e) => setEditedConfig({ ...editedConfig, askLinkedServiceId: e.target.value })}
                                                                     >
-                                                                        <option value="">-- 請選擇 --</option>
+                                                                        <option value="">-- 請選擇推理模型 --</option>
                                                                         {apps.filter(app => aiTypes.filter(t => !['AI_CHATROOM', 'ASK_PLAN_AGENT'].includes(t)).includes(app.type) && app.status === 'ACTIVE').map(app => (
                                                                             <option key={app.integrationId} value={app.integrationId}>{AI_META[app.type]?.icon} {app.name} ({app.type})</option>
                                                                         ))}
                                                                     </select>
-                                                                    <input
-                                                                        type="text"
-                                                                        placeholder="Ask 階段 System Prompt"
-                                                                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                                                    <textarea
+                                                                        placeholder="請定義諮詢階段的 System Prompt (如何引導學員精確表達需求)"
+                                                                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white min-h-[60px]"
                                                                         value={editedConfig.askSystemPrompt || ''}
                                                                         onChange={(e) => setEditedConfig({ ...editedConfig, askSystemPrompt: e.target.value })}
                                                                     />
                                                                 </div>
                                                                 <div className="p-4 bg-indigo-50 dark:bg-indigo-900/10 rounded-lg border border-indigo-100 dark:border-indigo-800 space-y-3">
-                                                                    <label className="block text-[12px] font-bold text-indigo-700 dark:text-indigo-300 uppercase tracking-wider">Plan 階段 AI 服務 (規劃與拆解目標)</label>
+                                                                    <label className="block text-[12px] font-bold text-indigo-700 dark:text-indigo-300 uppercase tracking-wider">階段二：策略規劃 (Plan Phase - 邏輯拆解與架構設計)</label>
                                                                     <select
                                                                         className="w-full bg-white dark:bg-gray-800 px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
                                                                         value={editedConfig.planLinkedServiceId || ''}
                                                                         onChange={(e) => setEditedConfig({ ...editedConfig, planLinkedServiceId: e.target.value })}
                                                                     >
-                                                                        <option value="">-- 請選擇 --</option>
+                                                                        <option value="">-- 請選擇思維模型 --</option>
                                                                         {apps.filter(app => aiTypes.filter(t => !['AI_CHATROOM', 'ASK_PLAN_AGENT'].includes(t)).includes(app.type) && app.status === 'ACTIVE').map(app => (
                                                                             <option key={app.integrationId} value={app.integrationId}>{AI_META[app.type]?.icon} {app.name} ({app.type})</option>
                                                                         ))}
                                                                     </select>
-                                                                    <input
-                                                                        type="text"
-                                                                        placeholder="Plan 階段 System Prompt"
-                                                                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                                                    <textarea
+                                                                        placeholder="請定義規劃階段的 System Prompt (如何將大任務細分為可執行的子目標)"
+                                                                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white min-h-[60px]"
                                                                         value={editedConfig.planSystemPrompt || ''}
                                                                         onChange={(e) => setEditedConfig({ ...editedConfig, planSystemPrompt: e.target.value })}
                                                                     />
                                                                 </div>
                                                                 <div className="p-4 bg-blue-50 dark:bg-blue-900/10 rounded-lg border border-blue-100 dark:border-blue-800 space-y-3">
-                                                                    <label className="block text-[12px] font-bold text-blue-700 dark:text-blue-300 uppercase tracking-wider">Agent 階段 AI 服務 (執行與產出)</label>
+                                                                    <label className="block text-[12px] font-bold text-blue-700 dark:text-blue-300 uppercase tracking-wider">階段三：任務執行 (Execute Phase - 內容產出與終端交付)</label>
                                                                     <select
                                                                         className="w-full bg-white dark:bg-gray-800 px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                                                                         value={editedConfig.agentLinkedServiceId || ''}
                                                                         onChange={(e) => setEditedConfig({ ...editedConfig, agentLinkedServiceId: e.target.value })}
                                                                     >
-                                                                        <option value="">-- 請選擇 --</option>
+                                                                        <option value="">-- 請選擇執行模型 --</option>
                                                                         {apps.filter(app => aiTypes.filter(t => !['AI_CHATROOM', 'ASK_PLAN_AGENT'].includes(t)).includes(app.type) && app.status === 'ACTIVE').map(app => (
                                                                             <option key={app.integrationId} value={app.integrationId}>{AI_META[app.type]?.icon} {app.name} ({app.type})</option>
                                                                         ))}
                                                                     </select>
-                                                                    <input
-                                                                        type="text"
-                                                                        placeholder="Agent 階段 System Prompt"
-                                                                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                                                    <textarea
+                                                                        placeholder="請定義執行階段的 System Prompt (最終呈現給學員的語氣與格式要求)"
+                                                                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white min-h-[60px]"
                                                                         value={editedConfig.agentSystemPrompt || ''}
                                                                         onChange={(e) => setEditedConfig({ ...editedConfig, agentSystemPrompt: e.target.value })}
                                                                     />
@@ -2287,7 +2369,7 @@ export default function AppsPage() {
 
                                                 {/* 測試按鈕 (金流服務和通訊渠道) */}
                                                 {(() => {
-                                                    const PAYMENT_TYPES = ['ECPAY', 'PAYPAL', 'STRIPE'];
+                                                    const PAYMENT_TYPES = ['ECPAY', 'PAYPAL', 'STRIPE', 'LINEPAY', 'JKOPAY'];
                                                     const CHANNEL_TYPES = ['LINE', 'TELEGRAM', 'WHATSAPP', 'MESSENGER', 'SLACK', 'TEAMS', 'DISCORD', 'WECHAT'];
                                                     const EMAIL_TYPES = ['SMTP'];
                                                     const isPaymentService = PAYMENT_TYPES.includes(selectedAppConfig.type);
@@ -2296,8 +2378,44 @@ export default function AppsPage() {
                                                     const isEmailService = EMAIL_TYPES.includes(selectedAppConfig.type) || selectedAppConfig.type === 'RESEND';
                                                     return (isPaymentService || isChannelService || isAIService || isEmailService) ? (
                                                         <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
+                                                            {/* 金流測試參數 */}
+                                                            {(selectedAppConfig.type === 'LINEPAY' || selectedAppConfig.type === 'JKOPAY') && (
+                                                                <div className="mb-4 space-y-3 p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg border border-orange-200 dark:border-orange-800">
+                                                                    <h5 className="text-xs font-bold text-orange-800 dark:text-orange-300 uppercase tracking-wider mb-2">金流測試參數</h5>
+                                                                    <div className="grid grid-cols-2 gap-4">
+                                                                        <div>
+                                                                            <label className="block text-[10px] text-gray-500 dark:text-gray-400 mb-1">測試金額 (Amount)</label>
+                                                                            <input
+                                                                                type="number"
+                                                                                value={testPayAmount}
+                                                                                onChange={(e) => setTestPayAmount(e.target.value)}
+                                                                                className="w-full px-3 py-1.5 text-xs border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                                                            />
+                                                                        </div>
+                                                                        <div>
+                                                                            <label className="block text-[10px] text-gray-500 dark:text-gray-400 mb-1">商品名稱 (Product)</label>
+                                                                            <input
+                                                                                type="text"
+                                                                                value={testPayProductName}
+                                                                                onChange={(e) => setTestPayProductName(e.target.value)}
+                                                                                className="w-full px-3 py-1.5 text-xs border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                                                            />
+                                                                        </div>
+                                                                    </div>
+                                                                    <p className="text-[10px] text-orange-600/70 dark:text-orange-400/70">
+                                                                        * 點擊測試後將發送請求至支付平台驗證憑證，並模擬一筆測試訂單。
+                                                                    </p>
+                                                                </div>
+                                                            )}
                                                             <button
-                                                                onClick={() => handleTest({ ...selectedAppConfig, config: editedConfig })}
+                                                                onClick={() => handleTest({
+                                                                    ...selectedAppConfig,
+                                                                    config: editedConfig,
+                                                                    testParams: (selectedAppConfig.type === 'LINEPAY' || selectedAppConfig.type === 'JKOPAY') ? {
+                                                                        amount: testPayAmount,
+                                                                        productName: testPayProductName
+                                                                    } : undefined
+                                                                })}
                                                                 disabled={testingId === selectedAppConfig.integrationId}
                                                                 className={`w-full px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${testingId === selectedAppConfig.integrationId ? 'bg-gray-300 text-gray-600 cursor-wait dark:bg-gray-600' : 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:hover:bg-amber-900/50'}`}
                                                             >
@@ -2581,6 +2699,105 @@ export default function AppsPage() {
                     </div>
                 )
             }
+            {/* Modal for Skill Preview */}
+            {selectedSkillPreview && (
+                <div className="fixed inset-0 z-[999] overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+                    <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:p-0">
+                        <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm transition-opacity z-[999]" aria-hidden="true" onClick={() => setSelectedSkillPreview(null)}></div>
+
+                        <div className="relative inline-block align-middle bg-white dark:bg-gray-800 rounded-3xl text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl w-full z-[1000] border border-gray-100 dark:border-gray-700">
+                            {/* Modal Header */}
+                            <div className="bg-gradient-to-r from-indigo-600 to-purple-700 px-8 py-6 flex items-center justify-between">
+                                <div className="flex items-center gap-4">
+                                    <div className="w-12 h-12 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center text-white text-2xl shadow-inner">
+                                        {selectedSkillPreview.icon}
+                                    </div>
+                                    <div>
+                                        <h3 className="text-xl font-black text-white tracking-tight">
+                                            {selectedSkillPreview.label}
+                                        </h3>
+                                        <p className="text-indigo-100 text-xs font-medium opacity-90">技能指令預覽</p>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => setSelectedSkillPreview(null)}
+                                    className="p-2 rounded-full hover:bg-white/10 text-white/70 hover:text-white transition-all"
+                                >
+                                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" /></svg>
+                                </button>
+                            </div>
+
+                            <div className="p-8">
+                                <div className="mb-8">
+                                    <div className="flex items-center gap-2 mb-3">
+                                        <span className="w-1.5 h-4 bg-indigo-500 rounded-full"></span>
+                                        <h4 className="text-sm font-bold text-gray-900 dark:text-gray-100 uppercase tracking-wider">技能描述</h4>
+                                    </div>
+                                    <p className="text-base text-gray-700 dark:text-gray-300 bg-gray-50/80 dark:bg-gray-900/40 p-5 rounded-2xl border border-gray-100 dark:border-gray-700 leading-relaxed shadow-sm">
+                                        {selectedSkillPreview.desc}
+                                    </p>
+                                </div>
+
+                                <div className="mb-8">
+                                    <div className="flex items-center justify-between mb-3">
+                                        <div className="flex items-center gap-2">
+                                            <span className="w-1.5 h-4 bg-purple-500 rounded-full"></span>
+                                            <h4 className="text-sm font-bold text-gray-900 dark:text-gray-100 uppercase tracking-wider">System Prompt (系統提示詞)</h4>
+                                        </div>
+                                        <button
+                                            onClick={() => handleCopyToken(selectedSkillPreview.prompt, 'prompt')}
+                                            className={`text-xs font-bold px-4 py-1.5 rounded-full transition-all flex items-center gap-2 shadow-sm ${copySuccess === 'prompt'
+                                                ? 'bg-green-500 text-white'
+                                                : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
+                                                }`}
+                                        >
+                                            {copySuccess === 'prompt' ? (
+                                                <><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg> 已複製</>
+                                            ) : (
+                                                <>
+                                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" /></svg>
+                                                    複製指令
+                                                </>
+                                            )}
+                                        </button>
+                                    </div>
+                                    <div className="relative group">
+                                        <div className="absolute -inset-0.5 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-2xl blur opacity-20 group-hover:opacity-30 transition duration-1000"></div>
+                                        <div className="relative bg-slate-900 rounded-2xl p-6 border border-slate-800 shadow-xl max-h-[350px] overflow-y-auto custom-scrollbar">
+                                            <pre className="text-[14px] text-slate-200 font-mono whitespace-pre-wrap leading-relaxed selection:bg-indigo-500/30">
+                                                {selectedSkillPreview.prompt}
+                                            </pre>
+                                        </div>
+                                    </div>
+                                    <p className="mt-3 text-[11px] text-gray-500 dark:text-gray-400 flex items-center gap-2 font-medium">
+                                        <span className="flex items-center justify-center w-5 h-5 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-full pulse-subtle">!</span>
+                                        您可以直接複製此指令運用到您的 AI 機器人設定中。
+                                    </p>
+                                </div>
+
+                                <div className="flex flex-col sm:flex-row gap-4">
+                                    <button
+                                        onClick={() => setSelectedSkillPreview(null)}
+                                        className="flex-1 py-4 px-6 bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200 rounded-2xl text-sm font-bold hover:bg-gray-200 dark:hover:bg-gray-600 transition-all border border-transparent shadow-sm"
+                                    >
+                                        暫時關閉
+                                    </button>
+                                    <Link
+                                        href={`/add-app?type=ai&provider=AI_CHATROOM&name=${encodeURIComponent(selectedSkillPreview.label)}&prompt=${encodeURIComponent(selectedSkillPreview.prompt)}`}
+                                        className="flex-[2] py-4 px-6 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl text-sm font-black hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-indigo-500/25 transition-all text-center flex items-center justify-center gap-2 group"
+                                    >
+                                        使用此技能建立 AI 服務
+                                        <svg className="w-5 h-5 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                                        </svg>
+                                    </Link>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
         </div>
     );
 }

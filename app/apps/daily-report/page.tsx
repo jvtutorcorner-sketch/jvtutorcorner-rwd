@@ -11,9 +11,9 @@ export default function DailyReportPage() {
 
             <div className="mt-8">
                 <div className="mb-8">
-                    <h1 className="text-3xl font-bold text-gray-900 dark:text-white">AI 每日報告</h1>
+                    <h1 className="text-3xl font-bold text-gray-900 dark:text-white">自動化分析與排程</h1>
                     <p className="text-gray-600 dark:text-gray-400 mt-2">
-                        自動分析 EdTech 趨勢及平台風險的智慧助理
+                        管理您的自動化工作流程、智慧報表與數據分析引擎
                     </p>
                 </div>
 
