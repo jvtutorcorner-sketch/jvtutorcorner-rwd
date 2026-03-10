@@ -275,7 +275,7 @@ function AddAppForm() {
 
     // For Database
     const [selectedDatabaseType, setSelectedDatabaseType] = useState(
-        ['DYNAMODB', 'KNOWLEDGE_BASE'].includes(providerFromUrl) ? providerFromUrl : ''
+        ['DYNAMODB', 'LANCEDB', 'KNOWLEDGE_BASE'].includes(providerFromUrl) ? providerFromUrl : ''
     );
     const [databaseData, setDatabaseData] = useState({
         name: '',
@@ -539,6 +539,11 @@ function AddAppForm() {
                         partitionKey: databaseData.partitionKey,
                         sortKey: databaseData.sortKey,
                         region: databaseData.region,
+                    };
+                } else if (selectedDatabaseType === 'LANCEDB') {
+                    config = {
+                        tableName: databaseData.tableName || 'memories',
+                        databasePath: './data/lancedb',
                     };
                 } else if (selectedDatabaseType === 'KNOWLEDGE_BASE') {
                     config = {
@@ -891,17 +896,15 @@ function AddAppForm() {
                                                             key={env}
                                                             type="button"
                                                             onClick={() => setAgentData({ ...agentData, executionEnvironment: env })}
-                                                            className={`relative p-4 rounded-lg border-2 transition-all overflow-hidden group ${
-                                                                agentData.executionEnvironment === env
-                                                                    ? `border-purple-600 ${
-                                                                        env === 'local'
-                                                                            ? 'bg-blue-50 dark:bg-blue-900/20'
-                                                                            : env === 'background'
+                                                            className={`relative p-4 rounded-lg border-2 transition-all overflow-hidden group ${agentData.executionEnvironment === env
+                                                                    ? `border-purple-600 ${env === 'local'
+                                                                        ? 'bg-blue-50 dark:bg-blue-900/20'
+                                                                        : env === 'background'
                                                                             ? 'bg-amber-50 dark:bg-amber-900/20'
                                                                             : 'bg-purple-50 dark:bg-purple-900/20'
                                                                     }`
                                                                     : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 bg-white dark:bg-gray-800'
-                                                            }`}
+                                                                }`}
                                                         >
                                                             {/* Checkmark indicator */}
                                                             {agentData.executionEnvironment === env && (
@@ -909,7 +912,7 @@ function AddAppForm() {
                                                                     <span className="text-white text-xs font-bold">✓</span>
                                                                 </div>
                                                             )}
-                                                            
+
                                                             {/* Content */}
                                                             <div className="text-left">
                                                                 <div className="flex items-center gap-2 mb-2">
@@ -921,7 +924,7 @@ function AddAppForm() {
                                                                 <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">
                                                                     {meta.desc}
                                                                 </p>
-                                                                
+
                                                                 {/* Pros & Cons */}
                                                                 <div className="space-y-2">
                                                                     <div className="space-y-1">
@@ -1279,72 +1282,72 @@ function AddAppForm() {
                                     const defaultSystemPrompt = `你是一個智慧、友善且樂於助人的 AI 助理。請以清楚、簡潔且準確的方式回答使用者的問題。`;
                                     const skillPrompt = selectedSkill ? `[你的當前技能：${selectedSkill.label}]\n${selectedSkill.prompt}\n\n` : '';
                                     const finalSystemPrompt = `${skillPrompt}${(aiData as any).systemInstruction ? `${(aiData as any).systemInstruction}\n\n` : ''}${defaultSystemPrompt}`;
-                                    
+
                                     return (
-                                    <div className="space-y-4 p-4 border border-indigo-200 dark:border-indigo-800 rounded-lg bg-indigo-50/50 dark:bg-indigo-900/10">
-                                        {/* 已連線的 AI 服務 */}
-                                        <div>
-                                            <label className="block text-sm font-semibold text-indigo-900 dark:text-indigo-100 mb-2 flex items-center gap-2">
-                                                <span className="text-lg">🔗</span> 選擇已連線的 AI 服務供應商 <span className="text-red-500">*</span>
-                                            </label>
-                                            <select
-                                                name="linkedServiceId"
-                                                value={(aiData as any).linkedServiceId || ''}
-                                                onChange={handleAiChange}
-                                                className="w-full pl-4 pr-10 py-2 text-base border-2 border-indigo-300 dark:border-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent sm:text-sm rounded-md dark:bg-gray-700 dark:text-white bg-white transition-all"
-                                                required
-                                            >
-                                                <option value="">請選擇</option>
-                                                {activeAIApps.map(app => (
-                                                    <option key={app.integrationId} value={app.integrationId}>
-                                                        {app.name} ({app.type})
-                                                    </option>
-                                                ))}
-                                            </select>
-                                            <p className="mt-1.5 text-xs text-indigo-700 dark:text-indigo-300 font-medium">
-                                                ✓ 選擇後 AI 將使用該服務的 API 與模型進行回應
-                                            </p>
-                                        </div>
+                                        <div className="space-y-4 p-4 border border-indigo-200 dark:border-indigo-800 rounded-lg bg-indigo-50/50 dark:bg-indigo-900/10">
+                                            {/* 已連線的 AI 服務 */}
+                                            <div>
+                                                <label className="block text-sm font-semibold text-indigo-900 dark:text-indigo-100 mb-2 flex items-center gap-2">
+                                                    <span className="text-lg">🔗</span> 選擇已連線的 AI 服務供應商 <span className="text-red-500">*</span>
+                                                </label>
+                                                <select
+                                                    name="linkedServiceId"
+                                                    value={(aiData as any).linkedServiceId || ''}
+                                                    onChange={handleAiChange}
+                                                    className="w-full pl-4 pr-10 py-2 text-base border-2 border-indigo-300 dark:border-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent sm:text-sm rounded-md dark:bg-gray-700 dark:text-white bg-white transition-all"
+                                                    required
+                                                >
+                                                    <option value="">請選擇</option>
+                                                    {activeAIApps.map(app => (
+                                                        <option key={app.integrationId} value={app.integrationId}>
+                                                            {app.name} ({app.type})
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                                <p className="mt-1.5 text-xs text-indigo-700 dark:text-indigo-300 font-medium">
+                                                    ✓ 選擇後 AI 將使用該服務的 API 與模型進行回應
+                                                </p>
+                                            </div>
 
-                                        {/* 技能選擇與預覽 */}
-                                        <div className="border-t border-indigo-200 dark:border-indigo-800 pt-4">
-                                            <label className="block text-sm font-semibold text-indigo-900 dark:text-indigo-100 mb-2 flex items-center gap-2">
-                                                <span className="text-lg">✨</span> 串接 AI 技能 (選填)
-                                            </label>
-                                            <select
-                                                name="linkedSkillId"
-                                                value={(aiData as any).linkedSkillId || ''}
-                                                onChange={handleAiChange}
-                                                className="w-full pl-4 pr-10 py-2 text-base border-2 border-indigo-200 dark:border-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent sm:text-sm rounded-md dark:bg-gray-700 dark:text-white bg-white transition-all"
-                                            >
-                                                <option value="">-- 不使用特定技能 (通用客服) --</option>
-                                                {AI_SKILLS.map(skill => (
-                                                    <option key={skill.id} value={skill.id}>
-                                                        {skill.icon} {skill.label} - {skill.desc}
-                                                    </option>
-                                                ))}
-                                            </select>
-                                            <p className="mt-1.5 text-xs text-indigo-700 dark:text-indigo-300 font-medium">
-                                                💡 技能會為 AI 注入專屬角色與指令。不選時 AI 將提供通用客服。
-                                            </p>
+                                            {/* 技能選擇與預覽 */}
+                                            <div className="border-t border-indigo-200 dark:border-indigo-800 pt-4">
+                                                <label className="block text-sm font-semibold text-indigo-900 dark:text-indigo-100 mb-2 flex items-center gap-2">
+                                                    <span className="text-lg">✨</span> 串接 AI 技能 (選填)
+                                                </label>
+                                                <select
+                                                    name="linkedSkillId"
+                                                    value={(aiData as any).linkedSkillId || ''}
+                                                    onChange={handleAiChange}
+                                                    className="w-full pl-4 pr-10 py-2 text-base border-2 border-indigo-200 dark:border-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent sm:text-sm rounded-md dark:bg-gray-700 dark:text-white bg-white transition-all"
+                                                >
+                                                    <option value="">-- 不使用特定技能 (通用客服) --</option>
+                                                    {AI_SKILLS.map(skill => (
+                                                        <option key={skill.id} value={skill.id}>
+                                                            {skill.icon} {skill.label} - {skill.desc}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                                <p className="mt-1.5 text-xs text-indigo-700 dark:text-indigo-300 font-medium">
+                                                    💡 技能會為 AI 注入專屬角色與指令。不選時 AI 將提供通用客服。
+                                                </p>
 
-                                            {/* 技能預覽框 */}
-                                            {selectedSkill && (
-                                                <div className="mt-3 p-3 bg-white dark:bg-gray-800 border border-indigo-100 dark:border-indigo-700 rounded-lg">
-                                                    <div className="flex items-start gap-3">
-                                                        <span className="text-2xl leading-none mt-0.5">{selectedSkill.icon}</span>
-                                                        <div className="flex-1">
-                                                            <p className="font-semibold text-gray-900 dark:text-white text-sm">{selectedSkill.label}</p>
-                                                            <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">{selectedSkill.desc}</p>
-                                                            <p className="text-[11px] text-indigo-600 dark:text-indigo-400 mt-2 line-clamp-2 font-medium">專屬指令已準備就緒 →</p>
+                                                {/* 技能預覽框 */}
+                                                {selectedSkill && (
+                                                    <div className="mt-3 p-3 bg-white dark:bg-gray-800 border border-indigo-100 dark:border-indigo-700 rounded-lg">
+                                                        <div className="flex items-start gap-3">
+                                                            <span className="text-2xl leading-none mt-0.5">{selectedSkill.icon}</span>
+                                                            <div className="flex-1">
+                                                                <p className="font-semibold text-gray-900 dark:text-white text-sm">{selectedSkill.label}</p>
+                                                                <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">{selectedSkill.desc}</p>
+                                                                <p className="text-[11px] text-indigo-600 dark:text-indigo-400 mt-2 line-clamp-2 font-medium">專屬指令已準備就緒 →</p>
+                                                            </div>
                                                         </div>
                                                     </div>
-                                                </div>
-                                            )}
+                                                )}
+                                            </div>
                                         </div>
-                                    </div>
                                     );
-                                })()} 
+                                })()}
 
 
                                 {(() => {
@@ -1352,48 +1355,48 @@ function AddAppForm() {
                                     const defaultSystemPrompt = `你是一個智慧、友善且樂於助人的 AI 助理。請以清楚、簡潔且準確的方式回答使用者的問題。`;
                                     const skillPrompt = selectedSkill ? `[你的當前技能：${selectedSkill.label}]\n${selectedSkill.prompt}\n\n` : '';
                                     const finalSystemPrompt = `${skillPrompt}${(aiData as any).systemInstruction ? `${(aiData as any).systemInstruction}\n\n` : ''}${defaultSystemPrompt}`;
-                                    
-                                    return (
-                                    <>
-                                        {/* 固定提示詞輸入 */}
-                                        <div className="space-y-4 p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800/50 mt-4">
-                                            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-2">
-                                                <span className="text-lg">📝</span> 固定提示詞 (選填)
-                                            </label>
-                                            <textarea
-                                                name="systemInstruction"
-                                                value={(aiData as any).systemInstruction || ''}
-                                                onChange={(e) => setAiData({ ...aiData, [e.target.name]: e.target.value } as any)}
-                                                placeholder="在此輸入 AI 的角色設定或指令 (例如：請用法文回覆我)...\n\n若選擇了技能，此欄可留空。"
-                                                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white min-h-[100px] resize-y"
-                                            />
-                                            <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">
-                                                ℹ️ <strong>可選項目</strong> - 若選擇了技能，系統將優先使用該技能的指令。若輸入此欄，則會結合技能指令一起使用。
-                                            </p>
-                                        </div>
 
-                                        {/* 最終提示詞預覽 */}
-                                        {(selectedSkill || (aiData as any).systemInstruction) && (
-                                            <div className="mt-4 p-4 border-2 border-indigo-300 dark:border-indigo-600 rounded-lg bg-indigo-50 dark:bg-indigo-950/30">
-                                                <div className="flex items-center gap-2 mb-3">
-                                                    <span className="text-lg">👀</span>
-                                                    <h4 className="font-semibold text-indigo-900 dark:text-indigo-100">最終系統提示詞預覽</h4>
-                                                </div>
-                                                <div className="bg-white dark:bg-gray-800 border border-indigo-200 dark:border-indigo-700 rounded p-3 font-mono text-xs leading-relaxed text-gray-700 dark:text-gray-300 max-h-[200px] overflow-y-auto">
-                                                    {finalSystemPrompt.split('\n').map((line, idx) => (
-                                                        <div key={idx} className="whitespace-pre-wrap break-words">
-                                                            {line || ' '}
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                                <p className="text-[11px] text-indigo-700 dark:text-indigo-300 mt-2 font-medium">
-                                                    💡 此為 AI 將收到的完整系統指令。技能指令 → 您的自訂指令 → 預設指令
+                                    return (
+                                        <>
+                                            {/* 固定提示詞輸入 */}
+                                            <div className="space-y-4 p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800/50 mt-4">
+                                                <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-2">
+                                                    <span className="text-lg">📝</span> 固定提示詞 (選填)
+                                                </label>
+                                                <textarea
+                                                    name="systemInstruction"
+                                                    value={(aiData as any).systemInstruction || ''}
+                                                    onChange={(e) => setAiData({ ...aiData, [e.target.name]: e.target.value } as any)}
+                                                    placeholder="在此輸入 AI 的角色設定或指令 (例如：請用法文回覆我)...\n\n若選擇了技能，此欄可留空。"
+                                                    className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white min-h-[100px] resize-y"
+                                                />
+                                                <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">
+                                                    ℹ️ <strong>可選項目</strong> - 若選擇了技能，系統將優先使用該技能的指令。若輸入此欄，則會結合技能指令一起使用。
                                                 </p>
                                             </div>
-                                        )}
-                                    </>
+
+                                            {/* 最終提示詞預覽 */}
+                                            {(selectedSkill || (aiData as any).systemInstruction) && (
+                                                <div className="mt-4 p-4 border-2 border-indigo-300 dark:border-indigo-600 rounded-lg bg-indigo-50 dark:bg-indigo-950/30">
+                                                    <div className="flex items-center gap-2 mb-3">
+                                                        <span className="text-lg">👀</span>
+                                                        <h4 className="font-semibold text-indigo-900 dark:text-indigo-100">最終系統提示詞預覽</h4>
+                                                    </div>
+                                                    <div className="bg-white dark:bg-gray-800 border border-indigo-200 dark:border-indigo-700 rounded p-3 font-mono text-xs leading-relaxed text-gray-700 dark:text-gray-300 max-h-[200px] overflow-y-auto">
+                                                        {finalSystemPrompt.split('\n').map((line, idx) => (
+                                                            <div key={idx} className="whitespace-pre-wrap break-words">
+                                                                {line || ' '}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                    <p className="text-[11px] text-indigo-700 dark:text-indigo-300 mt-2 font-medium">
+                                                        💡 此為 AI 將收到的完整系統指令。技能指令 → 您的自訂指令 → 預設指令
+                                                    </p>
+                                                </div>
+                                            )}
+                                        </>
                                     );
-                                })()} 
+                                })()}
                             </>
                         ) : isDatabase ? (
                             <>

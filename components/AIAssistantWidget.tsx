@@ -132,10 +132,9 @@ export function AIAssistantWidget() {
             };
             setMessages((prev) => [...prev, assistantMsg]);
         } catch (error) {
-            console.error('Chat error:', error);
             setMessages((prev) => [
                 ...prev,
-                { id: uuidv4(), role: 'assistant', content: '抱歉，系統目前有些忙碌，或尚未設定 Gemini API Key，請稍後再試。' }
+                { id: uuidv4(), role: 'assistant', content: '抱歉，系統目前有些忙碌，或尚未設定 AI 服務串接，請稍後再試。' }
             ]);
         } finally {
             setIsLoading(false);
@@ -256,7 +255,7 @@ export function AIAssistantWidget() {
                                 </button>
                             </div>
                             <div className="text-center mt-2">
-                                <span className="text-[10px] text-gray-400">Powered by Gemini AI Agent</span>
+                                <span className="text-[10px] text-gray-400">Powered by AI Agent</span>
                             </div>
                         </div>
                     </>)}

@@ -18,6 +18,7 @@ type Message = {
     executionEnvironment?: 'local' | 'background' | 'cloud';
     isDispatchResult?: boolean;
     dispatchAgents?: PlatformAgent[];
+    toolCalls?: { tool: string; args: any; result: any }[];
 };
 
 type DispatchResult = {
@@ -32,68 +33,18 @@ type DispatchResult = {
 
 // ─── Agent Color Map ──────────────────────────────────────────────────────────
 const COLOR_CLASSES: Record<string, { bg: string; border: string; text: string; pill: string }> = {
-    blue:    { bg: 'bg-blue-50 dark:bg-blue-900/20',    border: 'border-blue-200 dark:border-blue-800',    text: 'text-blue-700 dark:text-blue-300',   pill: 'bg-blue-600' },
-    green:   { bg: 'bg-green-50 dark:bg-green-900/20',  border: 'border-green-200 dark:border-green-800',  text: 'text-green-700 dark:text-green-300', pill: 'bg-green-600' },
+    blue: { bg: 'bg-blue-50 dark:bg-blue-900/20', border: 'border-blue-200 dark:border-blue-800', text: 'text-blue-700 dark:text-blue-300', pill: 'bg-blue-600' },
+    green: { bg: 'bg-green-50 dark:bg-green-900/20', border: 'border-green-200 dark:border-green-800', text: 'text-green-700 dark:text-green-300', pill: 'bg-green-600' },
     emerald: { bg: 'bg-emerald-50 dark:bg-emerald-900/20', border: 'border-emerald-200 dark:border-emerald-800', text: 'text-emerald-700 dark:text-emerald-300', pill: 'bg-emerald-600' },
-    violet:  { bg: 'bg-violet-50 dark:bg-violet-900/20', border: 'border-violet-200 dark:border-violet-800', text: 'text-violet-700 dark:text-violet-300', pill: 'bg-violet-600' },
-    amber:   { bg: 'bg-amber-50 dark:bg-amber-900/20',  border: 'border-amber-200 dark:border-amber-800',  text: 'text-amber-700 dark:text-amber-300', pill: 'bg-amber-500' },
-    slate:   { bg: 'bg-slate-50 dark:bg-slate-800/50',  border: 'border-slate-200 dark:border-slate-700',  text: 'text-slate-700 dark:text-slate-300', pill: 'bg-slate-600' },
-    rose:    { bg: 'bg-rose-50 dark:bg-rose-900/20',    border: 'border-rose-200 dark:border-rose-800',    text: 'text-rose-700 dark:text-rose-300',   pill: 'bg-rose-600' },
-    indigo:  { bg: 'bg-indigo-50 dark:bg-indigo-900/20', border: 'border-indigo-200 dark:border-indigo-800', text: 'text-indigo-700 dark:text-indigo-300', pill: 'bg-indigo-600' },
+    violet: { bg: 'bg-violet-50 dark:bg-violet-900/20', border: 'border-violet-200 dark:border-violet-800', text: 'text-violet-700 dark:text-violet-300', pill: 'bg-violet-600' },
+    amber: { bg: 'bg-amber-50 dark:bg-amber-900/20', border: 'border-amber-200 dark:border-amber-800', text: 'text-amber-700 dark:text-amber-300', pill: 'bg-amber-500' },
+    slate: { bg: 'bg-slate-50 dark:bg-slate-800/50', border: 'border-slate-200 dark:border-slate-700', text: 'text-slate-700 dark:text-slate-300', pill: 'bg-slate-600' },
+    rose: { bg: 'bg-rose-50 dark:bg-rose-900/20', border: 'border-rose-200 dark:border-rose-800', text: 'text-rose-700 dark:text-rose-300', pill: 'bg-rose-600' },
+    indigo: { bg: 'bg-indigo-50 dark:bg-indigo-900/20', border: 'border-indigo-200 dark:border-indigo-800', text: 'text-indigo-700 dark:text-indigo-300', pill: 'bg-indigo-600' },
 };
 const getColors = (color: string) => COLOR_CLASSES[color] ?? COLOR_CLASSES.indigo;
 
-// ─── FREE_TIER_MODELS (keep for reference / settings link) ────────────────────
-const FREE_TIER_MODELS = [
-    {
-        provider: 'Google Gemini',
-        icon: '✨',
-        color: 'from-blue-500 to-cyan-500',
-        bgColor: 'bg-blue-50 dark:bg-blue-900/20',
-        borderColor: 'border-blue-200 dark:border-blue-800',
-        textColor: 'text-blue-700 dark:text-blue-300',
-        models: [
-            { name: 'Gemini 2.0 Flash', tag: '最新', free: '每分鐘 15 次，每日 1,500 次' },
-            { name: 'Gemini 1.5 Flash', tag: '快速', free: '每分鐘 15 次，每日 1,500 次' },
-            { name: 'Gemini 1.5 Pro', tag: '強大', free: '每分鐘 2 次，每日 50 次' },
-        ],
-        link: 'https://aistudio.google.com/apikey',
-        linkText: '前往 Google AI Studio 取得 API Key',
-        note: '💡 完全免費，無需信用卡',
-    },
-    {
-        provider: 'OpenAI',
-        icon: '🧠',
-        color: 'from-gray-700 to-gray-900',
-        bgColor: 'bg-gray-50 dark:bg-gray-800/50',
-        borderColor: 'border-gray-200 dark:border-gray-700',
-        textColor: 'text-gray-700 dark:text-gray-300',
-        models: [
-            { name: 'GPT-4o mini', tag: '平價', free: '新帳號 $5 試用額度' },
-            { name: 'GPT-4o', tag: '旗艦', free: '新帳號 $5 試用額度' },
-            { name: 'o1-mini', tag: '推理', free: '新帳號 $5 試用額度' },
-        ],
-        link: 'https://platform.openai.com/api-keys',
-        linkText: '前往 OpenAI Platform 取得 API Key',
-        note: '⚠️ 需信用卡驗證，新帳號贈 $5 額度',
-    },
-    {
-        provider: 'Anthropic Claude',
-        icon: '🎭',
-        color: 'from-orange-500 to-amber-500',
-        bgColor: 'bg-orange-50 dark:bg-orange-900/20',
-        borderColor: 'border-orange-200 dark:border-orange-800',
-        textColor: 'text-orange-700 dark:text-orange-300',
-        models: [
-            { name: 'Claude 3.5 Haiku', tag: '快速', free: '新帳號試用額度' },
-            { name: 'Claude 3.5 Sonnet', tag: '均衡', free: '新帳號試用額度' },
-            { name: 'Claude 3 Opus', tag: '旗艦', free: '新帳號試用額度' },
-        ],
-        link: 'https://console.anthropic.com/',
-        linkText: '前往 Anthropic Console 取得 API Key',
-        note: '⚠️ 需電話驗證，提供初始試用額度',
-    },
-];
+
 
 // ─── Agent Panel ──────────────────────────────────────────────────────────────
 function AgentPanel({
@@ -160,11 +111,11 @@ function AgentPanel({
                                     >
                                         <span className="text-lg shrink-0 mt-0.5">{agent.icon}</span>
                                         <div className="min-w-0">
-                                            <p className={`text-xs font-bold leading-tight ${isActive ? c.text : 'text-gray-800 dark:text-gray-200'}`}>
+                                            <p className={`text-sm font-bold leading-tight ${isActive ? c.text : 'text-gray-900 dark:text-white'}`}>
                                                 {agent.name}
-                                                {isActive && <span className="ml-1.5 text-[9px] font-bold px-1 py-0.5 rounded-full opacity-70 bg-current/10">使用中</span>}
+                                                {isActive && <span className="ml-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full opacity-70 bg-current/10">使用中</span>}
                                             </p>
-                                            <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5 leading-snug line-clamp-2">{agent.desc}</p>
+                                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 leading-snug line-clamp-2">{agent.desc}</p>
                                         </div>
                                     </button>
                                 );
@@ -348,6 +299,7 @@ export default function AppsChatPage() {
                 agentName: activeAgent?.name,
                 agentIcon: activeAgent?.icon,
                 executionEnvironment: data.executionEnvironment,
+                toolCalls: data.toolCalls,
             }]);
             if (data.reply && !data.reply.includes('尚未設定')) setAiStatus({ configured: true });
         } catch {
@@ -358,9 +310,10 @@ export default function AppsChatPage() {
     };
 
     const clearConversation = () => {
-        setMessages([{ id: uuidv4(), role: 'assistant', content: activeAgent
-            ? `${activeAgent.icon} 對話已清除。我是「${activeAgent.name}」，繼續為您服務。`
-            : '👋 對話已清除！請繼續提問。'
+        setMessages([{
+            id: uuidv4(), role: 'assistant', content: activeAgent
+                ? `${activeAgent.icon} 對話已清除。我是「${activeAgent.name}」，繼續為您服務。`
+                : '👋 對話已清除！請繼續提問。'
         }]);
     };
 
@@ -530,6 +483,25 @@ export default function AppsChatPage() {
                                             return <DispatchCard result={result} onSelectAgent={handleSelectAgent} />;
                                         } catch { return null; }
                                     })()}
+
+                                    {/* Tool Calls Logs */}
+                                    {m.toolCalls && m.toolCalls.length > 0 && (
+                                        <div className="mb-2 space-y-2">
+                                            {m.toolCalls.map((tc, i) => (
+                                                <div key={i} className="bg-gray-100 dark:bg-gray-800/80 rounded-xl px-3 py-2 border border-gray-200 dark:border-gray-700 text-[11px]">
+                                                    <div className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400 font-bold uppercase tracking-tight">
+                                                        <span>🔧</span>
+                                                        <span>調用工具：{tc.tool}</span>
+                                                    </div>
+                                                    {tc.args && (
+                                                        <div className="mt-1 text-gray-400 font-mono">
+                                                            參數: {JSON.stringify(tc.args)}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
 
                                     {/* Normal message bubble */}
                                     {!m.isDispatchResult && (

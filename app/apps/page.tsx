@@ -24,7 +24,7 @@ interface AppIntegration {
 const PAYMENT_TYPES = ['ECPAY', 'PAYPAL', 'STRIPE'];
 const CHANNEL_TYPES = ['LINE', 'TELEGRAM', 'WHATSAPP', 'MESSENGER', 'SLACK', 'TEAMS', 'DISCORD', 'WECHAT'];
 const EMAIL_TYPES = ['RESEND'];
-const DATABASE_TYPES = ['DYNAMODB', 'KNOWLEDGE_BASE'];
+const DATABASE_TYPES = ['DYNAMODB', 'LANCEDB', 'KNOWLEDGE_BASE'];
 
 /** 各通訊渠道的顏色、圖標與顯示名稱 */
 const CHANNEL_META: Record<string, { badge: string; label: string; icon: string; desc: string }> = {
@@ -58,6 +58,7 @@ const EMAIL_META: Record<string, { badge: string; label: string; icon: string; d
 
 const DATABASE_META: Record<string, { badge: string; label: string; icon: string; desc: string }> = {
     DYNAMODB: { badge: 'bg-orange-100 text-orange-800', label: 'DynamoDB 資料庫', icon: '🗄️', desc: 'AWS 無伺服器資料庫，為 AI 聊天室提供高速知識庫搜尋' },
+    LANCEDB: { badge: 'bg-emerald-100 text-emerald-800', label: 'LanceDB 向量資料庫', icon: '🧠', desc: '嵌入式向量資料庫，提供 AI 記憶增強與高效語義搜尋' },
     KNOWLEDGE_BASE: { badge: 'bg-purple-100 text-purple-800', label: '知識庫', icon: '📚', desc: '自訂知識庫，儲存組織特定資訊供 AI 聊天室參考' },
 };
 

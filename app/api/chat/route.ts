@@ -207,9 +207,32 @@ ${customInstruction}
             systemInstruction: systemPrompt
         });
 
+        // Search for relevant memories in LanceDB if configured
+        let memoryContext = '';
+        try {
+            const scanRes = await ddbDocClient.send(new ScanCommand({
+                TableName: APP_INTEGRATIONS_TABLE,
+                FilterExpression: '#typ = :type AND #sts = :status',
+                ExpressionAttributeNames: { '#typ': 'type', '#sts': 'status' },
+                ExpressionAttributeValues: { ':type': 'LANCEDB', ':status': 'ACTIVE' }
+            }));
+
+            if (scanRes.Items && scanRes.Items.length > 0) {
+                const lanceDb = scanRes.Items[0];
+                const { searchMemory } = await import('@/lib/lancedb');
+                const memories = await searchMemory(lanceDb.config.tableName, latestMessage, 3);
+                if (memories.length > 0) {
+                    memoryContext = `\n# 相關歷史對話記憶:\n${memories.map((m: any) => m.text).join('\n---\n')}\n`;
+                }
+            }
+        } catch (memErr: any) {
+            console.warn('[AI Chat API] LanceDB search failed:', memErr.message);
+        }
+
         const chat = model.startChat({
             history,
-        });
+            systemInstruction: systemPrompt + memoryContext
+        } as any);
 
         const result = await chat.sendMessage(latestMessage);
         const response = result.response;
@@ -334,8 +357,32 @@ ${customInstruction}
             }
         }
 
+        const finalReply = response.text();
+
+        // Store new memory in LanceDB if configured
+        try {
+            const scanRes = await ddbDocClient.send(new ScanCommand({
+                TableName: APP_INTEGRATIONS_TABLE,
+                FilterExpression: '#typ = :type AND #sts = :status',
+                ExpressionAttributeNames: { '#typ': 'type', '#sts': 'status' },
+                ExpressionAttributeValues: { ':type': 'LANCEDB', ':status': 'ACTIVE' }
+            }));
+
+            if (scanRes.Items && scanRes.Items.length > 0) {
+                const lanceDb = scanRes.Items[0];
+                const { addMemory } = await import('@/lib/lancedb');
+                if (latestMessage && finalReply) {
+                    await addMemory(lanceDb.config.tableName, [
+                        { text: `User: ${latestMessage}\nAI: ${finalReply}`, metadata: { source: 'main-chat' } }
+                    ]);
+                }
+            }
+        } catch (memStoreErr: any) {
+            console.warn('[AI Chat API] LanceDB store failed:', memStoreErr.message);
+        }
+
         // Normal Text Response
-        return NextResponse.json({ reply: response.text() });
+        return NextResponse.json({ reply: finalReply });
 
     } catch (error: any) {
         console.error('❌ [AI Chat API] Global Error:', error);
