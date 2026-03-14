@@ -296,6 +296,92 @@ function StudentCoursesContent() {
     }
   }
 
+  // Helper to clean and validate time string
+  function cleanTimeString(timeStr: any): string {
+    if (!timeStr) return '';
+    let cleaned = String(timeStr).trim();
+
+    // Check for PM markers to convert 12h -> 24h later
+    const isPM = /PM|pm|下午/.test(cleaned);
+    const isAM = /AM|am|上午/.test(cleaned);
+
+    // Remove Chinese AM/PM markers
+    cleaned = cleaned.replace(/[\u4e0a\u4e0b]\u5348/g, '').trim();
+
+    // Remove common AM/PM markers (English)
+    cleaned = cleaned.replace(/\s*(AM|PM|am|pm)\s*/g, '').trim();
+
+    // Support ISO format like "2024-03-20T14:30:00.000Z" (extract time part)
+    if (cleaned.includes('T')) {
+      cleaned = cleaned.split('T')[1].split('.')[0].replace('Z', '');
+    }
+
+    // Try to extract HH:mm:ss or HH:mm pattern
+    const timeMatch = cleaned.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+    if (timeMatch) {
+      let hours = parseInt(timeMatch[1], 10);
+      const minutes = timeMatch[2].padStart(2, '0');
+      const seconds = (timeMatch[3] || '00').padStart(2, '0');
+
+      // 12h to 24h conversion logic
+      if (isPM && hours < 12) hours += 12;
+      if (isAM && hours === 12) hours = 0;
+
+      return `${String(hours).padStart(2, '0')}:${minutes}:${seconds}`;
+    }
+
+    // If no time pattern found, return empty
+    return '';
+  }
+
+  // Helper to check if current time is within course class time range
+  function isCurrentTimeInClassRange(o: Order): boolean {
+    try {
+      const now = Date.now();
+
+      // Resolve start time
+      let startTs = 0;
+      if (o.startTime) {
+        const isoDate = o.startTime.includes('T') ? o.startTime : `${o.startTime.split(' ')[0]}T${o.startTime.split(' ')[1] || '00:00:00'}`;
+        startTs = new Date(isoDate).getTime();
+      } else if (o.createdAt) {
+        startTs = new Date(o.createdAt).getTime();
+      } else {
+        const c = courseMap[o.courseId || ''];
+        if (c) {
+          const rawStart = c.nextStartDate || c.startDate;
+          if (rawStart) {
+            const datePart = rawStart.split('T')[0];
+            const timePart = cleanTimeString(c.startTime) || '00:00:00';
+            startTs = new Date(`${datePart}T${timePart}`).getTime();
+          }
+        }
+      }
+
+      // Resolve end time
+      let endTs = 0;
+      if (o.endTime) {
+        const isoDate = o.endTime.includes('T') ? o.endTime : `${o.endTime.split(' ')[0]}T${o.endTime.split(' ')[1] || '00:00:00'}`;
+        endTs = new Date(isoDate).getTime();
+      } else {
+        const c = courseMap[o.courseId || ''];
+        if (c) {
+          const rawDate = c.nextStartDate || c.startDate;
+          if (rawDate) {
+            const datePart = rawDate.split('T')[0];
+            const timePart = cleanTimeString(c.endTime) || '23:59:59';
+            endTs = new Date(`${datePart}T${timePart}`).getTime();
+          }
+        }
+      }
+
+      if (!startTs || !endTs) return false;
+      return now >= startTs && now <= endTs;
+    } catch (e) {
+      return false;
+    }
+  }
+
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     const params = new URLSearchParams(searchParams.toString());
@@ -463,8 +549,28 @@ function StudentCoursesContent() {
                         '-'
                       )}
                     </td>
-                    <td data-label={t('student_courses_teacher')} style={{ border: '2px solid #ccc', padding: '6px' }}>{o.courseId ? (courseMap[o.courseId]?.teacherName || '-') : '-'}</td>
-                    <td data-label={t('session_duration_label')} style={{ border: '2px solid #ccc', padding: '6px' }}>{o.courseId ? (courseMap[o.courseId]?.durationMinutes ? `${courseMap[o.courseId]?.durationMinutes} m` : '-') : '-'}</td>
+                    <td data-label={t('student_courses_teacher')} style={{ border: '2px solid #ccc', padding: '6px' }}>
+                      {o.courseId ? (
+                        courseMap[o.courseId]?.teacherName ? (
+                          courseMap[o.courseId].teacherName
+                        ) : (
+                          <span title={`[DEBUG] Course ID: ${o.courseId} - Teacher data missing from API`}>-</span>
+                        )
+                      ) : (
+                        '-'
+                      )}
+                    </td>
+                    <td data-label={t('session_duration_label')} style={{ border: '2px solid #ccc', padding: '6px' }}>
+                      {o.courseId ? (
+                        courseMap[o.courseId]?.durationMinutes ? (
+                          `${courseMap[o.courseId]?.durationMinutes} m`
+                        ) : (
+                          <span title={`[DEBUG] Course ID: ${o.courseId} - durationMinutes missing or zero from API`}>-</span>
+                        )
+                      ) : (
+                        '-'
+                      )}
+                    </td>
                     <td data-label="剩餘課程數" style={{ border: '2px solid #ccc', padding: '6px' }}>
                       {(() => {
                         if (typeof (o as any).remainingSessions === 'number') {
@@ -499,50 +605,64 @@ function StudentCoursesContent() {
                     </td>
                     <td data-label={t('start_time_label')} style={{ border: '2px solid #ccc', padding: '6px' }}>
                       {(() => {
+                        // 1. Prioritize order-specific startTime
                         if (o.startTime) {
                           const isoDate = o.startTime.includes('T') ? o.startTime : `${o.startTime.split(' ')[0]}T${o.startTime.split(' ')[1] || '00:00:00'}`;
                           return formatDateTime(isoDate);
                         }
+                        // 2. Fallback to order createdAt
+                        if (o.createdAt) {
+                          return formatDateTime(o.createdAt);
+                        }
+
+                        // 3. Fallback to course map
                         const c = courseMap[o.courseId || ''];
                         if (!c) return '-';
                         const rawDatePart = c.nextStartDate || c.startDate;
-                        let timePart = c.startTime;
                         if (!rawDatePart) return '-';
                         const datePart = rawDatePart.split('T')[0];
-                        if (timePart) {
-                          timePart = timePart.replace(/[上下]午/g, '').trim();
+                        const cleanedTime = cleanTimeString(c.startTime);
+                        if (!cleanedTime) {
+                          return formatDateTime(`${datePart}T09:00:00`);
                         }
-                        return formatDateTime(`${datePart}T${timePart || '00:00:00'}`);
+                        return formatDateTime(`${datePart}T${cleanedTime}`);
                       })()}
                     </td>
                     <td data-label={t('end_time_label')} style={{ border: '2px solid #ccc', padding: '6px' }}>
                       {(() => {
+                        // 1. Prioritize order-specific endTime
                         if (o.endTime) {
                           const isoDate = o.endTime.includes('T') ? o.endTime : `${o.endTime.split(' ')[0]}T${o.endTime.split(' ')[1] || '00:00:00'}`;
                           return formatDateTime(isoDate);
                         }
+
+                        // 2. Fallback to course map
                         const c = courseMap[o.courseId || ''];
                         if (!c) return '-';
-                        const rawDatePart = c.endDate;
-                        let timePart = c.endTime;
+                        const rawDatePart = c.nextStartDate || c.startDate;
                         if (!rawDatePart) return '-';
                         const datePart = rawDatePart.split('T')[0];
-                        if (timePart) {
-                          timePart = timePart.replace(/[上下]午/g, '').trim();
+                        const cleanedTime = cleanTimeString(c.endTime);
+                        if (!cleanedTime) {
+                          return formatDateTime(`${datePart}T10:00:00`);
                         }
-                        return formatDateTime(`${datePart}T${timePart || '00:00:00'}`);
+                        return formatDateTime(`${datePart}T${cleanedTime}`);
                       })()}
                     </td>
                     <td data-label={t('enter_classroom')} style={{ border: '2px solid #ccc', padding: '6px' }}>
                       {o.courseId ? (
                         ['basic', 'pro', 'elite'].includes(user?.plan || '') ? (
-                          <Link
-                            href={`/classroom/wait?courseId=${encodeURIComponent(o.courseId)}&orderId=${encodeURIComponent(o.orderId || (o as any).id || '')}&orderid=${encodeURIComponent(o.orderId || (o as any).id || '')}`}
-                            className="btn btn-primary"
-                            style={{ padding: '4px 8px', fontSize: '12px' }}
-                          >
-                            {t('enter_classroom')}
-                          </Link>
+                          isCurrentTimeInClassRange(o) ? (
+                            <Link
+                              href={`/classroom/wait?courseId=${encodeURIComponent(o.courseId)}&orderId=${encodeURIComponent(o.orderId || (o as any).id || '')}&orderid=${encodeURIComponent(o.orderId || (o as any).id || '')}`}
+                              className="btn btn-primary"
+                              style={{ padding: '4px 8px', fontSize: '12px' }}
+                            >
+                              {t('enter_classroom')}
+                            </Link>
+                          ) : (
+                            <span title={`分類外課堂時間。開始時間: ${courseMap[o.courseId]?.startTime || 'N/A'}, 結束時間: ${courseMap[o.courseId]?.endTime || 'N/A'}`}>-</span>
+                          )
                         ) : (
                           '-'
                         )

@@ -107,6 +107,44 @@ function TeacherCoursesContent() {
       return String(value);
     }
   }
+
+  // Helper to clean and validate time string
+  function cleanTimeString(timeStr: any): string {
+    if (!timeStr) return '';
+    let cleaned = String(timeStr).trim();
+
+    // Check for PM markers to convert 12h -> 24h later
+    const isPM = /PM|pm|下午/.test(cleaned);
+    const isAM = /AM|am|上午/.test(cleaned);
+
+    // Remove Chinese AM/PM markers
+    cleaned = cleaned.replace(/[\u4e0a\u4e0b]\u5348/g, '').trim();
+
+    // Remove common AM/PM markers (English)
+    cleaned = cleaned.replace(/\s*(AM|PM|am|pm)\s*/g, '').trim();
+
+    // Support ISO format like "2024-03-20T14:30:00.000Z" (extract time part)
+    if (cleaned.includes('T')) {
+      cleaned = cleaned.split('T')[1].split('.')[0].replace('Z', '');
+    }
+
+    // Try to extract HH:mm:ss or HH:mm pattern
+    const timeMatch = cleaned.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+    if (timeMatch) {
+      let hours = parseInt(timeMatch[1], 10);
+      const minutes = timeMatch[2].padStart(2, '0');
+      const seconds = (timeMatch[3] || '00').padStart(2, '0');
+
+      // 12h to 24h conversion logic
+      if (isPM && hours < 12) hours += 12;
+      if (isAM && hours === 12) hours = 0;
+
+      return `${String(hours).padStart(2, '0')}:${minutes}:${seconds}`;
+    }
+
+    // If no time pattern found, return empty
+    return '';
+  }
   useEffect(() => {
     if (!mounted || !user) return;
     if (user.role !== 'teacher' && user.role !== 'admin') return;
@@ -479,29 +517,22 @@ function TeacherCoursesContent() {
                           const isoDate = o.startTime.includes('T') ? o.startTime : `${o.startTime.split(' ')[0]}T${o.startTime.split(' ')[1] || '00:00:00'}`;
                           return formatDateTime(isoDate);
                         }
-                        // 2. Fallback to order createdAt (represents when order was placed)
+                        // 2. Fallback to order createdAt
                         if (o.createdAt) {
                           return formatDateTime(o.createdAt);
                         }
 
-                        // 3. Last fallback: course map defaults
+                        // 3. Fallback to course map
                         const c = courseMap[o.courseId || ''];
                         if (!c) return '-';
-                        const rawStart = c.nextStartDate || c.startDate;
-                        if (!rawStart) return '-';
-
-                        // If it's already a full ISO string with time, use it directly
-                        if (rawStart.includes('T')) {
-                          return formatDateTime(rawStart);
+                        const rawDatePart = c.nextStartDate || c.startDate;
+                        if (!rawDatePart) return '-';
+                        const datePart = rawDatePart.split('T')[0];
+                        const cleanedTime = cleanTimeString(c.startTime);
+                        if (!cleanedTime) {
+                          return formatDateTime(`${datePart}T09:00:00`);
                         }
-
-                        // Fallback: combine date with startTime if needed
-                        const datePart = rawStart.split('T')[0];
-                        let timePart = c.startTime;
-                        if (timePart) {
-                          timePart = timePart.replace(/[上下]午/g, '').trim();
-                        }
-                        return formatDateTime(`${datePart}T${timePart || '00:00:00'}`);
+                        return formatDateTime(`${datePart}T${cleanedTime}`);
                       })()}
                     </td>
                     <td data-label={t('end_time_label')} style={{ border: '2px solid #ccc', padding: '6px' }}>
@@ -512,27 +543,23 @@ function TeacherCoursesContent() {
                           return formatDateTime(isoDate);
                         }
 
-                        // 2. Fallback to course map defaults
+                        // 2. Fallback to course map
                         const c = courseMap[o.courseId || ''];
                         if (!c) return '-';
-                        const rawEnd = c.endDate;
-                        if (!rawEnd) return '-';
-
-                        if (rawEnd.includes('T')) {
-                          return formatDateTime(rawEnd);
+                        const rawDatePart = c.nextStartDate || c.startDate;
+                        if (!rawDatePart) return '-';
+                        const datePart = rawDatePart.split('T')[0];
+                        const cleanedTime = cleanTimeString(c.endTime);
+                        if (!cleanedTime) {
+                          return formatDateTime(`${datePart}T10:00:00`);
                         }
-
-                        const datePart = rawEnd.split('T')[0];
-                        let timePart = c.endTime;
-                        if (timePart) {
-                          timePart = timePart.replace(/[上下]午/g, '').trim();
-                        }
-                        return formatDateTime(`${datePart}T${timePart || '00:00:00'}`);
+                        return formatDateTime(`${datePart}T${cleanedTime}`);
                       })()}
                     </td>
                     <td data-label={t('enter_classroom')} style={{ border: '2px solid #ccc', padding: '6px' }}>
                       {(() => {
                         if (!o.courseId) return '-';
+                        const now = Date.now();
 
                         // Resolve start time
                         let startTs = 0;
@@ -546,14 +573,9 @@ function TeacherCoursesContent() {
                           if (c) {
                             const rawStart = c.nextStartDate || c.startDate;
                             if (rawStart) {
-                              if (rawStart.includes('T')) {
-                                startTs = new Date(rawStart).getTime();
-                              } else {
-                                const datePart = rawStart.split('T')[0];
-                                let timePart = c.startTime || '00:00:00';
-                                timePart = timePart.replace(/[上下]午/g, '').trim();
-                                startTs = new Date(`${datePart}T${timePart}`).getTime();
-                              }
+                              const datePart = rawStart.split('T')[0];
+                              const timePart = cleanTimeString(c.startTime) || '00:00:00';
+                              startTs = new Date(`${datePart}T${timePart}`).getTime();
                             }
                           }
                         }
@@ -565,21 +587,17 @@ function TeacherCoursesContent() {
                           endTs = new Date(isoDate).getTime();
                         } else {
                           const c = courseMap[o.courseId];
-                          if (c && c.endDate) {
-                            if (c.endDate.includes('T')) {
-                              endTs = new Date(c.endDate).getTime();
-                            } else {
-                              const datePart = c.endDate.split('T')[0];
-                              let timePart = c.endTime || '00:00:00';
-                              timePart = timePart.replace(/[上下]午/g, '').trim();
+                          if (c) {
+                            const rawDate = c.nextStartDate || c.startDate;
+                            if (rawDate) {
+                              const datePart = rawDate.split('T')[0];
+                              const timePart = cleanTimeString(c.endTime) || '23:59:59';
                               endTs = new Date(`${datePart}T${timePart}`).getTime();
                             }
                           }
                         }
 
-                        const now = Date.now();
-                        // If we have both, check range. If we only have start, check if started.
-                        const isVisible = (startTs && endTs) ? (now >= startTs && now <= endTs) : (startTs ? now >= startTs : true);
+                        const isVisible = (startTs && endTs) ? (now >= startTs && now <= endTs) : false;
 
                         if (!isVisible) return '-';
 
