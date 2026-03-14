@@ -23,22 +23,41 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: 'Email and password required' }, { status: 400 });
     }
 
-    // Demo admin credentials (hardcoded for local/demo use only) - skip captcha for test accounts
-    if (String(email).toLowerCase() === 'admin@jvtutorcorner.com' && password === '123456') {
-      const publicProfile: any = { roid_id: 'admin', nickname: 'Administrator', plan: 'elite', role: 'admin' };
-      publicProfile.id = publicProfile.roid_id;
-      return NextResponse.json({ ok: true, profile: publicProfile });
+    // 1. Check for bypass conditions (Environment-based test accounts + Secret)
+    let skipCaptcha = false;
+    const bypassSecret = process.env.LOGIN_BYPASS_SECRET;
+    const isBypassAttempt = bypassSecret && captchaValue === bypassSecret;
+
+    if (isBypassAttempt) {
+      const adminEmail = process.env.ADMIN_EMAIL;
+      const adminPass = process.env.ADMIN_PASSWORD;
+
+      if (adminEmail && adminPass &&
+          String(email).toLowerCase() === String(adminEmail).toLowerCase() && 
+          password === adminPass) {
+        skipCaptcha = true;
+      }
+
+      const testTeacherEmail = process.env.TEST_TEACHER_EMAIL;
+      const testTeacherPass = process.env.TEST_TEACHER_PASSWORD;
+      const testStudentEmail = process.env.TEST_STUDENT_EMAIL;
+      const testStudentPass = process.env.TEST_STUDENT_PASSWORD;
+
+      if (testTeacherEmail && testTeacherPass && 
+          String(email).toLowerCase() === String(testTeacherEmail).toLowerCase() && 
+          password === testTeacherPass) {
+        skipCaptcha = true;
+      }
+
+      if (testStudentEmail && testStudentPass && 
+          String(email).toLowerCase() === String(testStudentEmail).toLowerCase() && 
+          password === testStudentPass) {
+        skipCaptcha = true;
+      }
     }
 
-    // Demo teacher credentials for local testing - skip captcha for test accounts
-    if (String(email).toLowerCase() === 'teacher@test.com' && password === '123456') {
-      const publicProfile: any = { roid_id: 't3', nickname: '王老師', plan: 'pro', role: 'teacher', firstName: '王', lastName: '' };
-      publicProfile.id = publicProfile.roid_id;
-      return NextResponse.json({ ok: true, profile: publicProfile });
-    }
-
-    // Validate captcha for real user accounts
-    if (!verifyCaptcha(captchaToken, captchaValue)) {
+    // 2. Validate captcha if not a test account
+    if (!skipCaptcha && !verifyCaptcha(captchaToken, captchaValue)) {
       return NextResponse.json({ message: 'captcha_incorrect' }, { status: 400 });
     }
 

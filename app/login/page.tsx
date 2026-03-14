@@ -6,7 +6,6 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   MOCK_USERS,
-  TEST_PASSWORD,
   PLAN_LABELS,
   getStoredUser,
   setStoredUser,
@@ -39,54 +38,6 @@ export default function LoginPage() {
     (async () => {
       try {
         const trimmedEmail = email.trim().toLowerCase();
-
-        // 1. Check for mock users first to avoid 401 errors in console for test accounts
-        const userConfig = MOCK_USERS[trimmedEmail];
-        if (userConfig) {
-          if (password !== TEST_PASSWORD) {
-            setError(t('login_password_wrong'));
-            await loadCaptcha();
-            return;
-          }
-
-          // Mock login success
-          const user: StoredUser = {
-            email: trimmedEmail,
-            plan: userConfig.plan,
-            firstName: userConfig.firstName,
-            lastName: userConfig.lastName,
-          };
-          if ((userConfig as any).teacherId) {
-            (user as any).teacherId = (userConfig as any).teacherId;
-            (user as any).role = 'teacher';
-          }
-          setStoredUser(user);
-          setCurrentUser(user);
-          try {
-            const nowRef = String(Date.now());
-            window.localStorage.setItem('tutor_session_expiry', String(Date.now() + 30 * 60 * 1000));
-            window.sessionStorage.setItem('tutor_last_login_time', nowRef);
-            window.localStorage.setItem('tutor_last_login_time', nowRef);
-            window.sessionStorage.setItem('tutor_login_complete', 'true');
-          } catch { }
-
-          window.dispatchEvent(new Event('tutor:auth-changed'));
-          await new Promise(r => setTimeout(r, 100));
-
-          // Check for redirect parameter
-          try {
-            const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
-            const redirect = params?.get('redirect');
-            if (redirect) {
-              router.push(decodeURIComponent(redirect));
-              return;
-            }
-          } catch (e) { /* ignore */ }
-
-          alert(`${t('login_success')}\n${t('current_plan')}: ${PLAN_LABELS[user.plan]}(${t('test_account')})\n${t('redirecting_home')}`);
-          router.push('/');
-          return;
-        }
 
         // 2. Try server-side profiles for other accounts
         const res = await fetch('/api/login', {
@@ -183,14 +134,13 @@ export default function LoginPage() {
       const isGoogleSuccess = searchParams.get('google_auth_success');
 
       if (isGoogleSuccess === 'true') {
-        const mockEmail = 'google.user@gmail.com'; // Default mock Google email for prototype
-        const userConfig = MOCK_USERS[mockEmail] || { plan: 'viewer', firstName: 'Google', lastName: 'User' };
-
+        const authEmail = searchParams.get('email') || 'authorized-google-user';
+        
         const user: StoredUser = {
-          email: mockEmail,
-          plan: userConfig.plan as any,
-          firstName: userConfig.firstName,
-          lastName: userConfig.lastName,
+          email: authEmail,
+          plan: 'viewer',
+          firstName: 'Google',
+          lastName: 'User',
           role: 'user',
         };
 

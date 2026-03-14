@@ -29,7 +29,7 @@ export default async function RootLayout({
 
   return (
     <html lang="zh-TW">
-      <body>
+      <body suppressHydrationWarning>
         <ConfigureAmplify />
         <IntlProvider>
           {/* Session timer handles 30-minute expiry + 1-minute warning */}
@@ -76,7 +76,7 @@ export default async function RootLayout({
             <GlobalAIAssistant initialAppConfigs={appConfigs} />
           </AdminSettingsProvider>
 
-          <footer className="site-footer">
+          <footer className="site-footer" suppressHydrationWarning>
             © {new Date().getFullYear()} Tutor Corner
           </footer>
         </IntlProvider>
