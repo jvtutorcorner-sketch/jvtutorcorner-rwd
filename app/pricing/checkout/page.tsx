@@ -35,6 +35,7 @@ function CheckoutContent() {
         price: number;
         features: string[];
         description?: string;
+        points?: number;
     } | null>(null);
     const [loadingData, setLoadingData] = useState(false);
 
@@ -106,6 +107,7 @@ function CheckoutContent() {
                                 price: pkg.price,
                                 features: [`${pkg.points} 點`, pkg.description].filter(Boolean) as string[],
                                 description: pkg.description,
+                                points: pkg.points,
                             });
                             setLoadingData(false);
                             return;
@@ -133,6 +135,7 @@ function CheckoutContent() {
     let itemName = '';
     let planLabel = '';
     let planFeatures: string[] = [];
+    let points = 0;
 
     if (isMockPlan) {
         const id = planId as PlanId;
@@ -142,11 +145,18 @@ function CheckoutContent() {
         itemName = `Plan Upgrade: ${PLAN_LABELS[id]}`;
         planLabel = PLAN_LABELS[id];
         planFeatures = PLAN_FEATURES[id];
+
+        // For legacy mock plans starting with points_
+        if (id.startsWith('points_')) {
+            const pointsMatch = id.match(/\d+/);
+            points = pointsMatch ? parseInt(pointsMatch[0], 10) : 0;
+        }
     } else if (itemData) {
         price = itemData.price;
         itemName = `${itemData.type === 'PLAN' ? 'Plan Upgrade' : 'Points Purchase'}: ${itemData.label}`;
         planLabel = itemData.label;
         planFeatures = itemData.features;
+        points = itemData.points || 0;
     }
 
     const itemType: 'PLAN' | 'POINTS' = (!isMockPlan && itemData) ? itemData.type : 'PLAN';
@@ -157,12 +167,13 @@ function CheckoutContent() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    userId: user.roid_id || user.id || user.email,
+                    userId: user.email || user.roid_id || user.id,
                     planId: planId,
                     amount: price,
                     currency: 'TWD',
                     itemType,
                     planLabel,
+                    points,
                 }),
             });
 
@@ -326,35 +337,29 @@ function CheckoutContent() {
 
         try {
             // Simulate backend updating the upgrade status to PAID
-            await fetch(`/api/plan-upgrades/${encodeURIComponent(upgrade.upgradeId)}`, {
+            const patchRes = await fetch(`/api/plan-upgrades/${encodeURIComponent(upgrade.upgradeId)}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ status: 'PAID' }),
             });
-
-            if (planId?.startsWith('points_')) {
-                // Determine point amount from planId
-                const pointsMatch = planId.match(/\d+/);
-                const pointsAmount = pointsMatch ? parseInt(pointsMatch[0], 10) : 0;
-
-                await fetch('/api/points', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        userId: user.email,
-                        action: 'add',
-                        amount: pointsAmount,
-                        reason: `購買方案 ${planLabel}`,
-                    }),
-                });
-            } else {
+            
+            const data = await patchRes.json();
+            
+            if (!patchRes.ok) {
+                throw new Error(data.error || 'Failed to update payment status');
+            }
+            
+            // If it's a plan upgrade (not points), sync locally for immediate UI feedback
+            if (itemType === 'PLAN') {
                 syncPlanLocally();
             }
 
-            alert(t('payment_simulated') || '付款成功 (Demo)');
-            router.push('/plans');
-        } catch (err) {
-            alert('Simulation error');
+            // Small delay to ensure DB updates and analytics are processed
+            setTimeout(() => {
+                router.push('/plans');
+            }, 500);
+        } catch (err: any) {
+            alert(`Simulation error: ${err.message || err}`);
             setIsSubmitting(false);
         }
     };

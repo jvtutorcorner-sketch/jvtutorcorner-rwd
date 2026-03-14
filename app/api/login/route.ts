@@ -106,6 +106,7 @@ export async function POST(req: Request) {
     const publicProfile: any = { roid_id: found.roid_id || found.id, nickname: found.nickname, plan: found.plan, role: found.role };
     // keep legacy id key for compatibility
     publicProfile.id = found.id || publicProfile.roid_id;
+    if (found.email) publicProfile.email = found.email;
     if (found.firstName) publicProfile.firstName = found.firstName;
     if (found.lastName) publicProfile.lastName = found.lastName;
     return NextResponse.json({ ok: true, profile: publicProfile });

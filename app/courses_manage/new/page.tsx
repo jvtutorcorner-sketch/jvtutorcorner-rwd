@@ -1,8 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { PLAN_LABELS } from '@/lib/mockAuth';
-import type { PlanId } from '@/lib/mockAuth';
 import { useRouter } from 'next/navigation';
 import { getStoredUser } from '@/lib/mockAuth';
 
@@ -15,7 +13,7 @@ export default function NewCoursePage() {
         durationMinutes: '50',
         startDateTime: '',
         endDateTime: '',
-        membershipPlan: ''
+        pointCost: ''
     });
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
@@ -31,12 +29,22 @@ export default function NewCoursePage() {
         setError(null);
 
         const updates: any = {};
-        if (!form.title) {
-            setError('請輸入課程標題');
+        
+        // 驗證所有欄位
+        if (!form.title || !form.description || !form.startDateTime || !form.endDateTime || !form.pointCost) {
+            setError('請填寫所有必填欄位');
             return;
         }
+
+        // 驗證點數區間
+        const points = Number(form.pointCost);
+        if (isNaN(points) || points < 7 || points > 40) {
+            setError('課程點數必須在 7 到 40 之間');
+            return;
+        }
+
         updates.title = form.title;
-        updates.description = form.description || '';
+        updates.description = form.description;
         updates.durationMinutes = Number(form.durationMinutes) || 50;
 
         // Combine date + time into ISO string for nextStartDate when provided
@@ -46,7 +54,8 @@ export default function NewCoursePage() {
         if (form.endDateTime) {
             updates.endDate = new Date(form.endDateTime).toISOString();
         }
-        if (form.membershipPlan) updates.membershipPlan = form.membershipPlan;
+        updates.pointCost = points;
+        updates.membershipPlan = String(points); // Keep for compatibility if needed
 
         // Attach teacher info
         if (currentUser) {
@@ -135,8 +144,14 @@ export default function NewCoursePage() {
                 </div>
 
                 <div>
-                    <label style={{ display: 'block', fontWeight: 600 }}>描述</label>
-                    <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} style={{ width: '100%', padding: 8, backgroundColor: 'white' }} />
+                    <label style={{ display: 'block', fontWeight: 600 }}>描述 *</label>
+                    <textarea 
+                        value={form.description} 
+                        onChange={(e) => setForm({ ...form, description: e.target.value })} 
+                        style={{ width: '100%', padding: 8, backgroundColor: 'white' }} 
+                        required
+                        placeholder="請輸入課程描述"
+                    />
                 </div>
 
                 <div style={{ display: 'flex', gap: 8 }}>
@@ -150,27 +165,39 @@ export default function NewCoursePage() {
 
                 <div style={{ display: 'flex', gap: 8 }}>
                     <div style={{ flex: 1 }}>
-                        <label style={{ display: 'block', fontWeight: 600 }}>開始時間</label>
-                        <input type="datetime-local" value={form.startDateTime} onChange={(e) => setForm({ ...form, startDateTime: e.target.value })} style={{ width: '100%', padding: 8, backgroundColor: 'white' }} />
+                        <label style={{ display: 'block', fontWeight: 600 }}>開始時間 *</label>
+                        <input 
+                            type="datetime-local" 
+                            value={form.startDateTime} 
+                            onChange={(e) => setForm({ ...form, startDateTime: e.target.value })} 
+                            style={{ width: '100%', padding: 8, backgroundColor: 'white' }} 
+                            required
+                        />
                     </div>
                     <div style={{ flex: 1 }}>
-                        <label style={{ display: 'block', fontWeight: 600 }}>結束時間</label>
-                        <input type="datetime-local" value={form.endDateTime} onChange={(e) => setForm({ ...form, endDateTime: e.target.value })} style={{ width: '100%', padding: 8, backgroundColor: 'white' }} />
+                        <label style={{ display: 'block', fontWeight: 600 }}>結束時間 *</label>
+                        <input 
+                            type="datetime-local" 
+                            value={form.endDateTime} 
+                            onChange={(e) => setForm({ ...form, endDateTime: e.target.value })} 
+                            style={{ width: '100%', padding: 8, backgroundColor: 'white' }} 
+                            required
+                        />
                     </div>
                 </div>
 
                 <div>
-                    <label style={{ display: 'block', fontWeight: 600 }}>會員方案</label>
-                    <select value={form.membershipPlan} onChange={(e) => setForm({ ...form, membershipPlan: e.target.value })} style={{ width: '100%', padding: 8, backgroundColor: 'white' }}>
-                        <option value="">未設定</option>
-                        {Object.entries(PLAN_LABELS)
-                            .filter(([key]) => key !== 'viewer')
-                            .map(([key, label]) => (
-                                <option key={key} value={key}>
-                                    {label}
-                                </option>
-                            ))}
-                    </select>
+                    <label style={{ display: 'block', fontWeight: 600 }}>課程點數設定 (7-40) *</label>
+                    <input
+                        type="number"
+                        min="7"
+                        max="40"
+                        value={form.pointCost}
+                        onChange={(e) => setForm({ ...form, pointCost: e.target.value })}
+                        style={{ width: '100%', padding: 8, backgroundColor: 'white' }}
+                        placeholder="請輸入點數 (7-40)"
+                        required
+                    />
                 </div>
 
                 <div>

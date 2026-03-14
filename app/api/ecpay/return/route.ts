@@ -44,15 +44,33 @@ export async function POST(req: NextRequest) {
             if (orderId) {
                 try {
                     const base = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-                    const res = await fetch(`${base}/api/orders/${encodeURIComponent(orderId)}`, {
+                    console.log(`[ECPay Return] Attempting to update order ${orderId} status...`);
+                    
+                    // First try plan-upgrades API (for membership/points)
+                    let res = await fetch(`${base}/api/plan-upgrades/${encodeURIComponent(orderId)}`, {
                         method: 'PATCH',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ status: 'PAID' }),
                     });
-                    if (!res.ok) {
-                        console.error('[ECPay Return] Failed to update order status via API', res.status);
+                    
+                    if (res.ok) {
+                        console.log(`[ECPay Return] Successfully updated plan-upgrade ${orderId} to PAID`);
+                    } else if (res.status === 404) {
+                        // If not found in plan-upgrades, try the standard orders API (for course enrollments)
+                        console.log(`[ECPay Return] Order ${orderId} not found in plan-upgrades, trying standard orders API...`);
+                        res = await fetch(`${base}/api/orders/${encodeURIComponent(orderId)}`, {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ status: 'PAID' }),
+                        });
+                        
+                        if (res.ok) {
+                            console.log(`[ECPay Return] Successfully updated order ${orderId} to PAID`);
+                        } else {
+                            console.error(`[ECPay Return] Failed to update order ${orderId} in standard orders API: status ${res.status}`);
+                        }
                     } else {
-                        console.log(`[ECPay Return] Successfully updated order ${orderId} to PAID via API`);
+                        console.error(`[ECPay Return] Failed to update plan-upgrade ${orderId}: status ${res.status}`);
                     }
                 } catch (e) {
                     console.error('[ECPay Return] Error updating order status:', e);

@@ -111,15 +111,33 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) 
     if (orderId) {
         try {
             const base = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-            const res = await fetch(`${base}/api/orders/${encodeURIComponent(orderId)}`, {
+            console.log(`[Stripe Webhook] Attempting to update order ${orderId} status...`);
+
+            // First try plan-upgrades API (for membership/points)
+            let res = await fetch(`${base}/api/plan-upgrades/${encodeURIComponent(orderId)}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ status: 'PAID' }),
             });
-            if (!res.ok) {
-                console.error('[Stripe Webhook] Failed to update order status via API', res.status);
+
+            if (res.ok) {
+                console.log(`[Stripe Webhook] Successfully updated plan-upgrade ${orderId} to PAID`);
+            } else if (res.status === 404) {
+                // If not found in plan-upgrades, try the standard orders API (for course enrollments)
+                console.log(`[Stripe Webhook] Order ${orderId} not found in plan-upgrades, trying standard orders API...`);
+                res = await fetch(`${base}/api/orders/${encodeURIComponent(orderId)}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status: 'PAID' }),
+                });
+
+                if (res.ok) {
+                    console.log(`[Stripe Webhook] Successfully updated order ${orderId} to PAID`);
+                } else {
+                    console.error(`[Stripe Webhook] Failed to update order ${orderId} in standard orders API: status ${res.status}`);
+                }
             } else {
-                console.log(`[Stripe Webhook] Successfully updated order ${orderId} to PAID via API`);
+                console.error(`[Stripe Webhook] Failed to update plan-upgrade ${orderId}: status ${res.status}`);
             }
         } catch (e) {
             console.error('[Stripe Webhook] Error updating order status:', e);

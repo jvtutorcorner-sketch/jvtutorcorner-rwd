@@ -1,27 +1,14 @@
 import { NextResponse } from 'next/server';
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, PutCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { ddbDocClient as docClient } from '@/lib/dynamo';
+import { PutCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { randomUUID } from 'crypto';
-
-const ddbRegion = process.env.CI_AWS_REGION || process.env.AWS_REGION;
-const ddbExplicitAccessKey = process.env.CI_AWS_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID;
-const ddbExplicitSecretKey = process.env.CI_AWS_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY;
-const ddbExplicitSessionToken = process.env.CI_AWS_SESSION_TOKEN || process.env.AWS_SESSION_TOKEN;
-const ddbExplicitCreds = ddbExplicitAccessKey && ddbExplicitSecretKey ? {
-    accessKeyId: ddbExplicitAccessKey as string,
-    secretAccessKey: ddbExplicitSecretKey as string,
-    ...(ddbExplicitSessionToken ? { sessionToken: ddbExplicitSessionToken as string } : {})
-} : undefined;
-
-const client = new DynamoDBClient({ region: ddbRegion, credentials: ddbExplicitCreds });
-const docClient = DynamoDBDocumentClient.from(client);
 
 const UPGRADES_TABLE = process.env.DYNAMODB_TABLE_PLAN_UPGRADES || 'jvtutorcorner-plan-upgrades';
 
 export async function POST(request: Request) {
     try {
-        const { planId, amount, currency, userId, itemType, planLabel } = await request.json();
-        console.log('[plan-upgrades API] POST request:', { planId, amount, currency, userId, itemType });
+        const { planId, amount, currency, userId, itemType, planLabel, points } = await request.json();
+        console.log('[plan-upgrades API] POST request:', { planId, amount, currency, userId, itemType, points });
 
         if (!planId || !userId) {
             console.warn('[plan-upgrades API] Missing planId or userId');
@@ -40,6 +27,7 @@ export async function POST(request: Request) {
             amount: amount || 0,
             currency: currency || 'TWD',
             status: 'PENDING',
+            points: points || 0,
             createdAt,
             updatedAt: createdAt,
         };

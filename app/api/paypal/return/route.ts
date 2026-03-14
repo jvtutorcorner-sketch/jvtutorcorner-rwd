@@ -17,12 +17,29 @@ export async function GET(req: NextRequest) {
 
             // Mock DB Update
             try {
-                const res = await fetch(`${baseURL}/api/orders/${encodeURIComponent(mockOrderId)}`, {
+                console.log(`[PayPal Return Mock] Attempting to update order ${mockOrderId} status...`);
+                // First try plan-upgrades API
+                let res = await fetch(`${baseURL}/api/plan-upgrades/${encodeURIComponent(mockOrderId)}`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ status: 'PAID' }),
                 });
-                if (!res.ok) console.error('[PayPal Return Mock] Failed to update order');
+                
+                if (!res.ok) {
+                    if (res.status === 404) {
+                        res = await fetch(`${baseURL}/api/orders/${encodeURIComponent(mockOrderId)}`, {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ status: 'PAID' }),
+                        });
+                        if (!res.ok) console.error('[PayPal Return Mock] Failed to update order');
+                        else console.log(`[PayPal Return Mock] Successfully updated order ${mockOrderId} to PAID`);
+                    } else {
+                        console.error('[PayPal Return Mock] Failed to update plan-upgrade');
+                    }
+                } else {
+                    console.log(`[PayPal Return Mock] Successfully updated plan-upgrade ${mockOrderId} to PAID`);
+                }
             } catch (e) {
                 console.error('[PayPal Return Mock] Error updating order status:', e);
             }
@@ -51,15 +68,30 @@ export async function GET(req: NextRequest) {
 
             if (orderId) {
                 try {
-                    const res = await fetch(`${baseURL}/api/orders/${encodeURIComponent(orderId)}`, {
+                    console.log(`[PayPal Return] Attempting to update order ${orderId} status...`);
+                    // First try plan-upgrades API
+                    let res = await fetch(`${baseURL}/api/plan-upgrades/${encodeURIComponent(orderId)}`, {
                         method: 'PATCH',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ status: 'PAID' }),
                     });
-                    if (!res.ok) {
-                        console.error('[PayPal Return] Failed to update order status via API', res.status);
+                    
+                    if (res.ok) {
+                        console.log(`[PayPal Return] Successfully updated plan-upgrade ${orderId} to PAID API`);
+                    } else if (res.status === 404) {
+                        console.log(`[PayPal Return] Order ${orderId} not found in plan-upgrades, trying standard orders API...`);
+                        res = await fetch(`${baseURL}/api/orders/${encodeURIComponent(orderId)}`, {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ status: 'PAID' }),
+                        });
+                        if (!res.ok) {
+                            console.error('[PayPal Return] Failed to update order status via API', res.status);
+                        } else {
+                            console.log(`[PayPal Return] Successfully updated order ${orderId} to PAID via API`);
+                        }
                     } else {
-                        console.log(`[PayPal Return] Successfully updated order ${orderId} to PAID via API`);
+                        console.error(`[PayPal Return] Failed to update plan-upgrade ${orderId}: status ${res.status}`);
                     }
                 } catch (e) {
                     console.error('[PayPal Return] Error updating order status:', e);
