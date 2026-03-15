@@ -77,6 +77,14 @@ test.describe('Course Alignment (Student vs Teacher) Verification', () => {
             const endTime = (await row.locator('td:nth-child(8)').textContent())?.trim() || '';
 
             if (id) {
+                // Verify the course record exists in DB before adding to comparison list
+                // Skip orphaned orders (course was deleted but order remains)
+                const courseCheckRes = await studentPage.request.get(`${BASE_URL}/api/courses?id=${encodeURIComponent(id)}`);
+                const courseCheckData = await courseCheckRes.json();
+                if (!courseCheckData?.ok || !courseCheckData?.course) {
+                    console.warn(`  ⚠️  [學生端] 跳過孤立訂單 (課程記錄不存在): ${id}`);
+                    continue;
+                }
                 studentCourses.set(id, { id, name, startTime, endTime });
                 console.log(`  [學生端] 找到課程: ${name} (ID: ${id}) | 時間: ${startTime} ~ ${endTime}`);
             }

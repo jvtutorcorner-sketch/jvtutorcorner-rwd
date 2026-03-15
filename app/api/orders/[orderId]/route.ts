@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, GetCommand, PutCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
 
 const ddbRegion = process.env.CI_AWS_REGION || process.env.AWS_REGION;
 const ddbExplicitAccessKey = process.env.CI_AWS_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID;
@@ -142,6 +142,21 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ or
     return NextResponse.json({ ok: true, order: updated }, { status: 200 });
   } catch (err) {
     console.error('orders/[orderId] PATCH error:', err);
+    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: Request, { params }: { params: Promise<{ orderId: string }> }) {
+  try {
+    const { orderId } = await params as { orderId: string };
+    if (!orderId) {
+      return NextResponse.json({ error: 'orderId required' }, { status: 400 });
+    }
+    const TableName = process.env.DYNAMODB_TABLE_ORDERS || 'jvtutorcorner-orders';
+    await docClient.send(new DeleteCommand({ TableName, Key: { orderId } }));
+    return NextResponse.json({ ok: true, message: 'Order deleted' });
+  } catch (err) {
+    console.error('orders/[orderId] DELETE error:', err);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
   }
 }

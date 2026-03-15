@@ -275,7 +275,24 @@ test('Student Enrollment Flow with auto-balance recovery', async ({ page }) => {
     console.log("✓ Point deduction verified!");
     
     // Cleanup
-    console.log("Cleaning up test course...");
+    console.log("Cleaning up test course and related orders...");
+    // Step 1: Delete related orders (must do before course, to avoid orphaned orders)
+    try {
+        const ordersRes = await page.request.get(`${baseUrl}/api/orders?courseId=${encodeURIComponent(testCourseId)}&limit=50`);
+        const ordersData = await ordersRes.json();
+        const orders: { orderId: string }[] = ordersData?.ok ? ordersData.data || [] : [];
+        for (const order of orders) {
+            const delOrderRes = await page.request.delete(`${baseUrl}/api/orders/${encodeURIComponent(order.orderId)}`);
+            if (delOrderRes.ok()) {
+                console.log(`Test order deleted: ${order.orderId}`);
+            } else {
+                console.warn(`Failed to delete order: ${order.orderId}`);
+            }
+        }
+    } catch (e) {
+        console.error("Error cleaning up test orders:", e);
+    }
+    // Step 2: Delete the test course
     try { 
         const cleanupRes = await page.request.delete(`${baseUrl}/api/courses?id=${testCourseId}`);
         if (cleanupRes.ok()) {
