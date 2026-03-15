@@ -3,6 +3,12 @@ name: auto-login
 description: '自動登入驗證技能。讀取 .env.local 中的測試帳號資訊，並使用特有的 Bypass Secret 繞過驗證碼完成登入。支援 Teacher 與 Student 角色。'
 argument-hint: '執行自動登入，並指定角色 (teacher/student)'
 metadata:
+  verified-status: '❌ UNVERIFIED'
+  last-verified-date: '-'
+  architecture-aligned: false
+  architecture-aligned: false
+  last-verified-date: '-'
+  verified-status: ❌ UNVERIFIED
   verified-status: ✅ VERIFIED
   last-verified-date: '2026-03-15'
   architecture-aligned: true

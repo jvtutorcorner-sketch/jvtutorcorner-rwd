@@ -3,6 +3,12 @@ name: workflow
 description: '工作流程相關修改指南，用於 CI/workflow 變更流程、檢查清單，以及 git commit 格式標準化。'
 argument-hint: '記錄與標準化 CI/workflow 相關的變更'
 metadata:
+  verified-status: '❌ UNVERIFIED'
+  last-verified-date: '-'
+  architecture-aligned: false
+  architecture-aligned: false
+  last-verified-date: '-'
+  verified-status: ❌ UNVERIFIED
   verified-status: ❌ UNVERIFIED
   last-verified-date: '-'
   architecture-aligned: false

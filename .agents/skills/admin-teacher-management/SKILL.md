@@ -3,6 +3,12 @@ name: admin-teacher-management
 description: '負責教師在職狀態管理與檔案修改審核。'
 argument-hint: '管理並驗證教師的在職狀態與資料審核流程'
 metadata:
+  verified-status: '❌ UNVERIFIED'
+  last-verified-date: '-'
+  architecture-aligned: false
+  architecture-aligned: false
+  last-verified-date: '-'
+  verified-status: ❌ UNVERIFIED
   verified-status: ⚠️ PARTIAL
   last-verified-date: '2026-03-15'
   architecture-aligned: false

@@ -3,6 +3,12 @@ name: course-management-service
 description: '負責教師的課程管理與管理員的課程審核。'
 argument-hint: '管理教師課程建立、狀態更新及管理員審核流程'
 metadata:
+  verified-status: '❌ UNVERIFIED'
+  last-verified-date: '-'
+  architecture-aligned: false
+  architecture-aligned: false
+  last-verified-date: '-'
+  verified-status: ❌ UNVERIFIED
   verified-status: ⚠️ PARTIAL
   last-verified-date: '2026-03-15'
   architecture-aligned: false

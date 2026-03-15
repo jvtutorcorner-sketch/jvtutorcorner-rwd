@@ -11,7 +11,12 @@
     "start": "next start",
     "lint": "eslint",
     "setup-agora": "node scripts/setup-agora-credentials.js",
-    "setup-s3": "node scripts/setup-s3-storage.js"
+    "setup-s3": "node scripts/setup-s3-storage.js",
+    "skills:validate": "node scripts/validate-skill-frontmatter.js",
+    "skills:update": "node scripts/update-skill-status.js",
+    "test": "playwright test",
+    "test:verify-skills": "playwright test --grep 'verification' && npm run skills:update",
+    "test:verify-skills:ci": "playwright test --grep 'verification' --reporter=html"
   },
   "dependencies": {
     "@aws-amplify/ui-react": "^6.13.1",

@@ -3,6 +3,12 @@ name: admin-order-management
 description: '負責訂單、訂閱與退款的管理。'
 argument-hint: '管理訂單狀態、訂閱方案配置以及退款流程'
 metadata:
+  verified-status: '❌ UNVERIFIED'
+  last-verified-date: '-'
+  architecture-aligned: false
+  architecture-aligned: false
+  last-verified-date: '-'
+  verified-status: ❌ UNVERIFIED
   verified-status: ❌ UNVERIFIED
   last-verified-date: '-'
   architecture-aligned: false
