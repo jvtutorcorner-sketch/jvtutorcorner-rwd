@@ -9,6 +9,7 @@ import {
   PlanId,
 } from "@/lib/mockAuth";
 import { PLAN_PRICES, PLAN_FEATURES } from "@/lib/mockAuth";
+import OnboardingQuestionnaire from "@/components/OnboardingQuestionnaire";
 
 function simpleMarkdownToHtml(md: string) {
   if (!md) return "";
@@ -41,6 +42,8 @@ export default function RegisterPage() {
   const [plan, setPlan] = useState<PlanId | null>("viewer");
   // credit card fields moved to post-login settings; do not collect on registration
   const [saved, setSaved] = useState(false);
+  const [registeredUserId, setRegisteredUserId] = useState<string | null>(null);
+  const [showQuestionnaire, setShowQuestionnaire] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
 
   // Refs for form fields
@@ -290,7 +293,9 @@ export default function RegisterPage() {
         return;
       }
       setSaved(true);
-      setTimeout(() => router.push('/login'), 900);
+      const newUserId = data?.profile?.roid_id || data?.profile?.id || payload.roid_id;
+      setRegisteredUserId(newUserId);
+      setShowQuestionnaire(true);
     } catch (err: any) {
       console.error(err);
       setFormError(err?.message || '儲存失敗');
@@ -500,10 +505,30 @@ export default function RegisterPage() {
               <Link href="/login" className="modal-button secondary">返回登入</Link>
             </div>
 
-            {saved && <p className="form-success">已儲存（模擬） — 將在幾秒後導回首頁。</p>}
+            {saved && !showQuestionnaire && (
+              <p className="form-success">帳戶已建立！正在進行個人化設定…</p>
+            )}
           </form>
         </div>
       </section>
+
+      {/* Onboarding questionnaire – shown inline after registration */}
+      {showQuestionnaire && (
+        <section className="section" style={{ marginTop: 0 }}>
+          <OnboardingQuestionnaire
+            mode="full"
+            userId={registeredUserId ?? undefined}
+            onComplete={() => {
+              setShowQuestionnaire(false);
+              setTimeout(() => router.push('/login'), 800);
+            }}
+            onSkip={() => {
+              setShowQuestionnaire(false);
+              setTimeout(() => router.push('/login'), 300);
+            }}
+          />
+        </section>
+      )}
     </div>
   );
 }
