@@ -1,3 +1,13 @@
+---
+name: workflow
+description: '工作流程相關修改指南，用於 CI/workflow 變更流程、檢查清單，以及 git commit 格式標準化。'
+argument-hint: '記錄與標準化 CI/workflow 相關的變更'
+metadata:
+  verified-status: ❌ UNVERIFIED
+  last-verified-date: '-'
+  architecture-aligned: false
+---
+
 # Workflow Skill — 工作流程相關修改指南
 
 此 skill 用來記錄與標準化與 CI / workflow 有關的變更流程、檢查清單，以及建議的 git commit 格式，方便在修改 workflow（例如 GitHub Actions、CI 設定、build/cache 設定）時保持一致性。

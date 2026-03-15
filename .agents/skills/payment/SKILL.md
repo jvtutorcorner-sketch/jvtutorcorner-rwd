@@ -1,3 +1,13 @@
+---
+name: payment
+description: '支付系統相關修改指南，包括多個支付閘道整合（PayPal、Stripe、LINE Pay）、交易處理、Webhook 安全驗證，以及結帳流程優化。'
+argument-hint: '記錄與標準化支付系統相關的變更'
+metadata:
+  verified-status: ❌ UNVERIFIED
+  last-verified-date: '-'
+  architecture-aligned: false
+---
+
 # Payment Skill — 支付系統相關修改指南
 
 此 skill 用來記錄與標準化支付系統相關的變更，包括多個支付閘道整合（PayPal、Stripe、LINE Pay）、交易處理、Webhook 安全驗證，以及結帳流程優化。

@@ -2,6 +2,10 @@
 name: student-enrollment-flow
 description: '自動化學生購買點數與報名課程的完整流程。包含：登入、點數餘額檢查、方案頁購買點數、隨機選擇課程報名、以及模擬支付。'
 argument-hint: '執行完整報名流程測試'
+metadata:
+  verified-status: ✅ VERIFIED
+  last-verified-date: '2026-03-15'
+  architecture-aligned: true
 ---
 
 # 學生報名流程技能 (Student Enrollment Flow Skill)

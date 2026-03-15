@@ -1,7 +1,11 @@
 ---
 name: course-alignment
 description: '檢查頁面 /student_courses 登入的帳號跟頁面 /teacher_courses 的對應的課程對齊'
-argument-hint: '驗證學生與老師頁面間的課程資料一致性'
+argument-hint: '驗證學生與老師語師頁面間的課程資料一致性'
+metadata:
+  verified-status: ❌ UNVERIFIED
+  last-verified-date: '-'
+  architecture-aligned: false
 ---
 
 # 課程對齊驗證技能 (Course Alignment Verification)

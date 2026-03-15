@@ -2,6 +2,10 @@
 name: teacher-courses-page
 description: '檢查 /teacher_courses 頁面的學生資訊、進入教室按鈕、時間驗證、以及剩餘課程數/時間的正確性。'
 argument-hint: '測試並驗證 /teacher_courses 頁面的所有功能'
+metadata:
+  verified-status: ✅ VERIFIED
+  last-verified-date: '2026-03-15'
+  architecture-aligned: true
 ---
 
 # 教師課程頁面檢查技能 (Teacher Courses Page Verification)

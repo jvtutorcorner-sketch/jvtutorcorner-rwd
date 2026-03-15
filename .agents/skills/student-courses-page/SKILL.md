@@ -2,6 +2,10 @@
 name: student-courses-page
 description: '檢查 /student_courses 頁面的按鈕顯示、時間驗證、資料完整性和課程 ID 對應邏輯。'
 argument-hint: '測試並驗證 /student_courses 頁面的所有功能'
+metadata:
+  verified-status: ✅ VERIFIED
+  last-verified-date: '2026-03-15'
+  architecture-aligned: true
 ---
 
 # 學生課程頁面檢查技能 (Student Courses Page Verification)

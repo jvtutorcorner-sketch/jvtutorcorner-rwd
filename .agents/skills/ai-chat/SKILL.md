@@ -2,6 +2,10 @@
 name: ai-chat
 description: 'AI 聊天室功能開發與維護技能。Use when: modifying ai-chat API route, chat route, platform tools, LanceDB memory, AIAssistantWidget, platform agents, or add-app AI integration. Covers tool calling schema, multi-provider support (Gemini/OpenAI), vector memory, agent execution, and UI for tool call logs.'
 argument-hint: '描述要修改的 AI 聊天功能，例如：新增工具、修改記憶策略、調整 Agent prompt'
+metadata:
+  verified-status: ❌ UNVERIFIED
+  last-verified-date: '-'
+  architecture-aligned: false
 ---
 
 # AI Chat 功能技能
