@@ -11,6 +11,7 @@ argument-hint: '測試並驗證 /teacher_courses 頁面的所有功能'
 ## 功能檢查清單
 
 ### 1. 進入教室按鈕時間驗證
+- **架構背景**：基於 [Teacher Course Management](../../../architecture_overview.md#23-teacher-course-management) 與實體關係。
 - **要求**：「進入教室」按鈕只在「課堂時間範圍內」才顯示
 - **驗證方式**：
   - 檢查當前時間是否在課程的 `startTime` 到 `endTime` 之間

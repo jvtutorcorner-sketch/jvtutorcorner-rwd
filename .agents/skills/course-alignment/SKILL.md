@@ -11,6 +11,7 @@ argument-hint: '驗證學生與老師頁面間的課程資料一致性'
 ## 功能檢查清單
 
 ### 1. 跨角色資料一致性
+- **架構描述**：請參考 [Core Operational Flows](../../../architecture_overview.md#2-core-operational-flows) 以理解報名激活後的資料結構。
 - **要求**：同一堂課程在學生端與老師端顯示的「開始時間」、「結束時間」、「課程名稱」必須完全相同。
 - **資料來源優先級 (Source of Truth)**：
   1. **訂單資料 (Order Data)**：優先讀取訂單中的 `startTime`、`endTime` 及 `createdAt`。

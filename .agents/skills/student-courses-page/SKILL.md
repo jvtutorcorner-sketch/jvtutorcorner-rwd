@@ -11,6 +11,7 @@ argument-hint: '測試並驗證 /student_courses 頁面的所有功能'
 ## 功能檢查清單
 
 ### 1. 進入教室按鈕時間驗證
+- **架構背景**：此功能依賴於 [Core Entities](../../../architecture_overview.md#1-core-entities--database-models) 中的 Course 與 Enrollment 狀態。
 - **要求**：「進入教室」按鈕只在「開始時間到結束時間區間內」的課程才顯示
 - **驗證方式**：
   - 檢查當前系統時間是否在 `startTime` 和 `endTime` 之間

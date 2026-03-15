@@ -16,6 +16,18 @@ argument-hint: '執行完整報名流程測試'
 4.  **UI 刷新驗證**：購買完成後回到定價頁面，驗證畫面上顯示的點數餘額是否已即時更新，確保頁面無快取問題。
 5.  **課程報名**：在 `/courses` 隨機挑選課程，填寫資訊並報名。
 6.  **錯誤自愈**：若報名過程中遇到點數不足的 UI 報錯，自動切換至購買流程後返回。
+7.  **架構驗證**：在執行流程前，先確認 [Core Operational Flows](../../../architecture_overview.md#2-core-operational-flows) 是否符合現有程式實作。
+
+## 故障排除與架構同步 (Troubleshooting & Architecture Sync)
+
+### 1. 架構驅動的故障排除
+若報名或支付流程失敗，請執行以下檢查：
+- **關係驗證**：對比 [ER 圖](../../../architecture_overview.md#3-system-relationships-er-diagram)，確認 Student, Course, Enrollment, Order 之間的鏈結是否完整建立。
+- **狀態機一致性**：確認 Enrollment 與 Order 的狀態轉換是否符合 [Enrollment Flow (Standard)](../../../architecture_overview.md#enrollment-flow-standard) 的定義。
+
+### 2. 架構同步要求
+- **變動偵測**：當修正 Bug 或增加功能涉及 `schema.graphql` 變動或流程邏輯修改時，必須同步更新 [architecture_overview.md](../../../architecture_overview.md)。
+- **更新範圍**：包含重新生成 Mermaid 圖表或更新「API Endpoints」清單。
 
 ## 測試資料命名慣例 (Test Data Naming Conventions)
 

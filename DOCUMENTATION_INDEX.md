@@ -35,7 +35,26 @@
 
 ---
 
-### 2. **API 詳細文檔** - `API_DETAILED_DOCUMENTATION.md`
+### 2. **架構總覽** - `architecture_overview.md`
+📄 **核心實體關係與流程圖解**
+
+**適合：** 需要理解資料庫關係、實體交互和核心營運流程的開發者
+
+**包含內容：**
+- ✓ 核心實體與資料表映射 (ER 圖)
+- ✓ 方案/點數購買流程圖
+- ✓ 報名流程圖 (一般與點數)
+- ✓ 教師課程管理流程
+- ✓ 全域 API 端點清單
+
+**使用方式：**
+- 除錯時比對資料來源與流向
+- 擴充新功能時確保不破壞既有架構
+- 理解跨服務的實體關聯
+
+---
+
+### 3. **API 詳細文檔** - `API_DETAILED_DOCUMENTATION.md`
 📄 **API 的技術參考手冊**
 
 **適合：** 後端開發者、前端集成工程師
@@ -87,7 +106,10 @@
 ### 我想...
 
 **理解系統如何運作**
-→ 閱讀 [PAYMENT_FLOW_DOCUMENTATION.md](./PAYMENT_FLOW_DOCUMENTATION.md) 的「概述」和「訂單流程」部分
+→ 閱讀 [architecture_overview.md](./architecture_overview.md) (架構圖) 與 [PAYMENT_FLOW_DOCUMENTATION.md](./PAYMENT_FLOW_DOCUMENTATION.md) (文字說明)
+
+**除錯跨角色資料不一致**
+→ 參考 [architecture_overview.md](./architecture_overview.md) 的「Entity Relationship Diagram」
 
 **實現前端購買流程**
 → 參考 [API_DETAILED_DOCUMENTATION.md](./API_DETAILED_DOCUMENTATION.md) 的「請求/響應示例」部分
