@@ -25,7 +25,7 @@ export async function POST(req: Request) {
 
     // 1. Check for bypass conditions (Environment-based test accounts + Secret)
     let skipCaptcha = false;
-    const bypassSecret = process.env.LOGIN_BYPASS_SECRET;
+    const bypassSecret = process.env.NEXT_PUBLIC_LOGIN_BYPASS_SECRET || process.env.LOGIN_BYPASS_SECRET;
     const isBypassAttempt = bypassSecret && captchaValue === bypassSecret;
 
     if (isBypassAttempt) {

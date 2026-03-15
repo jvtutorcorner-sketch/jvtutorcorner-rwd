@@ -28,7 +28,10 @@ const ORDERS_TABLE = process.env.DYNAMODB_TABLE_ORDERS || 'jvtutorcorner-orders'
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { courseId, enrollmentId, amount, currency, userId: clientUserId, startTime, endTime } = body;
+    const { 
+      courseId, enrollmentId, amount, currency, userId: clientUserId, 
+      startTime, endTime, paymentMethod, pointsUsed, status: clientStatus 
+    } = body;
     let userId = await getUserId();
 
     if (!courseId) {
@@ -52,6 +55,7 @@ export async function POST(request: Request) {
     // Fetch course duration and total sessions
     let durationMinutes = 0;
     let totalSessions = 1;
+    let courseTitle = '';
 
     try {
       if (courseId) {
@@ -61,20 +65,65 @@ export async function POST(request: Request) {
         if (res.Item) {
           durationMinutes = res.Item.durationMinutes || 0;
           totalSessions = res.Item.totalSessions || 1;
+          courseTitle = res.Item.title || '';
         } else {
           const course = COURSES.find(c => c.id === courseId);
           durationMinutes = course?.durationMinutes || 0;
           totalSessions = course?.totalSessions || 1;
+          courseTitle = course?.title || '';
         }
       }
     } catch (e) {
       console.warn('[orders API] Failed to fetch course duration/sessions:', e);
     }
+
+    // 🟢 Point Deduction Logic
+    if (paymentMethod === 'points' && pointsUsed && pointsUsed > 0) {
+      try {
+        const POINTS_TABLE = process.env.DYNAMODB_TABLE_USER_POINTS || 'jvtutorcorner-user-points';
+        
+        // 1. Fetch current balance
+        const getPointsCmd = new GetCommand({
+          TableName: POINTS_TABLE,
+          Key: { userId }
+        });
+        const pointsRes = await docClient.send(getPointsCmd);
+        const currentBalance = pointsRes.Item?.balance ?? 0;
+
+        if (currentBalance < pointsUsed) {
+          return NextResponse.json({ 
+            error: `點數不足，目前餘額 ${currentBalance} 點，需要 ${pointsUsed} 點`,
+            ok: false 
+          }, { status: 400 });
+        }
+
+        // 2. Atomic deduction
+        const { UpdateCommand } = await import('@aws-sdk/lib-dynamodb');
+        await docClient.send(new UpdateCommand({
+          TableName: POINTS_TABLE,
+          Key: { userId },
+          UpdateExpression: 'SET balance = balance - :p, updatedAt = :u',
+          ExpressionAttributeValues: {
+            ':p': pointsUsed,
+            ':u': createdAt,
+          },
+        }));
+        console.log(`[orders API] Successfully deducted ${pointsUsed} points from ${userId} for course: ${courseTitle}`);
+      } catch (pointsErr: any) {
+        console.error('[orders API] Point deduction error:', pointsErr);
+        return NextResponse.json({ 
+          error: '點數扣除服務異常，請稍後再試。', 
+          detail: pointsErr?.message 
+        }, { status: 500 });
+      }
+    }
+
     const order = {
       orderId,
       orderNumber,
       userId,
       courseId: courseId || null,
+      courseTitle,
       durationMinutes,
       totalSessions,
       remainingSessions: totalSessions,
@@ -82,7 +131,9 @@ export async function POST(request: Request) {
       enrollmentId: enrollmentId || null,
       amount: amount || 0,
       currency: currency || 'TWD',
-      status: 'PENDING',
+      paymentMethod: paymentMethod || null,
+      pointsUsed: pointsUsed || 0,
+      status: clientStatus || 'PENDING',
       startTime: startTime || null,
       endTime: endTime || null,
       createdAt,
@@ -97,6 +148,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       message: 'Order created successfully',
+      ok: true,
       order,
     }, { status: 201 });
 

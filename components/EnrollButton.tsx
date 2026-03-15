@@ -47,6 +47,7 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [isLoadingPoints, setIsLoadingPoints] = useState(false); // Added loading state for points
   const [selectedStartTime, setSelectedStartTime] = useState<string>('');
   const [showStartTimeModal, setShowStartTimeModal] = useState(false);
   const [storedUser, setStoredUserState] = useState<any>(null);
@@ -74,10 +75,19 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
   useEffect(() => {
     if (!storedUser?.email) return;
     if (enrollmentType === 'plan') return;  // 純方案制不需要查點數
+    
+    setIsLoadingPoints(true);
     fetch(`/api/points?userId=${encodeURIComponent(storedUser.email)}`)
       .then(r => r.json())
-      .then(d => { if (d.ok) setUserPoints(d.balance); })
-      .catch(() => { });
+      .then(d => { 
+        if (d.ok) {
+          setUserPoints(d.balance);
+          // If points are updated and previously there was a point-related error, clear it
+          setError(prev => prev?.includes('點數不足') ? null : prev);
+        }
+      })
+      .catch(() => { })
+      .finally(() => setIsLoadingPoints(false));
   }, [storedUser, enrollmentType]);
 
   const handleEnrollAndOrder = async () => {
@@ -88,12 +98,15 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
     }
 
     // 點數報名：先驗餘額
+    console.log('[EnrollButton] handleEnrollAndOrder: payMethod=', payMethod, 'pointCost=', pointCost, 'userPoints=', userPoints);
     if (payMethod === 'points') {
       if (!pointCost || pointCost <= 0) {
+        console.error('[EnrollButton] pointCost missing or zero');
         setError('此課程未設定點數費用');
         return;
       }
       if (userPoints === null || userPoints < pointCost) {
+        console.error('[EnrollButton] insufficient points:', userPoints, '<', pointCost);
         setError(`點數不足，目前餘額 ${userPoints ?? 0} 點，需要 ${pointCost} 點`);
         return;
       }
@@ -154,6 +167,7 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
             const conflictStart = new Date(existing.startTime).toLocaleString();
             const conflictEnd = existing.endTime ? new Date(existing.endTime).toLocaleString() : '未知';
             setError(`此時間段（${new Date(selectedStartTime).toLocaleString()} ~ ${endTime ? new Date(endTime).toLocaleString() : '未知'}）與已報名的「${conflictTitle}」（${conflictStart} ~ ${conflictEnd}）有時間重疊，請選擇其他時段。`);
+            setIsSubmitting(false); // Make sure to stop submission
             return;
           }
         }
@@ -176,30 +190,13 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
         createdAt: new Date().toISOString(),
       };
 
-      // 點數扣點
-      if (payMethod === 'points' && pointCost && pointCost > 0) {
-        const deductRes = await fetch('/api/points', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userId: storedUser.email,
-            action: 'deduct',
-            amount: pointCost,
-            reason: `報名課程：${courseTitle}`,
-          }),
-        });
-        const deductData = await deductRes.json();
-        if (!deductRes.ok || !deductData.ok) {
-          setError(deductData.error || '點數扣除失敗，報名已取消');
-          return;
-        }
-        setUserPoints(deductData.balance);
-      }
+      const enrollmentId = (enrollment as any).id;
 
       // 建立訂單（點數報名 amount 為 0，方案報名 amount 為原價）
+      // 後端現在會自動處理點數扣除
       const orderPayload = {
         courseId,
-        enrollmentId: (enrollment as any).id,
+        enrollmentId,
         amount: payMethod === 'points' ? 0 : price,
         currency,
         userId: storedUser.email,
@@ -207,6 +204,7 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
         endTime: endTime || undefined,
         paymentMethod: payMethod === 'points' ? 'points' : undefined,
         pointsUsed: payMethod === 'points' ? pointCost : undefined,
+        status: payMethod === 'points' ? 'PAID' : 'PENDING', // Points order is PAID immediately
       };
 
       const orderRes = await fetch('/api/orders', {
@@ -215,7 +213,21 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
         body: JSON.stringify(orderPayload),
       });
 
-      if (!orderRes.ok) throw new Error('Failed to create order');
+      const orderData = await orderRes.json();
+      
+      if (!orderRes.ok || !orderData.ok) {
+        setError(orderData.error || '訂單建立失敗，請稍後再試。');
+        return;
+      }
+
+      // Sync enrollment status to PAID if it was a point-based order
+      if (payMethod === 'points' && enrollmentId) {
+        await fetch('/api/enroll', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: enrollmentId, status: 'PAID' }),
+        });
+      }
 
       setIsSuccess(true);
       setShowStartTimeModal(false);
@@ -265,8 +277,11 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
     <>
       <button
         className="enroll-button"
-        onClick={() => setShowStartTimeModal(true)}
-        disabled={!isEnrollable || isSubmitting || isSuccess}
+        onClick={() => {
+          setError(null);
+          setShowStartTimeModal(true);
+        }}
+        disabled={!isEnrollable || isSubmitting || isSuccess || isLoadingPoints}
         title={
           !storedUser
             ? t('enroll_title_login')
@@ -324,20 +339,20 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
                   <button
                     type="button"
                     onClick={() => setPayMethod('points')}
-                    disabled={(userPoints ?? 0) < (pointCost ?? 0)}
+                    disabled={isLoadingPoints || (userPoints ?? 0) < (pointCost ?? 0)}
                     style={{
                       flex: 1, padding: '10px 12px', borderRadius: 8,
                       border: payMethod === 'points' ? '2px solid #7c3aed' : '2px solid #e5e7eb',
                       backgroundColor: payMethod === 'points' ? '#f5f3ff' : '#f9fafb',
                       color: payMethod === 'points' ? '#7c3aed' : '#374151',
                       fontWeight: payMethod === 'points' ? 700 : 400,
-                      cursor: (userPoints ?? 0) < (pointCost ?? 0) ? 'not-allowed' : 'pointer',
-                      opacity: (userPoints ?? 0) < (pointCost ?? 0) ? 0.5 : 1,
+                      cursor: isLoadingPoints || (userPoints ?? 0) < (pointCost ?? 0) ? 'not-allowed' : 'pointer',
+                      opacity: isLoadingPoints || (userPoints ?? 0) < (pointCost ?? 0) ? 0.5 : 1,
                     }}
                   >
                     💎 點數報名
                     <div style={{ fontSize: '0.78rem', marginTop: 2, fontWeight: 400 }}>
-                      扣 {pointCost} 點（餘 {userPoints ?? 0} 點）
+                      {isLoadingPoints ? '讀取中...' : `扣 ${pointCost} 點（餘 ${userPoints ?? 0} 點）`}
                     </div>
                   </button>
                 </div>
@@ -395,7 +410,7 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
               <button
                 onClick={handleEnrollAndOrder}
                 className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium shadow-md disabled:bg-blue-300"
-                disabled={isSubmitting || !selectedStartTime}
+                disabled={isSubmitting || !selectedStartTime || isLoadingPoints || (payMethod === 'points' && (userPoints === null || userPoints < (pointCost ?? 0)))}
               >
                 {isSubmitting ? '處理中...' : payMethod === 'points' ? `確認報名（扣 ${pointCost} 點）` : '確認報名'}
               </button>
