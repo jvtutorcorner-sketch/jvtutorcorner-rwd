@@ -44,6 +44,8 @@ const nextConfig = {
     AWS_REGION: process.env.AWS_REGION || process.env.CI_AWS_REGION || 'ap-northeast-1',
     AMPLIFY_REGION: process.env.AMPLIFY_REGION,
   },
+  // Ensure native modules are treated as external packages
+  serverExternalPackages: ['@lancedb/lancedb'],
 };
 
 export default nextConfig;

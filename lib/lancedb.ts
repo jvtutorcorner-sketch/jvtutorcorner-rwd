@@ -9,8 +9,19 @@ export interface MemoryEntry {
     metadata: Record<string, any>;
 }
 
+let dbInstance: lancedb.Connection | null = null;
+
 export async function getDb() {
-    return await lancedb.connect(DB_PATH);
+    if (dbInstance) return dbInstance;
+    
+    try {
+        dbInstance = await lancedb.connect(DB_PATH);
+        console.log(`[LanceDB] Connected to ${DB_PATH}`);
+        return dbInstance;
+    } catch (error) {
+        console.error('[LanceDB] Connection failed:', error);
+        throw error;
+    }
 }
 
 export async function getOrCreateTable(tableName: string) {
@@ -21,11 +32,7 @@ export async function getOrCreateTable(tableName: string) {
         return await db.openTable(tableName);
     }
 
-    // Create an empty table with a schema
-    // Note: LanceDB can infer schema from the first insertion, 
-    // but we can also create it explicitly.
-    // For now, let's just use a dummy entry to force schema creation if it doesn't exist.
-    // However, it's better to use `createTable` with an initial set of data.
+    console.log(`[LanceDB] Table "${tableName}" not found. It will be created upon first insertion.`);
     return null;
 }
 
