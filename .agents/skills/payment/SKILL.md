@@ -6,12 +6,6 @@ metadata:
   verified-status: '❌ UNVERIFIED'
   last-verified-date: '-'
   architecture-aligned: false
-  architecture-aligned: false
-  last-verified-date: '-'
-  verified-status: ❌ UNVERIFIED
-  verified-status: ❌ UNVERIFIED
-  last-verified-date: '-'
-  architecture-aligned: false
 ---
 
 # Payment Skill — 支付系統相關修改指南
@@ -113,3 +107,17 @@ scripts/
 ├── init-pricing-data.mjs    # 定價資料初始化
 └── merge-pricing-data.mjs   # 定價資料合併
 ```
+
+## 環境驗證 (Environment Validation)
+
+### 1. 必要環境變數 (Required Environment Variables)
+- [ ] `.env.local` 必須包含 `PAYPAL_CLIENT_ID` / `PAYPAL_CLIENT_SECRET`
+- [ ] `.env.local` 必須包含 `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET`
+- [ ] `.env.local` 必須包含 `LINEPAY_API_KEY` / `LINEPAY_MERCHANT_ID`
+
+### 2. 必要驗證檔案 (Required Validation Files)
+- [ ] `scripts/init-pricing-data.mjs` (定價資料初始化)
+- [ ] `lib/linepay.ts` (支付邏輯實作)
+
+### 3. 執行驗證指令 (Validation Command)
+- 目前以手動驗證沙箱環境為主

@@ -3,13 +3,7 @@ name: student-enrollment-flow
 description: '自動化學生購買點數與報名課程的完整流程。包含：登入、點數餘額檢查、方案頁購買點數、隨機選擇課程報名、以及模擬支付。'
 argument-hint: '執行完整報名流程測試'
 metadata:
-  verified-status: '❌ UNVERIFIED'
-  last-verified-date: '-'
-  architecture-aligned: false
-  architecture-aligned: false
-  last-verified-date: '-'
-  verified-status: ❌ UNVERIFIED
-  verified-status: ✅ VERIFIED
+  verified-status: '✅ VERIFIED'
   last-verified-date: '2026-03-15'
   architecture-aligned: true
 ---
@@ -61,6 +55,18 @@ metadata:
     - 若為程式碼 bug，直接修正原始碼及其對應的測試。
     - 若為測試腳本過時，更新測試腳本。
 4.  **回報進度**：回報最終成功狀態或無法自動修復的嚴重問題。
+
+## 環境驗證 (Environment Validation)
+
+### 1. 必要環境變數 (Required Environment Variables)
+- [ ] `.env.local` 必須包含 `LOGIN_BYPASS_SECRET`
+- [ ] `.env.local` 必須包含 `TEST_STUDENT_EMAIL` / `TEST_STUDENT_PASSWORD`
+
+### 2. 必要驗證檔案 (Required Validation Files)
+- [ ] `e2e/student_enrollment.spec.ts` (學生報名完整流程測試)
+
+### 3. 執行驗證指令 (Validation Command)
+- `npx playwright test e2e/student_enrollment.spec.ts`
 
 ## 已知修正紀錄 (Known Fixes)
 

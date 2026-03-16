@@ -6,12 +6,6 @@ metadata:
   verified-status: '❌ UNVERIFIED'
   last-verified-date: '-'
   architecture-aligned: false
-  architecture-aligned: false
-  last-verified-date: '-'
-  verified-status: ❌ UNVERIFIED
-  verified-status: ❌ UNVERIFIED
-  last-verified-date: '-'
-  architecture-aligned: false
 ---
 
 # Workflow Skill — 工作流程相關修改指南
@@ -46,6 +40,17 @@ metadata:
   - Motivation: 為何需要此變更或修正什麼問題
   - How to test: CI 須通過、或本地可復現的測試步驟
   - Rollback plan: 若失敗如何回退
+
+## 環境驗證 (Environment Validation)
+
+### 1. 必要環境變數 (Required Environment Variables)
+- [ ] GitHub Secrets 必須配置完整的 CI/CD 所需變數 (如 `DYNAMODB_ACCESS_KEY` 等)
+
+### 2. 必要驗證檔案 (Required Validation Files)
+- [ ] `.github/workflows/*.yml` (GitHub Actions 定義)
+
+### 3. 執行驗證指令 (Validation Command)
+- 無本地執行指令，需推送到分支觀察 GitHub Actions 結果
 
 如果你要我代為執行：
 - 我可以將這個 skill 檔放到 `.agents/skills/workflow/`，並幫你 `git add` 與 `git commit`（請確認是否要我直接執行 commit）。
