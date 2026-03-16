@@ -50,10 +50,16 @@ export default async function CoursesPage(props?: CoursesPageProps) {
 
     const scanCmd = new ScanCommand({ TableName: COURSES_TABLE });
     const result = await ddbDocClient.send(scanCmd);
-    persisted = result.Items || [];
+    const dbItems = result.Items || [];
+    
+    // Filter out test courses immediately (exclude test-course-*)
+    persisted = dbItems.filter(c => !String(c.id || '').startsWith('test-course-'));
+    const testCount = dbItems.length - persisted.length;
 
-    console.log(`[CoursesPage] Loaded ${persisted.length} courses from DynamoDB`);
-    console.log('[CoursesPage] Courses:', persisted.map(c => ({ id: c.id, title: c.title })));
+    console.log(`[CoursesPage] Loaded ${persisted.length} courses from DynamoDB${testCount > 0 ? ` (filtered out ${testCount} test courses)` : ''}`);
+    if (persisted.length > 0) {
+      console.log('[CoursesPage] Real Courses:', persisted.map(c => ({ id: c.id, title: c.title })));
+    }
 
     // Join teacher names
     const uniqueTids = Array.from(new Set(persisted.map((i: any) => i.teacherId).filter(Boolean)));

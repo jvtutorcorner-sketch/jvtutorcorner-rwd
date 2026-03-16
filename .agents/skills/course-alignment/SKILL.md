@@ -28,6 +28,19 @@ metadata:
   - `/app/student_courses/page.tsx` (使用 `cleanTimeString` 與訂單優先邏輯)
   - `/app/teacher_courses/page.tsx` (使用 `cleanTimeString` 與訂單優先邏輯)
 
+## 環境驗證 (Environment Validation)
+
+### 1. 必要環境變數 (Required Environment Variables)
+- [ ] `.env.local` 必須包含 `LOGIN_BYPASS_SECRET`
+- [ ] `.env.local` 必須包含 `TEST_STUDENT_EMAIL` / `TEST_STUDENT_PASSWORD`
+- [ ] `.env.local` 必須包含 `TEST_TEACHER_EMAIL` / `TEST_TEACHER_PASSWORD`
+
+### 2. 必要驗證檔案 (Required Validation Files)
+- [ ] `e2e/course_alignment_verification.spec.ts` (跨角色課程對齊驗證)
+
+### 3. 執行驗證指令 (Validation Command)
+- `npx playwright test e2e/course_alignment_verification.spec.ts --project=chromium`
+
 ## 測試指令
 
 ### 自動化測試

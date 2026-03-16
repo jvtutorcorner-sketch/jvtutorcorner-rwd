@@ -3,15 +3,9 @@ name: course-management-service
 description: '負責教師的課程管理與管理員的課程審核。'
 argument-hint: '管理教師課程建立、狀態更新及管理員審核流程'
 metadata:
-  verified-status: '❌ UNVERIFIED'
-  last-verified-date: '-'
-  architecture-aligned: false
-  architecture-aligned: false
-  last-verified-date: '-'
-  verified-status: ❌ UNVERIFIED
-  verified-status: ⚠️ PARTIAL
-  last-verified-date: '2026-03-15'
-  architecture-aligned: false
+  verified-status: ✅ VERIFIED
+  last-verified-date: '2026-03-16'
+  architecture-aligned: true
 ---
 
 # 課程管理服務技能 (Course Management Service)
@@ -44,6 +38,27 @@ metadata:
   - 核准或退回後，該筆資料應從審核清單中移除。
   - 檢查是否能看到申請者的老師名稱與課程基本描述。
 
+### 3. 測試課程管理 (Test Course Management)
+- **規則**: 所有 ID 以 `test-course-` 開頭的課程被視為測試資料。
+- **排除邏輯**: 
+  - 這些課程會自動從 `/courses` 頁面與 `/api/courses` (列表模式) 中過濾掉。
+  - `/api/courses?id={id}` 仍可直接存取以支援自動化測試 (E2E)。
+- **清理方式**: 可執行 `node scripts/cleanup_test_courses.js` 批量刪除 DynamoDB 中的殘留測試課程。
+
+## 環境驗證 (Environment Validation)
+
+### 1. 必要環境變數 (Required Environment Variables)
+- [ ] `.env.local` 必須包含 `LOGIN_BYPASS_SECRET`
+- [ ] `.env.local` 必須包含 `TEST_TEACHER_EMAIL` / `TEST_TEACHER_PASSWORD` (教師權限)
+
+### 2. 必要驗證檔案 (Required Validation Files)
+- [ ] `e2e/course_management_flow.spec.ts` (課程管理流程驗證)
+- [ ] `scripts/cleanup_test_courses.js` (資料清理工具)
+
+### 3. 執行驗證指令 (Validation Command)
+- `npx playwright test e2e/course_management_flow.spec.ts`
+- `npx playwright test e2e/student_enrollment.spec.ts` (驗證測試課程生命週期)
+
 ## 測試指令
 
 ### 手動驗證流程
@@ -68,10 +83,15 @@ metadata:
 | 課程建立後未出現在列表 | API 或快取延遲 | 檢查 `GET /api/courses` 的回應內容。 |
 | 狀態變更無法核准 | 資料庫連線或權限 | 檢查 `/api/admin/course-reviews/[id]` 的後端日誌。 |
 | 狀態文字顯示錯誤 | i18n 或 API 回傳格式 | 檢查 Course 表中的 `status` 欄位原始值。 |
+| 看到 `test-course-*` 資料 | 過濾邏輯失效 | 檢查 `/app/courses/page.tsx` 與 `/app/api/courses/route.ts` 的 `startsWith('test-course-')` 邏輯。 |
+| 測試課程殘留過多 | 未執行自動清理 | 執行 `node scripts/cleanup_test_courses.js`。 |
 
 ## 相關檔案
+- `/app/courses/page.tsx` - 前台課程列表 (包含過濾邏輯)
+- `/app/api/courses/route.ts` - 課程 API (包含過濾邏輯)
 - `/app/courses_manage/page.tsx` - 教師課程管理入口
 - `/components/TeacherDashboardClient.tsx` - 課程列表元件
 - `/components/NewCourseForm.tsx` - 建立課程表單
 - `/app/admin/course-reviews/page.tsx` - 管理員審核介面
 - `/app/api/admin/course-reviews/route.ts` - 課程審核端點
+- `/scripts/cleanup_test_courses.js` - 測試資料清理指令

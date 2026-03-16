@@ -55,6 +55,18 @@ metadata:
   - 檢查時間是否顯示為 `YYYY-MM-DD HH:mm:ss` 格式
   - 確保不顯示「時間缺失」或「-」
 
+## 環境驗證 (Environment Validation)
+
+### 1. 必要環境變數 (Required Environment Variables)
+- [ ] `.env.local` 必須包含 `LOGIN_BYPASS_SECRET`
+- [ ] `.env.local` 必須包含 `TEST_TEACHER_EMAIL` / `TEST_TEACHER_PASSWORD`
+
+### 2. 必要驗證檔案 (Required Validation Files)
+- [ ] `e2e/teacher_courses_verification.spec.ts` (教師課程頁面驗證測試)
+
+### 3. 執行驗證指令 (Validation Command)
+- `npx playwright test e2e/teacher_courses_verification.spec.ts --project=chromium`
+
 ## 測試指令
 
 ### 環境變數配置
