@@ -6,12 +6,6 @@ metadata:
   verified-status: '❌ UNVERIFIED'
   last-verified-date: '-'
   architecture-aligned: false
-  architecture-aligned: false
-  last-verified-date: '-'
-  verified-status: ❌ UNVERIFIED
-  verified-status: ❌ UNVERIFIED
-  last-verified-date: '-'
-  architecture-aligned: false
 ---
 
 # AI Chat 功能技能
@@ -135,3 +129,16 @@ feat(ai-chat): <簡短描述>
 ```
 
 使用 `feat`（新功能）、`fix`（修bug）、`refactor`（重構）、`chore`（雜務）前綴。
+## 環境驗證 (Environment Validation)
+
+### 1. 必要環境變數 (Required Environment Variables)
+- [ ] `.env.local` 必須包含 `GOOGLE_GENERATIVE_AI_API_KEY` (Gemini)
+- [ ] `.env.local` 必須包含 `OPENAI_API_KEY` (OpenAI, 若有使用)
+- [ ] `.env.local` 必須包含 `APP_INTEGRATIONS_TABLE` (AI 設定表)
+
+### 2. 必要驗證檔案 (Required Validation Files)
+- [ ] `lib/lancedb.ts` (向量記憶服務)
+- [ ] `lib/platform-skills.ts` (工具定義)
+
+### 3. 執行驗證指令 (Validation Command)
+- 目前以手動在 `/apps/ai-chat` 進行測試為主
