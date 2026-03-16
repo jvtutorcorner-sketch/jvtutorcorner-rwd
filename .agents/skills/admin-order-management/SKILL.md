@@ -6,12 +6,6 @@ metadata:
   verified-status: '❌ UNVERIFIED'
   last-verified-date: '-'
   architecture-aligned: false
-  architecture-aligned: false
-  last-verified-date: '-'
-  verified-status: ❌ UNVERIFIED
-  verified-status: ❌ UNVERIFIED
-  last-verified-date: '-'
-  architecture-aligned: false
 ---
 
 # 管理員訂單與訂閱管理技能 (Admin Order & Subscription Management)
@@ -42,6 +36,17 @@ metadata:
 - **驗證方式**:
   - 確認修改或新增方案後，點擊「儲存」能成功持久化到後端。
   - 驗證刪除操作是否有二次確認防呆機制。
+
+## 環境驗證 (Environment Validation)
+
+### 1. 必要環境變數 (Required Environment Variables)
+- [ ] `.env.local` 必須包含管理者權限帳號資訊
+
+### 2. 必要驗證檔案 (Required Validation Files)
+- [ ] `lib/subscriptionsService.ts` (訂閱邏輯服務)
+
+### 3. 執行驗證指令 (Validation Command)
+- 待實裝 E2E 後補充
 
 ## 測試指令
 

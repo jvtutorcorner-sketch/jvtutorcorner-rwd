@@ -3,13 +3,7 @@ name: admin-teacher-management
 description: '負責教師在職狀態管理與檔案修改審核。'
 argument-hint: '管理並驗證教師的在職狀態與資料審核流程'
 metadata:
-  verified-status: '❌ UNVERIFIED'
-  last-verified-date: '-'
-  architecture-aligned: false
-  architecture-aligned: false
-  last-verified-date: '-'
-  verified-status: ❌ UNVERIFIED
-  verified-status: ⚠️ PARTIAL
+  verified-status: '⚠️ PARTIAL'
   last-verified-date: '2026-03-15'
   architecture-aligned: false
 ---
@@ -43,6 +37,18 @@ metadata:
   - 確認頁面能正確顯示待審核的申請。
   - 驗證差異高亮邏輯是否正確反映了文字、科目或語言的增刪。
   - 執行 核准/退回 後，該筆申請應從清單中消失。
+
+## 環境驗證 (Environment Validation)
+
+### 1. 必要環境變數 (Required Environment Variables)
+- [ ] `.env.local` 必須包含 `LOGIN_BYPASS_SECRET`
+- [ ] `.env.local` 必須包含管理者帳號 (暫依照 `lib/mockAuth.ts` 角色判定)
+
+### 2. 必要驗證檔案 (Required Validation Files)
+- [ ] 尚無專用 E2E 腳本，建議參考 `e2e/teacher_courses_verification.spec.ts`
+
+### 3. 執行驗證指令 (Validation Command)
+- 待實裝後補充
 
 ## 測試指令
 
