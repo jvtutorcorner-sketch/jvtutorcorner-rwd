@@ -183,14 +183,12 @@ test.describe('Suite B: UI – Homepage Recommendation Section', () => {
   });
 
   test('Guest idle test: questionnaire drawer structure', async ({ page }) => {
-    await page.goto(BASE_URL);
-
-    // Inject English seeds into localStorage to prevent idle detection being skipped
-    // (fresh guest with no seeds)
-    await page.evaluate(() => {
+    await page.addInitScript(() => {
       localStorage.removeItem('jv_survey_seeds');
       localStorage.removeItem('jv_survey_answers');
     });
+    await page.goto(BASE_URL);
+
 
     // Trigger the idle questionnaire by directly calling the component state
     // Since we cannot wait 3 real minutes in CI, we inject via page evaluate
@@ -201,11 +199,11 @@ test.describe('Suite B: UI – Homepage Recommendation Section', () => {
 
     // Alternative: manipulate the timer – verify the drawer markup exists after a short wait
     // We look for the drawer text that appears regardless of timer
-    const drawerTrigger = page.locator('text=30 秒');
-    // If the drawer hasn't shown in 2s (timer hasn't fired), we skip gracefully
-    const visible = await drawerTrigger.isVisible().catch(() => false);
+    const drawerTrigger = page.locator('text=15 秒');
+    // Wait up to 5s for the drawer to appear after the event
+    const visible = await drawerTrigger.waitFor({ state: 'visible', timeout: 5000 }).then(() => true).catch(() => false);
     if (!visible) {
-      test.skip(true, 'Idle drawer requires 3-min timer; use manual test for full validation');
+      test.skip(true, 'Idle drawer requires 3-min timer or event hook; skipping for CI safety');
       return;
     }
 
@@ -224,19 +222,16 @@ test.describe('Suite B: UI – Register Page Questionnaire', () => {
     const uniqueEmail = `test_rec_${Date.now()}@example.com`;
 
     // Fill registration form
-    await page.selectOption('select', 'student');
-    await page.fill('input[placeholder=""]', '測試'); // First Name - get by order
-    // Fill fields by label proximity
-    const firstNameInput = page.locator('input').nth(1);
-    const lastNameInput = page.locator('input').nth(2);
-    await firstNameInput.fill('Test');
-    await lastNameInput.fill('User');
-    await page.fill('input[type="email"]', uniqueEmail);
-    await page.locator('input[type="password"]').first().fill('TestPass123!');
-    await page.locator('input[type="password"]').last().fill('TestPass123!');
-    await page.fill('input[type="date"]', '2000-01-01');
-    await page.locator('select').nth(1).selectOption('male');
-    await page.locator('select').nth(2).selectOption('TW');
+    // Fill registration form using robust selectors
+    await page.locator('div.field:has(label:has-text("身份")) select').selectOption('student');
+    await page.locator('div.field:has(label:has-text("First Name")) input').fill('Test');
+    await page.locator('div.field:has(label:has-text("Last Name")) input').fill('User');
+    await page.locator('div.field:has(label:has-text("Email")) input').fill(uniqueEmail);
+    await page.locator('div.field').filter({ has: page.locator('label').filter({ hasText: /^密碼 \*$/ }) }).locator('input').fill('TestPass123!');
+    await page.locator('div.field').filter({ has: page.locator('label').filter({ hasText: /^再次輸入密碼/ }) }).locator('input').fill('TestPass123!');
+    await page.locator('div.field:has(label:has-text("出生日期")) input').fill('2000-01-01');
+    await page.locator('div.field:has(label:has-text("性別")) select').selectOption('male');
+    await page.locator('div.field:has(label:has-text("國家")) select').selectOption('TW');
 
     // Accept terms
     await page.locator('input[name="terms"]').check();

@@ -138,6 +138,19 @@ app/login/register/page.tsx   ← 註冊後顯示問卷
 
 ---
 
+## 環境驗證 (Environment Validation)
+
+### 1. 必要環境變數 (Required Environment Variables)
+- [ ] `.env.local` 必須包含 `LOGIN_BYPASS_SECRET`
+- [ ] `.env.local` 必須包含 `TEST_STUDENT_EMAIL` / `TEST_STUDENT_PASSWORD`
+- [ ] `.env.local` 必須包含 `DYNAMODB_TABLE_USER_INTERACTIONS` (推薦系統資料表)
+
+### 2. 必要驗證檔案 (Required Validation Files)
+- [ ] `e2e/recommendation_onboarding.spec.ts` (推薦與問卷整合驗證)
+
+### 3. 執行驗證指令 (Validation Command)
+- `npx playwright test e2e/recommendation_onboarding.spec.ts`
+
 ## 測試環境設定
 
 ### 環境變數

@@ -255,11 +255,16 @@ export default function OnboardingQuestionnaire({ mode = 'full', userId, onCompl
       }
 
       setDone(true);
-      onComplete?.(finalAnswers, data.newFeatureAffinity ?? false);
+      // Provide a small delay so the success message is visible to users and tests
+      setTimeout(() => {
+        onComplete?.(finalAnswers, data.newFeatureAffinity ?? false);
+      }, 1000);
     } catch (err) {
       console.error('[OnboardingQuestionnaire] submit error:', err);
       setDone(true);
-      onComplete?.(finalAnswers, false);
+      setTimeout(() => {
+        onComplete?.(finalAnswers, false);
+      }, 1000);
     } finally {
       setSubmitting(false);
     }

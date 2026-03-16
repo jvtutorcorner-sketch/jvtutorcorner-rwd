@@ -1,5 +1,36 @@
 # Platform Architecture & Database Relationship Overview
 
+## 0. High-Level System Overview (Mind Map)
+
+This mind map provides a "Big Picture" view of the project components and technology stack.
+
+```mermaid
+mindmap
+  root((JVTutorCorner RWD))
+    Frontend
+      Next.js 16
+        App Router
+        Tailwind CSS 4
+      UI Components
+        Amplify UI
+        Visual (Konva/ReactFlow)
+    Backend
+      AWS Amplify
+        AppSync (GraphQL)
+        DynamoDB
+        S3 Storage
+      AI Integration
+        Gemini
+        LanceDB
+    Key Features
+      Online Classroom (Agora)
+      Course & Enrollment
+      Payment Flow (PayPal/LinePay)
+    Tools
+      Playwright (E2E)
+      Scripts & Automation
+```
+
 This document provides a structured overview of the JVTutorCorner platform architecture, focusing on the core database models, user flows, and system relationships.
 
 ## 1. Core Entities & Database Models

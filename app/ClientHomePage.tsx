@@ -73,12 +73,16 @@ export default function ClientHomePage({
       events.forEach((e) => window.addEventListener(e, resetIdleTimer, { passive: true }));
       resetIdleTimer(); // start immediately
 
+      const handleTestTrigger = () => setShowGuestQuestionnaire(true);
+      window.addEventListener('__test_trigger_idle_questionnaire', handleTestTrigger);
+
       return () => {
         events.forEach((e) => window.removeEventListener(e, resetIdleTimer));
+        window.removeEventListener('__test_trigger_idle_questionnaire', handleTestTrigger);
         if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
       };
     }
-  }, [initialCarouselImages, t]);
+  }, [initialCarouselImages, t, router]);
 
   async function fetchRecommendations(userId?: string) {
     setRecsLoading(true);

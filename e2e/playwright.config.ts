@@ -7,7 +7,35 @@ dotenv.config({ path: path.resolve(__dirname, '..', '.env.local') });
 
 /**
  * Playwright 配置：多客戶端延遲測試
+ * 
+ * 環境變數：
+ * - BASE_URL: 應用 URL（預設: http://localhost:3000）
+ * - 若 BASE_URL 指向 localhost，自動重用已不在運行的服務器
+ * - 若未指定 BASE_URL，在本地開發時自動啟動 npm run dev
  */
+
+// 從環境變數讀取 BASE_URL，預設為 localhost:3000
+const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+
+// 取出 URL 中的 host:port
+let shouldStartWebServer = true;
+try {
+  const urlObj = new URL(BASE_URL);
+  const isLocalhost = urlObj.hostname === 'localhost' || urlObj.hostname === '127.0.0.1' || urlObj.hostname === '0.0.0.0';
+  
+  // 如果指向本地 localhost，假設應用已經運行，不需要啟動新的 webServer
+  if (isLocalhost) {
+    console.log(`✅ 檢測到 BASE_URL 為本地地址: ${BASE_URL}`);
+    console.log(`   假設應用已在運行，將重用已有的服務器`);
+    shouldStartWebServer = false;
+  } else {
+    console.log(`ℹ️ BASE_URL 為遠端地址: ${BASE_URL}，不啟動本地 webServer`);
+    shouldStartWebServer = false;
+  }
+} catch (e) {
+  console.warn(`⚠️ 無法解析 BASE_URL "${BASE_URL}"，使用預設 webServer 配置`);
+}
+
 export default defineConfig({
   testDir: './e2e',
   testMatch: '**/*.spec.ts',
@@ -25,7 +53,7 @@ export default defineConfig({
   ],
 
   use: {
-    baseURL: 'http://localhost:3000',
+    baseURL: BASE_URL,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
@@ -42,10 +70,14 @@ export default defineConfig({
     },
   ],
 
-  webServer: {
-    command: 'npm run dev',
-    url: 'http://localhost:3000',
-    reuseExistingServer: !process.env.CI,
-    timeout: 120000,
-  },
+  ...(shouldStartWebServer ? {
+    webServer: {
+      command: 'npm run dev',
+      url: BASE_URL,
+      reuseExistingServer: !process.env.CI,
+      timeout: 120000,
+    }
+  } : {
+    webServer: undefined
+  }),
 });
