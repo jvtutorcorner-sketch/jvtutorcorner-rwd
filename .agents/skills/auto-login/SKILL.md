@@ -55,6 +55,19 @@ TEST_STUDENT_PASSWORD=123456
 ### 對於開發者
 在開發環境下登入時，請在「驗證碼」欄位輸入您的 `LOGIN_BYPASS_SECRET`（而非圖片上的文字），即可成功進入。
 
+## 環境驗證 (Environment Validation)
+
+### 1. 必要環境變數 (Required Environment Variables)
+- [ ] `.env.local` 必須包含 `LOGIN_BYPASS_SECRET` (安全繞過金鑰)
+- [ ] `.env.local` 必須包含 `TEST_TEACHER_EMAIL` / `TEST_TEACHER_PASSWORD`
+- [ ] `.env.local` 必須包含 `TEST_STUDENT_EMAIL` / `TEST_STUDENT_PASSWORD`
+
+### 2. 必要驗證檔案 (Required Validation Files)
+- [ ] `e2e/classroom_flow.spec.ts` (基礎登入與教室流程驗證)
+
+### 3. 執行驗證指令 (Validation Command)
+- `npx playwright test e2e/classroom_flow.spec.ts --project=chromium`
+
 ## 程式碼實作細節
 
 - **後端邏輯**：在 `app/api/login/route.ts` 中，比對 `captchaValue` 是否等於 `process.env.LOGIN_BYPASS_SECRET`。
