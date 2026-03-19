@@ -82,6 +82,11 @@ metadata:
    - 錯誤：`const pageText = await page.locator('body').textContent().catch(() => '');`  
    - 修正：`const pageText = (await page.locator('body').textContent().catch(() => '')) ?? '';`
 
+3. **Playwright `waitForNavigation` 導致超時掛起**
+   在 Next.js 此類 SPA（單頁應用程式）中，表單提交可能只觸發客戶端路由跳轉（Client-side routing），而不會觸發完整的網路導航。這會導致 `page.waitForNavigation({ waitUntil: 'networkidle' })` 永遠等不到導航事件而觸發自動化腳本超時（例如 3 分鐘）。
+   - 錯誤示範：`await page.waitForNavigation({ waitUntil: 'networkidle' })`
+   - 修正方式：改用 `await page.waitForURL(url => !url.href.includes('/login'))` 或是等待特定的 DOM 元素。
+
 ## 測試指令
 
 ```bash

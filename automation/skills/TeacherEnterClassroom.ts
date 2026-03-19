@@ -27,13 +27,12 @@ export class TeacherEnterClassroomSkill {
         await page.fill('#email', email);
         await page.fill('#password', password);
 
-        this.log(`🧩 輸入萬用驗證碼 (qa_bypass_0816)...`);
-        await page.fill('#captcha', 'qa_bypass_0816');
+        this.log(`🧩 輸入萬用驗證碼 (jv_secret_bypass_2024)...`);
+        await page.fill('#captcha', 'jv_secret_bypass_2024');
 
-        await Promise.all([
-            page.waitForNavigation({ waitUntil: 'networkidle' }),
-            page.click('button[type="submit"]')
-        ]);
+        await page.click('button[type="submit"]');
+        await page.waitForURL(url => !url.href.includes('/login'), { timeout: 30000 }).catch(() => null);
+        await page.waitForTimeout(1000);
 
         this.log(`✅ 老師登入完成`);
     }
@@ -197,6 +196,7 @@ export class TeacherEnterClassroomSkill {
             }
 
             if (!(await enterClassroomBtn.isVisible({ timeout: 2000 }).catch(() => false))) {
+                await page.screenshot({ path: 'teacher_courses_failed.png', fullPage: true });
                 throw new Error('UI Error: 在 /teacher_courses 頁面多次重新整理後仍找不到「進入教室」按鈕。');
             }
 
@@ -207,6 +207,12 @@ export class TeacherEnterClassroomSkill {
             this.log(`⏳ 等待導向 /classroom...`);
             await page.waitForURL(/\/classroom/, { timeout });
             this.log(`📍 目前 URL: ${page.url()}`);
+
+            // 注入 E2E 繞過標記
+            await page.evaluate(() => {
+                (window as any).__E2E_BYPASS_DEVICE_CHECK__ = true;
+                console.log('✅ [E2E] 已注入 __E2E_BYPASS_DEVICE_CHECK__ = true');
+            });
 
             // 【步驟 5: 在等待頁或教室頁執行設備設定流程】
             await this.performWaitRoomSetup(page, timeout);

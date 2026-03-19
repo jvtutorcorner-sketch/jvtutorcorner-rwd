@@ -24,9 +24,12 @@ metadata:
 - **架構背景**：基於 [Teacher Course Management](../../../architecture_overview.md#23-teacher-course-management) 與實體關係。
 - **要求**：「進入教室」按鈕只在「課堂時間範圍內」才顯示
 - **驗證方式**：
-  - 檢查當前時間是否在課程的 `startTime` 到 `endTime` 之間
+  - 檢查當前時間是否在課程的 `startTime` 到 `endTime` 之間，為允許老師提早備課，前端應加入 10 分鐘的寬限期 (`now >= startTs - 10 * 60 * 1000`)。
   - 若在區間外，按鈕應隱藏（顯示 '-'）
   - 若在區間內，按鈕應顯示為「進入教室」的藍色按鈕
+- **常見故障排除**：
+  - 若測試用的課程 (ID 包含 `test-course-`) 無法在老師儀表板顯示，請檢查 `/api/courses/route.ts` 中是否錯誤地把測試課程過濾掉 (應允許帶有 `teacherId` 查詢時顯示測試課程)。
+  - 若老師在沒有學生預約的情況下需要進入教室，應確保頁面有 fallback 區塊顯示「尚未有預約」的排程課程。
 - **相關代碼位置**：`/app/teacher_courses/page.tsx` - `enter_classroom` 列的渲染邏輯
 
 ### 2. 學生與課程資料檢查

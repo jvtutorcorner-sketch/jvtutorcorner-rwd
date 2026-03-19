@@ -36,7 +36,8 @@ metadata:
 - **要求**：用戶必須通過麥克風與攝影機檢測才能點擊「準備好」。
 - **驗證方式**：
   - 檢查 `setDeviceCheckPassed` 邏輯。
-  - E2E 測試中可透過 `window.__E2E_BYPASS_DEVICE_CHECK__ = true` 繞過。
+  - E2E 測試中可透過在頁面注入 `window.__E2E_BYPASS_DEVICE_CHECK__ = true` 繞過硬體請求。
+  - 若在開發環境 (localhost) 遇到 `getUserMedia` 因為非 HTTPS 導致的報錯或卡住，應確保 `requestPermissions` 擁有 `hostname === 'localhost'` 或 `127.0.0.1` 的豁免邏輯，以免測試流程中斷。
   - 點擊「準備好」按鈕，確認狀態變更。
 
 ### 4. 進入教室條件 (Activation)

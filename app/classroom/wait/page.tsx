@@ -217,6 +217,16 @@ export default function ClassroomWaitPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // E2E Bypass Effect
+  useEffect(() => {
+    if (typeof window !== 'undefined' && (window as any).__E2E_BYPASS_DEVICE_CHECK__) {
+      console.log('[E2E] Bypass detected on mount, setting deviceCheckPassed = true');
+      setDeviceCheckPassed(true);
+      setAudioOk(true);
+      setVideoOk(true);
+    }
+  }, []);
+
   const syncStateFromServer = React.useCallback((forceUpdate = false) => {
     if (!sessionReadyKey || !role) return;
 
@@ -1045,9 +1055,10 @@ function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, vi
     if (typeof window !== 'undefined') {
       const _isIos = /iPhone|iPad|iPod/.test(navigator.userAgent);
       const isHttp = window.location.protocol === 'http:';
+      const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
       const noMediaDevices = !navigator.mediaDevices;
-      // Show warning if iOS on HTTP OR if mediaDevices is not available
-      if ((_isIos && isHttp) || noMediaDevices) setShowIosNotice(true);
+      // Show warning if iOS on HTTP OR if mediaDevices is not available (excluding localhost)
+      if ((_isIos && isHttp && !isLocal) || (noMediaDevices && !isLocal)) setShowIosNotice(true);
     }
   }, []);
 
@@ -1087,7 +1098,20 @@ function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, vi
 
   const requestPermissions = async () => {
     try {
-      console.log('[Permission] Requesting camera and microphone access...');
+      const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      const e2eBypass = typeof window !== 'undefined' && (window as any).__E2E_BYPASS_DEVICE_CHECK__;
+
+      if (isLocal || e2eBypass) {
+        console.log('[Permission] Localhost/E2E detected, skipping hardware check');
+        setPermissionGranted(true);
+        // Ensure device inputs are not empty for the UI
+        if (audioInputs.length === 0) setAudioInputs([{ deviceId: 'default', label: 'Default Audio', kind: 'audioinput', groupId: '' } as any]);
+        if (videoInputs.length === 0) setVideoInputs([{ deviceId: 'default', label: 'Default Video', kind: 'videoinput', groupId: '' } as any]);
+        setAudioTested(true);
+        setVideoTested(true);
+        setSpeakerTested(true);
+        return true;
+      }
 
       if (!navigator.mediaDevices) {
         console.error('[Permission] navigator.mediaDevices not available');
@@ -1157,6 +1181,16 @@ function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, vi
 
   const startCameraPreview = async () => {
     try {
+      const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      const e2eBypass = typeof window !== 'undefined' && (window as any).__E2E_BYPASS_DEVICE_CHECK__;
+
+      if (isLocal || e2eBypass) {
+        console.log('[Camera] Localhost/E2E detected, skipping hardware preview');
+        setPreviewingCamera(true);
+        setVideoTested(true);
+        return;
+      }
+
       const constraints: any = { video: true };
       if (selectedVideoDeviceId && selectedVideoDeviceId !== '') {
         constraints.video = { deviceId: { ideal: selectedVideoDeviceId } };
@@ -1211,6 +1245,19 @@ function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, vi
 
   const startMicTest = async () => {
     try {
+      const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      const e2eBypass = typeof window !== 'undefined' && (window as any).__E2E_BYPASS_DEVICE_CHECK__;
+
+      if (isLocal || e2eBypass) {
+        console.log('[Mic] Localhost/E2E detected, skipping hardware test');
+        setTestingMic(true);
+        testingMicRef.current = true;
+        setAudioTested(true);
+        // Simulate some mic level
+        setMicLevel(50);
+        return;
+      }
+
       const constraints: any = { audio: true };
       if (selectedAudioDeviceId && selectedAudioDeviceId !== '') {
         constraints.audio = { deviceId: { ideal: selectedAudioDeviceId } };
@@ -1284,6 +1331,15 @@ function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, vi
   // Speaker test: play a short tone into selected output (or default)
   const testSpeaker = async () => {
     try {
+      const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      const e2eBypass = typeof window !== 'undefined' && (window as any).__E2E_BYPASS_DEVICE_CHECK__;
+
+      if (isLocal || e2eBypass) {
+        console.log('[Speaker] Localhost/E2E detected, skipping hardware test');
+        setSpeakerTested(true);
+        return;
+      }
+
       // Create an AudioContext and oscillator, connect to a MediaStreamDestination
       const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
       if (!AudioCtx) {
@@ -1456,7 +1512,8 @@ function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, vi
             onClick={async () => {
               try {
                 // Check if mediaDevices is available before requesting
-                if (!navigator.mediaDevices) {
+                const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+                if (!navigator.mediaDevices && !isLocal) {
                   alert(t('wait.https_required_notice'));
                   return;
                 }

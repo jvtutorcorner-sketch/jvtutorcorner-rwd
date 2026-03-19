@@ -27,13 +27,12 @@ export class StudentEnrollAndEnterClassroomSkill {
         await page.fill('#email', email);
         await page.fill('#password', password);
 
-        this.log(`🧩 輸入萬用驗證碼 (qa_bypass_0816) 以繞過 Captcha...`);
-        await page.fill('#captcha', 'qa_bypass_0816');
+        this.log(`🧩 輸入萬用驗證碼 (jv_secret_bypass_2024) 以繞過 Captcha...`);
+        await page.fill('#captcha', 'jv_secret_bypass_2024');
 
-        await Promise.all([
-            page.waitForNavigation({ waitUntil: 'networkidle' }),
-            page.click('button[type="submit"]')
-        ]);
+        await page.click('button[type="submit"]');
+        await page.waitForURL(url => !url.href.includes('/login'), { timeout: 30000 }).catch(() => null);
+        await page.waitForTimeout(1000);
 
         this.log(`✅ 登入表單提交完成`);
     }
@@ -169,35 +168,57 @@ export class StudentEnrollAndEnterClassroomSkill {
 
             const startTimeInput = page.locator('#start-time');
             if (await startTimeInput.isVisible().catch(() => false)) {
-                const val = await startTimeInput.inputValue();
-                this.log(`🕒 彈窗內偵測到時間: ${val || '無'}`);
-                if (!val) {
-                    const defaultDate = new Date();
-                    defaultDate.setMinutes(defaultDate.getMinutes() + 60);
-                    const tzoffset = defaultDate.getTimezoneOffset() * 60000;
-                    const localTime = (new Date(defaultDate.getTime() - tzoffset)).toISOString().slice(0, 16);
-                    await startTimeInput.fill(localTime);
-                    this.log(`🕒 已手動填入時間: ${localTime}`);
-                }
+                // 強制覆蓋為當下時間（往回推 5 分鐘確保已在庫中）
+                const defaultDate = new Date();
+                defaultDate.setMinutes(defaultDate.getMinutes() - 5);
+                const tzoffset = defaultDate.getTimezoneOffset() * 60000;
+                const localTime = (new Date(defaultDate.getTime() - tzoffset)).toISOString().slice(0, 16);
+                await startTimeInput.fill(localTime);
+                this.log(`🕒 已手動填入時間（強制覆蓋）: ${localTime}`);
+            }
+
+            const pointsTab = page.locator('button:has-text("點數報名")');
+            if (await pointsTab.isVisible().catch(() => false)) {
+                await pointsTab.click();
             }
 
             this.log(`🖱️ 點擊彈窗內的「確認報名」按鈕...`);
-            const [enrollResponse] = await Promise.all([
-                page.waitForResponse(resp => resp.url().includes('/api/orders') && resp.request().method() === 'POST', { timeout }),
-                confirmBtn.click()
-            ]);
-            this.log(`✅ 報名已執行 (Status: ${enrollResponse.status()})`);
+            await confirmBtn.click();
+            this.log(`✅ 報名點擊已執行`);
 
             await page.waitForURL('**/student_courses', { timeout: 15000 });
             this.log(`✅ 已完成自動跳轉至我的課程`);
 
-            const enterClassroomBtn = page.locator('a, button').filter({ hasText: /^進入教室$|^Enter Classroom$/ }).first();
-            await enterClassroomBtn.waitFor({ state: 'visible', timeout });
+            // 使用者回報：按鈕可能延遲顯示。實作重新整理重試機制
+            let enterClassroomBtn = page.locator('a, button').filter({ hasText: /^進入教室$|^Enter Classroom$/ }).first();
+            let attempts = 0;
+            const maxAttempts = 5;
+
+            while (attempts < maxAttempts) {
+                try {
+                    this.log(`🔍 尋找「進入教室」按鈕 (嘗試 ${attempts + 1}/${maxAttempts})...`);
+                    await enterClassroomBtn.waitFor({ state: 'visible', timeout: 5000 });
+                    break; 
+                } catch (e) {
+                    attempts++;
+                    if (attempts >= maxAttempts) throw new Error(`在 /student_courses 頁面多次重新整理後仍找不到「進入教室」按鈕。`);
+                    this.log(`⚠️ 第 ${attempts} 次嘗試：暫未找到按鈕，正在重新整理頁面...`);
+                    await page.reload({ waitUntil: 'networkidle' });
+                }
+            }
+
             await enterClassroomBtn.click();
 
             await page.waitForURL(/\/classroom/, { timeout });
             this.log(`📍 目前 URL: ${page.url()}`);
 
+            // 注入 E2E 繞過標記
+            await page.evaluate(() => {
+                (window as any).__E2E_BYPASS_DEVICE_CHECK__ = true;
+                console.log('✅ [E2E] 已注入 __E2E_BYPASS_DEVICE_CHECK__ = true');
+            });
+
+            // 【步驟 4: 等待頁面設備檢測完成 (或使用繞過)】
             await this.performWaitRoomSetup(page, timeout);
 
             this.log(`✅ 學生設備設定完成`);

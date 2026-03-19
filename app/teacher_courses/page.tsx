@@ -30,6 +30,7 @@ function TeacherCoursesContent() {
   const pathname = usePathname();
   const t = useT();
   const [orders, setOrders] = useState<Order[] | null>(null);
+  const [teacherCourses, setTeacherCourses] = useState<any[]>([]);
   const [courseMap, setCourseMap] = useState<Record<string, { title?: string; teacherName?: string; durationMinutes?: number; totalSessions?: number; startDate?: string; nextStartDate?: string; endDate?: string; startTime?: string; endTime?: string }>>({});
   const [userMap, setUserMap] = useState<Record<string, { firstName?: string; lastName?: string }>>({});
   const [loading, setLoading] = useState(false);
@@ -172,41 +173,53 @@ function TeacherCoursesContent() {
     }
 
     // Fetch teacher's courses, then fetch orders for those courses
-    const teacherId = (user as any).teacherId || '';
+    const teacherId = (user as any).teacherId || user.id || '';
     const teacherName = user.displayName || (user.lastName ? `${user.lastName}老師` : user.email || '');
 
     fetch(`/api/courses?teacherId=${encodeURIComponent(teacherId)}`)
       .then((r) => r.json())
       .then((courseData) => {
-        let teacherCourses: any[] = [];
+        let list: any[] = [];
         if (courseData?.ok && Array.isArray(courseData.data)) {
-          teacherCourses = courseData.data;
+          list = courseData.data;
         }
-        if (teacherCourses.length === 0) {
+        if (list.length === 0) {
           // fallback: query by name
           return fetch(`/api/courses?teacher=${encodeURIComponent(teacherName)}`)
             .then((r) => r.json())
             .then((j) => {
-              if (j?.data && j.data.length > 0) return j.data;
+              if (j?.data && j.data.length > 0) {
+                 setTeacherCourses(j.data);
+                 return j.data;
+              }
               // second fallback: query by lastName only (e.g. course has "許" but teacherName is "許老師")
               if (user.lastName) {
                 return fetch(`/api/courses?teacher=${encodeURIComponent(user.lastName)}`)
                   .then((r2) => r2.json())
                   .then((j2) => {
-                    if (j2?.data && j2.data.length > 0) return j2.data;
+                    if (j2?.data && j2.data.length > 0) {
+                       setTeacherCourses(j2.data);
+                       return j2.data;
+                    }
                     // third fallback: query by firstName
                     if (user.firstName) {
                       return fetch(`/api/courses?teacher=${encodeURIComponent(user.firstName)}`)
                         .then((r3) => r3.json())
-                        .then((j3) => j3?.data || []);
+                        .then((j3) => {
+                           setTeacherCourses(j3?.data || []);
+                           return j3?.data || [];
+                        });
                     }
+                    setTeacherCourses([]);
                     return [];
                   });
               }
+              setTeacherCourses([]);
               return [];
             });
         }
-        return teacherCourses;
+        setTeacherCourses(list);
+        return list;
       })
       .then((teacherCourses: any[]) => {
         const courseIds = teacherCourses.map((c) => c.id).filter(Boolean);
@@ -597,7 +610,7 @@ function TeacherCoursesContent() {
                           }
                         }
 
-                        const isVisible = (startTs && endTs) ? (now >= startTs && now <= endTs) : false;
+                        const isVisible = (startTs && endTs) ? (now >= (startTs - 10 * 60 * 1000) && now <= endTs) : false;
 
                         if (!isVisible) return '-';
 
@@ -623,6 +636,44 @@ function TeacherCoursesContent() {
               currentPage={pageParam}
             />
           </>
+        )}
+
+        {/* Section for courses with no orders yet - but still ongoing or upcoming */}
+        {user.role === 'teacher' && teacherCourses.length > 0 && (
+          <div style={{ marginTop: '40px' }}>
+            <h3 style={{ marginBottom: '16px' }}>我的排程課程 (尚未有預約)</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
+              {(teacherCourses || []).filter((c: any) => {
+                // Filter out courses that already have orders showing in the table above
+                const hasOrder = orders?.some((o: any) => o.courseId === c.id);
+                return !hasOrder;
+              }).map((c: any) => {
+                const now = new Date();
+                const start = new Date(c.startDate);
+                const end = new Date(c.endDate || start.getTime() + 3600000); // default 1 hour
+                const startEarly = new Date(start.getTime() - 10 * 60000);
+                const canEnter = now >= startEarly && now <= end;
+
+                if (!canEnter) return null;
+
+                return (
+                  <div key={c.id} style={{ padding: '16px', border: '1px solid #eee', borderRadius: '8px', background: '#f9f9f9' }}>
+                    <div style={{ fontWeight: 'bold', marginBottom: '8px' }}>{c.title}</div>
+                    <div style={{ fontSize: '12px', color: '#666', marginBottom: '12px' }}>
+                      {formatDateTime(c.startDate)} ~ {formatDateTime(c.endDate)}
+                    </div>
+                    <Link
+                      href={`/classroom/wait?courseId=${encodeURIComponent(c.id)}`}
+                      className="btn btn-primary"
+                      style={{ padding: '6px 12px', fontSize: '13px' }}
+                    >
+                      {t('enter_classroom')} (準備/預演)
+                    </Link>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         )}
       </section>
     </div>

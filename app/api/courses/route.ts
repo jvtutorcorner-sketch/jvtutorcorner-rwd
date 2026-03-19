@@ -72,8 +72,10 @@ export async function GET(req: Request) {
       items = [...(BUNDLED_COURSES as any[])];
     }
 
-    // Filter out test courses from the list (but allow specific ID lookup)
-    items = items.filter((item: any) => !String(item.id || '').startsWith('test-course-'));
+    // Filter out test courses from the general list (homepage view), but allow them for specific lookups (teacher dashboard/E2E testing)
+    if (!teacherId && !teacher && !url.searchParams.get('includeTests')) {
+      items = items.filter((item: any) => !String(item.id || '').startsWith('test-course-'));
+    }
 
     // Batch lookup teacher names for all unique teacherIds in the items
     const uniqueTids = Array.from(new Set(items.map((i: any) => i.teacherId).filter(Boolean)));

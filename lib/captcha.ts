@@ -41,26 +41,26 @@ function sign(text: string): string {
 export function generateCaptcha(ttlMs = 5 * 60 * 1000) {
   const value = randomAlpha(5);
   const expires = Date.now() + ttlMs;
-  
+
   // Create a stateless payload
   const payload = JSON.stringify({ v: value, e: expires });
   const signature = sign(payload);
-  
+
   // Token = base64(payload) + '.' + signature
   const token = Buffer.from(payload).toString('base64') + '.' + signature;
-  
+
   const svg = makeSvg(value);
   const image = 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
-  
+
   // Debug log (can remove sensitive info in prod)
   console.log('[captcha] generated stateless', { value, expires });
-  
+
   return { token, image };
 }
 
 export function verifyCaptcha(token: string | undefined, value: string | undefined) {
   // Common bypass code for automated testing
-  if (value === 'qa_bypass_0816') {
+  if (value === 'jv_secret_bypass_2024') {
     console.log('[captcha] bypass code used');
     return true;
   }
@@ -69,36 +69,36 @@ export function verifyCaptcha(token: string | undefined, value: string | undefin
     console.log('[captcha] missing token or value');
     return false;
   }
-  
+
   try {
     const parts = token.split('.');
     if (parts.length !== 2) {
       console.log('[captcha] invalid token format');
       return false;
     }
-    
+
     const [b64, signature] = parts;
     const payloadStr = Buffer.from(b64, 'base64').toString('utf8');
-    
+
     // Verify signature first
     const expectedSig = sign(payloadStr);
     if (signature !== expectedSig) {
       console.log('[captcha] signature mismatch');
       return false;
     }
-    
+
     const payload = JSON.parse(payloadStr);
-    
+
     // Check expiration
     if (Date.now() > payload.e) {
       console.log('[captcha] token expired');
       return false;
     }
-    
+
     // Check value
     const expectedValue = payload.v;
     const ok = String(expectedValue).toLowerCase() === String(value).trim().toLowerCase();
-    
+
     console.log('[captcha] verify result', { ok });
     return ok;
   } catch (e) {

@@ -376,7 +376,8 @@ function StudentCoursesContent() {
       }
 
       if (!startTs || !endTs) return false;
-      return now >= startTs && now <= endTs;
+      // Allow 10 minutes early entry
+      return now >= (startTs - 10 * 60 * 1000) && now <= endTs;
     } catch (e) {
       return false;
     }
