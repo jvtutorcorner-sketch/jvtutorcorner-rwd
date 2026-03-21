@@ -44,7 +44,12 @@ export default function RegisterPage() {
   const [saved, setSaved] = useState(false);
   const [registeredUserId, setRegisteredUserId] = useState<string | null>(null);
   const [showQuestionnaire, setShowQuestionnaire] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const [captchaImage, setCaptchaImage] = useState<string | null>(null);
+  const [captchaValue, setCaptchaValue] = useState("");
+  const [captchaLoading, setCaptchaLoading] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
+
 
   // Refs for form fields
   const roleRef = useRef<HTMLSelectElement>(null);
@@ -149,7 +154,29 @@ export default function RegisterPage() {
     }
   }
 
+  async function loadCaptcha() {
+    try {
+      setCaptchaLoading(true);
+      const res = await fetch("/api/captcha");
+      const data = await res.json();
+      if (res.ok && data?.token && data?.image) {
+        setCaptchaToken(data.token);
+        setCaptchaImage(data.image);
+        setCaptchaValue("");
+      }
+    } catch (e) {
+      console.warn("captcha load failed", e);
+    } finally {
+      setCaptchaLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadCaptcha();
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
+
     e.preventDefault();
 
     setFormError(null);
@@ -276,7 +303,8 @@ export default function RegisterPage() {
       const res = await fetch('/api/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ ...payload, captchaToken, captchaValue }),
+
       });
       const data = await res.json();
       if (!res.ok) {
@@ -295,11 +323,16 @@ export default function RegisterPage() {
       setSaved(true);
       const newUserId = data?.profile?.roid_id || data?.profile?.id || payload.roid_id;
       setRegisteredUserId(newUserId);
-      setShowQuestionnaire(true);
+      localStorage.setItem('jv_just_registered', 'true');
+      // User requested to stop popping up the questionnaire
+      // setShowQuestionnaire(true);
+      setTimeout(() => router.push('/login'), 1500);
     } catch (err: any) {
       console.error(err);
       setFormError(err?.message || '儲存失敗');
+      loadCaptcha();
     }
+
   };
 
   return (
@@ -483,6 +516,28 @@ export default function RegisterPage() {
                 </label>
               </div>
             </div>
+            {/* Captcha Section */}
+            <div className="field">
+              <label>驗證碼 <span style={{ color: "red" }}>*</span></label>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                {captchaImage ? (
+                  <img src={captchaImage} alt="captcha" style={{ height: 48, border: "1px solid #ddd", borderRadius: 4 }} />
+                ) : (
+                  <div style={{ width: 140, height: 48, background: "#f3f4f6", borderRadius: 4 }} />
+                )}
+                <button type="button" className="card-button secondary" onClick={loadCaptcha} disabled={captchaLoading} style={{ padding: '8px 12px' }}>
+                  重新取得
+                </button>
+              </div>
+              <input
+                type="text"
+                value={captchaValue}
+                placeholder="請輸入上方驗證碼"
+                onChange={(e) => setCaptchaValue(e.target.value)}
+                autoComplete="off"
+              />
+            </div>
+
             {formError && (
               <div className="form-error" style={{
                 backgroundColor: '#fee',
@@ -498,6 +553,7 @@ export default function RegisterPage() {
                 ⚠️ {formError}
               </div>
             )}
+
             <div className="modal-actions" style={{ marginTop: 12 }}>
               <button type="submit" className="modal-button primary">
                 建立帳戶

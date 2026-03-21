@@ -13,6 +13,7 @@ import Tabs from '@/components/Tabs';
 import { getStoredUser, type StoredUser } from '@/lib/mockAuth';
 import { useT } from '@/components/IntlProvider'; // Client-side hook
 import OnboardingQuestionnaire from '@/components/OnboardingQuestionnaire';
+import ProductTour from '@/components/ProductTour';
 
 const GUEST_STORAGE_KEY = 'jv_survey_seeds';
 const GUEST_ANSWERS_KEY = 'jv_survey_answers';
@@ -27,6 +28,7 @@ export default function ClientHomePage({
   const router = useRouter();
   const [user, setUser] = useState<StoredUser | null>(null);
   const [showGuestQuestionnaire, setShowGuestQuestionnaire] = useState(false);
+  const [showUserQuestionnaire, setShowUserQuestionnaire] = useState(false);
   const [recommendations, setRecommendations] = useState<Course[]>([]);
   const [recsLoading, setRecsLoading] = useState(false);
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -65,8 +67,9 @@ export default function ClientHomePage({
       const resetIdleTimer = () => {
         if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
         idleTimerRef.current = setTimeout(() => {
-          setShowGuestQuestionnaire(true);
+          // setShowGuestQuestionnaire(true);
         }, IDLE_THRESHOLD_MS);
+
       };
 
       const events = ['mousemove', 'keydown', 'scroll', 'click', 'touchstart'];
@@ -127,6 +130,7 @@ export default function ClientHomePage({
 
   return (
     <div className="home">
+      <ProductTour />
       {/* Guest idle questionnaire – bottom drawer */}
       {showGuestQuestionnaire && (
         <OnboardingQuestionnaire
@@ -139,9 +143,21 @@ export default function ClientHomePage({
           onSkip={() => setShowGuestQuestionnaire(false)}
         />
       )}
+      {/* User questionnaire - modal like */}
+      {showUserQuestionnaire && user && (
+        <OnboardingQuestionnaire
+          mode="full"
+          userId={user.id || user.roid_id}
+          onComplete={(_answers, _affinity) => {
+            setShowUserQuestionnaire(false);
+            fetchRecommendations(user.id || user.roid_id);
+          }}
+          onSkip={() => setShowUserQuestionnaire(false)}
+        />
+      )}
       {/* Hero + Carousel */}
       <section className="hero">
-        <div className="hero-text">
+        <div className="hero-text" id="tour-welcome">
           <h1>{t('hero_title')}</h1>
           <p>{t('hero_subtitle')}</p>
         </div>
@@ -159,18 +175,26 @@ export default function ClientHomePage({
 
       <section className="section">
         {/* ── Personalised Recommendation Strip ─────────────────────────── */}
-        <div style={{ marginBottom: 32 }}>
+        <div style={{ marginBottom: 32 }} id="tour-recommendation">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
             <h2 className="section-title">
               {user ? `${user.firstName || user.email?.split('@')[0] || '你'} 的專屬推薦` : '為你精選的課程'}
             </h2>
-            {!user && (
+            {!user ? (
               <Link
                 href="/login/register"
                 style={{ fontSize: 13, color: '#6366f1', textDecoration: 'underline' }}
               >
                 建立帳號獲得更精準推薦 →
               </Link>
+            ) : (
+               <button
+                 style={{ fontSize: 13, color: '#6366f1', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
+                 onClick={() => setShowUserQuestionnaire(true)}
+                 id="tour-questionnaire-btn"
+               >
+                 填寫 / 更新學習偏好 →
+               </button>
             )}
           </div>
           {recsLoading ? (
@@ -186,8 +210,9 @@ export default function ClientHomePage({
           )}
         </div>
 
-        <Tabs
-          items={[
+        <div id="tour-tabs">
+          <Tabs
+            items={[
             {
               key: 'teachers',
               title: t('recommended_teachers'),
@@ -224,6 +249,7 @@ export default function ClientHomePage({
             }
           ]}
         />
+        </div>
       </section>
     </div>
   );
