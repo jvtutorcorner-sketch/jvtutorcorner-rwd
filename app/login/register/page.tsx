@@ -7,6 +7,8 @@ import {
   PLAN_LABELS,
   PLAN_DESCRIPTIONS,
   PlanId,
+  setStoredUser,
+  type StoredUser,
 } from "@/lib/mockAuth";
 import { PLAN_PRICES, PLAN_FEATURES } from "@/lib/mockAuth";
 import OnboardingQuestionnaire from "@/components/OnboardingQuestionnaire";
@@ -321,12 +323,30 @@ export default function RegisterPage() {
         return;
       }
       setSaved(true);
+      setSaved(true);
       const newUserId = data?.profile?.roid_id || data?.profile?.id || payload.roid_id;
       setRegisteredUserId(newUserId);
+      
+      // Auto-login after registration
+      const userObj: StoredUser = {
+        email: payload.email,
+        plan: payload.plan || 'viewer',
+        role: payload.role || 'student',
+        firstName: payload.firstName,
+        lastName: payload.lastName,
+        roid_id: newUserId,
+        id: newUserId,
+      };
+      setStoredUser(userObj);
       localStorage.setItem('jv_just_registered', 'true');
-      // User requested to stop popping up the questionnaire
-      // setShowQuestionnaire(true);
-      setTimeout(() => router.push('/login'), 1500);
+      
+      // Trigger auth change event for Header to update
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('tutor:auth-changed'));
+      }
+      
+      // Redirect to home page where ProductTour will run
+      setTimeout(() => router.push('/'), 1500);
     } catch (err: any) {
       console.error(err);
       setFormError(err?.message || '儲存失敗');
