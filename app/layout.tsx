@@ -14,6 +14,7 @@ import { AdminSettingsProvider } from '@/components/AdminSettingsProvider';
 import PermissionGuard from '@/components/auth/PermissionGuard';
 import { getAppPermissionsFromDynamoDB } from '@/lib/appPermissionsService';
 import GlobalAIAssistant from '@/components/GlobalAIAssistant';
+import ProductTour from '@/components/ProductTour';
 
 export const metadata: Metadata = {
   title: 'Tutor Platform',
@@ -65,6 +66,7 @@ export default async function RootLayout({
 
           <AdminSettingsProvider>
             <Header />
+            <ProductTour />
             <PermissionGuard />
             <SessionTimer />
 

@@ -4,6 +4,8 @@ import path from 'path';
 import resolveDataFile from '@/lib/localData';
 import { ddbDocClient } from '@/lib/dynamo';
 import { PutCommand, ScanCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
+import { verifyCaptcha } from '@/lib/captcha';
+
 
 const PROFILES_TABLE = process.env.DYNAMODB_TABLE_PROFILES || process.env.PROFILES_TABLE || 'jvtutorcorner-profiles';
 const TEACHERS_TABLE = process.env.DYNAMODB_TABLE_TEACHERS || process.env.TEACHERS_TABLE || 'jvtutorcorner-teachers';
@@ -11,11 +13,21 @@ const TEACHERS_TABLE = process.env.DYNAMODB_TABLE_TEACHERS || process.env.TEACHE
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    if (!body.email || !body.password) {
+    const { email: rawEmail, password, captchaToken, captchaValue } = body;
+    if (!rawEmail || !password) {
       return NextResponse.json({ message: 'Email and password required' }, { status: 400 });
     }
 
-    const email = String(body.email).toLowerCase();
+
+    // Validate captcha (supporting bypass secret)
+    if (!verifyCaptcha(captchaToken, captchaValue)) {
+      return NextResponse.json({ message: 'captcha_incorrect' }, { status: 400 });
+    }
+
+
+
+    const email = String(rawEmail).toLowerCase();
+
     if (body.bio && String(body.bio).length > 500) {
       return NextResponse.json({ message: 'bio too long (max 500 chars)' }, { status: 400 });
     }
@@ -61,7 +73,6 @@ export async function POST(req: Request) {
           id: profile.roid_id,
           name: profile.name || (profile.firstName && profile.lastName ? `${profile.firstName} ${profile.lastName}` : profile.email),
           email: profile.email,
-          avatarUrl: profile.avatarUrl || 'https://avatars.githubusercontent.com/u/1?v=4',
           subjects: body.subjects || [],
           languages: body.languages || ['中文'],
           rating: 0,

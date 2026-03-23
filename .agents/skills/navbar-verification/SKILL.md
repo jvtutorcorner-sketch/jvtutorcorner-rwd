@@ -24,14 +24,17 @@
 - [ ] 驗證選單中包含：設定、我的課程、我的方案、登出等選項。
 - [ ] 點擊「登出」，驗證導覽列回歸 Guest 狀態（顯示「登入」按鈕）。
 
-### 3. 新戶導覽與個人化
-- [ ] 驗證首頁是否自動開啟 `Product Tour` 彈窗。
-- [ ] 驗證 `Product Tour` 完成後，`jv_just_registered` 已從 `localStorage` 移除。
+### 3. 多頁面互動導覽與問卷
+- [ ] 驗證首頁是否自動開啟 `Product Tour`。
+- [ ] 驗證導覽中是否包含「快速問卷」步驟，且可選擇或略過。
+- [ ] 驗證導覽是否能正確從首頁跳轉至 `/teachers`。
+- [ ] 驗證導覽是否能正確從 `/teachers` 跳轉至 `/courses`。
+- [ ] 驗證導覽完成後，`jv_tour_phase` 已從 `localStorage` 移除。
 
 ## 自動化測試
-執行以下指令來驗證完整的 Navbar 變更流程：
+執行以下指令來驗證完整的 Navbar 與多頁面導覽流程：
 ```bash
-npx playwright test e2e/navbar_verification.spec.ts
+npx playwright test e2e/navbar_verification.spec.ts --headed
 ```
 
 ## 疑難排解

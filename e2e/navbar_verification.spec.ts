@@ -5,6 +5,9 @@ import path from 'path';
 dotenv.config({ path: path.resolve(__dirname, '..', '.env.local') });
 
 test('Navbar Verification After Registration (Auto-Login)', async ({ page }) => {
+    // Pipe browser console logs to terminal
+    page.on('console', msg => console.log(`[BROWSER] ${msg.text()}`));
+    
     test.setTimeout(90000);
 
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
@@ -88,11 +91,74 @@ test('Navbar Verification After Registration (Auto-Login)', async ({ page }) => 
     const loginBtn = page.locator('button:has-text("登入")');
     await expect(loginBtn).not.toBeVisible();
 
-    // 6. Verify Product Tour Starts
-    console.log("Verifying Product Tour...");
+    // 6. Verify Multi-Page Interactive Product Tour
+    console.log("Verifying Product Tour Phase 1: Home...");
     const tourTitle = page.locator('.driver-popover-title');
-    await expect(tourTitle).toBeVisible({ timeout: 5000 });
+    await expect(tourTitle).toBeVisible({ timeout: 10000 });
     await expect(tourTitle).toContainText('歡迎來到導師配對平台');
 
-    console.log("SUCCESS: Navbar correctly verified after registration and auto-login.");
+    const nextBtn = page.locator('button:has-text("下一步")');
+    
+    // Step 2: AI Recommendations
+    await nextBtn.click();
+    await expect(tourTitle).toContainText('AI 專屬推薦');
+    
+    // Step 3: Survey (NEW)
+    await nextBtn.click();
+    await expect(tourTitle).toContainText('告訴我們您的興趣');
+
+    // Step 4: Tabs
+    await nextBtn.click();
+    await expect(tourTitle).toContainText('快速切換預覽');
+
+    // Step 4: Transition to Teachers
+    await nextBtn.click();
+    await expect(tourTitle).toContainText('即將前往：師資專區');
+    
+    console.log("Navigating to Teachers page via tour...");
+    await nextBtn.click(); // This triggers router.push('/teachers')
+    
+    // Verify Phase 2: Teachers
+    console.log("Verifying Product Tour Phase 2: Teachers...");
+    await page.waitForURL(/.*\/teachers/, { timeout: 15000 });
+    // Small delay to ensure ProductTour component effect runs and driver is ready
+    await page.waitForTimeout(2000);
+    
+    console.log(`Current URL: ${page.url()}`);
+    await expect(tourTitle).toBeVisible({ timeout: 15000 });
+    
+    const teachersText = await tourTitle.innerText();
+    console.log(`Teachers phase popover text: "${teachersText}"`);
+    await expect(tourTitle).toContainText('精準搜尋老師');
+
+    // Step 2: Teacher card
+    await nextBtn.click();
+    await expect(tourTitle).toContainText('深入了解導師');
+
+    // Step 3: Transition to Courses
+    await nextBtn.click();
+    await expect(tourTitle).toContainText('下一個：精選課程');
+    
+    console.log("Navigating to Courses page via tour...");
+    await nextBtn.click(); // This triggers router.push('/courses')
+
+    // Verify Phase 3: Courses
+    console.log("Verifying Product Tour Phase 3: Courses...");
+    await page.waitForURL(/.*\/courses/, { timeout: 15000 });
+    await page.waitForTimeout(2000);
+    
+    console.log(`Current URL: ${page.url()}`);
+    await expect(tourTitle).toBeVisible({ timeout: 15000 });
+    
+    const coursesText = await tourTitle.innerText();
+    console.log(`Courses phase popover text: "${coursesText}"`);
+    await expect(tourTitle).toContainText('探索多樣化課程');
+
+    // Step 2: About Us (Final)
+    await nextBtn.click();
+    await expect(tourTitle).toContainText('關於我們');
+    
+    await page.locator('button:has-text("完成導覽")').click();
+
+    console.log("SUCCESS: Multi-page interactive tour verified successfully.");
 });

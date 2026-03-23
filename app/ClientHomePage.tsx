@@ -13,7 +13,6 @@ import Tabs from '@/components/Tabs';
 import { getStoredUser, type StoredUser } from '@/lib/mockAuth';
 import { useT } from '@/components/IntlProvider'; // Client-side hook
 import OnboardingQuestionnaire from '@/components/OnboardingQuestionnaire';
-import ProductTour from '@/components/ProductTour';
 
 const GUEST_STORAGE_KEY = 'jv_survey_seeds';
 const GUEST_ANSWERS_KEY = 'jv_survey_answers';
@@ -130,7 +129,6 @@ export default function ClientHomePage({
 
   return (
     <div className="home">
-      <ProductTour />
       {/* Guest idle questionnaire – bottom drawer */}
       {showGuestQuestionnaire && (
         <OnboardingQuestionnaire
