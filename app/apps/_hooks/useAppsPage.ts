@@ -614,7 +614,7 @@ export function useAppsPage() {
         imageTesting, setImageTesting,
         showTestEmail, setShowTestEmail,
         testEmailData, setTestEmailData,
-        testSending, testResult, setTestResult,
+        testSending, setTestSending, testResult, setTestResult,
         // Modal handlers
         openModal, closeModal, handleSaveConfig, handleAiTestPrompt,
         handleSendTestEmail, handleSimulateLine, handleSimulateLineImage,
