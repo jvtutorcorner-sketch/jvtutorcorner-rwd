@@ -15,24 +15,7 @@ applications:
         build:
           commands:
             - npm run build
-        postBuild:
-          commands:
-            - 'echo "Amplify Build Cleanup Phase..."'
-            - rm -rf .next/dev || true
-            - 'echo "Removed .next/dev (Turbopack dev cache)"'
-            - rm -rf .next/cache || true
-            - 'echo "Removed .next/cache"'
-            - find .next -name "*.map" -type f -delete || true
-            - 'echo "Removed .next source maps"'
-            - 'echo "Final .next directory size:"'
-            - 'du -sh .next || echo "Size verification skipped"'
       artifacts:
-        # Use .next as base directory but with aggressive cleanup
         baseDirectory: .next
         files:
           - '**/*'
-          - '!dev/**'
-          - '!cache/**'
-          - '!**/*.map'
-          - '!**/*.test.*'
-          - '!**/*.spec.*'

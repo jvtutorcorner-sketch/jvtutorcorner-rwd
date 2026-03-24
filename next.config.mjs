@@ -47,14 +47,6 @@ const nextConfig = {
   // Ensure native modules are treated as external packages
   serverExternalPackages: ['@lancedb/lancedb'],
 
-  // ★ 生産環境最佳化：減少部署大小 ★
-  // 使用 standalone 輸出模式 - 官方推薦的 Amplify 最佳化 (~60-70% 縮減)
-  // 相比預設模式少了 node_modules、不必要的檔案
-  output: 'standalone',
-
-  // 禁用 production source maps 以減少構建大小 (~30-40% 縮減)
-  productionBrowserSourceMaps: false,
-
   // 確保啟用壓縮
   compress: true,
 
