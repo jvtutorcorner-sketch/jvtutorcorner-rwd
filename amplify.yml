@@ -17,18 +17,8 @@ applications:
             - npm run build
         postBuild:
           commands:
-            - 'echo "Amplify Build Cleanup - Phase 1: Deleting .next/dev and cache..."'
-            - rm -rf .next/dev || true
-            - rm -rf .next/cache || true
-            - rm -f .next/trace || true
-            - 'echo "Phase 2: Deleting source maps and test files..."'
-            - find .next -name "*.map" -type f -delete || true
-            - find .next -name "*.test.*" -type f -delete || true
-            - find .next -name "*.spec.*" -type f -delete || true
-            - 'echo "Phase 3: Final cleanup - removing .next/dev again..."'
-            - rm -rf .next/dev || true
-            - 'echo "Cleanup completed. Final .next directory size:"'
-            - du -sh .next || echo "Size check completed"
+            - 'echo "Build complete. Next.js standalone mode enabled. Verifying .next size..."'
+            - 'du -sh .next || echo "Size verification skipped"'
       artifacts:
         baseDirectory: .next
         files:

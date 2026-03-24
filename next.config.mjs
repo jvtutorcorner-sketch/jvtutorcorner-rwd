@@ -48,30 +48,18 @@ const nextConfig = {
   serverExternalPackages: ['@lancedb/lancedb'],
 
   // ★ 生産環境最佳化：減少部署大小 ★
+  // 使用 standalone 輸出模式 - 官方推薦的 Amplify 最佳化 (~60-70% 縮減)
+  // 相比預設模式少了 node_modules、不必要的檔案
+  output: 'standalone',
+
   // 禁用 production source maps 以減少構建大小 (~30-40% 縮減)
   productionBrowserSourceMaps: false,
-  
-  // 優化按需條目快取
-  ondemandEntries: {
-    maxInactiveAge: 15 * 1000, // 15 秒後刪除不活躍頁面
-    pagesBufferLength: 2,      // 保持 2 頁在記憶體中
-  },
 
   // 確保啟用壓縮
   compress: true,
 
   // 禁用不必要的 header
   poweredByHeader: false,
-
-  // ★ Amplify 部署優化：禁用 Turbopack 開發伺服器緩存 ★
-  // .next/dev 包含 1.6GB+ 的 SST 緩存，削減後仍被重新生成
-  experimental: {
-    // 禁用 Turbopack 在生產建構中的快取
-    turbopack: process.env.CI ? { 
-      cacheDir: false,
-      globalPassthrough: false,
-    } : undefined,
-  },
 };
 
 export default nextConfig;
