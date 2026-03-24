@@ -17,10 +17,22 @@ applications:
             - npm run build
         postBuild:
           commands:
-            - 'echo "Build complete. Next.js standalone mode enabled. Verifying .next size..."'
+            - 'echo "Amplify Build Cleanup Phase..."'
+            - rm -rf .next/dev || true
+            - 'echo "Removed .next/dev (Turbopack dev cache)"'
+            - rm -rf .next/cache || true
+            - 'echo "Removed .next/cache"'
+            - find .next -name "*.map" -type f -delete || true
+            - 'echo "Removed .next source maps"'
+            - 'echo "Final .next directory size:"'
             - 'du -sh .next || echo "Size verification skipped"'
       artifacts:
-        # Upload only the .next/standalone directory (production runtime)
-        baseDirectory: .next/standalone
+        # Use .next as base directory but with aggressive cleanup
+        baseDirectory: .next
         files:
           - '**/*'
+          - '!dev/**'
+          - '!cache/**'
+          - '!**/*.map'
+          - '!**/*.test.*'
+          - '!**/*.spec.*'
