@@ -20,11 +20,8 @@ applications:
             - 'echo "Build complete. Next.js standalone mode enabled. Verifying .next size..."'
             - 'du -sh .next || echo "Size verification skipped"'
       artifacts:
+        # Use .next as base but only upload the production outputs
         baseDirectory: .next
         files:
-          - '**/*'
-          - '!dev/**'
-          - '!cache/**'
-          - '!**/*.map'
-          - '!**/*.test.*'
-          - '!**/*.spec.*'
+          - 'standalone/**'
+          - 'static/**'

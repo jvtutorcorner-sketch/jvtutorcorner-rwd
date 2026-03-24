@@ -54,6 +54,8 @@ const nextConfig = {
 
   // 禁用 production source maps 以減少構建大小 (~30-40% 縮減)
   productionBrowserSourceMaps: false,
+  // 使用 SWC 壓縮以進一步減小產物體積
+  swcMinify: true,
 
   // 確保啟用壓縮
   compress: true,
