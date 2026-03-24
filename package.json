@@ -28,7 +28,6 @@
     "@aws-sdk/lib-storage": "^3.956.0",
     "@aws-sdk/s3-request-presigner": "^3.980.0",
     "@google/generative-ai": "^0.24.1",
-    "@lancedb/lancedb": "^0.26.2",
     "@monaco-editor/react": "^4.7.0",
     "@paypal/react-paypal-js": "^8.9.2",
     "@xyflow/react": "^12.10.1",
