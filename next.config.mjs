@@ -46,6 +46,22 @@ const nextConfig = {
   },
   // Ensure native modules are treated as external packages
   serverExternalPackages: ['@lancedb/lancedb'],
+
+  // ★ 生産環境最佳化：減少部署大小 ★
+  // 禁用 production source maps 以減少構建大小 (~30-40% 縮減)
+  productionBrowserSourceMaps: false,
+  
+  // 優化按需條目快取
+  ondemandEntries: {
+    maxInactiveAge: 15 * 1000, // 15 秒後刪除不活躍頁面
+    pagesBufferLength: 2,      // 保持 2 頁在記憶體中
+  },
+
+  // 確保啟用壓縮
+  compress: true,
+
+  // 禁用不必要的 header
+  poweredByHeader: false,
 };
 
 export default nextConfig;

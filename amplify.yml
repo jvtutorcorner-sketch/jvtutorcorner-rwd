@@ -19,6 +19,9 @@ applications:
         baseDirectory: .next
         files:
           - '**/*'
-      cache:
-        paths:
-          - node_modules/**/*
+          - '!**/*.map'
+          - '!**/cache/**'
+          - '!**/trace'
+      # Removed cache paths to reduce deployment package size
+      # Each build will freshly install node_modules from npm
+      # This is more reliable than cached node_modules that may become stale
