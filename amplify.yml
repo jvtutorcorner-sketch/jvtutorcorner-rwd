@@ -17,20 +17,24 @@ applications:
             - npm run build
         postBuild:
           commands:
-            # ★ 关键优化：删除开发文件和缓存以减少部署大小 ★
-            - echo "Cleaning up development files to reduce deployment size..."
-            # 删除开发调试文件 (1.6GB+)
+            - echo "🧹 Amplify Build Cleanup - Phase 1: Deleting .next/dev (Turbopack cache ~1.6GB)..."
             - rm -rf .next/dev || true
-            # 删除缓存文件
             - rm -rf .next/cache || true
             - rm -f .next/trace || true
-            # 删除 source maps
-            - find .next/static -name "*.map" -delete || true
-            # 删除测试文件
-            - find .next/static -name "*.test.*" -delete || true
-            - echo "Cleanup completed. Remaining .next size:"
-            - du -sh .next || echo "Size calculation skipped"
+            - echo "🧹 Phase 2: Deleting source maps and test files..."
+            - find .next -name "*.map" -type f -delete || true
+            - find .next -name "*.test.*" -type f -delete || true
+            - find .next -name "*.spec.*" -type f -delete || true
+            - echo "🧹 Phase 3: Final aggressive cleanup - removing .next/dev again..."
+            - rm -rf .next/dev || true
+            - echo "✅ Cleanup completed. Final .next directory size:"
+            - du -sh .next || echo "Size check completed"
       artifacts:
         baseDirectory: .next
         files:
           - '**/*'
+          - '!dev/**'
+          - '!cache/**'
+          - '!**/*.map'
+          - '!**/*.test.*'
+          - '!**/*.spec.*'

@@ -62,6 +62,16 @@ const nextConfig = {
 
   // 禁用不必要的 header
   poweredByHeader: false,
+
+  // ★ Amplify 部署優化：禁用 Turbopack 開發伺服器緩存 ★
+  // .next/dev 包含 1.6GB+ 的 SST 緩存，削減後仍被重新生成
+  experimental: {
+    // 禁用 Turbopack 在生產建構中的快取
+    turbopack: process.env.CI ? { 
+      cacheDir: false,
+      globalPassthrough: false,
+    } : undefined,
+  },
 };
 
 export default nextConfig;
