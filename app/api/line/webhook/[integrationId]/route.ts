@@ -173,25 +173,59 @@ async function replyToLine(replyToken: string, messages: any[], channelAccessTok
 async function downloadLineImage(messageId: string, channelAccessToken: string): Promise<Buffer | null> {
     try {
         console.log(`[LINE Webhook] Downloading image for messageId: ${messageId}`);
+        console.log(`[LINE Webhook] Channel Access Token exists: ${!!channelAccessToken}`);
         
-        // LINE Message API for downloading content (official endpoint)
-        const res = await fetch(`https://api.line.me/v2/bot/message/${messageId}/content`, {
+        // 方法 1: 使用官方 API 端點
+        const url1 = `https://api.line.me/v2/bot/message/${messageId}/content`;
+        console.log(`[LINE Webhook] Trying method 1: ${url1}`);
+        
+        let res = await fetch(url1, {
+            method: 'GET',
             headers: {
                 'Authorization': `Bearer ${channelAccessToken}`
             }
         });
 
-        if (!res.ok) {
-            console.error(`[LINE Webhook] Failed to download image: ${res.status}`);
-            return null;
+        console.log(`[LINE Webhook] Method 1 response status: ${res.status} ${res.statusText}`);
+
+        if (res.ok) {
+            const arrayBuffer = await res.arrayBuffer();
+            const buffer = Buffer.from(arrayBuffer);
+            console.log(`[LINE Webhook] Downloaded image successfully via method 1, size: ${buffer.length} bytes`);
+            return buffer;
         }
 
-        const arrayBuffer = await res.arrayBuffer();
-        const buffer = Buffer.from(arrayBuffer);
-        console.log(`[LINE Webhook] Downloaded image, size: ${buffer.length} bytes`);
-        return buffer;
+        // 如果失敗，嘗試方法 2: obs.line-scdn.net
+        const url2 = `https://obs.line-scdn.net/${messageId}`;
+        console.log(`[LINE Webhook] Method 1 failed (${res.status}), trying method 2: ${url2}`);
+        
+        res = await fetch(url2, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${channelAccessToken}`
+            }
+        });
+
+        console.log(`[LINE Webhook] Method 2 response status: ${res.status} ${res.statusText}`);
+
+        if (res.ok) {
+            const arrayBuffer = await res.arrayBuffer();
+            const buffer = Buffer.from(arrayBuffer);
+            console.log(`[LINE Webhook] Downloaded image successfully via method 2, size: ${buffer.length} bytes`);
+            return buffer;
+        }
+
+        // 兩種方法都失敗
+        const errorText = await res.text();
+        console.error(`[LINE Webhook] Both methods failed. Final status: ${res.status} ${res.statusText}`);
+        console.error(`[LINE Webhook] Error response: ${errorText.substring(0, 200)}`);
+        return null;
     } catch (err) {
         console.error('[LINE Webhook] Error downloading image:', err);
+        if (err instanceof Error) {
+            console.error('[LINE Webhook] Error message:', err.message);
+            console.error('[LINE Webhook] Error stack:', err.stack);
+        }
         return null;
     }
 }
@@ -555,9 +589,27 @@ export async function POST(request: Request, context: { params: Promise<{ integr
                         }
                     } else if (event.type === 'message' && event.message?.type === 'image') {
                         console.log(`[LINE Webhook] Received image message from linked user`);
+                        console.log(`[LINE Webhook] Event details:`, JSON.stringify({
+                            messageId: event.message?.id,
+                            messageType: event.message?.type,
+                            timestamp: event.timestamp,
+                            hasChannelToken: !!channelAccessToken,
+                            tokenLength: channelAccessToken?.length || 0
+                        }));
 
                         try {
                             const messageId = event.message.id;
+                            console.log(`[LINE Webhook] Attempting to download image with messageId: ${messageId}`);
+                            
+                            // Validate token
+                            if (!channelAccessToken) {
+                                console.error('[LINE Webhook] Channel Access Token is missing!');
+                                const msg = { type: 'text', text: '系統設定錯誤：缺少 LINE Channel Access Token。' };
+                                if (isSimulation) simulationReplies.push(msg);
+                                else await replyToLine(replyToken, [msg], channelAccessToken);
+                                continue;
+                            }
+                            
                             // Use LINE's configured linkedServiceId if available, otherwise fallback
                             const aiIntegration = await getAIIntegrationByLinkedId(appInfo.config?.linkedServiceId);
 
@@ -568,13 +620,16 @@ export async function POST(request: Request, context: { params: Promise<{ integr
                                 else await replyToLine(replyToken, [msg], channelAccessToken);
                             } else {
                                 // Download image from LINE
+                                console.log(`[LINE Webhook] Starting image download for messageId: ${messageId}`);
                                 const imageBuffer = await downloadLineImage(messageId, channelAccessToken);
 
                                 if (!imageBuffer) {
+                                    console.error(`[LINE Webhook] Failed to download image for messageId: ${messageId}`);
                                     const msg = { type: 'text', text: '無法下載圖片，請重新上傳。' };
                                     if (isSimulation) simulationReplies.push(msg);
                                     else await replyToLine(replyToken, [msg], channelAccessToken);
                                 } else {
+                                    console.log(`[LINE Webhook] Successfully downloaded image. Buffer size: ${imageBuffer.length}`);
                                     // Get prompt from config or use default
                                     const customPrompt = appInfo.config?.drugAnalysisPrompt || DEFAULT_DRUG_ANALYSIS_PROMPT;
                                     
@@ -606,6 +661,9 @@ export async function POST(request: Request, context: { params: Promise<{ integr
                             }
                         } catch (err: any) {
                             console.error('[LINE Webhook] Error analyzing image:', err);
+                            if (err instanceof Error) {
+                                console.error('[LINE Webhook] Error stack:', err.stack);
+                            }
                             const msg = { type: 'text', text: '圖片分析資料異常，請稍後再試。' };
                             if (isSimulation) simulationReplies.push(msg);
                             else await replyToLine(replyToken, [msg], channelAccessToken);
@@ -675,5 +733,141 @@ export async function POST(request: Request, context: { params: Promise<{ integr
     } catch (error: any) {
         console.error('[LINE Webhook API] Error:', error);
         return new NextResponse(`Internal Server Error: ${error?.message || error}`, { status: 500 });
+    }
+}
+
+// Debug GET handler for testing image downloads
+export async function GET(request: Request, context: { params: Promise<{ integrationId: string }> | { integrationId: string } }) {
+    try {
+        const params = await context.params;
+        const integrationId = params.integrationId;
+        
+        // Get query parameters for testing
+        const url = new URL(request.url);
+        const messageId = url.searchParams.get('messageId');
+        const testToken = url.searchParams.get('token');
+        
+        console.log(`[LINE Webhook DEBUG GET] Request for integrationId: ${integrationId}, messageId: ${messageId}`);
+        
+        if (!messageId) {
+            return NextResponse.json({
+                error: 'Missing messageId parameter',
+                example: '/api/line/webhook/[integrationId]?messageId=abc123&token=YOUR_TOKEN'
+            }, { status: 400 });
+        }
+        
+        // Get app config to retrieve token if not provided
+        const appInfo = await getAppIntegration(integrationId);
+        if (!appInfo || appInfo.type !== 'LINE' || !appInfo.config) {
+            return NextResponse.json({ error: 'Integration not found' }, { status: 404 });
+        }
+        
+        const channelAccessToken = testToken || appInfo.config.channelAccessToken;
+        if (!channelAccessToken) {
+            return NextResponse.json({ error: 'Channel Access Token not configured' }, { status: 500 });
+        }
+        
+        console.log(`[LINE Webhook DEBUG GET] Using token: ${testToken ? 'provided' : 'from config'}`);
+        console.log(`[LINE Webhook DEBUG GET] Token first 20 chars: ${channelAccessToken.substring(0, 20)}...`);
+        
+        // Test both download methods
+        const results = {
+            messageId,
+            tokenUsed: testToken ? 'provided' : 'from_config',
+            tokenValidation: {
+                exists: !!channelAccessToken,
+                length: channelAccessToken.length,
+                startsWithExpected: channelAccessToken.startsWith('Y') ? 'Yes (likely valid)' : 'Unknown'
+            },
+            method1: {
+                url: `https://api.line.me/v2/bot/message/${messageId}/content`,
+                status: null,
+                statusText: null,
+                size: null,
+                error: null
+            },
+            method2: {
+                url: `https://obs.line-scdn.net/${messageId}`,
+                status: null,
+                statusText: null,
+                size: null,
+                error: null
+            }
+        };
+        
+        // Try method 1
+        try {
+            console.log(`[LINE Webhook DEBUG GET] Attempting method 1...`);
+            const res1 = await fetch(results.method1.url, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${channelAccessToken}`
+                }
+            });
+            
+            results.method1.status = res1.status;
+            results.method1.statusText = res1.statusText;
+            
+            if (res1.ok) {
+                const buffer = await res1.arrayBuffer();
+                results.method1.size = buffer.byteLength;
+                console.log(`[LINE Webhook DEBUG GET] Method 1 success: ${buffer.byteLength} bytes`);
+            } else {
+                const errorText = await res1.text();
+                results.method1.error = errorText.substring(0, 300);
+                console.log(`[LINE Webhook DEBUG GET] Method 1 failed: ${res1.status} - ${errorText.substring(0, 100)}`);
+            }
+        } catch (err: any) {
+            results.method1.error = err?.message || String(err);
+            console.log(`[LINE Webhook DEBUG GET] Method 1 exception:`, err);
+        }
+        
+        // Try method 2
+        try {
+            console.log(`[LINE Webhook DEBUG GET] Attempting method 2...`);
+            const res2 = await fetch(results.method2.url, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${channelAccessToken}`
+                }
+            });
+            
+            results.method2.status = res2.status;
+            results.method2.statusText = res2.statusText;
+            
+            if (res2.ok) {
+                const buffer = await res2.arrayBuffer();
+                results.method2.size = buffer.byteLength;
+                console.log(`[LINE Webhook DEBUG GET] Method 2 success: ${buffer.byteLength} bytes`);
+            } else {
+                const errorText = await res2.text();
+                results.method2.error = errorText.substring(0, 300);
+                console.log(`[LINE Webhook DEBUG GET] Method 2 failed: ${res2.status} - ${errorText.substring(0, 100)}`);
+            }
+        } catch (err: any) {
+            results.method2.error = err?.message || String(err);
+            console.log(`[LINE Webhook DEBUG GET] Method 2 exception:`, err);
+        }
+        
+        // Summary
+        const summary = {
+            success: (results.method1.size || results.method2.size) ? true : false,
+            successMethod: results.method1.size ? 'Method 1 (api.line.me)' : (results.method2.size ? 'Method 2 (obs.line-scdn.net)' : 'Neither'),
+            downloadedBytes: (results.method1.size || results.method2.size) || null
+        };
+        
+        console.log(`[LINE Webhook DEBUG GET] Final result:`, summary);
+        
+        return NextResponse.json({
+            ...results,
+            summary
+        });
+        
+    } catch (error: any) {
+        console.error('[LINE Webhook DEBUG GET] Error:', error);
+        return NextResponse.json({
+            error: 'Internal Server Error',
+            message: error?.message || String(error)
+        }, { status: 500 });
     }
 }
