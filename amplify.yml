@@ -17,9 +17,14 @@ applications:
             - npm run build
         postBuild:
           commands:
-            - rm -rf .next/dev .next/cache || true
-            - echo "Removed .next/dev and .next/cache"
+            - rm -rf .next/dev .next/cache .next/build || true
+            - npm prune --production
+            - echo "Removed .next/dev, .next/cache, and devDependencies"
       artifacts:
         baseDirectory: .next
         files:
           - '**/*'
+          - '!cache/**/*'
+          - '!dev/**/*'
+          - '!**/*.map'
+          - '!**/*.map'

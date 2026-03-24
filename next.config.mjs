@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  output: 'standalone',
   reactStrictMode: false,
   // 確保 white-web-sdk 被正確編譯
   transpilePackages: ['white-web-sdk'],
