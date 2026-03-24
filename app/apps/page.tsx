@@ -26,6 +26,7 @@ const PAYMENT_TYPES = ['ECPAY', 'PAYPAL', 'STRIPE', 'LINEPAY', 'JKOPAY'];
 const CHANNEL_TYPES = ['LINE', 'TELEGRAM', 'WHATSAPP', 'MESSENGER', 'SLACK', 'TEAMS', 'DISCORD', 'WECHAT'];
 const EMAIL_TYPES = ['RESEND', 'BREVO'];
 const DATABASE_TYPES = ['DYNAMODB', 'LANCEDB', 'KNOWLEDGE_BASE'];
+const AI_CONTAINER_TYPES = ['AI_CHATROOM', 'ASK_PLAN_AGENT', 'SMART_ROUTER']; // 不能被選擇的容器類型，用於過濾時排除
 
 /** 各通訊渠道的顏色、圖標與顯示名稱 */
 const CHANNEL_META: Record<string, { badge: string; label: string; icon: string; desc: string }> = {
@@ -125,6 +126,10 @@ export default function AppsPage() {
     const [copySuccess, setCopySuccess] = useState<string | null>(null);
     const [testPayAmount, setTestPayAmount] = useState('1');
     const [testPayProductName, setTestPayProductName] = useState('測試商品');
+    const [imageTestFile, setImageTestFile] = useState<File | null>(null);
+    const [imageTestPreview, setImageTestPreview] = useState<string | null>(null);
+    const [imageTestResult, setImageTestResult] = useState<string | null>(null);
+    const [imageTesting, setImageTesting] = useState(false);
 
     const handleCopyToken = (text: string, type: string) => {
         navigator.clipboard.writeText(text);
@@ -491,6 +496,79 @@ export default function AppsPage() {
         }
     };
 
+    /** 處理圖片上傳 */
+    const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            setImageTestFile(file);
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                setImageTestPreview(event.target?.result as string);
+            };
+            reader.readAsDataURL(file);
+            setImageTestResult(null);
+        }
+    };
+
+    /** 模擬 LINE 圖片辨識測試 */
+    const handleSimulateLineImage = async (app: AppIntegration) => {
+        if (!imageTestFile) {
+            setImageTestResult('請先選擇圖片');
+            return;
+        }
+
+        setImageTesting(true);
+        setImageTestResult(null);
+        try {
+            // Read file as base64
+            const reader = new FileReader();
+            reader.onload = async (event) => {
+                try {
+                    const base64Data = (event.target?.result as string).split(',')[1];
+                    
+                    // Call the new image analysis API
+                    const res = await fetch('/api/image-analysis', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            imageBase64: base64Data
+                        })
+                    });
+
+                    const data = await res.json();
+                    
+                    if (data.ok && data.result) {
+                        // Format result into readable message
+                        let responseText = '📸 藥品辨識結果：\n\n';
+
+                        if (data.result.raw) {
+                            responseText += data.result.raw;
+                        } else {
+                            responseText += `🔷 形狀：${data.result.shape || '無法辨識'}\n`;
+                            responseText += `🔶 顏色：${data.result.color || '無法辨識'}\n`;
+                            responseText += `✏️ 刻字：${data.result.imprint || '無'}\n`;
+                            responseText += `📏 刻痕：${data.result.score_line || '無'}\n`;
+                        }
+
+                        setImageTestResult(responseText);
+                    } else {
+                        setImageTestResult(`圖片分析失敗: ${data.error || '未知錯誤'}`);
+                    }
+                } catch (err: any) {
+                    setImageTestResult(`圖片測試失敗: ${err.message}`);
+                } finally {
+                    setImageTesting(false);
+                }
+            };
+            reader.readAsDataURL(imageTestFile);
+        } catch (e: any) {
+            setImageTestResult(`模擬失敗: ${e.message}`);
+            setImageTesting(false);
+        }
+    };
+
     /** 測試 LINE 推播功能 */
     const handlePushLine = async () => {
         if (!pushMessage.trim()) {
@@ -607,7 +685,7 @@ export default function AppsPage() {
     // Visibility derived from permissions OR existing connected apps
     const showChannels = categoryPermissions.APP_CATEGORY_CHANNEL || apps.some(a => CHANNEL_TYPES.includes(a.type));
     const showPayments = categoryPermissions.APP_CATEGORY_PAYMENT || apps.some(a => PAYMENT_TYPES.includes(a.type));
-    const showAI = categoryPermissions.APP_CATEGORY_AI || apps.some(a => aiTypes.filter(t => !['AI_CHATROOM', 'ASK_PLAN_AGENT', 'SMART_ROUTER'].includes(t)).includes(a.type));
+    const showAI = categoryPermissions.APP_CATEGORY_AI || apps.some(a => !AI_CONTAINER_TYPES.includes(a.type));
     const showAIChatroom = categoryPermissions.APP_CATEGORY_AI_CHATROOM || apps.some(a => a.type === 'AI_CHATROOM');
     const showAskPlanAgent = categoryPermissions.APP_CATEGORY_ASK_PLAN_AGENT || apps.some(a => a.type === 'ASK_PLAN_AGENT');
     const showEmail = categoryPermissions.APP_CATEGORY_EMAIL || apps.some(a => EMAIL_TYPES.includes(a.type));
@@ -1114,7 +1192,7 @@ export default function AppsPage() {
                                 AI 工具串接
                                 <span className="ml-3 inline-flex items-center gap-2 text-sm font-normal text-gray-500 dark:text-gray-400">
                                     <span className="px-2.5 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-full text-xs font-semibold">
-                                        {apps.filter(a => aiTypes.filter(t => !['AI_CHATROOM', 'ASK_PLAN_AGENT', 'SMART_ROUTER'].includes(t)).includes(a.type) && a.status === 'ACTIVE').length}/{apps.filter(a => aiTypes.filter(t => !['AI_CHATROOM', 'ASK_PLAN_AGENT', 'SMART_ROUTER'].includes(t)).includes(a.type)).length}
+                                        {apps.filter(a => !AI_CONTAINER_TYPES.includes(a.type) && a.status === 'ACTIVE').length}/{apps.filter(a => !AI_CONTAINER_TYPES.includes(a.type)).length}
                                     </span>
                                 </span>
                             </h2>
@@ -1135,7 +1213,7 @@ export default function AppsPage() {
                         </div>
 
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-                            {aiTypes.filter(t => !['AI_CHATROOM', 'ASK_PLAN_AGENT', 'SMART_ROUTER'].includes(t)).map((type: string) => {
+                            {aiTypes.filter(t => !AI_CONTAINER_TYPES.includes(t)).map((type: string) => {
                                 const meta = AI_META[type];
                                 const connected = getConnectedApps(type);
                                 const isConnected = connected.length > 0;
@@ -2058,7 +2136,7 @@ export default function AppsPage() {
                                                                     >
                                                                         <option value="">-- 請選擇已設定的 AI 服務 --</option>
                                                                         {apps
-                                                                            .filter(app => aiTypes.filter(t => !['AI_CHATROOM', 'ASK_PLAN_AGENT', 'SMART_ROUTER'].includes(t)).includes(app.type) && app.status === 'ACTIVE')
+                                                                            .filter(app => !AI_CONTAINER_TYPES.includes(app.type) && app.status === 'ACTIVE')
                                                                             .map(app => {
                                                                                 const m = Array.isArray(app.config?.models) ? app.config?.models[0] : typeof app.config?.models === 'string' ? app.config?.models.split(',').filter(Boolean)[0] : null;
                                                                                 return (
@@ -2143,7 +2221,7 @@ export default function AppsPage() {
                                                                         onChange={(e) => setEditedConfig({ ...editedConfig, askLinkedServiceId: e.target.value })}
                                                                     >
                                                                         <option value="">-- 請選擇推理模型 --</option>
-                                                                        {apps.filter(app => aiTypes.filter(t => !['AI_CHATROOM', 'ASK_PLAN_AGENT', 'SMART_ROUTER'].includes(t)).includes(app.type) && app.status === 'ACTIVE').map(app => (
+                                                                        {apps.filter(app => !AI_CONTAINER_TYPES.includes(app.type) && app.status === 'ACTIVE').map(app => (
                                                                             <option key={app.integrationId} value={app.integrationId}>{AI_META[app.type]?.icon} {app.name} ({app.type})</option>
                                                                         ))}
                                                                     </select>
@@ -2162,7 +2240,7 @@ export default function AppsPage() {
                                                                         onChange={(e) => setEditedConfig({ ...editedConfig, planLinkedServiceId: e.target.value })}
                                                                     >
                                                                         <option value="">-- 請選擇思維模型 --</option>
-                                                                        {apps.filter(app => aiTypes.filter(t => !['AI_CHATROOM', 'ASK_PLAN_AGENT', 'SMART_ROUTER'].includes(t)).includes(app.type) && app.status === 'ACTIVE').map(app => (
+                                                                        {apps.filter(app => !AI_CONTAINER_TYPES.includes(app.type) && app.status === 'ACTIVE').map(app => (
                                                                             <option key={app.integrationId} value={app.integrationId}>{AI_META[app.type]?.icon} {app.name} ({app.type})</option>
                                                                         ))}
                                                                     </select>
@@ -2181,7 +2259,7 @@ export default function AppsPage() {
                                                                         onChange={(e) => setEditedConfig({ ...editedConfig, agentLinkedServiceId: e.target.value })}
                                                                     >
                                                                         <option value="">-- 請選擇執行模型 --</option>
-                                                                        {apps.filter(app => aiTypes.filter(t => !['AI_CHATROOM', 'ASK_PLAN_AGENT', 'SMART_ROUTER'].includes(t)).includes(app.type) && app.status === 'ACTIVE').map(app => (
+                                                                        {apps.filter(app => !AI_CONTAINER_TYPES.includes(app.type) && app.status === 'ACTIVE').map(app => (
                                                                             <option key={app.integrationId} value={app.integrationId}>{AI_META[app.type]?.icon} {app.name} ({app.type})</option>
                                                                         ))}
                                                                     </select>
@@ -2203,7 +2281,7 @@ export default function AppsPage() {
                                                                         onChange={(e) => setEditedConfig({ ...editedConfig, fastModelId: e.target.value })}
                                                                     >
                                                                         <option value="">-- 請選擇 Fast 模型 --</option>
-                                                                        {apps.filter(app => aiTypes.filter(t => !['AI_CHATROOM', 'ASK_PLAN_AGENT', 'SMART_ROUTER'].includes(t)).includes(app.type) && app.status === 'ACTIVE').map(app => (
+                                                                        {apps.filter(app => !AI_CONTAINER_TYPES.includes(app.type) && app.status === 'ACTIVE').map(app => (
                                                                             <option key={app.integrationId} value={app.integrationId}>{AI_META[app.type]?.icon} {app.name} ({app.type})</option>
                                                                         ))}
                                                                     </select>
@@ -2216,7 +2294,7 @@ export default function AppsPage() {
                                                                         onChange={(e) => setEditedConfig({ ...editedConfig, balancedModelId: e.target.value })}
                                                                     >
                                                                         <option value="">-- 請選擇 Balanced 模型 --</option>
-                                                                        {apps.filter(app => aiTypes.filter(t => !['AI_CHATROOM', 'ASK_PLAN_AGENT', 'SMART_ROUTER'].includes(t)).includes(app.type) && app.status === 'ACTIVE').map(app => (
+                                                                        {apps.filter(app => !AI_CONTAINER_TYPES.includes(app.type) && app.status === 'ACTIVE').map(app => (
                                                                             <option key={app.integrationId} value={app.integrationId}>{AI_META[app.type]?.icon} {app.name} ({app.type})</option>
                                                                         ))}
                                                                     </select>
@@ -2229,7 +2307,7 @@ export default function AppsPage() {
                                                                         onChange={(e) => setEditedConfig({ ...editedConfig, complexModelId: e.target.value })}
                                                                     >
                                                                         <option value="">-- 請選擇 Complex 模型 --</option>
-                                                                        {apps.filter(app => aiTypes.filter(t => !['AI_CHATROOM', 'ASK_PLAN_AGENT', 'SMART_ROUTER'].includes(t)).includes(app.type) && app.status === 'ACTIVE').map(app => (
+                                                                        {apps.filter(app => !AI_CONTAINER_TYPES.includes(app.type) && app.status === 'ACTIVE').map(app => (
                                                                             <option key={app.integrationId} value={app.integrationId}>{AI_META[app.type]?.icon} {app.name} ({app.type})</option>
                                                                         ))}
                                                                     </select>
@@ -2243,7 +2321,7 @@ export default function AppsPage() {
 
 
 
-                                                        {!['AI_CHATROOM', 'ASK_PLAN_AGENT', 'SMART_ROUTER'].includes(selectedAppConfig.type) && (
+                                                        {!AI_CONTAINER_TYPES.includes(selectedAppConfig.type) && (
                                                             <div className="flex flex-wrap gap-2">
                                                                 {(aiModelOptions[selectedAppConfig.type] || []).map(model => {
                                                                     const selectedModels = Array.isArray(editedConfig.models) ? editedConfig.models : (typeof editedConfig.models === 'string' ? editedConfig.models.split(',').filter(Boolean) : []);
@@ -2289,7 +2367,7 @@ export default function AppsPage() {
                                                 )}
 
                                                 {/* Webhook Script Editor inside Modal (Only for Channel integrations like LINE for now) */}
-                                                {!['STRIPE', 'PAYPAL', 'ECPAY', ...aiTypes.filter(t => !['AI_CHATROOM', 'ASK_PLAN_AGENT', 'SMART_ROUTER'].includes(t))].includes(selectedAppConfig.type) && (
+                                                {!['STRIPE', 'PAYPAL', 'ECPAY', ...aiTypes.filter(t => !AI_CONTAINER_TYPES.includes(t))].includes(selectedAppConfig.type) && (
                                                     <div className="mt-8 pt-4 border-t border-gray-200 dark:border-gray-700">
                                                         <div className="flex items-center justify-between mb-4">
                                                             <label className="flex items-center gap-2 cursor-pointer">
@@ -2511,6 +2589,65 @@ export default function AppsPage() {
                                                             </div>
                                                         </div>
 
+                                                        {/* 圖片辨識測試 */}
+                                                        <div className="mt-6 border-t border-gray-100 dark:border-gray-700 pt-6">
+                                                            <h4 className="font-bold text-gray-800 dark:text-white mb-3 flex items-center gap-2">
+                                                                <span className="text-xl">📸</span> 圖片辨識測試
+                                                            </h4>
+                                                            <div className="space-y-3">
+                                                                <p className="text-xs text-gray-500 mb-2">上傳藥品圖片進行 Gemini Vision 辨識測試</p>
+                                                                
+                                                                {/* 圖片預覽 */}
+                                                                {imageTestPreview && (
+                                                                    <div className="relative mb-3">
+                                                                        <img 
+                                                                            src={imageTestPreview} 
+                                                                            alt="preview" 
+                                                                            className="max-w-[200px] max-h-[200px] rounded-lg border border-gray-300 dark:border-gray-600"
+                                                                        />
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                setImageTestFile(null);
+                                                                                setImageTestPreview(null);
+                                                                                setImageTestResult(null);
+                                                                            }}
+                                                                            className="mt-2 text-sm text-red-600 dark:text-red-400 hover:text-red-700"
+                                                                        >
+                                                                            ✕ 清除
+                                                                        </button>
+                                                                    </div>
+                                                                )}
+
+                                                                {/* 文件上傳 */}
+                                                                <div className="flex gap-2">
+                                                                    <label className="flex-1 px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-600 text-center">
+                                                                        選擇圖片
+                                                                        <input
+                                                                            type="file"
+                                                                            accept="image/*"
+                                                                            onChange={handleImageFileChange}
+                                                                            className="hidden"
+                                                                        />
+                                                                    </label>
+                                                                    <button
+                                                                        onClick={() => handleSimulateLineImage(selectedAppConfig)}
+                                                                        disabled={imageTesting || !imageTestFile}
+                                                                        className="px-4 py-2 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                                                                    >
+                                                                        {imageTesting ? '分析中...' : '開始辨識'}
+                                                                    </button>
+                                                                </div>
+
+                                                                {/* 辨識結果 */}
+                                                                {imageTestResult && (
+                                                                    <div className="p-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg border-2 border-amber-200 dark:border-amber-900/50 animate-in fade-in slide-in-from-top-1 transition-all">
+                                                                        <p className="text-[10px] font-bold text-amber-600 dark:text-amber-400 mb-1 uppercase tracking-wider">圖片分析結果：</p>
+                                                                        <p className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap font-medium">{imageTestResult}</p>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+
                                                         {/* Webhook URL */}
                                                         <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg">
                                                             <h4 className="font-semibold text-blue-800 dark:text-blue-300 mb-2 flex items-center">
@@ -2608,8 +2745,8 @@ export default function AppsPage() {
                                         (JSON.stringify(editedConfig) === JSON.stringify(selectedAppConfig.config || {}) &&
                                             editedName === selectedAppConfig.name &&
                                             editedStatus === selectedAppConfig.status) ||
-                                        (!['AI_CHATROOM', 'ASK_PLAN_AGENT', 'SMART_ROUTER'].includes(selectedAppConfig.type) && aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) > 1) ||
-                                        (!['AI_CHATROOM', 'ASK_PLAN_AGENT', 'SMART_ROUTER'].includes(selectedAppConfig.type) && aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) === 0)
+                                        (!AI_CONTAINER_TYPES.includes(selectedAppConfig.type) && aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) > 1) ||
+                                        (!AI_CONTAINER_TYPES.includes(selectedAppConfig.type) && aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) === 0)
                                         ? 'bg-gray-400 cursor-not-allowed'
                                         : 'bg-blue-600 hover:bg-blue-700'
                                         }`}
@@ -2619,13 +2756,13 @@ export default function AppsPage() {
                                         (JSON.stringify(editedConfig) === JSON.stringify(selectedAppConfig.config || {}) &&
                                             editedName === selectedAppConfig.name &&
                                             editedStatus === selectedAppConfig.status) ||
-                                        (!['AI_CHATROOM', 'ASK_PLAN_AGENT', 'SMART_ROUTER'].includes(selectedAppConfig.type) && aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) > 1) ||
-                                        (!['AI_CHATROOM', 'ASK_PLAN_AGENT', 'SMART_ROUTER'].includes(selectedAppConfig.type) && aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) === 0)
+                                        (!AI_CONTAINER_TYPES.includes(selectedAppConfig.type) && aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) > 1) ||
+                                        (!AI_CONTAINER_TYPES.includes(selectedAppConfig.type) && aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) === 0)
                                     }
                                 >
                                     {isSavingConfig ? '儲存中...' : (
-                                        (!['AI_CHATROOM', 'ASK_PLAN_AGENT', 'SMART_ROUTER'].includes(selectedAppConfig.type) && aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) > 1) ? '模型限選一個' :
-                                            (!['AI_CHATROOM', 'ASK_PLAN_AGENT', 'SMART_ROUTER'].includes(selectedAppConfig.type) && aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) === 0) ? '請選擇模型' :
+                                        (!AI_CONTAINER_TYPES.includes(selectedAppConfig.type) && aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) > 1) ? '模型限選一個' :
+                                            (!AI_CONTAINER_TYPES.includes(selectedAppConfig.type) && aiTypes.includes(selectedAppConfig.type) && (Array.isArray(editedConfig.models) ? editedConfig.models.length : 0) === 0) ? '請選擇模型' :
                                                 '儲存設定')}
                                 </button>
                             </div>

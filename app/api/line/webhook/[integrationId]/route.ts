@@ -49,28 +49,54 @@ async function getAppIntegration(integrationId: string) {
     return null;
 }
 
-// Helpers to get active AI Integration
-async function getActiveAIIntegration() {
+// Helpers to get AI Integration by linkedServiceId or default
+async function getAIIntegrationByLinkedId(linkedServiceId?: string) {
+    if (!linkedServiceId) {
+        // Fallback: find first active AI service (priority: OPENAI > ANTHROPIC > GEMINI)
+        if (useDynamoForApps) {
+            for (const type of ['OPENAI', 'ANTHROPIC', 'GEMINI']) {
+                const { Items } = await docClient.send(new ScanCommand({
+                    TableName: APPS_TABLE,
+                    FilterExpression: '#typ = :type AND #sts = :status',
+                    ExpressionAttributeNames: { '#typ': 'type', '#sts': 'status' },
+                    ExpressionAttributeValues: { ':type': type, ':status': 'ACTIVE' }
+                }));
+                if (Items && Items.length > 0) return Items[0];
+            }
+        } else {
+            const FILE = await resolveDataFile('app-integrations.json');
+            if (fs.existsSync(FILE)) {
+                const data = JSON.parse(fs.readFileSync(FILE, 'utf8'));
+                for (const type of ['OPENAI', 'ANTHROPIC', 'GEMINI']) {
+                    const found = data.find((i: any) => i.type === type && i.status === 'ACTIVE');
+                    if (found) return found;
+                }
+            }
+        }
+        return null;
+    }
+
+    // Get by linkedServiceId
     if (useDynamoForApps) {
-        // Here we scan for an active GEMINI integration (or OPENAI etc. depending on your priority)
-        // For simplicity, we just look for type = 'GEMINI' and status = 'ACTIVE'
-        // In a real app, you might want to query by userId or have a generic 'AI' type.
-        // Assuming global AI service for the bot here.
         const { Items } = await docClient.send(new ScanCommand({
             TableName: APPS_TABLE,
-            FilterExpression: '#typ = :type AND #sts = :status',
-            ExpressionAttributeNames: { '#typ': 'type', '#sts': 'status' },
-            ExpressionAttributeValues: { ':type': 'GEMINI', ':status': 'ACTIVE' }
+            FilterExpression: 'integrationId = :id',
+            ExpressionAttributeValues: { ':id': linkedServiceId }
         }));
         return Items && Items.length > 0 ? Items[0] : null;
     } else {
         const FILE = await resolveDataFile('app-integrations.json');
         if (fs.existsSync(FILE)) {
             const data = JSON.parse(fs.readFileSync(FILE, 'utf8'));
-            return data.find((i: any) => i.type === 'GEMINI' && i.status === 'ACTIVE');
+            return data.find((i: any) => i.integrationId === linkedServiceId);
         }
     }
     return null;
+}
+
+// Helpers to get active AI Integration (for backward compatibility)
+async function getActiveAIIntegration() {
+    return getAIIntegrationByLinkedId(undefined);
 }
 
 async function findUserProfileByEmail(email: string) {
@@ -138,6 +164,263 @@ async function replyToLine(replyToken: string, messages: any[], channelAccessTok
     if (!res.ok) {
         console.error('[LINE Webhook] Failed to reply:', await res.text());
     }
+}
+
+// ==========================================
+// Image Recognition Helpers
+// ==========================================
+
+async function downloadLineImage(messageId: string, channelAccessToken: string): Promise<Buffer | null> {
+    try {
+        console.log(`[LINE Webhook] Downloading image for messageId: ${messageId}`);
+        
+        // LINE Message API for downloading content
+        const res = await fetch(`https://obs.line-scdn.net/..${messageId}`, {
+            headers: {
+                'Authorization': `Bearer ${channelAccessToken}`
+            }
+        });
+
+        if (!res.ok) {
+            // Try alternate endpoint if first fails
+            console.warn(`[LINE Webhook] First attempt failed, trying alternate endpoint`);
+            const res2 = await fetch(`https://api.line.me/v2/bot/message/${messageId}/content`, {
+                headers: {
+                    'Authorization': `Bearer ${channelAccessToken}`
+                }
+            });
+
+            if (!res2.ok) {
+                console.error(`[LINE Webhook] Failed to download image: ${res2.status}`);
+                return null;
+            }
+
+            const arrayBuffer = await res2.arrayBuffer();
+            const buffer = Buffer.from(arrayBuffer);
+            console.log(`[LINE Webhook] Downloaded image (ALT), size: ${buffer.length} bytes`);
+            return buffer;
+        }
+
+        const arrayBuffer = await res.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+        console.log(`[LINE Webhook] Downloaded image, size: ${buffer.length} bytes`);
+        return buffer;
+    } catch (err) {
+        console.error('[LINE Webhook] Error downloading image:', err);
+        return null;
+    }
+}
+
+const DRUG_ANALYSIS_PROMPT = `
+你是一位專業且嚴謹的「AI 數位藥劑師視覺助理」。你的任務是仔細觀察使用者上傳的藥品圖片，並精準萃取出藥品的外觀特徵。
+
+【任務規則】
+1. 你只能根據圖片中「真實看到」的特徵進行描述。絕對不可以猜測、推論或捏造圖片中看不清楚的細節。
+2. 如果圖片極度模糊、嚴重反光，或者根本不是藥品，請在對應的特徵欄位填寫 "無法辨識"。
+
+【特徵萃取標準】
+請分析圖片並回傳以下 JSON 結構：
+{
+  "shape": "請從以下選項中選擇：圓形、橢圓形、長圓柱形、膠囊形、三角形、方形、多邊形、其他。若無法辨識請填 '無法辨識'。",
+  "color": "請辨識藥品的主要顏色。請使用單一基礎顏色描述，例如：白、黃、紅、棕、粉紅、綠、藍、黑、灰。若有雙色請用 '/' 隔開。若無法辨識請填 '無法辨識'。",
+  "imprint": "請仔細讀取藥丸表面的『英文、數字或符號刻字』。請區分大小寫，若有空格請保留。若雙面皆有刻字請用 '/' 隔開。若表面平滑無字，請填寫 '無'。若模糊看不清請填 '無法辨識'。",
+  "score_line": "請觀察藥丸表面是否有『刻痕』。若有一條直線請填 '一字'，若有十字線請填 '十字'，若無刻痕請填 '無'。"
+}
+
+這攸關醫療安全，寧可回傳 "無法辨識"，也絕對不可以使用推測的數值。
+`;
+
+// Text message API callers for each provider
+async function callGeminiText(text: string, apiKey: string): Promise<string | null> {
+    const model = 'gemini-2.5-flash';
+    try {
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contents: [{ parts: [{ text }] }],
+                generationConfig: { maxOutputTokens: 4096 }
+            })
+        });
+        if (!res.ok) return null;
+        const data = await res.json();
+        return data.candidates?.[0]?.content?.parts?.[0]?.text || null;
+    } catch (err) {
+        console.error('[LINE Webhook] Error calling Gemini text API:', err);
+        return null;
+    }
+}
+
+async function callOpenAIText(text: string, apiKey: string): Promise<string | null> {
+    try {
+        const res = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`
+            },
+            body: JSON.stringify({
+                model: 'gpt-4-turbo',
+                messages: [{ role: 'user', content: text }],
+                max_tokens: 4096
+            })
+        });
+        if (!res.ok) return null;
+        const data = await res.json();
+        return data.choices?.[0]?.message?.content || null;
+    } catch (err) {
+        console.error('[LINE Webhook] Error calling OpenAI text API:', err);
+        return null;
+    }
+}
+
+async function callAnthropicText(text: string, apiKey: string): Promise<string | null> {
+    try {
+        const res = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': apiKey,
+                'anthropic-version': '2023-06-01'
+            },
+            body: JSON.stringify({
+                model: 'claude-3-5-sonnet-20241022',
+                max_tokens: 4096,
+                messages: [{ role: 'user', content: text }]
+            })
+        });
+        if (!res.ok) return null;
+        const data = await res.json();
+        return data.content?.[0]?.text || null;
+    } catch (err) {
+        console.error('[LINE Webhook] Error calling Anthropic text API:', err);
+        return null;
+    }
+}
+
+async function analyzeImageWithVisionAPI(imageBuffer: Buffer, aiIntegration: any): Promise<any> {
+    const base64Image = imageBuffer.toString('base64');
+    const provider = aiIntegration.type;
+    const apiKey = aiIntegration.config?.apiKey;
+
+    try {
+        if (provider === 'GEMINI') {
+            return await analyzeWithGemini(base64Image, apiKey);
+        } else if (provider === 'OPENAI') {
+            return await analyzeWithOpenAI(base64Image, apiKey);
+        } else if (provider === 'ANTHROPIC') {
+            return await analyzeWithAnthropic(base64Image, apiKey);
+        } else {
+            console.error('[LINE Webhook] Unsupported provider:', provider);
+            return null;
+        }
+    } catch (err) {
+        console.error(`[LINE Webhook] Error analyzing image with ${provider}:`, err);
+        return null;
+    }
+}
+
+async function analyzeWithGemini(base64Image: string, apiKey: string): Promise<any> {
+    console.log('[LINE Webhook] Analyzing image with Gemini Vision...');
+    const model = 'gemini-2.5-flash';
+    
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            contents: [{
+                parts: [
+                    { text: DRUG_ANALYSIS_PROMPT },
+                    { inlineData: { mimeType: 'image/jpeg', data: base64Image } }
+                ]
+            }],
+            generationConfig: { response_mime_type: 'application/json', maxOutputTokens: 1024 }
+        })
+    });
+
+    if (!res.ok) {
+        console.error('[LINE Webhook] Gemini error:', res.status);
+        return null;
+    }
+
+    const data = await res.json();
+    const responseText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    return responseText ? (JSON.parse(responseText) || { raw: responseText }) : null;
+}
+
+async function analyzeWithOpenAI(base64Image: string, apiKey: string): Promise<any> {
+    console.log('[LINE Webhook] Analyzing image with OpenAI Vision...');
+    
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+            model: 'gpt-4-turbo-with-vision',
+            messages: [{
+                role: 'user',
+                content: [
+                    { type: 'text', text: DRUG_ANALYSIS_PROMPT },
+                    { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Image}` } }
+                ]
+            }],
+            max_tokens: 1024,
+            response_format: { type: "json_object" }
+        })
+    });
+
+    if (!res.ok) {
+        console.error('[LINE Webhook] OpenAI error:', res.status);
+        return null;
+    }
+
+    const data = await res.json();
+    const responseText = data.choices?.[0]?.message?.content;
+    return responseText ? (JSON.parse(responseText) || { raw: responseText }) : null;
+}
+
+async function analyzeWithAnthropic(base64Image: string, apiKey: string): Promise<any> {
+    console.log('[LINE Webhook] Analyzing image with Anthropic Vision...');
+    
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01'
+        },
+        body: JSON.stringify({
+            model: 'claude-3-5-sonnet-20241022',
+            max_tokens: 1024,
+            messages: [{
+                role: 'user',
+                content: [
+                    { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64Image } },
+                    { type: 'text', text: DRUG_ANALYSIS_PROMPT }
+                ]
+            }]
+        })
+    });
+
+    if (!res.ok) {
+        console.error('[LINE Webhook] Anthropic error:', res.status);
+        return null;
+    }
+
+    const data = await res.json();
+    const responseText = data.content?.[0]?.text;
+    return responseText ? (JSON.parse(responseText) || { raw: responseText }) : null;
+}
+
+// Legacy function for backward compatibility
+async function analyzeImageWithGeminiVision(imageBuffer: Buffer, geminiApiKey: string, model: string = 'gemini-2.5-flash'): Promise<any> {
+    const geminiIntegration = {
+        type: 'GEMINI',
+        config: { apiKey: geminiApiKey, models: [model] }
+    };
+    return analyzeImageWithVisionAPI(imageBuffer, geminiIntegration);
 }
 
 export async function POST(request: Request, context: { params: Promise<{ integrationId: string }> | { integrationId: string } }) {
@@ -237,52 +520,39 @@ export async function POST(request: Request, context: { params: Promise<{ integr
                         console.log(`[LINE Webhook] Received message from linked user: "${userText}"`);
 
                         try {
-                            const aiIntegration = await getActiveAIIntegration();
+                            // Use LINE's configured linkedServiceId if available, otherwise fallback
+                            const aiIntegration = await getAIIntegrationByLinkedId(appInfo.config?.linkedServiceId);
 
                             if (aiIntegration && aiIntegration.config?.apiKey) {
-                                console.log('[LINE Webhook] Forwarding message to Gemini...');
-                                const apiKey = aiIntegration.config.apiKey;
-                                const config = aiIntegration.config;
-                                // Use configured model or fallback
-                                const model = Array.isArray(config.models) && config.models.length > 0 ? config.models[0] : 'gemini-2.5-flash';
+                                console.log(`[LINE Webhook] Forwarding message to ${aiIntegration.type} AI service...`);
+                                
+                                // Call the appropriate AI provider
+                                let aiResponseText: string | null = null;
 
-                                console.log(`[LINE Webhook] Using model: ${model}`);
+                                if (aiIntegration.type === 'GEMINI') {
+                                    aiResponseText = await callGeminiText(userText, aiIntegration.config.apiKey);
+                                } else if (aiIntegration.type === 'OPENAI') {
+                                    aiResponseText = await callOpenAIText(userText, aiIntegration.config.apiKey);
+                                } else if (aiIntegration.type === 'ANTHROPIC') {
+                                    aiResponseText = await callAnthropicText(userText, aiIntegration.config.apiKey);
+                                }
 
-                                const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({
-                                        contents: [{ parts: [{ text: userText }] }],
-                                        generationConfig: { maxOutputTokens: 4096 }
-                                    }),
-                                });
-
-                                if (res.ok) {
-                                    const data = await res.json();
-                                    const aiResponseText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-
-                                    if (aiResponseText) {
-                                        // LINE message limit 5000 chars
-                                        const chunks: string[] = [];
-                                        let currentText = aiResponseText;
-                                        while (currentText.length > 4500) {
-                                            chunks.push(currentText.substring(0, 4500));
-                                            currentText = currentText.substring(4500);
-                                        }
-                                        chunks.push(currentText);
-
-                                        const messages = chunks.map(c => ({ type: 'text', text: c }));
-                                        if (isSimulation) simulationReplies.push(...messages);
-                                        else await replyToLine(replyToken, messages, channelAccessToken);
-                                    } else {
-                                        console.warn('[LINE Webhook] Empty response from Gemini.');
-                                        const msg = { type: 'text', text: '系統暫時無法處理您的訊息，請稍後再試。' };
-                                        if (isSimulation) simulationReplies.push(msg);
-                                        else await replyToLine(replyToken, [msg], channelAccessToken);
+                                if (aiResponseText) {
+                                    // LINE message limit 5000 chars
+                                    const chunks: string[] = [];
+                                    let currentText = aiResponseText;
+                                    while (currentText.length > 4500) {
+                                        chunks.push(currentText.substring(0, 4500));
+                                        currentText = currentText.substring(4500);
                                     }
+                                    chunks.push(currentText);
+
+                                    const messages = chunks.map(c => ({ type: 'text', text: c }));
+                                    if (isSimulation) simulationReplies.push(...messages);
+                                    else await replyToLine(replyToken, messages, channelAccessToken);
                                 } else {
-                                    console.error('[LINE Webhook] Gemini API Error:', res.status, await res.text());
-                                    const msg = { type: 'text', text: 'AI 服務發生錯誤（' + res.status + '），請聯絡管理員。' };
+                                    console.warn('[LINE Webhook] Empty response from AI service.');
+                                    const msg = { type: 'text', text: '系統暫時無法處理您的訊息，請稍後再試。' };
                                     if (isSimulation) simulationReplies.push(msg);
                                     else await replyToLine(replyToken, [msg], channelAccessToken);
                                 }
@@ -295,6 +565,60 @@ export async function POST(request: Request, context: { params: Promise<{ integr
                         } catch (err: any) {
                             console.error('[LINE Webhook] Error calling AI:', err);
                             const msg = { type: 'text', text: '服務異常，請稍後再試。' };
+                            if (isSimulation) simulationReplies.push(msg);
+                            else await replyToLine(replyToken, [msg], channelAccessToken);
+                        }
+                    } else if (event.type === 'message' && event.message?.type === 'image') {
+                        console.log(`[LINE Webhook] Received image message from linked user`);
+
+                        try {
+                            const messageId = event.message.id;
+                            // Use LINE's configured linkedServiceId if available, otherwise fallback
+                            const aiIntegration = await getAIIntegrationByLinkedId(appInfo.config?.linkedServiceId);
+
+                            if (!aiIntegration || !aiIntegration.config?.apiKey) {
+                                console.warn('[LINE Webhook] No active AI connection for image analysis');
+                                const msg = { type: 'text', text: '圖片辨識功能尚未啟用，請稍後再試。' };
+                                if (isSimulation) simulationReplies.push(msg);
+                                else await replyToLine(replyToken, [msg], channelAccessToken);
+                            } else {
+                                // Download image from LINE
+                                const imageBuffer = await downloadLineImage(messageId, channelAccessToken);
+
+                                if (!imageBuffer) {
+                                    const msg = { type: 'text', text: '無法下載圖片，請重新上傳。' };
+                                    if (isSimulation) simulationReplies.push(msg);
+                                    else await replyToLine(replyToken, [msg], channelAccessToken);
+                                } else {
+                                    // Analyze image with configured AI service
+                                    const analysisResult = await analyzeImageWithVisionAPI(imageBuffer, aiIntegration);
+
+                                    if (analysisResult) {
+                                        // Format result into readable message
+                                        let responseText = '📸 藥品辨識結果：\n\n';
+
+                                        if (analysisResult.raw) {
+                                            responseText += analysisResult.raw;
+                                        } else {
+                                            responseText += `🔷 形狀：${analysisResult.shape || '無法辨識'}\n`;
+                                            responseText += `🔶 顏色：${analysisResult.color || '無法辨識'}\n`;
+                                            responseText += `✏️ 刻字：${analysisResult.imprint || '無'}\n`;
+                                            responseText += `📏 刻痕：${analysisResult.score_line || '無'}\n`;
+                                        }
+
+                                        const msg = { type: 'text', text: responseText.substring(0, 4500) };
+                                        if (isSimulation) simulationReplies.push(msg);
+                                        else await replyToLine(replyToken, [msg], channelAccessToken);
+                                    } else {
+                                        const msg = { type: 'text', text: '圖片分析失敗，請重新上傳清晰的藥品圖片。' };
+                                        if (isSimulation) simulationReplies.push(msg);
+                                        else await replyToLine(replyToken, [msg], channelAccessToken);
+                                    }
+                                }
+                            }
+                        } catch (err: any) {
+                            console.error('[LINE Webhook] Error analyzing image:', err);
+                            const msg = { type: 'text', text: '圖片分析資料異常，請稍後再試。' };
                             if (isSimulation) simulationReplies.push(msg);
                             else await replyToLine(replyToken, [msg], channelAccessToken);
                         }
