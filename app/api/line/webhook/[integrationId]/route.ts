@@ -174,31 +174,16 @@ async function downloadLineImage(messageId: string, channelAccessToken: string):
     try {
         console.log(`[LINE Webhook] Downloading image for messageId: ${messageId}`);
         
-        // LINE Message API for downloading content
-        const res = await fetch(`https://obs.line-scdn.net/..${messageId}`, {
+        // LINE Message API for downloading content (official endpoint)
+        const res = await fetch(`https://api.line.me/v2/bot/message/${messageId}/content`, {
             headers: {
                 'Authorization': `Bearer ${channelAccessToken}`
             }
         });
 
         if (!res.ok) {
-            // Try alternate endpoint if first fails
-            console.warn(`[LINE Webhook] First attempt failed, trying alternate endpoint`);
-            const res2 = await fetch(`https://api.line.me/v2/bot/message/${messageId}/content`, {
-                headers: {
-                    'Authorization': `Bearer ${channelAccessToken}`
-                }
-            });
-
-            if (!res2.ok) {
-                console.error(`[LINE Webhook] Failed to download image: ${res2.status}`);
-                return null;
-            }
-
-            const arrayBuffer = await res2.arrayBuffer();
-            const buffer = Buffer.from(arrayBuffer);
-            console.log(`[LINE Webhook] Downloaded image (ALT), size: ${buffer.length} bytes`);
-            return buffer;
+            console.error(`[LINE Webhook] Failed to download image: ${res.status}`);
+            return null;
         }
 
         const arrayBuffer = await res.arrayBuffer();
@@ -211,7 +196,7 @@ async function downloadLineImage(messageId: string, channelAccessToken: string):
     }
 }
 
-const DRUG_ANALYSIS_PROMPT = `
+const DEFAULT_DRUG_ANALYSIS_PROMPT = `
 你是一位專業且嚴謹的「AI 數位藥劑師視覺助理」。你的任務是仔細觀察使用者上傳的藥品圖片，並精準萃取出藥品的外觀特徵。
 
 【任務規則】
@@ -298,18 +283,18 @@ async function callAnthropicText(text: string, apiKey: string): Promise<string |
     }
 }
 
-async function analyzeImageWithVisionAPI(imageBuffer: Buffer, aiIntegration: any): Promise<any> {
+async function analyzeImageWithVisionAPI(imageBuffer: Buffer, aiIntegration: any, prompt: string): Promise<any> {
     const base64Image = imageBuffer.toString('base64');
     const provider = aiIntegration.type;
     const apiKey = aiIntegration.config?.apiKey;
 
     try {
         if (provider === 'GEMINI') {
-            return await analyzeWithGemini(base64Image, apiKey);
+            return await analyzeWithGemini(base64Image, apiKey, prompt);
         } else if (provider === 'OPENAI') {
-            return await analyzeWithOpenAI(base64Image, apiKey);
+            return await analyzeWithOpenAI(base64Image, apiKey, prompt);
         } else if (provider === 'ANTHROPIC') {
-            return await analyzeWithAnthropic(base64Image, apiKey);
+            return await analyzeWithAnthropic(base64Image, apiKey, prompt);
         } else {
             console.error('[LINE Webhook] Unsupported provider:', provider);
             return null;
@@ -320,7 +305,7 @@ async function analyzeImageWithVisionAPI(imageBuffer: Buffer, aiIntegration: any
     }
 }
 
-async function analyzeWithGemini(base64Image: string, apiKey: string): Promise<any> {
+async function analyzeWithGemini(base64Image: string, apiKey: string, prompt: string): Promise<any> {
     console.log('[LINE Webhook] Analyzing image with Gemini Vision...');
     const model = 'gemini-2.5-flash';
     
@@ -330,7 +315,7 @@ async function analyzeWithGemini(base64Image: string, apiKey: string): Promise<a
         body: JSON.stringify({
             contents: [{
                 parts: [
-                    { text: DRUG_ANALYSIS_PROMPT },
+                    { text: prompt },
                     { inlineData: { mimeType: 'image/jpeg', data: base64Image } }
                 ]
             }],
@@ -348,7 +333,7 @@ async function analyzeWithGemini(base64Image: string, apiKey: string): Promise<a
     return responseText ? (JSON.parse(responseText) || { raw: responseText }) : null;
 }
 
-async function analyzeWithOpenAI(base64Image: string, apiKey: string): Promise<any> {
+async function analyzeWithOpenAI(base64Image: string, apiKey: string, prompt: string): Promise<any> {
     console.log('[LINE Webhook] Analyzing image with OpenAI Vision...');
     
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -362,7 +347,7 @@ async function analyzeWithOpenAI(base64Image: string, apiKey: string): Promise<a
             messages: [{
                 role: 'user',
                 content: [
-                    { type: 'text', text: DRUG_ANALYSIS_PROMPT },
+                    { type: 'text', text: prompt },
                     { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Image}` } }
                 ]
             }],
@@ -381,7 +366,7 @@ async function analyzeWithOpenAI(base64Image: string, apiKey: string): Promise<a
     return responseText ? (JSON.parse(responseText) || { raw: responseText }) : null;
 }
 
-async function analyzeWithAnthropic(base64Image: string, apiKey: string): Promise<any> {
+async function analyzeWithAnthropic(base64Image: string, apiKey: string, prompt: string): Promise<any> {
     console.log('[LINE Webhook] Analyzing image with Anthropic Vision...');
     
     const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -398,7 +383,7 @@ async function analyzeWithAnthropic(base64Image: string, apiKey: string): Promis
                 role: 'user',
                 content: [
                     { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64Image } },
-                    { type: 'text', text: DRUG_ANALYSIS_PROMPT }
+                    { type: 'text', text: prompt }
                 ]
             }]
         })
@@ -415,12 +400,12 @@ async function analyzeWithAnthropic(base64Image: string, apiKey: string): Promis
 }
 
 // Legacy function for backward compatibility
-async function analyzeImageWithGeminiVision(imageBuffer: Buffer, geminiApiKey: string, model: string = 'gemini-2.5-flash'): Promise<any> {
+async function analyzeImageWithGeminiVision(imageBuffer: Buffer, geminiApiKey: string, model: string = 'gemini-2.5-flash', prompt?: string): Promise<any> {
     const geminiIntegration = {
         type: 'GEMINI',
         config: { apiKey: geminiApiKey, models: [model] }
     };
-    return analyzeImageWithVisionAPI(imageBuffer, geminiIntegration);
+    return analyzeImageWithVisionAPI(imageBuffer, geminiIntegration, prompt || DEFAULT_DRUG_ANALYSIS_PROMPT);
 }
 
 export async function POST(request: Request, context: { params: Promise<{ integrationId: string }> | { integrationId: string } }) {
@@ -590,8 +575,11 @@ export async function POST(request: Request, context: { params: Promise<{ integr
                                     if (isSimulation) simulationReplies.push(msg);
                                     else await replyToLine(replyToken, [msg], channelAccessToken);
                                 } else {
+                                    // Get prompt from config or use default
+                                    const customPrompt = appInfo.config?.drugAnalysisPrompt || DEFAULT_DRUG_ANALYSIS_PROMPT;
+                                    
                                     // Analyze image with configured AI service
-                                    const analysisResult = await analyzeImageWithVisionAPI(imageBuffer, aiIntegration);
+                                    const analysisResult = await analyzeImageWithVisionAPI(imageBuffer, aiIntegration, customPrompt);
 
                                     if (analysisResult) {
                                         // Format result into readable message
