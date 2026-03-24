@@ -2,135 +2,132 @@
 
 ## 0. High-Level System Overview (Mind Map)
 
-This mind map provides a "Big Picture" view of the project components and technology stack.
+This mind map provides a "Big Picture" view of the project components and technology stack as of 2026.
 
 ```mermaid
 mindmap
   root((JVTutorCorner RWD))
-    Frontend
-      Next.js 16
-        App Router
-        Tailwind CSS 4
-      UI Components
-        Amplify UI
-        Visual (Konva/ReactFlow)
-    Backend
-      AWS Amplify
-        AppSync (GraphQL)
-        DynamoDB
-        S3 Storage
-      AI Integration
-        Gemini
-        LanceDB
-    Key Features
-      Online Classroom (Agora)
-      Course & Enrollment
-      Payment Flow (PayPal/LinePay)
-    Tools
-      Playwright (E2E)
-      Scripts & Automation
+    Tech Stack
+      Frontend: Next.js 16 + Tailwind 4
+      Backend: Amplify + DynamoDB
+      AI: Gemini/OpenAI + LanceDB
+      Live: Agora RTC/SSE
+    Core Flows
+      Onboarding: Survey + Recommendations
+      Purchase: Points + Multi-gateway
+      Classroom: Wait Room Sync + Room interaction
+    AI Agents
+      Ask-Plan-Execute Loop
+      Platform Tools (lib/platform-skills.ts)
+    Management
+      Admin: Order & Teacher Reviews
+      Teacher: Course Lifecycle
+    QA
+      Playwright E2E
+      Auto-Login Bypass
 ```
 
-This document provides a structured overview of the JVTutorCorner platform architecture, focusing on the core database models, user flows, and system relationships.
+## 1. Core Operational Flows
 
-## 1. Core Entities & Database Models
-
-The platform uses **AWS Amplify (AppSync/GraphQL)** and **DynamoDB** for data storage.
-
-### 1.1 User Roles
-- **Student**: Learners who enroll in courses, purchase plans/points, and provide feedback.
-- **Teacher**: Educators who create courses, manage sessions, and interact with students.
-- **Admin**: Administrators who manage orders, approve teacher profile changes, and oversee the platform.
-
-### 1.2 Data Models (GraphQL/DynamoDB)
-
-| Model | Table Name (Production) | Description |
-|-------|--------------------------|-------------|
-| **Student** | `jvtutorcorner-Student-...` | Student profiles, levels, goals, and preferred subjects. |
-| **Teacher** | `jvtutorcorner-Teacher-...` | Teacher profiles, bios, ratings, and subjects taught. |
-| **Course** | `jvtutorcorner-courses` | Course details: title, price, sessions, status (Active/Pending Review). |
-| **Enrollment** | `jvtutorcorner-Enrollment-...` | Link between Students and Courses. Tracks status (Pending, Active, Paid). |
-| **Order** | `jvtutorcorner-orders` | Financial transaction records for enrollments. |
-| **Payment** | `jvtutorcorner-Payment-...` | Records of payments made to external providers. |
-| **UserPoints** | `jvtutorcorner-user-points` | Tracks student point balances for point-based enrollment. |
-| **PlanUpgrade** | `jvtutorcorner-plan-upgrades` | Records of plan or point purchase requests. |
-| **CourseRecord** | `jvtutorcorner-CourseRecord-...` | History of student activities and notes within a course. |
-| **TeacherReview** | `jvtutorcorner-teacher-reviews`| Admin logs for reviewing teacher profile modifications. |
-
----
-
-## 2. Core Operational Flows
-
-### 2.1 Student: Login to Plan Purchase
-Students can purchase membership plans or point packages to enroll in courses.
+### 2.1 Student: Onboarding & Recommendation flow
+Captures the visitor idle survey and post-registration questionnaire that fuels the recommendation engine.
 
 ```mermaid
 graph TD
-    A[Student Login] --> B{Choose Purchase Type}
-    B -->|Membership Plan| C[Select Plan]
-    B -->|Point Package| D[Select Points]
-    C --> E[Create PlanUpgrade Record]
-    D --> E
-    E --> F[Payment Gateway: Stripe/PayPal/ECPay/LinePay]
-    F --> G{Payment Success?}
-    G -->|Yes| H[Update Order Status to PAID]
-    H --> I{Item Type?}
-    I -->|PLAN| J[Update Student Profile: plan field]
-    I -->|POINTS| K[Update user-points Table: ADD balance]
-    G -->|No| L[Mark Order as FAILED]
+    Start[User Visit] -->|Visitor Idle 3m| IdleSurvey[Lite Survey: Drawer]
+    Start -->|Register| FullSurvey[Full Survey: 4 Questions]
+    IdleSurvey --> POST_Seeds[POST /api/survey/seeds]
+    FullSurvey --> POST_Seeds
+    POST_Seeds --> Engine[lib/recommendationEngine.ts]
+    Engine -->|TagScore + MMR| Recommendations[Top-10 Personalized Courses]
+    Recommendations --> Home[ClientHomePage: Showing Recommendations]
 ```
 
-### 2.2 Student: Course Enrollment
-Enrollment can be handled via direct payment or by deducting points.
+### 2.2 Student: Purchase & Enrollment Flow
+Supports points-based and direct enrollment through multiple payment gateways.
 
-#### Enrollment Flow (Standard)
 ```mermaid
 sequenceDiagram
     participant S as Student
-    participant E as Enrollment API
-    participant O as Order API
-    participant PG as Payment Gateway
-    participant C as Course Record
+    participant P as Pricing/Checkout
+    participant PG as Payment Gateway (PayPal/Stripe/LINE Pay)
+    participant O as Order API (/api/orders)
+    participant E as Enrollment API (/api/enroll)
 
+    S->>P: Select Plan/Points
+    P->>O: Create Order (PENDING)
+    P->>PG: Redirect to Payment
+    PG-->>O: Webhook Update (PAID)
+    O->>S: Update Points Balance
     S->>E: Click Enroll (Start Request)
-    E->>E: Create Enrollment (PENDING_PAYMENT)
-    E->>O: Create Order (PENDING)
-    O-->>S: Redirect to Payment
-    S->>PG: Complete Payment
-    PG->>O: Webhook Update (PAID)
-    O->>E: Sync Enrollment (ACTIVE)
-    E->>C: Initialize CourseRecord
+    E->>E: Check Points/Plan
+    E->>E: Sync Status (ACTIVE)
 ```
 
-#### Enrollment Flow (Points)
-1. **Deduct Points**: Calls `/api/points` to subtract the `pointCost` of the course.
-2. **Sync Status**: Updates `Enrollment` status to `PAID` immediately upon successful deduction.
-3. **Activation**: The enrollment becomes `ACTIVE`, granting access to course materials and sessions.
+### 2.3 Classroom: Wait Room & Session Flow
+Ensures teacher and student synchronization before entering the classroom.
 
----
+```mermaid
+graph TD
+    Entry[Enter /classroom/wait] --> DeviceCheck{Device Check?}
+    DeviceCheck -->|Passed| Ready[Click Ready]
+    Ready --> SSE[SSE /api/classroom/stream]
+    SSE --> Sync[Sync Status via BroadcastChannel]
+    Sync --> RoomEntry{Both Ready?}
+    RoomEntry -->|Yes| Room[Enter /classroom/room]
+    Room --> Agora[Agora Audio/Video]
+    Room --> Whiteboard[Interactive Whiteboard + PDF]
+```
 
-### 2.3 Teacher: Course Management
-Teachers manage their teaching content through the `courses_manage` dashboard.
+### 2.4 AI Chat: Agentic Tool Flow
+Detailed Ask-Plan-Execute cycle with vector memory.
 
 ```mermaid
 graph LR
-    T[Teacher] --> New[Create New Course]
-    New --> Status[Status: 待審核]
-    Status --> Admin[Admin Review]
-    Admin -->|Approve| Active[Status: 上架]
-    Admin -->|Reject| Draft[Status: 駁回/修改]
-    T --> Manage[Update Existing Course]
+    Input[User Message] --> API[/api/ai-chat]
+    API --> Memory[LanceDB searchMemory]
+    Memory --> AgentLoop[3-Agent Loop]
+    AgentLoop --> Ask[Ask Agent]
+    Ask --> Plan[Plan Agent]
+    Plan --> Execute[Execute Agent]
+    Execute --> Tools{Tool Call?}
+    Tools -->|Yes| RealTools[lib/platform-skills.ts]
+    RealTools --> Execute
+    Tools -->|No| Store[LanceDB addMemory]
+    Store --> Response[Display Reply + Tool Logs]
+```
+
+### 2.5 Admin: Management Flows
+Covers teacher profile review and order status management.
+
+```mermaid
+graph TD
+    Admin[Admin User] -->|Orders| OrderUI[/admin/orders]
+    OrderUI --> ManualUpdate[Update Status / Export CSV]
+    Admin -->|Teacher Profiles| ReviewUI[/admin/teacher-reviews]
+    ReviewUI --> Diff[Levenshtein Diff Comparison]
+    Diff -->|Approve| SyncTeacher[Sync to Teacher Profile]
+    Diff -->|Reject| Notify[Keep original]
+    Admin -->|Subscriptions| SubUI[/admin/subscriptions]
+    SubUI -->|Config| TogglePlans[Manage Plans Lifecycle]
 ```
 
 ---
 
-### 2.4 Course Feedback & Testimonials (學員見證)
-Currently, testimonials are displayed on the `/testimony` page and collected via `/testimony/rating`.
+## 2. Core Entities & Database Models
 
-- **Testimonials**: Stored as a curated list (often localized via i18n) or in a dedicated carousel table (`jvtutorcorner-carousel`).
-- **Student Ratings**: Collected post-course completion.
-    - **Logic**: Students select a completed course, give stars (1-5), and write content.
-    - **Integrity**: Only students with `finishedCourses` records are allowed to submit.
+The platform uses **AWS Amplify (AppSync/GraphQL)** and **DynamoDB** for data storage.
+
+| Model | Description |
+|-------|-------------|
+| **Student** | Profiles, levels, and point balances. |
+| **Teacher** | Bios, ratings, and in-职 status. |
+| **Course** | Title, price, sessions, and status (Active/Pending Review). |
+| **Enrollment** | Link between Students and Courses (ACTIVE/PAID). |
+| **Order** | Financial records (PENDING, PAID, CANCELLED). |
+| **UserInteractions** | Stores interaction data for recommendation engine. |
+| **AppIntegrations** | AI Service config (Gemini/OpenAI) and LanceDB settings. |
+| **TeacherReview** | Pending profile changes and historical review logs. |
 
 ---
 
@@ -140,22 +137,15 @@ Currently, testimonials are displayed on the `/testimony` page and collected via
 erDiagram
     STUDENT ||--o{ ENROLLMENT : owns
     STUDENT ||--o{ ORDER : pays
-    STUDENT ||--o{ USER_POINTS : has
+    STUDENT ||--o{ USER_INTERACTIONS : generates
     TEACHER ||--o{ COURSE : creates
+    TEACHER ||--o{ TEACHER_REVIEW : applies
     COURSE ||--o{ ENROLLMENT : includes
     ENROLLMENT ||--o| ORDER : generated_by
-    ORDER ||--o{ PAYMENT : contains
-    ORDER ||--o| ENROLLMENT : activates
-    TEACHER ||--o{ APPOINTMENT : scheduled_with
-    STUDENT ||--o{ APPOINTMENT : attends
-    COURSE ||--o{ APPOINTMENT : consists_of
-    STUDENT ||--o{ COURSE_RECORD : maintains
 ```
 
-## 4. Key API Endpoints for Skills
-- `/api/enroll`: Manage course enrollments.
-- `/api/orders`: Manage financial transactions and status.
-- `/api/points`: Deduct/Add point balances.
-- `/api/courses`: Create and fetch course data.
-- `/api/profile`: Update user information and subscription status.
-- `/api/plan-upgrades`: Handle membership and point purchases.
+## 4. Key Directory Structure
+- `/app/api/`: REST endpoints and Webhooks.
+- `/lib/`: Core service logic (Recommendation, AI Chat, LanceDB).
+- `/.agents/skills/`: Verified operational procedures for AI and Devs.
+- `/components/`: Reusable UI elements (Whiteboard, AI Widget).

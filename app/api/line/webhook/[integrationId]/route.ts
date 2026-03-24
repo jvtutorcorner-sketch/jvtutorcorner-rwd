@@ -175,15 +175,16 @@ async function downloadLineImage(messageId: string, channelAccessToken: string):
         console.log(`[LINE Webhook] Downloading image for messageId: ${messageId}`);
         console.log(`[LINE Webhook] Channel Access Token exists: ${!!channelAccessToken}`);
         
-        // 方法 1: 使用官方 API 端點
-        const url1 = `https://api.line.me/v2/bot/message/${messageId}/content`;
-        console.log(`[LINE Webhook] Trying method 1: ${url1}`);
+        // 方法 1: 使用官方最新的 Data API 端點
+        const url1 = `https://api-data.line.me/v2/bot/message/${messageId}/content`;
+        console.log(`[LINE Webhook] Trying method 1 (api-data.line.me): ${url1}`);
         
         let res = await fetch(url1, {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${channelAccessToken}`
-            }
+            },
+            cache: 'no-store' // 避免 Next.js 快取
         });
 
         console.log(`[LINE Webhook] Method 1 response status: ${res.status} ${res.statusText}`);
@@ -195,15 +196,16 @@ async function downloadLineImage(messageId: string, channelAccessToken: string):
             return buffer;
         }
 
-        // 如果失敗，嘗試方法 2: obs.line-scdn.net
-        const url2 = `https://obs.line-scdn.net/${messageId}`;
-        console.log(`[LINE Webhook] Method 1 failed (${res.status}), trying method 2: ${url2}`);
+        // 如果失敗，嘗試方法 2: 舊版官方 API 端點
+        const url2 = `https://api.line.me/v2/bot/message/${messageId}/content`;
+        console.log(`[LINE Webhook] Method 1 failed (${res.status}), trying method 2 (api.line.me): ${url2}`);
         
         res = await fetch(url2, {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${channelAccessToken}`
-            }
+            },
+            cache: 'no-store'
         });
 
         console.log(`[LINE Webhook] Method 2 response status: ${res.status} ${res.statusText}`);
@@ -216,7 +218,7 @@ async function downloadLineImage(messageId: string, channelAccessToken: string):
         }
 
         // 兩種方法都失敗
-        const errorText = await res.text();
+        const errorText = await res.text().catch(e => 'Could not read error text');
         console.error(`[LINE Webhook] Both methods failed. Final status: ${res.status} ${res.statusText}`);
         console.error(`[LINE Webhook] Error response: ${errorText.substring(0, 200)}`);
         return null;
@@ -780,18 +782,18 @@ export async function GET(request: Request, context: { params: Promise<{ integra
                 startsWithExpected: channelAccessToken.startsWith('Y') ? 'Yes (likely valid)' : 'Unknown'
             },
             method1: {
-                url: `https://api.line.me/v2/bot/message/${messageId}/content`,
-                status: null,
-                statusText: null,
-                size: null,
-                error: null
+                url: `https://api-data.line.me/v2/bot/message/${messageId}/content`,
+                status: null as number | null,
+                statusText: null as string | null,
+                size: null as number | null,
+                error: null as string | null
             },
             method2: {
-                url: `https://obs.line-scdn.net/${messageId}`,
-                status: null,
-                statusText: null,
-                size: null,
-                error: null
+                url: `https://api.line.me/v2/bot/message/${messageId}/content`,
+                status: null as number | null,
+                statusText: null as string | null,
+                size: null as number | null,
+                error: null as string | null
             }
         };
         
@@ -802,7 +804,8 @@ export async function GET(request: Request, context: { params: Promise<{ integra
                 method: 'GET',
                 headers: {
                     'Authorization': `Bearer ${channelAccessToken}`
-                }
+                },
+                cache: 'no-store'
             });
             
             results.method1.status = res1.status;
@@ -813,7 +816,7 @@ export async function GET(request: Request, context: { params: Promise<{ integra
                 results.method1.size = buffer.byteLength;
                 console.log(`[LINE Webhook DEBUG GET] Method 1 success: ${buffer.byteLength} bytes`);
             } else {
-                const errorText = await res1.text();
+                const errorText = await res1.text().catch(e => 'Could not read error text');
                 results.method1.error = errorText.substring(0, 300);
                 console.log(`[LINE Webhook DEBUG GET] Method 1 failed: ${res1.status} - ${errorText.substring(0, 100)}`);
             }
@@ -829,7 +832,8 @@ export async function GET(request: Request, context: { params: Promise<{ integra
                 method: 'GET',
                 headers: {
                     'Authorization': `Bearer ${channelAccessToken}`
-                }
+                },
+                cache: 'no-store'
             });
             
             results.method2.status = res2.status;
@@ -840,7 +844,7 @@ export async function GET(request: Request, context: { params: Promise<{ integra
                 results.method2.size = buffer.byteLength;
                 console.log(`[LINE Webhook DEBUG GET] Method 2 success: ${buffer.byteLength} bytes`);
             } else {
-                const errorText = await res2.text();
+                const errorText = await res2.text().catch(e => 'Could not read error text');
                 results.method2.error = errorText.substring(0, 300);
                 console.log(`[LINE Webhook DEBUG GET] Method 2 failed: ${res2.status} - ${errorText.substring(0, 100)}`);
             }

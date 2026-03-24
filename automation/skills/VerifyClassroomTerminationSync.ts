@@ -23,7 +23,7 @@ export class VerifyClassroomTerminationSyncSkill {
             await page.goto(`${url}/login`);
             await page.fill('#email', email);
             await page.fill('#password', password);
-            await page.fill('#captcha', 'qa_bypass_0816');
+            await page.fill('#captcha', 'jv_secret_bypass_2024');
             await Promise.all([
                 page.waitForNavigation({ waitUntil: 'networkidle' }),
                 page.click('button[type="submit"]')
