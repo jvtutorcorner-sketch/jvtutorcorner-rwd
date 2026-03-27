@@ -87,6 +87,10 @@ export default function AppAccessSettings() {
     if (loading || !internalSettings) return <div style={{ padding: 16 }}>Loading App Access settings…</div>;
 
     const apps = internalSettings.appConfigs || [];
+    
+    // Separate categories and services
+    const categories = apps.filter(app => app.id.startsWith('APP_CATEGORY_'));
+    const services = apps.filter(app => !app.id.startsWith('APP_CATEGORY_'));
 
     if (apps.length === 0) {
         return (
@@ -96,24 +100,15 @@ export default function AppAccessSettings() {
         );
     }
 
-    return (
-        <div className="p-4 bg-white border border-gray-200 rounded-lg shadow-sm">
-            <div className="flex justify-between items-center mb-4">
-                <h3 className="m-0 text-lg font-semibold text-gray-800">應用程式存取權限列表</h3>
-                <button
-                    onClick={save}
-                    disabled={saving || !hasChanges}
-                    className={`px-4 py-2 text-sm font-medium text-white rounded-md border-none transition-colors ${!hasChanges ? 'bg-gray-400 cursor-not-allowed opacity-60' : 'bg-blue-600 hover:bg-blue-700 cursor-pointer'}`}
-                >
-                    {saving ? '儲存中...' : '儲存變更'}
-                </button>
-            </div>
-
+    // Helper component for rendering permission table
+    const PermissionTable = ({ items, title }: { items: AppConfig[], title: string }) => (
+        <div className="mb-6">
+            <h4 className="text-sm font-semibold text-gray-700 mb-3 border-b pb-2">{title}</h4>
             <div className="overflow-x-auto">
                 <table className="w-full text-sm text-left border-collapse border border-gray-200">
                     <thead className="bg-gray-50 text-gray-700">
                         <tr>
-                            <th className="px-4 py-3 border-b border-gray-200 font-medium">應用程式服務</th>
+                            <th className="px-4 py-3 border-b border-gray-200 font-medium">項目</th>
                             {internalRoles.filter(r => r.isActive).map(r => (
                                 <th key={r.id} className="px-4 py-3 border-b border-gray-200 font-medium text-center min-w-[80px]">
                                     {r.name}
@@ -122,7 +117,7 @@ export default function AppAccessSettings() {
                         </tr>
                     </thead>
                     <tbody>
-                        {apps.map(app => (
+                        {items.map(app => (
                             <tr key={app.id} className="hover:bg-gray-50 border-b border-gray-100 last:border-b-0">
                                 <td className="px-4 py-3">
                                     <div className="font-semibold text-gray-900">{app.label || app.id}</div>
@@ -171,9 +166,41 @@ export default function AppAccessSettings() {
                     </tbody>
                 </table>
             </div>
-            <p className="mt-4 text-xs text-gray-500">
-                * 勾選表示該角色可以在 /apps 儀表板與系統中存取及設定此應用程式功能。若未勾選，使用者將無法看到該應用程式。
-            </p>
+        </div>
+    );
+
+    return (
+        <div className="p-4 bg-white border border-gray-200 rounded-lg shadow-sm">
+            <div className="flex justify-between items-center mb-6">
+                <h3 className="m-0 text-lg font-semibold text-gray-800">應用程式存取權限管理</h3>
+                <button
+                    onClick={save}
+                    disabled={saving || !hasChanges}
+                    className={`px-4 py-2 text-sm font-medium text-white rounded-md border-none transition-colors ${!hasChanges ? 'bg-gray-400 cursor-not-allowed opacity-60' : 'bg-blue-600 hover:bg-blue-700 cursor-pointer'}`}
+                >
+                    {saving ? '儲存中...' : '儲存變更'}
+                </button>
+            </div>
+
+            {categories.length > 0 && (
+                <PermissionTable items={categories} title="📋 分類卡權限設定" />
+            )}
+
+            {services.length > 0 && (
+                <PermissionTable items={services} title="🔌 應用程式服務權限設定" />
+            )}
+
+            <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="m-0 text-xs text-blue-800">
+                    <strong>💡 說明：</strong>
+                    <br/>
+                    • <strong>分類卡權限</strong> 控制主選單中是否顯示該分類（例如「通訊渠道」、「金流服務」等）
+                    <br/>
+                    • <strong>應用程式服務權限</strong> 控制該角色是否可以存取及設定該應用程式
+                    <br/>
+                    • 勾選表示該角色可見；未勾選表示隱藏
+                </p>
+            </div>
         </div>
     );
 }

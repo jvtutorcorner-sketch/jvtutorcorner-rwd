@@ -18,7 +18,7 @@ export interface TestResult {
 export const PAYMENT_TYPES = ['ECPAY', 'PAYPAL', 'STRIPE', 'LINEPAY', 'JKOPAY'];
 export const CHANNEL_TYPES = ['LINE', 'TELEGRAM', 'WHATSAPP', 'MESSENGER', 'SLACK', 'TEAMS', 'DISCORD', 'WECHAT'];
 export const EMAIL_TYPES = ['RESEND', 'BREVO'];
-export const DATABASE_TYPES = ['DYNAMODB', 'LANCEDB', 'KNOWLEDGE_BASE'];
+export const DATABASE_TYPES = ['DYNAMODB'];
 export const AI_CONTAINER_TYPES = ['AI_CHATROOM', 'ASK_PLAN_AGENT', 'SMART_ROUTER'];
 
 export type MetaEntry = { badge: string; label: string; icon: string; desc: string };
@@ -58,8 +58,6 @@ export const EMAIL_META: Record<string, MetaEntry> = {
 
 export const DATABASE_META: Record<string, MetaEntry> = {
     DYNAMODB: { badge: 'bg-orange-100 text-orange-800', label: 'DynamoDB 資料庫', icon: '🗄️', desc: 'AWS 無伺服器資料庫，為 AI 聊天室提供高速知識庫搜尋' },
-    LANCEDB: { badge: 'bg-emerald-100 text-emerald-800', label: 'LanceDB 向量資料庫', icon: '🧠', desc: '嵌入式向量資料庫，提供 AI 記憶增強與高效語義搜尋' },
-    KNOWLEDGE_BASE: { badge: 'bg-purple-100 text-purple-800', label: '知識庫', icon: '📚', desc: '自訂知識庫，儲存組織特定資訊供 AI 聊天室參考' },
 };
 
 export const LABEL_MAP: Record<string, string> = {

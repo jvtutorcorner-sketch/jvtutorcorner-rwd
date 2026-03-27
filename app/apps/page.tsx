@@ -1,9 +1,10 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAppsPage } from './_hooks/useAppsPage';
-import { CHANNEL_TYPES, PAYMENT_TYPES, EMAIL_TYPES, DATABASE_TYPES, AI_CONTAINER_TYPES } from './_types';
+import { CHANNEL_TYPES, PAYMENT_TYPES, EMAIL_TYPES, AI_CONTAINER_TYPES } from './_types';
 import AppConfigModal from './components/AppConfigModal';
 import SyncModal from './components/SyncModal';
 import SkillPreviewModal from './components/SkillPreviewModal';
@@ -16,7 +17,6 @@ import AIChatroomSection from './components/sections/AIChatroomSection';
 import PlatformAgentsSection from './components/sections/PlatformAgentsSection';
 import AskPlanAgentSection from './components/sections/AskPlanAgentSection';
 import EmailSection from './components/sections/EmailSection';
-import DatabaseSection from './components/sections/DatabaseSection';
 import ConnectedAppsList from './components/ConnectedAppsList';
 
 export default function AppsPage() {
@@ -53,6 +53,9 @@ export default function AppsPage() {
 
     const handleOpenReport = () => router.push('/dashboard/daily-report');
 
+    // Tab state management
+    const [activeTab, setActiveTab] = useState<'general' | 'ai' | 'automation'>('general');
+
     // Visibility derived from permissions OR existing connected apps
     const showChannels = categoryPermissions.APP_CATEGORY_CHANNEL || apps.some(a => CHANNEL_TYPES.includes(a.type));
     const showPayments = categoryPermissions.APP_CATEGORY_PAYMENT || apps.some(a => PAYMENT_TYPES.includes(a.type));
@@ -60,9 +63,14 @@ export default function AppsPage() {
     const showAIChatroom = categoryPermissions.APP_CATEGORY_AI_CHATROOM || apps.some(a => a.type === 'AI_CHATROOM');
     const showAskPlanAgent = categoryPermissions.APP_CATEGORY_ASK_PLAN_AGENT || apps.some(a => a.type === 'ASK_PLAN_AGENT');
     const showEmail = categoryPermissions.APP_CATEGORY_EMAIL || apps.some(a => EMAIL_TYPES.includes(a.type));
-    const showDatabase = categoryPermissions.APP_CATEGORY_DATABASE || apps.some(a => DATABASE_TYPES.includes(a.type));
     const showAutomation = categoryPermissions.APP_CATEGORY_AUTOMATION;
     const showSkills = categoryPermissions.APP_CATEGORY_SKILLS ?? true;
+
+    // Check if any AI features should be shown
+    const showAITab = showAI || showAIChatroom || showAskPlanAgent;
+
+    // Check if automation should show as separate tab
+    const showAutomationTab = showAutomation;
 
     // Shared section props
     const sectionCommon = { apps, getConnectedApps, testingId, testResults, handleTest, openModal };
@@ -71,7 +79,7 @@ export default function AppsPage() {
         <div className="page p-6 max-w-5xl mx-auto">
             <header className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-8">
                 <div>
-                    <h1 className="text-3xl font-bold text-gray-900 dark:text-white">系統設定</h1>
+                    <h1 className="text-3xl font-bold text-gray-900 dark:text-white">應用程式</h1>
                     <p className="text-gray-600 dark:text-gray-400 mt-1">管理您的通訊渠道與金流串接</p>
                 </div>
                 <div>
@@ -84,38 +92,96 @@ export default function AppsPage() {
                 </div>
             </header>
 
+            {/* Tab Navigation */}
+            {(showAITab || showAutomationTab) && (
+                <div className="mb-6 flex gap-2 border-b border-gray-200 dark:border-gray-700">
+                    <button
+                        onClick={() => setActiveTab('general')}
+                        className={`px-4 py-3 font-semibold text-sm border-b-2 transition-colors ${
+                            activeTab === 'general'
+                                ? 'text-blue-600 dark:text-blue-400 border-blue-600 dark:border-blue-400'
+                                : 'text-gray-600 dark:text-gray-400 border-transparent hover:text-gray-900 dark:hover:text-gray-300'
+                        }`}
+                    >
+                        基本設定
+                    </button>
+                    {showAutomationTab && (
+                        <button
+                            onClick={() => setActiveTab('automation')}
+                            className={`px-4 py-3 font-semibold text-sm border-b-2 transition-colors flex items-center gap-2 ${
+                                activeTab === 'automation'
+                                    ? 'text-blue-600 dark:text-blue-400 border-blue-600 dark:border-blue-400'
+                                    : 'text-gray-600 dark:text-gray-400 border-transparent hover:text-gray-900 dark:hover:text-gray-300'
+                            }`}
+                        >
+                            <span>⚙️</span>
+                            自動化
+                        </button>
+                    )}
+                    {showAITab && (
+                        <button
+                            onClick={() => setActiveTab('ai')}
+                            className={`px-4 py-3 font-semibold text-sm border-b-2 transition-colors flex items-center gap-2 ${
+                                activeTab === 'ai'
+                                    ? 'text-blue-600 dark:text-blue-400 border-blue-600 dark:border-blue-400'
+                                    : 'text-gray-600 dark:text-gray-400 border-transparent hover:text-gray-900 dark:hover:text-gray-300'
+                            }`}
+                        >
+                            <span>🤖</span>
+                            AI 功能
+                        </button>
+                    )}
+                </div>
+            )}
+
             {loading ? (
                 <div className="flex justify-center items-center h-64">
                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
                 </div>
             ) : (
                 <>
-                    {showChannels && <ChannelsSection {...sectionCommon} />}
-                    {showPayments && <PaymentsSection {...sectionCommon} />}
-                    {showAutomation && (
-                        <AutomationSection
-                            cronStatus={cronStatus}
-                            fetchingCronStatus={fetchingCronStatus}
-                            copySuccess={copySuccess}
-                            fetchCronStatus={fetchCronStatus}
-                            handleCopyToken={handleCopyToken}
-                            handleOpenReport={handleOpenReport}
-                        />
+                    {/* General Tab */}
+                    {activeTab === 'general' && (
+                        <>
+                            {showChannels && <ChannelsSection {...sectionCommon} />}
+                            {showPayments && <PaymentsSection {...sectionCommon} />}
+                            {showEmail && <EmailSection {...sectionCommon} />}
+                            <ConnectedAppsList apps={apps} aiTypes={aiTypes} openModal={openModal} />
+                        </>
                     )}
-                    {showSkills && <SkillsSection setSelectedSkillPreview={setSelectedSkillPreview} />}
-                    {showAI && (
-                        <AIToolsSection
-                            {...sectionCommon}
-                            aiTypes={aiTypes}
-                            setShowSyncModal={setShowSyncModal}
-                        />
+
+                    {/* Automation Tab */}
+                    {activeTab === 'automation' && (
+                        <>
+                            {showAutomation && (
+                                <AutomationSection
+                                    cronStatus={cronStatus}
+                                    fetchingCronStatus={fetchingCronStatus}
+                                    copySuccess={copySuccess}
+                                    fetchCronStatus={fetchCronStatus}
+                                    handleCopyToken={handleCopyToken}
+                                    handleOpenReport={handleOpenReport}
+                                />
+                            )}
+                        </>
                     )}
-                    {showAIChatroom && <AIChatroomSection {...sectionCommon} />}
-                    <PlatformAgentsSection />
-                    {showAskPlanAgent && <AskPlanAgentSection {...sectionCommon} />}
-                    {showEmail && <EmailSection {...sectionCommon} />}
-                    {showDatabase && <DatabaseSection {...sectionCommon} />}
-                    <ConnectedAppsList apps={apps} aiTypes={aiTypes} openModal={openModal} />
+
+                    {/* AI Tab */}
+                    {activeTab === 'ai' && (
+                        <>
+                            {showSkills && <SkillsSection setSelectedSkillPreview={setSelectedSkillPreview} />}
+                            {showAI && (
+                                <AIToolsSection
+                                    {...sectionCommon}
+                                    aiTypes={aiTypes}
+                                    setShowSyncModal={setShowSyncModal}
+                                />
+                            )}
+                            {showAIChatroom && <AIChatroomSection {...sectionCommon} />}
+                            <PlatformAgentsSection />
+                            {showAskPlanAgent && <AskPlanAgentSection {...sectionCommon} />}
+                        </>
+                    )}
                 </>
             )}
 

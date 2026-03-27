@@ -108,6 +108,7 @@ export function useAppsPage() {
         APP_CATEGORY_ASK_PLAN_AGENT: true,
         APP_CATEGORY_EMAIL: true,
         APP_CATEGORY_DATABASE: true,
+        APP_CATEGORY_SKILLS: true,
     });
     const [cronStatus, setCronStatus] = useState<{ hasReport: boolean; report?: any; message?: string } | null>(null);
     const [fetchingCronStatus, setFetchingCronStatus] = useState(false);

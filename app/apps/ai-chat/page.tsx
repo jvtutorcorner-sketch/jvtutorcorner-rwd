@@ -34,8 +34,8 @@ type DispatchResult = {
 // ─── Agent Color Map ──────────────────────────────────────────────────────────
 const COLOR_CLASSES: Record<string, { bg: string; border: string; text: string; pill: string }> = {
     blue: { bg: 'bg-blue-50 dark:bg-blue-900/20', border: 'border-blue-200 dark:border-blue-800', text: 'text-blue-700 dark:text-blue-300', pill: 'bg-blue-600' },
-    green: { bg: 'bg-green-50 dark:bg-green-900/20', border: 'border-green-200 dark:border-green-800', text: 'text-green-700 dark:text-green-300', pill: 'bg-green-600' },
-    emerald: { bg: 'bg-emerald-50 dark:bg-emerald-900/20', border: 'border-emerald-200 dark:border-emerald-800', text: 'text-emerald-700 dark:text-emerald-300', pill: 'bg-emerald-600' },
+    green: { bg: 'bg-green-50/50 dark:bg-green-900/10', border: 'border-green-100 dark:border-green-800/50', text: 'text-green-600 dark:text-green-400', pill: 'bg-green-600' },
+    emerald: { bg: 'bg-teal-50 dark:bg-teal-900/20', border: 'border-teal-200 dark:border-teal-800', text: 'text-teal-700 dark:text-teal-300', pill: 'bg-teal-600' },
     violet: { bg: 'bg-violet-50 dark:bg-violet-900/20', border: 'border-violet-200 dark:border-violet-800', text: 'text-violet-700 dark:text-violet-300', pill: 'bg-violet-600' },
     amber: { bg: 'bg-amber-50 dark:bg-amber-900/20', border: 'border-amber-200 dark:border-amber-800', text: 'text-amber-700 dark:text-amber-300', pill: 'bg-amber-500' },
     slate: { bg: 'bg-slate-50 dark:bg-slate-800/50', border: 'border-slate-200 dark:border-slate-700', text: 'text-slate-700 dark:text-slate-300', pill: 'bg-slate-600' },
@@ -106,16 +106,16 @@ function AgentPanel({
                                         key={agent.id}
                                         onClick={() => { onSelect(agent); onClose(); }}
                                         className={`w-full flex items-start gap-2.5 px-3 py-2.5 rounded-xl text-left transition-all ${isActive
-                                            ? `${c.bg} ${c.border} border-2`
+                                            ? `${c.pill} text-white shadow-sm`
                                             : 'hover:bg-gray-100 dark:hover:bg-gray-700/50 border-2 border-transparent'}`}
                                     >
                                         <span className="text-lg shrink-0 mt-0.5">{agent.icon}</span>
                                         <div className="min-w-0">
-                                            <p className={`text-sm font-bold leading-tight ${isActive ? c.text : 'text-gray-900 dark:text-white'}`}>
+                                            <p className={`text-sm font-bold leading-tight ${isActive ? 'text-white' : 'text-gray-900 dark:text-white'}`}>
                                                 {agent.name}
-                                                {isActive && <span className="ml-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full opacity-70 bg-current/10">使用中</span>}
+                                                {isActive && <span className="ml-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-white/20 text-white">使用中</span>}
                                             </p>
-                                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 leading-snug line-clamp-2">{agent.desc}</p>
+                                            <p className={`text-xs mt-1 leading-snug line-clamp-2 ${isActive ? 'text-white/80' : 'text-gray-500 dark:text-gray-400'}`}>{agent.desc}</p>
                                         </div>
                                     </button>
                                 );
@@ -137,10 +137,10 @@ function DispatchCard({
     onSelectAgent: (a: PlatformAgent) => void;
 }) {
     return (
-        <div className="bg-white dark:bg-gray-800 border border-purple-200 dark:border-purple-800 rounded-2xl rounded-tl-sm overflow-hidden shadow-sm max-w-lg">
-            <div className="bg-gradient-to-r from-purple-600 to-indigo-600 px-4 py-2.5 flex items-center gap-2">
-                <span className="text-white text-sm">🧭</span>
-                <p className="text-white text-xs font-bold">Agent 調度建議</p>
+        <div className="bg-white dark:bg-gray-800 border border-purple-300 dark:border-purple-600 rounded-2xl rounded-tl-sm overflow-hidden shadow-md max-w-lg mb-2">
+            <div className="bg-gradient-to-r from-purple-500 to-indigo-500 px-4 py-3 flex items-center gap-2">
+                <span className="text-white text-base">🧭</span>
+                <p className="text-white text-sm font-black tracking-wide">Agent 調度建議</p>
                 {result.confidence > 0 && (
                     <span className="ml-auto text-[10px] bg-white/20 text-white px-2 py-0.5 rounded-full font-medium">
                         {Math.round(result.confidence * 100)}% 信心度
@@ -162,7 +162,7 @@ function DispatchCard({
                                 <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-2 flex-wrap">
                                         <p className={`text-sm font-bold ${c.text}`}>{agent.name}</p>
-                                        {idx === 0 && <span className="text-[9px] font-bold bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-1.5 py-0.5 rounded-full">推薦</span>}
+                                        {idx === 0 && <span className="text-[9px] font-black bg-indigo-600 text-white px-2 py-0.5 rounded-full shadow-sm">推薦</span>}
                                     </div>
                                     <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 leading-snug">{agent.desc}</p>
                                 </div>
@@ -196,6 +196,8 @@ export default function AppsChatPage() {
     const [activeAgent, setActiveAgent] = useState<PlatformAgent | null>(null);
     const [allAgents, setAllAgents] = useState<PlatformAgent[]>([]);
     const [agentPanelOpen, setAgentPanelOpen] = useState(false);
+    const [useSmartRouter, setUseSmartRouter] = useState(false);
+    const [usePromptCache, setUsePromptCache] = useState(false);
     const [aiStatus, setAiStatus] = useState<{ configured: boolean } | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -287,14 +289,19 @@ export default function AppsChatPage() {
             const res = await fetch('/api/ai-chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ messages: allMsgs, agentId: activeAgent?.id }),
+                body: JSON.stringify({ messages: allMsgs, agentId: activeAgent?.id, useSmartRouter, usePromptCache }),
             });
             if (!res.ok) throw new Error('Network error');
             const data = await res.json();
+            
+            let displayContent = data.reply;
+            if (data.isCached) displayContent += '\n\n⚡ *(來自快取 Cached)*';
+            if (useSmartRouter && data.routingReason) displayContent += `\n\n🧭 *(智慧路由至 ${data.modelUsed}: ${data.routingReason})*`;
+
             setMessages(prev => [...prev, {
                 id: uuidv4(),
                 role: 'assistant',
-                content: data.reply,
+                content: displayContent,
                 agentId: activeAgent?.id,
                 agentName: activeAgent?.name,
                 agentIcon: activeAgent?.icon,
@@ -463,8 +470,8 @@ export default function AppsChatPage() {
                                 <div className="flex flex-col gap-1 max-w-[80%] lg:max-w-[75%]">
                                     {/* Agent name label */}
                                     {m.role === 'assistant' && m.agentName && (
-                                        <div className="flex items-center gap-1.5 ml-1">
-                                            <p className="text-[10px] font-bold text-gray-400 dark:text-gray-500">{m.agentName}</p>
+                                        <div className="flex items-center gap-1.5 ml-1 mb-1">
+                                            <p className="text-xs font-black text-gray-500 dark:text-gray-400 uppercase tracking-wider">{m.agentName}</p>
                                             {m.executionEnvironment && (() => {
                                                 const envMeta = EXECUTION_ENVIRONMENT_META[m.executionEnvironment];
                                                 return (
@@ -505,9 +512,9 @@ export default function AppsChatPage() {
 
                                     {/* Normal message bubble */}
                                     {!m.isDispatchResult && (
-                                        <div className={`px-4 py-3 rounded-2xl shadow-sm text-sm leading-relaxed whitespace-pre-wrap
+                                        <div className={`px-5 py-4 rounded-2xl shadow-md text-base leading-relaxed whitespace-pre-wrap font-medium
                                             ${m.role === 'user'
-                                                ? 'bg-gradient-to-br from-indigo-600 to-purple-600 text-white rounded-tr-sm'
+                                                ? 'bg-gradient-to-br from-indigo-500 to-purple-500 text-white rounded-tr-sm'
                                                 : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 border border-gray-200 dark:border-gray-700 rounded-tl-sm ring-1 ring-black/5 dark:ring-white/5'}`}>
                                             {m.content}
                                         </div>
@@ -566,6 +573,18 @@ export default function AppsChatPage() {
                                 ))}
                             </div>
                         )}
+
+                        {/* Model options toggles */}
+                        <div className="flex items-center gap-4 mb-3">
+                            <label className="flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-gray-600 dark:text-gray-300">
+                                <input type="checkbox" checked={useSmartRouter} onChange={(e) => setUseSmartRouter(e.target.checked)} className="rounded text-indigo-600 focus:ring-indigo-500 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600" />
+                                <span>🧠 智慧模型路由</span>
+                            </label>
+                            <label className="flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-gray-600 dark:text-gray-300">
+                                <input type="checkbox" checked={usePromptCache} onChange={(e) => setUsePromptCache(e.target.checked)} className="rounded text-indigo-600 focus:ring-indigo-500 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600" />
+                                <span>⚡ 快取優化</span>
+                            </label>
+                        </div>
 
                         <div className="flex gap-2.5">
                             <textarea
