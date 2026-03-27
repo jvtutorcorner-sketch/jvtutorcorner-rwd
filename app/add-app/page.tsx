@@ -295,7 +295,7 @@ function AddAppForm() {
 
     // For Database
     const [selectedDatabaseType, setSelectedDatabaseType] = useState(
-        ['DYNAMODB', 'LANCEDB', 'KNOWLEDGE_BASE'].includes(providerFromUrl) ? providerFromUrl : ''
+        ['DYNAMODB'].includes(providerFromUrl) ? providerFromUrl : ''
     );
     const [databaseData, setDatabaseData] = useState({
         name: '',
@@ -596,15 +596,6 @@ function AddAppForm() {
                         partitionKey: databaseData.partitionKey,
                         sortKey: databaseData.sortKey,
                         region: databaseData.region,
-                    };
-                } else if (selectedDatabaseType === 'LANCEDB') {
-                    config = {
-                        tableName: databaseData.tableName || 'memories',
-                        databasePath: './data/lancedb',
-                    };
-                } else if (selectedDatabaseType === 'KNOWLEDGE_BASE') {
-                    config = {
-                        description: databaseData.description,
                     };
                 }
 
@@ -1511,8 +1502,8 @@ function AddAppForm() {
                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                                         選擇資料庫類型 <span className="text-red-500">*</span>
                                     </label>
-                                    <div className="grid grid-cols-2 gap-3">
-                                        {['DYNAMODB', 'KNOWLEDGE_BASE'].map((dbType) => (
+                                    <div className="grid grid-cols-1">
+                                        {['DYNAMODB'].map((dbType) => (
                                             <button
                                                 key={dbType}
                                                 type="button"
@@ -1521,8 +1512,8 @@ function AddAppForm() {
                                                     ? 'border-orange-500 bg-orange-50 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-400'
                                                     : 'border-gray-200 bg-white text-gray-600 hover:border-orange-300 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600'}`}
                                             >
-                                                <span className="text-2xl">{dbType === 'DYNAMODB' ? '🗄️' : '📚'}</span>
-                                                <span>{dbType === 'DYNAMODB' ? 'DynamoDB 資料庫' : '知識庫'}</span>
+                                                <span className="text-2xl">🗄️</span>
+                                                <span>DynamoDB 資料庫</span>
                                             </button>
                                         ))}
                                     </div>
@@ -1594,29 +1585,7 @@ function AddAppForm() {
                                     </div>
                                 )}
 
-                                {selectedDatabaseType === 'KNOWLEDGE_BASE' && (
-                                    <div className="space-y-4 p-4 border border-purple-200 dark:border-purple-800 rounded-lg bg-purple-50/50 dark:bg-purple-900/10">
-                                        <p className="text-xs text-purple-700 dark:text-purple-300 font-medium">
-                                            📚 建立自訂知識庫，讓 AI 在回答問題時能參考您提供的資料
-                                        </p>
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                                知識庫描述 <span className="text-gray-400">選填</span>
-                                            </label>
-                                            <textarea
-                                                name="description"
-                                                value={databaseData.description}
-                                                onChange={handleDatabaseChange}
-                                                placeholder="描述此知識庫的用途，例如：平台課程 FAQ 與教師資訊"
-                                                rows={3}
-                                                className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white resize-none"
-                                            />
-                                        </div>
-                                        <div className="p-3 bg-purple-100 dark:bg-purple-900/20 rounded-lg text-xs text-purple-700 dark:text-purple-300">
-                                            💡 建立此知識庫後，您可以在 <strong>/apps</strong> 的 AI 聊天室設定中將其連結，AI 將在回答時優先參考這些內容。
-                                        </div>
-                                    </div>
-                                )}
+
                             </>
                         ) : isEmail ? (
                             <>
