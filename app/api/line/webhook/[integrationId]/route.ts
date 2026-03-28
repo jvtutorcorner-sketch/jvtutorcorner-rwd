@@ -578,20 +578,6 @@ export async function POST(request: Request, context: { params: Promise<{ integr
 
         let appInfo = await getAppIntegration(integrationId);
 
-        // In simulation mode, if DynamoDB-backed lookup failed, try local .local_data file
-        if (isSimulation && (!appInfo || appInfo.type !== 'LINE' || !appInfo.config)) {
-            try {
-                const FILE = await resolveDataFile('app-integrations.json');
-                if (fs.existsSync(FILE)) {
-                    const data = JSON.parse(fs.readFileSync(FILE, 'utf8'));
-                    const found = data.find((i: any) => i.integrationId === integrationId);
-                    if (found) appInfo = found;
-                }
-            } catch (e) {
-                console.error('[LINE Webhook] Simulation local app-integrations lookup failed:', e);
-            }
-        }
-
         if (!appInfo || appInfo.type !== 'LINE' || !appInfo.config) {
             console.error(`[LINE Webhook] Integration not found or invalid: ${integrationId}`);
             return new NextResponse('Integration not found', { status: 404 });
@@ -609,6 +595,23 @@ export async function POST(request: Request, context: { params: Promise<{ integr
         const rawBody = await request.text();
         const signature = request.headers.get('x-line-signature') || '';
         const isSimulation = request.headers.get('x-simulation') === 'true';
+
+        // In simulation mode, if DynamoDB-backed lookup failed earlier, try local .local_data file
+        if (isSimulation && (!appInfo || appInfo.type !== 'LINE' || !appInfo.config)) {
+            try {
+                const FILE = await resolveDataFile('app-integrations.json');
+                if (fs.existsSync(FILE)) {
+                    const data = JSON.parse(fs.readFileSync(FILE, 'utf8'));
+                    const found = data.find((i: any) => i.integrationId === integrationId);
+                    if (found) {
+                        appInfo = found;
+                        console.log('[LINE Webhook] Loaded appInfo from local app-integrations.json for simulation:', integrationId);
+                    }
+                }
+            } catch (e) {
+                console.error('[LINE Webhook] Simulation local app-integrations lookup failed:', e);
+            }
+        }
 
         console.log(`[LINE Webhook] Body length: ${rawBody.length}, Signature present: ${!!signature}`);
 
