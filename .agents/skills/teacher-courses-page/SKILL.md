@@ -3,13 +3,7 @@ name: teacher-courses-page
 description: '檢查 /teacher_courses 頁面的學生資訊、進入教室按鈕、時間驗證、以及剩餘課程數/時間的正確性。'
 argument-hint: '測試並驗證 /teacher_courses 頁面的所有功能'
 metadata:
-  verified-status: '❌ UNVERIFIED'
-  last-verified-date: '-'
-  architecture-aligned: false
-  architecture-aligned: false
-  last-verified-date: '-'
-  verified-status: ❌ UNVERIFIED
-  verified-status: ✅ VERIFIED
+  verified-status: '✅ VERIFIED'
   last-verified-date: '2026-03-15'
   architecture-aligned: true
 ---
@@ -103,3 +97,15 @@ npx playwright test e2e/teacher_courses_verification.spec.ts --project=chromium
 ## 相關檔案
 - `/app/teacher_courses/page.tsx` - 教師課程頁面主邏輯
 - `e2e/teacher_courses_verification.spec.ts` - 自動化測試腳本
+
+## 環境切換 (Environment Switching)
+
+此 skill 同時支援 **開發環境 (localhost:3000)** 與 **正式環境 (jvtutorcorner.com)**。
+
+```bash
+# 開發環境（預設）
+npx playwright test e2e/teacher_courses_verification.spec.ts --project=chromium
+
+# 正式環境
+BASE_URL=https://www.jvtutorcorner.com npx playwright test e2e/teacher_courses_verification.spec.ts --project=chromium
+```

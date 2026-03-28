@@ -49,18 +49,43 @@ metadata:
 
 ### 對於 AI 助手 (Antigravity)
 當被要求執行此流程或測試相關功能時，請：
-1.  **執行 Playwright 測試**：運行 `/Users/xucaiming/jvtutorcorner-rwd/e2e/student_enrollment.spec.ts`。
+1.  **執行 Playwright 測試**：運行專案根目錄下 `e2e/student_enrollment.spec.ts`。
 2.  **觀察結果**：若測試失敗（例如找不到元素或請求報錯），分析原因。
 3.  **自動修正**：
     - 若為程式碼 bug，直接修正原始碼及其對應的測試。
     - 若為測試腳本過時，更新測試腳本。
 4.  **回報進度**：回報最終成功狀態或無法自動修復的嚴重問題。
 
+## 環境切換 (Environment Switching)
+
+此 skill 同時支援 **開發環境 (localhost:3000)** 與 **正式環境 (jvtutorcorner.com)**。
+
+### 開發環境（預設）
+```bash
+# .env.local
+BASE_URL=http://localhost:3000
+```
+```bash
+npx playwright test e2e/student_enrollment.spec.ts
+```
+
+### 正式環境
+```bash
+# 方法一：設定環境變數後執行
+BASE_URL=https://www.jvtutorcorner.com npx playwright test e2e/student_enrollment.spec.ts
+
+# 方法二：在 .env.local 暫時修改
+# BASE_URL=https://www.jvtutorcorner.com
+```
+
+> ⚠️ **注意**：對正式環境執行測試會產生真實訂單與付款記錄，請謹慎使用。
+
 ## 環境驗證 (Environment Validation)
 
 ### 1. 必要環境變數 (Required Environment Variables)
 - [ ] `.env.local` 必須包含 `LOGIN_BYPASS_SECRET`
 - [ ] `.env.local` 必須包含 `TEST_STUDENT_EMAIL` / `TEST_STUDENT_PASSWORD`
+- [ ] (可選) `BASE_URL` — 預設 `http://localhost:3000`，設為 `https://www.jvtutorcorner.com` 可切換正式環境
 
 ### 2. 必要驗證檔案 (Required Validation Files)
 - [ ] `e2e/student_enrollment.spec.ts` (學生報名完整流程測試)
@@ -90,5 +115,9 @@ metadata:
 ## 測試指令
 
 ```bash
+# 開發環境
 npx playwright test e2e/student_enrollment.spec.ts
+
+# 正式環境
+BASE_URL=https://www.jvtutorcorner.com npx playwright test e2e/student_enrollment.spec.ts
 ```

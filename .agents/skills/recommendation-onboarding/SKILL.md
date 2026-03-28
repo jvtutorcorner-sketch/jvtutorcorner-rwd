@@ -151,13 +151,22 @@ app/login/register/page.tsx   ← 註冊後顯示問卷
 ### 3. 執行驗證指令 (Validation Command)
 - `npx playwright test e2e/recommendation_onboarding.spec.ts`
 
+## 環境切換 (Environment Switching)
+
+此 skill 同時支援 **開發環境 (localhost:3000)** 與 **正式環境 (jvtutorcorner.com)**。
+
+> ⚠️ **注意**：對正式環境執行測試可能影響真實用戶的推薦種子資料，請謹慎使用。
+
 ## 測試環境設定
 
 ### 環境變數
 
 ```bash
 # .env.local（示例格式）
+# 開發環境（預設）
 BASE_URL=http://localhost:3000
+# 正式環境（取消下方註解以切換）
+# BASE_URL=https://www.jvtutorcorner.com
 TEST_STUDENT_EMAIL=<student-email>
 TEST_STUDENT_PASSWORD=<student-password>
 LOGIN_BYPASS_SECRET=<bypass-secret>
@@ -167,13 +176,13 @@ DYNAMODB_TABLE_USER_INTERACTIONS=jvtutorcorner-user-interactions
 ### 執行測試
 
 ```bash
-# 進入專案目錄
-cd $(git rev-parse --show-toplevel)
-
-# 執行推薦系統驗證測試套件
+# 開發環境
 npx playwright test e2e/recommendation_onboarding.spec.ts
 
-# 或執行特定測試
+# 正式環境（行內指定）
+BASE_URL=https://www.jvtutorcorner.com npx playwright test e2e/recommendation_onboarding.spec.ts
+
+# 執行特定測試
 npx playwright test e2e/recommendation_onboarding.spec.ts --grep "survey seeds"
 ```
 

@@ -3,13 +3,7 @@ name: auto-login
 description: '自動登入驗證技能。讀取 .env.local 中的測試帳號資訊，並使用特有的 Bypass Secret 繞過驗證碼完成登入。支援 Teacher 與 Student 角色。'
 argument-hint: '執行自動登入，並指定角色 (teacher/student)'
 metadata:
-  verified-status: '❌ UNVERIFIED'
-  last-verified-date: '-'
-  architecture-aligned: false
-  architecture-aligned: false
-  last-verified-date: '-'
-  verified-status: ❌ UNVERIFIED
-  verified-status: ✅ VERIFIED
+  verified-status: '✅ VERIFIED'
   last-verified-date: '2026-03-15'
   architecture-aligned: true
 ---
@@ -71,6 +65,21 @@ TEST_STUDENT_PASSWORD=123456
 ## 程式碼實作細節
 
 - **後端邏輯**：在 `app/api/login/route.ts` 中，比對 `captchaValue` 是否等於 `process.env.LOGIN_BYPASS_SECRET`。
+
+## 環境切換 (Environment Switching)
+
+此 skill 同時支援 **開發環境 (localhost:3000)** 與 **正式環境 (jvtutorcorner.com)**。
+
+```bash
+# 開發環境（預設）
+npx playwright test e2e/classroom_flow.spec.ts --project=chromium
+
+# 正式環境
+BASE_URL=https://www.jvtutorcorner.com npx playwright test e2e/classroom_flow.spec.ts --project=chromium
+```
+
+> ⚠️ **注意**：`LOGIN_BYPASS_SECRET` 機制在正式環境同樣有效，在驗證碼欄位輸入 Secret 即可繞過 CAPTCHA。  
+> 僅限測試使用，請勿公開此 Secret。
 
 ## 注意事項
 

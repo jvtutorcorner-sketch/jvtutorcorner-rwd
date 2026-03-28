@@ -95,3 +95,17 @@ metadata:
 - `/app/admin/course-reviews/page.tsx` - 管理員審核介面
 - `/app/api/admin/course-reviews/route.ts` - 課程審核端點
 - `/scripts/cleanup_test_courses.js` - 測試資料清理指令
+
+## 環境切換 (Environment Switching)
+
+此 skill 同時支援 **開發環境 (localhost:3000)** 與 **正式環境 (jvtutorcorner.com)**。
+
+```bash
+# 開發環境（預設）
+npx playwright test e2e/course_management_flow.spec.ts
+
+# 正式環境
+BASE_URL=https://www.jvtutorcorner.com npx playwright test e2e/course_management_flow.spec.ts
+```
+
+> ⚠️ **注意**：對正式環境執行測試課程建立流程，測試完成後需手動從 `/admin/course-reviews` 清除測試資料。

@@ -3,13 +3,7 @@ name: student-courses-page
 description: '檢查 /student_courses 頁面的按鈕顯示、時間驗證、資料完整性和課程 ID 對應邏輯。'
 argument-hint: '測試並驗證 /student_courses 頁面的所有功能'
 metadata:
-  verified-status: '❌ UNVERIFIED'
-  last-verified-date: '-'
-  architecture-aligned: false
-  architecture-aligned: false
-  last-verified-date: '-'
-  verified-status: ❌ UNVERIFIED
-  verified-status: ✅ VERIFIED
+  verified-status: '✅ VERIFIED'
   last-verified-date: '2026-03-15'
   architecture-aligned: true
 ---
@@ -201,6 +195,18 @@ function convert12to24(timeStr) {
 | 時長欄位為 '-' | durationMinutes 為 0 或空 | 更新課程的時長設定 |
 | 時間顯示不正確 | 日期/時間字符串拼接錯誤 | 檢查 startDate 和 nextStartDate 邏輯 |
 | 顯示「(時間缺失)」| 時間格式無法被 cleanTimeString 解析 | 依照調試流程的第1-7步執行 |
+
+## 環境切換 (Environment Switching)
+
+此 skill 同時支援 **開發環境 (localhost:3000)** 與 **正式環境 (jvtutorcorner.com)**。
+
+```bash
+# 開發環境（預設）
+npx playwright test e2e/student_courses_verification.spec.ts --project=chromium
+
+# 正式環境
+BASE_URL=https://www.jvtutorcorner.com npx playwright test e2e/student_courses_verification.spec.ts --project=chromium
+```
 
 ## 相關檔案
 - `/app/student_courses/page.tsx` - 主頁面元件

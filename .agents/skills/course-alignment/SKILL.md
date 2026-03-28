@@ -54,6 +54,18 @@ npx playwright test e2e/course_alignment_verification.spec.ts --project=chromium
 - ✅ 步2: 登入老師帳號並抓取數據
 - ✅ 步3: 交叉比對課程 ID、時間與名稱
 
+## 環境切換 (Environment Switching)
+
+此 skill 同時支援 **開發環境 (localhost:3000)** 與 **正式環境 (jvtutorcorner.com)**。
+
+```bash
+# 開發環境（預設）
+npx playwright test e2e/course_alignment_verification.spec.ts --project=chromium
+
+# 正式環境
+BASE_URL=https://www.jvtutorcorner.com npx playwright test e2e/course_alignment_verification.spec.ts --project=chromium
+```
+
 ## 相關檔案
 - `e2e/course_alignment_verification.spec.ts` - 自動化測試腳本
 - `.agents/skills/student-courses-page/SKILL.md`
