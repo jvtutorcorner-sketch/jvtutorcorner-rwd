@@ -3,13 +3,35 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useT } from '@/components/IntlProvider';
+import { getSystemInfo } from '@/lib/deviceDetection';
+import type { SystemInfo } from '@/lib/deviceDetection';
 
 export default function CheckDevicesPage() {
     const router = useRouter();
     const [isClient, setIsClient] = useState(false);
+    const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
+    const [isLoading, setIsLoading] = useState(false);
     const t = useT();
 
     useEffect(() => { setIsClient(true); }, []);
+
+    useEffect(() => {
+        if (!isClient) return;
+        setIsLoading(true);
+        try {
+            const info = getSystemInfo();
+            console.log('[CheckDevices] System Info:', info);
+            console.log('  OS:', `${info.osName} ${info.osVersion}`);
+            console.log('  Browser:', `${info.browserName} ${info.browserVersion}`);
+            console.log('  Device:', `${info.deviceCategory} (${info.deviceModel})`);
+            console.log('  Network:', info.networkType);
+            setSystemInfo(info);
+        } catch (err) {
+            console.warn('[CheckDevices] Failed to get system info:', err);
+        } finally {
+            setIsLoading(false);
+        }
+    }, [isClient]);
 
     if (!isClient) return null;
 
@@ -34,29 +56,82 @@ export default function CheckDevicesPage() {
                         i
                     </div>
                     <div>
-                        <div style={{ fontWeight: 700, fontSize: 16 }}>{t('wait.check_subtitle') || '請確保您的攝影機與麥克風運作正常'}</div>
+                        <div style={{ fontWeight: 700, fontSize: 16 }}>{t('wait.check_subtitle') || ''}</div>
                     </div>
                 </div>
                 <VideoSetup />
             </div>
 
-            <div style={{ marginTop: 20, display: 'flex', justifyContent: 'center' }}>
-                <button
-                    onClick={() => router.back()}
-                    style={{
-                        padding: '12px 24px',
-                        background: '#666',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: 8,
-                        fontSize: 15,
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        transition: 'all 0.2s ease'
-                    }}>
-                    {t('wait.return_home') || '返回'}
-                </button>
+            {/* 系統環境資訊 */}
+            <div style={{ marginTop: 20, padding: 20, border: '2px solid #e0e0e0', borderRadius: 12, background: '#fafafa' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+                    <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#7c3aed', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 'bold', fontSize: 16 }}>
+                        🔍
+                    </div>
+                    <div>
+                        <div style={{ fontWeight: 700, fontSize: 16 }}>系統環境資訊</div>
+                    </div>
+                </div>
+
+                {isLoading && (
+                    <div style={{ fontSize: 14, color: '#666', padding: '12px 0' }}>正在偵測系統資訊...</div>
+                )}
+
+                {systemInfo && !isLoading && (() => {
+                    const deviceCat = (systemInfo.deviceCategory || '').toLowerCase();
+                    const isMobile = deviceCat === 'mobile';
+                    const isTablet = deviceCat === 'tablet';
+
+                    // 根據裝置調整排版參數
+                    const gridCols = isMobile ? '1fr' : isTablet ? 'repeat(2, 1fr)' : 'repeat(2, 1fr)';
+                    const gridGap = isMobile ? 10 : isTablet ? 12 : 16;
+                    const cardPadding = isMobile ? 12 : isTablet ? 14 : 18;
+                    const labelFontSize = isMobile ? 11 : isTablet ? 12 : 13;
+                    const valueFontSize = isMobile ? 13 : isTablet ? 15 : 16;
+                    const labelMarginBottom = isMobile ? 4 : isTablet ? 6 : 8;
+                    const subtextMarginTop = isMobile ? 4 : isTablet ? 6 : 8;
+                    const borderRadius = isMobile ? 8 : isTablet ? 10 : 12;
+
+                    return (
+                        <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: gridGap }}>
+                            {/* OS */}
+                            <div style={{ padding: cardPadding, background: 'white', border: '1px solid #e0e0e0', borderRadius }}>
+                                <div style={{ fontSize: labelFontSize, color: '#666', fontWeight: 700, marginBottom: labelMarginBottom }}>作業系統</div>
+                                <div style={{ fontSize: valueFontSize, fontWeight: 700, color: '#111' }}>{systemInfo.osName} {systemInfo.osVersion || ''}</div>
+                            </div>
+
+                            {/* Browser */}
+                            <div style={{ padding: cardPadding, background: 'white', border: '1px solid #e0e0e0', borderRadius }}>
+                                <div style={{ fontSize: labelFontSize, color: '#666', fontWeight: 700, marginBottom: labelMarginBottom }}>瀏覽器</div>
+                                <div style={{ fontSize: valueFontSize, fontWeight: 700, color: '#111' }}>{systemInfo.browserName} {systemInfo.browserVersion || ''}</div>
+                            </div>
+
+                            {/* Device */}
+                            <div style={{ padding: cardPadding, background: 'white', border: '1px solid #e0e0e0', borderRadius }}>
+                                <div style={{ fontSize: labelFontSize, color: '#666', fontWeight: 700, marginBottom: labelMarginBottom }}>裝置</div>
+                                <div style={{ fontSize: valueFontSize, fontWeight: 700, color: '#111', textTransform: 'capitalize' }}>{systemInfo.deviceCategory}</div>
+                                <div style={{ fontSize: labelFontSize, color: '#444', marginTop: subtextMarginTop, wordBreak: 'break-all' }}>{systemInfo.deviceModel || '—'}</div>
+                            </div>
+
+                            {/* Network */}
+                            <div style={{ padding: cardPadding, background: 'white', border: '1px solid #e0e0e0', borderRadius }}>
+                                <div style={{ fontSize: labelFontSize, color: '#666', fontWeight: 700, marginBottom: labelMarginBottom }}>網路</div>
+                                <div style={{ fontSize: valueFontSize, fontWeight: 700, color: '#111' }}>
+                                    {systemInfo.networkType}
+                                </div>
+                                {systemInfo.networkIsWired !== undefined && (
+                                    <div style={{ fontSize: labelFontSize, color: '#444', marginTop: subtextMarginTop }}>
+                                        {systemInfo.networkIsWired ? '✓ 有線連接' : '📡 無線連接'}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    );
+                })()}
+                
             </div>
+
+            {/* No breadcrumb / back button for this diagnostic page */}
         </div>
     );
 }

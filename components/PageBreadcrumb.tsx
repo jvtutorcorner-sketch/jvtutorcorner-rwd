@@ -25,6 +25,8 @@ export default function PageBreadcrumb() {
 
   // Do not render breadcrumb for classroom routes
   if (pathname.startsWith('/classroom')) return null;
+  // Do not render breadcrumb for checkDevices page
+  if (pathname.startsWith('/checkDevices')) return null;
 
   // First crumb always Home
   const items: { label: string; href?: string }[] = [{ label: t('home'), href: '/' }];

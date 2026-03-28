@@ -40,8 +40,8 @@ export default function PermissionGuard() {
             // Actually, pageConfigs usually contains exact routes like /pricing.
             // What about /pricing/subfeature?
 
-            // Bypass for /classroom paths since they manage their own permissions
-            if (pathname?.startsWith('/classroom')) {
+            // Bypass for /classroom paths and checkDevices since they manage their own permissions
+            if (pathname?.startsWith('/classroom') || pathname?.startsWith('/checkDevices')) {
                 setAuthorized(true);
                 setChecking(false);
                 return;

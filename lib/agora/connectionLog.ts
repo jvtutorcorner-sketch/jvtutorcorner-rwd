@@ -24,15 +24,10 @@ export interface AgoraConnectionLogParams {
  * 對應 Agora Dashboard 「OS」欄位，例如：iOS 17.6.1 / Windows 10 / iOS 18.5
  */
 function parseOS(ua: string): { osName: AgoraOSName; osVersion: string } {
-    // iOS / iPadOS
-    let m = ua.match(/OS\s+([\d_]+)\s+like\s+Mac/i);
-    if (m) return { osName: 'iOS', osVersion: m[1].replace(/_/g, '.') };
-
-    // Android
-    m = ua.match(/Android\s+([\d.]+)/i);
-    if (m) return { osName: 'Android', osVersion: m[1] };
+    let m: RegExpMatchArray | null;
 
     // Windows 10/11 → UA 固定為 "Windows NT 10.0"，對應 Dashboard 顯示 "Windows 10"
+    // ⚠️ 優先檢測，避免其他模式混淆
     m = ua.match(/Windows NT\s+([\d.]+)/i);
     if (m) {
         const ntVer = parseFloat(m[1]);
@@ -40,12 +35,24 @@ function parseOS(ua: string): { osName: AgoraOSName; osVersion: string } {
         return { osName: 'Windows', osVersion: winVer };
     }
 
-    // MacOS
+    // MacOS （優先於 iOS，因為 iPad 可能同時包含 Mac OS X）
     m = ua.match(/Mac OS X\s+([\d_]+)/i);
-    if (m) return { osName: 'MacOS', osVersion: m[1].replace(/_/g, '.') };
+    if (m && !/iPhone|iPad|iPod/.test(ua)) {
+        return { osName: 'MacOS', osVersion: m[1].replace(/_/g, '.') };
+    }
 
     // Linux
-    if (/Linux/i.test(ua)) return { osName: 'Linux', osVersion: '' };
+    if (/Linux/i.test(ua) && !/Android/.test(ua)) {
+        return { osName: 'Linux', osVersion: '' };
+    }
+
+    // iOS / iPadOS （在 MacOS 之後）
+    m = ua.match(/OS\s+([\d_]+)\s+like\s+Mac/i);
+    if (m) return { osName: 'iOS', osVersion: m[1].replace(/_/g, '.') };
+
+    // Android （最後檢測，避免其他競爭 pattern）
+    m = ua.match(/Android\s+([\d.]+)/i);
+    if (m) return { osName: 'Android', osVersion: m[1] };
 
     return { osName: 'unknown', osVersion: '' };
 }
@@ -57,25 +64,43 @@ function parseOS(ua: string): { osName: AgoraOSName; osVersion: string } {
 function parseBrowser(ua: string): { browserName: AgoraBrowserName; browserVersion: string } {
     let m: RegExpMatchArray | null;
 
+    // Edge
     if (/Edg\//i.test(ua)) {
-        m = ua.match(/Edg\/([\d.]+)/i);
+        m = ua.match(/Edg\/(\d+(?:\.\d+)*)/i);
         return { browserName: 'Edge', browserVersion: m?.[1] ?? '' };
     }
-    if (/OPR\//i.test(ua) || /Opera\//i.test(ua)) {
-        m = ua.match(/(?:OPR|Opera)\/([\d.]+)/i);
+
+    // Opera
+    if (/OPR\//i.test(ua)) {
+        m = ua.match(/OPR\/(\d+(?:\.\d+)*)/i);
         return { browserName: 'Opera', browserVersion: m?.[1] ?? '' };
     }
+    if (/Opera\//i.test(ua)) {
+        m = ua.match(/Opera\/(\d+(?:\.\d+)*)/i);
+        return { browserName: 'Opera', browserVersion: m?.[1] ?? '' };
+    }
+
+    // Firefox
     if (/Firefox\//i.test(ua)) {
-        m = ua.match(/Firefox\/([\d.]+)/i);
+        m = ua.match(/Firefox\/(\d+(?:\.\d+)*)/i);
         return { browserName: 'Firefox', browserVersion: m?.[1] ?? '' };
     }
-    if (/Chrome\//i.test(ua)) {
-        m = ua.match(/Chrome\/([\d.]+)/i);
+
+    // Chrome （需在 Safari 之前檢測，因為 Chrome 亦包含 "Safari" 字），匹配完整版本號
+    if (/Chrome\//i.test(ua) && !/Chromium/i.test(ua)) {
+        m = ua.match(/Chrome\/(\d+\.\d+\.\d+\.\d+)/i) || ua.match(/Chrome\/(\d+(?:\.\d+)*)/i);
         return { browserName: 'Chrome', browserVersion: m?.[1] ?? '' };
     }
-    // Safari (including Mobile Safari)
+
+    // Chromium
+    if (/Chromium\//i.test(ua)) {
+        m = ua.match(/Chromium\/(\d+(?:\.\d+)*)/i);
+        return { browserName: 'Chrome', browserVersion: m?.[1] ?? '' };
+    }
+
+    // Safari （包含 Mobile Safari；在 Chrome 之後檢測避免混淆）
     if (/Safari\//i.test(ua)) {
-        m = ua.match(/Version\/([\d.]+)/i);
+        m = ua.match(/Version\/(\d+(?:\.\d+)*)/i);
         return { browserName: 'Safari', browserVersion: m?.[1] ?? '' };
     }
 
@@ -87,9 +112,12 @@ function parseBrowser(ua: string): { browserName: AgoraBrowserName; browserVersi
  * 對應 Agora Dashboard 「Device type」欄位，例如：Apple iPhone / Apple iPad / Mozilla/5.0...
  */
 function parseDevice(ua: string): { deviceCategory: AgoraDeviceCategory; deviceModel: string } {
+    // 優先檢測具體的移動設備
     if (/iPhone/i.test(ua)) return { deviceCategory: 'mobile', deviceModel: 'Apple iPhone' };
     if (/iPad/i.test(ua)) return { deviceCategory: 'tablet', deviceModel: 'Apple iPad' };
     if (/iPod/i.test(ua)) return { deviceCategory: 'mobile', deviceModel: 'Apple iPod' };
+
+    // 檢查是否為 Android 設備
     if (/Android/i.test(ua)) {
         // 嘗試取得裝置型號
         const m = ua.match(/;\s*([^;)]+)\s*Build/i);
@@ -97,10 +125,17 @@ function parseDevice(ua: string): { deviceCategory: AgoraDeviceCategory; deviceM
         const isMobile = /Mobile/i.test(ua);
         return { deviceCategory: isMobile ? 'mobile' : 'tablet', deviceModel: model };
     }
-    if (/Mobile/i.test(ua)) return { deviceCategory: 'mobile', deviceModel: ua.substring(0, 80) };
-    if (/(tablet|playbook|silk)/i.test(ua)) return { deviceCategory: 'tablet', deviceModel: ua.substring(0, 80) };
 
-    // 桌面裝置使用 UA 前綴作為型號（對應 Dashboard 顯示 "Mozilla/5.0 (Windows NT 10.0; W..."）
+    // 檢測桌面設備特徵（Windows、MacOS、Linux）
+    if (/Windows NT|MacOS|Mac OS X|Linux|CrOS/i.test(ua)) {
+        return { deviceCategory: 'desktop', deviceModel: ua.substring(0, 80) };
+    }
+
+    // 檢測其他移動設備標誌
+    if (/Mobile/i.test(ua)) return { deviceCategory: 'mobile', deviceModel: ua.substring(0, 80) };
+    if (/(tablet|playbook|silk|kindle)/i.test(ua)) return { deviceCategory: 'tablet', deviceModel: ua.substring(0, 80) };
+
+    // 預設為桌面裝置（未明確標記為移動 / 平板）
     return { deviceCategory: 'desktop', deviceModel: ua.substring(0, 80) };
 }
 
@@ -113,17 +148,24 @@ function getNetworkType(): AgoraNetworkType {
     const conn = (navigator as any).connection ?? (navigator as any).mozConnection ?? (navigator as any).webkitConnection;
     if (!conn) return 'NETWORK_UNKNOWN';
 
-    const type = conn.type as string;
+    const type = (conn.type as string || '').toLowerCase();
+    const effectiveType = (conn.effectiveType as string || '').toLowerCase();
+
+    // 優先檢查 type 欄位
     if (type === 'wifi') return 'WIFI';
     if (type === 'ethernet') return 'LAN';
     if (type === 'cellular') {
-        const effectiveType = conn.effectiveType as string;
         if (effectiveType === '4g') return 'MOBILE_4G';
         if (effectiveType === '3g') return 'MOBILE_3G';
         if (effectiveType === '2g' || effectiveType === 'slow-2g') return 'MOBILE_2G';
         return 'MOBILE_4G';
     }
     if (type === 'none') return 'OFFLINE';
+
+    // 若 type 無法判定，次要檢查 effectiveType
+    if (effectiveType === '4g') return 'MOBILE_4G';
+    if (effectiveType === '3g') return 'MOBILE_3G';
+    if (effectiveType === '2g' || effectiveType === 'slow-2g') return 'MOBILE_2G';
 
     return 'NETWORK_UNKNOWN';
 }
@@ -133,10 +175,21 @@ function getNetworkType(): AgoraNetworkType {
  */
 async function buildDeviceSnapshot(): Promise<AgoraDeviceSnapshot> {
     const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
+    
+    if (typeof window !== 'undefined') {
+        console.log('[buildDeviceSnapshot] Raw User-Agent:', ua);
+    }
+
     const { osName, osVersion } = parseOS(ua);
     const { browserName, browserVersion } = parseBrowser(ua);
     const { deviceCategory, deviceModel } = parseDevice(ua);
     const networkType = getNetworkType();
+
+    if (typeof window !== 'undefined') {
+        console.log('[buildDeviceSnapshot] Parsed results:', {
+            osName, osVersion, browserName, browserVersion, deviceCategory, deviceModel, networkType
+        });
+    }
 
     let sdkVersion = 'unknown';
     let sdkFullVersion = 'unknown';
