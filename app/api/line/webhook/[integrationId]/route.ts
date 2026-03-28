@@ -803,6 +803,31 @@ export async function POST(request: Request, context: { params: Promise<{ integr
                                             context: { messageId, aiType: aiIntegration.type, result: analysisResult }
                                         });
                                         
+                                        // Add debug logs for raw response to help investigate truncation
+                                        if (analysisResult.raw) {
+                                            try {
+                                                const rawStr = String(analysisResult.raw || '');
+                                                const snippetHead = rawStr.slice(0, 200);
+                                                const snippetTail = rawStr.slice(-200);
+                                                const rawInfoLogId = `raw-info-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                                                await logToWebhook({
+                                                    integrationId,
+                                                    timestamp: Date.now(),
+                                                    logId: rawInfoLogId,
+                                                    level: 'INFO',
+                                                    category: 'analysis_raw_debug',
+                                                    message: 'analysisResult.raw received; logging length and snippets',
+                                                    context: {
+                                                        messageId,
+                                                        rawLength: rawStr.length,
+                                                        head: snippetHead,
+                                                        tail: snippetTail
+                                                    }
+                                                });
+                                            } catch (logErr) {
+                                                console.error('[LINE Webhook] Failed to log analysisResult.raw debug info:', logErr);
+                                            }
+                                        }
                                         // Format result into readable message
                                         let responseText = '📸 藥品辨識結果：\n\n';
                                         let messages: any[] = [];
