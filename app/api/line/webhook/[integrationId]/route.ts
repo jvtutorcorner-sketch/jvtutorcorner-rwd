@@ -576,7 +576,21 @@ export async function POST(request: Request, context: { params: Promise<{ integr
         const integrationId = params.integrationId;
         console.log(`[LINE Webhook] Received request for integrationId: ${integrationId}`);
 
-        const appInfo = await getAppIntegration(integrationId);
+        let appInfo = await getAppIntegration(integrationId);
+
+        // In simulation mode, if DynamoDB-backed lookup failed, try local .local_data file
+        if (isSimulation && (!appInfo || appInfo.type !== 'LINE' || !appInfo.config)) {
+            try {
+                const FILE = await resolveDataFile('app-integrations.json');
+                if (fs.existsSync(FILE)) {
+                    const data = JSON.parse(fs.readFileSync(FILE, 'utf8'));
+                    const found = data.find((i: any) => i.integrationId === integrationId);
+                    if (found) appInfo = found;
+                }
+            } catch (e) {
+                console.error('[LINE Webhook] Simulation local app-integrations lookup failed:', e);
+            }
+        }
 
         if (!appInfo || appInfo.type !== 'LINE' || !appInfo.config) {
             console.error(`[LINE Webhook] Integration not found or invalid: ${integrationId}`);
