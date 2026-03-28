@@ -83,6 +83,10 @@ async function logToWebhook(log: WebhookLog) {
             console.error('[LINE Webhook] Failed to store log to DynamoDB:', err);
         }
     }
+    else {
+        // Helpful diagnostic: explicitly note when DynamoDB logging is disabled
+        console.log('[LINE Webhook] DynamoDB webhook logging disabled (useDynamoForWebhookLogs=false). Logs will only appear in console.');
+    }
 }
 
 // Helpers to get App Integration config
