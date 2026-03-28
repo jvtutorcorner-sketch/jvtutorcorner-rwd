@@ -135,6 +135,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       updateExpressionParts.push('pointCost = :pointCost');
       expressionAttributeValues[':pointCost'] = Number(body.pointCost);
     }
+    if (body.enrollmentType !== undefined) {
+      updateExpressionParts.push('enrollmentType = :enrollmentType');
+      expressionAttributeValues[':enrollmentType'] = body.enrollmentType;
+    }
 
     // Always update updatedAt
     updateExpressionParts.push('updatedAt = :updatedAt');

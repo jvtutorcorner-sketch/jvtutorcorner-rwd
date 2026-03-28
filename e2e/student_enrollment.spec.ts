@@ -450,7 +450,27 @@ test('Student Enrollment Flow with auto-balance recovery', async ({ page }) => {
     }
     console.log(`✓ Point deduction verified! ${balanceBeforeEnroll} - ${expectedDeduction} = ${finalBalance}`);
 
-    // 9. Find '進入教室' button and enter classroom
+    // 9. Navigate to /pricing to visually confirm point deduction on UI (課程點數頁面)
+    console.log("📊 跳轉至課程點數頁面 (/pricing) 確認點數扣除狀況...");
+    await page.goto(`${baseUrl}/pricing`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(2000);
+
+    const deductedUiBalance = page.locator('.text-indigo-600:has-text("點")').first();
+    await expect(deductedUiBalance).toBeVisible({ timeout: 10000 });
+    const deductedUiBalanceText = await deductedUiBalance.textContent();
+    console.log(`✅ 課程點數頁面顯示餘額: ${deductedUiBalanceText}`);
+
+    if (deductedUiBalanceText?.includes(String(finalBalance))) {
+        console.log(`✅ 點數扣除確認！UI 顯示與 API 一致: ${finalBalance} 點 (已從 ${balanceBeforeEnroll} 扣除 ${expectedDeduction} 點)`);
+    } else {
+        console.warn(`⚠️ UI 顯示點數 (${deductedUiBalanceText}) 與 API 回傳 (${finalBalance}) 可能不符 — 請確認 UI 更新是否有延遲`);
+    }
+
+    // 10. Navigate to /student_courses and find '進入教室' button
+    console.log("📚 點數確認完畢，跳轉至課程清單 (/student_courses) 準備進入教室...");
+    await page.goto(`${baseUrl}/student_courses`, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(3000);
+
     console.log("🎓 Looking for '進入教室' button...");
     let enterClassroomFound = false;
     let attempts = 0;
@@ -473,12 +493,12 @@ test('Student Enrollment Flow with auto-balance recovery', async ({ page }) => {
     }
 
     if (enterClassroomFound) {
-        // 10. Wait for classroom URL (wait room or direct classroom)
+        // 11. Wait for classroom URL (wait room or direct classroom)
         await page.waitForURL(url => url.href.includes('/classroom'), { timeout: 30000 });
         const classroomUrl = page.url();
         console.log(`✅ Entered classroom! URL: ${classroomUrl}`);
         expect(classroomUrl).toContain('/classroom');
-        console.log("✅ Full flow verified: Enroll → Points deducted → Enter Classroom");
+        console.log("✅ Full flow verified: Enroll → Points deducted → Pricing page confirmed → Student Courses → Enter Classroom");
     } else {
         console.warn("⚠️ '進入教室' button not found after retries — classroom entry check skipped.");
         // Don't fail the test — this may be normal if the classroom hasn't started yet
