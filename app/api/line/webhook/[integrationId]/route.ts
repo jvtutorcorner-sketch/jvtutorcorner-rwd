@@ -807,12 +807,22 @@ export async function POST(request: Request, context: { params: Promise<{ integr
                                         let responseText = '📸 藥品辨識結果：\n\n';
 
                                         if (analysisResult.raw) {
-                                            responseText += analysisResult.raw;
+                                            // Model returned a non-JSON or raw response — show friendly guidance and include truncated raw for debugging
+                                            responseText += '抱歉，我們無法以標準格式解析此張照片的結果。請先嘗試下列步驟，再重新上傳：\n'
+                                                + '1) 拍攝清晰、光線充足的照片；\n'
+                                                + '2) 藥丸完整置於畫面中央，避免手指或反光遮擋；\n'
+                                                + '3) 若有刻字，請拍攝近照並確保對焦。\n\n'
+                                                + '（若重試仍失敗，請聯絡客服並貼上錯誤內容）\n\n'
+                                                + '原始回應（供技術團隊調查）：\n';
+                                            const rawText = String(analysisResult.raw).slice(0, 2000);
+                                            responseText += rawText + (rawText.length >= 2000 ? '\n...[truncated]' : '');
+                                            responseText += `\n\n訊息 ID: ${messageId}`;
                                         } else {
                                             responseText += `🔷 形狀：${analysisResult.shape || '無法辨識'}\n`;
                                             responseText += `🔶 顏色：${analysisResult.color || '無法辨識'}\n`;
                                             responseText += `✏️ 刻字：${analysisResult.imprint || '無'}\n`;
                                             responseText += `📏 刻痕：${analysisResult.score_line || '無'}\n`;
+                                            responseText += `\n訊息 ID: ${messageId}`;
                                         }
 
                                         const msg = { type: 'text', text: responseText.substring(0, 4500) };
@@ -829,7 +839,7 @@ export async function POST(request: Request, context: { params: Promise<{ integr
                                             message: `Image analysis failed or returned null`,
                                             context: { messageId, aiType: aiIntegration.type, bufferSize: imageBuffer.length }
                                         });
-                                        const msg = { type: 'text', text: '圖片分析失敗，請重新上傳清晰的藥品圖片。' };
+                                        const msg = { type: 'text', text: '抱歉，我們無法成功辨識此張圖片。請依照下列建議重試：\n1) 攝影時確保光線充足且對焦清晰；\n2) 藥品置於畫面中央、整顆入鏡；\n3) 避免反光或手指遮擋；\n4) 若有刻字，請拍攝更接近且清晰的照片。\n\n若多次嘗試仍失敗，請聯絡客服並提供此張圖片與時間，我們會協助處理。\n\n訊息 ID: ' + messageId };
                                         if (isSimulation) simulationReplies.push(msg);
                                         else await replyToLine(replyToken, [msg], channelAccessToken);
                                     }
