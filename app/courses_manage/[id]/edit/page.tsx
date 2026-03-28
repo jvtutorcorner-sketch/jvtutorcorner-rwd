@@ -11,7 +11,7 @@ export default function EditCoursePage() {
   const courseId = params?.id as string | undefined;
   const [loading, setLoading] = useState(false);
   const [course, setCourse] = useState<any | null>(null);
-  const [form, setForm] = useState<any>({ title: '', description: '', durationMinutes: '', startDateTime: '', endDateTime: '', membershipPlan: '', pointCost: 0, status: '' });
+  const [form, setForm] = useState<any>({ title: '', description: '', durationMinutes: '', startDateTime: '', endDateTime: '', membershipPlan: '', pointCost: 0, enrollmentType: 'points', status: '' });
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [success, setSuccess] = useState<string | null>(null);
@@ -73,6 +73,7 @@ export default function EditCoursePage() {
             endDateTime: toDateTimeInput(normalizedEnd),
             membershipPlan: c.membershipPlan || '',
             pointCost: c.pointCost != null ? Number(c.pointCost) : 0,
+            enrollmentType: c.enrollmentType || 'points',
             status: c.status || '上架',
           });
         } else {
@@ -117,6 +118,7 @@ export default function EditCoursePage() {
     }
     if (form.membershipPlan !== undefined) updates.membershipPlan = form.membershipPlan || null;
     if (form.pointCost !== undefined) updates.pointCost = Number(form.pointCost) || 0;
+    if (form.enrollmentType !== undefined) updates.enrollmentType = form.enrollmentType;
     if (form.status !== undefined) updates.status = form.status || '上架';
 
     try {

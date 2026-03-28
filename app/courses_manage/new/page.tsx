@@ -55,6 +55,7 @@ export default function NewCoursePage() {
             updates.endDate = new Date(form.endDateTime).toISOString();
         }
         updates.pointCost = points;
+        updates.enrollmentType = 'points'; // Teacher-created courses with pointCost are always point-based
         updates.membershipPlan = String(points); // Keep for compatibility if needed
 
         // Attach teacher info
