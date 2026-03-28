@@ -57,6 +57,12 @@ function parseOS(ua: string): { osName: string; osVersion: string } {
 function parseBrowser(ua: string): { browserName: string; browserVersion: string } {
     let m: RegExpMatchArray | null;
 
+    // LINE LIFF （需優先檢測）
+    if (/LIFF/i.test(ua)) {
+        m = ua.match(/LIFF\/([^\s]+)/i);
+        return { browserName: 'LINE LIFF', browserVersion: m?.[1] ?? '' };
+    }
+
     // Edge
     if (/Edg\//i.test(ua)) {
         m = ua.match(/Edg\/(\d+(?:\.\d+)*)/i);
@@ -126,33 +132,59 @@ function getNetworkInfo(): { type: string; isWired?: boolean } {
     if (typeof navigator === 'undefined') return { type: '未檢測到' };
     
     const conn = (navigator as any).connection ?? (navigator as any).mozConnection ?? (navigator as any).webkitConnection;
-    if (!conn) return { type: '未檢測到 (API 不支援)' };
+    
+    // 若有網路 API，優先使用
+    if (conn) {
+        const effectiveType = (conn.effectiveType as string || '').toLowerCase();
+        const type = (conn.type as string || '').toLowerCase();
 
-    const effectiveType = (conn.effectiveType as string || '').toLowerCase();
-    const type = (conn.type as string || '').toLowerCase();
+        // 優先使用 effectiveType
+        if (effectiveType === '4g') return { type: '無線 / 4G (LTE)', isWired: false };
+        if (effectiveType === '3g') return { type: '無線 / 3G', isWired: false };
+        if (effectiveType === '2g' || effectiveType === 'slow-2g') return { type: '無線 / 2G', isWired: false };
 
-    // 優先使用 effectiveType
-    if (effectiveType === '4g') return { type: '無線 / 4G (LTE)', isWired: false };
-    if (effectiveType === '3g') return { type: '無線 / 3G', isWired: false };
-    if (effectiveType === '2g' || effectiveType === 'slow-2g') return { type: '無線 / 2G', isWired: false };
+        // 根據 type
+        if (type === 'wifi') return { type: '無線 WiFi', isWired: false };
+        if (type === 'ethernet') return { type: '有線連接 (LAN)', isWired: true };
+        if (type === 'cellular') return { type: '行動網路 (蜂窩)', isWired: false };
+        if (type === 'wimax') return { type: '無線 WiMAX', isWired: false };
+        if (type === 'bluetooth') return { type: '藍牙', isWired: true };
+        if (type === 'none') return { type: '離線', isWired: false };
 
-    // 根據 type
-    if (type === 'wifi') return { type: '無線 WiFi', isWired: false };
-    if (type === 'ethernet') return { type: '有線連接 (LAN)', isWired: true };
-    if (type === 'cellular') return { type: '行動網路 (蜂窩)', isWired: false };
-    if (type === 'wimax') return { type: '無線 WiMAX', isWired: false };
-    if (type === 'bluetooth') return { type: '藍牙', isWired: true };
-    if (type === 'none') return { type: '離線', isWired: false };
+        // 嘗試用 downlink 推測
+        const downlink = (conn.downlink as number | undefined);
+        if (typeof downlink === 'number') {
+            if (downlink > 10) return { type: '高速連接 (推測 4G 或以上)', isWired: false };
+            if (downlink > 1) return { type: '中速連接 (推測 3G)', isWired: false };
+            if (downlink > 0) return { type: '低速連接 (推測 2G)', isWired: false };
+        }
 
-    // 嘗試用 downlink 推測
-    const downlink = (conn.downlink as number | undefined);
-    if (typeof downlink === 'number') {
-        if (downlink > 10) return { type: '高速連接 (推測 4G 或以上)', isWired: false };
-        if (downlink > 1) return { type: '中速連接 (推測 3G)', isWired: false };
-        if (downlink > 0) return { type: '低速連接 (推測 2G)', isWired: false };
+        return { type: '未檢測到' };
     }
 
-    return { type: '未檢測到' };
+    // 備用方案：使用 navigator.onLine 檢測是否在線
+    const isOnline = typeof navigator.onLine !== 'undefined' ? navigator.onLine : null;
+    if (isOnline === false) {
+        return { type: '離線（當前無網路連接）', isWired: false };
+    }
+
+    // 對於 LINE LIFF 或其他不支持 Connection API 的環境，嘗試推測網路類型
+    // 根據 User-Agent 推測可能的網路環境
+    if (typeof navigator !== 'undefined') {
+        const ua = navigator.userAgent;
+        
+        // 行動設備通常使用行動網路
+        if (/Android|iPhone|iPad|iPod|Mobile/i.test(ua)) {
+            return { type: '行動網路（推測，API 不支援）', isWired: false };
+        }
+        
+        // 桌面設備通常使用有線或 WiFi
+        if (/Windows|Mac OS X|Linux/i.test(ua)) {
+            return { type: '寬頻連接（推測，API 不支援）', isWired: true };
+        }
+    }
+
+    return { type: '未檢測到（API 不支援）', isWired: undefined };
 }
 
 /**
