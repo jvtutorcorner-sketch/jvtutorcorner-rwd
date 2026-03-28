@@ -18,7 +18,7 @@ export interface TestResult {
 export const PAYMENT_TYPES = ['ECPAY', 'PAYPAL', 'STRIPE', 'LINEPAY', 'JKOPAY'];
 export const CHANNEL_TYPES = ['LINE', 'TELEGRAM', 'WHATSAPP', 'MESSENGER', 'SLACK', 'TEAMS', 'DISCORD', 'WECHAT'];
 export const EMAIL_TYPES = ['RESEND', 'BREVO'];
-export const DATABASE_TYPES = ['DYNAMODB'];
+export const DATABASE_TYPES = ['DYNAMODB', 'MONGODB', 'POSTGRESQL', 'MYSQL', 'REDIS', 'QDRANT'];
 export const AI_CONTAINER_TYPES = ['AI_CHATROOM', 'ASK_PLAN_AGENT', 'SMART_ROUTER'];
 
 export type MetaEntry = { badge: string; label: string; icon: string; desc: string };
@@ -57,7 +57,12 @@ export const EMAIL_META: Record<string, MetaEntry> = {
 };
 
 export const DATABASE_META: Record<string, MetaEntry> = {
-    DYNAMODB: { badge: 'bg-orange-100 text-orange-800', label: 'DynamoDB 資料庫', icon: '🗄️', desc: 'AWS 無伺服器資料庫，為 AI 聊天室提供高速知識庫搜尋' },
+    DYNAMODB: { badge: 'bg-orange-100 text-orange-800', label: 'DynamoDB', icon: '🗄️', desc: 'AWS 無伺服器資料庫，自動擴展無限可用性' },
+    MONGODB: { badge: 'bg-green-100 text-green-800', label: 'MongoDB', icon: '🍃', desc: 'NoSQL 文件型資料庫，靈活的資料結構' },
+    POSTGRESQL: { badge: 'bg-blue-100 text-blue-800', label: 'PostgreSQL', icon: '🐘', desc: '功能豐富的開源 SQL 資料庫' },
+    MYSQL: { badge: 'bg-cyan-100 text-cyan-800', label: 'MySQL', icon: '🐬', desc: '輕量高效能的 SQL 資料庫' },
+    REDIS: { badge: 'bg-red-100 text-red-800', label: 'Redis', icon: '⚡', desc: '超高速記憶體快取與資料存儲' },
+    QDRANT: { badge: 'bg-purple-100 text-purple-800', label: 'Qdrant', icon: '🧠', desc: '開源向量資料庫，支援語義搜索' },
 };
 
 export const LABEL_MAP: Record<string, string> = {

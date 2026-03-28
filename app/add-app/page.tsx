@@ -293,21 +293,55 @@ function AddAppForm() {
         setEmailData({ ...emailData, [e.target.name]: e.target.value });
     };
 
-    // For Database
+    // For Database & Knowledge Base Configuration
+    const [dataStorageActiveTab, setDataStorageActiveTab] = useState<'database' | 'knowledge-base'>('database');
+    
     const [selectedDatabaseType, setSelectedDatabaseType] = useState(
-        ['DYNAMODB'].includes(providerFromUrl) ? providerFromUrl : ''
+        ['DYNAMODB', 'MONGODB', 'POSTGRESQL', 'MYSQL', 'REDIS'].includes(providerFromUrl) ? providerFromUrl : 'DYNAMODB'
     );
     const [databaseData, setDatabaseData] = useState({
         name: '',
-        tableName: '',
-        partitionKey: '',
-        sortKey: '',
-        region: 'us-east-1',
+        // DynamoDB
+        dynamodbTableName: '',
+        dynamodbPartitionKey: '',
+        dynamodbSortKey: '',
+        dynamodbRegion: 'us-east-1',
+        // MongoDB
+        mongodbUri: '',
+        mongodbDatabase: '',
+        mongodbCollection: '',
+        // PostgreSQL / MySQL
+        sqlHost: '',
+        sqlPort: '',
+        sqlUser: '',
+        sqlPassword: '',
+        sqlDatabase: '',
+        sqlTable: '',
+        // Redis
+        redisHost: '',
+        redisPort: '6379',
+        redisPassword: '',
+        redisDb: '0',
+        description: ''
+    });
+
+    const [selectedKnowledgeBaseType, setSelectedKnowledgeBaseType] = useState('QDRANT');
+    const [knowledgeBaseData, setKnowledgeBaseData] = useState({
+        name: '',
+        // Qdrant
+        qdrantUrl: '',
+        qdrantApiKey: '',
+        qdrantCollectionName: '',
+        qdrantEmbeddingModel: 'text-embedding-3-small',
         description: ''
     });
 
     const handleDatabaseChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-        setDatabaseData({ ...databaseData, [e.target.name]: e.target.value });
+        if (dataStorageActiveTab === 'database') {
+            setDatabaseData({ ...databaseData, [e.target.name]: e.target.value });
+        } else {
+            setKnowledgeBaseData({ ...knowledgeBaseData, [e.target.name]: e.target.value });
+        }
     };
 
     const handleChannelChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -590,19 +624,65 @@ function AddAppForm() {
                 };
             } else if (isDatabase) {
                 let config: any = {};
+                let type = '';
+
                 if (selectedDatabaseType === 'DYNAMODB') {
+                    type = 'DYNAMODB';
                     config = {
-                        tableName: databaseData.tableName,
-                        partitionKey: databaseData.partitionKey,
-                        sortKey: databaseData.sortKey,
-                        region: databaseData.region,
+                        tableName: databaseData.dynamodbTableName,
+                        partitionKey: databaseData.dynamodbPartitionKey,
+                        sortKey: databaseData.dynamodbSortKey,
+                        region: databaseData.dynamodbRegion,
+                    };
+                } else if (selectedDatabaseType === 'MONGODB') {
+                    type = 'MONGODB';
+                    config = {
+                        uri: databaseData.mongodbUri,
+                        database: databaseData.mongodbDatabase,
+                        collection: databaseData.mongodbCollection,
+                    };
+                } else if (selectedDatabaseType === 'POSTGRESQL') {
+                    type = 'POSTGRESQL';
+                    config = {
+                        host: databaseData.sqlHost,
+                        port: databaseData.sqlPort,
+                        user: databaseData.sqlUser,
+                        password: databaseData.sqlPassword,
+                        database: databaseData.sqlDatabase,
+                        table: databaseData.sqlTable,
+                    };
+                } else if (selectedDatabaseType === 'MYSQL') {
+                    type = 'MYSQL';
+                    config = {
+                        host: databaseData.sqlHost,
+                        port: databaseData.sqlPort,
+                        user: databaseData.sqlUser,
+                        password: databaseData.sqlPassword,
+                        database: databaseData.sqlDatabase,
+                        table: databaseData.sqlTable,
+                    };
+                } else if (selectedDatabaseType === 'REDIS') {
+                    type = 'REDIS';
+                    config = {
+                        host: databaseData.redisHost,
+                        port: databaseData.redisPort,
+                        password: databaseData.redisPassword,
+                        db: databaseData.redisDb,
+                    };
+                } else if (selectedKnowledgeBaseType === 'QDRANT') {
+                    type = 'QDRANT';
+                    config = {
+                        url: knowledgeBaseData.qdrantUrl,
+                        apiKey: knowledgeBaseData.qdrantApiKey,
+                        collectionName: knowledgeBaseData.qdrantCollectionName,
+                        embeddingModel: knowledgeBaseData.qdrantEmbeddingModel,
                     };
                 }
 
                 payload = {
                     userId,
-                    type: selectedDatabaseType,
-                    name: databaseData.name || `${selectedDatabaseType} 資料庫`,
+                    type: type,
+                    name: (dataStorageActiveTab === 'database' ? databaseData.name : knowledgeBaseData.name) || `${type} 設定`,
                     config
                 };
             } else {
@@ -666,10 +746,10 @@ function AddAppForm() {
                     </Link>
                     <div className="text-center">
                         <h1 className="text-2xl font-bold">
-                            {isPayment ? '新增金流服務' : isAskPlanAgent ? '🧠 新增 策略思維規劃代理 (Ask-Plan-Agent)' : (isAI && selectedAIProvider === 'AI_CHATROOM' ? '新增 AI 聊天室' : isAI ? '新增 AI 服務' : isEmail ? '新增郵件服務' : isDatabase ? '新增資料庫' : '新增應用程式')}
+                            {isPayment ? '新增金流服務' : isAskPlanAgent ? '🧠 新增 策略思維規劃代理 (Ask-Plan-Agent)' : (isAI && selectedAIProvider === 'AI_CHATROOM' ? '新增 AI 聊天室' : isAI ? '新增 AI 服務' : isEmail ? '新增郵件服務' : isDatabase ? '新增資料庫與知識庫' : '新增應用程式')}
                         </h1>
                         <p className={`mt-2 ${isPayment ? 'text-green-100' : isAskPlanAgent ? 'text-purple-100' : isAI ? 'text-indigo-100' : isEmail ? 'text-yellow-100' : isDatabase ? 'text-orange-100' : 'text-blue-100'}`}>
-                            {isPayment ? '設定您的 ECPay、Stripe 或 PayPal 金流服務設定' : isAskPlanAgent ? '設定多階段推理代理 — 諮詢 → 規劃 → 執行，讓 AI 更聰明地完成複雜任務' : (isAI && selectedAIProvider === 'AI_CHATROOM' ? '配置您的專屬 AI 聊天室入口' : isAI ? '設定您要串接的 AI 模型 API 金鑰' : isEmail ? '設定您的 SMTP 伺服器資訊以發送郵件' : isDatabase ? '設定 DynamoDB 或知識庫作為 AI 聊天室的資料來源' : '設定通訊渠道串接參數 (LINE、Telegram、WhatsApp 等)')}
+                            {isPayment ? '設定您的 ECPay、Stripe 或 PayPal 金流服務設定' : isAskPlanAgent ? '設定多階段推理代理 — 諮詢 → 規劃 → 執行，讓 AI 更聰明地完成複雜任務' : (isAI && selectedAIProvider === 'AI_CHATROOM' ? '配置您的專屬 AI 聊天室入口' : isAI ? '設定您要串接的 AI 模型 API 金鑰' : isEmail ? '設定您的 SMTP 伺服器資訊以發送郵件' : isDatabase ? '設定外部資料庫 (DynamoDB、MongoDB 等) 或向量知識庫 (Qdrant) 作為 AI 的智慧資料來源' : '設定通訊渠道串接參數 (LINE、Telegram、WhatsApp 等)')}
                         </p>
                     </div>
                 </div>
@@ -1484,108 +1564,306 @@ function AddAppForm() {
                             </>
                         ) : isDatabase ? (
                             <>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                        設定名稱 (僅供您辨識)
-                                    </label>
-                                    <input
-                                        type="text"
-                                        name="name"
-                                        value={databaseData.name}
-                                        onChange={handleDatabaseChange}
-                                        placeholder="例如：課程知識庫"
-                                        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-orange-500 focus:border-orange-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                                        required
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                        選擇資料庫類型 <span className="text-red-500">*</span>
-                                    </label>
-                                    <div className="grid grid-cols-1">
-                                        {['DYNAMODB'].map((dbType) => (
-                                            <button
-                                                key={dbType}
-                                                type="button"
-                                                onClick={() => setSelectedDatabaseType(dbType)}
-                                                className={`px-4 py-3 rounded-lg border-2 font-medium text-sm transition-all flex flex-col items-center gap-1 ${selectedDatabaseType === dbType
-                                                    ? 'border-orange-500 bg-orange-50 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-400'
-                                                    : 'border-gray-200 bg-white text-gray-600 hover:border-orange-300 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600'}`}
-                                            >
-                                                <span className="text-2xl">🗄️</span>
-                                                <span>DynamoDB 資料庫</span>
-                                            </button>
-                                        ))}
-                                    </div>
+                                {/* Tab 選擇 */}
+                                <div className="flex gap-2 mb-6 border-b border-gray-200 dark:border-gray-700">
+                                    <button
+                                        type="button"
+                                        onClick={() => setDataStorageActiveTab('database')}
+                                        className={`px-4 py-3 font-semibold text-sm border-b-2 transition-colors ${dataStorageActiveTab === 'database'
+                                            ? 'border-orange-500 text-orange-600 dark:text-orange-400'
+                                            : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-300'
+                                            }`}
+                                    >
+                                        🗄️ 資料庫設定
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setDataStorageActiveTab('knowledge-base')}
+                                        className={`px-4 py-3 font-semibold text-sm border-b-2 transition-colors ${dataStorageActiveTab === 'knowledge-base'
+                                            ? 'border-orange-500 text-orange-600 dark:text-orange-400'
+                                            : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-300'
+                                            }`}
+                                    >
+                                        🧠 知識庫設定
+                                    </button>
                                 </div>
 
-                                {selectedDatabaseType === 'DYNAMODB' && (
-                                    <div className="space-y-4 p-4 border border-orange-200 dark:border-orange-800 rounded-lg bg-orange-50/50 dark:bg-orange-900/10">
-                                        <p className="text-xs text-orange-700 dark:text-orange-300 font-medium">
-                                            🗄️ 設定要讓 AI 查詢的 AWS DynamoDB 資料表
-                                        </p>
+                                {/* 資料庫設定 Tab */}
+                                {dataStorageActiveTab === 'database' && (
+                                    <>
                                         <div>
                                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                                資料表名稱 (Table Name) <span className="text-red-500">*</span>
+                                                設定名稱 (僅供您辨識)
                                             </label>
                                             <input
                                                 type="text"
-                                                name="tableName"
-                                                value={databaseData.tableName}
+                                                name="name"
+                                                value={databaseData.name}
                                                 onChange={handleDatabaseChange}
-                                                placeholder="例如：jvtutorcorner-courses"
-                                                className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono text-sm"
+                                                placeholder="例如：課程資料庫"
+                                                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-orange-500 focus:border-orange-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                                                 required
                                             />
                                         </div>
+
                                         <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                                主鍵 (Partition Key) <span className="text-red-500">*</span>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                                選擇資料庫類型 <span className="text-red-500">*</span>
                                             </label>
-                                            <input
-                                                type="text"
-                                                name="partitionKey"
-                                                value={databaseData.partitionKey}
-                                                onChange={handleDatabaseChange}
-                                                placeholder="例如：courseId"
-                                                className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono text-sm"
-                                                required
-                                            />
+                                            <div className="grid grid-cols-2 gap-3">
+                                                {[
+                                                    { type: 'DYNAMODB', icon: '🗄️', label: 'DynamoDB', desc: 'AWS NoSQL' },
+                                                    { type: 'MONGODB', icon: '🍃', label: 'MongoDB', desc: 'NoSQL 文件庫' },
+                                                    { type: 'POSTGRESQL', icon: '🐘', label: 'PostgreSQL', desc: 'SQL 資料庫' },
+                                                    { type: 'MYSQL', icon: '🐬', label: 'MySQL', desc: 'SQL 資料庫' },
+                                                    { type: 'REDIS', icon: '⚡', label: 'Redis', desc: '快取存儲' },
+                                                ].map((db) => (
+                                                    <button
+                                                        key={db.type}
+                                                        type="button"
+                                                        onClick={() => setSelectedDatabaseType(db.type)}
+                                                        className={`px-3 py-3 rounded-lg border-2 font-medium text-sm transition-all flex flex-col items-center gap-1 ${selectedDatabaseType === db.type
+                                                            ? 'border-orange-500 bg-orange-50 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-400'
+                                                            : 'border-gray-200 bg-white text-gray-600 hover:border-orange-300 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600'
+                                                            }`}
+                                                    >
+                                                        <span className="text-lg">{db.icon}</span>
+                                                        <span className="text-xs font-bold">{db.label}</span>
+                                                        <span className="text-[10px] text-gray-500">{db.desc}</span>
+                                                    </button>
+                                                ))}
+                                            </div>
                                         </div>
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                                排序鍵 (Sort Key) <span className="text-gray-400">選填</span>
-                                            </label>
-                                            <input
-                                                type="text"
-                                                name="sortKey"
-                                                value={databaseData.sortKey}
-                                                onChange={handleDatabaseChange}
-                                                placeholder="例如：createdAt"
-                                                className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono text-sm"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                                AWS 區域 (Region) <span className="text-red-500">*</span>
-                                            </label>
-                                            <select
-                                                name="region"
-                                                value={databaseData.region}
-                                                onChange={handleDatabaseChange}
-                                                className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                                            >
-                                                <option value="us-east-1">us-east-1 (美東)</option>
-                                                <option value="us-west-2">us-west-2 (美西)</option>
-                                                <option value="ap-northeast-1">ap-northeast-1 (東京)</option>
-                                                <option value="ap-southeast-1">ap-southeast-1 (新加坡)</option>
-                                                <option value="eu-west-1">eu-west-1 (愛爾蘭)</option>
-                                            </select>
-                                        </div>
-                                    </div>
+
+                                        {/* DynamoDB 配置 */}
+                                        {selectedDatabaseType === 'DYNAMODB' && (
+                                            <div className="space-y-4 p-4 border border-orange-200 dark:border-orange-800 rounded-lg bg-orange-50/50 dark:bg-orange-900/10">
+                                                <p className="text-xs text-orange-700 dark:text-orange-300 font-medium">
+                                                    🗄️ AWS DynamoDB 無伺服器資料庫配置
+                                                </p>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                                        資料表名稱 <span className="text-red-500">*</span>
+                                                    </label>
+                                                    <input type="text" name="dynamodbTableName" value={databaseData.dynamodbTableName} onChange={handleDatabaseChange} placeholder="jvtutorcorner-courses" className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono text-sm" required />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">主鍵 Partition Key <span className="text-red-500">*</span></label>
+                                                    <input type="text" name="dynamodbPartitionKey" value={databaseData.dynamodbPartitionKey} onChange={handleDatabaseChange} placeholder="courseId" className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono text-sm" required />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">排序鍵 Sort Key <span className="text-gray-400">選填</span></label>
+                                                    <input type="text" name="dynamodbSortKey" value={databaseData.dynamodbSortKey} onChange={handleDatabaseChange} placeholder="createdAt" className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono text-sm" />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">AWS 區域 <span className="text-red-500">*</span></label>
+                                                    <select name="dynamodbRegion" value={databaseData.dynamodbRegion} onChange={handleDatabaseChange} className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                                                        <option value="us-east-1">us-east-1 (美東)</option>
+                                                        <option value="us-west-2">us-west-2 (美西)</option>
+                                                        <option value="ap-northeast-1">ap-northeast-1 (東京)</option>
+                                                        <option value="ap-southeast-1">ap-southeast-1 (新加坡)</option>
+                                                        <option value="eu-west-1">eu-west-1 (愛爾蘭)</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* MongoDB 配置 */}
+                                        {selectedDatabaseType === 'MONGODB' && (
+                                            <div className="space-y-4 p-4 border border-green-200 dark:border-green-800 rounded-lg bg-green-50/50 dark:bg-green-900/10">
+                                                <p className="text-xs text-green-700 dark:text-green-300 font-medium">🍃 MongoDB 文件型資料庫配置</p>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">MongoDB URI <span className="text-red-500">*</span></label>
+                                                    <input type="text" name="mongodbUri" value={databaseData.mongodbUri} onChange={handleDatabaseChange} placeholder="mongodb+srv://user:pass@cluster.mongodb.net" className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono text-sm" required />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">資料庫名稱 <span className="text-red-500">*</span></label>
+                                                    <input type="text" name="mongodbDatabase" value={databaseData.mongodbDatabase} onChange={handleDatabaseChange} placeholder="jvtutorcorner" className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white" required />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">集合名稱 <span className="text-red-500">*</span></label>
+                                                    <input type="text" name="mongodbCollection" value={databaseData.mongodbCollection} onChange={handleDatabaseChange} placeholder="courses" className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white" required />
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* PostgreSQL 配置 */}
+                                        {selectedDatabaseType === 'POSTGRESQL' && (
+                                            <div className="space-y-4 p-4 border border-blue-200 dark:border-blue-800 rounded-lg bg-blue-50/50 dark:bg-blue-900/10">
+                                                <p className="text-xs text-blue-700 dark:text-blue-300 font-medium">🐘 PostgreSQL SQL 資料庫配置</p>
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div>
+                                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">主機 <span className="text-red-500">*</span></label>
+                                                        <input type="text" name="sqlHost" value={databaseData.sqlHost} onChange={handleDatabaseChange} placeholder="localhost" className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white" required />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">埠號 <span className="text-red-500">*</span></label>
+                                                        <input type="text" name="sqlPort" value={databaseData.sqlPort} onChange={handleDatabaseChange} placeholder="5432" className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white" required />
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">使用者名稱 <span className="text-red-500">*</span></label>
+                                                    <input type="text" name="sqlUser" value={databaseData.sqlUser} onChange={handleDatabaseChange} placeholder="postgres" className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white" required />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">密碼 <span className="text-red-500">*</span></label>
+                                                    <input type="password" name="sqlPassword" value={databaseData.sqlPassword} onChange={handleDatabaseChange} className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white" required />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">資料庫名稱 <span className="text-red-500">*</span></label>
+                                                    <input type="text" name="sqlDatabase" value={databaseData.sqlDatabase} onChange={handleDatabaseChange} placeholder="jvtutorcorner" className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white" required />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">資料表名稱 <span className="text-red-500">*</span></label>
+                                                    <input type="text" name="sqlTable" value={databaseData.sqlTable} onChange={handleDatabaseChange} placeholder="courses" className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white" required />
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* MySQL 配置 */}
+                                        {selectedDatabaseType === 'MYSQL' && (
+                                            <div className="space-y-4 p-4 border border-cyan-200 dark:border-cyan-800 rounded-lg bg-cyan-50/50 dark:bg-cyan-900/10">
+                                                <p className="text-xs text-cyan-700 dark:text-cyan-300 font-medium">🐬 MySQL SQL 資料庫配置</p>
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div>
+                                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">主機 <span className="text-red-500">*</span></label>
+                                                        <input type="text" name="sqlHost" value={databaseData.sqlHost} onChange={handleDatabaseChange} placeholder="localhost" className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white" required />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">埠號 <span className="text-red-500">*</span></label>
+                                                        <input type="text" name="sqlPort" value={databaseData.sqlPort} onChange={handleDatabaseChange} placeholder="3306" className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white" required />
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">使用者名稱 <span className="text-red-500">*</span></label>
+                                                    <input type="text" name="sqlUser" value={databaseData.sqlUser} onChange={handleDatabaseChange} placeholder="root" className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white" required />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">密碼 <span className="text-red-500">*</span></label>
+                                                    <input type="password" name="sqlPassword" value={databaseData.sqlPassword} onChange={handleDatabaseChange} className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white" required />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">資料庫名稱 <span className="text-red-500">*</span></label>
+                                                    <input type="text" name="sqlDatabase" value={databaseData.sqlDatabase} onChange={handleDatabaseChange} placeholder="jvtutorcorner" className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white" required />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">資料表名稱 <span className="text-red-500">*</span></label>
+                                                    <input type="text" name="sqlTable" value={databaseData.sqlTable} onChange={handleDatabaseChange} placeholder="courses" className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white" required />
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Redis 配置 */}
+                                        {selectedDatabaseType === 'REDIS' && (
+                                            <div className="space-y-4 p-4 border border-red-200 dark:border-red-800 rounded-lg bg-red-50/50 dark:bg-red-900/10">
+                                                <p className="text-xs text-red-700 dark:text-red-300 font-medium">⚡ Redis 高效能快取存儲配置</p>
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div>
+                                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">主機 <span className="text-red-500">*</span></label>
+                                                        <input type="text" name="redisHost" value={databaseData.redisHost} onChange={handleDatabaseChange} placeholder="localhost" className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white" required />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">埠號 <span className="text-red-500">*</span></label>
+                                                        <input type="text" name="redisPort" value={databaseData.redisPort} onChange={handleDatabaseChange} placeholder="6379" className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white" required />
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">密碼 <span className="text-gray-400">選填</span></label>
+                                                    <input type="password" name="redisPassword" value={databaseData.redisPassword} onChange={handleDatabaseChange} className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">資料庫編號 <span className="text-gray-400">選填</span></label>
+                                                    <input type="text" name="redisDb" value={databaseData.redisDb} onChange={handleDatabaseChange} placeholder="0" className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
+                                                </div>
+                                            </div>
+                                        )}
+                                    </>
                                 )}
 
+                                {/* 知識庫設定 Tab */}
+                                {dataStorageActiveTab === 'knowledge-base' && (
+                                    <>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                                設定名稱 (僅供您辨識)
+                                            </label>
+                                            <input
+                                                type="text"
+                                                name="name"
+                                                value={knowledgeBaseData.name}
+                                                onChange={handleDatabaseChange}
+                                                placeholder="例如：我的 AI 知識庫"
+                                                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-orange-500 focus:border-orange-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                                required
+                                            />
+                                        </div>
 
+                                        <div className="p-4 border border-purple-200 dark:border-purple-800 rounded-lg bg-purple-50/50 dark:bg-purple-900/10">
+                                            <h3 className="text-sm font-semibold text-purple-900 dark:text-purple-100 mb-4 flex items-center gap-2">
+                                                <span>🧠</span> Qdrant 向量資料庫配置
+                                            </h3>
+                                            <p className="text-xs text-purple-700 dark:text-purple-300 mb-4">
+                                                Qdrant 是開源的向量資料庫，為您的 AI 提供高效、可擴展的語義搜索和相似度匹配能力。
+                                            </p>
+                                            <div className="space-y-4">
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Qdrant 伺服器 URL <span className="text-red-500">*</span></label>
+                                                    <input
+                                                        type="text"
+                                                        name="qdrantUrl"
+                                                        value={knowledgeBaseData.qdrantUrl}
+                                                        onChange={handleDatabaseChange}
+                                                        placeholder="http://localhost:6333 或 https://your-qdrant-cloud.com"
+                                                        className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono text-sm"
+                                                        required
+                                                    />
+                                                    <p className="text-[10px] text-gray-400 mt-1">💡 本地開發可用 localhost:6333，生產環境建議使用 Qdrant Cloud</p>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">API Key <span className="text-red-500">*</span></label>
+                                                    <input
+                                                        type="password"
+                                                        name="qdrantApiKey"
+                                                        value={knowledgeBaseData.qdrantApiKey}
+                                                        onChange={handleDatabaseChange}
+                                                        placeholder="您的 Qdrant API Key"
+                                                        className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono text-sm"
+                                                        required
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">集合名稱 (Collection Name) <span className="text-red-500">*</span></label>
+                                                    <input
+                                                        type="text"
+                                                        name="qdrantCollectionName"
+                                                        value={knowledgeBaseData.qdrantCollectionName}
+                                                        onChange={handleDatabaseChange}
+                                                        placeholder="knowledge-base 或 courses-embeddings"
+                                                        className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                                        required
+                                                    />
+                                                    <p className="text-[10px] text-gray-400 mt-1">💡 集合是 Qdrant 中組織向量的方式，一個 URL 可以有多個集合</p>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">嵌入模型 (Embedding Model)</label>
+                                                    <select
+                                                        name="qdrantEmbeddingModel"
+                                                        value={knowledgeBaseData.qdrantEmbeddingModel}
+                                                        onChange={handleDatabaseChange}
+                                                        className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                                    >
+                                                        <option value="text-embedding-3-small">OpenAI text-embedding-3-small (推薦)</option>
+                                                        <option value="text-embedding-3-large">OpenAI text-embedding-3-large</option>
+                                                        <option value="text-embedding-ada-002">OpenAI text-embedding-ada-002</option>
+                                                        <option value="mistral-embed">Mistral Embed</option>
+                                                        <option value="all-MiniLM-L6-v2">Sentence Transformers all-MiniLM-L6-v2</option>
+                                                    </select>
+                                                    <p className="text-[10px] text-gray-400 mt-1">💡 用於將文字轉換成向量的模型。確保與您儲存的向量維度匹配</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
                             </>
                         ) : isEmail ? (
                             <>

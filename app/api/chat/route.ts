@@ -207,7 +207,6 @@ ${customInstruction}
             systemInstruction: systemPrompt
         });
 
-        // Memory search disabled (LanceDB removed)
         const chat = model.startChat({
             history,
             systemInstruction: systemPrompt
@@ -338,7 +337,6 @@ ${customInstruction}
 
         const finalReply = response.text();
 
-        // Memory storage disabled (LanceDB removed)
 
         // Normal Text Response
         return NextResponse.json({ reply: finalReply });

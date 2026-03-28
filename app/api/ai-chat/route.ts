@@ -15,7 +15,7 @@ const APP_INTEGRATIONS_TABLE = process.env.DYNAMODB_TABLE_APP_INTEGRATIONS || 'j
 /**
  * Dynamically retrieves the AI configuration (API Key, Model, Provider).
  */
-async function getAIConfig(messages: any[] = []): Promise<{ provider: string; apiKey: string; model: string; systemInstruction?: string; linkedSkillId?: string; linkedDatabaseId?: string; routingReason?: string } | null> {
+async function getAIConfig(messages: any[] = [], useSmartRouter: boolean = false): Promise<{ provider: string; apiKey: string; model: string; systemInstruction?: string; linkedSkillId?: string; linkedDatabaseId?: string; routingReason?: string } | null> {
     try {
         const chatroomRes = await ddbDocClient.send(new ScanCommand({
             TableName: APP_INTEGRATIONS_TABLE,
@@ -39,6 +39,18 @@ async function getAIConfig(messages: any[] = []): Promise<{ provider: string; ap
 
         let routingReason: string | undefined = undefined;
         let smartRouterSystemInstruction: string | undefined = undefined;
+
+        if (useSmartRouter && (!integration || integration.type !== 'SMART_ROUTER')) {
+            const srRes = await ddbDocClient.send(new ScanCommand({
+                TableName: APP_INTEGRATIONS_TABLE,
+                FilterExpression: '#type = :type AND #status = :status',
+                ExpressionAttributeNames: { '#type': 'type', '#status': 'status' },
+                ExpressionAttributeValues: { ':type': 'SMART_ROUTER', ':status': 'ACTIVE' }
+            }));
+            if (srRes.Items && srRes.Items.length > 0) {
+                integration = srRes.Items[0];
+            }
+        }
 
         if (integration && integration.type === 'SMART_ROUTER') {
             const config = integration.config || {};
@@ -103,11 +115,23 @@ async function getAIConfig(messages: any[] = []): Promise<{ provider: string; ap
     return null;
 }
 
+const promptCache = new Map<string, { data: any, timestamp: number }>();
+
 export async function POST(req: Request) {
     try {
-        const { messages, agentId } = await req.json();
+        const { messages, agentId, useSmartRouter, usePromptCache } = await req.json();
 
-        const config = await getAIConfig(messages);
+        const cacheKeyHash = Buffer.from(encodeURI(JSON.stringify({ messages, agentId, useSmartRouter }))).toString('base64');
+        if (usePromptCache && promptCache.has(cacheKeyHash)) {
+            const cached = promptCache.get(cacheKeyHash);
+            if (cached && Date.now() - cached.timestamp < 1000 * 60 * 10) { // 10 mins TTL
+                return NextResponse.json({ ...cached.data, isCached: true });
+            } else {
+                promptCache.delete(cacheKeyHash);
+            }
+        }
+
+        const config = await getAIConfig(messages, useSmartRouter);
         if (!config || !config.apiKey) {
             return NextResponse.json({ reply: '抱歉，系統尚未設定 AI 服務串接，無法啟動 AI 聊天室。' });
         }
@@ -237,13 +261,19 @@ export async function POST(req: Request) {
             finalReply = '不支援的 AI 供應商進行工具調用。';
         }
 
-        return NextResponse.json({
+        const responseData = {
             reply: finalReply,
             toolCalls: toolLogs,
             agentId: platformAgent?.id || agentId,
             routingReason,
             modelUsed: modelName
-        });
+        };
+
+        if (usePromptCache) {
+            promptCache.set(cacheKeyHash, { data: responseData, timestamp: Date.now() });
+        }
+
+        return NextResponse.json(responseData);
 
     } catch (error: any) {
         console.error('❌ [AI Chat API] Error:', error);
