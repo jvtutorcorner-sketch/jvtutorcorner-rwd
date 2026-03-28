@@ -173,11 +173,13 @@ export default function ClientHomePage({
         </div>
       </section>
 
-      {/* How It Works */}
-      <HowItWorks />
 
-      {/* Medicine Identification Flow */}
-      <MedicineIdentificationFlow />
+      {/* How It Works - Hidden per user request */}
+      {/* <HowItWorks /> */}
+
+      {/* Medicine Identification Flow - Hidden per user request */}
+      {/* <MedicineIdentificationFlow /> */}
+
 
       <section className="section">
         {/* ── Personalised Recommendation Strip ─────────────────────────── */}
