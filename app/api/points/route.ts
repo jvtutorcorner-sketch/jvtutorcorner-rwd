@@ -1,54 +1,9 @@
 // app/api/points/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { GetCommand, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
-import { ddbDocClient } from '@/lib/dynamo';
+import { getUserPoints, setUserPoints } from '@/lib/pointsStorage';
 
 export const runtime = 'nodejs';
 export const revalidate = 0; // Disable caching for point balance
-
-
-const TABLE_NAME = process.env.DYNAMODB_TABLE_USER_POINTS || 'jvtutorcorner-user-points';
-
-const useDynamo =
-  typeof TABLE_NAME === 'string' &&
-  TABLE_NAME.length > 0 &&
-  (process.env.NODE_ENV === 'production' ||
-    !!(process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID));
-
-// In-memory fallback for development
-const LOCAL_POINTS: Record<string, number> = {};
-
-async function getUserPoints(userId: string): Promise<number> {
-  if (useDynamo) {
-    try {
-      const res = await ddbDocClient.send(
-        new GetCommand({ TableName: TABLE_NAME, Key: { userId } })
-      );
-      return typeof res.Item?.balance === 'number' ? res.Item.balance : 0;
-    } catch (e) {
-      console.error('[points API] DynamoDB get error:', e);
-      return 0;
-    }
-  }
-  return LOCAL_POINTS[userId] ?? 0;
-}
-
-async function setUserPoints(userId: string, balance: number): Promise<void> {
-  if (useDynamo) {
-    try {
-      await ddbDocClient.send(
-        new PutCommand({
-          TableName: TABLE_NAME,
-          Item: { userId, balance, updatedAt: new Date().toISOString() },
-        })
-      );
-    } catch (e) {
-      console.error('[points API] DynamoDB put error:', e);
-    }
-    return;
-  }
-  LOCAL_POINTS[userId] = balance;
-}
 
 // GET /api/points?userId=xxx
 export async function GET(req: NextRequest) {

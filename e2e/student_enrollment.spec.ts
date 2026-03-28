@@ -280,20 +280,22 @@ test('Student Enrollment Flow with auto-balance recovery', async ({ page }) => {
         console.log("Selected '點數報名' tab");
     }
     
-    // 🔑 Set start time to NOW - 5 minutes so the session is already "in progress"
+    // 🔑 Set start time to current moment so the session is already "in progress"
     // This ensures the '進入教室' button is immediately available after enrollment
     const e2eStartDate = new Date();
-    e2eStartDate.setMinutes(e2eStartDate.getMinutes() - 5);
     const e2eTzOffset = e2eStartDate.getTimezoneOffset() * 60000;
     const e2eStartTime = (new Date(e2eStartDate.getTime() - e2eTzOffset)).toISOString().slice(0, 16);
     await page.fill('#start-time', e2eStartTime);
-    console.log(`Set start time to NOW-5min: ${e2eStartTime} (lesson in progress = classroom entry enabled)`);
+    console.log(`Set start time to NOW: ${e2eStartTime} (lesson in progress = classroom entry enabled)`);
     
     console.log("Clicking '確認報名'...");
-    // Intercept the /api/orders network request to verify correctness
-    // Must set up listener BEFORE clicking to avoid race condition
+    // Intercept both the request AND response for /api/orders POST (must set up BEFORE clicking)
     const ordersRequestPromise = page.waitForRequest(
         req => req.url().includes('/api/orders') && req.method() === 'POST',
+        { timeout: 15000 }
+    ).catch(() => null);
+    const ordersResponsePromise = page.waitForResponse(
+        res => res.url().includes('/api/orders') && res.request().method() === 'POST',
         { timeout: 15000 }
     ).catch(() => null);
     
@@ -351,6 +353,29 @@ test('Student Enrollment Flow with auto-balance recovery', async ({ page }) => {
         console.warn(`⚠️ Could not intercept /api/orders request`);
     }
 
+    // Capture and log the API response body for /api/orders
+    const ordersResponse = await ordersResponsePromise;
+    let ordersResponseBody: any = null;
+    if (ordersResponse) {
+        try {
+            ordersResponseBody = await ordersResponse.json();
+            console.log(`[Network] /api/orders response status: ${ordersResponse.status()}`);
+            console.log(`[Network] /api/orders response body:`, JSON.stringify(ordersResponseBody));
+            if (!ordersResponseBody?.ok) {
+                console.error(`❌ /api/orders returned error: ${ordersResponseBody?.error}`);
+            } else {
+                const savedPointsUsed = ordersResponseBody?.order?.pointsUsed;
+                const savedPayMethod = ordersResponseBody?.order?.paymentMethod;
+                console.log(`[Order saved] paymentMethod=${savedPayMethod}, pointsUsed=${savedPointsUsed}`);
+                if (savedPayMethod !== 'points' || !savedPointsUsed || savedPointsUsed <= 0) {
+                    console.warn(`⚠️ DEDUCTION RISK: order saved with paymentMethod='${savedPayMethod}', pointsUsed=${savedPointsUsed} — points may NOT have been deducted!`);
+                }
+            }
+        } catch (e) {
+            console.warn('Could not parse /api/orders response body:', e);
+        }
+    }
+
     // 7. Verification: redirect to student_courses
     console.log("Waiting for redirection to /student_courses...");
     await page.waitForURL('**/student_courses', { timeout: 40000 });
@@ -360,18 +385,66 @@ test('Student Enrollment Flow with auto-balance recovery', async ({ page }) => {
     
     console.log("SUCCESS: Course successfully enrolled!");
     
-    // 8. Verify point deduction via API (critical check)
+    // 8. Verify point deduction via API (critical check + deep diagnosis)
     console.log("Verifying point deduction...");
     const finalBalanceRes = await page.request.get(`${baseUrl}/api/points?userId=${email}`);
     const finalBalanceData = await finalBalanceRes.json();
     const finalBalance = finalBalanceData.balance;
     console.log(`Balance before enroll: ${balanceBeforeEnroll} → After enroll: ${finalBalance}`);
-    
+
     const expectedDeduction = 10; // pointCost set in course creation
     const expectedFinalBalance = balanceBeforeEnroll - expectedDeduction;
-    if (finalBalance !== expectedFinalBalance) {
+
+    if (finalBalance === balanceBeforeEnroll) {
+        // ===== DEEP INVESTIGATION: points not deducted =====
+        console.error(`❌ No point deduction detected (balance unchanged: ${finalBalance})`);
+        console.error(`--- Deep Investigation ---`);
+
+        // 1. Re-check the intercepted request payload
+        const interceptedReq = await ordersRequestPromise.catch(() => null);
+        if (interceptedReq) {
+            const reqBody = interceptedReq.postDataJSON();
+            console.error(`[DeepCheck] Request payload: ${JSON.stringify(reqBody)}`);
+            console.error(`[DeepCheck] paymentMethod=${reqBody?.paymentMethod}, pointsUsed=${reqBody?.pointsUsed}, userId=${reqBody?.userId}`);
+            if (reqBody?.paymentMethod !== 'points') {
+                console.error(`[DeepCheck] ROOT CAUSE CANDIDATE: paymentMethod is '${reqBody?.paymentMethod}' (not 'points'). Check enrollmentType & payMethod in EnrollButton.`);
+            }
+            if (!reqBody?.pointsUsed || reqBody?.pointsUsed <= 0) {
+                console.error(`[DeepCheck] ROOT CAUSE CANDIDATE: pointsUsed=${reqBody?.pointsUsed} is falsy/zero. Check pointCost prop passed to EnrollButton.`);
+            }
+        } else {
+            console.error(`[DeepCheck] Could not retrieve intercepted request — orders API was not called with POST.`);
+        }
+
+        // 2. Check the response body for the order
+        if (ordersResponseBody) {
+            console.error(`[DeepCheck] API responded: ok=${ordersResponseBody?.ok}, error=${ordersResponseBody?.error}`);
+            const ord = ordersResponseBody?.order;
+            if (ord) {
+                console.error(`[DeepCheck] Saved order: paymentMethod=${ord.paymentMethod}, pointsUsed=${ord.pointsUsed}, status=${ord.status}`);
+            }
+        } else {
+            console.error(`[DeepCheck] No API response captured — orders endpoint may not have been reached.`);
+        }
+
+        // 3. Fetch the latest order for this user from the API to cross-check
+        try {
+            const latestOrdersRes = await page.request.get(`${baseUrl}/api/orders?userId=${encodeURIComponent(email)}&limit=5`);
+            const latestOrdersData = await latestOrdersRes.json();
+            const latestOrders = latestOrdersData?.data || [];
+            const testCourseOrders = latestOrders.filter((o: any) => o.courseId === testCourseId);
+            console.error(`[DeepCheck] Orders for test course: ${JSON.stringify(testCourseOrders.map((o: any) => ({ orderId: o.orderId, paymentMethod: o.paymentMethod, pointsUsed: o.pointsUsed, status: o.status })))}`);
+        } catch (e) {
+            console.error(`[DeepCheck] Failed to fetch latest orders:`, e);
+        }
+
         throw new Error(
-            `❌ Point deduction failed! Before: ${balanceBeforeEnroll}, After: ${finalBalance}, ` +
+            `❌ Point deduction failed! Balance before=${balanceBeforeEnroll}, after=${finalBalance} (unchanged). ` +
+            `Check console logs above for root cause.`
+        );
+    } else if (finalBalance !== expectedFinalBalance) {
+        throw new Error(
+            `❌ Wrong deduction amount! Before: ${balanceBeforeEnroll}, After: ${finalBalance}, ` +
             `Expected deduction: ${expectedDeduction}, Expected final: ${expectedFinalBalance}`
         );
     }

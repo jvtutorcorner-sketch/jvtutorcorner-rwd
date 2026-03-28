@@ -3,6 +3,7 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, PutCommand, ScanCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
 import { randomUUID } from 'crypto';
 import { COURSES } from '@/data/courses';
+import { deductUserPoints } from '@/lib/pointsStorage';
 
 // DynamoDB client initialization
 const ddbRegion = process.env.CI_AWS_REGION || process.env.AWS_REGION;
@@ -52,10 +53,11 @@ export async function POST(request: Request) {
     const createdAt = new Date().toISOString();
     const orderNumber = `${userId}-${createdAt}`;
 
-    // Fetch course duration and total sessions
+    // Fetch course duration, total sessions, and pointCost (server-authoritative)
     let durationMinutes = 0;
     let totalSessions = 1;
     let courseTitle = '';
+    let coursePointCost = 0;
 
     try {
       if (courseId) {
@@ -66,56 +68,44 @@ export async function POST(request: Request) {
           durationMinutes = res.Item.durationMinutes || 0;
           totalSessions = res.Item.totalSessions || 1;
           courseTitle = res.Item.title || '';
+          coursePointCost = Number(res.Item.pointCost) || 0;
         } else {
           const course = COURSES.find(c => c.id === courseId);
           durationMinutes = course?.durationMinutes || 0;
           totalSessions = course?.totalSessions || 1;
           courseTitle = course?.title || '';
+          coursePointCost = Number((course as any)?.pointCost) || 0;
         }
       }
     } catch (e) {
-      console.warn('[orders API] Failed to fetch course duration/sessions:', e);
+      console.warn('[orders API] Failed to fetch course data:', e);
     }
 
-    // 🟢 Point Deduction Logic
-    if (paymentMethod === 'points' && pointsUsed && pointsUsed > 0) {
-      try {
-        const POINTS_TABLE = process.env.DYNAMODB_TABLE_USER_POINTS || 'jvtutorcorner-user-points';
-        
-        // 1. Fetch current balance
-        const getPointsCmd = new GetCommand({
-          TableName: POINTS_TABLE,
-          Key: { userId }
-        });
-        const pointsRes = await docClient.send(getPointsCmd);
-        const currentBalance = pointsRes.Item?.balance ?? 0;
+    // 🟢 Point Deduction Logic (server-authoritative: use coursePointCost from DB, not client-provided value)
+    // effectivePointsToDeduct: use server's coursePointCost as authority; fall back to client-sent value only if course not in DB
+    const effectivePointsToDeduct =
+      paymentMethod === 'points'
+        ? (coursePointCost > 0 ? coursePointCost : Number(pointsUsed) || 0)
+        : 0;
 
-        if (currentBalance < pointsUsed) {
-          return NextResponse.json({ 
-            error: `點數不足，目前餘額 ${currentBalance} 點，需要 ${pointsUsed} 點`,
-            ok: false 
-          }, { status: 400 });
-        }
-
-        // 2. Atomic deduction
-        const { UpdateCommand } = await import('@aws-sdk/lib-dynamodb');
-        await docClient.send(new UpdateCommand({
-          TableName: POINTS_TABLE,
-          Key: { userId },
-          UpdateExpression: 'SET balance = balance - :p, updatedAt = :u',
-          ExpressionAttributeValues: {
-            ':p': pointsUsed,
-            ':u': createdAt,
-          },
-        }));
-        console.log(`[orders API] Successfully deducted ${pointsUsed} points from ${userId} for course: ${courseTitle}`);
-      } catch (pointsErr: any) {
-        console.error('[orders API] Point deduction error:', pointsErr);
-        return NextResponse.json({ 
-          error: '點數扣除服務異常，請稍後再試。', 
-          detail: pointsErr?.message 
-        }, { status: 500 });
+    if (paymentMethod === 'points' && effectivePointsToDeduct > 0) {
+      const deductResult = await deductUserPoints(userId, effectivePointsToDeduct);
+      if (!deductResult.ok) {
+        return NextResponse.json({
+          error: deductResult.error,
+          ok: false,
+        }, { status: 400 });
       }
+      console.log(
+        `[orders API] Deducted ${effectivePointsToDeduct} pts from ${userId} (new balance: ${deductResult.newBalance}) for "${courseTitle}"`
+      );
+    } else if (paymentMethod === 'points' && effectivePointsToDeduct === 0) {
+      // paymentMethod is 'points' but no point cost found — reject to prevent free enrollment
+      console.warn(`[orders API] paymentMethod='points' but effectivePointsToDeduct=0 for course '${courseId}'. Rejecting.`);
+      return NextResponse.json({
+        error: '此課程未設定點數費用，無法以點數報名。',
+        ok: false,
+      }, { status: 400 });
     }
 
     const order = {
@@ -132,7 +122,7 @@ export async function POST(request: Request) {
       amount: amount || 0,
       currency: currency || 'TWD',
       paymentMethod: paymentMethod || null,
-      pointsUsed: pointsUsed || 0,
+      pointsUsed: effectivePointsToDeduct || 0,
       status: clientStatus || 'PENDING',
       startTime: startTime || null,
       endTime: endTime || null,
