@@ -2247,7 +2247,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   }
 
   return (
-    <>
+    <div className="classroom-page-wrapper">
       {/* Error Display - Only show in development mode */}
       {process.env.NODE_ENV !== 'production' && whiteboardError && (
         <div style={{
@@ -2964,7 +2964,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
 
         </div>
       </div>
-    </>
+    </div>
   );
 };
 
