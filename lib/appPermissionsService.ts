@@ -142,6 +142,39 @@ const DEFAULT_APPS: AppConfig[] = [
             { roleId: 'teacher', roleName: 'Teacher', visible: false },
             { roleId: 'student', roleName: 'Student', visible: false }
         ]
+    },
+    {
+        id: 'APP_CATEGORY_ASK_PLAN_AGENT',
+        path: 'APP_CATEGORY_ASK_PLAN_AGENT',
+        label: '分類: 方案提問助理 (主選單)',
+        sortOrder: 11,
+        permissions: [
+            { roleId: 'admin', roleName: 'Admin', visible: true },
+            { roleId: 'teacher', roleName: 'Teacher', visible: true },
+            { roleId: 'student', roleName: 'Student', visible: true }
+        ]
+    },
+    {
+        id: 'APP_CATEGORY_DATABASE',
+        path: 'APP_CATEGORY_DATABASE',
+        label: '分類: 資料庫服務設定 (主選單)',
+        sortOrder: 12,
+        permissions: [
+            { roleId: 'admin', roleName: 'Admin', visible: true },
+            { roleId: 'teacher', roleName: 'Teacher', visible: false },
+            { roleId: 'student', roleName: 'Student', visible: false }
+        ]
+    },
+    {
+        id: 'APP_CATEGORY_SKILLS',
+        path: 'APP_CATEGORY_SKILLS',
+        label: '分類: 技能與自動化 (主選單)',
+        sortOrder: 13,
+        permissions: [
+            { roleId: 'admin', roleName: 'Admin', visible: true },
+            { roleId: 'teacher', roleName: 'Teacher', visible: true },
+            { roleId: 'student', roleName: 'Student', visible: false }
+        ]
     }
 ];
 

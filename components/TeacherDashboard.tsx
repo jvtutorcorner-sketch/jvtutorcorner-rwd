@@ -30,6 +30,7 @@ export default function TeacherDashboard({ teacherId, teacherName }: Props) {
   const qTeacher = searchParams.get('teacher') || '';
   const qTimeFrom = searchParams.get('timeFrom') || '';
   const qTimeTo = searchParams.get('timeTo') || '';
+  const includeTests = searchParams.get('includeTests') === 'true';
 
   const [searchInputCourse, setSearchInputCourse] = useState(qCourse);
   const [searchInputTeacher, setSearchInputTeacher] = useState(qTeacher);
@@ -107,6 +108,10 @@ export default function TeacherDashboard({ teacherId, teacherName }: Props) {
         url = `/api/courses?teacherId=${encodeURIComponent(String(myTeacherId))}`;
       } else if (myTeacherName) {
         url = `/api/courses?teacher=${encodeURIComponent(String(myTeacherName))}`;
+      }
+
+      if (includeTests) {
+        url += (url.includes('?') ? '&' : '?') + 'includeTests=true';
       }
 
       const res = await fetch(url);

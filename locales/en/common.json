@@ -448,5 +448,19 @@
   "student_courses_created_at": "Created At",
   "enter_classroom": "Enter Classroom",
   "login_google_workspace_notice": "Redirecting to Google Workspace authentication...\nThis will use your organization account for secure login.",
-  "or_classic": "or use classic method"
+  "or_classic": "or use classic method",
+  "how_it_works_title": "How It Works",
+  "how_it_works_step1_title": "Tell us about yourself",
+  "how_it_works_step1_desc": "Take our quiz and tell us about your goals, lifestyle, and learning needs.",
+  "how_it_works_step2_title": "Find your routine",
+  "how_it_works_step2_desc": "We'll personalise a plan backed by science made just for you.",
+  "how_it_works_step3_title": "Stick with it",
+  "how_it_works_step3_desc": "Build habits that improve your learning goals and earn rewards with the App.",
+  "medicine_identification_title": "Medicine Identification Steps",
+  "medicine_step1_title": "Use LINE Official Account",
+  "medicine_step1_desc": "Add our official LINE account and start the medicine identification service.",
+  "medicine_step2_title": "Pick Up Your Medicine",
+  "medicine_step2_desc": "Prepare the medicine you want to identify, ensuring the packaging is visible.",
+  "medicine_step3_title": "Take a Photo",
+  "medicine_step3_desc": "Capture a clear photo of the medicine and upload it through LINE to get instant identification results."
 }

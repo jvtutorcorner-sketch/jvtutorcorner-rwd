@@ -74,6 +74,13 @@ function TeacherCoursesContent() {
     return t('my_orders');
   };
 
+  const getSecureUrl = (path: string) => {
+    if (typeof window === 'undefined') return path;
+    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname.includes('.local');
+    if (isLocal) return path;
+    return `https://${window.location.host}${path}`;
+  };
+
   function formatDateTime(value: any) {
     if (!value) return '-';
     try {
@@ -616,7 +623,7 @@ function TeacherCoursesContent() {
 
                         return (
                           <Link
-                            href={`/classroom/wait?courseId=${encodeURIComponent(o.courseId)}&orderId=${encodeURIComponent(o.orderId || (o as any).id || '')}&orderid=${encodeURIComponent(o.orderId || (o as any).id || '')}`}
+                            href={getSecureUrl(`/classroom/wait?courseId=${encodeURIComponent(o.courseId)}&orderId=${encodeURIComponent(o.orderId || (o as any).id || '')}&orderid=${encodeURIComponent(o.orderId || (o as any).id || '')}`)}
                             className="btn btn-primary"
                             style={{ padding: '4px 8px', fontSize: '12px' }}
                           >
@@ -663,7 +670,7 @@ function TeacherCoursesContent() {
                       {formatDateTime(c.startDate)} ~ {formatDateTime(c.endDate)}
                     </div>
                     <Link
-                      href={`/classroom/wait?courseId=${encodeURIComponent(c.id)}`}
+                      href={getSecureUrl(`/classroom/wait?courseId=${encodeURIComponent(c.id)}`)}
                       className="btn btn-primary"
                       style={{ padding: '6px 12px', fontSize: '13px' }}
                     >

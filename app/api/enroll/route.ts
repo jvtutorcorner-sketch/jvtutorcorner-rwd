@@ -271,3 +271,35 @@ export async function GET() {
     );
   }
 }
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const url = new URL(request.url);
+    const id = url.searchParams.get('id');
+
+    if (!id) {
+      return NextResponse.json({ ok: false, error: '需要 id' }, { status: 400 });
+    }
+
+    if (useDynamo) {
+      const { DeleteCommand } = await import('@aws-sdk/lib-dynamodb');
+      await ddbDocClient.send(
+        new DeleteCommand({
+          TableName: TABLE_NAME,
+          Key: { id },
+        })
+      );
+    } else {
+      const idx = LOCAL_ENROLLMENTS.findIndex((e) => e.id === id);
+      if (idx !== -1) {
+        LOCAL_ENROLLMENTS.splice(idx, 1);
+        await saveLocalEnrollments();
+      }
+    }
+
+    return NextResponse.json({ ok: true, message: 'Deleted' });
+  } catch (err: any) {
+    console.error('[enroll API] DELETE 發生錯誤:', err?.message || err);
+    return NextResponse.json({ ok: false, error: '伺服器錯誤。' }, { status: 500 });
+  }
+}

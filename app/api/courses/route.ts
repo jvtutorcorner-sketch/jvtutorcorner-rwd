@@ -72,9 +72,13 @@ export async function GET(req: Request) {
       items = [...(BUNDLED_COURSES as any[])];
     }
 
-    // Filter out test courses from the general list (homepage view), but allow them for specific lookups (teacher dashboard/E2E testing)
-    if (!teacherId && !teacher && !url.searchParams.get('includeTests')) {
-      items = items.filter((item: any) => !String(item.id || '').startsWith('test-course-'));
+    // Filter out test courses from all general lists by default, but allow them for E2E testing if explicitly requested.
+    if (!url.searchParams.get('includeTests')) {
+      items = items.filter((item: any) => {
+        const id = String(item.id || '');
+        const title = String(item.title || '');
+        return !id.startsWith('test-course-') && !title.includes('測試課程');
+      });
     }
 
     // Batch lookup teacher names for all unique teacherIds in the items

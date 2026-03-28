@@ -137,7 +137,6 @@ test('Student Enrollment Flow with auto-balance recovery', async ({ page }) => {
             lastName: data.profile.lastName
         };
         localStorage.setItem('tutor_mock_user', JSON.stringify(user));
-        localStorage.setItem('tutor_session_expiry', String(Date.now() + 30 * 60 * 1000));
         window.dispatchEvent(new Event('tutor:auth-changed'));
     }, loginData);
 

@@ -9,7 +9,6 @@ import Link from 'next/link';
 import ConfigureAmplify from '@/components/ConfigureAmplify';
 import Header from '@/components/Header';
 import PageBreadcrumb from '@/components/PageBreadcrumb';
-import SessionTimer from '@/components/SessionTimer';
 import { AdminSettingsProvider } from '@/components/AdminSettingsProvider';
 import PermissionGuard from '@/components/auth/PermissionGuard';
 import { getAppPermissionsFromDynamoDB } from '@/lib/appPermissionsService';
@@ -68,7 +67,6 @@ export default async function RootLayout({
             <Header />
             <ProductTour />
             <PermissionGuard />
-            <SessionTimer />
 
             <main>
               <PageBreadcrumb />

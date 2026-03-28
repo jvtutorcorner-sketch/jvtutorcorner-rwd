@@ -513,5 +513,19 @@
   "student_courses_created_at": "建立时间",
   "enter_classroom": "进入教室",
   "login_google_workspace_notice": "正在重定向到 Google Workspace 验证...\n这将使用您的组织账号进行安全登录。",
-  "or_classic": "或使用传统方式"
+  "or_classic": "或使用传统方式",
+  "how_it_works_title": "运作方式",
+  "how_it_works_step1_title": "告诉我们关于你的信息",
+  "how_it_works_step1_desc": "填写我们的问卷，告诉我们你的目标、生活方式和学习需求。",
+  "how_it_works_step2_title": "找到你的学习方案",
+  "how_it_works_step2_desc": "我们会为你量身打造一个科学支持的个性化学习计划。",
+  "how_it_works_step3_title": "坚持下去并实现目标",
+  "how_it_works_step3_desc": "建立良好的学习习惯，在app中获得奖励并实现你的学习目标。",
+  "medicine_identification_title": "药物识别步骤",
+  "medicine_step1_title": "使用 LINE 官方账号",
+  "medicine_step1_desc": "添加我们的官方 LINE 账号，开始药物识别服务。",
+  "medicine_step2_title": "拿起药物",
+  "medicine_step2_desc": "准备要识别的药物，确保药物包装清晰可见。",
+  "medicine_step3_title": "拍照药物",
+  "medicine_step3_desc": "拍摄药物的清晰照片，通过 LINE 上传即可获得即时识别结果。"
 }

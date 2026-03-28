@@ -32,13 +32,9 @@ export default function TestPage() {
       // Skip detailed checks if just mounted / fast refresh to avoid flicker
       if (!mounted) return false;
 
-      try {
-        const expiry = window.localStorage.getItem('tutor_session_expiry');
-        if (!expiry) sessionValid = !!su;
-        else sessionValid = Number(expiry) > Date.now() && !!su;
-      } catch (e) { sessionValid = !!su; }
+      sessionValid = !!su;
 
-      console.log('[AuthCheck][test] storedUser:', su, 'expiry:', window.localStorage.getItem('tutor_session_expiry'), 'sessionValid:', sessionValid);
+      console.log('[AuthCheck][test] storedUser:', su, 'sessionValid:', sessionValid);
 
       if (!sessionValid) {
         // Skip redirect if recently logged in (last 15s)
@@ -73,7 +69,7 @@ export default function TestPage() {
     };
     const onStorageChanged = (e: StorageEvent) => {
       // If storage changed (cross-tab sync), re-evaluate auth
-      if (e.key === 'tutor_mock_user' || e.key === 'tutor_session_expiry') {
+      if (e.key === 'tutor_mock_user') {
         try { window.clearTimeout(recheckTimer); } catch (e) { }
         checkSession();
       }

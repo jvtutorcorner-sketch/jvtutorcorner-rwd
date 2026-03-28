@@ -161,20 +161,13 @@ export default async function CourseDetailPage({ params }: { params: Promise<{ i
                 </span>
               </div>
             )}
-            {(startTime || endTime) && (
-              <div className="info-row">
-                <span>課程時間</span>
-                <span>
-                  {startTime || 'TBD'} ~ {endTime || 'TBD'}
-                </span>
-              </div>
-            )}
             {totalSessions && (
               <div className="info-row">
                 <span>總堂數</span>
                 <span>{totalSessions} 堂</span>
               </div>
             )}
+
             {typeof seatsLeft === 'number' && (
               <div className="info-row">
                 <span>剩餘名額</span>

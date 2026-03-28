@@ -62,6 +62,18 @@ export default function ClassroomWaitPage() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
+
+    // Security: Enforce HTTPS for classroom access to ensure media device permissions (excluding localhost)
+    if (window.location.protocol === 'http:' && 
+        window.location.hostname !== 'localhost' && 
+        window.location.hostname !== '127.0.0.1' &&
+        !window.location.hostname.includes('.local')) {
+      console.warn('[Security] Redirecting to HTTPS to ensure media device access');
+      const httpsUrl = window.location.href.replace('http:', 'https:');
+      window.location.replace(httpsUrl);
+      return;
+    }
+
     const params = new URLSearchParams(window.location.search);
     const courseFromUrl = params.get('courseId') ?? 'c1';
     const orderFromUrl = params.get('orderId') || params.get('orderid');
@@ -69,7 +81,7 @@ export default function ClassroomWaitPage() {
     setOrderId(orderFromUrl || null);
 
     // Fetch course details from API for dynamic title
-    fetch(`/api/courses/${encodeURIComponent(courseFromUrl)}`)
+    fetch(`/api/courses/${encodeURIComponent(courseFromUrl)}`, { cache: 'no-store' })
       .then(r => r.json())
       .then(j => {
         if (j.ok && j.course?.title) {
@@ -116,10 +128,8 @@ export default function ClassroomWaitPage() {
       let sessionValid = false;
       let storedUser: any = null;
       try {
-        const expiry = window.localStorage.getItem('tutor_session_expiry');
         storedUser = getStoredUser();
-        if (!expiry) sessionValid = !!storedUser;
-        else sessionValid = Number(expiry) > Date.now() && !!storedUser;
+        sessionValid = !!storedUser;
 
         // Update state if we found a user during this check (to fix race condition)
         if (storedUser && !storedUserState) {
@@ -137,7 +147,7 @@ export default function ClassroomWaitPage() {
         sessionValid = !!storedUser;
       }
 
-      console.log(`[AuthCheck][wait] ${new Date().toISOString()} - storedUser:`, storedUser, 'expiry:', window.localStorage.getItem('tutor_session_expiry'), 'sessionValid:', sessionValid, 'isInLoginFlow:', isInLoginRedirectFlow, 'sessionKey:', key);
+      console.log(`[AuthCheck][wait] ${new Date().toISOString()} - storedUser:`, storedUser, 'sessionValid:', sessionValid, 'isInLoginFlow:', isInLoginRedirectFlow, 'sessionKey:', key);
 
       // Check for role mismatches if session is valid — only apply for logged-in users with explicit roles
       // Removed: the old strict redirect which was kicking teachers/students from valid classroom links
@@ -200,7 +210,7 @@ export default function ClassroomWaitPage() {
     };
     const onStorageChanged = (e: StorageEvent) => {
       // If storage changed (cross-tab sync), re-evaluate auth
-      if (e.key === 'tutor_mock_user' || e.key === 'tutor_session_expiry') {
+      if (e.key === 'tutor_mock_user') {
         try { window.clearTimeout(recheckTimer); } catch (e) { }
         checkSessionAndMaybeRedirect();
       }
@@ -236,7 +246,7 @@ export default function ClassroomWaitPage() {
     }
 
     syncDebounceRef.current = window.setTimeout(() => {
-      fetch(`/api/classroom/ready?uuid=${encodeURIComponent(sessionReadyKey)}`)
+      fetch(`/api/classroom/ready?uuid=${encodeURIComponent(sessionReadyKey)}`, { cache: 'no-store' })
         .then((r) => {
           if (!r.ok) throw new Error(`Server responded with ${r.status}`);
           return r.json();
@@ -1046,19 +1056,18 @@ function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, vi
   const [speakerTested, setSpeakerTested] = React.useState(false);
   const [videoTested, setVideoTested] = React.useState(false);
   const [isClient, setIsClient] = React.useState(false);
-  const [showIosNotice, setShowIosNotice] = React.useState(false);
+  const [showHttpsNotice, setShowHttpsNotice] = React.useState(false);
   const t = useT();
 
   // Detect client-side environment to avoid hydration errors
   React.useEffect(() => {
     setIsClient(true);
     if (typeof window !== 'undefined') {
-      const _isIos = /iPhone|iPad|iPod/.test(navigator.userAgent);
       const isHttp = window.location.protocol === 'http:';
-      const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname.includes('.local');
       const noMediaDevices = !navigator.mediaDevices;
-      // Show warning if iOS on HTTP OR if mediaDevices is not available (excluding localhost)
-      if ((_isIos && isHttp && !isLocal) || (noMediaDevices && !isLocal)) setShowIosNotice(true);
+      // Show warning if on HTTP OR if mediaDevices is not available (excluding localhost)
+      if ((isHttp && !isLocal) || (noMediaDevices && !isLocal)) setShowHttpsNotice(true);
     }
   }, []);
 
@@ -1073,6 +1082,10 @@ function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, vi
         const ais = list.filter((d) => d.kind === 'audioinput');
         const vis = list.filter((d) => d.kind === 'videoinput');
         const aos = list.filter((d) => d.kind === 'audiooutput');
+
+        // Autodetection of existing labels is disabled on this page to ensure users explicitly interact with the "Grant Permissions" button.
+        // We still save the lists for the selectors if they happen to be available.
+
         setAudioInputs(ais);
         setAudioOutputs(aos);
         setVideoInputs(vis);
@@ -1101,15 +1114,12 @@ function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, vi
       const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
       const e2eBypass = typeof window !== 'undefined' && (window as any).__E2E_BYPASS_DEVICE_CHECK__;
 
-      if (isLocal || e2eBypass) {
-        console.log('[Permission] Localhost/E2E detected, skipping hardware check');
+      // Even on Localhost, we perform a real getUserMedia request to trigger the browser prompt 
+      // (or at least provide a consistent user experience with the Grant Permissions button).
+      // We only use bypasses for headless CI environments.
+      if (e2eBypass) {
+        console.log('[Permission] E2E bypass detected');
         setPermissionGranted(true);
-        // Ensure device inputs are not empty for the UI
-        if (audioInputs.length === 0) setAudioInputs([{ deviceId: 'default', label: 'Default Audio', kind: 'audioinput', groupId: '' } as any]);
-        if (videoInputs.length === 0) setVideoInputs([{ deviceId: 'default', label: 'Default Video', kind: 'videoinput', groupId: '' } as any]);
-        setAudioTested(true);
-        setVideoTested(true);
-        setSpeakerTested(true);
         return true;
       }
 
@@ -1123,15 +1133,41 @@ function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, vi
         return false;
       }
 
-      const s = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
-      console.log('[Permission] Permissions granted, stream acquired');
+      let s: MediaStream | null = null;
+      try {
+        s = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+        console.log('[Permission] Combined permissions granted');
+      } catch (combinedErr) {
+        console.warn('[Permission] Combined request failed, trying separate requests for audio and video', combinedErr);
+        // Try audio only
+        try {
+          const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          audioStream.getTracks().forEach(t => t.stop());
+          console.log('[Permission] Audio permission granted');
+        } catch (audioErr) {
+          console.warn('[Permission] Audio-only request also failed', audioErr);
+        }
+        // Try video only
+        try {
+          const videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
+          videoStream.getTracks().forEach(t => t.stop());
+          console.log('[Permission] Video permission granted');
+        } catch (videoErr) {
+          console.warn('[Permission] Video-only request also failed', videoErr);
+        }
+        // If we reach here, we've attempted everything. If at least one worked, we can continue.
+        // Re-enumerate to see if we got labels for anything.
+      }
+
       setPermissionGranted(true);
 
-      // Stop all tracks
-      s.getTracks().forEach((t) => {
-        console.log('[Permission] Stopping track:', t.kind, t.id);
-        t.stop();
-      });
+      // Stop all tracks from the combined stream if it was acquired
+      if (s) {
+        s.getTracks().forEach((t) => {
+          console.log('[Permission] Stopping track:', t.kind, t.id);
+          t.stop();
+        });
+      }
 
       // Add a small delay before enumerating devices (helps with iOS)
       await new Promise(resolve => setTimeout(resolve, 100));
@@ -1181,11 +1217,11 @@ function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, vi
 
   const startCameraPreview = async () => {
     try {
-      const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
       const e2eBypass = typeof window !== 'undefined' && (window as any).__E2E_BYPASS_DEVICE_CHECK__;
+      const mockRequested = typeof window !== 'undefined' && window.location.search.includes('mock=1');
 
-      if (isLocal || e2eBypass) {
-        console.log('[Camera] Localhost/E2E detected, skipping hardware preview');
+      if (e2eBypass || mockRequested) {
+        console.log(e2eBypass ? '[Camera] E2E automation detected, skipping hardware preview' : '[Camera] Manual mock requested, skipping hardware preview');
         setPreviewingCamera(true);
         setVideoTested(true);
         return;
@@ -1221,6 +1257,7 @@ function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, vi
       }
       setPreviewingCamera(true);
       setVideoTested(true);
+      // We no longer set permissionGranted here; users must use the explicit Grant button
     } catch (e) {
       console.warn('startCameraPreview failed', e);
       alert(t('camera_preview_failed'));
@@ -1245,11 +1282,11 @@ function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, vi
 
   const startMicTest = async () => {
     try {
-      const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
       const e2eBypass = typeof window !== 'undefined' && (window as any).__E2E_BYPASS_DEVICE_CHECK__;
+      const mockRequested = typeof window !== 'undefined' && window.location.search.includes('mock=1');
 
-      if (isLocal || e2eBypass) {
-        console.log('[Mic] Localhost/E2E detected, skipping hardware test');
+      if (e2eBypass || mockRequested) {
+        console.log(e2eBypass ? '[Mic] E2E automation detected, skipping hardware test' : '[Mic] Manual mock requested, skipping hardware test');
         setTestingMic(true);
         testingMicRef.current = true;
         setAudioTested(true);
@@ -1274,6 +1311,7 @@ function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, vi
       setTestingMic(true);
       testingMicRef.current = true;
       setAudioTested(true);
+      // We no longer set permissionGranted here; users must use the explicit Grant button
 
       const update = () => {
         try {
@@ -1331,11 +1369,11 @@ function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, vi
   // Speaker test: play a short tone into selected output (or default)
   const testSpeaker = async () => {
     try {
-      const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
       const e2eBypass = typeof window !== 'undefined' && (window as any).__E2E_BYPASS_DEVICE_CHECK__;
+      const mockRequested = typeof window !== 'undefined' && window.location.search.includes('mock=1');
 
-      if (isLocal || e2eBypass) {
-        console.log('[Speaker] Localhost/E2E detected, skipping hardware test');
+      if (e2eBypass || mockRequested) {
+        console.log(e2eBypass ? '[Speaker] E2E automation detected, skipping hardware test' : '[Speaker] Manual mock requested, skipping hardware test');
         setSpeakerTested(true);
         return;
       }
@@ -1347,6 +1385,7 @@ function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, vi
         return;
       }
       const ctx = new AudioCtx();
+      if (ctx.state === 'suspended') await ctx.resume();
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       gain.gain.value = 0.15;
@@ -1394,13 +1433,16 @@ function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, vi
 
   return (
     <div className="wait-device-setup">
-      {/* HTTPS Notice */}
-      {showIosNotice && (
-        <div style={{ width: '100%', padding: 16, background: '#ffebee', border: '2px solid #d32f2f', borderRadius: 12, marginBottom: 8 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ fontSize: 24 }}>⚠️</div>
+      {/* Security & Access Notice */}
+      {showHttpsNotice && (
+        <div style={{ width: '100%', padding: '16px 20px', background: '#fff4f4', border: '2px solid #d32f2f', borderRadius: 12, marginBottom: 20 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 15 }}>
+            <div style={{ fontSize: 32 }}>🔒</div>
             <div>
-              <div style={{ fontWeight: 700, fontSize: 15, color: '#d32f2f' }}>{t('wait.https_required_notice')}</div>
+              <div style={{ fontWeight: 800, fontSize: 16, color: '#b71c1c', marginBottom: 4 }}>{t('wait.https_required_notice')}</div>
+              <div style={{ fontSize: 14, color: '#c62828', lineHeight: 1.4 }}>
+                基於瀏覽器安全政策，存取相機、麥克風與攝影機硬體必須使用加密連線 (HTTPS)。請更換連線方式以確保設備正常運作。
+              </div>
             </div>
           </div>
         </div>
@@ -1439,8 +1481,18 @@ function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, vi
                 {audioInputs.map((d) => (<option key={d.deviceId} value={d.deviceId}>{d.label || t('wait.microphone')}</option>))}
               </select>
               <button
+                disabled={!permissionGranted}
                 onClick={() => { testingMic ? stopMicTest() : startMicTest(); }}
-                style={{ width: '100%', padding: '10px 14px', background: testingMic ? '#d32f2f' : '#1976d2', color: 'white', border: 'none', borderRadius: 6, fontWeight: 500, cursor: 'pointer' }}>
+                style={{ 
+                  width: '100%', 
+                  padding: '10px 14px', 
+                  background: !permissionGranted ? '#e0e0e0' : (testingMic ? '#d32f2f' : '#1976d2'), 
+                  color: !permissionGranted ? '#9e9e9e' : 'white', 
+                  border: 'none', 
+                  borderRadius: 6, 
+                  fontWeight: 500, 
+                  cursor: !permissionGranted ? 'not-allowed' : 'pointer' 
+                }}>
                 {testingMic ? t('wait.mic_stop') : t('wait.mic_test')}
               </button>
             </>
@@ -1473,8 +1525,18 @@ function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, vi
                 {audioOutputs.map((d) => (<option key={d.deviceId} value={d.deviceId}>{d.label || t('wait.sound')}</option>))}
               </select>
               <button
+                disabled={!permissionGranted}
                 onClick={() => { testSpeaker(); }}
-                style={{ width: '100%', padding: '10px 14px', background: '#1976d2', color: 'white', border: 'none', borderRadius: 6, fontWeight: 500, cursor: 'pointer' }}>
+                style={{ 
+                  width: '100%', 
+                  padding: '10px 14px', 
+                  background: !permissionGranted ? '#e0e0e0' : '#1976d2', 
+                  color: !permissionGranted ? '#9e9e9e' : 'white', 
+                  border: 'none', 
+                  borderRadius: 6, 
+                  fontWeight: 500, 
+                  cursor: !permissionGranted ? 'not-allowed' : 'pointer' 
+                }}>
                 🔊 {t('wait.sound_test')}
               </button>
             </>
@@ -1499,8 +1561,18 @@ function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, vi
                 {videoInputs.map((d) => (<option key={d.deviceId} value={d.deviceId}>{d.label || t('wait.camera')}</option>))}
               </select>
               <button
+                disabled={!permissionGranted}
                 onClick={() => { previewingCamera ? stopCameraPreview() : startCameraPreview(); }}
-                style={{ width: '100%', padding: '10px 14px', background: previewingCamera ? '#d32f2f' : '#1976d2', color: 'white', border: 'none', borderRadius: 6, fontWeight: 500, cursor: 'pointer' }}>
+                style={{ 
+                  width: '100%', 
+                  padding: '10px 14px', 
+                  background: !permissionGranted ? '#e0e0e0' : (previewingCamera ? '#d32f2f' : '#1976d2'), 
+                  color: !permissionGranted ? '#9e9e9e' : 'white', 
+                  border: 'none', 
+                  borderRadius: 6, 
+                  fontWeight: 500, 
+                  cursor: !permissionGranted ? 'not-allowed' : 'pointer' 
+                }}>
                 {previewingCamera ? t('wait.camera_stop_preview') : t('wait.camera_preview')}
               </button>
             </>

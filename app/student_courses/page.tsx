@@ -260,6 +260,13 @@ function StudentCoursesContent() {
     return t('my_orders');
   };
 
+  const getSecureUrl = (path: string) => {
+    if (typeof window === 'undefined') return path;
+    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname.includes('.local');
+    if (isLocal) return path;
+    return `https://${window.location.host}${path}`;
+  };
+
   function formatDateTime(value: any) {
     if (!value) return '-';
     try {
@@ -655,7 +662,7 @@ function StudentCoursesContent() {
                         ['basic', 'pro', 'elite'].includes(user?.plan || '') ? (
                           isCurrentTimeInClassRange(o) ? (
                             <Link
-                              href={`/classroom/wait?courseId=${encodeURIComponent(o.courseId)}&orderId=${encodeURIComponent(o.orderId || (o as any).id || '')}&orderid=${encodeURIComponent(o.orderId || (o as any).id || '')}`}
+                              href={getSecureUrl(`/classroom/wait?courseId=${encodeURIComponent(o.courseId)}&orderId=${encodeURIComponent(o.orderId || (o as any).id || '')}&orderid=${encodeURIComponent(o.orderId || (o as any).id || '')}`)}
                               className="btn btn-primary"
                               style={{ padding: '4px 8px', fontSize: '12px' }}
                             >

@@ -78,7 +78,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   // Fetch course title from API
   useEffect(() => {
     if (!courseId) return;
-    fetch(`/api/courses/${encodeURIComponent(courseId)}`)
+    fetch(`/api/courses/${encodeURIComponent(courseId)}`, { cache: 'no-store' })
       .then(r => r.json())
       .then(j => {
         if (j.ok && j.course?.title) {
@@ -501,17 +501,17 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           }
         } else {
           // === STUDENT: Wait for teacher's broadcast, fallback to API if timeout ===
-          console.log('[ClientClassroom] Student: Waiting for teacher to broadcast uuid (timeout: 10s)...');
+          console.log('[ClientClassroom] Student: Waiting for teacher to broadcast uuid (cross-tab timeout: 1s)...');
 
           let receivedData: any = null;
           try {
             const bc = new BroadcastChannel(sessionReadyKey);
             receivedData = await new Promise<any>((resolve) => {
               const timer = setTimeout(() => {
-                console.log('[ClientClassroom] Student broadcast timeout, will fallback to API');
+                console.log('[ClientClassroom] Student broadcast timeout (normal for different devices), falling back to API');
                 bc.close();
                 resolve(null);
-              }, 10000);
+              }, 1000); // Drastically reduced from 10s to 1s to stop blocking real students
 
               bc.onmessage = (event) => {
                 if (event.data?.type === 'whiteboard-uuid-sync') {
@@ -537,7 +537,8 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
             let lookupData: any = null;
 
             // Try multiple times to allow teacher's write to propagate using the read-only endpoint
-            for (let i = 0; i < 8; i++) { // 8 * 500ms = 4s
+            // Total wait: 8 * 500ms = 4s
+            for (let i = 0; i < 8; i++) {
               try {
                 const j = await fetchExistingWhiteboardUuid(courseId, sessionReadyKey);
                 if (j?.uuid) {
@@ -572,8 +573,8 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
               console.log('[ClientClassroom] Student found existing room via lookup, using it');
               setAgoraRoomData(lookupData);
             } else {
-              // Still no room found after polling — create new room (teacher may be absent)
-              console.log('[ClientClassroom] Student: no existing room found after polling, will create new room');
+              // Still no room found after polling — create new room (teacher may be absent or hasn't started yet)
+              console.log('[ClientClassroom] Student: no existing room found after polling, will create new room as host');
               const requestBody: any = { userId, channelName: sessionReadyKey, courseId, orderId };
               try {
                 const res = await fetch('/api/whiteboard/room', {
@@ -786,6 +787,22 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
 
   const [orderRemainingSeconds, setOrderRemainingSeconds] = useState<number | null>(null);
   const [orderFetchComplete, setOrderFetchComplete] = useState<boolean>(false);
+  
+  // Teacher absence monitoring (Revenue protection)
+  const [teacherAbsentSince, setTeacherAbsentSince] = useState<number | null>(null);
+  const teacherAbsentSinceRef = useRef<number | null>(null);
+  useEffect(() => {
+    teacherAbsentSinceRef.current = teacherAbsentSince;
+  }, [teacherAbsentSince]);
+
+  const remoteUsersRef = useRef<any[]>(remoteUsers);
+  useEffect(() => {
+    remoteUsersRef.current = remoteUsers;
+  }, [remoteUsers]);
+
+  const TEACHER_GRACE_PERIOD_SEC = 180; // 3 minutes grace period
+  const [teacherPresenceCheckComplete, setTeacherPresenceCheckComplete] = useState(false);
+  const [participants, setParticipants] = useState<any[]>([]);
 
   // Fetch order remainingSeconds for authoritative timer duration
   useEffect(() => {
@@ -793,16 +810,20 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       try {
         if (orderId) {
           // If we have an explicit orderId, fetch that specific order
-          const r = await fetch(`/api/orders/${encodeURIComponent(orderId)}`);
+          const r = await fetch(`/api/orders/${encodeURIComponent(orderId)}`, { cache: 'no-store' });
           const j = await r.json();
           if (j.ok && j.order) {
             let sec = null;
-            if (typeof j.order.remainingSeconds === 'number') {
-              sec = j.order.remainingSeconds;
-            } else if (typeof j.order.durationMinutes === 'number') {
-              sec = j.order.durationMinutes * 60;
+            // Robust check for remaining seconds (explicitly allow 0)
+            if (j.order.remainingSeconds !== undefined && j.order.remainingSeconds !== null) {
+              sec = Number(j.order.remainingSeconds);
+            } else if (j.order.remainingMinutes !== undefined && j.order.remainingMinutes !== null) {
+              sec = Number(j.order.remainingMinutes) * 60;
+            } else if (j.order.durationMinutes !== undefined && j.order.durationMinutes !== null) {
+              sec = Number(j.order.durationMinutes) * 60;
             }
-            if (sec !== null) {
+            
+            if (sec !== null && !Number.isNaN(sec)) {
               console.log('[ClientClassroom] Order remainingSeconds fetched by orderId:', sec);
               setOrderRemainingSeconds(sec);
               setSessionDurationMinutes(Math.ceil(sec / 60));
@@ -810,36 +831,44 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           }
         } else if (courseId) {
           // Fallback: fetch recent active order by courseId
-          // If the user is a student, we filter by userId to get their specific order.
-          // If the user is a teacher (testing or entering without orderId), we retrieve the latest order for the course.
+          const roleName = (urlRole === 'teacher' || computedRole === 'teacher') ? 'teacher' : 'student';
+          const isTeacher = roleName === 'teacher';
+          
           let queryUrl = `/api/orders?courseId=${encodeURIComponent(courseId)}`;
-          const uid = (storedUser as any)?.id || storedUser?.email;
-          if (storedUser?.role === 'user' && uid) {
-            queryUrl += `&userId=${encodeURIComponent(uid)}`;
+          const uid = (storedUser as any)?.id || (storedUser as any)?.email;
+          
+          // If teacher knows the student email from participants, use it to narrow down
+          const studentParticipant = participants.find(p => p.role === 'student');
+          const targetStudentUid = isTeacher ? (studentParticipant?.userId || studentParticipant?.email) : uid;
+
+          if (targetStudentUid) {
+            queryUrl += `&userId=${encodeURIComponent(targetStudentUid)}`;
           }
 
-          const r = await fetch(queryUrl);
+          const r = await fetch(queryUrl, { cache: 'no-store' });
           const j = await r.json();
           if (j.ok && j.data && j.data.length > 0) {
-            // Sort to ensure we get the most recent order for this course
-            const sortedOrders = j.data.sort((a: any, b: any) => {
-              const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-              const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-              return timeB - timeA;
-            });
-            const activeOrder = sortedOrders[0];
+            // Pick the latest PAID/ACTIVE order for this course/student
+            const validOrders = j.data.filter((o: any) => o.status === 'PAID' || o.status === 'ACTIVE');
+            const targetOrder = validOrders.length > 0 
+              ? validOrders.sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())[0]
+              : j.data.sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())[0];
 
             let sec = null;
-            if (typeof activeOrder.remainingSeconds === 'number') {
-              sec = activeOrder.remainingSeconds;
-            } else if (typeof activeOrder.durationMinutes === 'number') {
-              sec = activeOrder.durationMinutes * 60;
+            if (targetOrder.remainingSeconds !== undefined && targetOrder.remainingSeconds !== null) {
+              sec = Number(targetOrder.remainingSeconds);
+            } else if (targetOrder.remainingMinutes !== undefined && targetOrder.remainingMinutes !== null) {
+              sec = Number(targetOrder.remainingMinutes) * 60;
+            } else if (targetOrder.durationMinutes !== undefined && targetOrder.durationMinutes !== null) {
+              sec = Number(targetOrder.durationMinutes) * 60;
             }
 
-            if (sec !== null) {
-              console.log('[ClientClassroom] Order remainingSeconds fetched by courseId:', sec);
+            if (sec !== null && !Number.isNaN(sec)) {
+              console.log('[ClientClassroom] Order remainingSeconds fetched by courseId match:', sec, 'OrderId:', targetOrder.orderId);
               setOrderRemainingSeconds(sec);
               setSessionDurationMinutes(Math.ceil(sec / 60));
+              // Note: we don't set orderId prop here as it's a state, but the PATCH logic will use the fetched orderId if we track it
+              // For now, it relies on the passed prop orderId, so we should ideally update the state
             }
           }
         }
@@ -851,7 +880,12 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     };
 
     fetchOrderTime();
-  }, [orderId, courseId, storedUser?.email]);
+    // Also re-run when participants change for teachers to pinpoint the student
+    const roleName = (urlRole === 'teacher' || computedRole === 'teacher') ? 'teacher' : 'student';
+    if (roleName === 'teacher' && participants.some(p => p.role === 'student')) {
+      fetchOrderTime();
+    }
+  }, [orderId, courseId, storedUser?.email, participants.some(p => p.role === 'student')]);
 
   const timerRef = useRef<number | null>(null);
   // Delay before countdown starts (5 seconds)
@@ -1090,7 +1124,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
         const isStudent = roleName === 'student';
 
         // 1. 檢查伺服器端的會話狀態（判斷課堂是否已經正式開始）
-        const sResp = await fetch(`/api/classroom/session?uuid=${encodeURIComponent(sessionReadyKey)}`);
+        const sResp = await fetch(`/api/classroom/session?uuid=${encodeURIComponent(sessionReadyKey)}`, { cache: 'no-store' });
         let hasActiveSession = false;
         if (sResp.ok) {
           const sJson = await sResp.json();
@@ -1310,6 +1344,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       try {
         const raw = localStorage.getItem(sessionReadyKey);
         const arr = raw ? JSON.parse(raw) as Array<{ role: string; email?: string; present?: boolean }> : [];
+        setParticipants(arr);
         // Only consider them "ready" in the classroom if they are also "present"
         const hasTeacher = arr.some((p) => p.role === 'teacher' && p.present);
         const hasStudent = arr.some((p) => p.role === 'student' && p.present);
@@ -1392,18 +1427,16 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   // Report current user as ready to the server when entering the classroom page
   // This ensures cross-device synchronization works even if localStorage is not shared.
   const reportedRef = useRef(false);
+
   useEffect(() => {
     if (!mounted || !sessionReadyKey) return;
 
     const reportReady = async () => {
       const roleName = (urlRole === 'teacher' || computedRole === 'teacher') ? 'teacher' : 'student';
-      // Use plain email (no tabId) for presence API — must match what wait page writes
       const localUserId = presenceId || roleName;
+      const roleIsTeacher = roleName === 'teacher';
 
-      // Client-side duplicate detection removed (it was self-triggering).
-      // We rely solely on the useOneTimeEntry hook for lockouts now.
-
-      // Update local storage first to ensure local consistency (will skip if no change)
+      // Ensure we are marked as present locally
       markReady(true);
 
       try {
@@ -1411,9 +1444,43 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
         if (!r.ok) return;
         const j = await r.json();
         const parts = j.participants || [];
+        setParticipants(parts);
+
+        // Protection: Monitor teacher presence for revenue & session safety
+        if (!roleIsTeacher) {
+          const teacher = parts.find((p: any) => p.role === 'teacher');
+          const isTeacherPresent = teacher && teacher.present;
+          
+          // Fix: use remoteUsersRef to avoid stale closure
+          const isTeacherInAgora = remoteUsersRef.current.some(u => u.uid === 1);
+          
+          if (!isTeacherPresent && !isTeacherInAgora) {
+            // Fix: use teacherAbsentSinceRef to avoid stale closure
+            if (teacherAbsentSinceRef.current === null) {
+              console.log('[RevenueProtection] Teacher detected as absent. Starting grace period.');
+              setTeacherAbsentSince(Date.now());
+            } else {
+              const elapsedSec = (Date.now() - teacherAbsentSinceRef.current) / 1000;
+              if (elapsedSec > TEACHER_GRACE_PERIOD_SEC) {
+                console.warn('[RevenueProtection] Teacher absent for too long. Forcing student out to protect credits.');
+                handleLeave();
+                return;
+              }
+            }
+          } else {
+            // Fix: use teacherAbsentSinceRef to avoid stale closure
+            if (teacherAbsentSinceRef.current !== null) {
+              console.log('[RevenueProtection] Teacher returned. Resetting grace period.');
+              setTeacherAbsentSince(null);
+            }
+          }
+          setTeacherPresenceCheckComplete(true);
+        }
 
         // Enforce 1-on-1 limit: block if a DIFFERENT user with same role is present
         const isOccupied = parts.some((p: any) => p.role === roleName && p.userId !== localUserId && p.present);
+        const isDevMode = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
         if (isOccupied && !isDevMode) {
           setIsRoleOccupied(true);
           return; // Block entry, don't report as ready
@@ -1452,12 +1519,8 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
             const serverEndTs = sessionData.endTs === undefined ? undefined : (typeof sessionData.endTs === 'number' ? sessionData.endTs : null);
 
             // 1. Exit if session ended on server (and we aren't the teacher who just ended it)
-            // Safety: Only kick out if we actually have a session previously (endTsRef.current !== null).
-            // This avoids kicking out students who enter before the session is initialized on the server.
-            // Also explicitly check serverEndTs === null (cleared explicitly) rather than undefined (missing file).
             if (serverEndTs === null && endTsRef.current !== null) {
-              const isTeacher = (urlRole === 'teacher' || computedRole === 'teacher');
-              if (!isTeacher) {
+              if (!roleIsTeacher) {
                 console.log('[ClientClassroom] Session ended on server, student exiting via heartbeat check...');
                 handleLeave();
                 return; // Stop processing further state changes once we've triggered exit
@@ -1489,11 +1552,11 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     reportReady();
 
     // Periodic heartbeat to keep the ready status alive while on this page
-    // Reduced interval to 10s for better responsiveness in session sync
+    // Reduced interval to 8s for more responsive teacher absence detection
     const interval = setInterval(() => {
       console.log(`[ClientClassroom] Heartbeat pulse for ${sessionReadyKey}...`);
       reportReady();
-    }, 10000);
+    }, 8000);
     return () => {
       clearInterval(interval);
       reportedRef.current = false;
@@ -1813,7 +1876,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
         if (!endTs) {
           try {
             console.log('[Timer] Checking server for session data...');
-            const resp = await fetch(`/api/classroom/session?uuid=${encodeURIComponent(sessionReadyKey)}`);
+            const resp = await fetch(`/api/classroom/session?uuid=${encodeURIComponent(sessionReadyKey)}`, { cache: 'no-store' });
             if (resp.ok) {
               const j = await resp.json();
               const sEnd = j?.endTs;
@@ -1825,6 +1888,28 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
               }
             }
           } catch (e) { console.warn('[Timer] Fetch session failed:', e); }
+        }
+
+        // Sanity Check: If found endTs is inconsistent with order budget (secs)
+        // This prevents 'cached' timers from previous sessions using same IDs from affecting new ones
+        if (endTs) {
+          const now = Date.now();
+          const projectedRemaining = Math.max(0, Math.ceil((endTs - now) / 1000));
+          
+          // The order budget (secs) is the ground truth. 
+          // If we are alone (first arrival) and the existing timer is > 2 mins different, it's probably stale.
+          const isAlone = !participants || participants.length <= 1;
+          const diff = Math.abs(projectedRemaining - secs);
+          
+          if (isAlone && diff > 120) {
+            console.warn('[Timer] Existing endTs is stale/inconsistent with order budget. Resetting.', { projectedSeconds: projectedRemaining, budgetSeconds: secs });
+            endTs = null;
+            endTsRef.current = null;
+            try { 
+              const endKey = `class_end_ts_${sessionReadyKey}`;
+              localStorage.removeItem(endKey); 
+            } catch (e) { }
+          }
         }
 
         // If no endTs, initialize one. Both teacher and student can initialize to ensure timer starts.
@@ -1881,6 +1966,18 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
 
         timerRef.current = window.setInterval(() => {
           const currentRemaining = updateRemaining();
+
+          // Real-time DB Sync (Revenue & Progress Protection)
+          // Every 60 seconds (when count % 60 === 0), save the remaining time to the database
+          if (currentRemaining > 0 && currentRemaining % 60 === 0 && orderId) {
+            console.log('[Timer] Periodic DB sync of remainingSeconds:', currentRemaining);
+            fetch(`/api/orders/${encodeURIComponent(orderId)}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ remainingSeconds: currentRemaining }),
+              keepalive: true,
+            }).catch(e => console.warn('[Timer] Periodic sync failed', e));
+          }
 
           if (currentRemaining <= 0) {
             console.log('[Timer] Time is up! Clearing whiteboard as part of session cleanup.');
@@ -2375,6 +2472,25 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           <div className="client-left-inner" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', height: '100%' }}>
             <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, flexWrap: 'nowrap', justifyContent: 'space-between' }}>
               <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+                {/* Teacher Absence Grace Period Warning */}
+                {!isTeacher && teacherAbsentSince !== null && (
+                  <div style={{ 
+                    padding: '4px 12px', 
+                    background: '#fff7ed', 
+                    border: '1px solid #fdba74', 
+                    borderRadius: 6, 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: 8,
+                    animation: 'pulse 2s infinite'
+                  }}>
+                    <span style={{ fontSize: 16 }}>⚠️</span>
+                    <span style={{ fontSize: 13, color: '#9a3412', fontWeight: 700 }}>
+                      老師暫時離開，等待重新連線中... ({Math.max(0, TEACHER_GRACE_PERIOD_SEC - Math.floor((Date.now() - teacherAbsentSince) / 1000))}秒後自動退出)
+                    </span>
+                  </div>
+                )}
+
                 {remainingSeconds !== null && (
                   <div style={{ color: 'red', fontWeight: 600, whiteSpace: 'nowrap' }}>{Math.floor((remainingSeconds || 0) / 60)}:{String((remainingSeconds || 0) % 60).padStart(2, '0')}</div>
                 )}

@@ -162,7 +162,7 @@ export class TeacherEnterClassroomSkill {
             await this.performLogin(page, envUrl, email, password);
 
             // 【步驟 2: 前往老師課程頁面】
-            const teacherCoursesUrl = `${envUrl}/teacher_courses`;
+            const teacherCoursesUrl = `${envUrl}/teacher_courses?includeTests=true`;
             this.log(`🌐 導航至老師專屬頁面: ${teacherCoursesUrl}`);
             await page.goto(teacherCoursesUrl, { waitUntil: 'networkidle' });
 

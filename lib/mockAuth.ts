@@ -140,8 +140,6 @@ export function clearStoredUser() {
   if (typeof window === 'undefined') return;
   window.localStorage.removeItem(STORAGE_KEY);
   try {
-    // remove both possible session keys for compatibility
-    window.localStorage.removeItem('tutor_session_expiry');
     window.localStorage.removeItem(SESSION_START_KEY);
   } catch { }
 }

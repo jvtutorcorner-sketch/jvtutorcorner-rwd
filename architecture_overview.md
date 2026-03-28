@@ -10,7 +10,7 @@ mindmap
     Tech Stack
       Frontend: Next.js 16 + Tailwind 4
       Backend: Amplify + DynamoDB
-      AI: Gemini/OpenAI + LanceDB
+      AI: Gemini/OpenAI
       Live: Agora RTC/SSE
     Core Flows
       Onboarding: Survey + Recommendations
@@ -80,21 +80,19 @@ graph TD
 ```
 
 ### 2.4 AI Chat: Agentic Tool Flow
-Detailed Ask-Plan-Execute cycle with vector memory.
+Detailed Ask-Plan-Execute cycle.
 
 ```mermaid
 graph LR
     Input[User Message] --> API[/api/ai-chat]
-    API --> Memory[LanceDB searchMemory]
-    Memory --> AgentLoop[3-Agent Loop]
+    API --> AgentLoop[3-Agent Loop]
     AgentLoop --> Ask[Ask Agent]
     Ask --> Plan[Plan Agent]
     Plan --> Execute[Execute Agent]
     Execute --> Tools{Tool Call?}
     Tools -->|Yes| RealTools[lib/platform-skills.ts]
     RealTools --> Execute
-    Tools -->|No| Store[LanceDB addMemory]
-    Store --> Response[Display Reply + Tool Logs]
+    Tools -->|No| Response[Display Reply + Tool Logs]
 ```
 
 ### 2.5 Admin: Management Flows
@@ -126,7 +124,7 @@ The platform uses **AWS Amplify (AppSync/GraphQL)** and **DynamoDB** for data st
 | **Enrollment** | Link between Students and Courses (ACTIVE/PAID). |
 | **Order** | Financial records (PENDING, PAID, CANCELLED). |
 | **UserInteractions** | Stores interaction data for recommendation engine. |
-| **AppIntegrations** | AI Service config (Gemini/OpenAI) and LanceDB settings. |
+| **AppIntegrations** | AI Service config (Gemini/OpenAI). |
 | **TeacherReview** | Pending profile changes and historical review logs. |
 
 ---
@@ -146,6 +144,6 @@ erDiagram
 
 ## 4. Key Directory Structure
 - `/app/api/`: REST endpoints and Webhooks.
-- `/lib/`: Core service logic (Recommendation, AI Chat, LanceDB).
+- `/lib/`: Core service logic (Recommendation, AI Chat).
 - `/.agents/skills/`: Verified operational procedures for AI and Devs.
 - `/components/`: Reusable UI elements (Whiteboard, AI Widget).

@@ -64,7 +64,6 @@ export default function LoginPage() {
           setStoredUser(user);
           setCurrentUser(user);
           try {
-            window.localStorage.setItem('tutor_session_expiry', String(Date.now() + 30 * 60 * 1000));
             window.sessionStorage.setItem('tutor_last_login_time', String(Date.now()));
             window.sessionStorage.setItem('tutor_login_complete', 'true');
           } catch { }
@@ -149,7 +148,6 @@ export default function LoginPage() {
 
         try {
           const nowRef = String(Date.now());
-          window.localStorage.setItem('tutor_session_expiry', String(Date.now() + 30 * 60 * 1000));
           window.sessionStorage.setItem('tutor_last_login_time', nowRef);
           window.localStorage.setItem('tutor_last_login_time', nowRef);
           window.sessionStorage.setItem('tutor_login_complete', 'true');
