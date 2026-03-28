@@ -674,8 +674,8 @@ export async function POST(request: Request, context: { params: Promise<{ integr
                             tokenLength: channelAccessToken?.length || 0
                         }));
 
+                        const messageId = event.message.id;
                         try {
-                            const messageId = event.message.id;
                             console.log(`[LINE Webhook] Attempting to download image with messageId: ${messageId}`);
                             
                             // Validate token

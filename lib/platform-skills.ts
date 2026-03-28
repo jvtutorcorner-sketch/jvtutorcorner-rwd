@@ -3,6 +3,7 @@ import { ScanCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
 import { getPricingSettings } from './pricingService';
 import { findProfileByEmail } from './profilesService';
 import { createWorkflow } from './workflowService';
+import { queryKeyLogs } from './keyLogger';
 import { v4 as uuidv4 } from 'uuid';
 // Tables
 const COURSES_TABLE = process.env.DYNAMODB_TABLE_COURSES || 'jvtutorcorner-courses';
@@ -183,13 +184,103 @@ export const generate_workflow: PlatformTool = {
     }
 };
 
+/**
+ * 7. Query Key Logs (關鍵業務日誌查詢)
+ * 查詢儲存於 DynamoDB 的精簡關鍵事件，避免翻閱龐大的 CloudWatch 原始日誌。
+ */
+export const query_key_logs: PlatformTool = {
+    name: 'query_key_logs',
+    description: `查詢平台關鍵業務日誌（DynamoDB 精簡版，非 CloudWatch 原始日誌）。
+可依時間範圍、嚴重度、業務類別、使用者篩選。
+適用問題範例：
+- 「過去24小時有哪些付款失敗？」
+- 「這個用戶今天做了什麼？」
+- 「有沒有 CRITICAL 等級的系統錯誤？」
+- 「昨天的課程報名狀況如何？」`,
+    parameters: {
+        type: 'object',
+        properties: {
+            hoursBack: {
+                type: 'number',
+                description: '查詢過去 N 小時的日誌（預設 24，最大 168 / 7天）'
+            },
+            date: {
+                type: 'string',
+                description: '查詢指定日期 YYYY-MM-DD（與 hoursBack 互斥，優先使用此欄位）'
+            },
+            level: {
+                type: 'string',
+                enum: ['INFO', 'WARN', 'ERROR', 'CRITICAL'],
+                description: '日誌嚴重度篩選'
+            },
+            category: {
+                type: 'string',
+                enum: ['auth', 'payment', 'enrollment', 'classroom', 'teacher', 'admin', 'api_error', 'webhook', 'recommendation', 'system'],
+                description: '業務類別篩選'
+            },
+            userId: {
+                type: 'string',
+                description: '依使用者 Email 或 ID 篩選'
+            },
+            limit: {
+                type: 'number',
+                description: '最多回傳筆數（預設 50，最大 200）'
+            }
+        }
+    },
+    execute: async ({ hoursBack, date, level, category, userId, limit }) => {
+        try {
+            const result = await queryKeyLogs({
+                hoursBack: hoursBack ? Math.min(hoursBack, 168) : 24,
+                date,
+                level,
+                category,
+                userId,
+                limit: limit ? Math.min(limit, 200) : 50,
+            });
+
+            // 為 AI 提供統計摘要
+            const byLevel: Record<string, number> = {};
+            const byCategory: Record<string, number> = {};
+            for (const log of result.logs) {
+                byLevel[log.level] = (byLevel[log.level] || 0) + 1;
+                byCategory[log.category] = (byCategory[log.category] || 0) + 1;
+            }
+
+            return {
+                ok: true,
+                totalFound: result.totalFound,
+                dates: result.dates,
+                stats: { byLevel, byCategory },
+                // 只回傳 AI 需要的欄位，避免 token 過多
+                logs: result.logs.map(l => ({
+                    timestamp: l.timestamp,
+                    level: l.level,
+                    category: l.category,
+                    action: l.action,
+                    summary: l.summary,
+                    userId: l.userId,
+                    entityId: l.entityId,
+                    entityType: l.entityType,
+                    source: l.source,
+                    httpStatus: l.httpStatus,
+                    metadata: l.metadata,
+                })),
+            };
+        } catch (err: any) {
+            return { ok: false, error: err.message };
+        }
+    }
+};
+
 export const PLATFORM_TOOLS: Record<string, PlatformTool> = {
     search_courses,
     get_course_details,
     get_student_learning_summary,
     get_pricing_options,
     check_system_status,
-    generate_workflow
+    generate_workflow,
+    query_key_logs,
 };
 
 export const getToolDefinitions = (allowedTools?: string[]) => {
