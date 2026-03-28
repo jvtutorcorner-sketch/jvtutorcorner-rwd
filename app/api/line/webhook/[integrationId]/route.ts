@@ -49,49 +49,69 @@ async function getAppIntegration(integrationId: string) {
     return null;
 }
 
-// Helpers to get AI Integration by linkedServiceId or default
-async function getAIIntegrationByLinkedId(linkedServiceId?: string) {
-    if (!linkedServiceId) {
-        // Fallback: find first active AI service (priority: OPENAI > ANTHROPIC > GEMINI)
-        if (useDynamoForApps) {
-            for (const type of ['OPENAI', 'ANTHROPIC', 'GEMINI']) {
-                const { Items } = await docClient.send(new ScanCommand({
-                    TableName: APPS_TABLE,
-                    FilterExpression: '#typ = :type AND #sts = :status',
-                    ExpressionAttributeNames: { '#typ': 'type', '#sts': 'status' },
-                    ExpressionAttributeValues: { ':type': type, ':status': 'ACTIVE' }
-                }));
-                if (Items && Items.length > 0) return Items[0];
-            }
-        } else {
-            const FILE = await resolveDataFile('app-integrations.json');
-            if (fs.existsSync(FILE)) {
-                const data = JSON.parse(fs.readFileSync(FILE, 'utf8'));
-                for (const type of ['OPENAI', 'ANTHROPIC', 'GEMINI']) {
-                    const found = data.find((i: any) => i.type === type && i.status === 'ACTIVE');
-                    if (found) return found;
-                }
-            }
-        }
-        return null;
-    }
-
-    // Get by linkedServiceId
+// Helper to find active AI service (priority: OPENAI > ANTHROPIC > GEMINI)
+async function findActiveAIService() {
     if (useDynamoForApps) {
-        const { Items } = await docClient.send(new ScanCommand({
-            TableName: APPS_TABLE,
-            FilterExpression: 'integrationId = :id',
-            ExpressionAttributeValues: { ':id': linkedServiceId }
-        }));
-        return Items && Items.length > 0 ? Items[0] : null;
+        for (const type of ['OPENAI', 'ANTHROPIC', 'GEMINI']) {
+            const { Items } = await docClient.send(new ScanCommand({
+                TableName: APPS_TABLE,
+                FilterExpression: '#typ = :type AND #sts = :status',
+                ExpressionAttributeNames: { '#typ': 'type', '#sts': 'status' },
+                ExpressionAttributeValues: { ':type': type, ':status': 'ACTIVE' }
+            }));
+            if (Items && Items.length > 0) return Items[0];
+        }
     } else {
         const FILE = await resolveDataFile('app-integrations.json');
         if (fs.existsSync(FILE)) {
             const data = JSON.parse(fs.readFileSync(FILE, 'utf8'));
-            return data.find((i: any) => i.integrationId === linkedServiceId);
+            for (const type of ['OPENAI', 'ANTHROPIC', 'GEMINI']) {
+                const found = data.find((i: any) => i.type === type && i.status === 'ACTIVE');
+                if (found) return found;
+            }
         }
     }
     return null;
+}
+
+// Helpers to get AI Integration by linkedServiceId or default
+async function getAIIntegrationByLinkedId(linkedServiceId?: string) {
+    // If linkedServiceId provided, try to fetch it first
+    if (linkedServiceId) {
+        let linkedIntegration = null;
+        
+        if (useDynamoForApps) {
+            const { Items } = await docClient.send(new ScanCommand({
+                TableName: APPS_TABLE,
+                FilterExpression: 'integrationId = :id',
+                ExpressionAttributeValues: { ':id': linkedServiceId }
+            }));
+            linkedIntegration = Items && Items.length > 0 ? Items[0] : null;
+        } else {
+            const FILE = await resolveDataFile('app-integrations.json');
+            if (fs.existsSync(FILE)) {
+                const data = JSON.parse(fs.readFileSync(FILE, 'utf8'));
+                linkedIntegration = data.find((i: any) => i.integrationId === linkedServiceId);
+            }
+        }
+
+        // Validate that linkedIntegration is a valid AI service and is active
+        if (linkedIntegration && 
+            ['OPENAI', 'ANTHROPIC', 'GEMINI'].includes(linkedIntegration.type) && 
+            linkedIntegration.status === 'ACTIVE' &&
+            linkedIntegration.config?.apiKey) {
+            console.log(`[LINE Webhook] Using linked AI service: ${linkedIntegration.type}`);
+            return linkedIntegration;
+        }
+
+        // If linkedServiceId is invalid or not active, log warning
+        if (linkedServiceId) {
+            console.warn(`[LINE Webhook] Linked AI service ${linkedServiceId} is invalid/missing/inactive. Falling back to active AI service.`);
+        }
+    }
+
+    // Fallback: find first active AI service (priority: OPENAI > ANTHROPIC > GEMINI)
+    return await findActiveAIService();
 }
 
 // Helpers to get active AI Integration (for backward compatibility)
@@ -616,7 +636,9 @@ export async function POST(request: Request, context: { params: Promise<{ integr
                             const aiIntegration = await getAIIntegrationByLinkedId(appInfo.config?.linkedServiceId);
 
                             if (!aiIntegration || !aiIntegration.config?.apiKey) {
-                                console.warn('[LINE Webhook] No active AI connection for image analysis');
+                                console.error('[LINE Webhook] No active AI service available for image analysis');
+                                console.error('[LINE Webhook] linkedServiceId:', appInfo.config?.linkedServiceId);
+                                console.error('[LINE Webhook] aiIntegration found:', !!aiIntegration, aiIntegration?.type);
                                 const msg = { type: 'text', text: '圖片辨識功能尚未啟用，請稍後再試。' };
                                 if (isSimulation) simulationReplies.push(msg);
                                 else await replyToLine(replyToken, [msg], channelAccessToken);
@@ -627,7 +649,9 @@ export async function POST(request: Request, context: { params: Promise<{ integr
 
                                 if (!imageBuffer) {
                                     console.error(`[LINE Webhook] Failed to download image for messageId: ${messageId}`);
-                                    const msg = { type: 'text', text: '無法下載圖片，請重新上傳。' };
+                                    console.error(`[LINE Webhook] Check: Channel Access Token valid? Token length=${channelAccessToken?.length}`);
+                                    console.error(`[LINE Webhook] Check: messageId format? ${messageId}`);
+                                    const msg = { type: 'text', text: '無法下載圖片，請重新上傳。(err: download_failed)' };
                                     if (isSimulation) simulationReplies.push(msg);
                                     else await replyToLine(replyToken, [msg], channelAccessToken);
                                 } else {
