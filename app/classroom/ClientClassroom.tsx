@@ -288,6 +288,46 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   const [selectedPdf, setSelectedPdf] = useState<File | null>(null);
   const [showPdf, setShowPdf] = useState(false);
 
+  // System information state for Agora connection display
+  const [systemInfo, setSystemInfo] = useState<{ os: string; device: string; browser: string } | null>(null);
+
+  // Detect OS, Device, and Browser information
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const detectSystemInfo = () => {
+      const ua = navigator.userAgent;
+      
+      // Detect OS
+      let os = 'Unknown';
+      if (ua.indexOf('Windows') > -1) os = 'Windows';
+      else if (ua.indexOf('Mac') > -1) os = ua.indexOf('iPhone') > -1 || ua.indexOf('iPad') > -1 ? 'iOS' : 'macOS';
+      else if (ua.indexOf('Android') > -1) os = 'Android';
+      else if (ua.indexOf('Linux') > -1) os = 'Linux';
+      else if (ua.indexOf('X11') > -1) os = 'Unix';
+
+      // Detect Device Type
+      let device = 'Desktop';
+      if (ua.indexOf('Mobile') > -1 || ua.indexOf('Android') > -1) device = 'Mobile';
+      else if (ua.indexOf('Tablet') > -1 || ua.indexOf('iPad') > -1) device = 'Tablet';
+
+      // Detect Browser
+      let browser = 'Unknown';
+      if (ua.indexOf('Edge') > -1) browser = 'Edge';
+      else if (ua.indexOf('Edg') > -1) browser = 'Edge';
+      else if (ua.indexOf('Chrome') > -1 && ua.indexOf('Chromium') === -1) browser = 'Chrome';
+      else if (ua.indexOf('Chromium') > -1) browser = 'Chromium';
+      else if (ua.indexOf('Safari') > -1 && ua.indexOf('Chrome') === -1) browser = 'Safari';
+      else if (ua.indexOf('Firefox') > -1) browser = 'Firefox';
+      else if (ua.indexOf('MSIE') > -1 || ua.indexOf('Trident') > -1) browser = 'IE';
+      else if (ua.indexOf('Opera') > -1 || ua.indexOf('OPR') > -1) browser = 'Opera';
+
+      setSystemInfo({ os, device, browser });
+    };
+
+    detectSystemInfo();
+  }, []);
+
   // Define userId for Agora whiteboard
   // Optimization: ensure unique IDs for multiple anonymous students to avoid cursor/sync collisions
   // Use a ref to keep the ID stable across re-renders for the same component instance
@@ -2274,6 +2314,24 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       {useAgoraWhiteboard && agoraRoomData && whiteboardState && (
         <div style={{ background: 'rgba(0,0,0,0.7)', color: 'white', fontSize: '11px', padding: '4px 12px', textAlign: 'center' }}>
           <span style={{ color: isTeacher ? '#4ade80' : '#fbbf24', fontWeight: 'bold' }}>{isTeacher ? 'TEACHER' : 'STUDENT'}</span> | {agoraRoomData.region} | {whiteboardState.phase} | {whiteboardState.viewMode} | Course: {courseId} | UUID: {agoraRoomData.uuid}
+        </div>
+      )}
+
+      {/* Agora Connection System Info - OS, Device, Browser */}
+      {useAgoraWhiteboard && agoraRoomData && systemInfo && (
+        <div style={{ background: 'rgba(59, 130, 246, 0.95)', color: 'white', fontSize: '10px', padding: '6px 12px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '16px', borderBottom: '1px solid rgba(96, 165, 250, 0.3)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ fontWeight: 600, color: '#e0f2fe' }}>OS:</span>
+            <span>{systemInfo.os}</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ fontWeight: 600, color: '#e0f2fe' }}>Device:</span>
+            <span>{systemInfo.device}</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ fontWeight: 600, color: '#e0f2fe' }}>Browser:</span>
+            <span>{systemInfo.browser}</span>
+          </div>
         </div>
       )}
 
