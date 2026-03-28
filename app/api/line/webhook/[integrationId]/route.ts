@@ -441,7 +441,16 @@ async function analyzeWithGemini(base64Image: string, apiKey: string, prompt: st
 
     const data = await res.json();
     const responseText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    return responseText ? (JSON.parse(responseText) || { raw: responseText }) : null;
+    if (!responseText) return null;
+    try {
+        if (typeof responseText === 'string') {
+            return JSON.parse(responseText);
+        }
+        return responseText;
+    } catch (err) {
+        console.warn('[LINE Webhook] Gemini returned non-JSON response; returning raw text', { err: String(err) });
+        return { raw: responseText };
+    }
 }
 
 async function analyzeWithOpenAI(base64Image: string, apiKey: string, prompt: string): Promise<any> {
@@ -474,7 +483,17 @@ async function analyzeWithOpenAI(base64Image: string, apiKey: string, prompt: st
 
     const data = await res.json();
     const responseText = data.choices?.[0]?.message?.content;
-    return responseText ? (JSON.parse(responseText) || { raw: responseText }) : null;
+    if (!responseText) return null;
+    try {
+        if (typeof responseText === 'string') {
+            return JSON.parse(responseText);
+        }
+        // already an object
+        return responseText;
+    } catch (err) {
+        console.warn('[LINE Webhook] OpenAI returned non-JSON response; returning raw text', { err: String(err) });
+        return { raw: responseText };
+    }
 }
 
 async function analyzeWithAnthropic(base64Image: string, apiKey: string, prompt: string): Promise<any> {
@@ -507,7 +526,16 @@ async function analyzeWithAnthropic(base64Image: string, apiKey: string, prompt:
 
     const data = await res.json();
     const responseText = data.content?.[0]?.text;
-    return responseText ? (JSON.parse(responseText) || { raw: responseText }) : null;
+    if (!responseText) return null;
+    try {
+        if (typeof responseText === 'string') {
+            return JSON.parse(responseText);
+        }
+        return responseText;
+    } catch (err) {
+        console.warn('[LINE Webhook] Anthropic returned non-JSON response; returning raw text', { err: String(err) });
+        return { raw: responseText };
+    }
 }
 
 // Legacy function for backward compatibility
