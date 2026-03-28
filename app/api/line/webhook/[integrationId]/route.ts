@@ -326,6 +326,24 @@ const DEFAULT_DRUG_ANALYSIS_PROMPT = `
 這攸關醫療安全，寧可回傳 "無法辨識"，也絕對不可以使用推測的數值。
 `;
 
+// Default response template for LINE messages. Site admins can override per-integration
+// using `appInfo.config.drugAnalysisResponseTemplate` via the /apps UI.
+const DEFAULT_DRUG_RESPONSE_TEMPLATE = `📸 藥品辨識結果：
+
+{initial_instructions}
+
+📋 訊息 ID: {messageId}
+⏰ 時間: {timestamp}`;
+
+function renderTemplate(template: string, data: Record<string, any>) {
+    return String(template).replace(/\{(\w+)\}/g, (_m, key) => {
+        const v = data[key];
+        if (v === null || v === undefined) return '';
+        if (typeof v === 'object') return JSON.stringify(v);
+        return String(v);
+    });
+}
+
 // Text message API callers for each provider
 async function callGeminiText(text: string, apiKey: string): Promise<string | null> {
     const model = 'gemini-2.5-flash';
@@ -833,34 +851,34 @@ export async function POST(request: Request, context: { params: Promise<{ integr
                                         let messages: any[] = [];
 
                                         if (analysisResult.raw) {
-                                            // Model returned a non-JSON or raw response — show friendly guidance
-                                            responseText += '抱歉，我們無法以標準格式解析此張照片的結果。請先嘗試下列步驟，再重新上傳：\n'
-                                                + '1) 拍攝清晰、光線充足的照片；\n'
-                                                + '2) 藥丸完整置於畫面中央，避免手指或反光遮擋；\n'
-                                                + '3) 若有刻字，請拍攝近照並確保對焦。\n\n'
-                                                + '（若重試仍失敗，請聯絡客服並提供以下訊息）\n\n'
-                                                + `📋 訊息 ID: ${messageId}\n`
-                                                + `⏰ 時間: ${new Date().toISOString()}`;
+                                            // Use a configurable template for the initial user-facing message
+                                            const template = appInfo.config?.drugAnalysisResponseTemplate || DEFAULT_DRUG_RESPONSE_TEMPLATE;
+                                            const initialInstructions = '抱歉，我們無法以標準格式解析此張照片的結果。請先嘗試下列步驟，再重新上傳：\n1) 拍攝清晰、光線充足的照片；\n2) 藥丸完整置於畫面中央，避免手指或反光遮擋；\n3) 若有刻字，請拍攝近照並確保對焦。';
+                                            const templateData = {
+                                                messageId,
+                                                timestamp: new Date().toISOString(),
+                                                initial_instructions: initialInstructions,
+                                                shape: analysisResult.shape || '無法辨識',
+                                                color: analysisResult.color || '無法辨識',
+                                                imprint: analysisResult.imprint || '無',
+                                                score_line: analysisResult.score_line || '無'
+                                            };
 
-                                            messages.push({ type: 'text', text: responseText });
+                                            const userMsg = renderTemplate(template, templateData);
+                                            messages.push({ type: 'text', text: userMsg });
 
-                                            // Send raw response in a separate message (or multiple if needed)
+                                            // Send raw response in a separate message(s)
                                             const rawText = String(analysisResult.raw || '');
                                             let formattedRaw = rawText;
-                                            
                                             try {
-                                                // Try to parse and pretty-print JSON
                                                 const parsed = JSON.parse(rawText);
                                                 formattedRaw = JSON.stringify(parsed, null, 2);
                                             } catch (e) {
-                                                // If not JSON, keep as-is
                                                 formattedRaw = rawText;
                                             }
 
-                                            // Split raw response into chunks if needed (LINE 5000 char limit per message)
                                             const rawChunks: string[] = [];
                                             let currentChunk = '';
-                                            
                                             if (formattedRaw.length > 0) {
                                                 const lines = formattedRaw.split('\n');
                                                 for (const line of lines) {
@@ -880,19 +898,22 @@ export async function POST(request: Request, context: { params: Promise<{ integr
                                             }
 
                                             rawChunks.forEach((chunk, idx) => {
-                                                messages.push({
-                                                    type: 'text',
-                                                    text: attachHeader(chunk, idx, rawChunks.length)
-                                                });
+                                                messages.push({ type: 'text', text: attachHeader(chunk, idx, rawChunks.length) });
                                             });
                                         } else {
-                                            // Standard formatted response
-                                            responseText += `🔷 形狀：${analysisResult.shape || '無法辨識'}\n`;
-                                            responseText += `🔶 顏色：${analysisResult.color || '無法辨識'}\n`;
-                                            responseText += `✏️ 刻字：${analysisResult.imprint || '無'}\n`;
-                                            responseText += `📏 刻痕：${analysisResult.score_line || '無'}\n`;
-                                            responseText += `\n✅ 訊息 ID: ${messageId}`;
-                                            messages.push({ type: 'text', text: responseText });
+                                            // Standard formatted response using template
+                                            const template = appInfo.config?.drugAnalysisResponseTemplate || DEFAULT_DRUG_RESPONSE_TEMPLATE;
+                                            const templateData = {
+                                                messageId,
+                                                timestamp: new Date().toISOString(),
+                                                initial_instructions: '',
+                                                shape: analysisResult.shape || '無法辨識',
+                                                color: analysisResult.color || '無法辨識',
+                                                imprint: analysisResult.imprint || '無',
+                                                score_line: analysisResult.score_line || '無'
+                                            };
+                                            const userMsg = renderTemplate(template, templateData) + `\n\n🔷 形狀：${templateData.shape}\n🔶 顏色：${templateData.color}\n✏️ 刻字：${templateData.imprint}\n📏 刻痕：${templateData.score_line}\n\n✅ 訊息 ID: ${messageId}`;
+                                            messages.push({ type: 'text', text: userMsg });
                                         }
 
                                         // Send all messages
