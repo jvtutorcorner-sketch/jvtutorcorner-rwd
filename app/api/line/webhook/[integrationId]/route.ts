@@ -21,6 +21,7 @@ const docClient = DynamoDBDocumentClient.from(client, { marshallOptions: { remov
 
 const APPS_TABLE = process.env.DYNAMODB_TABLE_APP_INTEGRATIONS || 'jvtutorcorner-app-integrations';
 const PROFILES_TABLE = process.env.DYNAMODB_TABLE_PROFILES || process.env.PROFILES_TABLE || 'jvtutorcorner-profiles';
+const WEBHOOK_LOGS_TABLE = process.env.DYNAMODB_TABLE_WEBHOOK_LOGS || 'jvtutorcorner-webhook-logs';
 
 const useDynamoForApps =
     typeof APPS_TABLE === 'string' && APPS_TABLE.length > 0 &&
@@ -29,6 +30,60 @@ const useDynamoForApps =
 const useDynamoForProfiles =
     typeof PROFILES_TABLE === 'string' && PROFILES_TABLE.length > 0 &&
     (process.env.NODE_ENV === 'production' || !!(process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID));
+
+const useDynamoForWebhookLogs =
+    typeof WEBHOOK_LOGS_TABLE === 'string' && WEBHOOK_LOGS_TABLE.length > 0 &&
+    (process.env.NODE_ENV === 'production' || !!(process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID));
+
+// ==========================================
+// Unified Logging System
+// ==========================================
+
+interface WebhookLog {
+    integrationId: string;
+    timestamp: number;
+    logId: string;
+    level: 'INFO' | 'WARN' | 'ERROR';
+    category: string;
+    message: string;
+    context?: Record<string, any>;
+}
+
+async function logToWebhook(log: WebhookLog) {
+    // 1. Always log to console (CloudWatch)
+    const prefix = `[LINE Webhook] [${log.level}]`;
+    const contextStr = log.context ? ` | ${JSON.stringify(log.context)}` : '';
+    const logMessage = `${prefix} ${log.message}${contextStr}`;
+    
+    if (log.level === 'ERROR') {
+        console.error(logMessage);
+    } else if (log.level === 'WARN') {
+        console.warn(logMessage);
+    } else {
+        console.log(logMessage);
+    }
+
+    // 2. Optionally store to DynamoDB for long-term tracking
+    if (useDynamoForWebhookLogs) {
+        try {
+            await docClient.send(new PutCommand({
+                TableName: WEBHOOK_LOGS_TABLE,
+                Item: {
+                    integrationId: log.integrationId,
+                    timestamp: log.timestamp, // milliseconds for sorting
+                    logId: log.logId,
+                    level: log.level,
+                    category: log.category,
+                    message: log.message,
+                    context: log.context,
+                    expirationTime: Math.floor(Date.now() / 1000) + (90 * 24 * 60 * 60) // 90 days TTL
+                }
+            }));
+        } catch (err) {
+            console.error('[LINE Webhook] Failed to store log to DynamoDB:', err);
+        }
+    }
+}
 
 // Helpers to get App Integration config
 async function getAppIntegration(integrationId: string) {
@@ -636,26 +691,72 @@ export async function POST(request: Request, context: { params: Promise<{ integr
                             const aiIntegration = await getAIIntegrationByLinkedId(appInfo.config?.linkedServiceId);
 
                             if (!aiIntegration || !aiIntegration.config?.apiKey) {
-                                console.error('[LINE Webhook] No active AI service available for image analysis');
-                                console.error('[LINE Webhook] linkedServiceId:', appInfo.config?.linkedServiceId);
-                                console.error('[LINE Webhook] aiIntegration found:', !!aiIntegration, aiIntegration?.type);
+                                const logId = `ai-missing-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                                await logToWebhook({
+                                    integrationId,
+                                    timestamp: Date.now(),
+                                    logId,
+                                    level: 'ERROR',
+                                    category: 'image_analysis',
+                                    message: 'No active AI service available for image analysis',
+                                    context: {
+                                        linkedServiceId: appInfo.config?.linkedServiceId,
+                                        aiIntegrationFound: !!aiIntegration,
+                                        aiType: aiIntegration?.type,
+                                        userLineUid: lineUid,
+                                        messageId
+                                    }
+                                });
                                 const msg = { type: 'text', text: '圖片辨識功能尚未啟用，請稍後再試。' };
                                 if (isSimulation) simulationReplies.push(msg);
                                 else await replyToLine(replyToken, [msg], channelAccessToken);
                             } else {
                                 // Download image from LINE
-                                console.log(`[LINE Webhook] Starting image download for messageId: ${messageId}`);
+                                const downloadLogId = `img-download-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                                await logToWebhook({
+                                    integrationId,
+                                    timestamp: Date.now(),
+                                    logId: downloadLogId,
+                                    level: 'INFO',
+                                    category: 'image_download',
+                                    message: `Starting image download for messageId: ${messageId}`,
+                                    context: { messageId, aiType: aiIntegration.type }
+                                });
                                 const imageBuffer = await downloadLineImage(messageId, channelAccessToken);
 
                                 if (!imageBuffer) {
-                                    console.error(`[LINE Webhook] Failed to download image for messageId: ${messageId}`);
-                                    console.error(`[LINE Webhook] Check: Channel Access Token valid? Token length=${channelAccessToken?.length}`);
-                                    console.error(`[LINE Webhook] Check: messageId format? ${messageId}`);
+                                    const failLogId = `img-fail-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                                    await logToWebhook({
+                                        integrationId,
+                                        timestamp: Date.now(),
+                                        logId: failLogId,
+                                        level: 'ERROR',
+                                        category: 'image_download_failed',
+                                        message: `Failed to download image for messageId: ${messageId}`,
+                                        context: {
+                                            messageId,
+                                            userLineUid: lineUid,
+                                            tokenLength: channelAccessToken?.length,
+                                            tokenStarts: channelAccessToken?.substring(0, 5) + '...',
+                                            replyToken,
+                                            timestamp: new Date().toISOString()
+                                        }
+                                    });
                                     const msg = { type: 'text', text: '無法下載圖片，請重新上傳。(err: download_failed)' };
                                     if (isSimulation) simulationReplies.push(msg);
                                     else await replyToLine(replyToken, [msg], channelAccessToken);
                                 } else {
-                                    console.log(`[LINE Webhook] Successfully downloaded image. Buffer size: ${imageBuffer.length}`);
+                                    const successLogId = `img-success-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                                    await logToWebhook({
+                                        integrationId,
+                                        timestamp: Date.now(),
+                                        logId: successLogId,
+                                        level: 'INFO',
+                                        category: 'image_downloaded',
+                                        message: `Successfully downloaded image. Buffer size: ${imageBuffer.length} bytes`,
+                                        context: { messageId, bufferSize: imageBuffer.length, aiType: aiIntegration.type }
+                                    });
+                                    
                                     // Get prompt from config or use default
                                     const customPrompt = appInfo.config?.drugAnalysisPrompt || DEFAULT_DRUG_ANALYSIS_PROMPT;
                                     
@@ -663,6 +764,17 @@ export async function POST(request: Request, context: { params: Promise<{ integr
                                     const analysisResult = await analyzeImageWithVisionAPI(imageBuffer, aiIntegration, customPrompt);
 
                                     if (analysisResult) {
+                                        const analysisLogId = `img-analyzed-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                                        await logToWebhook({
+                                            integrationId,
+                                            timestamp: Date.now(),
+                                            logId: analysisLogId,
+                                            level: 'INFO',
+                                            category: 'image_analysis_success',
+                                            message: `Image analysis completed successfully`,
+                                            context: { messageId, aiType: aiIntegration.type, result: analysisResult }
+                                        });
+                                        
                                         // Format result into readable message
                                         let responseText = '📸 藥品辨識結果：\n\n';
 
@@ -679,6 +791,16 @@ export async function POST(request: Request, context: { params: Promise<{ integr
                                         if (isSimulation) simulationReplies.push(msg);
                                         else await replyToLine(replyToken, [msg], channelAccessToken);
                                     } else {
+                                        const analysisFailLogId = `img-analysis-fail-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                                        await logToWebhook({
+                                            integrationId,
+                                            timestamp: Date.now(),
+                                            logId: analysisFailLogId,
+                                            level: 'ERROR',
+                                            category: 'image_analysis_failed',
+                                            message: `Image analysis failed or returned null`,
+                                            context: { messageId, aiType: aiIntegration.type, bufferSize: imageBuffer.length }
+                                        });
                                         const msg = { type: 'text', text: '圖片分析失敗，請重新上傳清晰的藥品圖片。' };
                                         if (isSimulation) simulationReplies.push(msg);
                                         else await replyToLine(replyToken, [msg], channelAccessToken);
@@ -686,7 +808,22 @@ export async function POST(request: Request, context: { params: Promise<{ integr
                                 }
                             }
                         } catch (err: any) {
-                            console.error('[LINE Webhook] Error analyzing image:', err);
+                            const errorLogId = `img-error-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                            await logToWebhook({
+                                integrationId,
+                                timestamp: Date.now(),
+                                logId: errorLogId,
+                                level: 'ERROR',
+                                category: 'image_processing_exception',
+                                message: `Exception during image analysis: ${err?.message}`,
+                                context: {
+                                    messageId,
+                                    userLineUid: lineUid,
+                                    errorMessage: err?.message,
+                                    errorStack: err?.stack,
+                                    timestamp: new Date().toISOString()
+                                }
+                            });
                             if (err instanceof Error) {
                                 console.error('[LINE Webhook] Error stack:', err.stack);
                             }
