@@ -38,7 +38,7 @@ test.describe('Wait Page Redirect Test', () => {
     });
 
     // 導航到等待頁（使用絕對 URL，允許通過環境變數覆蓋）
-    const base = process.env.BASE_URL || 'http://localhost:3000';
+    const base = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
     const waitPath = '/classroom/wait?courseId=c1&role=teacher&session=classroom_session_ready_c1';
     console.log(`Navigating to ${base}${waitPath}`);
     await page.goto(`${base}${waitPath}`);

@@ -40,20 +40,49 @@ export default function PricingPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const router = useRouter();
 
+  async function fetchUserPoints(email: string) {
+    try {
+      const res = await fetch(`/api/points?userId=${encodeURIComponent(email)}`, { cache: 'no-store' });
+      const d = await res.json();
+      if (d?.ok) setUserPoints(d.balance);
+    } catch (e) {
+      console.error('Failed to fetch points:', e);
+      setUserPoints(null);
+    }
+  }
+
   useEffect(() => {
     setUser(getStoredUser());
     const u = getStoredUser();
     if (u) {
       setPlan(u.plan);
       fetchUpgrades(u.email);
-      // fetch points balance for logged in demo user
-      fetch(`/api/points?userId=${encodeURIComponent(u.email)}`)
-        .then(r => r.json())
-        .then(d => { if (d?.ok) setUserPoints(d.balance); })
-        .catch(() => { setUserPoints(null); });
+      fetchUserPoints(u.email);
     }
     fetchSettings();
     fetchSubs();
+
+    // Listen for points updated event (useful for multi-tab or soft navigation)
+    const handlePointsUpdate = () => {
+      const updatedUser = getStoredUser();
+      if (updatedUser?.email) fetchUserPoints(updatedUser.email);
+    };
+
+    // Handle BFCache (Back-Forward Cache) to refresh when user navigates back to this page
+    const handlePageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) { // If loaded from BFCache
+        const updatedUser = getStoredUser();
+        if (updatedUser?.email) fetchUserPoints(updatedUser.email);
+      }
+    };
+
+    window.addEventListener('tutor:points-updated', handlePointsUpdate);
+    window.addEventListener('pageshow', handlePageShow);
+    
+    return () => {
+      window.removeEventListener('tutor:points-updated', handlePointsUpdate);
+      window.removeEventListener('pageshow', handlePageShow);
+    };
   }, []);
 
   async function fetchSettings() {

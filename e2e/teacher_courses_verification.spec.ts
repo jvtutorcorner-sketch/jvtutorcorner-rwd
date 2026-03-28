@@ -7,7 +7,7 @@ dotenv.config({ path: path.resolve(__dirname, '..', '.env.local') });
 
 test.describe('Teacher Courses Page Verification', () => {
     let page: Page;
-    const BASE_URL = process.env.BASE_URL || process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+    const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
 
     // Test credentials from .env.local or fallback
     const TEACHER_EMAIL = process.env.TEST_TEACHER_EMAIL || 'teacher@example.com';

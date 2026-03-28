@@ -77,7 +77,7 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
     if (enrollmentType === 'plan') return;  // 純方案制不需要查點數
     
     setIsLoadingPoints(true);
-    fetch(`/api/points?userId=${encodeURIComponent(storedUser.email)}`)
+    fetch(`/api/points?userId=${encodeURIComponent(storedUser.email)}`, { cache: 'no-store' })
       .then(r => r.json())
       .then(d => { 
         if (d.ok) {
@@ -230,6 +230,12 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
       }
 
       setIsSuccess(true);
+      
+      // Dispatch points updated event so other pages (like /pricing) know to re-fetch
+      if (payMethod === 'points') {
+        window.dispatchEvent(new Event('tutor:points-updated'));
+      }
+      
       setShowStartTimeModal(false);
       setTimeout(() => {
         router.push('/student_courses');

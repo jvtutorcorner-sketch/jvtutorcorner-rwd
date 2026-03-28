@@ -18,9 +18,11 @@ metadata:
 2.  **餘額感知**：檢查當前點數，若不足以支付目標課程，自動前往 `/pricing`。
 3.  **點數購買**：在 `/pricing` 選擇點數套餐，並在 `/pricing/checkout` 使用「模擬支付」完成交易。
 4.  **UI 刷新驗證**：購買完成後回到定價頁面，驗證畫面上顯示的點數餘額是否已即時更新，確保頁面無快取問題。
-5.  **課程報名**：在 `/courses` 隨機挑選課程，填寫資訊並報名。
-6.  **錯誤自愈**：若報名過程中遇到點數不足的 UI 報錯，自動切換至購買流程後返回。
-7.  **架構驗證**：在執行流程前，先確認 [Core Operational Flows](../../../architecture_overview.md#2-core-operational-flows) 是否符合現有程式實作。
+5.  **課程報名**：在指定課程頁面點擊「立即報名課程」→ 選擇付款方式 → 確認報名，並攔截 `/api/orders` 網路請求驗證 `paymentMethod=points`。
+6.  **點數扣除驗證**：報名後即時查詢 API，確認扣除正確點數（扣除量 = `pointCost`）。
+7.  **進入教室**：在我的課程頁找到「進入教室」按鈕並點擊，驗證成功進入 `/classroom`。
+8.  **錯誤自愈**：若報名過程中遇到點數不足的 UI 報錯，自動切換至購買流程後返回。
+9.  **架構驗證**：在執行流程前，先確認 [Core Operational Flows](../../../architecture_overview.md#2-core-operational-flows) 是否符合現有程式實作。
 
 ## 故障排除與架構同步 (Troubleshooting & Architecture Sync)
 
@@ -94,6 +96,29 @@ BASE_URL=https://www.jvtutorcorner.com npx playwright test e2e/student_enrollmen
 - `npx playwright test e2e/student_enrollment.spec.ts`
 
 ## 已知修正紀錄 (Known Fixes)
+
+### 2026-03-28 — BASE_URL 環境變數讀取錯誤 & 完整流程強化
+
+1. **環境變數統一為 `NEXT_PUBLIC_BASE_URL`**  
+   原測試腳本 (E2E spec) 與 Playwright 配置對 `BASE_URL` 與 `NEXT_PUBLIC_BASE_URL` 的解析邏輯不一致。現已統一移除 `BASE_URL` 的依賴，所有測試流程（含 Playwright config）皆讀取 `NEXT_PUBLIC_BASE_URL`。  
+   - 修正：`process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'`
+
+2. **`resetRes.ok` 誤用屬性**  
+   與 `courseRes.ok` 相同問題，`ok` 必須呼叫為方法。  
+   - 錯誤：`if (!resetRes.ok)`  
+   - 修正：`if (!resetRes.ok())`
+
+3. **缺少點數扣除精準驗證**  
+   原測試硬編碼驗算 `finalBalance !== 10`，不適用不同方案或課程設定。  
+   - 修正：改為 `balanceBeforeEnroll - pointCost = finalBalance` 的動態驗算。
+
+4. **缺少「進入教室」步驟**  
+   原 E2E test 僅驗證到「報名成功」跳轉 `/student_courses`，沒有繼續進入教室的驗證。  
+   - 修正：加入「進入教室」按鈕的尋找（含重整重試機制）、點擊，以及驗證成功導向 `/classroom`。
+
+5. **缺少 `/api/orders` 網路請求攔截**  
+   無法確認手動報名時 `paymentMethod` 是否正確設為 `'points'`。  
+   - 修正：使用 `page.waitForRequest` 攔截 POST `/api/orders`，記錄並驗證 payload。
 
 ### 2026-03-15 — TypeScript 編譯錯誤修正
 

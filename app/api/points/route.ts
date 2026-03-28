@@ -4,6 +4,8 @@ import { GetCommand, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { ddbDocClient } from '@/lib/dynamo';
 
 export const runtime = 'nodejs';
+export const revalidate = 0; // Disable caching for point balance
+
 
 const TABLE_NAME = process.env.DYNAMODB_TABLE_USER_POINTS || 'jvtutorcorner-user-points';
 
