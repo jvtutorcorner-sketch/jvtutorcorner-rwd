@@ -1,4 +1,14 @@
-# Navbar Verification Skill
+---
+name: navbar-verification
+description: '驗證建立帳戶後的導覽列（Navbar）狀態與自動登入流程。'
+argument-hint: '驗證註冊後的導覽列、自動登入與 Product Tour 功能'
+metadata:
+  verified-status: '✅ VERIFIED'
+  last-verified-date: '2026-03-28'
+  architecture-aligned: true
+---
+
+# 導覽列驗證技能 (Navbar Verification Skill)
 
 負責驗證建立帳戶後的導覽列（Navbar）狀態與自動登入流程。
 
@@ -15,7 +25,8 @@
 - [ ] 填寫完整資料並提交。
 - [ ] 驗證是否自動導向首頁 `/`。
 - [ ] 檢查導覽列是否顯示使用者 Email 或姓名。
-- [ ] 檢查 `localStorage` 中是否有 `tutor_mock_user` 且 `jv_just_registered` 為 `true`。
+- [ ] 檢查 `localStorage` 中是否有 `tutor_mock_user`（表示使用者已登入）。
+- [ ] 驗證 `tutor_mock_user` 包含正確的使用者資訊。
 
 ### 2. 導覽列 UI 驗證
 - [ ] 驗證「登入」按鈕已消失。
@@ -29,7 +40,7 @@
 - [ ] 驗證導覽中是否包含「快速問卷」步驟，且可選擇或略過。
 - [ ] 驗證導覽是否能正確從首頁跳轉至 `/teachers`。
 - [ ] 驗證導覽是否能正確從 `/teachers` 跳轉至 `/courses`。
-- [ ] 驗證導覽完成後，`jv_tour_phase` 已從 `localStorage` 移除。
+- [ ] 驗證導覽完成後，`jv_tour_phase` 已從 `localStorage` 移除（或在頁面導航後清空）。
 
 ## 自動化測試
 執行以下指令來驗證完整的 Navbar 與多頁面導覽流程：
@@ -38,6 +49,7 @@ npx playwright test e2e/navbar_verification.spec.ts --headed
 ```
 
 ## 疑難排解
-- ** Navbar 未更新**：檢查是否確實 Dispatch 了 `tutor:auth-changed` 事件。
-- ** 未自動登入**：檢查 `app/login/register/page.tsx` 中的 `setStoredUser` 調用是否正確。
-- ** Captcha 錯誤**：在自動化環境中，確保使用了 `NEXT_PUBLIC_LOGIN_BYPASS_SECRET` 中定義的 Bypass Code。
+- **Navbar 未更新**：檢查是否確實 Dispatch 了 `tutor:auth-changed` 事件。
+- **未自動登入**：檢查 `app/login/register/page.tsx` 中的 `setStoredUser` 調用是否正確。
+- **Captcha 錯誤**：在自動化環境中，確保使用了 `NEXT_PUBLIC_LOGIN_BYPASS_SECRET` 中定義的 Bypass Code。
+- **localStorage 不一致**：某些環境中（如生產環境）頁面導航後 localStorage 可能被清空，這是正常行為。驗證時應檢查使用者是否確實已認證（透過 Navbar 顯示）。

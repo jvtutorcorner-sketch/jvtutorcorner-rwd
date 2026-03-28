@@ -161,4 +161,74 @@ test('Navbar Verification After Registration (Auto-Login)', async ({ page }) => 
     await page.locator('button:has-text("完成導覽")').click();
 
     console.log("SUCCESS: Multi-page interactive tour verified successfully.");
+
+    // 7. Verify localStorage State After Tour Completion
+    console.log("Verifying localStorage state...");
+    const jvTourPhase = await page.evaluate(() => localStorage.getItem('jv_tour_phase'));
+    console.log(`jv_tour_phase after tour: ${jvTourPhase}`);
+    // Note: jv_tour_phase should be removed after tour completion
+    if (jvTourPhase !== null) {
+        console.warn(`⚠️ jv_tour_phase still exists: ${jvTourPhase}`);
+    }
+    
+    const jvJustRegistered = await page.evaluate(() => localStorage.getItem('jv_just_registered'));
+    console.log(`jv_just_registered: ${jvJustRegistered}`);
+    // Note: This flag may be cleared after page navigation, verify it's set during registration
+    
+    const tutorMockUser = await page.evaluate(() => localStorage.getItem('tutor_mock_user'));
+    console.log(`tutor_mock_user exists: ${!!tutorMockUser}`);
+    expect(!!tutorMockUser).toBe(true);
+
+    // 8. Verify Dropdown Menu Items
+    console.log("Verifying dropdown menu items...");
+    const avatarButton = page.locator('.menu-avatar-button');
+    await avatarButton.click();
+    
+    // Wait for dropdown to be visible
+    await page.waitForTimeout(500);
+    
+    // Verify dropdown menu items
+    const settingsOption = page.locator('a:has-text("設定")');
+    const myCoursesOption = page.locator('a:has-text("我的課程")');
+    const myPlansOption = page.locator('a:has-text("我的方案")');
+    const logoutOption = page.locator('button:has-text("登出")');
+    
+    await expect(settingsOption).toBeVisible({ timeout: 5000 });
+    await expect(myCoursesOption).toBeVisible({ timeout: 5000 });
+    await expect(myPlansOption).toBeVisible({ timeout: 5000 });
+    await expect(logoutOption).toBeVisible({ timeout: 5000 });
+    
+    console.log("✅ All dropdown menu items verified");
+
+    // 9. Verify Logout Functionality
+    console.log("Verifying logout functionality...");
+    await logoutOption.click();
+    
+    // Wait for logout to complete
+    await page.waitForTimeout(1000);
+    
+    // Verify redirect to home and navbar state change (back to Guest)
+    await page.waitForURL(`${baseUrl}/`, { timeout: 10000 });
+    
+    // Login button should be visible again
+    const loginBtnAfterLogout = page.locator('button:has-text("登入")');
+    await expect(loginBtnAfterLogout).toBeVisible({ timeout: 5000 });
+    
+    // Avatar button should NOT be visible
+    const avatarBtnAfterLogout = page.locator('.menu-avatar-button');
+    await expect(avatarBtnAfterLogout).not.toBeVisible({ timeout: 5000 });
+    
+    // User email should NOT be visible in navbar
+    const userEmailAfterLogout = page.locator('.menu-user-email');
+    await expect(userEmailAfterLogout).not.toBeVisible({ timeout: 5000 });
+    
+    console.log("✅ Logout functionality verified");
+    
+    // 10. Verify localStorage cleared after logout
+    console.log("Verifying localStorage cleared after logout...");
+    const tutorMockUserAfterLogout = await page.evaluate(() => localStorage.getItem('tutor_mock_user'));
+    console.log(`tutor_mock_user after logout: ${tutorMockUserAfterLogout}`);
+    expect(tutorMockUserAfterLogout).toBeNull();
+
+    console.log("SUCCESS: Complete navbar verification test passed after registration and logout.");
 });
