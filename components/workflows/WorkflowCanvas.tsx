@@ -16,6 +16,7 @@ import {
     ConnectionLineType,
     BackgroundVariant,
     Panel,
+    useReactFlow,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
@@ -30,6 +31,8 @@ import { HttpRequestNode } from './nodes/HttpRequestNode';
 import { DelayNode } from './nodes/DelayNode';
 import { NotificationNode } from './nodes/NotificationNode';
 import { DataTransformNode } from './nodes/DataTransformNode';
+import { InputNode } from './nodes/InputNode';
+import { OutputNode } from './nodes/OutputNode';
 import { WorkflowConfigSidebar } from './WorkflowConfigSidebar';
 
 const nodeTypes = {
@@ -44,6 +47,8 @@ const nodeTypes = {
     delay: DelayNode,
     notification: NotificationNode,
     transform: DataTransformNode,
+    input: InputNode,
+    output: OutputNode,
 };
 
 interface WorkflowCanvasProps {
@@ -82,10 +87,12 @@ const NODE_PALETTE: NodeCategory[] = [
         label: 'Processors',
         color: 'rose',
         items: [
-            { icon: '✨', name: 'AI Analysis', type: 'ai', subtype: 'action_ai_summarize' },
+            { icon: '✨', name: 'General AI', type: 'ai', subtype: 'action_ai_summarize' },
+            { icon: '🤖', name: 'AI Skill Agent', type: 'ai', subtype: 'action_ai_skill' },
             { icon: '🐍', name: 'Python Script', type: 'python', subtype: 'action_python_script' },
+            { icon: '📜', name: 'JavaScript Script', type: 'action', subtype: 'action_js_script' },
             { icon: '🌐', name: 'HTTP Request', type: 'http', subtype: 'action_http_request' },
-            { icon: '⚙️', name: 'Data Transform', type: 'transform', subtype: 'action_transform' },
+            { icon: '⚙️', name: 'Extract / Transform', type: 'transform', subtype: 'action_data_transform' },
         ],
     },
     {
@@ -93,9 +100,19 @@ const NODE_PALETTE: NodeCategory[] = [
         color: 'blue',
         items: [
             { icon: '📧', name: 'Send Email', type: 'action', subtype: 'action_send_email' },
+            { icon: '📩', name: 'Gmail', type: 'action', subtype: 'action_send_gmail' },
+            { icon: '💬', name: 'Slack Notification', type: 'notification', subtype: 'action_notification_slack' },
+            { icon: '🎮', name: 'Discord Message', type: 'notification', subtype: 'action_notification_discord' },
             { icon: '💎', name: 'Grant Points', type: 'action', subtype: 'action_grant_points' },
-            { icon: '🔔', name: 'Notification', type: 'notification', subtype: 'action_notification' },
             { icon: '📄', name: 'Export to CSV', type: 'export', subtype: 'action_export_csv' },
+        ],
+    },
+    {
+        label: 'Data I/O',
+        color: 'indigo',
+        items: [
+            { icon: '📥', name: 'Workflow Input', type: 'input', subtype: 'input_workflow' },
+            { icon: '📤', name: 'Workflow Output', type: 'output', subtype: 'output_workflow' },
         ],
     },
 ];
@@ -105,6 +122,7 @@ const COLOR_MAP: Record<string, string> = {
     orange: 'hover:bg-orange-50 hover:border-orange-500',
     rose: 'hover:bg-rose-50 hover:border-rose-500',
     blue: 'hover:bg-blue-50 hover:border-blue-500',
+    indigo: 'hover:bg-indigo-50 hover:border-indigo-500',
 };
 
 function NodePalette({ onAdd }: { onAdd: (type: string, subtype: string) => void }) {
@@ -184,6 +202,11 @@ function CanvasFlow({ initialWorkflow, onSave }: WorkflowCanvasProps) {
     const [isActive, setIsActive] = useState(initialWorkflow?.isActive || false);
     const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
     const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+    const [executionTrails, setExecutionTrails] = useState<any[]>([]);
+    const [isExecuting, setIsExecuting] = useState(false);
+    const [activeTab, setActiveTab] = useState<'config' | 'debug'>('config');
+    const { screenToFlowPosition, getViewport } = useReactFlow();
+    const [showGuide, setShowGuide] = useState(false);
 
     const onConnect = useCallback(
         (connection: Connection) => {
@@ -218,21 +241,82 @@ function CanvasFlow({ initialWorkflow, onSave }: WorkflowCanvasProps) {
         setTimeout(() => setSaveStatus('idle'), 2000);
     };
 
+    const runManualTest = async () => {
+        setIsExecuting(true);
+        setActiveTab('debug');
+        
+        try {
+            // Find appropriate trigger or just use the first node
+            const triggerNode = nodes.find(n => n.type === 'trigger') || nodes[0];
+            if (!triggerNode) return;
+
+            // Trigger the actual workflow via API
+            const res = await fetch('/api/workflows/execute', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    triggerType: (triggerNode.data as any).triggerType || 'manual',
+                    data: { manual_test: true, timestamp: new Date().toISOString() }
+                })
+            });
+            const result = await res.json();
+            if (result.ok && result.trails) {
+                setExecutionTrails(result.trails);
+                
+                // Update node statuses based on trails
+                const trailLogs = result.trails[0]?.logs || [];
+                setNodes(nds => nds.map(node => {
+                    const nodeLog = trailLogs.find((l: any) => l.nodeId === node.id);
+                    if (nodeLog) {
+                        return { ...node, data: { ...node.data, status: nodeLog.status } };
+                    }
+                    return node;
+                }));
+            }
+        } catch (error) {
+            console.error('Test run failed', error);
+        } finally {
+            setIsExecuting(false);
+        }
+    };
+
     const addNode = (type: string, subtype: string) => {
         const id = `${type}_${Date.now()}`;
         const friendlyName = NODE_PALETTE.flatMap((c) => c.items).find((i) => i.subtype === subtype)?.name || subtype;
+        const { x, y, zoom } = getViewport();
+        // Calculate the center of the visible canvas area
+        // We assume the sidebar takes some space, so we adjust slightly for better visual centering
+        const canvasElement = document.querySelector('.react-flow');
+        const width = canvasElement?.clientWidth || window.innerWidth;
+        const height = canvasElement?.clientHeight || window.innerHeight;
+        
+        const centerX = (width / 2 - x) / zoom;
+        const centerY = (height / 2 - y) / zoom;
+
         const newNode: Node = {
             id,
             type,
-            position: { x: Math.random() * 300 + 150, y: Math.random() * 200 + 100 },
+            position: { x: centerX - 100, y: centerY - 40 }, // Offset by half node size roughly
             data: {
                 label: friendlyName,
                 description: '',
                 triggerType: type === 'trigger' || type === 'webhook' ? subtype : undefined,
                 actionType: !['trigger', 'webhook'].includes(type) ? subtype : undefined,
-                config: type === 'python'
+                config: subtype === 'action_python_script'
                     ? { script: '# Access data using the "data" variable\nname = data.get("student_name", "Explorer")\nprint(f"👋 Hello {name} from Python!")\ndata["result"] = "Ready to process!"' }
+                    : subtype === 'action_js_script'
+                    ? { script: '// data is the current workflow payload\n// return an object to merge it into data\ndata.timestamp = Date.now();\nreturn { processed: true };' }
+                    : subtype === 'action_send_gmail'
+                    ? { subject: 'Automated Message', body: 'Hello,\n\nThis is an automated message from JV Tutor Workflow.' }
+                    : subtype === 'action_notification_slack'
+                    ? { channel: 'slack', message: 'Workflow notification: {{message}}', webhookUrl: '' }
+                    : subtype === 'action_notification_discord'
+                    ? { channel: 'discord', message: 'Workflow notification: {{message}}', webhookUrl: '' }
+                    : subtype === 'action_ai_skill'
+                    ? { skillId: 'general', userPrompt: 'Analyze this: {{data}}' }
                     : {},
+                // Map subtype back to the base action type if needed by notification node
+                actionBaseType: subtype.startsWith('action_notification_') ? 'action_notification' : subtype
             },
         };
         setNodes((nds) => [...nds, newNode]);
@@ -284,9 +368,68 @@ function CanvasFlow({ initialWorkflow, onSave }: WorkflowCanvasProps) {
 
                         <div className="h-6 w-px bg-gray-200" />
 
-                        {/* Node Palette */}
                         <NodePalette onAdd={addNode} />
+                        
+                        {/* Help Guide Toggle */}
+                        <div className="relative">
+                            <button
+                                onClick={() => setShowGuide(!showGuide)}
+                                className={`w-9 h-9 flex items-center justify-center rounded-lg border transition-all ${showGuide ? 'bg-blue-50 border-blue-200 text-blue-600' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'}`}
+                                title="Show Help"
+                            >
+                                <span className="text-lg">❓</span>
+                            </button>
+                            
+                            {showGuide && (
+                                <>
+                                    <div className="fixed inset-0 z-40" onClick={() => setShowGuide(false)} />
+                                    <div className="absolute right-0 mt-2 w-64 bg-white border border-gray-200 rounded-xl shadow-2xl z-50 p-4 transition-all animate-in fade-in zoom-in-95 duration-200">
+                                        <div className="flex justify-between items-center mb-3">
+                                            <div className="font-bold text-blue-600 flex items-center gap-1.5 text-sm">
+                                                <span>💡</span> Connection Guide
+                                            </div>
+                                            <button onClick={() => setShowGuide(false)} className="text-gray-400 hover:text-gray-600">✕</button>
+                                        </div>
+                                        <div className="space-y-3 text-xs text-gray-600">
+                                            <div className="flex gap-3 items-start p-2 bg-blue-50/50 rounded-lg">
+                                                <div className="w-2.5 h-2.5 rounded-full bg-blue-500 mt-0.5 border-2 border-white flex-shrink-0 shadow-sm" />
+                                                <span>Drag from a <b>bottom</b> dot to a <b>top</b> dot to connect nodes.</span>
+                                            </div>
+                                            <div className="flex gap-3 items-start p-2 bg-rose-50/50 rounded-lg">
+                                                <div className="w-2.5 h-2.5 bg-red-500 mt-0.5 rounded-full flex-shrink-0 shadow-sm" />
+                                                <span>Logic nodes have <b>TRUE/FALSE</b> outlets for branching.</span>
+                                            </div>
+                                            <div className="pt-2 border-t border-gray-100 flex flex-col gap-2 uppercase tracking-tight font-semibold text-[10px] text-gray-400">
+                                                <div className="flex justify-between">
+                                                    <span>Scroll / Drag (Middle)</span>
+                                                    <span>Pan Canvas</span>
+                                                </div>
+                                                <div className="flex justify-between">
+                                                    <span>Cmd + Scroll</span>
+                                                    <span>Zoom View</span>
+                                                </div>
+                                                <div className="flex justify-between">
+                                                    <span>Left Click Drag</span>
+                                                    <span>Selection Box</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+                        </div>
 
+                        {/* Test Run Button */}
+                        <button
+                            onClick={runManualTest}
+                            disabled={isExecuting || nodes.length === 0}
+                            className={`px-4 py-2 rounded-lg border font-bold transition-all flex items-center gap-2 ${isExecuting ? 'bg-gray-100 text-gray-400' : 'bg-white text-orange-600 border-orange-200 hover:bg-orange-50'}`}
+                        >
+                            {isExecuting ? 'Executing...' : '▶ Run Test'}
+                        </button>
+
+                        <div className="h-6 w-px bg-gray-200" />
+                        
                         {/* Save Button */}
                         <button
                             onClick={handleSave}
@@ -327,6 +470,12 @@ function CanvasFlow({ initialWorkflow, onSave }: WorkflowCanvasProps) {
                         deleteKeyCode="Delete"
                         snapToGrid
                         snapGrid={[16, 16]}
+                        minZoom={0.1}
+                        maxZoom={2}
+                        panOnScroll
+                        selectionOnDrag
+                        panOnDrag={[1, 2]} // Support middle and right click panning
+                        nodeDragThreshold={5} // Prevent accidental micro-moves
                     >
                         <Controls showInteractive={false} />
                         <MiniMap
@@ -342,14 +491,21 @@ function CanvasFlow({ initialWorkflow, onSave }: WorkflowCanvasProps) {
                             size={1}
                         />
 
+
+
                         {/* Empty state hint */}
                         {nodes.length === 0 && (
                             <Panel position="top-center">
-                                <div className="mt-24 text-center bg-white/90 backdrop-blur border border-dashed border-gray-300 rounded-2xl px-8 py-6 shadow-sm text-gray-500">
-                                    <div className="text-4xl mb-3">🔧</div>
-                                    <div className="font-semibold text-gray-700 mb-1">Canvas is empty</div>
-                                    <div className="text-sm">Click <strong>+ Add Node</strong> in the toolbar to get started</div>
-                                    <div className="text-xs mt-2 text-gray-400">Drag handles between nodes to create connections</div>
+                                <div className="mt-24 text-center bg-white/90 backdrop-blur border border-dashed border-gray-300 rounded-2xl px-12 py-10 shadow-sm text-gray-500">
+                                    <div className="text-5xl mb-4 animate-bounce">🔧</div>
+                                    <div className="font-extrabold text-xl text-gray-800 mb-2">Build Your Automation</div>
+                                    <div className="text-sm max-w-xs mx-auto mb-6">Create powerful workflows by adding and connecting nodes.</div>
+                                    <button 
+                                        onClick={() => (document.querySelector('button[onClick*="setOpen"]') as HTMLButtonElement | null)?.click()}
+                                        className="px-6 py-2.5 bg-blue-600 text-white rounded-full font-bold shadow-lg hover:bg-blue-700 transition-all hover:scale-105 active:scale-95"
+                                    >
+                                        + Add Your First Node
+                                    </button>
                                 </div>
                             </Panel>
                         )}
@@ -363,6 +519,9 @@ function CanvasFlow({ initialWorkflow, onSave }: WorkflowCanvasProps) {
                     selectedNode={selectedNode}
                     setNodes={setNodes}
                     onDelete={handleDeleteNode}
+                    activeTab={activeTab}
+                    setActiveTab={setActiveTab}
+                    executionTrails={executionTrails}
                 />
             )}
         </div>

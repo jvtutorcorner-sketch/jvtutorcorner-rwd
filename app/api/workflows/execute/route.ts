@@ -15,7 +15,11 @@ export async function POST(req: Request) {
             return NextResponse.json(result, { status: 500 });
         }
 
-        return NextResponse.json({ ok: true, message: `Executed ${result.executedCount} workflows` });
+        return NextResponse.json({ 
+            ok: true, 
+            message: `Executed ${result.executedCount} workflows`,
+            trails: (result as any).trails || []
+        });
     } catch (error: any) {
         console.error('[Workflow API Error]', error);
         return NextResponse.json({ ok: false, message: 'Workflow API failure' }, { status: 500 });
