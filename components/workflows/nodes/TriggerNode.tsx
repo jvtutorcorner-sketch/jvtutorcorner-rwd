@@ -1,19 +1,19 @@
 import { Handle, Position } from '@xyflow/react';
+import { NodeActions } from './NodeActions';
 
-export function TriggerNode({ data, isConnectable }: any) {
+export function TriggerNode({ id, data, isConnectable }: any) {
     return (
         <div className="bg-white border-2 border-emerald-500 rounded-lg shadow-xl w-64 overflow-hidden">
             <div className="bg-emerald-500 text-white px-3 py-2 flex items-center justify-between gap-2 font-bold">
                 <div className="flex items-center gap-2">
                     <span>⚡</span> Trigger
                 </div>
-                {data.status && (
-                    <div className={`px-2 py-0.5 rounded-full text-[9px] uppercase tracking-wider ${
-                        data.status === 'success' ? 'bg-green-400' : 'bg-blue-400 animate-pulse'
-                    }`}>
-                        {data.status}
-                    </div>
-                )}
+                <NodeActions 
+                    id={id} 
+                    status={data.status} 
+                    onSave={data.onSave} 
+                    onDelete={data.onDelete} 
+                />
             </div>
             <div className="p-4 bg-white">
                 <div className="text-sm font-bold text-gray-800 mb-1">{data.label}</div>
@@ -23,6 +23,11 @@ export function TriggerNode({ data, isConnectable }: any) {
                  {data.triggerType && (
                      <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded text-[9px] font-bold">
                          {data.triggerType.replace('trigger_', '').toUpperCase()}
+                     </span>
+                 )}
+                 {data.config?.testPayload && (
+                     <span className="px-1.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-100 rounded text-[9px] font-bold flex items-center gap-1">
+                         <span>🎯</span> JSON TEST
                      </span>
                  )}
             </div>

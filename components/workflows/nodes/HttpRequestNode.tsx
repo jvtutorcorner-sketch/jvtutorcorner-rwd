@@ -1,8 +1,8 @@
-'use client';
 import React, { useState } from 'react';
 import { Handle, Position } from '@xyflow/react';
+import { NodeActions } from './NodeActions';
 
-export function HttpRequestNode({ data, isConnectable }: any) {
+export function HttpRequestNode({ id, data, isConnectable }: any) {
     const [isTesting, setIsTesting] = useState(false);
     const [testResult, setTestResult] = useState<any>(null);
 
@@ -53,13 +53,21 @@ export function HttpRequestNode({ data, isConnectable }: any) {
                 <div className="flex items-center gap-2">
                     <span>🌐</span> HTTP Request
                 </div>
-                <button
-                    onClick={handleTest}
-                    disabled={isTesting || !data.config?.url}
-                    className={`text-[10px] px-2 py-0.5 rounded bg-black/20 hover:bg-black/40 border border-black/20 transition-all active:scale-95 flex items-center gap-1 ${(isTesting || !data.config?.url) ? 'opacity-40 cursor-not-allowed' : ''}`}
-                >
-                    {isTesting ? '...' : '▶ Test'}
-                </button>
+                <div className="flex items-center gap-1">
+                    <button
+                        onClick={handleTest}
+                        disabled={isTesting || !data.config?.url}
+                        className={`text-[10px] px-2 py-0.5 rounded bg-black/20 hover:bg-black/40 border border-black/20 transition-all active:scale-95 flex items-center gap-1 ${(isTesting || !data.config?.url) ? 'opacity-40 cursor-not-allowed' : ''}`}
+                    >
+                        {isTesting ? '...' : '▶ Test'}
+                    </button>
+                    <NodeActions 
+                        id={id} 
+                        status={data.status} 
+                        onSave={data.onSave} 
+                        onDelete={data.onDelete} 
+                    />
+                </div>
             </div>
             <div className="p-3">
                 <div className="text-sm font-semibold mb-2">{data.label}</div>

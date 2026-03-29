@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Handle, Position } from '@xyflow/react';
+import { NodeActions } from './NodeActions';
 
 export function CodeNode({ id, data, isConnectable }: any) {
     const [isRunning, setIsRunning] = useState(false);
@@ -28,7 +29,7 @@ export function CodeNode({ id, data, isConnectable }: any) {
     };
 
     return (
-        <div className="bg-[#1e1e1e] border-2 border-yellow-500 rounded-lg shadow-2xl w-72 overflow-hidden flex flex-col transition-all">
+        <div className="bg-[#1e1e1e] border-2 border-yellow-500 rounded-lg shadow-2xl w-72 overflow-hidden flex flex-col transition-all text-white">
             <Handle
                 type="target"
                 position={Position.Top}
@@ -39,14 +40,22 @@ export function CodeNode({ id, data, isConnectable }: any) {
                 <div className="flex items-center gap-2">
                     <span>🐍</span> Python Script
                 </div>
-                <button
-                    id={`run-btn-${id}`}
-                    onClick={handleTest}
-                    disabled={isRunning}
-                    className={`text-[10px] px-2 py-0.5 rounded bg-black/20 hover:bg-black/40 border border-black/20 transition-all active:scale-95 flex items-center gap-1 ${isRunning ? 'opacity-50 cursor-not-allowed' : ''}`}
-                >
-                    {isRunning ? 'Running...' : '▶ Test'}
-                </button>
+                <div className="flex items-center gap-1">
+                    <button
+                        id={`run-btn-${id}`}
+                        onClick={handleTest}
+                        disabled={isRunning}
+                        className={`text-[10px] px-2 py-0.5 rounded bg-black/20 hover:bg-black/40 border border-black/20 transition-all active:scale-95 flex items-center gap-1 ${isRunning ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                        {isRunning ? 'Running...' : '▶ Test'}
+                    </button>
+                    <NodeActions 
+                        id={id} 
+                        status={data.status} 
+                        onSave={data.onSave} 
+                        onDelete={data.onDelete} 
+                    />
+                </div>
             </div>
             <div className="p-3 bg-gray-900/50">
                 <div className="text-sm font-semibold text-gray-200 mb-1">{data.label}</div>

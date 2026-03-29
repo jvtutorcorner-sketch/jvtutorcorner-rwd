@@ -1,11 +1,19 @@
-'use client';
 import { Handle, Position } from '@xyflow/react';
+import { NodeActions } from './NodeActions';
 
-export function WebhookNode({ data, isConnectable }: any) {
+export function WebhookNode({ id, data, isConnectable }: any) {
     return (
         <div className="bg-white border-2 border-emerald-500 rounded-lg shadow-lg w-64 overflow-hidden">
-            <div className="bg-gradient-to-r from-emerald-500 to-cyan-600 text-white px-3 py-2 flex items-center gap-2 font-bold shadow-sm">
-                <span>🔗</span> Webhook Trigger
+            <div className="bg-gradient-to-r from-emerald-500 to-cyan-600 text-white px-3 py-2 flex items-center justify-between gap-2 font-bold shadow-sm">
+                <div className="flex items-center gap-2">
+                    <span>🔗</span> Webhook Trigger
+                </div>
+                <NodeActions 
+                    id={id} 
+                    status={data.status} 
+                    onSave={data.onSave} 
+                    onDelete={data.onDelete} 
+                />
             </div>
             <div className="p-3">
                 <div className="text-sm font-semibold mb-1">{data.label}</div>
@@ -19,6 +27,12 @@ export function WebhookNode({ data, isConnectable }: any) {
                 )}
                 {!data.config?.endpoint && (
                     <div className="text-[10px] text-gray-400 italic">Configure endpoint in settings →</div>
+                )}
+                
+                {data.config?.testPayload && (
+                    <div className="mt-2 px-1.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-100 rounded text-[9px] font-bold inline-flex items-center gap-1">
+                        <span>🎯</span> JSON TEST
+                    </div>
                 )}
             </div>
             <Handle

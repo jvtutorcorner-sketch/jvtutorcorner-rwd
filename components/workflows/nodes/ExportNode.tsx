@@ -1,6 +1,7 @@
 import { Handle, Position } from '@xyflow/react';
+import { NodeActions } from './NodeActions';
 
-export function ExportNode({ data, isConnectable }: any) {
+export function ExportNode({ id, data, isConnectable }: any) {
     return (
         <div className="bg-white border-2 border-green-600 rounded-lg shadow-lg w-64 overflow-hidden">
             <Handle
@@ -9,8 +10,16 @@ export function ExportNode({ data, isConnectable }: any) {
                 isConnectable={isConnectable}
                 className="w-3 h-3 bg-green-600"
             />
-            <div className="bg-gradient-to-r from-green-600 to-teal-700 text-white px-3 py-2 flex items-center gap-2 font-bold shadow-sm">
-                <span>📄</span> Export to CSV
+            <div className="bg-gradient-to-r from-green-600 to-teal-700 text-white px-3 py-2 flex items-center justify-between gap-2 font-bold shadow-sm">
+                <div className="flex items-center gap-2">
+                    <span>📄</span> Export to CSV
+                </div>
+                <NodeActions 
+                    id={id} 
+                    status={data.status} 
+                    onSave={data.onSave} 
+                    onDelete={data.onDelete} 
+                />
             </div>
             <div className="p-3">
                 <div className="text-sm font-semibold mb-1">{data.label}</div>

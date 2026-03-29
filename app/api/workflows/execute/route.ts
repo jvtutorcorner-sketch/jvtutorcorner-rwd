@@ -1,15 +1,23 @@
 import { NextResponse } from 'next/server';
-import { triggerWorkflow } from '@/lib/workflowEngine';
+import { triggerWorkflow, executeSingleWorkflow } from '@/lib/workflowEngine';
 
 export async function POST(req: Request) {
     try {
-        const { triggerType, data } = await req.json();
+        const { triggerType, data, testWorkflow } = await req.json();
 
         if (!triggerType || !data) {
             return NextResponse.json({ ok: false, message: 'Missing triggerType or data' }, { status: 400 });
         }
 
-        const result = await triggerWorkflow(triggerType, data);
+        let result;
+        if (data.manual_test && testWorkflow) {
+            // Run exactly the workflow provided in the request body
+            const trails = await executeSingleWorkflow(testWorkflow, triggerType, data);
+            result = { ok: true, executedCount: trails.length, trails };
+        } else {
+            // Normal production trigger mode
+            result = await triggerWorkflow(triggerType, data);
+        }
 
         if (!result.ok) {
             return NextResponse.json(result, { status: 500 });

@@ -64,55 +64,62 @@ type NodeCategory = {
 
 const NODE_PALETTE: NodeCategory[] = [
     {
-        label: 'Triggers',
+        label: '觸發器',
         color: 'green',
         items: [
-            { icon: '⚡', name: 'Student Enrolls', type: 'trigger', subtype: 'trigger_enrollment' },
-            { icon: '💳', name: 'Points Purchase', type: 'trigger', subtype: 'trigger_point_purchase' },
-            { icon: '💰', name: 'Payment Success', type: 'trigger', subtype: 'trigger_payment_success' },
+            { icon: '⚡', name: '學生報名', type: 'trigger', subtype: 'trigger_enrollment' },
+            { icon: '💳', name: '購買點數', type: 'trigger', subtype: 'trigger_point_purchase' },
+            { icon: '💰', name: '付款成功', type: 'trigger', subtype: 'trigger_payment_success' },
             { icon: '🔗', name: 'Webhook', type: 'webhook', subtype: 'trigger_webhook' },
-            { icon: '⏰', name: 'Scheduled (Cron)', type: 'trigger', subtype: 'trigger_schedule' },
+            { icon: '🟢', name: 'LINE Webhook', type: 'webhook', subtype: 'trigger_line_webhook' },
+            { icon: '💬', name: '用戶對話訊息', type: 'trigger', subtype: 'trigger_chat_message' },
         ],
     },
     {
-        label: 'Flow Control',
+        label: '流程控制',
         color: 'orange',
         items: [
-            { icon: '🔀', name: 'If/Else Condition', type: 'logic', subtype: 'logic_condition' },
-            { icon: '⏱️', name: 'Wait / Delay', type: 'delay', subtype: 'action_delay' },
-            { icon: '🔄', name: 'Loop Iterator', type: 'logic', subtype: 'logic_loop' },
+            { icon: '🔀', name: 'If/Else 條件', type: 'logic', subtype: 'logic_condition' },
+            { icon: '⏱️', name: '等待 / 延遲', type: 'delay', subtype: 'action_delay' },
+            { icon: '🔄', name: '迴圈疊代器', type: 'logic', subtype: 'logic_loop' },
+            { icon: '🔁', name: '遍歷項目', type: 'logic', subtype: 'logic_loop_items' },
         ],
     },
     {
-        label: 'Processors',
+        label: '處理器',
         color: 'rose',
         items: [
-            { icon: '✨', name: 'General AI', type: 'ai', subtype: 'action_ai_summarize' },
-            { icon: '🤖', name: 'AI Skill Agent', type: 'ai', subtype: 'action_ai_skill' },
-            { icon: '🐍', name: 'Python Script', type: 'python', subtype: 'action_python_script' },
-            { icon: '📜', name: 'JavaScript Script', type: 'action', subtype: 'action_js_script' },
-            { icon: '🌐', name: 'HTTP Request', type: 'http', subtype: 'action_http_request' },
-            { icon: '⚙️', name: 'Extract / Transform', type: 'transform', subtype: 'action_data_transform' },
+            { icon: '👑', name: '主管代理', type: 'ai', subtype: 'action_ai_supervisor' },
+            { icon: '🧭', name: '代理派遣器', type: 'ai', subtype: 'action_ai_dispatch' },
+            { icon: '🤖', name: '執行代理', type: 'ai', subtype: 'action_agent_execute' },
+            { icon: '🧐', name: '反思代理', type: 'ai', subtype: 'action_ai_reflect' },
+            { icon: '✨', name: '通用 AI', type: 'ai', subtype: 'action_ai_summarize' },
+            { icon: '📝', name: 'Markdown 轉 HTML', type: 'transform', subtype: 'transform_markdown_html' },
+            { icon: '🐍', name: 'Python 腳本', type: 'python', subtype: 'action_python_script' },
+            { icon: '📜', name: 'JavaScript 腳本', type: 'action', subtype: 'action_js_script' },
+            { icon: '🌐', name: 'HTTP 請求', type: 'http', subtype: 'action_http_request' },
+            { icon: '⚙️', name: '提取 / 轉換', type: 'transform', subtype: 'action_data_transform' },
+            { icon: '🔍', name: '影像分析 (藥物辨識)', type: 'action', subtype: 'action_image_analysis' },
         ],
     },
     {
-        label: 'Actions',
+        label: '執行動作',
         color: 'blue',
         items: [
-            { icon: '📧', name: 'Send Email', type: 'action', subtype: 'action_send_email' },
+            { icon: '📧', name: '發送電子郵件', type: 'action', subtype: 'action_send_email' },
             { icon: '📩', name: 'Gmail', type: 'action', subtype: 'action_send_gmail' },
-            { icon: '💬', name: 'Slack Notification', type: 'notification', subtype: 'action_notification_slack' },
-            { icon: '🎮', name: 'Discord Message', type: 'notification', subtype: 'action_notification_discord' },
-            { icon: '💎', name: 'Grant Points', type: 'action', subtype: 'action_grant_points' },
-            { icon: '📄', name: 'Export to CSV', type: 'export', subtype: 'action_export_csv' },
+            { icon: '💬', name: 'Slack 通知', type: 'notification', subtype: 'action_notification_slack' },
+            { icon: '🟢', name: 'LINE 訊息', type: 'notification', subtype: 'action_notification_line' },
+            { icon: '💎', name: '贈送點數', type: 'action', subtype: 'action_grant_points' },
+            { icon: '📄', name: '匯出為 CSV', type: 'export', subtype: 'action_export_csv' },
         ],
     },
     {
-        label: 'Data I/O',
+        label: '數據輸入/輸出',
         color: 'indigo',
         items: [
-            { icon: '📥', name: 'Workflow Input', type: 'input', subtype: 'input_workflow' },
-            { icon: '📤', name: 'Workflow Output', type: 'output', subtype: 'output_workflow' },
+            { icon: '📥', name: '工作流輸入', type: 'input', subtype: 'input_workflow' },
+            { icon: '📤', name: '工作流輸出', type: 'output', subtype: 'output_workflow' },
         ],
     },
 ];
@@ -144,7 +151,7 @@ function NodePalette({ onAdd }: { onAdd: (type: string, subtype: string) => void
                 onClick={() => setOpen((v) => !v)}
                 className="px-4 py-2 border rounded-lg shadow-sm bg-white hover:bg-gray-50 text-sm font-semibold flex items-center gap-2 transition-colors"
             >
-                <span className="text-blue-500 text-lg leading-none">+</span> Add Node
+                <span className="text-blue-500 text-lg leading-none">+</span> 新增節點
             </button>
 
             {open && (
@@ -155,7 +162,7 @@ function NodePalette({ onAdd }: { onAdd: (type: string, subtype: string) => void
                             <input
                                 autoFocus
                                 type="text"
-                                placeholder="Search nodes..."
+                                placeholder="搜尋節點..."
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}
                                 onClick={(e) => e.stopPropagation()}
@@ -185,7 +192,7 @@ function NodePalette({ onAdd }: { onAdd: (type: string, subtype: string) => void
                                 </div>
                             ))}
                             {filtered.length === 0 && (
-                                <div className="p-4 text-sm text-gray-400 text-center">No nodes found</div>
+                                <div className="p-4 text-sm text-gray-400 text-center">找不到節點</div>
                             )}
                         </div>
                     </div>
@@ -198,9 +205,10 @@ function NodePalette({ onAdd }: { onAdd: (type: string, subtype: string) => void
 function CanvasFlow({ initialWorkflow, onSave }: WorkflowCanvasProps) {
     const [nodes, setNodes, onNodesChange] = useNodesState(initialWorkflow?.nodes || []);
     const [edges, setEdges, onEdgesChange] = useEdgesState(initialWorkflow?.edges || []);
-    const [title, setTitle] = useState(initialWorkflow?.name || 'New Workflow');
+    const [title, setTitle] = useState(initialWorkflow?.name || '新工作流');
     const [isActive, setIsActive] = useState(initialWorkflow?.isActive || false);
     const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+    const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
     const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
     const [executionTrails, setExecutionTrails] = useState<any[]>([]);
     const [isExecuting, setIsExecuting] = useState(false);
@@ -227,36 +235,85 @@ function CanvasFlow({ initialWorkflow, onSave }: WorkflowCanvasProps) {
 
     const onNodeClick = useCallback((_: any, node: Node) => {
         setSelectedNodeId(node.id);
+        setSelectedEdgeId(null);
+    }, []);
+
+    const onEdgeClick = useCallback((_: any, edge: Edge) => {
+        setSelectedEdgeId(edge.id);
+        setSelectedNodeId(null);
     }, []);
 
     const onPaneClick = useCallback(() => {
         setSelectedNodeId(null);
+        setSelectedEdgeId(null);
     }, []);
 
-    const handleSave = async () => {
+    const handleSave = useCallback(async () => {
         if (!onSave) return;
         setSaveStatus('saving');
         await onSave({ ...initialWorkflow, name: title, isActive, nodes, edges });
         setSaveStatus('saved');
         setTimeout(() => setSaveStatus('idle'), 2000);
-    };
+    }, [onSave, initialWorkflow, title, isActive, nodes, edges]);
 
     const runManualTest = async () => {
         setIsExecuting(true);
         setActiveTab('debug');
         
         try {
-            // Find appropriate trigger or just use the first node
-            const triggerNode = nodes.find(n => n.type === 'trigger') || nodes[0];
-            if (!triggerNode) return;
+            // Get test payload from the trigger node
+            let testPayload = {};
+            const triggerNode = nodes.find(n => n.type === 'trigger' || n.type === 'webhook') || nodes[0];
+            if (triggerNode) {
+                const configPayload = (triggerNode.data as any)?.config?.testPayload;
+                if (configPayload) {
+                    try {
+                        testPayload = JSON.parse(configPayload);
+                    } catch (e) {
+                        console.error('Failed to parse test payload JSON', e);
+                    }
+                } else {
+                    // Default fallback if no payload defined
+                    testPayload = {
+                        message: { content: "我想了解課程與退款的問題", type: "text", text: "測試文字" },
+                        user: { email: "test@example.com", name: "Tester" },
+                        amount: 100,
+                        status: "success"
+                    };
+                }
+            }
+
+            // Gather variables from all input nodes
+            const inputVariables: Record<string, any> = {};
+            nodes.filter(n => n.type === 'input').forEach(n => {
+                const vars = (n.data as any)?.config?.variables || [];
+                vars.forEach((v: any) => {
+                    if (v.key) inputVariables[v.key] = v.value;
+                });
+                
+                // Also check if input node has its own test payload
+                const inputPayloadStr = (n.data as any)?.config?.testPayload;
+                if (inputPayloadStr) {
+                    try {
+                        const parsed = JSON.parse(inputPayloadStr);
+                        Object.assign(inputVariables, parsed);
+                    } catch (e) {}
+                }
+            });
 
             // Trigger the actual workflow via API
             const res = await fetch('/api/workflows/execute', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    triggerType: (triggerNode.data as any).triggerType || 'manual',
-                    data: { manual_test: true, timestamp: new Date().toISOString() }
+                    triggerType: triggerNode ? (triggerNode.data as any).triggerType || 'manual' : 'manual',
+                    data: { 
+                        ...testPayload,
+                        ...inputVariables,
+                        manual_test: true, 
+                        timestamp: new Date().toISOString() 
+                    },
+                    testWorkflow: { nodes, edges }
                 })
             });
             const result = await res.json();
@@ -268,7 +325,7 @@ function CanvasFlow({ initialWorkflow, onSave }: WorkflowCanvasProps) {
                 setNodes(nds => nds.map(node => {
                     const nodeLog = trailLogs.find((l: any) => l.nodeId === node.id);
                     if (nodeLog) {
-                        return { ...node, data: { ...node.data, status: nodeLog.status } };
+                        return { ...node, data: { ...node.data, status: nodeLog.status, lastOutput: nodeLog.output, lastPayload: nodeLog.payload } };
                     }
                     return node;
                 }));
@@ -310,10 +367,33 @@ function CanvasFlow({ initialWorkflow, onSave }: WorkflowCanvasProps) {
                     ? { subject: 'Automated Message', body: 'Hello,\n\nThis is an automated message from JV Tutor Workflow.' }
                     : subtype === 'action_notification_slack'
                     ? { channel: 'slack', message: 'Workflow notification: {{message}}', webhookUrl: '' }
-                    : subtype === 'action_notification_discord'
-                    ? { channel: 'discord', message: 'Workflow notification: {{message}}', webhookUrl: '' }
-                    : subtype === 'action_ai_skill'
-                    ? { skillId: 'general', userPrompt: 'Analyze this: {{data}}' }
+                    : subtype === 'action_notification_line'
+                    ? { channel: 'line', message: 'Workflow notification: {{message}}', userEmail: '{{email}}', title: 'Notification' }
+                    : subtype === 'action_ai_summarize'
+                    ? { userPrompt: 'Analyze this: {{data}}' }
+                    : subtype === 'action_ai_supervisor'
+                    ? { apiEndpoint: '/plan', subAgents: 'Weather, Planner, Advisor', instructions: '協調並整合天氣、景點與建議。' }
+                    : subtype === 'action_ai_dispatch'
+                    ? { queryField: '{{message.content}}', outputField: 'dispatchResult' }
+                    : subtype === 'action_agent_execute'
+                    ? { agentIdField: '{{dispatchResult.primary.id}}', inputField: '{{message.content}}', useSmartRouter: true, usePromptCache: true }
+                    : subtype === 'action_ai_reflect'
+                    ? { analyzeField: 'feedback', outputField: 'correction', useMemory: true }
+                    : subtype === 'transform_markdown_html'
+                    ? { sourceField: 'content', targetField: 'htmlContent' }
+                    : subtype === 'logic_loop_items'
+                    ? { itemsField: 'items', outputField: 'currentItem' }
+                    : subtype === 'trigger_line_webhook'
+                    ? { expectedPath: '/api/line/webhook', secret: '' }
+                    : subtype === 'action_image_analysis'
+                    ? { apiEndpoint: '/api/image-analysis', inputField: 'imageBase64', outputField: 'analysisResult' }
+                    : (type === 'trigger' || type === 'webhook' || type === 'input')
+                    ? { testPayload: JSON.stringify({
+                        message: { content: "我想了解課程與退款的問題", type: "text", text: "測試文字" },
+                        user: { email: "test@example.com", name: "Tester" },
+                        amount: 100,
+                        status: "success"
+                      }, null, 2) }
                     : {},
                 // Map subtype back to the base action type if needed by notification node
                 actionBaseType: subtype.startsWith('action_notification_') ? 'action_notification' : subtype
@@ -331,7 +411,16 @@ function CanvasFlow({ initialWorkflow, onSave }: WorkflowCanvasProps) {
         [setNodes, setEdges]
     );
 
+    const handleDeleteEdge = useCallback(
+        (edgeId: string) => {
+            setEdges((eds) => eds.filter((edge) => edge.id !== edgeId));
+            setSelectedEdgeId(null);
+        },
+        [setEdges]
+    );
+
     const selectedNode = nodes.find((n) => n.id === selectedNodeId);
+    const selectedEdge = edges.find((e) => e.id === selectedEdgeId);
 
     return (
         <div className="flex h-[calc(100vh-100px)] w-full overflow-hidden border rounded-xl shadow-lg bg-white">
@@ -345,10 +434,10 @@ function CanvasFlow({ initialWorkflow, onSave }: WorkflowCanvasProps) {
                             className="text-lg font-bold bg-transparent border-b-2 border-transparent hover:border-gray-200 focus:border-blue-500 focus:outline-none focus:ring-0 px-1 py-0.5 w-56 transition-colors"
                             value={title}
                             onChange={(e) => setTitle(e.target.value)}
-                            placeholder="Workflow Name"
+                            placeholder="工作流名稱"
                         />
                         <span className="text-xs text-gray-400">
-                            {nodes.length} node{nodes.length !== 1 ? 's' : ''} · {edges.length} connection{edges.length !== 1 ? 's' : ''}
+                            {nodes.length} 個節點 · {edges.length} 條連線
                         </span>
                     </div>
 
@@ -356,7 +445,7 @@ function CanvasFlow({ initialWorkflow, onSave }: WorkflowCanvasProps) {
                         {/* Live / Draft toggle */}
                         <div className="flex items-center gap-2">
                             <span className={`text-xs font-bold uppercase tracking-wider ${isActive ? 'text-green-600' : 'text-gray-400'}`}>
-                                {isActive ? '● Live' : '○ Draft'}
+                                {isActive ? '● 已發佈' : '○ 草稿'}
                             </span>
                             <button
                                 onClick={() => setIsActive(!isActive)}
@@ -375,7 +464,7 @@ function CanvasFlow({ initialWorkflow, onSave }: WorkflowCanvasProps) {
                             <button
                                 onClick={() => setShowGuide(!showGuide)}
                                 className={`w-9 h-9 flex items-center justify-center rounded-lg border transition-all ${showGuide ? 'bg-blue-50 border-blue-200 text-blue-600' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'}`}
-                                title="Show Help"
+                                title="顯示幫助"
                             >
                                 <span className="text-lg">❓</span>
                             </button>
@@ -386,31 +475,31 @@ function CanvasFlow({ initialWorkflow, onSave }: WorkflowCanvasProps) {
                                     <div className="absolute right-0 mt-2 w-64 bg-white border border-gray-200 rounded-xl shadow-2xl z-50 p-4 transition-all animate-in fade-in zoom-in-95 duration-200">
                                         <div className="flex justify-between items-center mb-3">
                                             <div className="font-bold text-blue-600 flex items-center gap-1.5 text-sm">
-                                                <span>💡</span> Connection Guide
+                                                <span>💡</span> 連線指南
                                             </div>
                                             <button onClick={() => setShowGuide(false)} className="text-gray-400 hover:text-gray-600">✕</button>
                                         </div>
                                         <div className="space-y-3 text-xs text-gray-600">
                                             <div className="flex gap-3 items-start p-2 bg-blue-50/50 rounded-lg">
                                                 <div className="w-2.5 h-2.5 rounded-full bg-blue-500 mt-0.5 border-2 border-white flex-shrink-0 shadow-sm" />
-                                                <span>Drag from a <b>bottom</b> dot to a <b>top</b> dot to connect nodes.</span>
+                                                <span>從節點<b>底部</b>的圓點拖曳至另一個節點<b>頂部</b>的圓點即可連線。</span>
                                             </div>
                                             <div className="flex gap-3 items-start p-2 bg-rose-50/50 rounded-lg">
                                                 <div className="w-2.5 h-2.5 bg-red-500 mt-0.5 rounded-full flex-shrink-0 shadow-sm" />
-                                                <span>Logic nodes have <b>TRUE/FALSE</b> outlets for branching.</span>
+                                                <span>邏輯節點具有 <b>TRUE/FALSE</b> 出口，可用於分支流程。</span>
                                             </div>
                                             <div className="pt-2 border-t border-gray-100 flex flex-col gap-2 uppercase tracking-tight font-semibold text-[10px] text-gray-400">
                                                 <div className="flex justify-between">
-                                                    <span>Scroll / Drag (Middle)</span>
-                                                    <span>Pan Canvas</span>
+                                                    <span>滾動 / 拖曳 (中鍵)</span>
+                                                    <span>平移畫布</span>
                                                 </div>
                                                 <div className="flex justify-between">
-                                                    <span>Cmd + Scroll</span>
-                                                    <span>Zoom View</span>
+                                                    <span>Cmd + 滾動</span>
+                                                    <span>縮放視圖</span>
                                                 </div>
                                                 <div className="flex justify-between">
-                                                    <span>Left Click Drag</span>
-                                                    <span>Selection Box</span>
+                                                    <span>左鍵點選拖曳</span>
+                                                    <span>選取方框</span>
                                                 </div>
                                             </div>
                                         </div>
@@ -425,7 +514,7 @@ function CanvasFlow({ initialWorkflow, onSave }: WorkflowCanvasProps) {
                             disabled={isExecuting || nodes.length === 0}
                             className={`px-4 py-2 rounded-lg border font-bold transition-all flex items-center gap-2 ${isExecuting ? 'bg-gray-100 text-gray-400' : 'bg-white text-orange-600 border-orange-200 hover:bg-orange-50'}`}
                         >
-                            {isExecuting ? 'Executing...' : '▶ Run Test'}
+                            {isExecuting ? '執行中...' : '▶ 運行測試'}
                         </button>
 
                         <div className="h-6 w-px bg-gray-200" />
@@ -442,7 +531,7 @@ function CanvasFlow({ initialWorkflow, onSave }: WorkflowCanvasProps) {
                                     : 'bg-blue-600 text-white hover:bg-blue-700'
                                 }`}
                         >
-                            {saveStatus === 'saved' ? '✓ Saved' : saveStatus === 'saving' ? 'Saving...' : 'Save & Deploy'}
+                            {saveStatus === 'saved' ? '✓ 已儲存' : saveStatus === 'saving' ? '儲存中...' : '儲存並發佈'}
                         </button>
                     </div>
                 </div>
@@ -450,12 +539,20 @@ function CanvasFlow({ initialWorkflow, onSave }: WorkflowCanvasProps) {
                 {/* React Flow Canvas */}
                 <div className="flex-1 w-full h-full">
                     <ReactFlow
-                        nodes={nodes}
+                        nodes={React.useMemo(() => nodes.map(n => ({
+                            ...n,
+                            data: {
+                                ...n.data,
+                                onSave: handleSave,
+                                onDelete: handleDeleteNode
+                            }
+                        })), [nodes, handleSave, handleDeleteNode])}
                         edges={edges}
                         onNodesChange={onNodesChange}
                         onEdgesChange={onEdgesChange}
                         onConnect={onConnect}
                         onNodeClick={onNodeClick}
+                        onEdgeClick={onEdgeClick}
                         onPaneClick={onPaneClick}
                         nodeTypes={nodeTypes}
                         connectionLineType={ConnectionLineType.SmoothStep}
@@ -498,13 +595,13 @@ function CanvasFlow({ initialWorkflow, onSave }: WorkflowCanvasProps) {
                             <Panel position="top-center">
                                 <div className="mt-24 text-center bg-white/90 backdrop-blur border border-dashed border-gray-300 rounded-2xl px-12 py-10 shadow-sm text-gray-500">
                                     <div className="text-5xl mb-4 animate-bounce">🔧</div>
-                                    <div className="font-extrabold text-xl text-gray-800 mb-2">Build Your Automation</div>
-                                    <div className="text-sm max-w-xs mx-auto mb-6">Create powerful workflows by adding and connecting nodes.</div>
+                                    <div className="font-extrabold text-xl text-gray-800 mb-2">構建您的自動化流程</div>
+                                    <div className="text-sm max-w-xs mx-auto mb-6">透過新增並連線節點來建立強大的工作流。</div>
                                     <button 
                                         onClick={() => (document.querySelector('button[onClick*="setOpen"]') as HTMLButtonElement | null)?.click()}
                                         className="px-6 py-2.5 bg-blue-600 text-white rounded-full font-bold shadow-lg hover:bg-blue-700 transition-all hover:scale-105 active:scale-95"
                                     >
-                                        + Add Your First Node
+                                        + 新增您的第一個節點
                                     </button>
                                 </div>
                             </Panel>
@@ -514,11 +611,14 @@ function CanvasFlow({ initialWorkflow, onSave }: WorkflowCanvasProps) {
             </div>
 
             {/* Config Sidebar */}
-            {selectedNodeId && (
+            {(selectedNodeId || selectedEdgeId) && (
                 <WorkflowConfigSidebar
                     selectedNode={selectedNode}
+                    selectedEdge={selectedEdge}
                     setNodes={setNodes}
+                    setEdges={setEdges}
                     onDelete={handleDeleteNode}
+                    onEdgeDelete={handleDeleteEdge}
                     activeTab={activeTab}
                     setActiveTab={setActiveTab}
                     executionTrails={executionTrails}

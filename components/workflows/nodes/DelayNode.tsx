@@ -1,7 +1,7 @@
-'use client';
 import { Handle, Position } from '@xyflow/react';
+import { NodeActions } from './NodeActions';
 
-export function DelayNode({ data, isConnectable }: any) {
+export function DelayNode({ id, data, isConnectable }: any) {
     const amount = data.config?.amount || 1;
     const unit = data.config?.unit || 'minutes';
 
@@ -13,8 +13,16 @@ export function DelayNode({ data, isConnectable }: any) {
                 isConnectable={isConnectable}
                 className="w-5 h-5 bg-slate-400 border-2 border-white hover:scale-125 transition-transform cursor-crosshair"
             />
-            <div className="bg-gradient-to-r from-slate-500 to-gray-600 text-white px-3 py-2 flex items-center gap-2 font-bold shadow-sm">
-                <span>⏱️</span> Wait / Delay
+            <div className="bg-gradient-to-r from-slate-500 to-gray-600 text-white px-3 py-2 flex items-center justify-between gap-2 font-bold shadow-sm">
+                <div className="flex items-center gap-2">
+                    <span>⏱️</span> Wait / Delay
+                </div>
+                <NodeActions 
+                    id={id} 
+                    status={data.status} 
+                    onSave={data.onSave} 
+                    onDelete={data.onDelete} 
+                />
             </div>
             <div className="p-3">
                 <div className="text-sm font-semibold mb-1">{data.label}</div>

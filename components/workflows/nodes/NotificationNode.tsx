@@ -1,5 +1,5 @@
-'use client';
 import { Handle, Position } from '@xyflow/react';
+import { NodeActions } from './NodeActions';
 
 const CHANNEL_ICONS: Record<string, string> = {
     slack: '💬',
@@ -13,11 +13,11 @@ const CHANNEL_LABELS: Record<string, string> = {
     slack: 'Slack',
     discord: 'Discord',
     telegram: 'Telegram',
-    line: 'LINE Notify',
+    line: 'LINE Push',
     push: 'Push Notification',
 };
 
-export function NotificationNode({ data, isConnectable }: any) {
+export function NotificationNode({ id, data, isConnectable }: any) {
     const channel = data.config?.channel || 'push';
 
     return (
@@ -28,8 +28,16 @@ export function NotificationNode({ data, isConnectable }: any) {
                 isConnectable={isConnectable}
                 className="w-5 h-5 bg-violet-500 border-2 border-white hover:scale-125 transition-transform cursor-crosshair"
             />
-            <div className="bg-gradient-to-r from-violet-500 to-fuchsia-600 text-white px-3 py-2 flex items-center gap-2 font-bold shadow-sm">
-                <span>{CHANNEL_ICONS[channel] || '🔔'}</span> Notification
+            <div className="bg-gradient-to-r from-violet-500 to-fuchsia-600 text-white px-3 py-2 flex items-center justify-between gap-2 font-bold shadow-sm">
+                <div className="flex items-center gap-2">
+                    <span>{CHANNEL_ICONS[channel] || '🔔'}</span> Notification
+                </div>
+                <NodeActions 
+                    id={id} 
+                    status={data.status} 
+                    onSave={data.onSave} 
+                    onDelete={data.onDelete} 
+                />
             </div>
             <div className="p-3">
                 <div className="text-sm font-semibold mb-1">{data.label}</div>
