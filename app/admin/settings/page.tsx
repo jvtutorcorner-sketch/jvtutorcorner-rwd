@@ -390,6 +390,7 @@ export default function AdminSettingsPage() {
           <a href="/admin/settings/page-permissions"><button style={{ padding: '8px 14px' }}>Page 存取權限</button></a>
           <a href="/admin/settings/dropdown"><button style={{ padding: '8px 14px' }}>Dropdown Menu 設定</button></a>
           <a href="/admin/settings/roles-usage"><button style={{ padding: '8px 14px' }}>Role 使用設定</button></a>
+          <a href="/workflows"><button style={{ padding: '8px 14px', backgroundColor: '#4f46e5', color: 'white', fontWeight: 'bold' }}>⚡ 工作流 (Workflows)</button></a>
           <a href="/settings/pricing"><button style={{ padding: '8px 14px' }}>訂閱方案與擴充管理</button></a>
         </div>
       </section>

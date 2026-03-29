@@ -17,5 +17,16 @@ export interface TriggerPayload {
   data: any;
 }
 
-export type TriggerType = 'trigger_enrollment' | 'trigger_point_purchase' | 'trigger_course_created';
-export type ActionType = 'action_send_email' | 'action_grant_points' | 'action_change_course_status';
+export type TriggerType = 
+  | 'trigger_enrollment' 
+  | 'trigger_point_purchase' 
+  | 'trigger_course_created'
+  | 'trigger_teacher_review_submitted'
+  | 'trigger_payment_success';
+
+export type ActionType = 
+  | 'action_send_email' 
+  | 'action_grant_points' 
+  | 'action_change_course_status'
+  | 'action_ai_summarize'
+  | 'logic_condition';

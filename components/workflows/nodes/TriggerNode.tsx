@@ -14,7 +14,7 @@ export function TriggerNode({ data, isConnectable }: any) {
                 type="source"
                 position={Position.Bottom}
                 isConnectable={isConnectable}
-                className="w-3 h-3 bg-green-500"
+                className="w-5 h-5 bg-green-500 border-2 border-white hover:scale-125 transition-transform cursor-crosshair"
             />
         </div>
     );

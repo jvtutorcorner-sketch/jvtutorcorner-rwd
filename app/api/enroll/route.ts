@@ -141,6 +141,11 @@ export async function POST(request: NextRequest) {
       console.log('[enroll API] LOCAL_ENROLLMENTS 暫存報名資料:', item);
     }
 
+    // Trigger Workflow (non-blocking)
+    import('@/lib/workflowEngine').then(({ triggerWorkflow }) => {
+        triggerWorkflow('trigger_enrollment', item);
+    }).catch(err => console.error('[enroll API] Workflow trigger failed:', err));
+
     return NextResponse.json(
       {
         ok: true,

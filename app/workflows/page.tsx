@@ -36,7 +36,7 @@ export default function WorkflowsList() {
             });
             const data = await res.json();
             if (data.ok && data.workflow) {
-                router.push(`/admin/settings/workflows/${data.workflow.id}`);
+                router.push(`/workflows/${data.workflow.id}`);
             }
         } catch (e) {
             console.error('Failed to create', e);
@@ -110,7 +110,7 @@ export default function WorkflowsList() {
                                     {wf.nodes?.length || 0} Nodes
                                 </span>
                                 <div className="flex gap-2 relative z-10">
-                                    <Link href={`/admin/settings/workflows/${wf.id}`} className="text-sm px-3 py-1 bg-blue-50 text-blue-600 rounded hover:bg-blue-100 transition-colors">
+                                    <Link href={`/workflows/${wf.id}`} className="text-sm px-3 py-1 bg-blue-50 text-blue-600 rounded hover:bg-blue-100 transition-colors">
                                         Edit Canvas
                                     </Link>
                                     <button onClick={(e) => { e.preventDefault(); handleDelete(wf.id); }} className="text-sm px-3 py-1 bg-red-50 text-red-600 rounded hover:bg-red-100 transition-colors">

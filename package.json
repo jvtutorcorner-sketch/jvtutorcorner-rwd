@@ -30,7 +30,7 @@
     "@google/generative-ai": "^0.24.1",
     "@monaco-editor/react": "^4.7.0",
     "@paypal/react-paypal-js": "^8.9.2",
-    "@xyflow/react": "^12.10.1",
+    "@xyflow/react": "^12.10.2",
     "agora-access-token": "^2.0.4",
     "agora-rtc-sdk-ng": "^4.23.0",
     "agora-rtm-sdk": "^2.2.3-1",

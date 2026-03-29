@@ -7,7 +7,7 @@ export function ActionNode({ data, isConnectable }: any) {
                 type="target"
                 position={Position.Top}
                 isConnectable={isConnectable}
-                className="w-3 h-3 bg-blue-500"
+                className="w-5 h-5 bg-blue-500 border-2 border-white hover:scale-125 transition-transform"
             />
             <div className="bg-blue-500 text-white px-3 py-2 rounded-t flex items-center gap-2 font-bold">
                 <span>⚙️</span> Action
@@ -20,7 +20,7 @@ export function ActionNode({ data, isConnectable }: any) {
                 type="source"
                 position={Position.Bottom}
                 isConnectable={isConnectable}
-                className="w-3 h-3 bg-blue-500"
+                className="w-4 h-4 bg-blue-500 border-2 border-white hover:scale-150 transition-transform"
             />
         </div>
     );

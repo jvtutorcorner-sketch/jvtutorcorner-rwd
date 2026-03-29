@@ -63,6 +63,19 @@ export async function POST(req: NextRequest) {
 
     console.log(`[points API] ${userId}: ${action} ${amount} (${current} -> ${newBalance}) reason=${reason || '-'}`);
 
+    // Trigger Workflow (non-blocking)
+    if (action === 'add') {
+        import('@/lib/workflowEngine').then(({ triggerWorkflow }) => {
+            triggerWorkflow('trigger_point_purchase', {
+                userId,
+                amount,
+                previous: current,
+                balance: newBalance,
+                reason: reason || 'Point purchase'
+            });
+        }).catch(err => console.error('[points API] Workflow trigger failed:', err));
+    }
+
     return NextResponse.json({ ok: true, userId, balance: newBalance, previous: current });
   } catch (err: any) {
     console.error('[points API] error:', err);

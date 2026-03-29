@@ -4,24 +4,26 @@ import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { WorkflowCanvas } from '@/components/workflows/WorkflowCanvas';
 
-export default function WorkflowEditorPage({ params }: { params: { id: string } }) {
+export default function WorkflowEditorPage({ params: paramsPromise }: { params: Promise<{ id: string }> }) {
+    const params = React.use(paramsPromise);
+    const id = params.id;
     const [workflow, setWorkflow] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const router = useRouter();
 
     useEffect(() => {
         fetchWorkflow();
-    }, [params.id]);
+    }, [id]);
 
     const fetchWorkflow = async () => {
         try {
-            const res = await fetch(`/api/workflows/${params.id}`);
+            const res = await fetch(`/api/workflows/${id}`);
             const data = await res.json();
             if (data.ok) {
                 setWorkflow(data.workflow);
             } else {
                 alert('Failed to load workflow');
-                router.push('/admin/settings/workflows');
+                router.push('/workflows');
             }
         } catch (e) {
             console.error(e);
@@ -32,7 +34,7 @@ export default function WorkflowEditorPage({ params }: { params: { id: string } 
 
     const handleSave = async (updatedWorkflow: any) => {
         try {
-            const res = await fetch(`/api/workflows/${params.id}`, {
+            const res = await fetch(`/api/workflows/${id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -63,7 +65,7 @@ export default function WorkflowEditorPage({ params }: { params: { id: string } 
         <div className="p-4 bg-gray-100 min-h-screen">
             <div className="mb-4">
                 <button
-                    onClick={() => router.push('/admin/settings/workflows')}
+                    onClick={() => router.push('/workflows')}
                     className="text-gray-500 hover:text-gray-800 flex items-center gap-1 text-sm bg-white px-3 py-1.5 rounded-md shadow-sm border w-fit"
                 >
                     ← Back to Workflows
