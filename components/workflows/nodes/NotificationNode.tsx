@@ -21,16 +21,16 @@ export function NotificationNode({ id, data, isConnectable }: any) {
     const channel = data.config?.channel || 'push';
 
     return (
-        <div className="bg-white border-2 border-violet-500 rounded-lg shadow-md w-64 overflow-hidden">
+        <div className="bg-white border-2 border-violet-500 rounded-lg shadow-lg w-56 overflow-hidden">
             <Handle
                 type="target"
                 position={Position.Top}
                 isConnectable={isConnectable}
-                className="w-5 h-5 bg-violet-500 border-2 border-white hover:scale-125 transition-transform cursor-crosshair"
+                className="w-3 h-3 bg-violet-500 border-2 border-white"
             />
             <div className="bg-gradient-to-r from-violet-500 to-fuchsia-600 text-white px-3 py-2 flex items-center justify-between gap-2 font-bold shadow-sm">
                 <div className="flex items-center gap-2">
-                    <span>{CHANNEL_ICONS[channel] || '🔔'}</span> Notification
+                    <span>{CHANNEL_ICONS[channel] || '🔔'}</span> Notify
                 </div>
                 <NodeActions 
                     id={id} 
@@ -39,22 +39,14 @@ export function NotificationNode({ id, data, isConnectable }: any) {
                     onDelete={data.onDelete} 
                 />
             </div>
-            <div className="p-3">
-                <div className="text-sm font-semibold mb-1">{data.label}</div>
-                <div className="flex items-center gap-2 mt-2">
-                    <span className="text-[10px] font-bold px-2 py-0.5 bg-violet-100 text-violet-700 rounded-full">
-                        {CHANNEL_LABELS[channel] || 'Push'}
-                    </span>
-                </div>
-                <div className="mt-2 text-[10px] text-gray-500 italic truncate">
-                    {data.config?.message || 'No message configured'}
-                </div>
+            <div className="px-3 py-2">
+                <div className="text-xs font-bold text-gray-700">{data.label}</div>
             </div>
             <Handle
                 type="source"
                 position={Position.Bottom}
                 isConnectable={isConnectable}
-                className="w-5 h-5 bg-violet-500 border-2 border-white hover:scale-125 transition-transform cursor-crosshair"
+                className="w-3 h-3 bg-violet-500 border-2 border-white"
             />
         </div>
     );

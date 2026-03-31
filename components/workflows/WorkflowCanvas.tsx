@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
     ReactFlow,
     ReactFlowProvider,
@@ -51,6 +51,62 @@ const nodeTypes = {
     output: OutputNode,
 };
 
+/**
+ * 從節點輸出中提取用戶友好的摘要消息
+ * 保留完整 JSON，但優先顯示最相關的文本內容
+ */
+function extractUserFriendlyMessage(log: any): string | null {
+    if (!log.output) return null;
+    
+    const output = log.output;
+    const actionType = log.actionType || '';
+    
+    // 優先級順序：針對不同節點類型提取最相關的字段
+    const priorityFields = [
+        // AI/回覆相關
+        'ai_output',
+        'message',
+        'reply',
+        'text',
+        'response',
+        // 分析相關
+        'analysisResult',
+        'analysis_summary',
+        'result',
+        // LINE 回覆格式
+        'analysis_shape',
+        'analysis_color',
+        // HTTP/API
+        'data',
+        'content',
+        // 其他
+        'output',
+        'js_result',
+        'python_result',
+        'status'
+    ];
+    
+    // 逐個檢查優先字段
+    for (const field of priorityFields) {
+        if (output[field]) {
+            const value = output[field];
+            // 如果是物件，轉為 JSON 字符串（最多顯示 200 字）
+            if (typeof value === 'object') {
+                const jsonStr = JSON.stringify(value);
+                return jsonStr.length > 200 ? jsonStr.substring(0, 197) + '...' : jsonStr;
+            }
+            // 如果是字符串，截取 200 字
+            if (typeof value === 'string') {
+                return value.length > 200 ? value.substring(0, 197) + '...' : value;
+            }
+            // 其他類型則轉為字符串
+            return String(value).substring(0, 200);
+        }
+    }
+    
+    return null;
+}
+
 interface WorkflowCanvasProps {
     initialWorkflow?: any;
     onSave?: (workflow: any) => void;
@@ -80,46 +136,69 @@ const NODE_PALETTE: NodeCategory[] = [
         color: 'orange',
         items: [
             { icon: '🔀', name: 'If/Else 條件', type: 'logic', subtype: 'logic_condition' },
+            { icon: '📦', name: 'Variable', type: 'action', subtype: 'action_set_variable' },
             { icon: '⏱️', name: '等待 / 延遲', type: 'delay', subtype: 'action_delay' },
-            { icon: '🔄', name: '迴圈疊代器', type: 'logic', subtype: 'logic_loop' },
-            { icon: '🔁', name: '遍歷項目', type: 'logic', subtype: 'logic_loop_items' },
         ],
     },
     {
-        label: '處理器',
+        label: 'AI 生成',
+        color: 'violet',
+        items: [
+            { icon: '✨', name: 'AI 文字回覆', type: 'ai', subtype: 'action_ai_summarize' },
+            { icon: '🔍', name: '圖片 Vision 辨識', type: 'action', subtype: 'action_image_analysis' },
+            { icon: '📝', name: 'Markdown 轉 HTML', type: 'transform', subtype: 'transform_markdown_html' },
+        ],
+    },
+    {
+        label: 'Agent 代理',
         color: 'rose',
         items: [
-            { icon: '👑', name: '主管代理', type: 'ai', subtype: 'action_ai_supervisor' },
-            { icon: '🧭', name: '代理派遣器', type: 'ai', subtype: 'action_ai_dispatch' },
-            { icon: '🤖', name: '執行代理', type: 'ai', subtype: 'action_agent_execute' },
-            { icon: '🧐', name: '反思代理', type: 'ai', subtype: 'action_ai_reflect' },
-            { icon: '✨', name: '通用 AI', type: 'ai', subtype: 'action_ai_summarize' },
-            { icon: '📝', name: 'Markdown 轉 HTML', type: 'transform', subtype: 'transform_markdown_html' },
+            { icon: '👑', name: '主管代理（多 Agent 協調）', type: 'ai', subtype: 'action_ai_supervisor' },
+            { icon: '🧭', name: '代理派遣器（自動分配 Agent）', type: 'ai', subtype: 'action_ai_dispatch' },
+            { icon: '🤖', name: '執行代理（運行指定 Agent）', type: 'ai', subtype: 'action_agent_execute' },
+            { icon: '🧐', name: '反思代理（自我修正）', type: 'ai', subtype: 'action_ai_reflect' },
+        ],
+    },
+    {
+        label: '處理 / 腳本',
+        color: 'amber',
+        items: [
             { icon: '🐍', name: 'Python 腳本', type: 'python', subtype: 'action_python_script' },
             { icon: '📜', name: 'JavaScript 腳本', type: 'action', subtype: 'action_js_script' },
             { icon: '🌐', name: 'HTTP 請求', type: 'http', subtype: 'action_http_request' },
-            { icon: '⚙️', name: '提取 / 轉換', type: 'transform', subtype: 'action_data_transform' },
-            { icon: '🔍', name: '影像分析 (藥物辨識)', type: 'action', subtype: 'action_image_analysis' },
+            { icon: '⚙️', name: '提取 / 轉換欄位', type: 'transform', subtype: 'action_data_transform' },
         ],
     },
     {
-        label: '執行動作',
+        label: '傳送動作',
         color: 'blue',
         items: [
             { icon: '📧', name: '發送電子郵件', type: 'action', subtype: 'action_send_email' },
             { icon: '📩', name: 'Gmail', type: 'action', subtype: 'action_send_gmail' },
+            { icon: '🚀', name: 'Resend 郵件', type: 'action', subtype: 'action_send_resend' },
             { icon: '💬', name: 'Slack 通知', type: 'notification', subtype: 'action_notification_slack' },
-            { icon: '🟢', name: 'LINE 訊息', type: 'notification', subtype: 'action_notification_line' },
+            { icon: '🟢', name: 'LINE 推播（主動通知）', type: 'notification', subtype: 'action_notification_line' },
+            { icon: '↩️', name: 'LINE 回覆（replyToken）', type: 'action', subtype: 'action_line_reply' },
+            { icon: '🖼️', name: 'LINE 圖片辨識', type: 'action', subtype: 'action_line_image_analyze' },
             { icon: '💎', name: '贈送點數', type: 'action', subtype: 'action_grant_points' },
-            { icon: '📄', name: '匯出為 CSV', type: 'export', subtype: 'action_export_csv' },
         ],
     },
     {
-        label: '數據輸入/輸出',
+        label: '外部集成',
+        color: 'fuchsia',
+        items: [
+            { icon: '📚', name: 'Context7 文檔檢索', type: 'action', subtype: 'action_context7_retrieval' },
+            { icon: '🔍', name: 'Gmail 發送郵件', type: 'action', subtype: 'action_gmail_send' },
+            { icon: '📓', name: 'NotebookLM 建立', type: 'action', subtype: 'action_notebooklm_create' },
+            { icon: '🎨', name: 'Figma 匯出', type: 'action', subtype: 'action_figma_export' },
+        ],
+    },
+    {
+        label: '輸入 / 輸出',
         color: 'indigo',
         items: [
-            { icon: '📥', name: '工作流輸入', type: 'input', subtype: 'input_workflow' },
-            { icon: '📤', name: '工作流輸出', type: 'output', subtype: 'output_workflow' },
+            { icon: '📥', name: 'Import File', type: 'action', subtype: 'action_import_file' },
+            { icon: '📤', name: 'Export File', type: 'export', subtype: 'action_export_file' },
         ],
     },
 ];
@@ -127,13 +206,34 @@ const NODE_PALETTE: NodeCategory[] = [
 const COLOR_MAP: Record<string, string> = {
     green: 'hover:bg-green-50 hover:border-green-500',
     orange: 'hover:bg-orange-50 hover:border-orange-500',
+    violet: 'hover:bg-violet-50 hover:border-violet-500',
     rose: 'hover:bg-rose-50 hover:border-rose-500',
+    amber: 'hover:bg-amber-50 hover:border-amber-500',
     blue: 'hover:bg-blue-50 hover:border-blue-500',
     indigo: 'hover:bg-indigo-50 hover:border-indigo-500',
+    fuchsia: 'hover:bg-fuchsia-50 hover:border-fuchsia-500',
 };
 
-function NodePalette({ onAdd }: { onAdd: (type: string, subtype: string) => void }) {
-    const [open, setOpen] = useState(false);
+const RESULT_COLOR_MAP: Record<string, { bg: string; border: string; accent: string }> = {
+    green: { bg: 'bg-green-50', border: 'border-green-200', accent: 'text-green-700' },
+    orange: { bg: 'bg-orange-50', border: 'border-orange-200', accent: 'text-orange-700' },
+    violet: { bg: 'bg-violet-50', border: 'border-violet-200', accent: 'text-violet-700' },
+    rose: { bg: 'bg-rose-50', border: 'border-rose-200', accent: 'text-rose-700' },
+    amber: { bg: 'bg-amber-50', border: 'border-amber-200', accent: 'text-amber-700' },
+    blue: { bg: 'bg-blue-50', border: 'border-blue-200', accent: 'text-blue-700' },
+    indigo: { bg: 'bg-indigo-50', border: 'border-indigo-200', accent: 'text-indigo-700' },
+    fuchsia: { bg: 'bg-fuchsia-50', border: 'border-fuchsia-200', accent: 'text-fuchsia-700' },
+};
+
+// 根據 subtype 查找對應的色彩分類
+function getColorForSubtype(subtype?: string): string {
+    if (!subtype) return 'gray';
+    const item = NODE_PALETTE.flatMap((cat) => cat.items).find((i) => i.subtype === subtype);
+    const color = item ? NODE_PALETTE.find((cat) => cat.items.includes(item))?.color : undefined;
+    return color || 'gray';
+}
+
+function NodePalette({ onAdd, open, setOpen }: { onAdd: (type: string, subtype: string) => void; open: boolean; setOpen: (v: boolean) => void }) {
     const [search, setSearch] = useState('');
 
     const filtered = NODE_PALETTE.map((cat) => ({
@@ -148,7 +248,7 @@ function NodePalette({ onAdd }: { onAdd: (type: string, subtype: string) => void
     return (
         <div className="relative">
             <button
-                onClick={() => setOpen((v) => !v)}
+                onClick={() => setOpen(!open)}
                 className="px-4 py-2 border rounded-lg shadow-sm bg-white hover:bg-gray-50 text-sm font-semibold flex items-center gap-2 transition-colors"
             >
                 <span className="text-blue-500 text-lg leading-none">+</span> 新增節點
@@ -215,6 +315,7 @@ function CanvasFlow({ initialWorkflow, onSave }: WorkflowCanvasProps) {
     const [activeTab, setActiveTab] = useState<'config' | 'debug'>('config');
     const { screenToFlowPosition, getViewport } = useReactFlow();
     const [showGuide, setShowGuide] = useState(false);
+    const [paletteOpen, setPaletteOpen] = useState(false);
 
     const onConnect = useCallback(
         (connection: Connection) => {
@@ -364,7 +465,25 @@ function CanvasFlow({ initialWorkflow, onSave }: WorkflowCanvasProps) {
                     : subtype === 'action_js_script'
                     ? { script: '// data is the current workflow payload\n// return an object to merge it into data\ndata.timestamp = Date.now();\nreturn { processed: true };' }
                     : subtype === 'action_send_gmail'
-                    ? { subject: 'Automated Message', body: 'Hello,\n\nThis is an automated message from JV Tutor Workflow.' }
+                    ? {
+                        to: '{{email_to}}',
+                        subject: '【JV Tutor】{{email_course}} 報名確認通知',
+                        body: `<p>親愛的 <strong>{{email_name}}</strong> 您好，</p>
+<p>{{email_message}}</p>
+<p>課程名稱：<strong>{{email_course}}</strong></p>
+<p>如有任何問題，歡迎與我們聯繫。</p>
+<p style="color:#6b7280;font-size:13px;margin-top:24px;">JV Tutor Corner 團隊 敬上</p>`
+                    }
+                    : subtype === 'action_line_reply'
+                    ? { replyToken: '{{replyToken}}', message: '{{ai_output}}' }
+                    : subtype === 'action_http_request'
+                    ? { method: 'GET', url: 'https://api.example.com/endpoint', headers: '', body: '' }
+                    : subtype === 'action_delay'
+                    ? { milliseconds: 1000 }
+                    : subtype === 'action_line_image_analyze'
+                    ? { imageSource: 'line', messageIdField: '{{message.id}}', outputField: 'analysisResult' }
+                    : subtype === 'action_set_variable'
+                    ? { variables: [{ key: 'my_var', value: '{{ai_output}}' }] }
                     : subtype === 'action_notification_slack'
                     ? { channel: 'slack', message: 'Workflow notification: {{message}}', webhookUrl: '' }
                     : subtype === 'action_notification_line'
@@ -387,6 +506,36 @@ function CanvasFlow({ initialWorkflow, onSave }: WorkflowCanvasProps) {
                     ? { expectedPath: '/api/line/webhook', secret: '' }
                     : subtype === 'action_image_analysis'
                     ? { apiEndpoint: '/api/image-analysis', inputField: 'imageBase64', outputField: 'analysisResult' }
+                    : subtype === 'action_context7_retrieval'
+                    ? { query: '{{user_query}}', libraryId: '/mongodb/docs' }
+                    : subtype === 'action_gmail_send'
+                    ? {
+                        to: '{{email_to}}',
+                        subject: '【JV Tutor】{{email_course}} 報名確認通知',
+                        body: `<p>親愛的 <strong>{{email_name}}</strong> 您好，</p>
+<p>{{email_message}}</p>
+<p>課程名稱：<strong>{{email_course}}</strong></p>
+<p>如有任何問題，歡迎與我們聯繫。</p>
+<p style="color:#6b7280;font-size:13px;margin-top:24px;">JV Tutor Corner 團隊 敬上</p>`
+                    }
+                    : subtype === 'action_send_resend'
+                    ? {
+                        to: '{{email_to}}',
+                        subject: '【JV Tutor】{{email_course}} 報名確認通知',
+                        body: `<p>親愛的 <strong>{{email_name}}</strong> 您好，</p>
+<p>{{email_message}}</p>
+<p>課程名稱：<strong>{{email_course}}</strong></p>
+<p>如有任何問題，歡迎與我們聯繫。</p>
+<p style="color:#6b7280;font-size:13px;margin-top:24px;">JV Tutor Corner 團隊 敬上</p>`
+                    }
+                    : subtype === 'action_notebooklm_create'
+                    ? { title: 'New Document', content: 'Document content goes here' }
+                    : subtype === 'action_figma_export'
+                    ? { fileKey: '{{figmaFileKey}}', format: 'json' }
+                    : subtype === 'action_import_file'
+                    ? { fileName: '', fileType: 'json', fileContent: '' }
+                    : subtype === 'action_export_file'
+                    ? { format: 'json', fileName: 'export.json', dataField: '{{payloadData}}' }
                     : (type === 'trigger' || type === 'webhook' || type === 'input')
                     ? { testPayload: JSON.stringify({
                         message: { content: "我想了解課程與退款的問題", type: "text", text: "測試文字" },
@@ -457,7 +606,7 @@ function CanvasFlow({ initialWorkflow, onSave }: WorkflowCanvasProps) {
 
                         <div className="h-6 w-px bg-gray-200" />
 
-                        <NodePalette onAdd={addNode} />
+                        <NodePalette onAdd={addNode} open={paletteOpen} setOpen={setPaletteOpen} />
                         
                         {/* Help Guide Toggle */}
                         <div className="relative">
@@ -598,7 +747,7 @@ function CanvasFlow({ initialWorkflow, onSave }: WorkflowCanvasProps) {
                                     <div className="font-extrabold text-xl text-gray-800 mb-2">構建您的自動化流程</div>
                                     <div className="text-sm max-w-xs mx-auto mb-6">透過新增並連線節點來建立強大的工作流。</div>
                                     <button 
-                                        onClick={() => (document.querySelector('button[onClick*="setOpen"]') as HTMLButtonElement | null)?.click()}
+                                        onClick={() => setPaletteOpen(true)}
                                         className="px-6 py-2.5 bg-blue-600 text-white rounded-full font-bold shadow-lg hover:bg-blue-700 transition-all hover:scale-105 active:scale-95"
                                     >
                                         + 新增您的第一個節點
@@ -611,7 +760,7 @@ function CanvasFlow({ initialWorkflow, onSave }: WorkflowCanvasProps) {
             </div>
 
             {/* Config Sidebar */}
-            {(selectedNodeId || selectedEdgeId) && (
+            {(selectedNodeId || selectedEdgeId) ? (
                 <WorkflowConfigSidebar
                     selectedNode={selectedNode}
                     selectedEdge={selectedEdge}
@@ -623,6 +772,61 @@ function CanvasFlow({ initialWorkflow, onSave }: WorkflowCanvasProps) {
                     setActiveTab={setActiveTab}
                     executionTrails={executionTrails}
                 />
+            ) : executionTrails.length > 0 && (
+                <div className="w-96 border-l bg-white flex flex-col h-full shadow-xl overflow-hidden">
+                    <div className="px-4 py-3 border-b flex items-center justify-between bg-orange-50">
+                        <span className="text-sm font-bold text-orange-700 flex items-center gap-2">▶ 執行結果</span>
+                        <button onClick={() => setExecutionTrails([])} className="text-gray-400 hover:text-gray-600 text-xs">清除</button>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-3 space-y-3">
+                        {/* ── Final Reply Banner ── 從最後一個有 _finalReply 的 log 中提取 */}
+                        {(() => {
+                            const allLogs = executionTrails.flatMap(t => t.logs || []);
+                            const finalLog = [...allLogs].reverse().find((l: any) => l.output?._finalReply);
+                            const finalReply = finalLog?.output?._finalReply as string | null;
+                            if (!finalReply) return null;
+                            return (
+                                <div className="rounded-xl border-2 border-blue-400 bg-blue-50 p-4 space-y-2">
+                                    <div className="text-[10px] font-bold text-blue-600 uppercase flex items-center gap-1.5">
+                                        <span>🤖</span> 最終回覆（使用者看到的結果）
+                                    </div>
+                                    <div className="text-sm text-blue-900 whitespace-pre-wrap leading-relaxed font-medium">
+                                        {finalReply}
+                                    </div>
+                                </div>
+                            );
+                        })()}
+
+                        {/* ── Per-node logs ── */}
+                        {executionTrails.flatMap(t => t.logs || []).map((log: any, i: number) => {
+                            const friendlyMsg = extractUserFriendlyMessage(log);
+                            const color = getColorForSubtype(log.actionType);
+                            const colorClasses = RESULT_COLOR_MAP[color] || { bg: 'bg-gray-50', border: 'border-gray-200', accent: 'text-gray-700' };
+                            const nodeCardBg = log.status === 'error' ? 'bg-red-50 border-red-200' : log.status === 'success' ? `${colorClasses.bg} ${colorClasses.border}` : `${colorClasses.bg} ${colorClasses.border}`;
+                            return (
+                                <div key={i} className={`rounded-xl border p-3 text-xs space-y-2 ${nodeCardBg}`}>
+                                    <div className="flex justify-between items-center font-semibold">
+                                        <span>{log.nodeLabel || log.nodeId}</span>
+                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${log.status === 'error' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>{log.status}</span>
+                                    </div>
+                                    {log.error && <div className="text-red-600 font-mono mt-1">{log.error}</div>}
+                                    {friendlyMsg && friendlyMsg !== log.output?._finalReply && (
+                                        <div className="bg-white bg-opacity-70 rounded p-2 border-l-2 border-blue-300 text-blue-900 break-words">
+                                            <span className="text-[9px] text-gray-500 uppercase font-semibold block mb-1">💬 回覆摘要</span>
+                                            <span>{friendlyMsg}</span>
+                                        </div>
+                                    )}
+                                    {log.output && (
+                                        <details className="mt-1">
+                                            <summary className="cursor-pointer text-gray-500 hover:text-gray-700 text-[10px]">完整 JSON 輸出</summary>
+                                            <pre className="mt-1 bg-gray-900 text-green-400 rounded p-2 text-[10px] overflow-auto max-h-40 whitespace-pre-wrap">{JSON.stringify(log.output, null, 2)}</pre>
+                                        </details>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
             )}
         </div>
     );

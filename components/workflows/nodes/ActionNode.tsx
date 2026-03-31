@@ -3,7 +3,7 @@ import { NodeActions } from './NodeActions';
 
 export function ActionNode({ id, data, isConnectable }: any) {
     return (
-        <div className="bg-white border-2 border-blue-500 rounded-lg shadow-xl w-64 overflow-hidden">
+        <div className="bg-white border-2 border-blue-500 rounded-lg shadow-lg w-56 overflow-hidden">
             <Handle
                 type="target"
                 position={Position.Top}
@@ -21,9 +21,8 @@ export function ActionNode({ id, data, isConnectable }: any) {
                     onDelete={data.onDelete} 
                 />
             </div>
-            <div className="p-4 bg-white">
-                <div className="text-sm font-bold text-gray-800 mb-1">{data.label}</div>
-                <div className="text-[11px] text-gray-500 line-clamp-2 leading-relaxed">{data.description || 'Executes a task'}</div>
+            <div className="px-3 py-2 bg-white">
+                <div className="text-xs font-bold text-gray-700">{data.label}</div>
             </div>
             <Handle
                 type="source"

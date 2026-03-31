@@ -1,12 +1,22 @@
 import { listWorkflows } from './workflowService';
 import { Node, Edge } from '@xyflow/react';
 import nodemailer from 'nodemailer';
-import { exec } from 'child_process';
-import util from 'util';
 import { ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { ddbDocClient } from './dynamo';
+import { LambdaClient, InvokeCommand } from '@aws-sdk/client-lambda';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
-const execPromise = util.promisify(exec);
+const lambdaClient = new LambdaClient({
+    region: process.env.AWS_REGION || 'ap-northeast-1',
+    credentials: {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || '',
+    },
+});
+
+function getInternalBaseUrl() {
+    return process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+}
 
 // Helpers for data mapping
 function parseTemplate(template: string, data: any) {
@@ -128,6 +138,164 @@ async function sendLinePushMessage(lineUid: string, text: string, channelAccessT
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// LINE Reply API (uses replyToken — same approach as /api/line/webhook route)
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function replyToLineWithToken(replyToken: string, text: string, channelAccessToken: string) {
+    // Split text into 4500-char chunks (LINE limit is 5000, leave buffer)
+    const chunks: string[] = [];
+    let remaining = text;
+    while (remaining.length > 4500) {
+        chunks.push(remaining.substring(0, 4500));
+        remaining = remaining.substring(4500);
+    }
+    if (remaining.length > 0) chunks.push(remaining);
+
+    const messages = chunks.map(c => ({ type: 'text', text: c }));
+    const res = await fetch('https://api.line.me/v2/bot/message/reply', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${channelAccessToken}`
+        },
+        body: JSON.stringify({ replyToken, messages })
+    });
+    if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`LINE Reply API failed: ${res.status} ${errText.substring(0, 200)}`);
+    }
+    return true;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LINE Image Download + Vision AI Analysis helpers
+// (mirrors the logic in /api/line/webhook/[integrationId]/route.ts)
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function findActiveAIIntegrationForLINE(linkedServiceId?: string) {
+    const APPS_TABLE = process.env.DYNAMODB_TABLE_APP_INTEGRATIONS || 'jvtutorcorner-app-integrations';
+    // 1. If specifically linked service is provided, try that first
+    if (linkedServiceId) {
+        try {
+            const { Items } = await ddbDocClient.send(new ScanCommand({
+                TableName: APPS_TABLE,
+                FilterExpression: 'integrationId = :id',
+                ExpressionAttributeValues: { ':id': linkedServiceId }
+            }));
+            const linked = Items?.[0];
+            if (linked && ['OPENAI', 'ANTHROPIC', 'GEMINI'].includes(linked.type) && linked.status === 'ACTIVE' && linked.config?.apiKey) {
+                return linked;
+            }
+        } catch (e) { console.error('[Workflow Engine] findActiveAIIntegrationForLINE linked lookup error:', e); }
+    }
+    // 2. Fallback: first active AI service (OPENAI > ANTHROPIC > GEMINI)
+    for (const type of ['OPENAI', 'ANTHROPIC', 'GEMINI']) {
+        try {
+            const { Items } = await ddbDocClient.send(new ScanCommand({
+                TableName: APPS_TABLE,
+                FilterExpression: '#typ = :type AND #sts = :status',
+                ExpressionAttributeNames: { '#typ': 'type', '#sts': 'status' },
+                ExpressionAttributeValues: { ':type': type, ':status': 'ACTIVE' }
+            }));
+            if (Items && Items.length > 0 && Items[0].config?.apiKey) return Items[0];
+        } catch (e) { console.error(`[Workflow Engine] findActiveAIIntegrationForLINE ${type} scan error:`, e); }
+    }
+    return null;
+}
+
+async function downloadLineImageById(messageId: string, channelAccessToken: string): Promise<Buffer | null> {
+    for (const url of [
+        `https://api-data.line.me/v2/bot/message/${messageId}/content`,
+        `https://api.line.me/v2/bot/message/${messageId}/content`,
+    ]) {
+        try {
+            const res = await fetch(url, {
+                headers: { 'Authorization': `Bearer ${channelAccessToken}` },
+                cache: 'no-store',
+            } as RequestInit);
+            if (res.ok) {
+                const buf = await res.arrayBuffer();
+                return Buffer.from(buf);
+            }
+        } catch (e) { /* try next URL */ }
+    }
+    return null;
+}
+
+async function analyzeLineImageWithVisionAI(imageBuffer: Buffer, aiIntegration: any, prompt: string): Promise<any> {
+    const base64 = imageBuffer.toString('base64');
+    const apiKey = aiIntegration.config?.apiKey;
+    // Prefer model stored in DynamoDB (set via /apps), fall back to provider default
+    const configuredModel = aiIntegration.config?.models?.[0] || aiIntegration.config?.model;
+
+    if (aiIntegration.type === 'GEMINI') {
+        const model = configuredModel || 'gemini-2.0-flash';
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contents: [{ parts: [{ text: prompt }, { inlineData: { mimeType: 'image/jpeg', data: base64 } }] }],
+                generationConfig: { response_mime_type: 'application/json', maxOutputTokens: 1024 }
+            })
+        });
+        if (!res.ok) throw new Error(`Gemini Vision error: ${res.status}`);
+        const data = await res.json();
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        try { return JSON.parse(text); } catch { return { raw: text }; }
+
+    } else if (aiIntegration.type === 'OPENAI') {
+        const model = configuredModel || 'gpt-4o';
+        const res = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+            body: JSON.stringify({
+                model,
+                messages: [{ role: 'user', content: [
+                    { type: 'text', text: prompt },
+                    { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64}` } }
+                ]}],
+                max_tokens: 1024, response_format: { type: 'json_object' }
+            })
+        });
+        if (!res.ok) throw new Error(`OpenAI Vision error: ${res.status}`);
+        const data = await res.json();
+        const text = data.choices?.[0]?.message?.content;
+        try { return JSON.parse(text); } catch { return { raw: text }; }
+
+    } else if (aiIntegration.type === 'ANTHROPIC') {
+        const model = configuredModel || 'claude-3-5-sonnet-20241022';
+        const res = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+            body: JSON.stringify({
+                model, max_tokens: 1024,
+                messages: [{ role: 'user', content: [
+                    { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64 } },
+                    { type: 'text', text: prompt }
+                ]}]
+            })
+        });
+        if (!res.ok) throw new Error(`Anthropic Vision error: ${res.status}`);
+        const data = await res.json();
+        const text = data.content?.[0]?.text;
+        try { return JSON.parse(text); } catch { return { raw: text }; }
+    }
+
+    throw new Error(`Unsupported AI provider for LINE Vision: ${aiIntegration.type}`);
+}
+
+const LINE_DRUG_ANALYSIS_PROMPT = `
+你是一位專業且嚴謹的「AI 數位藥劑師視覺助理」。請仔細觀察圖片中的藥品，並精準萃取外觀特徵。
+只根據圖片中真實看到的特徵，不猜測或推論。若無法辨識請填 "無法辨識"。
+請回傳以下 JSON 結構：
+{
+  "shape": "圓形|橢圓形|長圓柱形|膠囊形|三角形|方形|多邊形|其他|無法辨識",
+  "color": "白|黃|紅|棕|粉紅|綠|藍|黑|灰（雙色用/隔開）|無法辨識",
+  "imprint": "刻字內容（無字填無、看不清填無法辨識）",
+  "score_line": "一字|十字|無|無法辨識"
+}`;
+
 // Basic action executor
 async function executeAction(actionNode: Node, payloadData: any, logs: any[]) {
     const { actionType, config } = actionNode.data as any;
@@ -161,7 +329,9 @@ async function executeAction(actionNode: Node, payloadData: any, logs: any[]) {
                 }
                 break;
 
-            case 'action_notification':
+            case 'action_notification_line':
+            case 'action_notification_slack':
+            case 'action_notification': {
                 const ntChannel = config?.channel || (actionType === 'action_notification_slack' ? 'slack' : 'discord');
                 const ntMessage = parseTemplate(config?.message || 'Default notification from workflow', payloadData);
                 const ntWebhookUrl = config?.webhookUrl;
@@ -192,19 +362,55 @@ async function executeAction(actionNode: Node, payloadData: any, logs: any[]) {
                     });
                 }
                 break;
+            }
 
-            case 'action_http_request':
+            case 'action_http_request': {
                 const url = parseTemplate(config?.url, payloadData);
-                const method = config?.method || 'GET';
+                const method = (config?.method || 'GET').toUpperCase();
+                
+                // Parse headers if provided
+                let headers: Record<string, string> = { 'Content-Type': 'application/json' };
+                if (config?.headers) {
+                    try {
+                        const parsedHeaders = JSON.parse(config.headers);
+                        headers = { ...headers, ...parsedHeaders };
+                    } catch (e) {
+                        // If not valid JSON, try to parse as template
+                        const templatedHeaders = parseTemplate(config.headers, payloadData);
+                        try {
+                            headers = { ...headers, ...JSON.parse(templatedHeaders) };
+                        } catch (e2) {
+                            console.warn('[HTTP] Invalid headers format', e);
+                        }
+                    }
+                }
+                
+                // Parse body if provided
+                let body: any = undefined;
+                if (config?.body && ['POST', 'PUT', 'PATCH'].includes(method)) {
+                    try {
+                        body = JSON.parse(config.body);
+                    } catch (e) {
+                        // If not valid JSON, try to parse as template
+                        const templatedBody = parseTemplate(config.body, payloadData);
+                        try {
+                            body = JSON.parse(templatedBody);
+                        } catch (e2) {
+                            body = templatedBody;
+                        }
+                    }
+                }
+                
                 const response = await fetch(url, {
                     method,
-                    headers: config?.headers || { 'Content-Type': 'application/json' },
-                    body: ['POST', 'PUT'].includes(method) ? (typeof config?.body === 'string' ? config.body : JSON.stringify(config?.body || payloadData)) : undefined
+                    headers,
+                    body: body ? JSON.stringify(body) : undefined
                 });
                 const resData = await response.json();
                 payloadData[`response_${actionNode.id}`] = resData;
                 payloadData.last_response = resData;
                 break;
+            }
 
             case 'action_js_script':
                 const jsCode = config?.script || 'return data;';
@@ -216,32 +422,111 @@ async function executeAction(actionNode: Node, payloadData: any, logs: any[]) {
                 payloadData.js_result = result;
                 break;
 
-            case 'action_ai_summarize':
-                const userPrompt = parseTemplate(config?.userPrompt || config?.prompt, payloadData);
-                payloadData.ai_output = `[AI Result] processed: "${userPrompt.substring(0, 30)}..." using default model.`;
+            case 'action_ai_summarize': {
+                const userPrompt = parseTemplate(config?.userPrompt || config?.prompt || '{{data}}', payloadData);
+                // Delegates to /api/ai-chat so the model and API key come from the active
+                // AI service configured in /apps — no hardcoded model.
+                const aiSumRes = await fetch(`${getInternalBaseUrl()}/api/ai-chat`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        messages: [{ role: 'user', content: userPrompt }],
+                        useSmartRouter: !!config?.useSmartRouter,
+                    }),
+                });
+                const aiSumData = await aiSumRes.json().catch(() => ({}));
+                payloadData.ai_output = aiSumData.reply || aiSumData.text || '';
+                if (!aiSumRes.ok) {
+                    console.error('[Workflow Engine] action_ai_summarize /api/ai-chat error:', aiSumData?.error);
+                    payloadData.ai_output = aiSumData?.error || '[AI Error]';
+                }
                 break;
+            }
 
-            case 'action_python_script':
-                payloadData.python_result = "Python execution result simulated";
+            case 'action_python_script': {
+                const script = config?.script || '';
+                if (!script.trim()) {
+                    payloadData.python_result = null;
+                    break;
+                }
+                const pyLambdaCommand = new InvokeCommand({
+                    FunctionName: process.env.AWS_LAMBDA_FUNCTION_NAME || 'RunPythonWorkflowNode',
+                    InvocationType: 'RequestResponse',
+                    Payload: Buffer.from(JSON.stringify({ script, data: payloadData })),
+                });
+                const pyLambdaResponse = await lambdaClient.send(pyLambdaCommand);
+                const pyResultStr = Buffer.from(pyLambdaResponse.Payload || []).toString('utf-8');
+                let pyResult: any = {};
+                try { pyResult = JSON.parse(pyResultStr); } catch (_) {}
+                if (pyLambdaResponse.FunctionError || !pyResult.ok) {
+                    throw new Error(`Python script error: ${pyResult.stderr || pyResult.errorMessage || 'Execution failed'}`);
+                }
+                payloadData.python_result = pyResult.output ?? pyResult.stdout;
+                if (pyResult.output && typeof pyResult.output === 'object') {
+                    Object.assign(payloadData, pyResult.output);
+                }
                 break;
+            }
 
-            case 'action_data_transform':
-                const path = config?.path || '.';
-                const targetKey = config?.targetKey || 'transformed_data';
-                const value = getValueByPath(payloadData, path);
-                payloadData[targetKey] = value;
+            case 'action_data_transform': {
+                const xfPath = config?.path || '.';
+                const xfTargetKey = config?.targetKey || 'transformed_data';
+                payloadData[xfTargetKey] = getValueByPath(payloadData, xfPath);
                 break;
+            }
 
-            case 'action_image_analysis':
-                const apiEndpoint = config?.apiEndpoint || 'http://localhost:3000/api/image-analysis';
+            case 'transform_markdown_html': {
+                const mdSourceField = config?.sourceField || 'content';
+                const mdTargetField = config?.targetField || 'htmlContent';
+                const mdSource = getValueByPath(payloadData, mdSourceField) || parseTemplate(`{{${mdSourceField}}}`, payloadData) || '';
+                // Basic markdown → HTML conversion without external lib
+                let html = String(mdSource)
+                    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+                    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+                    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+                    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+                    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+                    .replace(/`(.+?)`/g, '<code>$1</code>')
+                    .replace(/\n/g, '<br>');
+                payloadData[mdTargetField] = html;
+                break;
+            }
+
+            case 'action_delay': {
+                const milliseconds = parseInt(config?.milliseconds || '0') || 0;
+                
+                if (milliseconds > 0 && milliseconds <= 300000) { // Max 5 minutes
+                    await new Promise(resolve => setTimeout(resolve, milliseconds));
+                }
+                break;
+            }
+
+            // ── Set Variable ─────────────────────────────────────────────────────────────
+            case 'action_set_variable': {
+                // Supports multiple key-value pairs; each value can use {{template}} syntax
+                const variables: { key: string; value: string }[] = config?.variables || [];
+                for (const { key, value } of variables) {
+                    if (key) {
+                        payloadData[key] = parseTemplate(value ?? '', payloadData);
+                    }
+                }
+                // Also support single key/value shorthand
+                if (config?.key && !config?.variables?.length) {
+                    payloadData[config.key] = parseTemplate(config.value ?? '', payloadData);
+                }
+                break;
+            }
+
+            case 'action_image_analysis': {
+                const baseUrl = getInternalBaseUrl();
+                const apiEndpoint = config?.apiEndpoint || '/api/image-analysis';
                 const inputField = config?.inputField || 'imageBase64';
                 const outputField = config?.outputField || 'analysisResult';
                 const imageBase64 = getValueByPath(payloadData, inputField) || parseTemplate(inputField, payloadData);
                 
                 if (!imageBase64) throw new Error(`Image data not found in path: ${inputField}`);
 
-                // In a real environment, we should determine base URL properly. For this demo we use relative or local
-                const targetUrl = apiEndpoint.startsWith('http') ? apiEndpoint : `http://localhost:3000${apiEndpoint.startsWith('/') ? '' : '/'}${apiEndpoint}`;
+                const targetUrl = apiEndpoint.startsWith('http') ? apiEndpoint : `${baseUrl}${apiEndpoint.startsWith('/') ? '' : '/'}${apiEndpoint}`;
                 
                 const imgRes = await fetch(targetUrl, {
                     method: 'POST',
@@ -256,6 +541,7 @@ async function executeAction(actionNode: Node, payloadData: any, logs: any[]) {
                 
                 payloadData[outputField] = imgData.result;
                 break;
+            }
 
             case 'action_ai_dispatch': {
                 const qField = config?.queryField || 'message.content';
@@ -268,7 +554,7 @@ async function executeAction(actionNode: Node, payloadData: any, logs: any[]) {
                     query = getValueByPath(payloadData, qField?.replace(/\{\{|\}\}/g, '')) || query;
                 }
                 
-                const dispatchRes = await fetch('http://localhost:3000/api/ai-chat/dispatch', {
+                const dispatchRes = await fetch(`${getInternalBaseUrl()}/api/ai-chat/dispatch`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ query })
@@ -299,7 +585,7 @@ async function executeAction(actionNode: Node, payloadData: any, logs: any[]) {
                 const useSmartRouter = !!config?.useSmartRouter;
                 const usePromptCache = !!config?.usePromptCache;
 
-                const executeRes = await fetch('http://localhost:3000/api/ai-chat', {
+                const executeRes = await fetch(`${getInternalBaseUrl()}/api/ai-chat`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ 
@@ -322,8 +608,231 @@ async function executeAction(actionNode: Node, payloadData: any, logs: any[]) {
                 break;
             }
 
+            // ── LINE Image Download + Vision Analysis ─────────────────────────────────
+            // Mirrors the image handling in /api/line/webhook/[integrationId]/route.ts
+            case 'action_line_image_analyze': {
+                const imageSource = config?.imageSource || 'line';
+                let imageBuffer: Buffer | null = null;
+
+                if (imageSource === 'file' && config?.imageBase64) {
+                    // Convert base64 to buffer
+                    const base64Data = config.imageBase64.split(',')[1] || config.imageBase64;
+                    imageBuffer = Buffer.from(base64Data, 'base64');
+                } else if (imageSource === 'url' && config?.imageUrl) {
+                    // Download from URL
+                    const imageUrl = parseTemplate(config.imageUrl, payloadData);
+                    const response = await fetch(imageUrl);
+                    const arrayBuffer = await response.arrayBuffer();
+                    imageBuffer = Buffer.from(arrayBuffer);
+                    if (!imageBuffer) {
+                        throw new Error(`Failed to download image from URL: ${imageUrl}`);
+                    }
+                } else if (imageSource === 'line') {
+                    // Original LINE image download logic
+                    const lineConfig = await getLINEIntegration();
+                    if (!lineConfig?.config?.channelAccessToken) {
+                        throw new Error('LINE integration not found or missing channelAccessToken');
+                    }
+                    const channelAccessToken = lineConfig.config.channelAccessToken;
+
+                    const msgIdField = config?.messageIdField || 'message.id';
+                    const messageId = parseTemplate(`{{${msgIdField.replace(/\{\{|\}\}/g, '')}}}`, payloadData)
+                        || getValueByPath(payloadData, msgIdField.replace(/\{\{|\}\}/g, ''));
+                    if (!messageId) throw new Error('LINE message.id not found in payload. Set messageIdField to {{message.id}}');
+
+                    imageBuffer = await downloadLineImageById(messageId, channelAccessToken);
+                    if (!imageBuffer) throw new Error(`Failed to download LINE image (messageId: ${messageId}). Check channelAccessToken.`);
+                } else {
+                    throw new Error('No valid image source provided');
+                }
+
+                // Find the AI service to use
+                const aiIntegration = await findActiveAIIntegrationForLINE(config?.linkedServiceId);
+                if (!aiIntegration?.config?.apiKey) throw new Error('No active AI service available for image analysis');
+
+                // Analyze with Vision AI
+                const analysisPrompt = config?.prompt || LINE_DRUG_ANALYSIS_PROMPT;
+                const analysisResult = await analyzeLineImageWithVisionAI(imageBuffer, aiIntegration, analysisPrompt);
+
+                const outField = config?.outputField || 'analysisResult';
+                payloadData[outField] = analysisResult;
+
+                // Also flatten top-level result fields for easy template access
+                if (analysisResult && !analysisResult.raw) {
+                    payloadData.analysis_shape = analysisResult.shape || '無法辨識';
+                    payloadData.analysis_color = analysisResult.color || '無法辨識';
+                    payloadData.analysis_imprint = analysisResult.imprint || '無';
+                    payloadData.analysis_score_line = analysisResult.score_line || '無';
+                }
+                break;
+            }
+
+            // ── LINE Reply API ────────────────────────────────────────────────────────
+            // Uses replyToken (from the LINE event) — CORRECT approach for chatbot replies.
+            // action_notification_line uses Push API which requires UID lookup — that is for
+            // proactive notifications, NOT webhook replies.
+            case 'action_line_reply': {
+                const lineConfig = await getLINEIntegration();
+                if (!lineConfig?.config?.channelAccessToken) {
+                    throw new Error('LINE integration not found or missing channelAccessToken');
+                }
+                const channelAccessToken = lineConfig.config.channelAccessToken;
+
+                // Get replyToken — must come from the LINE webhook event (event.replyToken)
+                const replyTokenValue = parseTemplate(config?.replyToken || '{{replyToken}}', payloadData)
+                    || getValueByPath(payloadData, 'replyToken');
+                if (!replyTokenValue) throw new Error('replyToken not found in payload. LINE events include event.replyToken.');
+
+                const messageText = parseTemplate(config?.message || '{{ai_output}}', payloadData);
+                if (!messageText) throw new Error('No message text to reply with');
+
+                await replyToLineWithToken(replyTokenValue, messageText, channelAccessToken);
+                payloadData.line_reply_sent = true;
+                break;
+            }
+
+            case 'action_context7_retrieval': {
+                const query = parseTemplate(config?.query || '{{user_query}}', payloadData);
+                const libraryId = parseTemplate(config?.libraryId || '', payloadData);
+                
+                try {
+                    const res = await fetch(`${getInternalBaseUrl()}/api/workflows/context7-retrieve`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ query, libraryId })
+                    });
+                    const result = await res.json();
+                    payloadData.context7_result = result;
+                } catch (e: any) {
+                    throw new Error(`Context7 retrieval failed: ${e.message}`);
+                }
+                break;
+            }
+
+            case 'action_gmail_send': {
+                const to = parseTemplate(config?.to || '{{recipient_email}}', payloadData);
+                const subject = parseTemplate(config?.subject || 'Message', payloadData);
+                const body = parseTemplate(config?.body || '{{message}}', payloadData);
+                
+                try {
+                    const res = await fetch(`${getInternalBaseUrl()}/api/workflows/gmail-send`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ to, subject, body })
+                    });
+                    const result = await res.json();
+                    payloadData.gmail_sent = result;
+                } catch (e: any) {
+                    throw new Error(`Gmail send failed: ${e.message}`);
+                }
+                break;
+            }
+
+            case 'action_send_resend': {
+                const to = parseTemplate(config?.to || '{{email_to}}', payloadData);
+                const subject = parseTemplate(config?.subject || 'Message', payloadData);
+                const body = parseTemplate(config?.body || '{{message}}', payloadData);
+
+                try {
+                    const res = await fetch(`${getInternalBaseUrl()}/api/workflows/resend-send`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ to, subject, body })
+                    });
+                    const result = await res.json();
+                    payloadData.resend_sent = result;
+                } catch (e: any) {
+                    throw new Error(`Resend send failed: ${e.message}`);
+                }
+                break;
+            }
+
+            case 'action_notebooklm_create': {
+                const title = parseTemplate(config?.title || 'New Notebook', payloadData);
+                const content = parseTemplate(config?.content || '{{text}}', payloadData);
+                
+                try {
+                    const res = await fetch(`${getInternalBaseUrl()}/api/workflows/notebooklm-create`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ title, content })
+                    });
+                    const result = await res.json();
+                    payloadData.notebooklm_result = result;
+                } catch (e: any) {
+                    throw new Error(`NotebookLM creation failed: ${e.message}`);
+                }
+                break;
+            }
+
+            case 'action_figma_export': {
+                const fileKey = parseTemplate(config?.fileKey || '', payloadData);
+                const format = config?.format || 'json';
+                
+                try {
+                    const res = await fetch(`${getInternalBaseUrl()}/api/workflows/figma-export`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ fileKey, format })
+                    });
+                    const result = await res.json();
+                    payloadData.figma_export = result;
+                } catch (e: any) {
+                    throw new Error(`Figma export failed: ${e.message}`);
+                }
+                break;
+            }
+
+            case 'action_import_file': {
+                const fileContent = config?.fileContent || '';
+                const fileName = config?.fileName || 'file';
+                const fileType = config?.fileType || 'json';
+                
+                try {
+                    const res = await fetch(`${getInternalBaseUrl()}/api/workflows/import-file`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ fileContent, fileName, fileType })
+                    });
+                    const result = await res.json();
+                    payloadData.imported_data = result;
+                } catch (e: any) {
+                    throw new Error(`File import failed: ${e.message}`);
+                }
+                break;
+            }
+
+            case 'action_export_file': {
+                const format = config?.format || 'json';
+                const fileName = parseTemplate(config?.fileName || 'export', payloadData);
+                const data = parseTemplate(config?.dataField || '{{payload}}', payloadData);
+                
+                try {
+                    const res = await fetch(`${getInternalBaseUrl()}/api/workflows/export-file`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ format, fileName, data })
+                    });
+                    const result = await res.json();
+                    payloadData.export_result = result;
+                } catch (e: any) {
+                    throw new Error(`File export failed: ${e.message}`);
+                }
+                break;
+            }
+
             default:
-                // Handle other actions
+                // Handle other actions (including output_workflow — captures final payload snapshot)
+                if ((actionNode.data as any)?.actionType === 'output_workflow' || (actionNode.data as any)?.type === 'output') {
+                    // Collect the most meaningful reply from accumulated payload
+                    const finalReply =
+                        payloadData.agent_output ||
+                        payloadData.ai_output ||
+                        payloadData.reply ||
+                        payloadData.message ||
+                        null;
+                    if (finalReply) payloadData._finalReply = finalReply;
+                }
         }
         
         // Mark success

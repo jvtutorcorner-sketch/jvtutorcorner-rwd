@@ -3,7 +3,7 @@ import { NodeActions } from './NodeActions';
 
 export function AiNode({ id, data, isConnectable }: any) {
     return (
-        <div className="bg-white border-2 border-purple-500 rounded-lg shadow-lg w-64 overflow-hidden">
+        <div className="bg-white border-2 border-purple-500 rounded-lg shadow-lg w-56 overflow-hidden">
             <Handle
                 type="target"
                 position={Position.Top}
@@ -13,7 +13,7 @@ export function AiNode({ id, data, isConnectable }: any) {
             <div className="bg-gradient-to-r from-purple-500 to-indigo-600 text-white px-3 py-2 flex items-center justify-between gap-2 font-bold shadow-sm">
                 <div className="flex items-center gap-2">
                     <span>{data.actionType === 'action_ai_supervisor' ? '👑' : data.actionType === 'action_ai_reflect' ? '🧐' : '✨'}</span> 
-                    {data.actionType === 'action_ai_supervisor' ? 'Supervisor Agent' : data.actionType === 'action_ai_reflect' ? 'Reflect Agent' : 'AI Processor'}
+                    {data.actionType === 'action_ai_supervisor' ? 'Supervisor' : data.actionType === 'action_ai_reflect' ? 'Reflect' : 'AI'}
                 </div>
                 <NodeActions 
                     id={id} 
@@ -22,12 +22,8 @@ export function AiNode({ id, data, isConnectable }: any) {
                     onDelete={data.onDelete} 
                 />
             </div>
-            <div className="p-3">
-                <div className="text-sm font-semibold mb-1">{data.label}</div>
-                <div className="text-xs text-gray-500">{data.description || 'AI analysis & generation'}</div>
-                <div className="mt-2 text-[10px] bg-purple-50 text-purple-600 border border-purple-100 rounded px-1 w-fit font-bold uppercase tracking-wider">
-                    Powered by Platform AI
-                </div>
+            <div className="px-3 py-2 bg-white">
+                <div className="text-xs font-bold text-gray-700">{data.label}</div>
             </div>
             <Handle
                 type="source"
