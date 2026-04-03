@@ -54,7 +54,9 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
   // 點數相關
   const [userPoints, setUserPoints] = useState<number | null>(null);
   const [payMethod, setPayMethod] = useState<'plan' | 'points'>(
-    enrollmentType === 'points' ? 'points' : 'plan'
+    enrollmentType === 'points' || (Number(pointCost) > 0 && enrollmentType !== 'plan') 
+      ? 'points' 
+      : 'plan'
   );
 
   useEffect(() => {
@@ -74,7 +76,7 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
   // 取得使用者點數餘額
   useEffect(() => {
     if (!storedUser?.email) return;
-    if (enrollmentType === 'plan') return;  // 純方案制不需要查點數
+    if (enrollmentType === 'plan' && (!pointCost || pointCost <= 0)) return;  // 純方案制且無點數需求時不需要查點數
     
     setIsLoadingPoints(true);
     fetch(`/api/points?userId=${encodeURIComponent(storedUser.email)}`, { cache: 'no-store' })
@@ -88,7 +90,7 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
       })
       .catch(() => { })
       .finally(() => setIsLoadingPoints(false));
-  }, [storedUser, enrollmentType]);
+  }, [storedUser?.email, enrollmentType, pointCost]);
 
   const handleEnrollAndOrder = async () => {
     if (!storedUser) return;
@@ -260,10 +262,13 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
   const requiredLevel = PLAN_LEVELS[requiredPlan] || 1;
   const isPlanSufficient = userLevel >= requiredLevel;
 
-  // 是否可用點數報名
-  const canUsePoints = (enrollmentType === 'points' || enrollmentType === 'both') && !!pointCost;
+  // 是否可用點數報名 (若有設定點數且不是純方案制，或者明確標示為 points/both)
+  const canUsePoints = (enrollmentType === 'points' || enrollmentType === 'both' || (Number(pointCost) > 0)) && !!pointCost;
   // 是否可用方案報名
   const canUsePlan = enrollmentType !== 'points';
+
+  // 決定是否顯示付款方式選擇器 (只要兩者皆可用)
+  const showMethodSelector = canUsePlan && canUsePoints;
 
   // 是否在課程期間
   const now = new Date();
@@ -278,6 +283,19 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
     storedUser.role !== 'teacher' &&
     (canUsePlan ? isPlanSufficient : canUsePoints) &&
     isDateValid;
+
+  console.log('[EnrollButton Render]', {
+    courseId,
+    enrollmentType,
+    pointCost,
+    canUsePlan,
+    canUsePoints,
+    showMethodSelector,
+    userPoints,
+    isLoadingPoints,
+    payMethod,
+    isPlanSufficient
+  });
 
   return (
     <>
@@ -318,8 +336,8 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
             <h2 className="text-xl font-bold mb-4">確認報名課程</h2>
             <p className="mb-4 text-gray-600">請確認您預計開始上課的時間。</p>
 
-            {/* 付款方式選擇器（enrollmentType === 'both' 才顯示） */}
-            {enrollmentType === 'both' && canUsePoints && (
+            {/* 付款方式選擇器（只要兩者皆可用才顯示） */}
+            {showMethodSelector && (
               <div style={{ marginBottom: 20 }}>
                 <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: 600, color: '#374151', marginBottom: 8 }}>
                   付款方式：

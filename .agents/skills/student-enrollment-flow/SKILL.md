@@ -14,15 +14,15 @@ metadata:
 
 ## 功能特點
 
-1.  **自動登入**：串接 `auto-login` 邏輯，使用測試帳號並繞過驗證碼。
-2.  **餘額感知**：檢查當前點數，若不足以支付目標課程，自動前往 `/pricing`。
-3.  **點數購買**：在 `/pricing` 選擇點數套餐，並在 `/pricing/checkout` 使用「模擬支付」完成交易。
-4.  **UI 刷新驗證**：購買完成後回到定價頁面，驗證畫面上顯示的點數餘額是否已即時更新，確保頁面無快取問題。
-5.  **課程報名**：在指定課程頁面點擊「立即報名課程」→ 選擇付款方式 → 確認報名，並攔截 `/api/orders` 網路請求驗證 `paymentMethod=points`。
-6.  **點數扣除驗證**：報名後即時查詢 API，確認扣除正確點數（扣除量 = `pointCost`）。
-7.  **進入教室**：在我的課程頁找到「進入教室」按鈕並點擊，驗證成功進入 `/classroom`。
-8.  **錯誤自愈**：若報名過程中遇到點數不足的 UI 報錯，自動切換至購買流程後返回。
-9.  **架構驗證**：在執行流程前，先確認 [Core Operational Flows](../../../architecture_overview.md#2-core-operational-flows) 是否符合現有程式實作。
+1.  **課程搜尋與自動測資準備**：自學生端搜尋可報名的點數課程。若環境中無適用課程，自動透過 API 換為教師帳號建立測試課程，確保測試順利進行。
+2.  **自動登入驗證**：串接 `auto-login` 邏輯，使用指定測試帳號並繞過驗證碼完成登入。
+3.  **智能餘額檢查與按需購點**：取得學生當前點數與課程成本。僅在點數不足時，才自動導航至 `/pricing` 進行儲值，點數足夠則直接跳至課程報名。
+4.  **點數購買與模擬支付**：在 `/pricing` 選擇點數套餐，並在 `/pricing/checkout` 使用「模擬支付」完成交易流程。
+5.  **UI 刷新與餘額更新驗證**：確認購買完成後，頁面顯示的點數餘額已即時更新，排除快取問題。
+6.  **課程報名與邏輯攔截**：在課程頁點擊報名，攔截 `/api/orders` 請求並驗證 `paymentMethod` 為 `points` 的準確性。
+7.  **精準點數扣除驗證**：比對報名前後餘額，驗證實際扣除量與課程 `pointCost` 是否相符。
+8.  **教室進入驗證**：報名成功後自動進入課程清單，點擊「進入教室」按鈕並驗證導向至 `/classroom`。
+9.  **環境架構對齊**：依據 `architecture_overview.md` 所定義的標準核心操作流程執行驗證。
 
 ## 故障排除與架構同步 (Troubleshooting & Architecture Sync)
 
@@ -136,6 +136,18 @@ BASE_URL=https://www.jvtutorcorner.com npx playwright test e2e/student_enrollmen
    在 Next.js 此類 SPA（單頁應用程式）中，表單提交可能只觸發客戶端路由跳轉（Client-side routing），而不會觸發完整的網路導航。這會導致 `page.waitForNavigation({ waitUntil: 'networkidle' })` 永遠等不到導航事件而觸發自動化腳本超時（例如 3 分鐘）。
    - 錯誤示範：`await page.waitForNavigation({ waitUntil: 'networkidle' })`
    - 修正方式：改用 `await page.waitForURL(url => !url.href.includes('/login'))` 或是等待特定的 DOM 元素。
+
+### 2026-04-03 — 課程準備自動化與智能餘額檢查
+1. **課程搜尋與教師自動切換**  
+   整合自動搜尋流程。搜尋條件擴展支援 `enrollmentType` 為 `points`, `plan`, 與 `both` 且擁有大於 0 的 `pointCost` 的課程。若系統無可用課程，自動透過 API 以教師身份建立 `points` 課程測資。
+2. **智能點數餘額判斷**  
+   串接 API 取得學生當前餘額與目標課程成本。
+3. **按需購點邏輯 (Conditional Point Purchase)**  
+   實作條件判斷：僅當餘額小於課程成本時執行儲值與模擬支付流程；餘額充足則直接進行課程報名。
+4. **課程報名相容性處理 (Production 環境)**  
+   - 舊版正式環境 (Production) 的 `EnrollButton` 只有當資料庫中的課程 `enrollmentType === 'points'` 時才允許送出 `paymentMethod: 'points'`。若設定為 `plan` 或 `both` 且環境尚未更新，會導致送出 `paymentMethod: null`，測試會報錯（點數未扣除）。
+   - 當測試直接對 `https://www.jvtutorcorner.com` 執行時，若遇到既有點數未扣除之問題，須確認 DynamoDB 內該課程的 `enrollmentType` 設定。
+   - 解決方案：E2E 已經實裝動態檢查邏輯，若畫面有「點數報名」頁籤 (Tab) 按鈕則主動切換；若無按鈕（如純 `points` 課程），則採取 `catch` 策略忽略，避免強制 `force` 點擊而癱瘓測試。
 
 ## 測試指令
 
