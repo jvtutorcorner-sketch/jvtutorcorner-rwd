@@ -36,6 +36,8 @@ function CheckoutContent() {
         features: string[];
         description?: string;
         points?: number;
+        appPlanIds?: string[];
+        prePurchasePointsCost?: number;
     } | null>(null);
     const [loadingData, setLoadingData] = useState(false);
 
@@ -108,6 +110,8 @@ function CheckoutContent() {
                                 features: [`${pkg.points} 點`, pkg.description].filter(Boolean) as string[],
                                 description: pkg.description,
                                 points: pkg.points,
+                                appPlanIds: pkg.appPlanIds || [],
+                                prePurchasePointsCost: pkg.prePurchasePointsCost || 0,
                             });
                             setLoadingData(false);
                             return;
@@ -136,6 +140,7 @@ function CheckoutContent() {
     let planLabel = '';
     let planFeatures: string[] = [];
     let points = 0;
+    let appPlanIds: string[] = [];
 
     if (isMockPlan) {
         const id = planId as PlanId;
@@ -157,6 +162,7 @@ function CheckoutContent() {
         planLabel = itemData.label;
         planFeatures = itemData.features;
         points = itemData.points || 0;
+        appPlanIds = itemData.appPlanIds || [];
     }
 
     const itemType: 'PLAN' | 'POINTS' = (!isMockPlan && itemData) ? itemData.type : 'PLAN';
@@ -173,7 +179,8 @@ function CheckoutContent() {
                     currency: 'TWD',
                     itemType,
                     planLabel,
-                    points,
+                    points: itemType === 'POINTS' ? Math.max(0, points - (itemData?.prePurchasePointsCost || 0)) : points,
+                    appPlanIds: appPlanIds,
                 }),
             });
 

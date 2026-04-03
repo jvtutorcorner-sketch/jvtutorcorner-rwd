@@ -7,8 +7,8 @@ const UPGRADES_TABLE = process.env.DYNAMODB_TABLE_PLAN_UPGRADES || 'jvtutorcorne
 
 export async function POST(request: Request) {
     try {
-        const { planId, amount, currency, userId, itemType, planLabel, points } = await request.json();
-        console.log('[plan-upgrades API] POST request:', { planId, amount, currency, userId, itemType, points });
+        const { planId, amount, currency, userId, itemType, planLabel, points, appPlanIds } = await request.json();
+        console.log('[plan-upgrades API] POST request:', { planId, amount, currency, userId, itemType, points, appPlanIds });
 
         if (!planId || !userId) {
             console.warn('[plan-upgrades API] Missing planId or userId');
@@ -28,6 +28,7 @@ export async function POST(request: Request) {
             currency: currency || 'TWD',
             status: 'PENDING',
             points: points || 0,
+            appPlanIds: appPlanIds || [],
             createdAt,
             updatedAt: createdAt,
         };

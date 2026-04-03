@@ -17,6 +17,14 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ up
 
         const updatedAt = new Date().toISOString();
 
+        // 0. Check old status to ensure idempotency
+        const getCmd = new GetCommand({
+            TableName: UPGRADES_TABLE,
+            Key: { upgradeId },
+        });
+        const getRes = await docClient.send(getCmd);
+        const oldUpgrade = getRes.Item;
+
         // 1. Update the upgrade record status
         const command = new UpdateCommand({
             TableName: UPGRADES_TABLE,
@@ -30,7 +38,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ up
         const res = await docClient.send(command);
         const upgrade = res.Attributes;
 
-        if (status === 'PAID' && upgrade) {
+        const wasAlreadyPaid = oldUpgrade && oldUpgrade.status === 'PAID';
+
+        if (status === 'PAID' && upgrade && !wasAlreadyPaid) {
             // 2. If marked as PAID and this is a PLAN upgrade, update the user's plan in DynamoDB profiles table
             if (upgrade.itemType === 'PLAN' && upgrade.userId && upgrade.planId) {
                 try {
@@ -38,11 +48,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ up
 
                     // A. Try direct lookup by ID first (new format where userId = profile ID)
                     try {
-                        const getRes = await docClient.send(new GetCommand({
+                        const getProfileRes = await docClient.send(new GetCommand({
                             TableName: PROFILES_TABLE,
                             Key: { id: upgrade.userId },
                         }));
-                        profile = getRes.Item;
+                        profile = getProfileRes.Item;
                     } catch (e) {
                         console.log(`[plan-upgrades PATCH] Direct ID lookup failed for ${upgrade.userId}, trying fallback...`);
                     }
@@ -79,10 +89,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ up
                 }
             }
 
-            // 3. If marked as PAID and this is a POINTS purchase, add points to the user
+            // 3. If marked as PAID and this is a POINTS purchase, add points to the user and activate app plans
             if (upgrade.itemType === 'POINTS' && upgrade.userId && upgrade.points) {
                 try {
-                    // We use UpdateCommand with ADD to be atomic
+                    // Update points balance
                     await docClient.send(new UpdateCommand({
                         TableName: POINTS_TABLE,
                         Key: { userId: upgrade.userId },
@@ -93,8 +103,51 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ up
                         },
                     }));
                     console.log(`[plan-upgrades PATCH] Granted ${upgrade.points} points to ${upgrade.userId}`);
+
+                    // ACTIVATE App Plans if any
+                    if (upgrade.appPlanIds && Array.isArray(upgrade.appPlanIds) && upgrade.appPlanIds.length > 0) {
+                        // 1. Find profile first to get existing app plans
+                        let profile: any = null;
+                        try {
+                            const getProfileRes = await docClient.send(new GetCommand({
+                                TableName: PROFILES_TABLE,
+                                Key: { id: upgrade.userId },
+                            }));
+                            profile = getProfileRes.Item;
+                        } catch (e) {
+                            console.log(`[plan-upgrades PATCH] Profile lookup failed for app activation: ${upgrade.userId}`);
+                        }
+
+                        if (!profile) {
+                            // Fallback scan
+                            const scanRes = await docClient.send(new ScanCommand({
+                                TableName: PROFILES_TABLE,
+                                FilterExpression: 'email = :email',
+                                ExpressionAttributeValues: { ':email': upgrade.userId },
+                            }));
+                            profile = scanRes.Items?.[0];
+                        }
+
+                        if (profile) {
+                            const existingPlans = Array.isArray(profile.activeAppPlanIds) ? profile.activeAppPlanIds : [];
+                            // Unique set of app plan IDs
+                            const newPlansSet = new Set([...existingPlans, ...upgrade.appPlanIds]);
+                            const finalPlans = Array.from(newPlansSet);
+
+                            await docClient.send(new UpdateCommand({
+                                TableName: PROFILES_TABLE,
+                                Key: { id: profile.id },
+                                UpdateExpression: 'SET activeAppPlanIds = :plans, updatedAt = :updatedAt',
+                                ExpressionAttributeValues: {
+                                    ':plans': finalPlans,
+                                    ':updatedAt': updatedAt,
+                                },
+                            }));
+                            console.log(`[plan-upgrades PATCH] Activated app plans for ${upgrade.userId}:`, upgrade.appPlanIds);
+                        }
+                    }
                 } catch (pointsErr: any) {
-                    console.error('[plan-upgrades PATCH] Failed to update user points:', pointsErr?.message || pointsErr);
+                    console.error('[plan-upgrades PATCH] Failed to update user points/app plans:', pointsErr?.message || pointsErr);
                 }
             }
         }
