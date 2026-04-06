@@ -37,6 +37,14 @@ metadata:
   - **排序調整 (Sorting)**: 實作 ↑/↓ 按鈕邏輯，調整前端顯示的優先權順序。
   - **動態編輯**: 即時修改方案 ID、價格提示、功能描述，並確保儲存至 `plan-upgrades` 相關數據表。
   - **上架切換**: 使用 `isActive` 切換開關控制方案是否在前端展示。
+40: 
+41: ### 4. 方案與點數紀錄頁面 (Plan Records UI)
+42: - **路徑**: `/plans`
+43: - **功能開發**:
+44:   - **多角色支持**: 提供學員查看「個人紀錄」與管理員查看「全站紀錄」的切換邏輯
+45:   - **分門別類**: 區分「訂閱方案紀錄」與「點數購買紀錄」兩大分頁。
+46:   - **關聯應用方案**: 顯示該紀錄所包含的 App 預扣點數或效期加乘。
+47:   - **複合篩選**: 支援方案名稱、日期範圍與使用者 ID 的即時篩選。
 
 ## 與其他技能的聯動 (Relationship)
 
@@ -50,4 +58,6 @@ metadata:
 - `/app/admin/orders/page.tsx`: 訂單管理入口。
 - `/components/OrdersManager.tsx`: 核心訂單操作元件（UI 層）。
 - `/app/admin/subscriptions/page.tsx`: 方案配置介面。
+- `/app/plans/page.tsx`: 方案升級與點數購買紀錄（含學員與管理員視圖）。
 - `/api/admin/subscriptions/route.ts`: 方案管理後端 API。
+- `/api/plan-upgrades/route.ts`: 方案紀錄讀取 API。

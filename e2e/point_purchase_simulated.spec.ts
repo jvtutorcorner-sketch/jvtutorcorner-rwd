@@ -91,6 +91,15 @@ test('Point Purchase Flow (Simulated Payment)', async ({ page }) => {
     console.log("Waiting for redirection back to /plans or /pricing...");
     await page.waitForURL(url => url.pathname === '/plans' || url.pathname === '/pricing', { timeout: 30000 });
     
+    // If we're at /plans, check the table
+    if (page.url().endsWith('/plans')) {
+        console.log("On /plans page. Verifying record...");
+        // Check for "Point Purchase Record" tab and content
+        await page.click('button:has-text("點數購買紀錄")');
+        await expect(page.locator('tr:has-text("已付款")').first()).toBeVisible();
+        await expect(page.locator('tr:has-text("點數套餐")').first()).toBeVisible();
+    }
+    
     console.log("Purchase verified in UI. Checking API for balance update...");
     const balanceAfterRes = await page.request.get(`${baseUrl}/api/points?userId=${email}`);
     const balanceAfter = (await balanceAfterRes.json()).balance;

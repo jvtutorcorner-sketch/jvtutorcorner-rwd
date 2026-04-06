@@ -76,8 +76,14 @@ test.describe('Pricing Deduction Logic Verification', () => {
     await page.click('button:has-text("模擬支付")');
 
     // Wait for redirect back to /plans or check local state
-    await page.waitForTimeout(3000); // Wait for processing
-    await page.waitForURL(/.*plans.*/);
+    await page.waitForURL(/.*plans.*/, { timeout: 30000 });
+    
+    // Verify the record on /plans page
+    console.log("On /plans page. Verifying record...");
+    await page.click('button:has-text("點數購買紀錄")');
+    await expect(page.locator('tr:has-text("已付款")').first()).toBeVisible();
+    await expect(page.locator('tr:has-text("點數套餐")').first()).toBeVisible();
+    await expect(page.locator(`tr:has-text("${pkgPoints}")`).first()).toBeVisible(); // The points total should match
 
     // 6. Go back to /pricing to check points balance
     await page.goto(`${BASE_URL}/pricing`);
