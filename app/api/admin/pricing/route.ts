@@ -23,6 +23,7 @@ export async function GET() {
           pointPackages: [],
           discountPlans: [],
           extensions: [],
+          appPlans: [],
         }
       });
     }
@@ -42,7 +43,7 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { settings } = body;
 
-    if (!settings || !settings.plans || !settings.pageTitle || !settings.pageDescription || !settings.mode) {
+    if (!settings || !settings.plans || settings.pageTitle === undefined || settings.pageDescription === undefined || !settings.mode) {
       return NextResponse.json({ ok: false, error: 'Invalid settings data' }, { status: 400 });
     }
 
@@ -58,13 +59,14 @@ export async function POST(req: Request) {
       (typeof plan.targetAudience === 'string' || typeof plan.targetAudience === 'undefined') &&
       (typeof plan.includedFeatures === 'string' || typeof plan.includedFeatures === 'undefined') &&
       (Array.isArray(plan.features) || typeof plan.features === 'undefined') &&
-      typeof plan.isActive === 'boolean' &&
+      (typeof plan.isActive === 'boolean' || typeof plan.isActive === 'undefined') &&
       typeof plan.order === 'number' &&
       (typeof plan.discountPlanId === 'string' || typeof plan.discountPlanId === 'undefined' || plan.discountPlanId === null) &&
       (Array.isArray(plan.appPlanIds) || typeof plan.appPlanIds === 'undefined')
     );
 
     if (!isValid) {
+      console.warn('[Pricing API] Invalid plan data detected in payload');
       return NextResponse.json({ ok: false, error: 'Invalid plan data structure' }, { status: 400 });
     }
 
@@ -74,23 +76,38 @@ export async function POST(req: Request) {
     }
 
     if (settings.pointPackages) {
-      const isValidPointPackages = settings.pointPackages.every((pkg: any) =>
-        typeof pkg.id === 'string' &&
-        typeof pkg.name === 'string' &&
-        typeof pkg.points === 'number' &&
-        typeof pkg.price === 'number' &&
-        typeof pkg.unitPrice === 'number' &&
-        (typeof pkg.manualDiscount === 'number' || typeof pkg.manualDiscount === 'undefined') &&
-        (typeof pkg.discountPlanId === 'string' || typeof pkg.discountPlanId === 'undefined' || pkg.discountPlanId === null) &&
-        (typeof pkg.description === 'string' || typeof pkg.description === 'undefined') &&
-        (typeof pkg.badge === 'string' || typeof pkg.badge === 'undefined') &&
-        typeof pkg.isActive === 'boolean' &&
-        typeof pkg.order === 'number' &&
-        (Array.isArray(pkg.appPlanIds) || typeof pkg.appPlanIds === 'undefined') &&
-        (typeof pkg.prePurchasePointsCost === 'number' || typeof pkg.prePurchasePointsCost === 'undefined')
-      );
+      const isValidPointPackages = settings.pointPackages.every((pkg: any) => {
+        const check = 
+          typeof pkg.id === 'string' &&
+          typeof pkg.name === 'string' &&
+          (typeof pkg.points === 'number' || typeof pkg.points === 'undefined') &&
+          (typeof pkg.price === 'number' || typeof pkg.price === 'undefined') &&
+          (typeof pkg.unitPrice === 'number' || typeof pkg.unitPrice === 'undefined') &&
+          (typeof pkg.manualDiscount === 'number' || typeof pkg.manualDiscount === 'undefined') &&
+          (typeof pkg.discountPlanId === 'string' || typeof pkg.discountPlanId === 'undefined' || pkg.discountPlanId === null) &&
+          (typeof pkg.description === 'string' || typeof pkg.description === 'undefined') &&
+          (typeof pkg.badge === 'string' || typeof pkg.badge === 'undefined') &&
+          (typeof pkg.isActive === 'boolean' || typeof pkg.isActive === 'undefined') &&
+          (typeof pkg.order === 'number' || typeof pkg.order === 'undefined') &&
+          (Array.isArray(pkg.appPlanIds) || typeof pkg.appPlanIds === 'undefined') &&
+          (typeof pkg.prePurchasePointsCost === 'number' || typeof pkg.prePurchasePointsCost === 'undefined');
+        
+        if (!check) {
+          console.warn('[Pricing API] Validation failed for point package:', {
+            id: pkg.id,
+            name: pkg.name,
+            points: typeof pkg.points,
+            price: typeof pkg.price,
+            unitPrice: typeof pkg.unitPrice,
+            order: typeof pkg.order,
+            isActive: typeof pkg.isActive
+          });
+        }
+        return check;
+      });
 
       if (!isValidPointPackages) {
+        console.warn('[Pricing API] Invalid point package data detected in payload');
         return NextResponse.json({ ok: false, error: 'Invalid point package data structure' }, { status: 400 });
       }
     }
@@ -101,16 +118,23 @@ export async function POST(req: Request) {
     }
 
     if (settings.discountPlans) {
-      const isValidDiscountPlans = settings.discountPlans.every((plan: any) =>
-        typeof plan.id === 'string' &&
-        typeof plan.name === 'string' &&
-        (plan.type === 'percentage' || plan.type === 'fixed') &&
-        typeof plan.value === 'number' &&
-        typeof plan.isActive === 'boolean' &&
-        typeof plan.order === 'number'
-      );
+      const isValidDiscountPlans = settings.discountPlans.every((plan: any) => {
+        const check = 
+          typeof plan.id === 'string' &&
+          typeof plan.name === 'string' &&
+          (plan.type === 'percentage' || plan.type === 'fixed' || typeof plan.type === 'undefined') &&
+          (typeof plan.value === 'number' || typeof plan.value === 'undefined') &&
+          (typeof plan.isActive === 'boolean' || typeof plan.isActive === 'undefined') &&
+          (typeof plan.order === 'number' || typeof plan.order === 'undefined');
+
+        if (!check) {
+          console.warn('[Pricing API] Invalid discount plan data:', plan);
+        }
+        return check;
+      });
 
       if (!isValidDiscountPlans) {
+        console.warn('[Pricing API] Invalid discount plan data detected in payload');
         return NextResponse.json({ ok: false, error: 'Invalid discount plan data structure' }, { status: 400 });
       }
     }
@@ -126,19 +150,26 @@ export async function POST(req: Request) {
     }
 
     if (settings.appPlans) {
-      const isValidAppPlans = settings.appPlans.every((plan: any) =>
-        typeof plan.id === 'string' &&
-        typeof plan.name === 'string' &&
-        typeof plan.description === 'string' &&
-        typeof plan.appId === 'string' &&
-        (typeof plan.appName === 'string' || typeof plan.appName === 'undefined') &&
-        (typeof plan.durationDays === 'number' || typeof plan.durationDays === 'undefined') &&
-        (typeof plan.pointsCost === 'number' || typeof plan.pointsCost === 'undefined') &&
-        typeof plan.isActive === 'boolean' &&
-        typeof plan.order === 'number'
-      );
+      const isValidAppPlans = settings.appPlans.every((plan: any) => {
+        const check = 
+          typeof plan.id === 'string' &&
+          typeof plan.name === 'string' &&
+          (typeof plan.description === 'string' || typeof plan.description === 'undefined') &&
+          (typeof plan.appId === 'string' || typeof plan.appId === 'undefined') &&
+          (typeof plan.appName === 'string' || typeof plan.appName === 'undefined') &&
+          (typeof plan.durationDays === 'number' || typeof plan.durationDays === 'undefined') &&
+          (typeof plan.pointsCost === 'number' || typeof plan.pointsCost === 'undefined') &&
+          (typeof plan.isActive === 'boolean' || typeof plan.isActive === 'undefined') &&
+          (typeof plan.order === 'number' || typeof plan.order === 'undefined');
+
+        if (!check) {
+          console.warn('[Pricing API] Invalid app plan data:', plan);
+        }
+        return check;
+      });
 
       if (!isValidAppPlans) {
+        console.warn('[Pricing API] Invalid app plan data detected in payload');
         return NextResponse.json({ ok: false, error: 'Invalid app plan data structure' }, { status: 400 });
       }
 
