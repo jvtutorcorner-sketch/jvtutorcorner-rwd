@@ -68,6 +68,7 @@ export default function PricingSettingsPage() {
     pageTitle: '方案與價格設定',
     pageDescription: '管理會員方案的標籤、價格和功能特色',
     mode: 'subscription',
+    plans: [],
     pointPackages: [],
     discountPlans: [],
     appPlans: [],
@@ -122,13 +123,30 @@ export default function PricingSettingsPage() {
         let loadedSubs: SubscriptionConfig[] = [];
 
         if (pricingRes.ok && pricingData.ok) {
-          loadedSettings = pricingData.settings as PricingSettings;
-          setSettings(prev => ({ ...prev, ...loadedSettings, mode: prev.mode }));
+          const rawSettings = pricingData.settings as PricingSettings;
+
+          // Ensure all items have isActive flag (default to true if missing) for robust state
+          loadedSettings = {
+            ...rawSettings,
+            pointPackages: (rawSettings.pointPackages || []).map(p => ({ ...p, isActive: p.isActive ?? true })),
+            discountPlans: (rawSettings.discountPlans || []).map(p => ({ ...p, isActive: p.isActive ?? true })),
+            appPlans: (rawSettings.appPlans || []).map(p => ({ ...p, isActive: p.isActive ?? true })),
+          };
+
+          setSettings(prev => ({ ...prev, ...loadedSettings }));
 
           // Populate subscriptions state from consolidated pricing data
           const consolidatedSubs: SubscriptionConfig[] = [
-            ...(loadedSettings.plans || []).map(p => ({ ...p, type: 'PLAN' as const })),
-            ...(loadedSettings.extensions || []).map(e => ({ ...e, type: 'EXTENSION' as const }))
+            ...(loadedSettings.plans || []).map(p => ({
+              ...p,
+              isActive: p.isActive ?? true,
+              type: 'PLAN' as const
+            })),
+            ...(loadedSettings.extensions || []).map(e => ({
+              ...e,
+              isActive: e.isActive ?? true,
+              type: 'EXTENSION' as const
+            }))
           ];
 
           if (consolidatedSubs.length > 0) {
@@ -152,8 +170,13 @@ export default function PricingSettingsPage() {
         if (subsRes.ok && subsData.ok) {
           const remoteSubs = subsData.subscriptions || [];
           if (remoteSubs.length > 0 && (!loadedSettings?.plans || loadedSettings.plans.length === 0)) {
+            // Ensure every sub has a type for our filtering logic to work properly
+            const normalizedRemoteSubs = remoteSubs.map((s: any) => ({
+              ...s,
+              type: s.type || 'PLAN'
+            }));
             // Only use legacy subs if pricing table is empty (migration case)
-            setSubscriptions(remoteSubs);
+            setSubscriptions(normalizedRemoteSubs);
           }
         }
 
@@ -450,9 +473,9 @@ export default function PricingSettingsPage() {
       {
         id: `points_${Date.now()}_1`,
         name: '入門包',
-        points: 50,
-        unitPrice: 10,
-        price: 500,
+        points: 20,
+        unitPrice: 50,
+        price: 1000,
         manualDiscount: 0,
         prePurchasePointsCost: 0,
         description: '適合新手體驗的基礎套餐',
@@ -463,9 +486,9 @@ export default function PricingSettingsPage() {
       {
         id: `points_${Date.now()}_2`,
         name: '普通包',
-        points: 100,
-        unitPrice: 9,
-        price: 900,
+        points: 50,
+        unitPrice: 50,
+        price: 2500,
         manualDiscount: 0,
         prePurchasePointsCost: 0,
         description: '性價比最好的熱銷套餐',
@@ -476,28 +499,15 @@ export default function PricingSettingsPage() {
       {
         id: `points_${Date.now()}_3`,
         name: '超值包',
-        points: 250,
-        unitPrice: 8,
-        price: 2000,
+        points: 100,
+        unitPrice: 58,
+        price: 5000,
         manualDiscount: 0,
         prePurchasePointsCost: 0,
         description: '大量購買享優惠',
         badge: '推薦',
         isActive: true,
         order: maxOrder + 3
-      },
-      {
-        id: `points_${Date.now()}_4`,
-        name: 'VIP 尊享包',
-        points: 500,
-        unitPrice: 7,
-        price: 3500,
-        manualDiscount: 0,
-        prePurchasePointsCost: 0,
-        description: '專為忠實用戶設計的頂級套餐',
-        badge: 'VIP',
-        isActive: true,
-        order: maxOrder + 4
       }
     ];
 
@@ -653,7 +663,7 @@ export default function PricingSettingsPage() {
 
       // Pre-save validation: Check for data consistency
       const issues: string[] = [];
-      
+
       // Check subscription plans with app bindings
       plansForPricing.forEach((p: any) => {
         if (p.appPlanIds?.length > 0) {
@@ -665,7 +675,7 @@ export default function PricingSettingsPage() {
           });
         }
       });
-      
+
       // Check point packages with app bindings
       pricingPayload.pointPackages?.forEach((pkg: any) => {
         if (pkg.appPlanIds?.length > 0) {
@@ -677,7 +687,7 @@ export default function PricingSettingsPage() {
           });
         }
       });
-      
+
       // Log the data being saved
       console.log('[Settings] Pre-save data validation:', {
         plansCount: plansForPricing.length,
@@ -699,6 +709,19 @@ export default function PricingSettingsPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ settings: pricingPayload }),
+      });
+
+      // Also sync to legacy subscriptions table to ensure backward compatibility
+      // (some parts of the app might still read from there or use its API)
+      const subsRes = await fetch('/api/admin/subscriptions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subscriptions: subscriptions }),
+      });
+
+      console.log('[Settings] Save attempt:', {
+        pricingOk: pricingRes.ok,
+        subsOk: subsRes.ok
       });
 
       const pricingData = await pricingRes.json();
