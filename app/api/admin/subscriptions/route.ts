@@ -42,7 +42,20 @@ export async function POST(request: Request) {
         const body = await request.json();
 
         if (body.subscriptions && Array.isArray(body.subscriptions)) {
-            // Bulk save
+            // Bulk save - first delete subscriptions that are not in the new payload
+            const existingSubscriptions = await getAllSubscriptions();
+            const incomingIds = new Set(body.subscriptions.map((s: any) => s?.id).filter(Boolean));
+
+            for (const existing of existingSubscriptions) {
+                if (!incomingIds.has(existing.id)) {
+                    try {
+                        await deleteSubscription(existing.id);
+                    } catch (e) {
+                        console.error(`Failed to delete obsolete subscription ${existing.id}:`, e);
+                    }
+                }
+            }
+
             const savedSubscriptions = [];
             for (const sub of body.subscriptions) {
                 if (!sub || !sub.id || !sub.label || !sub.type) {
