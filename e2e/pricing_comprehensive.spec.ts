@@ -6,22 +6,49 @@ import * as path from 'path';
 const envResult = dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
 const env = envResult.parsed || {};
 
-const BASE_URL = env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-const BYPASS_SECRET = env.LOGIN_BYPASS_SECRET || process.env.LOGIN_BYPASS_SECRET || 'your_bypass_secret';
-const ADMIN_EMAIL = env.ADMIN_EMAIL || process.env.ADMIN_EMAIL || 'admin@jvtutorcorner.com';
-const ADMIN_PASSWORD = env.ADMIN_PASSWORD || process.env.ADMIN_PASSWORD || 'admin_password';
+const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+const BYPASS_SECRET = process.env.LOGIN_BYPASS_SECRET || process.env.NEXT_PUBLIC_LOGIN_BYPASS_SECRET;
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 
 test.describe('Pricing Settings Comprehensive Verification', () => {
   test('Verify all sections on /settings/pricing are correctly saved and calculated', async ({ page }) => {
-    test.setTimeout(120000); // 2 minutes
+    test.setTimeout(60000); // 1 minute
+
+    // Validation: Ensure environment variables are loaded
+    console.log('DEBUG: Environment Check:');
+    console.log(`- BASE_URL: ${BASE_URL}`);
+    console.log(`- ADMIN_EMAIL: ${ADMIN_EMAIL ? 'PRESENT' : 'MISSING'}`);
+    console.log(`- BYPASS_SECRET: ${BYPASS_SECRET ? `PRESENT (Length: ${BYPASS_SECRET.length})` : 'MISSING'}`);
+
+    if (!ADMIN_EMAIL || !ADMIN_PASSWORD || !BYPASS_SECRET) {
+      const missing = [];
+      if (!ADMIN_EMAIL) missing.push('ADMIN_EMAIL');
+      if (!ADMIN_PASSWORD) missing.push('ADMIN_PASSWORD');
+      if (!BYPASS_SECRET) missing.push('BYPASS_SECRET');
+      test.skip(true, `Missing required environment variables: ${missing.join(', ')}`);
+      return;
+    }
     
     // 1. Login as Admin
+    console.log(`Logging in as Admin: ${ADMIN_EMAIL}`);
     await page.goto(`${BASE_URL}/login`);
+    
+    // Explicitly wait for the form to be ready
+    await page.waitForSelector('input[name="email"]');
+    
     await page.fill('input[name="email"]', ADMIN_EMAIL);
     await page.fill('input[name="password"]', ADMIN_PASSWORD);
     await page.fill('#captcha', BYPASS_SECRET);
-    await page.click('button[type="submit"]');
-    await page.waitForTimeout(2000);
+    
+    // Click and wait for navigation
+    await Promise.all([
+      page.waitForURL(`${BASE_URL}/`, { timeout: 10000 }),
+      page.click('button[type="submit"]')
+    ]);
+    
+    console.log('Login successful, navigated to home.');
+    await page.waitForTimeout(1000);
 
     // 2. Go to /settings/pricing
     await page.goto(`${BASE_URL}/settings/pricing`);
