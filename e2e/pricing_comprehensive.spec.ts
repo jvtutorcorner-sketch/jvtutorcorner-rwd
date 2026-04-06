@@ -64,31 +64,34 @@ test.describe('Pricing Settings Comprehensive Verification', () => {
 
     // --- Section 3: Point Packages ---
     await page.click('button:has-text("點數購買")');
-    await page.click('button:has-text("新增點數套餐")');
+    await page.click('button:has-text("新增套餐")');
     const pkgCard = page.locator('.bg-white.rounded-2xl.p-5').last();
     await pkgCard.locator('button:has-text("編輯內容")').click();
     
     // Fill values
-    await pkgCard.locator('label:has-text("方案名稱") + input').fill('Comp Test Pkg');
-    await pkgCard.locator('label:has-text("包含點數") + input').fill('100');
-    await pkgCard.locator('label:has-text("單價") + input').fill('10');
-    await pkgCard.locator('label:has-text("手動折扣") + input').fill('100');
+    await pkgCard.locator('label:has-text("套餐名稱") + input').fill('Comp Test Pkg');
+    await pkgCard.locator('label:has-text("點數數量") + input').fill('100');
+    await pkgCard.locator('label:has-text("單位售價") + input').fill('10');
+    
+    // Select Manual Discount mode
+    await pkgCard.locator('button:has-text("自定義金額")').click();
+    await pkgCard.locator('label:has-text("手動折抵金額") + input').fill('100');
     
     // Initial Calc: 100 * 10 - 100 = 900
-    await expect(pkgCard.locator('.text-blue-700.font-extrabold')).toContainText('900');
+    await expect(pkgCard.locator('.text-green-700')).toContainText('900');
 
-    // Select Discount Plan
-    await pkgCard.locator('select').first().selectOption({ label: discountName });
-    // Calc: 900 * (1 - 0.2) = 720
-    await expect(pkgCard.locator('.text-blue-700.font-extrabold')).toContainText('720');
+    // Select Discount Plan mode and then the actual plan
+    await pkgCard.locator('button:has-text("選擇方案")').click();
+    await pkgCard.locator('select').first().selectOption({ label: `${discountName} (20%)` });
+    // Calc: 1000 * (1 - 0.2) = 800 (since manual discount is cleared when switching modes)
+    await expect(pkgCard.locator('.text-green-700')).toContainText('800');
 
-    // Select App Plan
-    await pkgCard.locator('button:has-text("選擇應用程式方案")').click();
-    await page.click(`label:has-text("${appPlanName}")`);
-    await page.click('button:has-text("確認選擇")');
+    // Select App Plan (direct checkbox selection now)
+    await pkgCard.locator(`label:has-text("${appPlanName}")`).click();
     
     // Verify prePurchasePointsCost calc
-    await expect(pkgCard.locator('text=購買前扣除 50 點')).toBeVisible();
+    await expect(pkgCard.locator('text=需扣點數')).toBeVisible();
+    await expect(pkgCard.locator('text=50')).toBeVisible();
 
     await page.click('button:has-text("儲存變更")');
     await page.waitForSelector('text=已儲存');
@@ -96,7 +99,7 @@ test.describe('Pricing Settings Comprehensive Verification', () => {
     await page.click('button:has-text("點數購買")');
     const savedPkg = page.locator('.bg-white.rounded-2xl.p-5', { hasText: 'Comp Test Pkg' });
     await expect(savedPkg).toBeVisible();
-    await expect(savedPkg.locator('.text-blue-700.font-extrabold')).toContainText('720');
+    await expect(savedPkg.locator('.text-green-700')).toContainText('800');
 
     // --- Section 4: Subscription Plans ---
     await page.click('button:has-text("訂閱方案")');
@@ -105,11 +108,9 @@ test.describe('Pricing Settings Comprehensive Verification', () => {
     await subCard.locator('button:has-text("編輯內容")').click();
     await subCard.locator('label:has-text("方案標籤") + input').fill('Comp Test Sub');
     
-    // Bind App Plan
-    await subCard.locator('button:has-text("選擇應用程式方案")').click();
-    await page.click(`label:has-text("${appPlanName}")`);
-    await page.click('button:has-text("確認選擇")');
-    await expect(subCard).toContainText(appPlanName);
+    // Bind App Plan (direct checkbox selection)
+    await subCard.locator(`label:has-text("${appPlanName}")`).click();
+    await expect(subCard.locator(`label:has-text("${appPlanName}")`)).toHaveClass(/bg-violet/);
 
     await page.click('button:has-text("儲存變更")');
     await page.waitForSelector('text=已儲存');
