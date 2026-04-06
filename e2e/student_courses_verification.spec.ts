@@ -244,8 +244,8 @@ test.describe('Student Courses Page Verification', () => {
     const rows = page.locator('table.orders-table tbody tr');
     const rowCount = await rows.count();
     
-    let teacherMissingRecords: any[] = [];
-    let teacherPresentRecords: any[] = [];
+    const teacherMissingRecords: any[] = [];
+    const teacherPresentRecords: any[] = [];
 
     for (let i = 0; i < Math.min(rowCount, 10); i++) {
       try {
@@ -310,8 +310,8 @@ test.describe('Student Courses Page Verification', () => {
     const rows = page.locator('table.orders-table tbody tr');
     const rowCount = await rows.count();
     
-    let durationMissingRecords: any[] = [];
-    let durationPresentRecords: any[] = [];
+    const durationMissingRecords: any[] = [];
+    const durationPresentRecords: any[] = [];
 
     for (let i = 0; i < Math.min(rowCount, 10); i++) {
       try {
@@ -376,8 +376,8 @@ test.describe('Student Courses Page Verification', () => {
     const rows = page.locator('table.orders-table tbody tr');
     const rowCount = await rows.count();
     
-    let timesCorruptRecords: any[] = [];
-    let timesValidRecords: any[] = [];
+    const timesCorruptRecords: any[] = [];
+    const timesValidRecords: any[] = [];
 
     for (let i = 0; i < Math.min(rowCount, 10); i++) {
       try {

@@ -158,8 +158,10 @@ export default function OrdersManager() {
   }
 
   function confirmAndPatch(order: Order | undefined, label: string, status: string) {
-    if (!order || !order.orderId) return;
-    const ok = typeof window !== 'undefined' ? window.confirm(`${t('confirm_action')} ${label}${t('action_irreversible')}`) : true;
+    const activeOrderId = order?.orderId || order?.id;
+    if (!order || !activeOrderId) return;
+    const msg = `${t('confirm_action')} ${label}${t('action_irreversible')}`;
+    const ok = typeof window !== 'undefined' ? window.confirm(msg) : true;
     if (!ok) return;
 
     const payment = {
@@ -171,7 +173,7 @@ export default function OrdersManager() {
       note: `Admin action: ${label}`,
     } as any;
 
-    patchOrderWithPayment(order.orderId, status, payment);
+    patchOrderWithPayment(activeOrderId, status, payment);
   }
 
   async function patchOrderWithPayment(orderId: string, status: string, payment?: any) {
@@ -185,6 +187,9 @@ export default function OrdersManager() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || 'Failed to update order');
+      if (data.order?.riskWarning) {
+        alert(data.order.riskWarning);
+      }
       alert(t('order_updated'));
       setEditingOrderId(null);
       if (data && data.order) {
@@ -193,7 +198,7 @@ export default function OrdersManager() {
         load();
       }
     } catch (err: any) {
-      alert('Update order error: ' + (err?.message || err));
+      alert(err?.message || 'Update order error: ' + (err?.message || err));
     }
   }
 
@@ -283,7 +288,7 @@ export default function OrdersManager() {
             {orders.map((o, idx) => (
               <tr key={o.orderId || o.id || idx} style={{ borderBottom: '1px solid #f0f4f8' }}>
                 <td style={{ padding: '16px' }}>
-                  <Link href={`/admin/orders/${o.orderId}`} style={{ color: '#3182ce', fontWeight: 600, textDecoration: 'none' }}>
+                  <Link href={`/admin/orders/${o.orderId || o.id}`} style={{ color: '#3182ce', fontWeight: 600, textDecoration: 'none' }}>
                     {o.orderId || o.id}
                   </Link>
                 </td>
@@ -304,7 +309,7 @@ export default function OrdersManager() {
                 </td>
                 <td style={{ padding: '16px' }}>{o.createdAt ? new Date(o.createdAt).toLocaleDateString() : '-'}</td>
                 <td style={{ padding: '16px', textAlign: 'right' }}>
-                  {editingOrderId === o.orderId ? (
+                  {editingOrderId === (o.orderId || o.id) ? (
                     <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end' }}>
                       <button onClick={() => confirmAndPatch(o, t('mark_as_paid'), 'PAID')} style={successBtn}>{t('set_paid')}</button>
                       <button onClick={() => confirmAndPatch(o, t('cancel_order'), 'CANCELLED')} style={dangerBtn}>{t('cancel')}</button>
@@ -312,7 +317,7 @@ export default function OrdersManager() {
                       <button onClick={() => setEditingOrderId(null)} style={secondaryBtn}>取消</button>
                     </div>
                   ) : (
-                    <button onClick={() => setEditingOrderId(o.orderId || null)} style={primaryBtn}>編輯</button>
+                    <button onClick={() => setEditingOrderId(o.orderId || o.id || null)} style={primaryBtn}>編輯</button>
                   )}
                 </td>
               </tr>

@@ -79,29 +79,35 @@ function CheckoutContent() {
             setLoadingData(true);
             const fetchData = async () => {
                 try {
-                    // 1. Try fetching as a subscription first
-                    const subsRes = await fetch(`/api/admin/subscriptions?id=${planId}`);
-                    const subsData = await subsRes.json();
-
-                    if (subsRes.ok && subsData.ok && subsData.subscription) {
-                        const sub = subsData.subscription;
-                        setItemData({
-                            type: 'PLAN',
-                            label: sub.label,
-                            price: sub.price || 0,
-                            features: sub.features || [],
-                            description: sub.includedFeatures,
-                        });
-                        setLoadingData(false);
-                        return;
-                    }
-
-                    // 2. If not found in subscriptions, check pricing settings (for point packages)
+                    // 1. We prioritize the new pricing source of truth (now consolidated in /api/admin/pricing)
                     const pricingRes = await fetch('/api/admin/pricing');
                     const pricingData = await pricingRes.json();
 
                     if (pricingRes.ok && pricingData.ok && pricingData.settings) {
-                        const pkg = pricingData.settings.pointPackages?.find((p: any) => p.id === planId);
+                        const { plans, extensions, pointPackages, appPlans } = pricingData.settings;
+                        
+                        // Check plans and extensions first (new unified structure)
+                        const allSubs = [
+                            ...(plans || []).map((p: any) => ({ ...p, type: 'PLAN' as const })),
+                            ...(extensions || []).map((e: any) => ({ ...e, type: 'EXTENSION' as const }))
+                        ];
+                        
+                        const sub = allSubs.find((s: any) => s.id === planId);
+                        if (sub) {
+                            setItemData({
+                                type: sub.type as 'PLAN', // Cast for simplicity unless it's explicitly extension
+                                label: sub.label,
+                                price: sub.price || 0,
+                                features: sub.features || [],
+                                description: sub.includedFeatures,
+                                appPlanIds: sub.appPlanIds || [],
+                            });
+                            setLoadingData(false);
+                            return;
+                        }
+
+                        // Check point packages
+                        const pkg = pointPackages?.find((p: any) => p.id === planId);
                         if (pkg) {
                             setItemData({
                                 type: 'POINTS',
@@ -116,6 +122,23 @@ function CheckoutContent() {
                             setLoadingData(false);
                             return;
                         }
+                    }
+
+                    // 2. ONLY if not found in the new unified pricing, we fallback to the legacy table
+                    const subsRes = await fetch(`/api/admin/subscriptions?id=${planId}`);
+                    const subsData = await subsRes.json();
+
+                    if (subsRes.ok && subsData.ok && subsData.subscription) {
+                        const sub = subsData.subscription;
+                        setItemData({
+                            type: 'PLAN',
+                            label: sub.label,
+                            price: sub.price || 0,
+                            features: sub.features || [],
+                            description: sub.includedFeatures,
+                        });
+                        setLoadingData(false);
+                        return;
                     }
 
                     // If neither found, go back

@@ -58,12 +58,12 @@ export type AppPlan = {
 export type PricingSettings = {
   pageTitle: string;
   pageDescription: string;
-  mode: 'subscription' | 'points' | 'discounts';
+  mode: 'subscription' | 'points' | 'discounts' | 'app-plans';
   plans: PlanConfig[];
   pointPackages: PointPackage[];
-  discountPlans?: DiscountPlan[]; // global discount plans
-  extensions?: any[]; // For storing extension subscriptions in the same table
-  appPlans?: AppPlan[]; // For storing app plan configurations
+  discountPlans: DiscountPlan[];
+  extensions: any[];
+  appPlans: AppPlan[];
 };
 
 /**
@@ -109,6 +109,11 @@ export async function savePricingSettings(settings: PricingSettings): Promise<vo
       Item: {
         id: PRICING_CONFIG_ID,
         ...settings,
+        plans: settings.plans || [],
+        pointPackages: settings.pointPackages || [],
+        discountPlans: settings.discountPlans || [],
+        extensions: settings.extensions || [],
+        appPlans: settings.appPlans || [],
         updatedAt: new Date().toISOString(),
       },
     });

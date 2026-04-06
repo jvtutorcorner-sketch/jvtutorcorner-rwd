@@ -113,11 +113,14 @@ export default function EnrollmentManager() {
       // If enrollment has orderId, update order to CANCELLED
       const orderId = (enrollment as any).orderId;
       if (orderId) {
-        await fetch(`/api/orders/${encodeURIComponent(orderId)}`, {
+        const orderRes = await fetch(`/api/orders/${encodeURIComponent(orderId)}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ status: "CANCELLED" }),
         });
+        const orderData = await orderRes.json();
+        if (!orderRes.ok) throw new Error(orderData?.error || "Failed to update order");
+        if (orderData.order?.riskWarning) alert(orderData.order.riskWarning);
       }
 
       await fetch("/api/enroll", {
@@ -139,11 +142,14 @@ export default function EnrollmentManager() {
       if (!orderId) throw new Error("No orderId to refund");
 
       // mark order refunded
-      await fetch(`/api/orders/${encodeURIComponent(orderId)}`, {
+      const orderRes = await fetch(`/api/orders/${encodeURIComponent(orderId)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "REFUNDED" }),
       });
+      const orderData = await orderRes.json();
+      if (!orderRes.ok) throw new Error(orderData?.error || "Failed to refund order");
+      if (orderData.order?.riskWarning) alert(orderData.order.riskWarning);
 
       // update enrollment
       await fetch("/api/enroll", {

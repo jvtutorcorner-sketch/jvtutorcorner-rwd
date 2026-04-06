@@ -116,9 +116,9 @@ export default function PricingPage() {
   const dynamicPlansFromSettings = settings?.plans?.filter((p: any) => p.isActive) || [];
   const dynamicPlansFromSubs = dynamicSubs.filter((p: any) => p.type === 'PLAN' && p.isActive) || [];
 
-  // Combine, preferring subscriptions as the newer source
-  const mergedPlans = [...dynamicPlansFromSubs];
-  dynamicPlansFromSettings.forEach((p: any) => {
+  // Combine, preferring NEW pricing settings as the source of truth
+  const mergedPlans = [...dynamicPlansFromSettings];
+  dynamicPlansFromSubs.forEach((p: any) => {
     if (!mergedPlans.find(m => m.id === p.id)) {
       mergedPlans.push(p);
     }
