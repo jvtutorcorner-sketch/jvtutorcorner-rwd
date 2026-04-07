@@ -63,6 +63,25 @@ description: '負責大數據推薦課程的前置數據收集規劃與實作。
 3. **訪客閒置偵測**：`app/ClientHomePage.tsx`
    - 監聽 `mousemove`, `keydown` 等事件，適時觸發 `OnboardingQuestionnaire` (lite 模式)。
 
+---
+
+## 整合測試與導覽列驗證 (Integration with Navbar-Verification)
+
+大數據收集的有效性依賴於正確的用戶身份狀態，這部分需與 `navbar-verification` 協同驗證：
+
+### 1. 跨功能測試清單 (Cross-Functional Checklist)
+- [ ] **身分狀態同步**：驗證註冊成功後，Navbar 正確切換為登入狀態（Email/頭像），且 `jv_just_registered` 標記同時觸發大數據問卷。
+- [ ] **權限過濾驗證**：確保不同角色（Student/Teacher）看到的推薦內容與問卷邏輯一致。
+- [ ] **導航攔截**：驗證在強導覽模式（Product Tour）中，問卷步驟是否與導覽步驟正確銜接，不被 Navbar 的頁面切換中斷。
+
+### 2. 核心驗證腳本
+*   **UI 層級**：`e2e/navbar_verification.spec.ts` 
+    - 驗證註冊 -> 自動登入 -> 導覽列狀態。
+*   **數據與算法層級**：`e2e/recommendation_onboarding.spec.ts`
+    - 驗證 3 分鐘閒置 -> 問卷彈出 -> 推薦結果變更。
+
+---
+
 ## 未來擴展方向
 
 - **A/B Testing**：測試不同問卷題項對推薦點擊率的影響。

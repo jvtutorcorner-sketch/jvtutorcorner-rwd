@@ -17,6 +17,7 @@ metadata:
 - **Bypass Secret 認證**：不僅需要正確的測試帳號密碼，還必須在驗證碼欄位輸入正確的 `LOGIN_BYPASS_SECRET` 才能繞過 CAPTCHA。這防止了僅知道帳密的人輕易破解驗證碼。
 - **自動憑據讀取**：從 `.env.local` 讀取 `TEST_TEACHER_EMAIL` 等變數。
 - **真實資料載入**：根據輸入的 Email 去資料庫 (DynamoDB 或 Profiles.json) 抓取真實帳戶資訊。
+- **大數據整合驗證**：支援在登入後驗證個人化課程推薦與訪客標籤（Guest Seeds）合併至正式帳號的正確性。
 
 ## 配置項 (.env.local)
 
@@ -40,9 +41,10 @@ TEST_STUDENT_PASSWORD=123456
 ### 對於 AI 助手 (Antigravity)
 當被要求登入系統進行測試時，AI 助手應：
 1. **憑據讀取**：讀取 `.env.local` 中的憑據內容與 `LOGIN_BYPASS_SECRET`。
-2. **導航與填寫**：使用 `browser` 工具前往 `/login` 並填入 Email、Password 與 `LOGIN_BYPASS_SECRET` (填入驗證碼欄位)。
-3. **執行登入**：點擊提交按鈕。
-4. **驗證狀態**：截圖或檢查 DOM 以確認已登入成功（應看到使用者姓名或首頁內容）。
+2. **導航與填寫**：前往 `/login` 填入 Email 與 Password。
+3. **圖片載入驗證 (重要)**：必須**先等待驗證碼圖片 (`img[alt="captcha"]`) 呈現**。這確保了後端 `captchaToken` 已載入，且登入按鈕已解除 `disabled` 狀態。
+4. **填寫驗證碼與點擊**：在驗證碼圖片出現且登入按鈕變為啟用 (Enabled) 狀態後，在驗證碼欄位填入 `LOGIN_BYPASS_SECRET`，並點擊提交按鈕。
+5. **驗證狀態**：截圖或檢查 DOM 以確認已登入成功（應看到使用者姓名或首頁內容）。
 5. **登出清理 (重要)**：驗證完畢後，**必須點擊「登出」按鈕**以登出系統，確保不留下活躍會話。
 6. **結束任務**：關閉瀏覽器分頁或視窗以結束技能執行。
 

@@ -17,6 +17,7 @@ metadata:
 - 驗證導覽列在登入前後的顯示差異（登入按鈕 vs 使用者頭像/Email）。
 - 驗證導覽列下拉選單的功能與權限過濾。
 - 驗證新戶導覽（Product Tour）是否在首次登入時觸發。
+- **驗證大數據問卷觸發**：檢查 `jv_just_registered` 標記是否成功調起個人化偏好問卷。
 
 ## 檢查清單
 
@@ -27,6 +28,7 @@ metadata:
 - [ ] 檢查導覽列是否顯示使用者 Email 或姓名。
 - [ ] 檢查 `localStorage` 中是否有 `tutor_mock_user`（表示使用者已登入）。
 - [ ] 驗證 `tutor_mock_user` 包含正確的使用者資訊。
+- [ ] **驗證大數據種子**：檢查註冊後是否清除 `jv_just_registered` 並成功彈出問卷（與 `big-data-collection` Skill 協同）。
 
 ### 2. 導覽列 UI 驗證
 - [ ] 驗證「登入」按鈕已消失。
