@@ -58,7 +58,9 @@ export const Carousel: React.FC<CarouselProps> = ({
                 slides[index].startsWith('/api/uploads/')
               }
               onLoad={() => setLoadedImages(prev => ({ ...prev, [index]: true }))}
+              onError={() => setLoadedImages(prev => ({ ...prev, [index]: true }))}
             />
+
           </>
         ) : (
           <p>{slides[index]}</p>

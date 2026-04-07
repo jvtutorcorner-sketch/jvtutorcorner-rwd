@@ -143,7 +143,6 @@ export default function ClientHomePage({
           mode="lite"
           onComplete={(_answers, _affinity) => {
             setShowGuestQuestionnaire(false);
-            // Refresh recommendations with newly saved seeds
             fetchRecommendations(undefined);
           }}
           onSkip={() => setShowGuestQuestionnaire(false)}
@@ -162,41 +161,41 @@ export default function ClientHomePage({
         />
       )}
 
-      {/* Premium Hero Section with Deep Background */}
+      {/* Hero Section */}
       <section className="home-hero-premium">
-        <div className="hero-premium-container">
+        <div className="hero-premium-container container">
           <div className="hero-premium-content">
             <div className="hero-premium-text">
               <h1 className="hero-premium-title">
                 {user 
                   ? `歡迎回來！${user.firstName || user.email?.split('@')[0] || '學習者'}` 
-                  : '發現您的下一堂課程'}
+                  : '開啟您的智慧學習之旅'}
               </h1>
               <p className="hero-premium-subtitle">
                 {user
-                  ? '繼續您的學習之旅，探索精選課程和優秀教師'
-                  : '與全世界最好的教師一起學習。我們提供個性化的課程推薦和高質量的教育內容。'}
+                  ? '繼續您的學習之旅，探索最新的精選課程和頂尖教師，為您的未來增值。'
+                  : '與全球頂尖教師即時互動，體驗沉浸式在線教室。我們為您量身定制學習路徑，讓進步看得見。'}
               </p>
               <div className="hero-premium-cta">
                 {user ? (
                   <>
                     <Link href="/courses" className="btn-primary">
-                      瀏覽課程
+                      瀏覽所有課程
                     </Link>
                     <button 
                       className="btn-secondary"
                       onClick={() => setShowUserQuestionnaire(true)}
                     >
-                      更新偏好
+                      更新學習偏好
                     </button>
                   </>
                 ) : (
                   <>
                     <Link href="/login/register" className="btn-primary">
-                      開始學習
+                      免費開始使用
                     </Link>
                     <Link href="/courses" className="btn-secondary">
-                      瀏覽課程
+                      探索熱門課程
                     </Link>
                   </>
                 )}
@@ -216,164 +215,166 @@ export default function ClientHomePage({
         </div>
       </section>
 
-      {/* Main Content Section */}
-      <section className="home-main-content">
-        {/* ── Personalised Recommendation Strip ─────────────────────────── */}
-        <div className="recommendation-section" id="tour-recommendation">
+      {/* Categories Section - Hidden per user request */}
+      {/*
+      <section className="section-white">
+        <div className="container">
+          <div className="section-header-enhanced text-center" style={{ marginBottom: 40, textAlign: 'center' }}>
+            <h2 className="section-title-large" style={{ fontSize: '2.5rem' }}>探索熱門領域</h2>
+            <p className="section-subtitle">找到最適合您的課程類別</p>
+          </div>
+          <div className="card-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))' }}>
+            {[
+              { name: '語言學習', icon: '🌍', color: '#e0f2fe' },
+              { name: '升學考試', icon: '📝', color: '#fef3c7' },
+              { name: '程式開發', icon: '💻', color: '#dcfce7' },
+              { name: '藝術設計', icon: '🎨', color: '#fce7f3' },
+              { name: '音樂造詣', icon: '🎵', color: '#f3e8ff' },
+              { name: '職場技能', icon: '💼', color: '#ffedd5' },
+            ].map((cat) => (
+              <div key={cat.name} className="category-card" style={{ 
+                background: cat.color, 
+                padding: '30px', 
+                borderRadius: '16px', 
+                textAlign: 'center',
+                transition: 'transform 0.3s ease',
+                cursor: 'pointer'
+              }}>
+                <div style={{ fontSize: '3rem', marginBottom: '12px' }}>{cat.icon}</div>
+                <div style={{ fontWeight: '700', fontSize: '1.1rem' }}>{cat.name}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+      */}
+
+      {/* Recommendations Section */}
+      <section className="section-personalized" id="tour-recommendation">
+        <div className="container">
           <div className="section-header-enhanced">
             <div>
               <h2 className="section-title-large">
                 {user ? `${user.firstName || user.email?.split('@')[0] || '您'} 的專屬推薦` : '為您精選的課程'}
               </h2>
-              <p className="section-subtitle">根據您的學習風格精心挑選</p>
+              <p className="section-subtitle">基於您的興趣和學習進度</p>
             </div>
             {!user ? (
-              <Link
-                href="/login/register"
-                className="section-link-cta"
-              >
-                建立帳號獲得更精準推薦 →
+              <Link href="/login/register" className="section-link-cta">
+                建立帳號，獲得個性化推薦 →
               </Link>
             ) : (
-               <button
-                 className="section-link-cta"
-                 onClick={() => setShowUserQuestionnaire(true)}
-                 id="tour-questionnaire-btn"
-               >
-                 填寫 / 更新學習偏好 →
+               <button className="section-link-cta" onClick={() => setShowUserQuestionnaire(true)} id="tour-questionnaire-btn">
+                 更新您的學習偏好 →
                </button>
             )}
           </div>
           {recsLoading ? (
             <div className="loading-state">
               <div className="loading-spinner"></div>
-              <p>正在計算您的專屬推薦…</p>
+              <p>正在為您挑選最佳課程…</p>
             </div>
           ) : (
             <div className="card-grid">
               {displayRecs.slice(0, 3).map((course) => (
-                <CourseCard key={course.id} course={course as Course} />
+                <CourseCard key={course.id} course={course as Course} className="card-personalized" />
               ))}
             </div>
           )}
         </div>
+      </section>
 
-        {/* Featured Sections */}
-        <div className="featured-sections" id="tour-tabs">
-          <Tabs
-            items={[
-            {
-              key: 'teachers',
-              title: t('recommended_teachers'),
-              content: (
-                <div className="tab-content">
-                  <div className="section-header-enhanced">
-                    <div>
-                      <h2 className="section-title-large">{t('recommended_teachers')}</h2>
-                      <p className="section-subtitle">發現優秀的教育工作者</p>
-                    </div>
-                    <Link href="/teachers" className="section-link-cta">{t('see_all_teachers')} →</Link>
-                  </div>
-                  <div className="card-grid">
-                    {recommendedTeachers.map((teacher) => (
-                      <TeacherCard key={teacher.id} teacher={teacher} />
-                    ))}
-                  </div>
-                </div>
-              )
-            },
-            {
-              key: 'courses',
-              title: t('popular_courses'),
-              content: (
-                <div className="tab-content">
-                  <div className="section-header-enhanced">
-                    <div>
-                      <h2 className="section-title-large">{t('popular_courses')}</h2>
-                      <p className="section-subtitle">最受歡迎的課程</p>
-                    </div>
-                    <Link href="/courses" className="section-link-cta">{t('see_all_courses')} →</Link>
-                  </div>
-                  <div className="card-grid">
-                    {hotCourses.map((course) => (
-                      <CourseCard key={course.id} course={course} />
-                    ))}
-                  </div>
-                </div>
-              )
-            }
-          ]}
-        />
-        </div>
-
-        {/* About Platform Section */}
-        <section className="about-platform-section">
-          <div className="about-platform-content">
-            <div className="about-platform-text">
-              <h2 className="section-title-large">關於我們的平台</h2>
-              <p>
-                我們致力於提供全球最優質的在線教育體驗。透過連接學生和教師，
-                我們創造了一個充滿機遇和成長的社區。
-              </p>
-              <p>
-                無論您是初學者還是專業人士，我們都有適合您的課程。
-                探索 <strong>1000+</strong> 門課程，從編程到藝術，應有盡有。
-              </p>
-              <div className="about-stats">
-                <div className="stat-item">
-                  <span className="stat-number">50K+</span>
-                  <span className="stat-label">活躍學生</span>
-                </div>
-                <div className="stat-item">
-                  <span className="stat-number">500+</span>
-                  <span className="stat-label">優秀教師</span>
-                </div>
-                <div className="stat-item">
-                  <span className="stat-number">1000+</span>
-                  <span className="stat-label">精選課程</span>
-                </div>
-              </div>
+      {/* Featured Teachers */}
+      <section className="section-teachers">
+        <div className="container">
+          <div className="section-header-enhanced">
+            <div>
+              <h2 className="section-title-large">熱門教師</h2>
+              <p className="section-subtitle">來自各領域的頂尖教育專家</p>
             </div>
-            <div className="about-platform-cta">
-              <Link href="/about" className="btn-primary-large">
-                了解更多
-              </Link>
+            <Link href="/teachers" className="section-link-cta">查看所有教師 →</Link>
+          </div>
+          <div className="card-grid">
+            {recommendedTeachers.map((teacher) => (
+              <TeacherCard key={teacher.id} teacher={teacher} />
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Statistics Section - Hidden per user request */}
+      {/*
+      <section className="section-dark">
+        <div className="container">
+          <div className="about-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '40px', textAlign: 'center' }}>
+            <div className="stat-item">
+              <span className="stat-number" style={{ fontSize: '3rem', fontWeight: '800', color: '#3b82f6', display: 'block' }}>50K+</span>
+              <span className="stat-label" style={{ fontSize: '1.2rem', color: '#94a3b8' }}>活躍學員</span>
+            </div>
+            <div className="stat-item">
+              <span className="stat-number" style={{ fontSize: '3rem', fontWeight: '800', color: '#3b82f6', display: 'block' }}>500+</span>
+              <span className="stat-label" style={{ fontSize: '1.2rem', color: '#94a3b8' }}>專業導師</span>
+            </div>
+            <div className="stat-item">
+              <span className="stat-number" style={{ fontSize: '3rem', fontWeight: '800', color: '#3b82f6', display: 'block' }}>1000+</span>
+              <span className="stat-label" style={{ fontSize: '1.2rem', color: '#94a3b8' }}>精選課程</span>
+            </div>
+            <div className="stat-item">
+              <span className="stat-number" style={{ fontSize: '3rem', fontWeight: '800', color: '#3b82f6', display: 'block' }}>98%</span>
+              <span className="stat-label" style={{ fontSize: '1.2rem', color: '#94a3b8' }}>學員滿意度</span>
             </div>
           </div>
-        </section>
+        </div>
+      </section>
+      */}
 
-        {/* Contact / Newsletter Section */}
-        <section className="contact-section">
-          <div className="contact-container">
-            <div className="contact-header">
-              <h2 className="section-title-large">保持聯繫</h2>
-              <p>訂閱我們的通訊，獲取最新課程和優惠</p>
-            </div>
-            <form className="contact-form" onSubmit={(e) => {
+      {/* How it Works */}
+      <section className="section-white">
+        <div className="container">
+          <div className="section-header-enhanced text-center" style={{ textAlign: 'center', marginBottom: '60px' }}>
+            <h2 className="section-title-large">簡單三步，開始學習</h2>
+            <p className="section-subtitle">您的進步從未如此輕鬆</p>
+          </div>
+          <div className="how-it-works-grid">
+            {[
+              { step: '01', title: '挑選老師與課程', desc: '瀏覽我們精選的教師背景與過往評價。', icon: '🔍' },
+              { step: '02', title: '預約上課時間', desc: '選擇適合您的時段，靈活安排學習計畫。', icon: '📅' },
+              { step: '03', title: '進入教室上課', desc: '透過視訊與白板工具，開啟高效互動學習。', icon: '🎓' },
+            ].map((step) => (
+              <div key={step.step} className="how-it-works-card" style={{ padding: '40px', textAlign: 'center' }}>
+                <div className="how-it-works-number" style={{ marginBottom: '20px' }}>{step.step}</div>
+                <h3 style={{ fontSize: '1.5rem', marginBottom: '15px' }}>{step.title}</h3>
+                <p style={{ color: '#4b5563' }}>{step.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Newsletter */}
+      <section className="section-accent">
+        <div className="container">
+          <div className="contact-container text-center" style={{ maxWidth: '600px', margin: '0 auto', textAlign: 'center' }}>
+            <h2 style={{ fontSize: '2.5rem', color: 'white', marginBottom: '16px' }}>訂閱最新消息</h2>
+            <p style={{ color: 'rgba(255,255,255,0.8)', marginBottom: '32px' }}>第一時間獲得專屬優惠和新課程通知</p>
+            <form className="contact-form" style={{ display: 'flex', gap: '12px' }} onSubmit={(e) => {
               e.preventDefault();
               alert('感謝您的訂閱！');
             }}>
-              <div className="form-group">
-                <input 
-                  type="email" 
-                  placeholder="請輸入您的電子郵件" 
-                  required 
-                  className="form-input"
-                />
-              </div>
-              <button type="submit" className="btn-primary">
-                訂閱
+              <input 
+                type="email" 
+                placeholder="輸入您的電子郵件地址" 
+                required 
+                className="form-input"
+                style={{ flex: 1, padding: '14px 20px', borderRadius: '10px' }}
+              />
+              <button type="submit" className="btn-primary" style={{ background: 'white', color: '#4f46e5', boxShadow: 'none' }}>
+                立即訂閱
               </button>
             </form>
           </div>
-        </section>
+        </div>
       </section>
-
-      {/* How It Works - Hidden per user request */}
-      {/* <HowItWorks /> */}
-
-      {/* Medicine Identification Flow - Hidden per user request */}
-      {/* <MedicineIdentificationFlow /> */}
     </div>
   );
 }

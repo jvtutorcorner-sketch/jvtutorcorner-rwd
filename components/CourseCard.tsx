@@ -8,9 +8,10 @@ import { useT } from './IntlProvider';
 
 interface CourseCardProps {
   course: Course;
+  className?: string;
 }
 
-export const CourseCard: React.FC<CourseCardProps> = ({ course }) => {
+export const CourseCard: React.FC<CourseCardProps> = ({ course, className = "" }) => {
   const router = useRouter();
   const t = useT();
   const tt = (key: string, fallback: string) => {
@@ -24,7 +25,7 @@ export const CourseCard: React.FC<CourseCardProps> = ({ course }) => {
     : `/teachers?teacher=${encodeURIComponent(String(course.teacherName || ''))}`;
 
   return (
-    <Link href={`/courses/${course.id}`} className="card">
+    <Link href={`/courses/${course.id}`} className={`card ${className}`}>
       <h3 className="card-title">{tt(`courses.${course.id}.title`, course.title)}</h3>
       <p className="card-subtitle">
         {tt(`courses.${course.id}.subject`, course.subject)}｜{tt(`courses.${course.id}.level`, course.level)}
