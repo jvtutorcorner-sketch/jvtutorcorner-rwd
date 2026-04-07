@@ -54,6 +54,12 @@ export default function ClientHomePage({
       ]);
     }
 
+    // Check if user just registered to show onboarding questionnaire
+    if (u && localStorage.getItem('jv_just_registered') === 'true') {
+      localStorage.removeItem('jv_just_registered');
+      setShowUserQuestionnaire(true);
+    }
+
     // Fetch personalised recommendations
     fetchRecommendations(u?.id);
 
@@ -68,7 +74,7 @@ export default function ClientHomePage({
       const resetIdleTimer = () => {
         if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
         idleTimerRef.current = setTimeout(() => {
-          // setShowGuestQuestionnaire(true);
+          setShowGuestQuestionnaire(true);
         }, IDLE_THRESHOLD_MS);
 
       };
@@ -155,49 +161,82 @@ export default function ClientHomePage({
           onSkip={() => setShowUserQuestionnaire(false)}
         />
       )}
-      {/* Hero + Carousel */}
-      <section className="hero">
-        <div className="hero-text" id="tour-welcome">
-          <h1>{t('hero_title')}</h1>
-          <p>{t('hero_subtitle')}</p>
-        </div>
-        <div className="hero-carousel">
-          <Carousel
-            slides={carouselImages}
-            isImage={
-              carouselImages[0]?.startsWith('data:') ||
-              carouselImages[0]?.startsWith('http') ||
-              carouselImages[0]?.startsWith('/')
-            }
-          />
+
+      {/* Premium Hero Section with Deep Background */}
+      <section className="home-hero-premium">
+        <div className="hero-premium-container">
+          <div className="hero-premium-content">
+            <div className="hero-premium-text">
+              <h1 className="hero-premium-title">
+                {user 
+                  ? `歡迎回來！${user.firstName || user.email?.split('@')[0] || '學習者'}` 
+                  : '發現您的下一堂課程'}
+              </h1>
+              <p className="hero-premium-subtitle">
+                {user
+                  ? '繼續您的學習之旅，探索精選課程和優秀教師'
+                  : '與全世界最好的教師一起學習。我們提供個性化的課程推薦和高質量的教育內容。'}
+              </p>
+              <div className="hero-premium-cta">
+                {user ? (
+                  <>
+                    <Link href="/courses" className="btn-primary">
+                      瀏覽課程
+                    </Link>
+                    <button 
+                      className="btn-secondary"
+                      onClick={() => setShowUserQuestionnaire(true)}
+                    >
+                      更新偏好
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <Link href="/login/register" className="btn-primary">
+                      開始學習
+                    </Link>
+                    <Link href="/courses" className="btn-secondary">
+                      瀏覽課程
+                    </Link>
+                  </>
+                )}
+              </div>
+            </div>
+            <div className="hero-premium-carousel">
+              <Carousel
+                slides={carouselImages}
+                isImage={
+                  carouselImages[0]?.startsWith('data:') ||
+                  carouselImages[0]?.startsWith('http') ||
+                  carouselImages[0]?.startsWith('/')
+                }
+              />
+            </div>
+          </div>
         </div>
       </section>
 
-
-      {/* How It Works - Hidden per user request */}
-      {/* <HowItWorks /> */}
-
-      {/* Medicine Identification Flow - Hidden per user request */}
-      {/* <MedicineIdentificationFlow /> */}
-
-
-      <section className="section">
+      {/* Main Content Section */}
+      <section className="home-main-content">
         {/* ── Personalised Recommendation Strip ─────────────────────────── */}
-        <div style={{ marginBottom: 32 }} id="tour-recommendation">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <h2 className="section-title">
-              {user ? `${user.firstName || user.email?.split('@')[0] || '你'} 的專屬推薦` : '為你精選的課程'}
-            </h2>
+        <div className="recommendation-section" id="tour-recommendation">
+          <div className="section-header-enhanced">
+            <div>
+              <h2 className="section-title-large">
+                {user ? `${user.firstName || user.email?.split('@')[0] || '您'} 的專屬推薦` : '為您精選的課程'}
+              </h2>
+              <p className="section-subtitle">根據您的學習風格精心挑選</p>
+            </div>
             {!user ? (
               <Link
                 href="/login/register"
-                style={{ fontSize: 13, color: '#6366f1', textDecoration: 'underline' }}
+                className="section-link-cta"
               >
                 建立帳號獲得更精準推薦 →
               </Link>
             ) : (
                <button
-                 style={{ fontSize: 13, color: '#6366f1', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
+                 className="section-link-cta"
                  onClick={() => setShowUserQuestionnaire(true)}
                  id="tour-questionnaire-btn"
                >
@@ -206,8 +245,9 @@ export default function ClientHomePage({
             )}
           </div>
           {recsLoading ? (
-            <div style={{ color: '#9ca3af', fontSize: 14, padding: '12px 0' }}>
-              正在計算您的專屬推薦…
+            <div className="loading-state">
+              <div className="loading-spinner"></div>
+              <p>正在計算您的專屬推薦…</p>
             </div>
           ) : (
             <div className="card-grid">
@@ -218,47 +258,122 @@ export default function ClientHomePage({
           )}
         </div>
 
-        <div id="tour-tabs">
+        {/* Featured Sections */}
+        <div className="featured-sections" id="tour-tabs">
           <Tabs
             items={[
             {
               key: 'teachers',
               title: t('recommended_teachers'),
               content: (
-                <>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                    <h2 className="section-title">{t('recommended_teachers')}</h2>
-                    <Link href="/teachers" className="section-link">{t('see_all_teachers')} →</Link>
+                <div className="tab-content">
+                  <div className="section-header-enhanced">
+                    <div>
+                      <h2 className="section-title-large">{t('recommended_teachers')}</h2>
+                      <p className="section-subtitle">發現優秀的教育工作者</p>
+                    </div>
+                    <Link href="/teachers" className="section-link-cta">{t('see_all_teachers')} →</Link>
                   </div>
                   <div className="card-grid">
                     {recommendedTeachers.map((teacher) => (
                       <TeacherCard key={teacher.id} teacher={teacher} />
                     ))}
                   </div>
-                </>
+                </div>
               )
             },
             {
               key: 'courses',
               title: t('popular_courses'),
               content: (
-                <>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                    <h2 className="section-title">{t('popular_courses')}</h2>
-                    <Link href="/courses" className="section-link">{t('see_all_courses')} →</Link>
+                <div className="tab-content">
+                  <div className="section-header-enhanced">
+                    <div>
+                      <h2 className="section-title-large">{t('popular_courses')}</h2>
+                      <p className="section-subtitle">最受歡迎的課程</p>
+                    </div>
+                    <Link href="/courses" className="section-link-cta">{t('see_all_courses')} →</Link>
                   </div>
                   <div className="card-grid">
                     {hotCourses.map((course) => (
                       <CourseCard key={course.id} course={course} />
                     ))}
                   </div>
-                </>
+                </div>
               )
             }
           ]}
         />
         </div>
+
+        {/* About Platform Section */}
+        <section className="about-platform-section">
+          <div className="about-platform-content">
+            <div className="about-platform-text">
+              <h2 className="section-title-large">關於我們的平台</h2>
+              <p>
+                我們致力於提供全球最優質的在線教育體驗。透過連接學生和教師，
+                我們創造了一個充滿機遇和成長的社區。
+              </p>
+              <p>
+                無論您是初學者還是專業人士，我們都有適合您的課程。
+                探索 <strong>1000+</strong> 門課程，從編程到藝術，應有盡有。
+              </p>
+              <div className="about-stats">
+                <div className="stat-item">
+                  <span className="stat-number">50K+</span>
+                  <span className="stat-label">活躍學生</span>
+                </div>
+                <div className="stat-item">
+                  <span className="stat-number">500+</span>
+                  <span className="stat-label">優秀教師</span>
+                </div>
+                <div className="stat-item">
+                  <span className="stat-number">1000+</span>
+                  <span className="stat-label">精選課程</span>
+                </div>
+              </div>
+            </div>
+            <div className="about-platform-cta">
+              <Link href="/about" className="btn-primary-large">
+                了解更多
+              </Link>
+            </div>
+          </div>
+        </section>
+
+        {/* Contact / Newsletter Section */}
+        <section className="contact-section">
+          <div className="contact-container">
+            <div className="contact-header">
+              <h2 className="section-title-large">保持聯繫</h2>
+              <p>訂閱我們的通訊，獲取最新課程和優惠</p>
+            </div>
+            <form className="contact-form" onSubmit={(e) => {
+              e.preventDefault();
+              alert('感謝您的訂閱！');
+            }}>
+              <div className="form-group">
+                <input 
+                  type="email" 
+                  placeholder="請輸入您的電子郵件" 
+                  required 
+                  className="form-input"
+                />
+              </div>
+              <button type="submit" className="btn-primary">
+                訂閱
+              </button>
+            </form>
+          </div>
+        </section>
       </section>
+
+      {/* How It Works - Hidden per user request */}
+      {/* <HowItWorks /> */}
+
+      {/* Medicine Identification Flow - Hidden per user request */}
+      {/* <MedicineIdentificationFlow /> */}
     </div>
   );
 }
