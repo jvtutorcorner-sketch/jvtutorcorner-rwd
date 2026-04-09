@@ -50,89 +50,122 @@ test('Student Enrollment Flow (Simulated Payment)', async ({ page }) => {
     let expectedDeduction = 10;
     let isExistingCourse = false;
 
-    console.log("Fetching existing courses to see if one is available...");
-    try {
-        const coursesRes = await page.request.get(`${baseUrl}/api/courses`);
-        if (coursesRes.ok()) {
-            const coursesData = await coursesRes.json();
-            const courses = coursesData.data || coursesData || [];
-            if (Array.isArray(courses)) {
-                // Priority 1: Find a "real" valid active course with point cost (title doesn't say AI/Test)
-                // Note: Some courses have enrollmentType 'plan' but still have pointCost > 0
-                let availableCourse = courses.find((c: any) => 
-                    c.status === '上架' && 
-                    (c.enrollmentType === 'points' || c.enrollmentType === 'plan' || c.enrollmentType === 'both') && 
-                    Number(c.pointCost) > 0 &&
-                    !c.title.includes('AI') && 
-                    !c.title.includes('測試') &&
-                    !c.title.includes('test')
-                );
+    // 📌 2026-04-08 修復：當 TEST_COURSE_ID 設定時，強制建立新課程而不是搜索已存在課程
+    // 這確保 whiteboard-sync 以及其他測試能為每次執行獲得獨立的課程
+    const shouldCreateNewCourse = !!process.env.TEST_COURSE_ID;
 
-                // Priority 2: Fallback to any valid course with point cost if no real one found
-                if (!availableCourse) {
+    if (!shouldCreateNewCourse) {
+        console.log("Fetching existing courses to see if one is available...");
+        try {
+            const coursesRes = await page.request.get(`${baseUrl}/api/courses`);
+            if (coursesRes.ok()) {
+                const coursesData = await coursesRes.json();
+                const courses = coursesData.data || coursesData || [];
+                if (Array.isArray(courses)) {
+                    let availableCourse: any;
+
+                    // Priority 1: Find a "real" valid active course with point cost
                     availableCourse = courses.find((c: any) => 
                         c.status === '上架' && 
                         (c.enrollmentType === 'points' || c.enrollmentType === 'plan' || c.enrollmentType === 'both') && 
-                        Number(c.pointCost) > 0
+                        Number(c.pointCost) > 0 &&
+                        !c.title.includes('AI') && 
+                        !c.title.includes('測試') &&
+                        !c.title.includes('test')
                     );
-                }
 
-                if (availableCourse) {
-                    testCourseId = availableCourse.id;
-                    testCourseTitle = availableCourse.title;
-                    expectedDeduction = Number(availableCourse.pointCost);
-                    isExistingCourse = true;
-                    console.log(`✓ Found existing course: ${testCourseTitle} (${testCourseId}), cost: ${expectedDeduction}, type: ${availableCourse.enrollmentType}`);
+                    // Priority 2: Fallback to any valid course with point cost
+                    if (!availableCourse) {
+                        availableCourse = courses.find((c: any) => 
+                            c.status === '上架' && 
+                            (c.enrollmentType === 'points' || c.enrollmentType === 'plan' || c.enrollmentType === 'both') && 
+                            Number(c.pointCost) > 0
+                        );
+                    }
+
+                    if (availableCourse) {
+                        testCourseId = availableCourse.id;
+                        testCourseTitle = availableCourse.title;
+                        expectedDeduction = Number(availableCourse.pointCost);
+                        isExistingCourse = true;
+                        console.log(`✓ Found existing course: ${testCourseTitle} (${testCourseId}), cost: ${expectedDeduction}, type: ${availableCourse.enrollmentType}`);
+                    }
                 }
             }
+        } catch (e) {
+            console.warn("Failed to fetch existing courses:", e);
         }
-    } catch (e) {
-        console.warn("Failed to fetch existing courses:", e);
     }
 
     if (!testCourseId) {
         console.log("No available course found. Switching to teacher account to create one...");
         const teacherEmail = process.env.TEST_TEACHER_EMAIL || process.env.QA_TEACHER_EMAIL;
         const teacherPassword = process.env.TEST_TEACHER_PASSWORD || process.env.QA_TEACHER_PASSWORD;
+        let teacherId = '';
+
         if (!teacherEmail) {
             console.warn("⚠️ No teacher credentials found, trying to create course directly via API anyway (fallback)");
         } else {
             console.log(`Logging in via API as teacher: ${teacherEmail}`);
             // Use API to login as teacher to satisfy constraint
-            await page.request.post(`${baseUrl}/api/login`, {
+            const loginRes = await page.request.post(`${baseUrl}/api/login`, {
                 data: JSON.stringify({ email: teacherEmail, password: teacherPassword, captchaToken: '', captchaValue: bypassSecret }),
                 headers: { 'Content-Type': 'application/json' }
             });
+            
+            // ✅ 修復：提取教師的 UUID (id) 作為 teacherId（長期規範，不用 email）
+            try {
+                const loginData = await loginRes.json();
+                teacherId = loginData?.profile?.id || loginData?.id || loginData?.data?.id;
+                
+                if (!teacherId) {
+                    console.warn(`⚠️ 無法從登入 response 提取 UUID，使用 email 作為備用: ${teacherEmail}`);
+                    teacherId = teacherEmail;
+                } else {
+                    console.log(`✅ 教師登入成功，UUID (teacherId): ${teacherId}`);
+                }
+            } catch (e) {
+                console.warn(`⚠️ 無法解析登入 response，使用 email 作為備用: ${teacherEmail}`, e);
+                teacherId = teacherEmail;
+            }
         }
-
-        testCourseId = `test-course-${Date.now()}`;
-        testCourseTitle = `AI 自動測試課程-${Date.now()}`;
+        testCourseId = process.env.TEST_COURSE_ID || `e2e-sync-${Date.now()}`;
+        testCourseTitle = `E2E 自動驗證課程-${Date.now()}`;
         expectedDeduction = 10;
 
         console.log("Creating point-based test course...");
         try {
+            // 📌 課程建立 payload 中加入 teacherId
+            const coursePayload: any = {
+                id: testCourseId,
+                title: testCourseTitle,
+                teacherName: "Test Bot",
+                enrollmentType: "points",
+                pointCost: expectedDeduction,
+                startDate: new Date().toISOString(),
+                endDate: new Date(Date.now() + 30 * 86400000).toISOString(),
+                status: '上架'
+            };
+            
+            // 若成功取得 teacherId，加入 payload
+            if (teacherId) {
+                coursePayload.teacherId = teacherId;
+                console.log(`📌 課程將綁定教師: ${teacherId}`);
+            }
+
             const courseRes = await page.request.post(`${baseUrl}/api/courses`, {
-                data: JSON.stringify({
-                    id: testCourseId,
-                    title: testCourseTitle,
-                    teacherName: "Test Bot",
-                    enrollmentType: "points",
-                    pointCost: expectedDeduction,
-                    startDate: new Date().toISOString(),
-                    endDate: new Date(Date.now() + 30 * 86400000).toISOString(),
-                    status: '上架'
-                }),
+                data: JSON.stringify(coursePayload),
                 headers: { 'Content-Type': 'application/json' }
             });
             const courseData = await courseRes.json();
             console.log(`Course creation response:`, courseData);
             if (courseRes.ok()) {
-                console.log(`Test course created: ${testCourseTitle}`);
+                console.log(`✅ 測試課程建立成功: ${testCourseTitle} (ID: ${testCourseId}, teacherId: ${teacherId})`);
             } else {
-                console.error(`Failed to create course: ${courseData.error}`);
+                console.error(`❌ 課程建立失敗: ${courseData.error}`);
             }
         } catch (e) {
-            console.error(`Error creating course:`, e);
+            console.error(`❌ 課程建立發生異常:`, e);
         }
     }
 
@@ -532,36 +565,40 @@ test('Student Enrollment Flow (Simulated Payment)', async ({ page }) => {
     }
 
     // Cleanup
-    console.log("Cleaning up test course and related orders...");
-    // Step 1: Delete related orders (must do before course, to avoid orphaned orders)
-    try {
-        const ordersRes = await page.request.get(`${baseUrl}/api/orders?courseId=${encodeURIComponent(testCourseId)}&limit=50`);
-        const ordersData = await ordersRes.json();
-        const orders: { orderId: string }[] = ordersData?.ok ? ordersData.data || [] : [];
-        for (const order of orders) {
-            const delOrderRes = await page.request.delete(`${baseUrl}/api/orders/${encodeURIComponent(order.orderId)}`);
-            if (delOrderRes.ok()) {
-                console.log(`Test order deleted: ${order.orderId}`);
-            } else {
-                console.warn(`Failed to delete order: ${order.orderId}`);
-            }
-        }
-    } catch (e) {
-        console.error("Error cleaning up test orders:", e);
-    }
-    // Step 2: Delete the test course ONLY if we created it
-    if (!isExistingCourse) {
+    if (!process.env.SKIP_CLEANUP) {
+        console.log("Cleaning up test course and related orders...");
+        // Step 1: Delete related orders (must do before course, to avoid orphaned orders)
         try {
-            const cleanupRes = await page.request.delete(`${baseUrl}/api/courses?id=${testCourseId}`);
-            if (cleanupRes.ok()) {
-                console.log("Test course deleted successfully");
-            } else {
-                console.warn("Failed to delete test course");
+            const ordersRes = await page.request.get(`${baseUrl}/api/orders?courseId=${encodeURIComponent(testCourseId)}&limit=50`);
+            const ordersData = await ordersRes.json();
+            const orders: { orderId: string }[] = ordersData?.ok ? ordersData.data || [] : [];
+            for (const order of orders) {
+                const delOrderRes = await page.request.delete(`${baseUrl}/api/orders/${encodeURIComponent(order.orderId)}`);
+                if (delOrderRes.ok()) {
+                    console.log(`Test order deleted: ${order.orderId}`);
+                } else {
+                    console.warn(`Failed to delete order: ${order.orderId}`);
+                }
             }
         } catch (e) {
-            console.error("Error cleaning up test course:", e);
+            console.error("Error cleaning up test orders:", e);
+        }
+        // Step 2: Delete the test course ONLY if we created it
+        if (!isExistingCourse) {
+            try {
+                const cleanupRes = await page.request.delete(`${baseUrl}/api/courses?id=${testCourseId}`);
+                if (cleanupRes.ok()) {
+                    console.log("Test course deleted successfully");
+                } else {
+                    console.warn("Failed to delete test course");
+                }
+            } catch (e) {
+                console.error("Error cleaning up test course:", e);
+            }
+        } else {
+            console.log("Used an existing course, skipping course deletion.");
         }
     } else {
-        console.log("Used an existing course, skipping course deletion.");
+        console.log("SKIP_CLEANUP is set, skipping cleanup of course so that other tests can use it.");
     }
 });

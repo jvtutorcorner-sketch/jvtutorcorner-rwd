@@ -168,7 +168,7 @@ async function completeReadyPageFlow(page: Page, role: string, waitUrl: string):
   console.log('  [7/7] 等待並點擊「立即進入教室」按鈕...');
   
   // 等待按鈕出現
-  let enterClassroomBtn = page.locator('button:has-text("立即進入教室"), button:has-text("Enter Classroom Now"), button:has-text("Enter Now")').first();
+  const enterClassroomBtn = page.locator('button:has-text("立即進入教室"), button:has-text("Enter Classroom Now"), button:has-text("Enter Now")').first();
   
   // 最多等待 15 秒找到按鈕
   let foundBtn = false;

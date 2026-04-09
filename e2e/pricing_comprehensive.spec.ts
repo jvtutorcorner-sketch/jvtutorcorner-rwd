@@ -7,14 +7,14 @@ dotenv.config({ path: path.resolve(__dirname, '..', '.env.local') });
 
 // Read from process.env or .env.local
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-const BYPASS_SECRET = process.env.LOGIN_BYPASS_SECRET;
+const BYPASS_SECRET = process.env.LOGIN_BYPASS_SECRET || 'jv_secret_bypass_2024';
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 
 // ─── Helper: Auto-login功能 (Based on auto-login skill) ───────────────────────
 async function performAdminLogin(page: any, baseUrl: string, email: string, password: string, bypassSecret: string) {
   console.log(`\n🔐 [Login] Logging in as: ${email}`);
-
+  
   await page.goto(`${baseUrl}/login`);
   await page.waitForLoadState('networkidle');
   console.log('  ✓ Login page loaded');
@@ -22,31 +22,31 @@ async function performAdminLogin(page: any, baseUrl: string, email: string, pass
   // Fill in login form using ID selectors (matches other test implementations)
   await page.fill('#email', email);
   console.log(`  ✓ Filled email: ${email}`);
-
+  
   await page.fill('#password', password);
   console.log('  ✓ Filled password');
-
+  
   // Wait for captcha field
   await page.waitForSelector('#captcha', { state: 'visible', timeout: 10000 });
-
+  
   // Fill captcha with bypass secret
   await page.fill('#captcha', bypassSecret);
   console.log(`  ✓ Filled captcha bypass secret`);
 
   // Submit form and wait for navigation away from login page
-  // Use Promise.all to safely catch navigation without race conditions
+  await page.click('button[type="submit"]');
+  console.log('  ✓ Clicked submit button');
+
+  // Wait for URL to change away from login
   try {
-    await Promise.all([
-      page.waitForURL((url: URL) => !url.pathname.includes('/login'), { timeout: 30000 }),
-      page.click('button[type="submit"]')
-    ]);
-    console.log('  ✓ Clicked submit button and successfully navigated away');
+    await expect(page).not.toHaveURL(/\/login/, { timeout: 30000 });
+    console.log('  ✓ Successfully navigated away from login page');
   } catch (e: any) {
-    throw new Error(`Failed to navigate away from login. Current URL: ${page.url()} | Error: ${e.message}`);
+    throw new Error(`Failed to navigate away from login. Current URL: ${page.url()}`);
   }
 
   await page.waitForTimeout(1000);
-  await page.waitForLoadState('networkidle').catch(() => { });
+  await page.waitForLoadState('networkidle').catch(() => {});
   console.log('✅ Login successful\n');
 }
 
@@ -76,8 +76,8 @@ test.describe('Pricing Settings Comprehensive Verification', () => {
     console.log(`- ADMIN_PASSWORD: ${ADMIN_PASSWORD ? 'PRESENT' : 'MISSING'}`);
     console.log(`- BYPASS_SECRET: ${BYPASS_SECRET ? `PRESENT (Length: ${BYPASS_SECRET.length})` : 'MISSING'}`);
 
-    if (!ADMIN_EMAIL || !ADMIN_PASSWORD || !BYPASS_SECRET) {
-      test.skip(true, 'Missing required environment variables: ADMIN_EMAIL, ADMIN_PASSWORD or LOGIN_BYPASS_SECRET');
+    if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
+      test.skip(true, 'Missing required environment variables: ADMIN_EMAIL or ADMIN_PASSWORD');
       return;
     }
 
@@ -106,7 +106,7 @@ test.describe('Pricing Settings Comprehensive Verification', () => {
 
     const appPlanName = `Comp Test App ${Date.now()}`;
     await page.click('button:has-text("新增應用程式方案")');
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(500); 
 
     const appPlanCard = page.locator('.bg-white.rounded-2xl.p-5').last();
     await appPlanCard.locator('label:has-text("方案名稱") + input').fill(appPlanName);
@@ -128,7 +128,7 @@ test.describe('Pricing Settings Comprehensive Verification', () => {
     const discountCard = page.locator('.bg-white.rounded-2xl.p-5').last();
     await discountCard.locator('button:has-text("編輯內容")').click();
     await discountCard.locator('label:has-text("方案名稱") + input').fill(discountName);
-    await discountCard.locator('label:has-text("折扣數值") + input').fill('20');
+    await discountCard.locator('label:has-text("折扣數值") + input').fill('20'); 
 
     await page.click('button:has-text("儲存變更")');
     await waitForSaveSuccess(page);
@@ -148,7 +148,7 @@ test.describe('Pricing Settings Comprehensive Verification', () => {
     await pkgCard.locator('label:has-text("套餐名稱") + input').fill(pkgName);
     await pkgCard.locator('label:has-text("點數數量") + input').fill('100');
     await pkgCard.locator('label:has-text("點數單位售價") + input').fill('10');
-
+    
     await pkgCard.locator('button:has-text("選擇方案")').click();
     await page.waitForTimeout(200);
     await pkgCard.locator('select').first().selectOption({ label: `${discountName} (20%)` });
@@ -183,14 +183,14 @@ test.describe('Pricing Settings Comprehensive Verification', () => {
     const cleanupTarget = async (tab: string, head: string, prefix: string) => {
       await switchToTab(page, tab, head);
       await page.waitForTimeout(1000);
-
+      
       let deleted = true;
       let count = 0;
       while (deleted && count < 20) {
-        const card = page.locator('.bg-white.rounded-2xl.p-5').filter({
-          has: page.locator(`input[value*="${prefix}"]`)
+        const card = page.locator('.bg-white.rounded-2xl.p-5').filter({ 
+          has: page.locator(`input[value*="${prefix}"]`) 
         }).first();
-
+        
         if (await card.isVisible()) {
           const name = await card.locator('input').first().getAttribute('value');
           const editBtn = card.locator('button:has-text("編輯內容")');
@@ -222,13 +222,13 @@ test.describe('Pricing Settings Comprehensive Verification', () => {
     try {
       // Navigate to home to access navbar logout
       await page.goto(`${BASE_URL}/`);
-      await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => { });
-
+      await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
+      
       // Click logout button in navbar/menu
       const logoutBtn = page.locator('button:has-text("登出"), a:has-text("登出"), button:has-text("Logout"), a:has-text("Logout")').first();
       if (await logoutBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
         await logoutBtn.click();
-        await page.waitForURL(/\/login/, { timeout: 10000 }).catch(() => { });
+        await expect(page).toHaveURL(/\/login/, { timeout: 10000 }).catch(() => {});
         console.log('  ✓ Logout successful');
       } else {
         console.log('  ⚠️ Logout button not found, but test completed');
