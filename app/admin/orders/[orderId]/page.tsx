@@ -45,6 +45,9 @@ export default function AdminOrderDetailPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || 'Failed to update order');
+      if (data.order?.riskWarning) {
+        alert(data.order.riskWarning);
+      }
       if (data && data.order) {
         setOrder(data.order);
         if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('tutor:order-updated', { detail: data.order }));
@@ -59,13 +62,15 @@ export default function AdminOrderDetailPage() {
       }
       alert('Order updated');
     } catch (err: any) {
-      alert('Update order error: ' + (err?.message || err));
+      alert(err?.message || 'Update order error: ' + (err?.message || err));
     }
   }
 
   function confirmAndPatch(localOrder: Order | null, label: string, status: string) {
-    if (!localOrder || !localOrder.orderId) return;
-    const ok = typeof window !== 'undefined' ? window.confirm(`確定要 ${label} 嗎？這個操作不可逆。`) : true;
+    const activeOrderId = localOrder?.orderId || localOrder?.id;
+    if (!localOrder || !activeOrderId) return;
+    const msg = `確定要 ${label} 嗎？這個操作不可逆。`;
+    const ok = typeof window !== 'undefined' ? window.confirm(msg) : true;
     if (!ok) return;
 
     const payment = {
@@ -77,7 +82,7 @@ export default function AdminOrderDetailPage() {
       note: `Admin action: ${label}`,
     } as any;
 
-    patchOrderWithPayment(localOrder.orderId, status, payment);
+    patchOrderWithPayment(activeOrderId, status, payment);
   }
 
   useEffect(() => {

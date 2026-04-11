@@ -27,9 +27,29 @@ export default function ClassroomWaitPage() {
 
   // Helper: compute consistent userId for presence tracking (email-based, no tabId suffix)
   const localPresenceId = React.useMemo(() => {
-    const su = typeof window !== 'undefined' ? storedUserState : null;
-    const email = su?.email || (typeof window !== 'undefined' ? (window as any).__MOCK_USER_ID__ : null) || null;
-    console.log('[WaitPage] Computed localPresenceId:', email);
+    let email = null;
+    
+    // Priority 1: Use storedUserState.email (most reliable)
+    if (storedUserState?.email) {
+      email = storedUserState.email;
+    } 
+    // Priority 2: Use window.__MOCK_USER_ID__ (fallback for SSR issues)
+    else if (typeof window !== 'undefined' && (window as any).__MOCK_USER_ID__) {
+      email = (window as any).__MOCK_USER_ID__;
+    }
+    // Priority 3: Try getStoredUser again as fallback for initialization race condition
+    else if (typeof window !== 'undefined' && !storedUserState) {
+      const recheck = getStoredUser();
+      if (recheck?.email) {
+        email = recheck.email;
+      }
+    }
+    
+    if (!email) {
+      console.warn('[WaitPage] ⚠️ CRITICAL: Could not compute localPresenceId. This will cause state sync failures!');
+    } else {
+      console.log('[WaitPage] Computed localPresenceId:', email);
+    }
     return email;
   }, [storedUserState]);
 
@@ -268,6 +288,12 @@ export default function ClassroomWaitPage() {
           const currentData = { participantsJson, selfIsReady };
           const lastData = lastSyncDataRef.current;
 
+          // 🚨 DEBUG: Log all participants for troubleshooting
+          console.log(`[Sync] Raw response participants:`, JSON.stringify(serverParticipants));
+          console.log(`[Sync] Looking for: role=${role}, userId=${userId}`);
+          const found = serverParticipants.find((p: any) => p.role === role && p.userId === userId);
+          console.log(`[Sync] Found self in participants:`, found);
+
           // Skip if currently updating, to prevent stale server data from overwriting optimistic state
           if (isUpdatingRef.current && !forceUpdate) {
             console.log('[Sync] Skipped update because an optimistic update is in progress.');
@@ -280,6 +306,8 @@ export default function ClassroomWaitPage() {
             setReady(selfIsReady);
             lastSyncDataRef.current = currentData;
             console.log(`[Sync] Updated state. Role: ${role}, Ready: ${selfIsReady}, Participants: ${serverParticipants.length}. Force: ${forceUpdate}`);
+          } else {
+            console.log(`[Sync] No changes detected, skipping state update.`);
           }
         })
         .catch((e) => {
@@ -307,6 +335,14 @@ export default function ClassroomWaitPage() {
     if (!syncUuid || !role) {
       console.error('toggleReady: missing syncUuid or role');
       return;
+    }
+
+    // 🚨 CRITICAL: Warn if userId is just a role (indicates bug in localPresenceId computation)
+    if (userId === 'teacher' || userId === 'student') {
+      console.error(`🚨 CRITICAL BUG: userId should NOT be just a role! userId='${userId}', role='${role}'. This will cause state sync failures with other users.`);
+      console.error(`   - localPresenceId: ${localPresenceId}`);
+      console.error(`   - storedUserState: ${JSON.stringify(storedUserState)}`);
+      // Still attempt to sync, but with warning logged
     }
 
     const nextReadyState = !ready;
@@ -350,6 +386,12 @@ export default function ClassroomWaitPage() {
           (p: { role: string; userId: string; present?: boolean }) =>
             p.role === role && p.userId === userId && p.present
         );
+        
+        console.log(`toggleReady: POST response received.`);
+        console.log(`  - Participants from server:`, JSON.stringify(serverParticipants));
+        console.log(`  - Looking for: role=${role}, userId=${userId}, present=true`);
+        console.log(`  - selfIsReady=${selfIsReady}`);
+        
         setParticipants(serverParticipants);
         setReady(selfIsReady);
         lastSyncDataRef.current = { participantsJson: JSON.stringify(serverParticipants), selfIsReady };
@@ -520,10 +562,15 @@ export default function ClassroomWaitPage() {
     // 5. Polling Fallback
     // Primary sync method in production. Poll every 5 seconds to keep state updated.
     // Note: debounce inside syncStateFromServer() will further reduce actual sync frequency
+    let pollingDensity = 0;  // Counter for adaptive polling
     const pollingTimer = setInterval(() => {
       if (esRef.current === null || esRef.current.readyState !== EventSource.OPEN) {
-        console.log('SYNC: Polling triggered (SSE not active)');
+        console.log(`SYNC: Polling triggered (SSE not active, density=${pollingDensity})`);
         syncStateFromServer();
+        
+        // Increase polling frequency for the first 30 seconds to ensure fast synchronization
+        // After both are ready, polling less frequently to reduce server load
+        pollingDensity++;
       }
     }, 5000);
 

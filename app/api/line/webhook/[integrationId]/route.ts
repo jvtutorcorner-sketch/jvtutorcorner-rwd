@@ -868,8 +868,8 @@ export async function POST(request: Request, context: { params: Promise<{ integr
                                             }
                                         }
                                         // Format result into readable message
-                                        let responseText = '📸 藥品辨識結果：\n\n';
-                                        let messages: any[] = [];
+                                        const responseText = '📸 藥品辨識結果：\n\n';
+                                        const messages: any[] = [];
 
                                         if (analysisResult.raw) {
                                             // Use a configurable template for the initial user-facing message

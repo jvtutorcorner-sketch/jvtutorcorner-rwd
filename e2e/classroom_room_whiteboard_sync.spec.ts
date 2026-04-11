@@ -98,19 +98,43 @@ async function autoLogin(page: Page, email: string, password: string, bypassSecr
   const isTeacherLogin = email.includes('test') && email.includes('lin') || process.env.TEST_TEACHER_EMAIL === email || email.includes('teacher');
   await page.goto(`${baseUrl}/login`, { waitUntil: 'domcontentloaded' });
   await page.evaluate(({ profile, isTeacherLogin }) => {
-    localStorage.setItem('tutor_mock_user', JSON.stringify({
+    const userData = {
       email: profile?.email || profile?.data?.email, 
       role: isTeacherLogin ? 'teacher' : (profile?.role || 'student'), 
       plan: profile?.plan || 'basic',
       id: profile?.id || profile?.userId || '',
       teacherId: profile?.id || profile?.userId || profile?.email || ''
-    }));
+    };
+    console.log('[autoLogin] Setting tutor_mock_user:', JSON.stringify(userData));
+    localStorage.setItem('tutor_mock_user', JSON.stringify(userData));
     const now = Date.now().toString();
     sessionStorage.setItem('tutor_last_login_time', now);
     localStorage.setItem('tutor_last_login_time', now);
     sessionStorage.setItem('tutor_login_complete', 'true');
     window.dispatchEvent(new Event('tutor:auth-changed'));
   }, { profile, isTeacherLogin });
+  
+  // 🚨 CRITICAL: Verify localStorage was set correctly before navigation
+  const storedUser = await page.evaluate(() => {
+    const raw = localStorage.getItem('tutor_mock_user');
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  });
+  
+  if (!storedUser || !storedUser.email) {
+    console.error('❌ CRITICAL: localStorage not properly set after login!');
+    console.error('   storedUser:', storedUser);
+    throw new Error(`❌ autoLogin failed to set localStorage properly`);
+  }
+  
+  console.log(`✅ autoLogin successful. localStorage verified. Email: ${storedUser.email}, Role: ${storedUser.role}`);
+  
+  // Add a small delay to ensure localStorage propagates across all contexts
+  await page.waitForTimeout(500);
 }
 
 async function checkAndFindEnrollment(page: Page, config: TestConfig, preferredId?: string): Promise<string | null> {
@@ -229,13 +253,79 @@ async function enterClassroom(page: Page, role: 'teacher' | 'student'): Promise<
   console.log(`   ⏳ [${role}] 等待「立即進入教室」按鈕（驗證同步機制）...`);
   
   try {
-    await enterBtn.waitFor({ state: 'visible', timeout: 60000 });
-    console.log(`   ✅ [${role}] 「立即進入教室」按鈕已出現`);
+    // Enhanced polling: check status every 10 seconds during wait
+    let lastLogTime = Date.now();
+    const checkButton = setInterval(async () => {
+      const now = Date.now();
+      if (now - lastLogTime > 15000) {
+        // Every 15 seconds, log current participant state
+        const pageState = await page.evaluate(() => {
+          const data: any = {
+            timestamp: new Date().toISOString(),
+            title: document.title,
+            participants: [],
+            buttonStatus: {}
+          };
+          
+          // Try to extract participant status from DOM
+          const teacherCard = document.querySelector('[class*="teacher"]');
+          const studentCard = document.querySelector('[class*="student"]');
+          
+          if (teacherCard) {
+            data.participants.push({
+              role: 'teacher',
+              html: teacherCard.innerHTML.substring(0, 100)
+            });
+          }
+          if (studentCard) {
+            data.participants.push({
+              role: 'student',
+              html: studentCard.innerHTML.substring(0, 100)
+            });
+          }
+          
+          // Log button states
+          const buttons = document.querySelectorAll('button');
+          buttons.forEach((btn, idx) => {
+            if (btn.textContent.includes('立即進入') || btn.textContent.includes('Enter')) {
+              data.buttonStatus[idx] = {
+                text: btn.textContent.trim().substring(0, 50),
+                disabled: btn.disabled,
+                visible: btn.offsetHeight > 0
+              };
+            }
+          });
+          
+          return data;
+        });
+        console.log(`   📊 [${role}] Current page state:`, JSON.stringify(pageState, null, 2));
+        lastLogTime = now;
+      }
+    }, 5000);
+    
+    try {
+      await enterBtn.waitFor({ state: 'visible', timeout: 60000 });
+      console.log(`   ✅ [${role}] 「立即進入教室」按鈕已出現`);
+    } finally {
+      clearInterval(checkButton);
+    }
   } catch (e) {
     console.log(`   ⚠️ [${role}] 按鈕未在60秒內出現，嘗試檢查頁面狀態...`);
     const pageContent = await page.content();
     if (pageContent.includes('立即進入教室') || pageContent.includes('Enter Classroom')) {
       console.log(`   ℹ️ [${role}] 按鈕存在於 HTML，等待可見性...`);
+      
+      // Log localStorage state for debugging
+      const debugInfo = await page.evaluate(() => {
+        const user = localStorage.getItem('tutor_mock_user');
+        return {
+          userStored: !!user,
+          userEmail: user ? JSON.parse(user)?.email : null,
+          windowTitle: document.title
+        };
+      });
+      console.log(`   📊 [${role}] Debug info:`, debugInfo);
+      
       await page.waitForTimeout(5000);
     }
     throw new Error(`❌ [${role}] 「立即進入教室」按鈕未出現`);
