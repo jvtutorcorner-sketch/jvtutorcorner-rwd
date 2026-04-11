@@ -233,6 +233,7 @@ function AddAppForm() {
         openaiApiKey: string;
         anthropicApiKey: string;
         geminiApiKey: string;
+        context7ApiKey: string;
         models: string[];
         systemInstruction: string;
         linkedServiceId: string;
@@ -241,6 +242,7 @@ function AddAppForm() {
         openaiApiKey: '',
         anthropicApiKey: '',
         geminiApiKey: '',
+        context7ApiKey: '',
         models: [],
         systemInstruction: presetPrompt ? presetPrompt : (selectedAIProvider === 'AI_CHATROOM' ? GEMINI_DEFAULT_PROMPT : ''),
         linkedServiceId: '',
@@ -580,6 +582,8 @@ function AddAppForm() {
                         linkedSkillId: (aiData as any).linkedSkillId,
                         systemInstruction: (aiData as any).systemInstruction
                     };
+                } else if (selectedAIProvider === 'CONTEXT7') {
+                    config = { context7ApiKey: (aiData as any).context7ApiKey };
                 }
 
                 payload = {
@@ -1401,6 +1405,7 @@ function AddAppForm() {
                                                         <option value="OPENAI">OpenAI (ChatGPT)</option>
                                                         <option value="ANTHROPIC">Anthropic (Claude)</option>
                                                         <option value="GEMINI">Google Gemini</option>
+                                                        <option value="CONTEXT7">Context7 MCP</option>
                                                     </>
                                                 )}
                                             </select>
@@ -1437,6 +1442,28 @@ function AddAppForm() {
                                                 API Key <span className="text-red-500">*</span>
                                             </label>
                                             <input type="password" name="geminiApiKey" value={aiData.geminiApiKey} onChange={handleAiChange} placeholder="AIza..." className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600" required />
+                                        </div>
+                                    </div>
+                                )}
+
+                                {selectedAIProvider === 'CONTEXT7' && (
+                                    <div className="space-y-4 p-4 border border-teal-200 dark:border-teal-800 rounded-lg bg-teal-50 dark:bg-teal-900/10">
+                                        <div>
+                                            <label className="block text-sm font-medium text-teal-800 dark:text-teal-200 mb-1 flex items-center gap-2">
+                                                <span className="text-lg">🎨</span> Context7 API Key <span className="text-red-500">*</span>
+                                            </label>
+                                            <input 
+                                                type="password" 
+                                                name="context7ApiKey" 
+                                                value={aiData.context7ApiKey} 
+                                                onChange={handleAiChange} 
+                                                placeholder="輸入由 Context7 提供的 API 金鑰" 
+                                                className="w-full px-4 py-2 border border-teal-300 rounded-md focus:ring-teal-500 focus:border-teal-500 dark:bg-gray-700 dark:border-teal-600 dark:text-white" 
+                                                required 
+                                            />
+                                            <p className="mt-2 text-[11px] text-teal-600 dark:text-teal-400 flex items-center gap-1">
+                                                <span>💡</span> Context7 用於從 Figma 與外部知識庫調取數據，為 AI 提供即時設計上下文。
+                                            </p>
                                         </div>
                                     </div>
                                 )}

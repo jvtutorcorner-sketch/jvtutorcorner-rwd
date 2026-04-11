@@ -55,6 +55,7 @@ interface AppConfigModalProps {
     // Payment test
     testPayAmount: string;
     testPayProductName: string;
+    testPayEnv: 'production' | 'sandbox';
     // Image test
     imageTestFile: File | null;
     imageTestPreview: string | null;
@@ -80,6 +81,7 @@ interface AppConfigModalProps {
     setPushResult: (v: string | null) => void;
     setTestPayAmount: (v: string) => void;
     setTestPayProductName: (v: string) => void;
+    setTestPayEnv: (v: 'production' | 'sandbox') => void;
     setImageTestFile: (f: File | null) => void;
     setImageTestPreview: (v: string | null) => void;
     setImageTestResult: (v: string | null) => void;
@@ -113,21 +115,21 @@ export default function AppConfigModal({
     showSecret, isSavingConfig, saveResult,
     simulating, simInput, simReply,
     pushTesting, pushMessage, pushTitle, pushResult,
-    testPayAmount, testPayProductName,
+    testPayAmount, testPayProductName, testPayEnv,
     imageTestFile, imageTestPreview, imageTestResult, imageTesting,
     showTestEmail, testEmailData, testSending, testResult,
     setEditedConfig, setEditedName, setEditedStatus, setEditedScriptEnabled, setEditedCustomScript,
     setShowSecret, setSaveResult,
     setSimInput, setSimReply,
     setPushMessage, setPushTitle, setPushResult,
-    setTestPayAmount, setTestPayProductName,
+    setTestPayAmount, setTestPayProductName, setTestPayEnv,
     setImageTestFile, setImageTestPreview, setImageTestResult, setImageTesting,
     setShowTestEmail, setTestEmailData, setTestSending, setTestResult,
     onClose, onSave, onTest, onAiTestPrompt, onSendTestEmail,
     onSimulateLine, onSimulateLineImage, onImageFileChange, onPushLine,
 }: AppConfigModalProps) {
     const isAI = aiTypes.includes(app.type);
-    const isNonContainerAI = isAI && !AI_CONTAINER_TYPES.includes(app.type);
+    const isNonContainerAI = isAI && !AI_CONTAINER_TYPES.includes(app.type) && app.type !== 'CONTEXT7';
 
     const selectedModels: string[] = Array.isArray(editedConfig.models)
         ? editedConfig.models
@@ -356,8 +358,10 @@ export default function AppConfigModal({
                                         testingId={testingId}
                                         testPayAmount={testPayAmount}
                                         testPayProductName={testPayProductName}
+                                        testPayEnv={testPayEnv}
                                         setTestPayAmount={setTestPayAmount}
                                         setTestPayProductName={setTestPayProductName}
+                                        setTestPayEnv={setTestPayEnv}
                                         editedConfig={editedConfig}
                                         onTest={onTest}
                                     />
@@ -724,14 +728,16 @@ function AiPromptTestSection({ app, simulating, simInput, simReply, setSimInput,
     );
 }
 
-function TestConnectionSection({ app, aiTypes, testingId, testPayAmount, testPayProductName, setTestPayAmount, setTestPayProductName, editedConfig, onTest }: {
+function TestConnectionSection({ app, aiTypes, testingId, testPayAmount, testPayProductName, testPayEnv, setTestPayAmount, setTestPayProductName, setTestPayEnv, editedConfig, onTest }: {
     app: AppIntegration;
     aiTypes: string[];
     testingId: string | null;
     testPayAmount: string;
     testPayProductName: string;
+    testPayEnv: 'production' | 'sandbox';
     setTestPayAmount: (v: string) => void;
     setTestPayProductName: (v: string) => void;
+    setTestPayEnv: (v: 'production' | 'sandbox') => void;
     editedConfig: Record<string, any>;
     onTest: (app: AppIntegration) => Promise<void>;
 }) {
@@ -753,19 +759,36 @@ function TestConnectionSection({ app, aiTypes, testingId, testPayAmount, testPay
 
     return (
         <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
-            {(app.type === 'LINEPAY' || app.type === 'JKOPAY') && (
+            {isPayment && (
                 <div className="mb-4 space-y-3 p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg border border-orange-200 dark:border-orange-800">
-                    <h5 className="text-xs font-bold text-orange-800 dark:text-orange-300 uppercase tracking-wider mb-2">金流測試參數</h5>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-[10px] text-gray-500 mb-1">測試金額</label>
-                            <input type="number" value={testPayAmount} onChange={(e) => setTestPayAmount(e.target.value)} className="w-full px-3 py-1.5 text-xs border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
-                        </div>
-                        <div>
-                            <label className="block text-[10px] text-gray-500 mb-1">商品名稱</label>
-                            <input type="text" value={testPayProductName} onChange={(e) => setTestPayProductName(e.target.value)} className="w-full px-3 py-1.5 text-xs border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
+                    <h5 className="text-xs font-bold text-orange-800 dark:text-orange-300 uppercase tracking-wider mb-2">金流扣款測試設定</h5>
+                    <div className="grid grid-cols-2 gap-4 mb-3">
+                        <div className="col-span-2">
+                            <label className="block text-[10px] text-gray-500 mb-1">測試環境選擇</label>
+                            <div className="flex gap-4">
+                                <label className="flex items-center gap-1.5 cursor-pointer">
+                                    <input type="radio" value="production" checked={testPayEnv === 'production'} onChange={() => setTestPayEnv('production')} className="text-orange-600 focus:ring-orange-500" />
+                                    <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">正式環境 (Production)</span>
+                                </label>
+                                <label className="flex items-center gap-1.5 cursor-pointer">
+                                    <input type="radio" value="sandbox" checked={testPayEnv === 'sandbox'} onChange={() => setTestPayEnv('sandbox')} className="text-orange-600 focus:ring-orange-500" />
+                                    <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">測試環境 (Sandbox)</span>
+                                </label>
+                            </div>
                         </div>
                     </div>
+                    {['LINEPAY', 'JKOPAY', 'STRIPE', 'PAYPAL', 'ECPAY'].includes(app.type) && (
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-[10px] text-gray-500 mb-1">測試金額</label>
+                                <input type="number" value={testPayAmount} onChange={(e) => setTestPayAmount(e.target.value)} className="w-full px-3 py-1.5 text-xs border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
+                            </div>
+                            <div>
+                                <label className="block text-[10px] text-gray-500 mb-1">商品名稱</label>
+                                <input type="text" value={testPayProductName} onChange={(e) => setTestPayProductName(e.target.value)} className="w-full px-3 py-1.5 text-xs border border-gray-300 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
             <button
@@ -774,8 +797,8 @@ function TestConnectionSection({ app, aiTypes, testingId, testPayAmount, testPay
                 className={`w-full px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${testingId === app.integrationId ? 'bg-gray-300 text-gray-600 cursor-wait dark:bg-gray-600' : 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-300'}`}
             >
                 {testingId === app.integrationId ? (
-                    <span className="flex items-center justify-center gap-2"><SpinnerIcon />測試連線中...</span>
-                ) : '🔍 測試連線'}
+                    <span className="flex items-center justify-center gap-2"><SpinnerIcon />測試中...</span>
+                ) : isPayment ? `🛒 測試 ${testPayEnv === 'sandbox' ? 'Sandbox' : '正式'}扣款` : '🔍 測試連線'}
             </button>
         </div>
     );

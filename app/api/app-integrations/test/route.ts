@@ -641,6 +641,20 @@ async function testSMTP(config: Record<string, string>, emailTest?: { to: string
     }
 }
 
+/** Context7 MCP: 驗證 API Key 格式 */
+async function testCONTEXT7(config: Record<string, any>) {
+    const apiKey = config.context7ApiKey;
+    if (!apiKey) return { success: false, message: '缺少 Context7 API Key' };
+
+    // 目前僅做基本格式檢查
+    if (apiKey.length < 5) return { success: false, message: 'Context7 API Key 格式不正確' };
+
+    return { 
+        success: true, 
+        message: 'Context7 API Key 格式驗證通過。此 Key 將用於 Figma 設計稿調取與知識庫檢索。' 
+    };
+}
+
 // ---------------------------------------------------------------------------
 // 測試分發器
 // ---------------------------------------------------------------------------
@@ -664,6 +678,7 @@ const TEST_HANDLERS: Record<string, (config: Record<string, any>, prompt?: strin
     SMTP: (config, _, emailTest) => testSMTP(config as Record<string, string>, emailTest),
     RESEND: (config, _, emailTest) => testSMTP(config as Record<string, string>, emailTest),
     BREVO: (config, _, emailTest) => testSMTP(config as Record<string, string>, emailTest),
+    CONTEXT7: (config) => testCONTEXT7(config),
 };
 
 // ---------------------------------------------------------------------------

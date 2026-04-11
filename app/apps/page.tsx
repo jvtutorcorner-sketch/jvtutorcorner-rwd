@@ -30,7 +30,7 @@ export default function AppsPage() {
         selectedAppConfig, editedConfig, editedName, editedStatus,
         editedScriptEnabled, editedCustomScript, showSecret, isSavingConfig, saveResult,
         simulating, simInput, simReply, pushTesting, pushMessage, pushTitle, pushResult,
-        testPayAmount, testPayProductName, imageTestFile, imageTestPreview, imageTestResult, imageTesting,
+        testPayAmount, testPayProductName, testPayEnv, imageTestFile, imageTestPreview, imageTestResult, imageTesting,
         showTestEmail, testEmailData, testSending, testResult,
         selectedSkillPreview,
         // Setters
@@ -39,7 +39,7 @@ export default function AppsPage() {
         setEditedScriptEnabled, setEditedCustomScript, setShowSecret,
         setSaveResult, setSimInput, setSimReply,
         setPushMessage, setPushTitle, setPushResult,
-        setTestPayAmount, setTestPayProductName,
+        setTestPayAmount, setTestPayProductName, setTestPayEnv,
         setImageTestFile, setImageTestPreview, setImageTestResult, setImageTesting,
         setShowTestEmail, setTestEmailData, setTestSending, setTestResult,
         setSelectedSkillPreview,
@@ -235,6 +235,7 @@ export default function AppsPage() {
                     pushResult={pushResult}
                     testPayAmount={testPayAmount}
                     testPayProductName={testPayProductName}
+                    testPayEnv={testPayEnv}
                     imageTestFile={imageTestFile}
                     imageTestPreview={imageTestPreview}
                     imageTestResult={imageTestResult}
@@ -258,6 +259,7 @@ export default function AppsPage() {
                     setPushResult={setPushResult}
                     setTestPayAmount={setTestPayAmount}
                     setTestPayProductName={setTestPayProductName}
+                    setTestPayEnv={setTestPayEnv}
                     setImageTestFile={setImageTestFile}
                     setImageTestPreview={setImageTestPreview}
                     setImageTestResult={setImageTestResult}

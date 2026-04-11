@@ -68,17 +68,18 @@ async function getAIIntegration(): Promise<any> {
 }
 
 // Multi-provider image analysis
-async function analyzeImageWithProvider(imageBase64: string, aiIntegration: any): Promise<any> {
+async function analyzeImageWithProvider(imageBase64: string, aiIntegration: any, prompt: string, modelOverride?: string): Promise<any> {
     const provider = aiIntegration.type;
     const apiKey = aiIntegration.config?.apiKey;
+    const model = modelOverride || aiIntegration.config?.model;
 
     try {
         if (provider === 'GEMINI') {
-            return await analyzeWithGemini(imageBase64, apiKey);
+            return await analyzeWithGemini(imageBase64, apiKey, prompt, model);
         } else if (provider === 'OPENAI') {
-            return await analyzeWithOpenAI(imageBase64, apiKey);
+            return await analyzeWithOpenAI(imageBase64, apiKey, prompt, model);
         } else if (provider === 'ANTHROPIC') {
-            return await analyzeWithAnthropic(imageBase64, apiKey);
+            return await analyzeWithAnthropic(imageBase64, apiKey, prompt, model);
         }
     } catch (err) {
         console.error(`[Image Analysis] Error with ${provider}:`, err);
@@ -86,9 +87,9 @@ async function analyzeImageWithProvider(imageBase64: string, aiIntegration: any)
     return null;
 }
 
-async function analyzeWithGemini(imageBase64: string, apiKey: string): Promise<any> {
+async function analyzeWithGemini(imageBase64: string, apiKey: string, prompt: string, modelOverride?: string): Promise<any> {
     console.log('[Image Analysis] Using Gemini Vision...');
-    const model = 'gemini-2.5-flash';
+    const model = modelOverride || 'gemini-1.5-flash';
     
     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
         method: 'POST',
@@ -96,7 +97,7 @@ async function analyzeWithGemini(imageBase64: string, apiKey: string): Promise<a
         body: JSON.stringify({
             contents: [{
                 parts: [
-                    { text: DRUG_ANALYSIS_PROMPT },
+                    { text: prompt },
                     { inlineData: { mimeType: 'image/jpeg', data: imageBase64 } }
                 ]
             }],
@@ -132,8 +133,9 @@ async function analyzeWithGemini(imageBase64: string, apiKey: string): Promise<a
     }
 }
 
-async function analyzeWithOpenAI(imageBase64: string, apiKey: string): Promise<any> {
+async function analyzeWithOpenAI(imageBase64: string, apiKey: string, prompt: string, modelOverride?: string): Promise<any> {
     console.log('[Image Analysis] Using OpenAI Vision...');
+    const model = modelOverride || 'gpt-4o';
     
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
@@ -142,11 +144,11 @@ async function analyzeWithOpenAI(imageBase64: string, apiKey: string): Promise<a
             'Authorization': `Bearer ${apiKey}`
         },
         body: JSON.stringify({
-            model: 'gpt-4-turbo-with-vision',
+            model: model,
             messages: [{
                 role: 'user',
                 content: [
-                    { type: 'text', text: DRUG_ANALYSIS_PROMPT },
+                    { type: 'text', text: prompt },
                     { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${imageBase64}` } }
                 ]
             }],
@@ -165,8 +167,9 @@ async function analyzeWithOpenAI(imageBase64: string, apiKey: string): Promise<a
     return responseText ? JSON.parse(responseText) : null;
 }
 
-async function analyzeWithAnthropic(imageBase64: string, apiKey: string): Promise<any> {
+async function analyzeWithAnthropic(imageBase64: string, apiKey: string, prompt: string, modelOverride?: string): Promise<any> {
     console.log('[Image Analysis] Using Anthropic Vision...');
+    const model = modelOverride || 'claude-3-5-sonnet-20241022';
     
     const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
@@ -176,13 +179,13 @@ async function analyzeWithAnthropic(imageBase64: string, apiKey: string): Promis
             'anthropic-version': '2023-06-01'
         },
         body: JSON.stringify({
-            model: 'claude-3-5-sonnet-20241022',
+            model: model,
             max_tokens: 1024,
             messages: [{
                 role: 'user',
                 content: [
                     { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: imageBase64 } },
-                    { type: 'text', text: DRUG_ANALYSIS_PROMPT }
+                    { type: 'text', text: prompt + '\n\n請以 JSON 格式回應。' }
                 ]
             }]
         })
@@ -201,7 +204,7 @@ async function analyzeWithAnthropic(imageBase64: string, apiKey: string): Promis
 export async function POST(request: Request) {
     try {
         const body = await request.json();
-        const { imageBase64 } = body;
+        const { imageBase64, prompt = DRUG_ANALYSIS_PROMPT, model } = body;
 
         if (!imageBase64) {
             return NextResponse.json({ error: '缺少 imageBase64' }, { status: 400 });
@@ -214,8 +217,8 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: '圖片辨識功能尚未啟用' }, { status: 503 });
         }
 
-        // Analyze image with configured provider
-        const result = await analyzeImageWithProvider(imageBase64, aiIntegration);
+        // Analyze image with configured provider (and optional model override from request)
+        const result = await analyzeImageWithProvider(imageBase64, aiIntegration, prompt, model);
 
         if (result) {
             return NextResponse.json({

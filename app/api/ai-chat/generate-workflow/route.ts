@@ -11,7 +11,7 @@ export async function POST(req: Request) {
         }
 
         // Clean filename: remove .md if present, replace spaces with dashes, etc.
-        let cleanName = filename.replace(/\.md$/, '').replace(/[^a-z0-9_\u4e00-\u9fa5]/gi, '-').toLowerCase();
+        const cleanName = filename.replace(/\.md$/, '').replace(/[^a-z0-9_\u4e00-\u9fa5]/gi, '-').toLowerCase();
 
         // Ensure uniquely named file if needed, but for now we trust the user or use a timestamp
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);

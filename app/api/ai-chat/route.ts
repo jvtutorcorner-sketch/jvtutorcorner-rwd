@@ -25,7 +25,7 @@ async function getAIConfig(messages: any[] = [], useSmartRouter: boolean = false
         }));
 
         const chatroom = chatroomRes.Items?.[0];
-        let targetServiceId = chatroom?.config?.linkedServiceId;
+        const targetServiceId = chatroom?.config?.linkedServiceId;
 
         let integration: any = null;
         if (targetServiceId) {
@@ -146,7 +146,7 @@ export async function POST(req: Request) {
         const defaultSystemPrompt = `你是一個智慧、友善且樂於助人的 AI 助理。請以清楚、簡潔且準確的方式回答使用者的問題。
 若有可用的工具，請在適當時機調用工具以獲取真實資訊。`;
 
-        let knowledgeContext = '';
+        const knowledgeContext = '';
         if (linkedDatabaseId) {
             // ... (keep metadata context logic if needed, but tool-calling is better)
         }
@@ -158,7 +158,7 @@ export async function POST(req: Request) {
             : `${knowledgeContext}${skillPrompt}${dbSystemInstruction ? `${dbSystemInstruction}\n\n` : ''}${defaultSystemPrompt}`;
 
         let finalReply = '';
-        let toolLogs: any[] = [];
+        const toolLogs: any[] = [];
 
         if (provider === 'GEMINI') {
             const genAI = new GoogleGenerativeAI(apiKey);
