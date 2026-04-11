@@ -1,6 +1,10 @@
 /** @type {import('next').NextConfig} */
+// Avoid creating `standalone` output on Windows because some traced
+// filenames include characters (e.g. `node:async_hooks`) that are
+// invalid on Windows filesystems and cause copy errors (EINVAL).
+const isWindows = process.platform === 'win32';
 const nextConfig = {
-  output: 'standalone',
+  output: isWindows ? undefined : 'standalone',
   reactStrictMode: false,
   // 確保 white-web-sdk 被正確編譯
   transpilePackages: ['white-web-sdk'],
