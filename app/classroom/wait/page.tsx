@@ -273,6 +273,12 @@ export default function ClassroomWaitPage() {
       clearTimeout(syncDebounceRef.current);
     }
 
+    // CRITICAL: In production, debounce should be VERY SHORT (10ms) to ensure fast multi-user sync.
+    // Without SSE in serverless environments, even short debounces can cause delays.
+    const isProduction = window.location.hostname === 'www.jvtutorcorner.com' ||
+      window.location.hostname === 'jvtutorcorner.com';
+    const debounceDelay = isProduction ? 10 : 100;  // 10ms in prod, 100ms in dev
+
     syncDebounceRef.current = window.setTimeout(() => {
       fetch(`/api/classroom/ready?uuid=${encodeURIComponent(sessionReadyKey)}`, { cache: 'no-store' })
         .then((r) => {
@@ -319,7 +325,7 @@ export default function ClassroomWaitPage() {
             lastSyncDataRef.current = null;
           }
         });
-    }, 100);
+    }, debounceDelay);
   }, [sessionReadyKey, role, localPresenceId]);
 
   const toggleReady = () => {
@@ -560,19 +566,23 @@ export default function ClassroomWaitPage() {
     });
 
     // 5. Polling Fallback
-    // Primary sync method in production. Poll every 5 seconds to keep state updated.
-    // Note: debounce inside syncStateFromServer() will further reduce actual sync frequency
-    let pollingDensity = 0;  // Counter for adaptive polling
+    // Primary sync method in production. Poll every 1 second to keep state updated RELIABLY.
+    // In production, SSE is unavailable, so FAST polling is CRITICAL for synchronization.
+    // Note: debounce inside syncStateFromServer (100ms) will prevent excessive server load.
+    const isProduction = window.location.hostname === 'www.jvtutorcorner.com' ||
+      window.location.hostname === 'jvtutorcorner.com';
+    
+    // CRITICAL: In production, use 1-second polling for reliable multi-user sync.
+    // Without SSE support in serverless/production, we MUST poll faster.
+    const pollingInterval = isProduction ? 1000 : 5000;
+    let pollingDensity = 0;
     const pollingTimer = setInterval(() => {
       if (esRef.current === null || esRef.current.readyState !== EventSource.OPEN) {
-        console.log(`SYNC: Polling triggered (SSE not active, density=${pollingDensity})`);
+        console.log(`SYNC: Polling triggered (SSE not active, interval=${pollingInterval}ms, density=${pollingDensity})`);
         syncStateFromServer();
-        
-        // Increase polling frequency for the first 30 seconds to ensure fast synchronization
-        // After both are ready, polling less frequently to reduce server load
         pollingDensity++;
       }
-    }, 5000);
+    }, pollingInterval);
 
     // Cleanup all listeners on unmount
     return () => {
