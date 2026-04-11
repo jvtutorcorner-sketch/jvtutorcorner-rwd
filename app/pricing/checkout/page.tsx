@@ -281,6 +281,7 @@ function CheckoutContent() {
                     currency: 'TWD',
                     itemName: itemName,
                     orderId: upgrade.upgradeId,
+                    userId: user.email || user.roid_id || user.id,
                 }),
             });
             const data = await res.json();

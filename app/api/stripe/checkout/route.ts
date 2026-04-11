@@ -6,7 +6,7 @@ import profilesService from '@/lib/profilesService';
 export async function POST(req: NextRequest) {
     try {
         const body = await req.json();
-        const { priceId, successUrl, cancelUrl, userId, orderId } = body;
+        const { priceId, amount, currency, successUrl, cancelUrl, userId, orderId, itemName } = body;
 
         // 0. Global Mock Mode Check
         if (process.env.NEXT_PUBLIC_PAYMENT_MOCK_MODE === 'true') {
@@ -18,17 +18,15 @@ export async function POST(req: NextRequest) {
         }
 
         // 1. Get current user
-        // TODO: Replace with real session check
-        // const session = await getServerSession(authOptions);
-        // const userId = session?.user?.id;
-
-        // For now, we simulate getting user ID from request or mock auth
-        // In a real app, use the session
-        if (!userId || !priceId) {
-            return NextResponse.json({ error: 'Missing userId or priceId' }, { status: 400 });
+        if (!userId) {
+            return NextResponse.json({ error: 'Missing userId' }, { status: 400 });
         }
 
-        // 2. Get user profile to check for existing Stripe Customer ID
+        if (!priceId && !amount) {
+            return NextResponse.json({ error: 'Missing priceId or amount' }, { status: 400 });
+        }
+
+        // 2. Get user profile
         const user = await profilesService.getProfileById(userId);
         if (!user) {
             return NextResponse.json({ error: 'User not found' }, { status: 404 });
@@ -47,7 +45,6 @@ export async function POST(req: NextRequest) {
             });
             customerId = customer.id;
 
-            // Update user with new customer ID
             await profilesService.putProfile({
                 ...user,
                 stripeCustomerId: customerId,
@@ -55,18 +52,25 @@ export async function POST(req: NextRequest) {
         }
 
         // 4. Create Checkout Session
+        const lineItems = priceId 
+            ? [{ price: priceId, quantity: 1 }]
+            : [{
+                price_data: {
+                    currency: (currency || 'TWD').toLowerCase(),
+                    product_data: {
+                        name: itemName || 'JV Tutor Corner Purchase',
+                    },
+                    unit_amount: Math.round(amount * 1), // TWD usually doesn't have decimals in Stripe, but some currencies do. Stripe expects zero-decimal for TWD.
+                },
+                quantity: 1,
+            }];
 
         const session = await stripe.checkout.sessions.create({
             customer: customerId,
-            mode: 'subscription',
+            mode: priceId ? 'subscription' : 'payment',
             payment_method_types: ['card'],
-            line_items: [
-                {
-                    price: priceId,
-                    quantity: 1,
-                },
-            ],
-            success_url: successUrl || `${process.env.NEXT_PUBLIC_BASE_URL}/settings/billing?success=true`,
+            line_items: lineItems,
+            success_url: successUrl || `${process.env.NEXT_PUBLIC_BASE_URL}/settings/billing?success=true&orderId=${orderId}`,
             cancel_url: cancelUrl || `${process.env.NEXT_PUBLIC_BASE_URL}/settings/billing?canceled=true`,
             metadata: {
                 userId: userId,

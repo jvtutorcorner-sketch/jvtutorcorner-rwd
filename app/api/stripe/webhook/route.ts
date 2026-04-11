@@ -151,7 +151,10 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) 
         const subscription = await stripe.subscriptions.retrieve(subscriptionId);
         const subData: any = subscription;
 
+        const existingProfile = await profilesService.getProfileById(userId);
+
         await profilesService.putProfile({
+            ...(existingProfile || {}),
             id: userId,
             stripeCustomerId: customerId,
             subscriptionId: subData.id,
