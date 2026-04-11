@@ -13,6 +13,14 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
   ]),
+  // Project-specific overrides: relax noisy rules in legacy server-side libs
+  {
+    files: ["lib/**"],
+    rules: {
+      "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/explicit-module-boundary-types": "off"
+    }
+  }
 ]);
 
 export default eslintConfig;

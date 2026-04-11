@@ -16,6 +16,13 @@ export default defineConfig({
     retries: process.env.CI ? 2 : 0,
     workers: process.env.CI ? 1 : 1,
 
+    webServer: {
+        command: 'npm run dev',
+        url: BASE_URL,
+        reuseExistingServer: !process.env.CI,
+        timeout: 120000,
+    },
+
     reporter: [
         ['html', { outputFolder: 'playwright-report' }],
         ['list'],
@@ -26,6 +33,7 @@ export default defineConfig({
         trace: 'on-first-retry',
         screenshot: 'only-on-failure',
         video: 'retain-on-failure',
+        headless: false,
         launchOptions: {
             args: ['--start-maximized'],
         }
@@ -35,6 +43,13 @@ export default defineConfig({
         {
             name: 'chromium',
             use: { ...devices['Desktop Chrome'] },
+        },
+        {
+            name: 'chromium-headed',
+            use: { 
+                ...devices['Desktop Chrome'],
+                headless: false,
+            },
         },
     ],
 });

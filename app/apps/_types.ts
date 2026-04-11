@@ -48,7 +48,8 @@ export const AI_META: Record<string, MetaEntry> = {
     GEMINI: { badge: 'bg-blue-100 text-blue-800', label: 'Google Gemini', icon: '✨', desc: 'Google 的強大原生多模態大模型' },
     SMART_ROUTER: { badge: 'bg-cyan-100 text-cyan-800', label: '智能模型路由 (Smart Router)', icon: '🔀', desc: '根據對話複雜度，自動切換極速與高階模型，以節省 Token 成本並保持最佳效能' },
     AI_CHATROOM: { badge: 'bg-indigo-100 text-indigo-800', label: 'AI 聊天室', icon: '🤖', desc: '智慧問答聊天室，即時回覆學員問題，提升服務品質與效率' },
-    ASK_PLAN_AGENT: { badge: 'bg-purple-100 text-purple-800', label: '策略思維規劃代理 (Ask-Plan-Agent)', icon: '🕵️‍♂️', desc: '三階段推理 AI：諮詢釐清、策略規劃、任務執行，能處理複雜的教學與維運任務' },
+    ASK_PLAN_AGENT: { badge: 'bg-purple-100 text-purple-800', label: '策略思維規劃代理 (Ask-Plan-Agent)', icon: '🕵️‍♂️', desc: '三階段推理 AI：諮詢釐開、策略規劃、任務執行，能處理複雜的教學與維運任務' },
+    CONTEXT7: { badge: 'bg-teal-100 text-teal-800', label: 'Context7 MCP', icon: '🎨', desc: '連結 Figma 與外部知識庫，為 AI 提供即時設計上下文與技術文檔' },
 };
 
 export const EMAIL_META: Record<string, MetaEntry> = {
@@ -95,6 +96,7 @@ export const LABEL_MAP: Record<string, string> = {
     linePayChannelSecret: 'Line Pay Channel Secret',
     jkopayMerchantId: '街口特店編號 (Merchant ID)',
     jkopaySecretKey: '街口 Secret Key',
+    context7ApiKey: 'Context7 API Key',
 };
 
 /** Helper: get badge/label/icon for any integration type */

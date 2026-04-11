@@ -272,10 +272,14 @@ export default function OnboardingQuestionnaire({ mode = 'full', userId, onCompl
 
   const containerStyle = isDrawer ? styles.drawer : styles.inlineCard;
   const wrapper = isDrawer ? (
-    <div style={styles.overlay}>
-      <div style={containerStyle}>{renderBody()}</div>
+    <div style={styles.overlay} onClick={(e) => {
+      // If clicking the overlay itself (not the card), call onSkip
+      if (e.target === e.currentTarget) onSkip?.();
+    }}>
+      <div style={containerStyle} onClick={(e) => e.stopPropagation()}>{renderBody()}</div>
     </div>
   ) : (
+
     <div style={containerStyle}>{renderBody()}</div>
   );
 

@@ -58,6 +58,7 @@ export interface ModalState {
     testEmailData: { to: string; subject: string; html: string };
     testSending: boolean;
     testResult: { success: boolean; message: string } | null;
+    testPayEnv: 'production' | 'sandbox';
 }
 
 export interface ModalHandlers {
@@ -85,6 +86,7 @@ export interface ModalHandlers {
     setTestEmailData: (data: { to: string; subject: string; html: string }) => void;
     setTestSending: (sending: boolean) => void;
     setTestResult: (result: { success: boolean; message: string } | null) => void;
+    setTestPayEnv: (env: 'production' | 'sandbox') => void;
     handleSaveConfig: () => Promise<void>;
     handleAiTestPrompt: (app: AppIntegration) => Promise<void>;
     handleSendTestEmail: (app: AppIntegration) => Promise<void>;
@@ -98,7 +100,7 @@ export function useAppsPage() {
     const [apps, setApps] = useState<AppIntegration[]>([]);
     const [loading, setLoading] = useState(true);
     const [aiModelOptions, setAiModelOptions] = useState<Record<string, string[]>>({});
-    const [aiTypes, setAiTypes] = useState<string[]>(['AI_CHATROOM', 'ASK_PLAN_AGENT', 'SMART_ROUTER']);
+    const [aiTypes, setAiTypes] = useState<string[]>(['AI_CHATROOM', 'ASK_PLAN_AGENT', 'SMART_ROUTER', 'CONTEXT7']);
     const [categoryPermissions, setCategoryPermissions] = useState<Record<string, boolean>>({
         APP_CATEGORY_CHANNEL: true,
         APP_CATEGORY_PAYMENT: true,
@@ -142,6 +144,7 @@ export function useAppsPage() {
     const [pushResult, setPushResult] = useState<string | null>(null);
     const [testPayAmount, setTestPayAmount] = useState('1');
     const [testPayProductName, setTestPayProductName] = useState('測試商品');
+    const [testPayEnv, setTestPayEnv] = useState<'production' | 'sandbox'>('sandbox');
     const [imageTestFile, setImageTestFile] = useState<File | null>(null);
     const [imageTestPreview, setImageTestPreview] = useState<string | null>(null);
     const [imageTestResult, setImageTestResult] = useState<string | null>(null);
@@ -185,7 +188,7 @@ export function useAppsPage() {
         fetchApps();
         fetchAiModels();
         fetchCronStatus();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+         
     }, []);
 
     // ─── Data fetching ────────────────────────────────────
@@ -240,7 +243,7 @@ export function useAppsPage() {
             const aiResult = await aiRes.json();
             if (aiResult.ok) {
                 const modelsMap: Record<string, string[]> = {};
-                const typesFromDb: string[] = ['AI_CHATROOM', 'ASK_PLAN_AGENT', 'SMART_ROUTER'];
+                const typesFromDb: string[] = ['AI_CHATROOM', 'ASK_PLAN_AGENT', 'SMART_ROUTER', 'CONTEXT7'];
                 aiResult.data.forEach((model: any) => {
                     modelsMap[model.provider] = model.models;
                     if (!typesFromDb.includes(model.provider)) typesFromDb.push(model.provider);
@@ -277,7 +280,7 @@ export function useAppsPage() {
             const res = await fetch('/api/app-integrations/test', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ integrationId: id, type: app.type, config: app.config, testParams: app.testParams }),
+                body: JSON.stringify({ integrationId: id, type: app.type, config: app.config, testParams: { ...app.testParams, env: testPayEnv } }),
             });
             const data = await res.json();
             if (data.ok && data.result) {
@@ -609,6 +612,7 @@ export function useAppsPage() {
         pushTesting, pushMessage, setPushMessage, pushTitle, setPushTitle, pushResult, setPushResult,
         testPayAmount, setTestPayAmount,
         testPayProductName, setTestPayProductName,
+        testPayEnv, setTestPayEnv,
         imageTestFile, setImageTestFile,
         imageTestPreview, setImageTestPreview,
         imageTestResult, setImageTestResult,

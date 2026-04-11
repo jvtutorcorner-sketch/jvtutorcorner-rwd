@@ -118,6 +118,7 @@ export function WorkflowConfigSidebar({
         logic: '🔀 邏輯設定',
         ai: '✨ AI 設定',
         python: '🐍 Python 設定',
+        javascript: '📜 JavaScript 設定',
         export: '📄 匯出設定',
         http: '🌐 HTTP 請求設定',
         delay: '⏱️ 延遲設定',
@@ -283,14 +284,55 @@ export function WorkflowConfigSidebar({
                                     </div>
                                 )}
 
+                                {/* ── Python Script ── */}
+                                {selectedNode.data?.actionType === 'action_python_script' && (
+                                    <div className="space-y-3 border-t pt-4">
+                                        <h3 className="font-semibold text-sm text-green-600">🐍 Python 腳本</h3>
+                                        
+                                        {/* 版本信息提示 */}
+                                        <div className="bg-green-50 border border-green-200 rounded p-2 text-xs text-green-700">
+                                            <p className="font-semibold mb-1">✅ 版本: Python 3.9-3.12</p>
+                                            <ul className="list-disc list-inside space-y-1 text-green-600">
+                                                <li>超時: 30000ms (可調整)</li>
+                                                <li>記憶體: 512MB - 3GB (Lambda)</li>
+                                                <li>支援: NumPy, Pandas, 異步等</li>
+                                                <li>返回結果自動合併入資料</li>
+                                            </ul>
+                                        </div>
+
+                                        <Field label="腳本">
+                                            <textarea
+                                                className={`${textareaClass} bg-gray-900 text-green-300 border-gray-700 text-xs`}
+                                                rows={15}
+                                                placeholder="# data 變數包含工作流程資料&#10;# 使用 print() 輸出日誌&#10;# 使用 return 回傳結果"
+                                                value={selectedNode.data?.config?.script || ''}
+                                                onChange={(e) => handleConfigUpdate({ script: e.target.value })}
+                                            />
+                                        </Field>
+                                    </div>
+                                )}
+
                                 {/* ── JavaScript Script ── */}
                                 {selectedNode.data?.actionType === 'action_js_script' && (
                                     <div className="space-y-3 border-t pt-4">
                                         <h3 className="font-semibold text-sm text-blue-500">📜 JavaScript 腳本</h3>
+                                        
+                                        {/* 版本信息提示 */}
+                                        <div className="bg-blue-50 border border-blue-200 rounded p-2 text-xs text-blue-700">
+                                            <p className="font-semibold mb-1">✅ 版本: Node.js 18+</p>
+                                            <ul className="list-disc list-inside space-y-1 text-blue-600">
+                                                <li>超時: 3000ms (可設定)</li>
+                                                <li>記憶體: 128MB</li>
+                                                <li>支援: async/await, JSON, 標準庫</li>
+                                                <li>返回結果自動合併入資料</li>
+                                            </ul>
+                                        </div>
+
                                         <Field label="腳本">
                                             <textarea
                                                 className={`${textareaClass} bg-gray-900 text-blue-300 border-gray-700 text-xs`}
-                                                rows={12}
+                                                rows={15}
+                                                placeholder="// return 物件自動合併入工作流程資料&#10;// 範例: return { processed: true };"
                                                 value={selectedNode.data?.config?.script || ''}
                                                 onChange={(e) => handleConfigUpdate({ script: e.target.value })}
                                             />
