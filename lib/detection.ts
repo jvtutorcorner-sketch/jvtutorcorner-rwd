@@ -31,7 +31,7 @@ export async function detectProducts(buffer: Buffer): Promise<{ products: Detect
     // Use indirect require to avoid bundlers (Turbopack/Webpack) statically resolving this
     // and causing build failures when running client-side bundling. This ensures the
     // module is only attempted to be loaded at runtime on the server.
-    // eslint-disable-next-line no-eval
+     
     const req: any = eval('require');
     const ort = req('onnxruntime-node');
 

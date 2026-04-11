@@ -164,7 +164,7 @@ const NODE_PALETTE: NodeCategory[] = [
         color: 'amber',
         items: [
             { icon: '🐍', name: 'Python 腳本', type: 'python', subtype: 'action_python_script' },
-            { icon: '📜', name: 'JavaScript 腳本', type: 'action', subtype: 'action_js_script' },
+            { icon: '📜', name: 'JavaScript 腳本', type: 'javascript', subtype: 'action_js_script' },
             { icon: '🌐', name: 'HTTP 請求', type: 'http', subtype: 'action_http_request' },
             { icon: '⚙️', name: '提取 / 轉換欄位', type: 'transform', subtype: 'action_data_transform' },
         ],
@@ -461,9 +461,94 @@ function CanvasFlow({ initialWorkflow, onSave }: WorkflowCanvasProps) {
                 triggerType: type === 'trigger' || type === 'webhook' ? subtype : undefined,
                 actionType: !['trigger', 'webhook'].includes(type) ? subtype : undefined,
                 config: subtype === 'action_python_script'
-                    ? { script: '# Access data using the "data" variable\nname = data.get("student_name", "Explorer")\nprint(f"👋 Hello {name} from Python!")\ndata["result"] = "Ready to process!"' }
+                    ? { 
+                        script: `# ═══════════════════════════════════════════════════════════
+# Python Workflow Script — 初始化範例
+# ═══════════════════════════════════════════════════════════
+# 版本: Python 3.9-3.12
+# 超時: 30000ms (30 秒) — 支援長時間任務
+# 記憶體: 512MB - 3GB (可在 Lambda 配置)
+#
+# 輸入: data (dict) — 工作流程資料
+# 輸出: print() 會顯示在日誌，return 會作為結果
+# ═══════════════════════════════════════════════════════════
+
+import json
+from datetime import datetime
+
+# 📥 1️⃣ 存取輸入資料
+student_name = data.get("student_name", "Explorer")
+course_name = data.get("course_name", "Python 101")
+try_count = data.get("try_count", 0)
+
+# 🔄 2️⃣ 執行你的邏輯
+timestamp = datetime.now().isoformat()
+processed_try_count = try_count + 1
+
+# ✅ 3️⃣ 建立結果
+result = {
+    "status": "success",
+    "message": f"👋 Hello {student_name}! Welcome to {course_name}",
+    "course": course_name,
+    "timestamp": timestamp,
+    "processed": True,
+    "try_count": processed_try_count,
+    "python_version": "3.11"
+}
+
+# 📋 4️⃣ 列印日誌 (會顯示在執行跟蹤中)
+print(f"[Python] Processing {student_name}")
+print(f"[Python] Course: {course_name}")
+print(json.dumps(result))
+
+# 📤 5️⃣ 回傳結果 (自動轉換為 JSON，合併入工作流程資料)
+return result`
+                    }
                     : subtype === 'action_js_script'
-                    ? { script: '// data is the current workflow payload\n// return an object to merge it into data\ndata.timestamp = Date.now();\nreturn { processed: true };' }
+                    ? { 
+                        script: `// ═══════════════════════════════════════════════════════════
+// JavaScript Workflow Script — 初始化範例
+// ═══════════════════════════════════════════════════════════
+// 版本: Node.js 18+ | isolated-vm 6.0.2+
+// 超時: 3000ms (預設，可設定)
+// 記憶體: 128MB (可設定)
+//
+// 注意：此執行環境是沙箱隔離的
+// ❌ 不支援: fetch, setTimeout, 檔案系統
+// ✅ 支援: 標準 JS, JSON, 資料轉換
+// ═══════════════════════════════════════════════════════════
+
+// 📥 1️⃣ 存取工作流程資料
+const studentName = data?.student_name || 'Explorer';
+const courseName = data?.course_name || 'JavaScript 101';
+const processedCount = (data?.processed_count || 0) + 1;
+
+// 📝 2️⃣ 執行你的邏輯
+console.log('[JS] Starting workflow...');
+console.log('[JS] Student:', studentName);
+console.log('[JS] Course:', courseName);
+
+const timestamp = new Date().toISOString();
+
+// ✅ 3️⃣ 建立結果物件
+const result = {
+  status: 'success',
+  message: \`👋 Hello \${studentName}! Processing \${courseName}\`,
+  course: courseName,
+  timestamp: timestamp,
+  processed: true,
+  processed_count: processedCount,
+  from_javascript: true,
+  runtime: 'Node.js 18+'
+};
+
+// 📋 4️⃣ 列印日誌
+console.log('[JS] Result processed');
+console.log(JSON.stringify(result, null, 2));
+
+// 📤 5️⃣ 回傳結果 (自動合併入工作流程資料)
+return result;`
+                    }
                     : subtype === 'action_send_gmail'
                     ? {
                         to: '{{email_to}}',

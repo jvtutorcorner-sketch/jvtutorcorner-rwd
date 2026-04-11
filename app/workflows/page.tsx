@@ -12,6 +12,7 @@ const TEMPLATE_CATEGORIES = [
     { id: 'utility', name: '空白畫布', icon: '🔧' },
     { id: 'integration', name: 'MCP 整合', icon: '🔌' },
     { id: 'testing', name: '測試生成', icon: '🧪' },
+    { id: 'scripting', name: '腳本執行', icon: '⚙️' },
 ];
 
 const TEMPLATES = [
@@ -24,6 +25,75 @@ const TEMPLATES = [
         isFeatured: true,
         nodes: [],
         edges: []
+    },
+    {
+        id: 'ask-plan-agent',
+        name: '策略思維規劃代理',
+        description: '三階段推理 AI：諮詢釐清、策略規劃、任務執行，能處理複雜的教學與維運任務。',
+        category: 'ai',
+        icon: '🕵️‍♂️',
+        isFeatured: true,
+        nodes: [
+            {
+                id: 'node_1', type: 'trigger', position: { x: 350, y: 30 },
+                data: {
+                    label: '觸發：複雜任務需求',
+                    triggerType: 'trigger_manual',
+                    config: {
+                        testPayload: JSON.stringify({
+                            task: "請為下週的 Next.js 進階課程規劃一份教學大綱，並設計隨堂測驗。",
+                            context: { courseLevel: "advanced", duration: "2 hours" }
+                        }, null, 2)
+                    }
+                }
+            },
+            {
+                id: 'node_2', type: 'ai', position: { x: 350, y: 160 },
+                data: {
+                    label: '諮詢釐清 (Ask)',
+                    actionType: 'action_ai_ask',
+                    config: {
+                        inputField: '{{task}}',
+                        instruction: '分析任務需求，確認缺乏哪些必要資訊，若資訊不足則提出詢問清單。'
+                    }
+                }
+            },
+            {
+                id: 'node_3', type: 'ai', position: { x: 350, y: 300 },
+                data: {
+                    label: '策略規劃 (Plan)',
+                    actionType: 'action_ai_plan',
+                    config: {
+                        inputField: '{{task}}',
+                        contextField: '{{askResult.context}}',
+                        instruction: '根據釐清後的任務需求與上下文，將大任務拆解為可執行的階段性子任務。'
+                    }
+                }
+            },
+            {
+                id: 'node_4', type: 'ai', position: { x: 350, y: 440 },
+                data: {
+                    label: '任務執行 (Agent)',
+                    actionType: 'action_agent_execute',
+                    config: {
+                        agentIdField: 'ASK_PLAN_AGENT',
+                        inputField: '{{planResult.steps}}',
+                        useSmartRouter: true,
+                        usePromptCache: true
+                    }
+                }
+            },
+            {
+                id: 'node_5', type: 'output', position: { x: 350, y: 580 },
+                data: { label: '輸出最終執行報告', actionType: 'output_workflow' }
+            }
+        ],
+        edges: [
+            { id: 'e1-2', source: 'node_1', target: 'node_2', type: 'smoothstep', animated: true },
+            { id: 'e2-3', source: 'node_2', target: 'node_3', type: 'smoothstep', animated: true },
+            { id: 'e3-4', source: 'node_3', target: 'node_4', type: 'smoothstep', animated: true },
+            { id: 'e4-5', source: 'node_4', target: 'node_5', type: 'smoothstep', animated: true }
+        ]
     },
     {
         id: 'ai-chat-routing',
@@ -1141,9 +1211,9 @@ Feature: {{frame_name}} 頁面完整測試
     {
         id: 'device-diagnostics-agent',
         name: '裝置診斷 Agent',
-        description: '接收用戶裝置問題描述 → 分類問題類型 → 應用程式診斷 Agent 深度分析 → 結構化診斷報告 → 逐步解決指引 → 必要時引導前往 /checkDevices 進行環境自動檢測。',
+        description: '支援圖片上傳辨識！接收用戶裝置問題描述與錯誤截圖  圖片分析(擷取錯誤訊息)  分類問題類型  應用程式診斷 Agent 深度分析  結構化診斷報告  引導前往 /checkDevices。',
         category: 'ai',
-        icon: '🔧',
+        icon: '',
         isFeatured: true,
         nodes: [
             {
@@ -1153,7 +1223,7 @@ Feature: {{frame_name}} 頁面完整測試
                     triggerType: 'trigger_chat_message',
                     config: {
                         testPayload: JSON.stringify({
-                            message: { content: '我的攝影機在平台上無法使用，進入教室後畫面是黑的', type: 'text' },
+                            message: { content: '進入教室後畫面是黑的', type: 'image_and_text', image: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=' },
                             user: { email: 'user@example.com', name: 'Alex', os: 'macOS', browser: 'Safari 16' }
                         }, null, 2)
                     }
@@ -1167,6 +1237,7 @@ Feature: {{frame_name}} 頁面完整測試
                     config: {
                         variables: [
                             { key: 'user_query',   value: '{{message.content}}' },
+                            { key: 'user_image',   value: '{{message.image}}' },
                             { key: 'user_name',    value: '{{user.name}}' },
                             { key: 'user_os',      value: '{{user.os}}' },
                             { key: 'user_browser', value: '{{user.browser}}' }
@@ -1175,45 +1246,89 @@ Feature: {{frame_name}} 頁面完整測試
                 }
             },
             {
-                id: 'node_3', type: 'logic', position: { x: 350, y: 280 },
+                id: 'node_has_image', type: 'logic', position: { x: 350, y: 280 },
                 data: {
-                    label: '問題描述是否有效？',
+                    label: '包含圖片？',
                     actionType: 'logic_condition',
-                    config: { variable: '{{user_query}}', operator: 'not_empty' }
+                    config: { variable: '{{user_image}}', operator: 'not_empty' }
                 }
             },
             {
-                id: 'node_4', type: 'action', position: { x: 680, y: 400 },
+                id: 'node_image_analysis', type: 'action', position: { x: 600, y: 280 },
                 data: {
-                    label: '空訊息：請求補充說明',
+                    label: '圖片 Vision 辨識',
+                    actionType: 'action_image_analysis',
+                    config: { 
+                        inputField: '{{user_image}}', 
+                        outputField: 'image_analysis_result',
+                        prompt: '你是一個 IT 支援助理。請分析這張圖片，找出所有的錯誤訊息或介面異常的狀況，並以純文字總結。'
+                    }
+                }
+            },
+            {
+                id: 'node_merge_query', type: 'action', position: { x: 600, y: 400 },
+                data: {
+                    label: '合併圖片與文字',
                     actionType: 'action_set_variable',
                     config: {
                         variables: [
-                            { key: 'ai_output', value: '您好！請描述您遇到的具體裝置問題（例如：攝影機黑屏、麥克風沒聲音、無法進入教室等），我將立即為您診斷。' }
+                            { key: 'user_query_combined', value: '文字：{{user_query}} / 圖片診斷：{{image_analysis_result}}' }
                         ]
                     }
                 }
             },
             {
-                id: 'node_5', type: 'ai', position: { x: 100, y: 400 },
+                id: 'node_use_original_query', type: 'action', position: { x: 350, y: 400 },
                 data: {
-                    label: 'AI 分類問題類型',
-                    actionType: 'action_ai_summarize',
+                    label: '僅使用文字',
+                    actionType: 'action_set_variable',
                     config: {
-                        userPrompt: '你是裝置問題分類器。根據以下用戶描述，以 JSON 格式輸出問題分類：\n\n用戶描述：{{user_query}}\n作業系統：{{user_os}}\n瀏覽器：{{user_browser}}\n\n輸出格式：\n{\n  "category": "video|audio|network|permission|browser|unknown",\n  "severity": "high|medium|low",\n  "keywords": ["關鍵症狀1", "關鍵症狀2"],\n  "needsDeviceCheck": true/false\n}'
+                        variables: [
+                            { key: 'user_query_combined', value: '{{user_query}}' }
+                        ]
                     }
                 }
             },
             {
-                id: 'node_6', type: 'logic', position: { x: 100, y: 560 },
+                id: 'node_3', type: 'logic', position: { x: 475, y: 550 },
                 data: {
-                    label: '是否需要環境自動檢測？',
+                    label: '問題描述是否有效？',
+                    actionType: 'logic_condition',
+                    config: { variable: '{{user_query_combined}}', operator: 'not_empty' }
+                }
+            },
+            {
+                id: 'node_4', type: 'action', position: { x: 750, y: 680 },
+                data: {
+                    label: '空訊息：請求補充說明',
+                    actionType: 'action_set_variable',
+                    config: {
+                        variables: [
+                            { key: 'ai_output', value: '您好！請描述您遇到的具體裝置問題，或上傳錯誤截圖，我將立即為您診斷。' }
+                        ]
+                    }
+                }
+            },
+            {
+                id: 'node_5', type: 'ai', position: { x: 250, y: 680 },
+                data: {
+                    label: 'AI 分類問題類型',
+                    actionType: 'action_ai_summarize',
+                    config: {
+                        userPrompt: '你是裝置問題分類器。根據以下用戶描述，以 JSON 格式輸出問題分類：\n\n問題描述：{{user_query_combined}}\n作系統：{{user_os}}\n瀏覽器：{{user_browser}}\n\n輸出格式：\n{\n  "category": "video|audio|network|permission|browser|unknown",\n  "severity": "high|medium|low",\n  "keywords": ["症狀1", "症狀2"],\n  "needsDeviceCheck": true/false\n}'
+                    }
+                }
+            },
+            {
+                id: 'node_6', type: 'logic', position: { x: 250, y: 850 },
+                data: {
+                    label: '是否需要自動檢測？',
                     actionType: 'logic_condition',
                     config: { variable: '{{ai_output.needsDeviceCheck}}', operator: 'equals', value: 'true' }
                 }
             },
             {
-                id: 'node_7', type: 'action', position: { x: -80, y: 700 },
+                id: 'node_7', type: 'action', position: { x: -50, y: 1000 },
                 data: {
                     label: '設定：引導前往 checkDevices',
                     actionType: 'action_set_variable',
@@ -1226,13 +1341,13 @@ Feature: {{frame_name}} 頁面完整測試
                 }
             },
             {
-                id: 'node_8', type: 'ai', position: { x: 350, y: 700 },
+                id: 'node_8', type: 'ai', position: { x: 400, y: 1000 },
                 data: {
-                    label: '應用程式診斷 Agent 深度分析',
+                    label: 'Agent 深度分析',
                     actionType: 'action_agent_execute',
                     config: {
                         agentId: 'device-diagnostics',
-                        inputField: '{{user_query}}',
+                        inputField: '{{user_query_combined}}',
                         contextFields: {
                             os: '{{user_os}}',
                             browser: '{{user_browser}}',
@@ -1244,13 +1359,13 @@ Feature: {{frame_name}} 頁面完整測試
                 }
             },
             {
-                id: 'node_9', type: 'action', position: { x: 350, y: 870 },
+                id: 'node_9', type: 'action', position: { x: 400, y: 1150 },
                 data: {
                     label: '建構診斷報告結構',
                     actionType: 'action_set_variable',
                     config: {
                         variables: [
-                            { key: 'report_title',    value: '🔧 裝置診斷報告 — {{user_name}}' },
+                            { key: 'report_title',    value: ' 裝置診斷報告  {{user_name}}' },
                             { key: 'problem_type',    value: '{{ai_output.category}}' },
                             { key: 'severity_level',  value: '{{ai_output.severity}}' },
                             { key: 'diagnosis',       value: '{{diagnosis_result}}' },
@@ -1261,38 +1376,46 @@ Feature: {{frame_name}} 頁面完整測試
                 }
             },
             {
-                id: 'node_10', type: 'logic', position: { x: 350, y: 1010 },
+                id: 'node_10', type: 'logic', position: { x: 400, y: 1300 },
                 data: {
-                    label: '嚴重程度是否為 HIGH？',
+                    label: '嚴重程度為 HIGH？',
                     actionType: 'logic_condition',
                     config: { variable: '{{severity_level}}', operator: 'equals', value: 'high' }
                 }
             },
             {
-                id: 'node_11', type: 'notification', position: { x: 130, y: 1150 },
+                id: 'node_11', type: 'notification', position: { x: 100, y: 1450 },
                 data: {
-                    label: '高優先級：發送技術支援通知 Email',
+                    label: '高優先級：通知 Email',
                     actionType: 'action_notification_email',
                     config: {
                         template: 'device_issue_alert',
                         to: 'support@jvtutorcorner.com',
-                        subject: '⚠️ 用戶裝置問題需要關注 — {{user_name}}',
-                        body: '用戶：{{user_name}}\n問題類型：{{problem_type}}\n描述：{{user_query}}\n環境：{{user_os}} / {{user_browser}}\n\n診斷結果：\n{{diagnosis}}'
+                        subject: ' 裝置問題  {{user_name}}',
+                        body: '用戶：{{user_name}}\n類型：{{problem_type}}\n描述：{{user_query_combined}}\n環境：{{user_os}} / {{user_browser}}\n\n診斷：\n{{diagnosis}}'
                     }
                 }
             },
             {
-                id: 'node_12', type: 'output', position: { x: 350, y: 1310 },
-                data: { label: '回傳診斷報告與解決方案', actionType: 'output_workflow' }
+                id: 'node_12', type: 'output', position: { x: 400, y: 1600 },
+                data: { label: '回傳診斷報告', actionType: 'output_workflow' }
             }
         ],
         edges: [
             { id: 'e1-2',   source: 'node_1',  target: 'node_2',  type: 'smoothstep', animated: true },
-            { id: 'e2-3',   source: 'node_2',  target: 'node_3',  type: 'smoothstep', animated: true },
+            { id: 'e2-has_img', source: 'node_2', target: 'node_has_image', type: 'smoothstep', animated: true },
+            { id: 'eha_img-t', source: 'node_has_image', target: 'node_image_analysis', sourceHandle: 'true', label: '有圖片', type: 'smoothstep', animated: true },
+            { id: 'eha_img-f', source: 'node_has_image', target: 'node_use_original_query', sourceHandle: 'false', label: '無圖片', type: 'smoothstep', animated: true },
+            { id: 'eimg-merge', source: 'node_image_analysis', target: 'node_merge_query', type: 'smoothstep', animated: true },
+            
+            { id: 'em-3', source: 'node_merge_query', target: 'node_3', type: 'smoothstep', animated: true },
+            { id: 'eu-3', source: 'node_use_original_query', target: 'node_3', type: 'smoothstep', animated: true },
+
             { id: 'e3-5',   source: 'node_3',  target: 'node_5',  sourceHandle: 'true',  label: '有描述', type: 'smoothstep', animated: true },
             { id: 'e3-4',   source: 'node_3',  target: 'node_4',  sourceHandle: 'false', label: '空訊息', type: 'smoothstep', animated: true },
+            
             { id: 'e5-6',   source: 'node_5',  target: 'node_6',  type: 'smoothstep', animated: true },
-            { id: 'e6-7',   source: 'node_6',  target: 'node_7',  sourceHandle: 'true',  label: '需要環境檢測', type: 'smoothstep', animated: true },
+            { id: 'e6-7',   source: 'node_6',  target: 'node_7',  sourceHandle: 'true',  label: '需要檢測', type: 'smoothstep', animated: true },
             { id: 'e6-8',   source: 'node_6',  target: 'node_8',  sourceHandle: 'false', label: '直接診斷', type: 'smoothstep', animated: true },
             { id: 'e7-8',   source: 'node_7',  target: 'node_8',  type: 'smoothstep', animated: true },
             { id: 'e8-9',   source: 'node_8',  target: 'node_9',  type: 'smoothstep', animated: true },
@@ -1301,6 +1424,477 @@ Feature: {{frame_name}} 頁面完整測試
             { id: 'e10-12', source: 'node_10', target: 'node_12', sourceHandle: 'false', label: '中低嚴重', type: 'smoothstep', animated: true },
             { id: 'e11-12', source: 'node_11', target: 'node_12', type: 'smoothstep', animated: true },
             { id: 'e4-12',  source: 'node_4',  target: 'node_12', type: 'smoothstep', animated: true }
+        ]
+    },
+    {
+        id: 'python-practical',
+        name: 'Python 實用範本',
+        description: '完整 Python 腳本執行流程：資料驗證 → 成績統計計算 → 通過/未通過判斷 → 結構化輸出。示範 Lambda 常用模式。',
+        category: 'scripting',
+        icon: '🐍',
+        isFeatured: true,
+        nodes: [
+            {
+                id: 'node_1', type: 'trigger', position: { x: 300, y: 30 },
+                data: {
+                    label: '觸發：學生成績資料',
+                    triggerType: 'trigger_api_call',
+                    config: {
+                        testPayload: JSON.stringify({
+                            student_name: '王小明',
+                            email: 'student@example.com',
+                            course_id: 'CS101',
+                            scores: [85, 92, 78, 90, 65]
+                        }, null, 2)
+                    }
+                }
+            },
+            {
+                id: 'node_2', type: 'action', position: { x: 300, y: 160 },
+                data: {
+                    label: '正規化輸入變數',
+                    actionType: 'action_set_variable',
+                    config: {
+                        variables: [
+                            { key: 'student_name', value: '{{student_name}}' },
+                            { key: 'email',        value: '{{email}}' },
+                            { key: 'course_id',    value: '{{course_id}}' },
+                            { key: 'scores',       value: '{{scores}}' }
+                        ]
+                    }
+                }
+            },
+            {
+                id: 'node_3', type: 'python', position: { x: 300, y: 290 },
+                data: {
+                    label: '🐍 Python：資料驗證與前處理',
+                    actionType: 'action_python_script',
+                    config: {
+                        script: `# ═══════════════════════════════════════════════════════
+# Step 1｜資料驗證與前處理
+# 輸入: student_name, email, scores (list)
+# 輸出: validated_data (merged into workflow)
+# ═══════════════════════════════════════════════════════
+import json, re
+
+name   = data.get("student_name", "")
+email  = data.get("email", "")
+scores = data.get("scores", [])
+
+# ── 驗證 email 格式 ──────────────────────────────────
+email_valid = bool(re.match(r'^[^@]+@[^@]+\\.[^@]+$', email))
+
+# ── 過濾有效分數 (0~100 的數字) ─────────────────────
+valid_scores = [s for s in scores if isinstance(s, (int, float)) and 0 <= s <= 100]
+
+print(f"[驗證] 學生: {name}")
+print(f"[驗證] Email 有效: {email_valid}")
+print(f"[驗證] 有效分數數量: {len(valid_scores)}/{len(scores)}")
+
+return {
+    "name":              name,
+    "email":             email,
+    "email_valid":       email_valid,
+    "valid_scores":      valid_scores,
+    "total_subjects":    len(valid_scores),
+    "validation_passed": email_valid and len(valid_scores) > 0
+}`,
+                        timeout_ms: 10000,
+                        outputField: 'validated_data'
+                    }
+                }
+            },
+            {
+                id: 'node_4', type: 'logic', position: { x: 300, y: 480 },
+                data: {
+                    label: '驗證是否通過？',
+                    actionType: 'logic_condition',
+                    config: { variable: '{{validated_data.validation_passed}}', operator: 'equals', value: 'true' }
+                }
+            },
+            {
+                id: 'node_5', type: 'action', position: { x: 620, y: 600 },
+                data: {
+                    label: '驗證失敗：設定錯誤訊息',
+                    actionType: 'action_set_variable',
+                    config: {
+                        variables: [
+                            { key: 'error_msg',    value: 'Email 格式錯誤或無有效分數資料，請確認輸入。' },
+                            { key: 'calc_status',  value: 'validation_failed' }
+                        ]
+                    }
+                }
+            },
+            {
+                id: 'node_6', type: 'python', position: { x: 20, y: 600 },
+                data: {
+                    label: '🐍 Python：成績統計計算',
+                    actionType: 'action_python_script',
+                    config: {
+                        script: `# ═══════════════════════════════════════════════════════
+# Step 2｜成績統計計算
+# 輸入: validated_data.valid_scores, validated_data.name
+# 輸出: score_report (merged into workflow)
+# ═══════════════════════════════════════════════════════
+import json
+
+scores = data.get("valid_scores", [])
+name   = data.get("name", "學生")
+
+if not scores:
+    return {"error": "無有效分數資料", "passed": False}
+
+# ── 統計計算 ─────────────────────────────────────────
+avg     = sum(scores) / len(scores)
+highest = max(scores)
+lowest  = min(scores)
+passed_count = sum(1 for s in scores if s >= 60)
+
+# ── 等第判斷 (A/B/C/D/F) ─────────────────────────────
+grade = (
+    "A" if avg >= 90 else
+    "B" if avg >= 80 else
+    "C" if avg >= 70 else
+    "D" if avg >= 60 else "F"
+)
+passed = avg >= 60
+
+print(f"[計算] 分數: {scores}")
+print(f"[計算] 平均: {avg:.1f}, 最高: {highest}, 最低: {lowest}")
+print(f"[計算] 等第: {grade}, 通過: {passed}")
+
+return {
+    "student_name":   name,
+    "average":        round(avg, 1),
+    "highest":        highest,
+    "lowest":         lowest,
+    "grade":          grade,
+    "passed":         passed,
+    "passed_count":   passed_count,
+    "total_subjects": len(scores),
+    "summary":        f"{name} 平均 {avg:.1f} 分，等第 {grade}，{'通過 ✅' if passed else '未通過 ❌'}"
+}`,
+                        timeout_ms: 10000,
+                        outputField: 'score_report'
+                    }
+                }
+            },
+            {
+                id: 'node_7', type: 'logic', position: { x: 20, y: 820 },
+                data: {
+                    label: '是否通過課程？',
+                    actionType: 'logic_condition',
+                    config: { variable: '{{score_report.passed}}', operator: 'equals', value: 'true' }
+                }
+            },
+            {
+                id: 'node_8', type: 'action', position: { x: -160, y: 960 },
+                data: {
+                    label: '設定狀態：通過',
+                    actionType: 'action_set_variable',
+                    config: {
+                        variables: [
+                            { key: 'final_status', value: 'passed' },
+                            { key: 'calc_status',  value: 'completed' }
+                        ]
+                    }
+                }
+            },
+            {
+                id: 'node_9', type: 'action', position: { x: 200, y: 960 },
+                data: {
+                    label: '設定狀態：未通過',
+                    actionType: 'action_set_variable',
+                    config: {
+                        variables: [
+                            { key: 'final_status', value: 'failed' },
+                            { key: 'calc_status',  value: 'completed' }
+                        ]
+                    }
+                }
+            },
+            {
+                id: 'node_10', type: 'output', position: { x: 300, y: 1100 },
+                data: { label: '輸出：成績報告', actionType: 'output_workflow' }
+            }
+        ],
+        edges: [
+            { id: 'e1-2',  source: 'node_1', target: 'node_2',  type: 'smoothstep', animated: true },
+            { id: 'e2-3',  source: 'node_2', target: 'node_3',  type: 'smoothstep', animated: true },
+            { id: 'e3-4',  source: 'node_3', target: 'node_4',  type: 'smoothstep', animated: true },
+            { id: 'e4-5',  source: 'node_4', target: 'node_5',  sourceHandle: 'false', label: '未通過', type: 'smoothstep', animated: true },
+            { id: 'e4-6',  source: 'node_4', target: 'node_6',  sourceHandle: 'true',  label: '通過', type: 'smoothstep', animated: true },
+            { id: 'e6-7',  source: 'node_6', target: 'node_7',  type: 'smoothstep', animated: true },
+            { id: 'e7-8',  source: 'node_7', target: 'node_8',  sourceHandle: 'true',  label: '通過', type: 'smoothstep', animated: true },
+            { id: 'e7-9',  source: 'node_7', target: 'node_9',  sourceHandle: 'false', label: '未通過', type: 'smoothstep', animated: true },
+            { id: 'e5-10', source: 'node_5', target: 'node_10', type: 'smoothstep', animated: true },
+            { id: 'e8-10', source: 'node_8', target: 'node_10', type: 'smoothstep', animated: true },
+            { id: 'e9-10', source: 'node_9', target: 'node_10', type: 'smoothstep', animated: true }
+        ]
+    },
+    {
+        id: 'javascript-practical',
+        name: 'JavaScript 實用範本',
+        description: '完整 JS 腳本執行流程：訂單資料清洗轉換 → 折扣計算 → Markdown 摘要報告生成。示範沙箱環境中的資料處理模式。',
+        category: 'scripting',
+        icon: '📜',
+        isFeatured: true,
+        nodes: [
+            {
+                id: 'node_1', type: 'trigger', position: { x: 300, y: 30 },
+                data: {
+                    label: '觸發：訂單資料',
+                    triggerType: 'trigger_api_call',
+                    config: {
+                        testPayload: JSON.stringify({
+                            currency: 'TWD',
+                            discount_rate: 0.1,
+                            orders: [
+                                { id: 'ORD-001', name: 'Next.js 課程', amount: 2000, status: 'paid' },
+                                { id: 'ORD-002', name: 'Python 入門', amount: 1500, status: 'paid' },
+                                { id: 'ORD-003', name: '設計課程',   amount: 1800, status: 'cancelled' },
+                                { id: 'ORD-004', name: 'React 進階', amount: 2500, status: 'pending' }
+                            ]
+                        }, null, 2)
+                    }
+                }
+            },
+            {
+                id: 'node_2', type: 'action', position: { x: 300, y: 160 },
+                data: {
+                    label: '正規化輸入變數',
+                    actionType: 'action_set_variable',
+                    config: {
+                        variables: [
+                            { key: 'currency',      value: '{{currency}}' },
+                            { key: 'discount_rate', value: '{{discount_rate}}' },
+                            { key: 'orders',        value: '{{orders}}' }
+                        ]
+                    }
+                }
+            },
+            {
+                id: 'node_3', type: 'javascript', position: { x: 300, y: 290 },
+                data: {
+                    label: '📜 JS：訂單清洗與折扣計算',
+                    actionType: 'action_js_script',
+                    config: {
+                        script: `// ═══════════════════════════════════════════════════════
+// Step 1｜訂單資料清洗與折扣計算
+// 輸入: orders (array), currency, discount_rate
+// 輸出: processed 物件 (merged into workflow)
+// ═══════════════════════════════════════════════════════
+
+// 🔍 Step 1: 防禦型資料驗證 ──────────────────────────
+let rawOrders = data?.orders;
+console.log(\`[Debug] typeof rawOrders: \${typeof rawOrders}\`);
+console.log(\`[Debug] rawOrders value: \${JSON.stringify(rawOrders)}\`);
+
+// ── 處理 orders 可能是字符串的情況 ───────────────────
+if (typeof rawOrders === 'string') {
+  try {
+    console.log(\`[Parse] 嘗試解析 JSON 字符串...\`);
+    rawOrders = JSON.parse(rawOrders);
+  } catch (err) {
+    console.error(\`[Error] JSON.parse 失敗: \${err.message}\`);
+    rawOrders = [];
+  }
+}
+
+// ── 確保 orders 是陣列 ───────────────────────────────
+const orders = Array.isArray(rawOrders) ? rawOrders : [];
+const currency = String(data?.currency || 'TWD');
+const discountRate = parseFloat(data?.discount_rate) || 0;
+
+console.log(\`[JS] 收到 \${orders.length} 筆訂單，折扣率 \${(discountRate * 100).toFixed(0)}%\`);
+
+if (orders.length === 0) {
+  console.warn(\`[Warning] 無有效訂單資料，返回空結果\`);
+  return {
+    processed_orders:  [],
+    order_count:       0,
+    total_original:    0,
+    total_discounted:  0,
+    total_saved:       0,
+    discount_applied:  false,
+    currency,
+    error_msg:         'No valid orders found after data validation'
+  };
+}
+
+// ── 過濾已取消訂單，計算折扣後金額 ──────────────────
+const processedOrders = orders
+  .filter(order => {
+    if (!order || typeof order !== 'object') return false;
+    const amount = parseFloat(order.amount);
+    const status = String(order.status || '');
+    return !isNaN(amount) && amount > 0 && status !== 'cancelled';
+  })
+  .map((order, index) => {
+    const amount = parseFloat(order.amount) || 0;
+    const discounted = Math.round(amount * (1 - discountRate));
+    
+    return {
+      id:         order.id || \`ORD-\${String(index + 1).padStart(3, '0')}\`,
+      name:       order.name || '未命名商品',
+      original:   amount,
+      discounted,
+      saved:      amount - discounted,
+      currency,
+      status:     order.status || 'pending',
+      label:      \`\${order.name || '未命名'} — \${currency} \${discounted.toLocaleString()}\`
+    };
+  });
+
+const totalOriginal = processedOrders.reduce((sum, o) => sum + (o.original || 0), 0);
+const totalDiscounted = processedOrders.reduce((sum, o) => sum + (o.discounted || 0), 0);
+const totalSaved = totalOriginal - totalDiscounted;
+
+console.log(\`[JS] 有效訂單: \${processedOrders.length} 筆\`);
+console.log(\`[JS] 原始總額: \${totalOriginal}，折扣後: \${totalDiscounted}\`);
+
+return {
+  processed_orders:  processedOrders,
+  order_count:       processedOrders.length,
+  total_original:    totalOriginal,
+  total_discounted:  totalDiscounted,
+  total_saved:       totalSaved,
+  discount_applied:  discountRate > 0,
+  currency
+};`,
+                        timeout_ms: 3000,
+                        outputField: 'order_result'
+                    }
+                }
+            },
+            {
+                id: 'node_4', type: 'logic', position: { x: 300, y: 490 },
+                data: {
+                    label: '是否有有效訂單？',
+                    actionType: 'logic_condition',
+                    config: { variable: '{{order_result.order_count}}', operator: 'greater_than', value: '0' }
+                }
+            },
+            {
+                id: 'node_5', type: 'action', position: { x: 620, y: 620 },
+                data: {
+                    label: '無有效訂單：設定空結果',
+                    actionType: 'action_set_variable',
+                    config: {
+                        variables: [
+                            { key: 'report',        value: '# 📊 訂單摘要\n\n> 目前無有效訂單資料。' },
+                            { key: 'report_status', value: 'empty' }
+                        ]
+                    }
+                }
+            },
+            {
+                id: 'node_6', type: 'javascript', position: { x: 20, y: 620 },
+                data: {
+                    label: '📜 JS：生成 Markdown 摘要報告',
+                    actionType: 'action_js_script',
+                    config: {
+                        script: `// ═══════════════════════════════════════════════════════
+// Step 2｜Markdown 摘要報告生成
+// 輸入: order_result (processed_orders, totals)
+// 輸出: report_data (merged into workflow)
+// ═══════════════════════════════════════════════════════
+
+// 🔍 Step 1: 防禦型資料驗證 ──────────────────────────
+let rawOrders = data?.processed_orders;
+console.log(\`[Debug] typeof processed_orders: \${typeof rawOrders}\`);
+
+// ── 嘗試解析字符串 ───────────────────────────────────
+if (typeof rawOrders === 'string') {
+  try {
+    console.log(\`[Parse] 嘗試解析 JSON 字符串...\`);
+    rawOrders = JSON.parse(rawOrders);
+  } catch (err) {
+    console.error(\`[Error] JSON.parse 失敗: \${err.message}\`);
+    rawOrders = [];
+  }
+}
+
+// ── 確保是陣列 ───────────────────────────────────────
+const orders = Array.isArray(rawOrders) ? rawOrders : [];
+const totalOriginal = parseFloat(data?.total_original) || 0;
+const totalDiscounted = parseFloat(data?.total_discounted) || 0;
+const totalSaved = parseFloat(data?.total_saved) || 0;
+const orderCount = parseInt(data?.order_count, 10) || 0;
+const currency = String(data?.currency || 'TWD');
+const discountApplied = Boolean(data?.discount_applied);
+
+console.log(\`[JS] 生成報告：\${orderCount} 筆訂單\`);
+
+const timestamp = new Date().toISOString().replace('T', ' ').slice(0, 19);
+
+// ── 建構 Markdown 報告 ───────────────────────────────
+const lines = [
+  '# 📊 訂單摘要報告',
+  '',
+  \`| 項目 | 數值 |\`,
+  \`| --- | --- |\`,
+  \`| 生成時間 | \${timestamp} |\`,
+  \`| 有效訂單數 | \${orderCount} 筆 |\`,
+  \`| 原始總額 | \${currency} \${totalOriginal.toLocaleString('zh-TW', { maximumFractionDigits: 0 })} |\`,
+  \`| 折扣後總額 | \${currency} \${totalDiscounted.toLocaleString('zh-TW', { maximumFractionDigits: 0 })} |\`,
+  discountApplied && totalSaved > 0 
+    ? \`| 節省金額 | \${currency} \${totalSaved.toLocaleString('zh-TW', { maximumFractionDigits: 0 })} 🎉 |\`
+    : null,
+  '',
+  '## 📋 訂單明細'
+];
+
+// ── 加入訂單列表 (防禦性檢查) ────────────────────────
+if (Array.isArray(orders) && orders.length > 0) {
+  orders.forEach(o => {
+    if (o && typeof o === 'object') {
+      const name = String(o.name || '未命名');
+      const discounted = parseInt(o.discounted, 10) || 0;
+      const saved = parseInt(o.saved, 10) || 0;
+      const status = String(o.status || 'pending');
+      const lineItem = \`- **\${name}** — \${currency} \${discounted.toLocaleString('zh-TW', { maximumFractionDigits: 0 })}\` +
+        (saved > 0 ? \` *(省 \${saved.toLocaleString('zh-TW', { maximumFractionDigits: 0 })})*\` : '') +
+        \` [\${status}]\`;
+      lines.push(lineItem);
+    }
+  });
+} else {
+  lines.push('（無訂單資料）');
+}
+
+lines.push('');
+lines.push('---');
+lines.push(\`*此報告由 Workflow 自動生成 · \${timestamp}*\`);
+
+const report = lines.filter(l => l !== null).join('\\n');
+
+console.log(\`[JS] 報告生成完成，共 \${lines.filter(l => l !== null).length} 行\`);
+
+return {
+  report,
+  report_lines:  lines.filter(l => l !== null).length,
+  generated_at:  timestamp,
+  report_status: 'completed'
+};`,
+                        timeout_ms: 3000,
+                        outputField: 'report_data'
+                    }
+                }
+            },
+            {
+                id: 'node_7', type: 'output', position: { x: 300, y: 860 },
+                data: { label: '輸出：訂單摘要報告', actionType: 'output_workflow' }
+            }
+        ],
+        edges: [
+            { id: 'e1-2', source: 'node_1', target: 'node_2', type: 'smoothstep', animated: true },
+            { id: 'e2-3', source: 'node_2', target: 'node_3', type: 'smoothstep', animated: true },
+            { id: 'e3-4', source: 'node_3', target: 'node_4', type: 'smoothstep', animated: true },
+            { id: 'e4-5', source: 'node_4', target: 'node_5', sourceHandle: 'false', label: '無訂單', type: 'smoothstep', animated: true },
+            { id: 'e4-6', source: 'node_4', target: 'node_6', sourceHandle: 'true',  label: '有訂單', type: 'smoothstep', animated: true },
+            { id: 'e6-7', source: 'node_6', target: 'node_7', type: 'smoothstep', animated: true },
+            { id: 'e5-7', source: 'node_5', target: 'node_7', type: 'smoothstep', animated: true }
         ]
     }
 ];

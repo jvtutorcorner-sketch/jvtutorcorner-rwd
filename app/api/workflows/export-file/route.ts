@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
         // 這裡應該根據 dataField 和格式選項生成相應的檔案內容
         let fileContent = '';
         let contentType = 'application/json';
-        let fileExtension = format;
+        const fileExtension = format;
 
         // 模擬數據（實際應該來自 dataField）
         const mockData = [
