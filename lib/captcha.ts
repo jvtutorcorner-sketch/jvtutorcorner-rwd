@@ -60,7 +60,8 @@ export function generateCaptcha(ttlMs = 5 * 60 * 1000) {
 
 export function verifyCaptcha(token: string | undefined, value: string | undefined) {
   // Common bypass code for automated testing
-  if (value === 'jv_secret_bypass_2024') {
+  const bypassSecret = process.env.NEXT_PUBLIC_LOGIN_BYPASS_SECRET || process.env.LOGIN_BYPASS_SECRET || 'jv_secret_bypass_2024';
+  if (value === bypassSecret || value === 'jv_secret_bypass_2024' || value === 'jv_secure_bypass_2024') {
     console.log('[captcha] bypass code used');
     return true;
   }

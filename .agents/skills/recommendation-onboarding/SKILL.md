@@ -138,6 +138,28 @@ app/login/register/page.tsx   ← 註冊後顯示問卷
 
 ---
 
+## 疑難排解：首頁互動問題 (Home Page Interaction Troubleshooting)
+
+### 1. 首頁無法點擊 (Backdrop Blocking)
+- **問題**：用戶反映首頁「無法點擊」，任何按鈕都沒反應。
+- **原因**：`OnboardingQuestionnaire` (mode=lite) 或 `ProductTour` 的**半透明遮罩 (Backdrop)** 啟動後覆蓋了整個視窗。
+- **解決方案**：
+  - 檢查是否觸發了「訪客閒置 3 分鐘」問卷。
+  - **修正**：已在 `OnboardingQuestionnaire.tsx` 加入「點擊遮罩即可關閉 (Backdrop-click to close)」功能，避免用戶被卡死。
+  - **驗證**：在 E2E 測試中，確認點擊問卷卡片以外的區域能正確觸發 `onSkip` 並關閉遮罩。
+
+### 2. 登入後仍出現訪客問卷 (Timer Cleanup)
+- **問題**：已登入的 Admin 或學生在操作一段時間後，突然彈出訪客專用的輕量問卷。
+- **原因**：組件掛載時用戶狀態尚未讀取完畢（`u` 為 null），啟動了 3 分鐘計時器；隨後用戶雖然登入成功，但計時器未被清除。
+- **修正**：`ClientHomePage.tsx` 的 `useEffect` 已加入 `user` 作為依賴項，當偵測到用戶已驗證時會自動 `clearTimeout` 清除訪客計時器。
+
+### 3. 輪播圖卡住 (Carousel Stuck Loading)
+- **問題**：首頁 Hero 區域一直顯示轉圈圏 (Spinner)，且可能遮擋點擊。
+- **原因**：`Carousel.tsx` 的圖片因 S3 權限或 URL 錯誤無法載入，導致 `onLoad` 未觸發，載入狀態永遠為 true。
+- **修正**：在 `Carousel.tsx` 加入 `onError` 處理，確保圖片載入失敗時也會移除 Spinner 並顯示背景。
+
+---
+
 ## 環境驗證 (Environment Validation)
 
 ### 1. 必要環境變數 (Required Environment Variables)

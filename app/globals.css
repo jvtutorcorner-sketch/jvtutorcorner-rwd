@@ -57,12 +57,14 @@ body {
 
 /* Sectioning Utilities */
 .section-white {
-  background-color: #ffffff;
-  padding: 80px 0;
+  background-color: #f1f5f9;
+  background-image: linear-gradient(rgba(255, 255, 255, 0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.5) 1px, transparent 1px);
+  background-size: 50px 50px;
+  padding: 100px 0;
 }
 
 .section-light {
-  background-color: #f8fafc;
+  background-color: #f1f5f9;
   padding: 80px 0;
 }
 
@@ -79,13 +81,15 @@ body {
 }
 
 .section-personalized {
-  background: linear-gradient(180deg, #f0f7ff 0%, #ffffff 100%);
-  padding: 80px 0;
+  background: linear-gradient(180deg, #e2e8f0 0%, #f1f5f9 100%);
+  background-image: radial-gradient(rgba(37, 99, 235, 0.05) 1.5px, transparent 1.5px), linear-gradient(180deg, #e2e8f0 0%, #f1f5f9 100%);
+  background-size: 32px 32px, 100% 100%;
+  padding: 100px 0;
   border-top: 1px solid rgba(59, 130, 246, 0.05);
 }
 
 .section-teachers {
-  background-color: #fffaf5;
+  background-color: #e2e8f0;
   padding: 80px 0;
   border-top: 1px solid rgba(245, 158, 11, 0.05);
 }
@@ -791,8 +795,33 @@ h3+h2 {
 .card {
   background: white;
   border-radius: 12px;
-  padding: 16px;
+  padding: 24px;
   box-shadow: 0 10px 25px rgba(15, 23, 42, 0.05);
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 4px;
+  height: 0;
+  background: #2563eb;
+  transition: height 0.3s ease;
+}
+
+.card:hover {
+  transform: translateY(-8px);
+  box-shadow: 0 20px 40px rgba(15, 23, 42, 0.12);
+  border-color: rgba(37, 99, 235, 0.2);
+}
+
+.card:hover::before {
+  height: 100%;
 }
 
 /* How It Works Section */
@@ -823,6 +852,7 @@ h3+h2 {
   border-radius: 16px;
   padding: 32px 24px;
   box-shadow: 0 10px 25px rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(0, 0, 0, 0.04);
   display: flex;
   flex-direction: column;
   gap: 20px;
@@ -841,12 +871,13 @@ h3+h2 {
   justify-content: center;
   width: 60px;
   height: 60px;
-  background: #d4af7f;
+  background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
   border-radius: 50%;
   font-size: 1.5rem;
   font-weight: 800;
   color: #ffffff;
   margin: 0 auto;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
 }
 
 .how-it-works-card-title {
@@ -1597,6 +1628,17 @@ h3+h2 {
   color: #ffffff;
   letter-spacing: -1.5px;
   text-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  background: linear-gradient(to right, #ffffff, #93c5fd);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: float 6s ease-in-out infinite;
+}
+
+@keyframes float {
+  0% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+  100% { transform: translateY(0px); }
 }
 
 .hero-premium-subtitle {
@@ -1637,7 +1679,7 @@ h3+h2 {
 }
 
 .btn-primary:hover {
-  transform: translateY(-2px);
+  transform: translateY(-4px) scale(1.02);
   box-shadow: 0 15px 30px rgba(37, 99, 235, 0.5);
   filter: brightness(1.1);
 }
@@ -1719,11 +1761,22 @@ h3+h2 {
 }
 
 .section-title-large {
-  font-size: 2rem;
+  font-size: 2.5rem;
   font-weight: 800;
-  margin: 0 0 8px;
+  margin: 0 0 16px;
   color: #0b1220;
-  letter-spacing: -0.5px;
+  letter-spacing: -0.8px;
+  position: relative;
+}
+
+.section-title-large::after {
+  content: '';
+  display: block;
+  width: 60px;
+  height: 5px;
+  background: linear-gradient(90deg, #2563eb, #93c5fd);
+  margin: 16px auto 0;
+  border-radius: 10px;
 }
 
 .section-subtitle {
@@ -1791,7 +1844,7 @@ h3+h2 {
 
 /* About Platform Section */
 .about-platform-section {
-  background: linear-gradient(135deg, #f8f9fa 0%, #eef2ff 100%);
+  background: linear-gradient(135deg, #e2e8f0 0%, #f1f5f9 100%);
   border-radius: 16px;
   padding: 48px;
   margin-bottom: 80px;

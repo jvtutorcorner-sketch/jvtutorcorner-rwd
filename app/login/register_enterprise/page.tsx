@@ -46,6 +46,10 @@ export default function RegisterPage() {
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [csvError, setCsvError] = useState<string | null>(null);
   const [csvSuccess, setCsvSuccess] = useState<{ count: number } | null>(null);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const [captchaImage, setCaptchaImage] = useState<string | null>(null);
+  const [captchaValue, setCaptchaValue] = useState("");
+  const [captchaLoading, setCaptchaLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Refs for form fields
@@ -67,6 +71,8 @@ export default function RegisterPage() {
         : `id-${Math.random().toString(36).slice(2, 10)}`;
       setUuid(id);
     }
+    // Load captcha on mount
+    loadCaptcha();
   }, [uuid]);
 
   // Fetch roles from API
@@ -165,6 +171,23 @@ export default function RegisterPage() {
       return { utc: utcIso, local: localIsoLike, timezone };
     } catch (e) {
       return { utc: utcIso, local: utcIso, timezone: 'UTC' };
+    }
+  }
+
+  async function loadCaptcha() {
+    try {
+      setCaptchaLoading(true);
+      const res = await fetch("/api/captcha");
+      const data = await res.json();
+      if (res.ok && data?.token && data?.image) {
+        setCaptchaToken(data.token);
+        setCaptchaImage(data.image);
+        setCaptchaValue("");
+      }
+    } catch (e) {
+      console.warn("captcha load failed", e);
+    } finally {
+      setCaptchaLoading(false);
     }
   }
 
@@ -295,7 +318,7 @@ export default function RegisterPage() {
       const res = await fetch('/api/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ ...payload, captchaToken, captchaValue }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -780,6 +803,29 @@ export default function RegisterPage() {
                 </label>
               </div>
             </div>
+
+            {/* Captcha Section */}
+            <div className="field">
+              <label>驗證碼 <span style={{ color: "red" }}>*</span></label>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                {captchaImage ? (
+                  <img src={captchaImage} alt="captcha" style={{ height: 48, border: "1px solid #ddd", borderRadius: 4 }} />
+                ) : (
+                  <div style={{ width: 140, height: 48, background: "#f3f4f6", borderRadius: 4 }} />
+                )}
+                <button type="button" className="card-button secondary" onClick={loadCaptcha} disabled={captchaLoading} style={{ padding: '8px 12px' }}>
+                  重新取得
+                </button>
+              </div>
+              <input
+                type="text"
+                value={captchaValue}
+                placeholder="請輸入上方驗證碼"
+                onChange={(e) => setCaptchaValue(e.target.value)}
+                autoComplete="off"
+              />
+            </div>
+
             {formError && (
               <div className="form-error" style={{
                 backgroundColor: '#fee',
