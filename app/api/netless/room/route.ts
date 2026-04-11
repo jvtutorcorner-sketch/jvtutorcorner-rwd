@@ -132,7 +132,7 @@ export async function POST(req: NextRequest) {
         // Use eval('require') to avoid bundler static analysis attempting to resolve optional packages.
         const tryRequire = (name: string) => {
           try {
-            // eslint-disable-next-line no-eval
+             
             return eval('require')(name);
           } catch (e) {
             return null;

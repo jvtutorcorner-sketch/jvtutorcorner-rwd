@@ -42,7 +42,7 @@ export function normalizeUuid(raw?: string | null) {
   if (!raw) return 'default';
   try {
     // 1. Trim and decode
-    let dec = decodeURIComponent(raw).trim();
+    const dec = decodeURIComponent(raw).trim();
     
     // 2. Extract base ID by stripping common prefixes to ensure idempotency
     let baseId = dec;

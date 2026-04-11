@@ -40,8 +40,7 @@ function TeacherCoursesContent() {
 
   // Search local state
   const limitParam = parseInt(searchParams.get('limit') || '20', 10);
-  const pageParam = parseInt(searchParams.get('page') || '1', 10);
-  const qCourse = searchParams.get('course') || '';
+  const pageParam = parseInt(searchParams.get('page') || '1', 10);    const includeTestsParam = searchParams.get('includeTests') === 'true' ? '&includeTests=true' : '';  const qCourse = searchParams.get('course') || '';
   const qTeacher = searchParams.get('teacher') || '';
   const qTimeFrom = searchParams.get('timeFrom') || '';
   const qTimeTo = searchParams.get('timeTo') || '';
@@ -181,18 +180,40 @@ function TeacherCoursesContent() {
 
     // Fetch teacher's courses, then fetch orders for those courses
     const teacherId = (user as any).teacherId || user.id || '';
+    const teacherEmail = user.email || '';
     const teacherName = user.displayName || (user.lastName ? `${user.lastName}老師` : user.email || '');
 
-    fetch(`/api/courses?teacherId=${encodeURIComponent(teacherId)}`)
+    fetch(`/api/courses?teacherId=${encodeURIComponent(teacherId)}${includeTestsParam}`)
       .then((r) => r.json())
       .then((courseData) => {
         let list: any[] = [];
         if (courseData?.ok && Array.isArray(courseData.data)) {
           list = courseData.data;
         }
+        if (list.length === 0 && teacherEmail) {
+          // ✅ fallback 1: 用 email 查詢（支援舊課程用 email 保存的情況）
+          return fetch(`/api/courses?teacherId=${encodeURIComponent(teacherEmail)}${includeTestsParam}`)
+            .then((r) => r.json())
+            .then((j) => {
+              if (j?.data && j.data.length > 0) {
+                 setTeacherCourses(j.data);
+                 return j.data;
+              }
+              // fallback 2: query by name
+              return fetch(`/api/courses?teacher=${encodeURIComponent(teacherName)}${includeTestsParam}`)
+                .then((r) => r.json())
+                .then((j) => {
+                  if (j?.data && j.data.length > 0) {
+                     setTeacherCourses(j.data);
+                     return j.data;
+                  }
+                  return [];
+                });
+            });
+        }
         if (list.length === 0) {
           // fallback: query by name
-          return fetch(`/api/courses?teacher=${encodeURIComponent(teacherName)}`)
+          return fetch(`/api/courses?teacher=${encodeURIComponent(teacherName)}${includeTestsParam}`)
             .then((r) => r.json())
             .then((j) => {
               if (j?.data && j.data.length > 0) {
@@ -201,7 +222,7 @@ function TeacherCoursesContent() {
               }
               // second fallback: query by lastName only (e.g. course has "許" but teacherName is "許老師")
               if (user.lastName) {
-                return fetch(`/api/courses?teacher=${encodeURIComponent(user.lastName)}`)
+                return fetch(`/api/courses?teacher=${encodeURIComponent(user.lastName)}${includeTestsParam}`)
                   .then((r2) => r2.json())
                   .then((j2) => {
                     if (j2?.data && j2.data.length > 0) {
@@ -210,7 +231,7 @@ function TeacherCoursesContent() {
                     }
                     // third fallback: query by firstName
                     if (user.firstName) {
-                      return fetch(`/api/courses?teacher=${encodeURIComponent(user.firstName)}`)
+                      return fetch(`/api/courses?teacher=${encodeURIComponent(user.firstName)}${includeTestsParam}`)
                         .then((r3) => r3.json())
                         .then((j3) => {
                            setTeacherCourses(j3?.data || []);

@@ -33,12 +33,13 @@ metadata:
   - 跨分頁使用 `BroadcastChannel`。
 
 ### 3. 設備檢測 (Device Check)
-- **要求**：用戶必須通過麥克風與攝影機檢測才能點擊「準備好」。
+- **詳細指南**：請參閱 [.agents/skills/classroom-wait-device-permissions/SKILL.md](../classroom-wait-device-permissions/SKILL.md) 獲取完整的設備權限驗證流程與自動化測試指令。
+- **要求**：
+  - **核心限制**：用戶必須先點擊「🔐 授予麥克風、聲音和攝影機權限」按鈕，並允許瀏覽器權限後，才能解除三個測試按鈕的禁用狀態。
+  - **通過條件**：通過麥克風、攝影機與聲音測試後才能點擊「準備好」。
 - **驗證方式**：
-  - 檢查 `setDeviceCheckPassed` 邏輯。
-  - E2E 測試中可透過在頁面注入 `window.__E2E_BYPASS_DEVICE_CHECK__ = true` 繞過硬體請求。
-  - 若在開發環境 (localhost) 遇到 `getUserMedia` 因為非 HTTPS 導致的報錯或卡住，應確保 `requestPermissions` 擁有 `hostname === 'localhost'` 或 `127.0.0.1` 的豁免邏輯，以免測試流程中斷。
-  - 點擊「準備好」按鈕，確認狀態變更。
+  - E2E 測試中可透過注入 `window.__E2E_BYPASS_DEVICE_CHECK__ = true` 繞過實體硬體請求。
+  - 若在開發環境 (localhost) 遇到 `getUserMedia` 報錯，確保 `requestPermissions` 擁有 `localhost` 的安全上下文豁免邏輯。
 
 ### 4. 進入教室條件 (Activation)
 - **要求**：當老師與學生都處於「準備好」狀態時，「進入教室」按鈕始終顯示但只有在雙方就緒時才建議進入（UI 會顯示「立即進入教室」）。
@@ -68,3 +69,14 @@ metadata:
 - `/components/WaitCountdownModal.tsx` - 倒數導航元件
 - `/api/classroom/ready` - 狀態更新 API
 - `/api/classroom/stream` - SSE 同步 API
+
+---
+
+## 疑難排解：UI 與樣式問題 (UI & Style Troubleshooting)
+
+### 1. 等待頁面樣式跑版或無法點擊 (CSS Nesting Issue)
+- **問題**：此頁面的「裝置檢測」容器或佈局異常，元件無法對齊。
+- **原因**：在 `globals.css` 中，`.wait-page-container` 等多個類別曾意外被**嵌套**在 `.carousel-loading` 內部。
+- **影響**：由於瀏覽器可能不完全支援靜態 CSS 嵌套，或類別必須在輪播圖載入時才會生效，導致等待頁樣式失效。
+- **修正**：在 `globals.css` 中已將等待頁相關樣式提升至頂層。
+- **提醒**：修改全局樣式時，務必確保沒有語法嵌套錯誤。

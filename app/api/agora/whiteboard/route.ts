@@ -69,11 +69,11 @@ export async function POST(req: NextRequest) {
     if (AGORA_WB_AK && AGORA_WB_SK) {
       try {
         // try common netless-token packages (they often support createToken with appId/secret)
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
+         
         let mod: any = null;
         const tryRequire = (name: string) => {
           try {
-            // eslint-disable-next-line no-eval
+             
             return eval('require')(name);
           } catch (e) {
             return null;

@@ -227,15 +227,23 @@ export default function ClassroomWaitPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // E2E Bypass Effect
+  // E2E Bypass Effect - 使用持續檢查確保在非同步注入時能正確捕捉旗標
   useEffect(() => {
-    if (typeof window !== 'undefined' && (window as any).__E2E_BYPASS_DEVICE_CHECK__) {
-      console.log('[E2E] Bypass detected on mount, setting deviceCheckPassed = true');
-      setDeviceCheckPassed(true);
-      setAudioOk(true);
-      setVideoOk(true);
-    }
-  }, []);
+    if (deviceCheckPassed) return;
+    const checkBypass = () => {
+      if (typeof window !== 'undefined' && (window as any).__E2E_BYPASS_DEVICE_CHECK__) {
+        console.log('[E2E] Bypass detected, setting deviceCheckPassed = true');
+        setDeviceCheckPassed(true);
+        setAudioOk(true);
+        setVideoOk(true);
+        return true;
+      }
+      return false;
+    };
+    if (checkBypass()) return;
+    const timer = setInterval(checkBypass, 500);
+    return () => clearInterval(timer);
+  }, [deviceCheckPassed]);
 
   const syncStateFromServer = React.useCallback((forceUpdate = false) => {
     if (!sessionReadyKey || !role) return;
@@ -551,8 +559,51 @@ export default function ClassroomWaitPage() {
   const hasStudent = participants.some((p: { role: string; userId: string; present?: boolean }) => p.role === 'student' && p.present);
   const canEnter = hasTeacher && hasStudent;
 
-  const enterClassroom = React.useCallback(() => {
+  const enterClassroom = React.useCallback(async () => {
     console.log('enterClassroom triggered');
+
+    // **NEW**: Pre-establish whiteboard room UUID before entering classroom
+    // This ensures both teacher and student enter with the same room already created
+    // Avoids BroadcastChannel isolation issues in Playwright E2E tests
+    try {
+      if (!sessionReadyKey || !courseId) {
+        console.warn('Missing sessionReadyKey or courseId, proceeding without room pre-creation');
+      } else {
+        console.log(`[WaitPage] Creating whiteboard room for session: ${sessionReadyKey}`);
+        const createRes = await fetch('/api/whiteboard/room', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: localPresenceId || role || 'anonymous',
+            channelName: sessionReadyKey,
+            courseId,
+            orderId: orderId || null
+          })
+        });
+
+        if (createRes.ok) {
+          const roomData = await createRes.json();
+          if (roomData?.uuid) {
+            console.log(`[WaitPage] ✅ Room created successfully: ${roomData.uuid}`);
+            setRoomUuid(roomData.uuid);
+            
+            // Store UUID in sessionStorage for quick access in ClientClassroom
+            try {
+              sessionStorage.setItem(`whiteboard_room_${sessionReadyKey}`, roomData.uuid);
+            } catch (e) {
+              console.warn('Failed to store room UUID in sessionStorage:', e);
+            }
+          }
+        } else {
+          const errorText = await createRes.text();
+          console.warn(`[WaitPage] ⚠️ Failed to create room: ${createRes.status} ${errorText}`);
+          // Continue anyway - ClientClassroom will create room if needed
+        }
+      }
+    } catch (error) {
+      console.error('[WaitPage] Error creating whiteboard room:', error);
+      // Continue anyway - ClientClassroom will create room if needed
+    }
 
     // NOTE: do NOT clear the server/local "ready" state here.
     // Clearing on the server before navigation causes the classroom
@@ -560,10 +611,10 @@ export default function ClassroomWaitPage() {
     // We'll navigate first and let the classroom page / server decide
     // when to clear the session-ready list after users have joined.
 
-    const target = `/classroom/room?courseId=${encodeURIComponent(courseId)}${orderId ? `&orderId=${encodeURIComponent(orderId)}` : ''}${role ? `&role=${encodeURIComponent(role)}` : ''}${sessionReadyKey ? `&session=${encodeURIComponent(sessionReadyKey)}` : ''}`;
+    const target = `/classroom/room?courseId=${encodeURIComponent(courseId)}${orderId ? `&orderId=${encodeURIComponent(orderId)}` : ''}${role ? `&role=${encodeURIComponent(role)}` : ''}${sessionReadyKey ? `&session=${encodeURIComponent(sessionReadyKey)}` : ''}${roomUuid ? `&whiteboardUuid=${encodeURIComponent(roomUuid)}` : ''}`;
     console.log('Redirecting to:', target);
     router.push(target);
-  }, [courseId, orderId, role, sessionReadyKey, router]);
+  }, [courseId, orderId, role, sessionReadyKey, router, roomUuid, localPresenceId]);
 
   // Auto-enter classroom is disabled. Users must click the button.
   useEffect(() => {

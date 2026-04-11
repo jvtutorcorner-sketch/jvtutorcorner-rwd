@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, PutCommand, ScanCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, PutCommand, ScanCommand, GetCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
 import { randomUUID } from 'crypto';
 import { COURSES } from '@/data/courses';
 import { deductUserPoints } from '@/lib/pointsStorage';
@@ -354,6 +354,29 @@ export async function GET(request: Request) {
   } catch (err) {
     console.error('orders GET error:', err);
     return NextResponse.json({ ok: false, error: 'Failed to list orders' }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const orderId = searchParams.get('orderId');
+
+    if (!orderId) {
+      return NextResponse.json({ ok: false, error: 'orderId is required' }, { status: 400 });
+    }
+
+    const deleteCmd = new DeleteCommand({
+      TableName: ORDERS_TABLE,
+      Key: { orderId },
+    });
+
+    await docClient.send(deleteCmd);
+
+    return NextResponse.json({ ok: true, message: `Order ${orderId} deleted successfully` }, { status: 200 });
+  } catch (err: any) {
+    console.error('orders DELETE error:', err);
+    return NextResponse.json({ ok: false, error: 'Failed to delete order', detail: err?.message }, { status: 500 });
   }
 }
 

@@ -120,19 +120,34 @@ export default function TeacherDashboard({ teacherId, teacherName }: Props) {
       if (res.ok && data?.data) {
         let list = Array.isArray(data.data) ? data.data : [];
 
+        // ✅ Fallback：如果用 UUID 查詢無結果，嘗試用 email 再查一次（支援舊課程）
+        if (list.length === 0 && myTeacherId && (stored?.email || stored?.email)) {
+          const emailUrl = `/api/courses?teacherId=${encodeURIComponent(String(stored.email))}`;
+          const emailRes = await fetch(emailUrl);
+          const emailData = await emailRes.json();
+          if (emailRes.ok && Array.isArray(emailData?.data)) {
+            list = emailData.data;
+          }
+        }
+
         // Strict Client-side filtering to ensure no other teacher's courses leak
         if (stored?.role === 'teacher') {
           const tid = String(stored.teacherId || '').toLowerCase();
+          const temail = String(stored.email || '').toLowerCase();
           const tname = String(myTeacherName || '').toLowerCase();
 
           list = list.filter((c: any) => {
             const cTid = String(c.teacherId || '').toLowerCase();
+            const cTemail = String(c.teacherEmail || '').toLowerCase();
             const cTname = String(c.teacherName || c.teacher || '').toLowerCase();
 
-            // If course has teacherId, match strictly on ID
-            if (tid && cTid) {
-              return cTid === tid;
+            // If course has teacherId, match strictly on ID (UUID or email)
+            if (cTid) {
+              if (tid && cTid === tid) return true;  // 匹配 UUID
+              if (temail && cTid === temail) return true;  // 匹配 email（向後相容）
             }
+            // If course has teacherEmail, match on email (向後相容)
+            if (cTemail && temail && cTemail === temail) return true;
             // If course only has name, match on name
             if (tname && cTname) {
               return cTname.includes(tname);

@@ -55,8 +55,9 @@ export async function GET(req: Request) {
 
     const params: any = { TableName: COURSES_TABLE };
     if (teacherId) {
-      params.FilterExpression = 'teacherId = :tid';
-      params.ExpressionAttributeValues = { ':tid': teacherId };
+      // ✅ 修復：同時支援查詢 teacherId 和 teacherEmail（以支援舊課程記錄）
+      params.FilterExpression = 'teacherId = :tid OR teacherEmail = :temail';
+      params.ExpressionAttributeValues = { ':tid': teacherId, ':temail': teacherId };
     } else if (teacher) {
       params.FilterExpression = 'teacherName = :tname';
       params.ExpressionAttributeValues = { ':tname': teacher };
@@ -77,7 +78,7 @@ export async function GET(req: Request) {
       items = items.filter((item: any) => {
         const id = String(item.id || '');
         const title = String(item.title || '');
-        return !id.startsWith('test-course-') && !title.includes('測試課程');
+        return !id.startsWith('test-course-') && !title.includes('測試') && !title.toLowerCase().includes('e2e');
       });
     }
 
@@ -119,6 +120,20 @@ export async function POST(req: Request) {
 
     const id = body.id || randomUUID();
     const now = new Date().toISOString();
+    
+    // ✅ 修復：若更新既有課程（有 id），先查並保留 createdAt
+    let createdAt = now;
+    if (body.id) {
+      try {
+        const existing = await ddbDocClient.send(new GetCommand({ TableName: COURSES_TABLE, Key: { id } }));
+        if (existing.Item?.createdAt) {
+          createdAt = existing.Item.createdAt;
+        }
+      } catch (e) {
+        // ignore, use current time
+      }
+    }
+    
     const course = {
       id,
       title: body.title,
@@ -126,7 +141,8 @@ export async function POST(req: Request) {
       level: body.level || '一般',
       language: body.language || '中文',
       teacherName: body.teacherName,
-      teacherId: body.teacherId || null,
+      teacherId: body.teacherId || null,  // ⭐ 必須有 teacherId
+      teacherEmail: body.teacherEmail || body.teacherId || null,  // 保存為備用
       pricePerSession: body.pricePerSession || 0,
       durationMinutes: body.durationMinutes || 60,
       tags: body.tags || [],
@@ -145,12 +161,14 @@ export async function POST(req: Request) {
       membershipPlan: body.membershipPlan || null,
       enrollmentType: body.enrollmentType || 'plan',
       pointCost: body.pointCost || 0,
-      createdAt: now,
+      createdAt,
       updatedAt: now,
     };
 
     const putCmd = new PutCommand({ TableName: COURSES_TABLE, Item: course });
     await ddbDocClient.send(putCmd);
+    
+    console.log(`[courses POST] Saved course ${id} with teacherId=${course.teacherId}`);
 
     return NextResponse.json({ ok: true, course }, { status: 201 });
   } catch (err: any) {

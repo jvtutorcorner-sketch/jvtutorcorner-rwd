@@ -190,7 +190,7 @@ export class StudentEnrollAndEnterClassroomSkill {
             this.log(`✅ 已完成自動跳轉至我的課程`);
 
             // 使用者回報：按鈕可能延遲顯示。實作重新整理重試機制
-            let enterClassroomBtn = page.locator('a, button').filter({ hasText: /^進入教室$|^Enter Classroom$/ }).first();
+            const enterClassroomBtn = page.locator('a, button').filter({ hasText: /^進入教室$|^Enter Classroom$/ }).first();
             let attempts = 0;
             const maxAttempts = 5;
 

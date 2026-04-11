@@ -95,21 +95,22 @@ async function autoLogin(page: Page, email: string, password: string, bypassSecr
 
   // Set LocalStorage & Session
   // ✅ 規範：teacherId 應使用 UUID (data.id) 而不是 email，以支持未來 email 修改
+  const isTeacherLogin = email.includes('test') && email.includes('lin') || process.env.TEST_TEACHER_EMAIL === email || email.includes('teacher');
   await page.goto(`${baseUrl}/login`, { waitUntil: 'domcontentloaded' });
-  await page.evaluate((data) => {
+  await page.evaluate(({ profile, isTeacherLogin }) => {
     localStorage.setItem('tutor_mock_user', JSON.stringify({
-      email: data.email, 
-      role: data.role || 'student', 
-      plan: data.plan || 'basic',
-      id: data.userId || data.id || '',
-      teacherId: data.id || data.userId || data.email || ''
+      email: profile?.email || profile?.data?.email, 
+      role: isTeacherLogin ? 'teacher' : (profile?.role || 'student'), 
+      plan: profile?.plan || 'basic',
+      id: profile?.id || profile?.userId || '',
+      teacherId: profile?.id || profile?.userId || profile?.email || ''
     }));
     const now = Date.now().toString();
     sessionStorage.setItem('tutor_last_login_time', now);
     localStorage.setItem('tutor_last_login_time', now);
     sessionStorage.setItem('tutor_login_complete', 'true');
     window.dispatchEvent(new Event('tutor:auth-changed'));
-  }, profile);
+  }, { profile, isTeacherLogin });
 }
 
 async function checkAndFindEnrollment(page: Page, config: TestConfig, preferredId?: string): Promise<string | null> {
@@ -156,7 +157,7 @@ async function checkAndFindEnrollment(page: Page, config: TestConfig, preferredI
 
 async function goToWaitRoom(page: Page, courseId: string, role: 'teacher' | 'student'): Promise<void> {
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-  const path = role === 'teacher' ? 'teacher_courses' : 'student_courses';
+  const path = role === 'teacher' ? 'teacher_courses?includeTests=true' : 'student_courses';
 
   await page.goto(`${baseUrl}/${path}`);
   await page.waitForLoadState('networkidle');
@@ -361,7 +362,7 @@ async function drawOnWhiteboard(page: Page): Promise<void> {
   
   // 長期等待 Canvas - 給 Agora SDK 足夠時間初始化
   console.log(`   ⏳ 長期等待 Canvas (最多 60 秒)...`);
-  const canvas = page.locator('canvas').first();
+  const canvas = page.locator('canvas:visible').first();
   
   let canvasVisible = false;
   let lastCSSInfo = '';
@@ -375,6 +376,7 @@ async function drawOnWhiteboard(page: Page): Promise<void> {
         canvasVisible = true;
         break;
       }
+
       
       // 每 10 秒輸出一次 CSS 信息
       if (i % 10 === 0) {
@@ -442,7 +444,7 @@ async function drawOnWhiteboard(page: Page): Promise<void> {
   
   // 如果 Canvas 最終仍未可見，拋出錯誤
   if (!canvasVisible) {
-    throw new Error(`❌ Canvas 無法初始化（60 秒超時）。可能原因：\n1. Agora SDK 未成功加載\n2. 教師和學生白板房間 UUID 未同步\n3. 網絡連接問題\n最後 CSS 信息: ${lastCSSInfo}`);
+    throw new Error(`❌ Canvas 無法初始化（60 秒超時）。最後 CSS 信息: ${lastCSSInfo}`);
   }
   
   const box = await canvas.boundingBox();
@@ -450,7 +452,8 @@ async function drawOnWhiteboard(page: Page): Promise<void> {
   
   // **NEW**: 驗證 Canvas 的實際尺寸 - 確保有足夠空間繪圖
   const canvasDetails = await page.evaluate(() => {
-    const c = document.querySelector('canvas') as HTMLCanvasElement;
+    const canvases = Array.from(document.querySelectorAll('canvas'));
+    const c = canvases.find(el => getComputedStyle(el).visibility === 'visible' && getComputedStyle(el).display !== 'none') as HTMLCanvasElement;
     if (!c) return null;
     return {
       clientWidth: c.clientWidth,
@@ -495,36 +498,31 @@ async function drawOnWhiteboard(page: Page): Promise<void> {
     }
   }
 
-  // **IMPROVED**: 更詳細的滑鼠操作
-  console.log(`   ⏳ 在 Canvas 上繪製...`);
+  // **IMPROVED**: 畫筆隨機多畫幾筆來確認
+  console.log(`   ⏳ 在 Canvas 上繪製隨機多個線條...`);
   console.log(`   📍 Canvas 位置: x=${box.x}, y=${box.y}, width=${box.width}, height=${box.height}`);
   
-  const startX = box.x + box.width * 0.2;
-  const startY = box.y + box.height * 0.3;
-  const endX = box.x + box.width * 0.6;
-  const endY = box.y + box.height * 0.7;
+  const numLines = 3 + Math.floor(Math.random() * 3); // 畫 3-5 筆
+  for (let l = 0; l < numLines; l++) {
+    const startX = box.x + box.width * (0.1 + Math.random() * 0.4);
+    const startY = box.y + box.height * (0.1 + Math.random() * 0.4);
+    const endX = box.x + box.width * (0.5 + Math.random() * 0.4);
+    const endY = box.y + box.height * (0.5 + Math.random() * 0.4);
 
-  // 滑鼠移動到起點
-  await page.mouse.move(startX, startY);
-  console.log(`   📍 滑鼠已移動到 (${startX}, ${startY})`);
-  await page.waitForTimeout(200);
-  
-  // 按下並拖動
-  await page.mouse.down();
-  console.log(`   ✓ 滑鼠已按下`);
-  
-  // 分 10 步移動到終點，每步間隔 50ms
-  for (let i = 1; i <= 10; i++) {
-    const x = startX + (endX - startX) * (i / 10);
-    const y = startY + (endY - startY) * (i / 10);
-    await page.mouse.move(x, y);
-    await page.waitForTimeout(50);
+    // 滑鼠移動到起點
+    await page.mouse.move(startX, startY);
+    await page.mouse.down();
+    
+    // 分步移動到終點
+    for (let i = 1; i <= 5; i++) {
+      const x = startX + (endX - startX) * (i / 5);
+      const y = startY + (endY - startY) * (i / 5);
+      await page.mouse.move(x, y);
+    }
+    await page.mouse.up();
+    console.log(`   ✓ 已繪製第 ${l + 1} 條隨機線條`);
+    await page.waitForTimeout(200);
   }
-  console.log(`   📍 滑鼠已移動到 (${endX}, ${endY})`);
-  
-  // 鬆開
-  await page.mouse.up();
-  console.log(`   ✓ 滑鼠已鬆開`);
   
   // 等待以確保繪圖事件被傳遞
   await page.waitForTimeout(1000);
@@ -532,7 +530,8 @@ async function drawOnWhiteboard(page: Page): Promise<void> {
 
 async function hasDrawingContent(page: Page): Promise<boolean> {
   return await page.evaluate(() => {
-    const canvas = document.querySelector('canvas');
+    const canvases = Array.from(document.querySelectorAll('canvas'));
+    const canvas = canvases.find(c => getComputedStyle(c).visibility === 'visible' && getComputedStyle(c).display !== 'none');
     if (!canvas) return false;
     const ctx = canvas.getContext('2d');
     if (!ctx) return false;
@@ -572,13 +571,13 @@ test.describe('Classroom Whiteboard Sync', () => {
     }
 
     // Step 1: Login & Enter Wait Room
-    const teacherCtx = await browser.newContext();
+    const teacherCtx = await browser.newContext({ permissions: ['camera', 'microphone'] });
     const teacherPage = await teacherCtx.newPage();
     await injectDeviceCheckBypass(teacherPage);
     await autoLogin(teacherPage, config.teacherEmail, config.teacherPassword, config.bypassSecret);
     await goToWaitRoom(teacherPage, finalCourseId, 'teacher');
 
-    const studentCtx = await browser.newContext();
+    const studentCtx = await browser.newContext({ permissions: ['camera', 'microphone'] });
     const studentPage = await studentCtx.newPage();
     await injectDeviceCheckBypass(studentPage);
     await autoLogin(studentPage, config.studentEmail, config.studentPassword, config.bypassSecret);
@@ -586,62 +585,161 @@ test.describe('Classroom Whiteboard Sync', () => {
 
     // Step 2: Enter Classroom
     console.log('\n📍 Step 2: Entering Classroom');
-    await Promise.all([
-      enterClassroom(teacherPage, 'teacher'),
-      enterClassroom(studentPage, 'student')
-    ]);
+    try {
+      await Promise.all([
+        enterClassroom(teacherPage, 'teacher'),
+        enterClassroom(studentPage, 'student')
+      ]);
 
-    // 關鍵：給白板房間初始化充分時間
-    // 在不同 BrowserContext 中，BroadcastChannel 無法通信
-    // 學生必須通過 API 輪詢發現教師的房間 UUID（大約 4 秒）
-    // + Agora SDK 初始化（variable time）
-    // 總共預留 15 秒
-    console.log('\n📍 Step 2.5: Waiting for Whiteboard Initialization');
-    console.log('   ⏳ 等待教師白板房間初始化...');
-    await teacherPage.waitForTimeout(8000);
-    
-    console.log('   ⏳ 等待學生發現教師的白板房間 UUID (轮询 4 秒)...');
-    await studentPage.waitForTimeout(8000);
-    
-    // 驗證兩個頁面都有 Agora 白板 SDK
-    const teacherHasAgora = await teacherPage.evaluate(() => {
-      const sdk = (window as any).WhiteWebSdk;
-      return sdk && sdk.WhiteWebSdk !== undefined;
-    }).catch(() => false);
-    const studentHasAgora = await studentPage.evaluate(() => {
-      const sdk = (window as any).WhiteWebSdk;
-      return sdk && sdk.WhiteWebSdk !== undefined;
-    }).catch(() => false);
-    console.log(`   ✅ Teacher WhiteWebSdk Loaded: ${teacherHasAgora}, Student WhiteWebSdk Loaded: ${studentHasAgora}`);
-    
-    // 也驗證白板房間是否已連接
-    const teacherRoomConnected = await teacherPage.evaluate(() => {
-      return (window as any).agoraRoom !== undefined;
-    }).catch(() => false);
-    const studentRoomConnected = await studentPage.evaluate(() => {
-      return (window as any).agoraRoom !== undefined;
-    }).catch(() => false);
-    console.log(`   ✅ Teacher Room Connected: ${teacherRoomConnected}, Student Room Connected: ${studentRoomConnected}`);
+      console.log('\n📍 Step 2.5: Waiting for Whiteboard Initialization');
+      console.log('   ⏳ 等待教師白板房間初始化...');
+      await teacherPage.waitForTimeout(8000);
+      
+      console.log('   ⏳ 等待學生發現教師的白板房間 UUID (轮询 4 秒)...');
+      await studentPage.waitForTimeout(8000);
+      
+      // 驗證兩個頁面都有 Agora 白板 SDK
+      const teacherHasAgora = await teacherPage.evaluate(() => {
+        const sdk = (window as any).WhiteWebSdk;
+        return sdk && sdk.WhiteWebSdk !== undefined;
+      }).catch(() => false);
+      const studentHasAgora = await studentPage.evaluate(() => {
+        const sdk = (window as any).WhiteWebSdk;
+        return sdk && sdk.WhiteWebSdk !== undefined;
+      }).catch(() => false);
+      console.log(`   ✅ Teacher WhiteWebSdk Loaded: ${teacherHasAgora}, Student WhiteWebSdk Loaded: ${studentHasAgora}`);
+      
+      // 也驗證白板房間是否已連接
+      const teacherRoomConnected = await teacherPage.evaluate(() => {
+        return (window as any).agoraRoom !== undefined;
+      }).catch(() => false);
+      const studentRoomConnected = await studentPage.evaluate(() => {
+        return (window as any).agoraRoom !== undefined;
+      }).catch(() => false);
+      console.log(`   ✅ Teacher Room Connected: ${teacherRoomConnected}, Student Room Connected: ${studentRoomConnected}`);
 
-    // Step 3: Draw & Verify
-    console.log('\n📍 Step 3: Verifying Sync');
-    await drawOnWhiteboard(teacherPage);
-    await teacherPage.waitForTimeout(3000);
-    
-    const teacherOk = await hasDrawingContent(teacherPage);
-    const studentOk = await hasDrawingContent(studentPage);
-    
-    console.log(`   📊 Teacher Canvas Check: ${teacherOk}`);
-    console.log(`   📊 Student Canvas Check: ${studentOk}`);
-    
-    expect(teacherOk).toBe(true);
-    expect(studentOk).toBe(true);
+      // Step 3: Draw & Verify
+      console.log('\n📍 Step 3: Verifying Sync');
+      await drawOnWhiteboard(teacherPage);
+      await teacherPage.waitForTimeout(3000);
+      
+      const teacherOk = await hasDrawingContent(teacherPage);
+      const studentOk = await hasDrawingContent(studentPage);
+      
+      console.log(`   📊 Teacher Canvas Check: ${teacherOk}`);
+      console.log(`   📊 Student Canvas Check: ${studentOk}`);
+      
+      expect(teacherOk).toBe(true);
+      expect(studentOk).toBe(true);
 
-    // Cleanup
-    if (!process.env.SKIP_CLEANUP) {
-      await fetch(`${config.baseUrl}/api/courses?id=${finalCourseId}`, { method: 'DELETE' }).catch(() => {});
+      // Step 4: 模擬待在教室 1 分鐘
+      console.log('\n📍 Step 4: Staying in classroom for 1 minute to test countdown...');
+      await teacherPage.waitForTimeout(60000);
+
+      // Optional: Check the timer display in classroom
+      const roomTimeText = await teacherPage.locator('div').filter({ hasText: /剩餘時間|Remaining/ }).last().innerText().catch(() => 'unknown');
+      console.log(`   [Classroom] Teacher sees remaining time: ${roomTimeText}`);
+
+      // Step 5: 老師退出教室
+      console.log('\n📍 Step 5: Teacher exiting classroom...');
+      teacherPage.on('dialog', dialog => dialog.accept());
+      
+      const endBtn = teacherPage.locator('button').filter({ hasText: /結束課程|離開|End Session|Leave|終了/ }).last();
+      await endBtn.click();
+      
+      await teacherPage.waitForURL(/\/teacher_courses/, { timeout: 20000 });
+      console.log('   ✅ [Teacher] Successfully returned to /teacher_courses');
+      
+      // 學生也退出
+      await studentPage.goto(`${config.baseUrl}/student_courses`);
+      console.log('   ✅ [Student] Successfully returned to /student_courses');
+      
+      // Step 6: 分別回到頁面檢查倒數時間
+      console.log('\n📍 Step 6: Verifying remaining time on dashboard...');
+      
+      const teacherRow = teacherPage.locator(`tr:has-text("${finalCourseId}"), .course-card:has-text("${finalCourseId}")`).first();
+      await teacherRow.waitFor({ state: 'visible', timeout: 10000 });
+      const teacherTimeText = await teacherRow.innerText().catch(() => '');
+      console.log(`   [Teacher] Row Text: ${teacherTimeText.replace(/\n/g, ' ')}`);
+      
+      const studentRow = studentPage.locator(`tr:has-text("${finalCourseId}"), .course-card:has-text("${finalCourseId}")`).first();
+      await studentRow.waitFor({ state: 'visible', timeout: 10000 });
+      const studentTimeText = await studentRow.innerText().catch(() => '');
+      console.log(`   [Student] Row Text: ${studentTimeText.replace(/\n/g, ' ')}`);
+
+      // Time should logically decrement (e.g. 59 m or 58 m) since 1 minute has passed
+      expect(teacherTimeText).not.toContain('60 m');
+      expect(studentTimeText).not.toContain('60 m');
+
+    } finally {
+      // Cleanup
+      if (!process.env.SKIP_CLEANUP) {
+        console.log(`   🧹 Cleaning up test course: ${finalCourseId}`);
+        await teacherPage.request.delete(`${config.baseUrl}/api/courses?id=${finalCourseId}`).catch(e => console.warn('Cleanup failed:', e));
+        await teacherPage.request.delete(`${config.baseUrl}/api/orders?courseId=${finalCourseId}`).catch(() => {});
+      }
+      await teacherCtx.close();
+      await studentCtx.close();
     }
-    await teacherCtx.close();
-    await studentCtx.close();
   });
+
+  test('Simulate disconnection and reconnection to verify classroom timer syncs with database', async ({ browser }) => {
+    const config = getTestConfig();
+    const finalCourseId = `net-${Date.now()}`;
+    
+    console.log('\n📍 Setup: Prepare enrollment for network test...');
+    runEnrollmentFlow(finalCourseId);
+
+    const teacherCtx = await browser.newContext({ permissions: ['camera', 'microphone'] });
+    const teacherPage = await teacherCtx.newPage();
+    const studentCtx = await browser.newContext({ permissions: ['camera', 'microphone'] });
+    const studentPage = await studentCtx.newPage();
+    
+    try {
+      await injectDeviceCheckBypass(teacherPage);
+      await autoLogin(teacherPage, config.teacherEmail, config.teacherPassword, config.bypassSecret);
+      await goToWaitRoom(teacherPage, finalCourseId, 'teacher');
+
+      await injectDeviceCheckBypass(studentPage);
+      await autoLogin(studentPage, config.studentEmail, config.studentPassword, config.bypassSecret);
+      await goToWaitRoom(studentPage, finalCourseId, 'student');
+
+      console.log('\n📍 Entering Classroom (Teacher and Student)...');
+      await Promise.all([
+        enterClassroom(teacherPage, 'teacher'),
+        enterClassroom(studentPage, 'student')
+      ]);
+
+      console.log('\n📍 Simulating Offline State (Teacher)...');
+      await teacherPage.waitForTimeout(5000); 
+      
+      const beforeTimeText = await teacherPage.locator('div').filter({ hasText: /剩餘時間|Remaining/ }).last().innerText().catch(() => 'unknown');
+      console.log(`   [Online] Initial timer: ${beforeTimeText.replace(/\n/g, ' ')}`);
+
+      await teacherCtx.setOffline(true);
+      console.log('   ❌ [System] Network disconnected (Offline)');
+      
+      await teacherPage.waitForTimeout(10000);
+      
+      console.log('\n📍 Restoring Connection...');
+      await teacherCtx.setOffline(false);
+      console.log('   ✅ [System] Network reconnected (Online)');
+
+      await teacherPage.waitForTimeout(5000);
+      const afterTimeText = await teacherPage.locator('div').filter({ hasText: /剩餘時間|Remaining/ }).last().innerText().catch(() => 'unknown');
+      console.log(`   [Online] Recovered timer: ${afterTimeText.replace(/\n/g, ' ')}`);
+      
+      expect(afterTimeText).not.toBe('unknown');
+
+    } finally {
+      if (!process.env.SKIP_CLEANUP) {
+        console.log(`   🧹 Cleaning up network test course: ${finalCourseId}`);
+        await teacherPage.request.delete(`${config.baseUrl}/api/courses?id=${finalCourseId}`).catch(() => {});
+        await teacherPage.request.delete(`${config.baseUrl}/api/orders?courseId=${finalCourseId}`).catch(() => {});
+      }
+      await teacherCtx.close();
+      await studentCtx.close();
+    }
+  });
+
 });

@@ -149,8 +149,8 @@ export async function POST(req: NextRequest) {
       // Priority: use channelName if available (session-specific), fallback to courseId
       // This ensures that different orders for the same course get separate whiteboards.
       const { normalizeUuid } = await import('@/lib/whiteboardService');
-      let baseKey = channelName ? channelName : (courseId || 'default');
-      let dbKey = normalizeUuid(baseKey);
+      const baseKey = channelName ? channelName : (courseId || 'default');
+      const dbKey = normalizeUuid(baseKey);
 
       // Determine correct table to save mapping based on whether it is a session key
       const isSessionKey = dbKey.startsWith('session_') || dbKey.startsWith('classroom_') || dbKey.includes('session_ready');

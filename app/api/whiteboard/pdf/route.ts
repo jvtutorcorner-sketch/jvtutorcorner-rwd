@@ -395,7 +395,7 @@ export async function DELETE(req: NextRequest) {
     const { s3Key, url } = state.pdf;
     console.log('[PDF DELETE] Found PDF to delete:', { s3Key, url });
 
-    let useS3 = !!(process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID || process.env.AWS_S3_BUCKET_NAME);
+    const useS3 = !!(process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID || process.env.AWS_S3_BUCKET_NAME);
 
     // Delete from S3
     if (useS3 && s3Key) {

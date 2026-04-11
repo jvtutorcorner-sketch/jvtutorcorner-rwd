@@ -25,7 +25,7 @@ metadata:
 ### 2. 互動白板 (Interactive Whiteboard)
 - **要求**：老師與學生可以同步繪圖、書寫、使用圖形工具。
 - **功能點**：
-  - 選取工具（筆、橡皮擦、文字、形狀）。
+  - 選取工具（筆、橡皮擦）。
   - PDF 上傳與同步顯示（僅限老师）。
   - 多頁切換與同步。
 - **驗證方式**：
@@ -35,16 +35,13 @@ metadata:
 ### 3. 教學工具與 UI 控制
 - **要求**：提供穩定且直覺的操控介面。
 - **功能點**：
-  - 聊天室功能。
-  - 舉手功能 (Hand raise)。
   - 課程時間計時器。
-  - 螢幕共享。
 - **驗證方式**：
   - 點擊聊天按鈕，發送訊息。
   - 檢查計時器是否正確倒數且在 0 分鐘時觸發提醒。
 
 ### 4. 結束課程流程
-- **要求**：老師點擊「結束課程」時，應彈出確認視窗，並正確扣除/更新點數狀態（若有連動）。
+- **要求**：老師點擊「結束課程」時，應彈出確認視窗，並正確更新倒數時間狀態（若有連動）。
 - **驗證方式**：
   - 點擊「離開」或「結束課程」按鈕。
   - 確認頁面跳轉至 `/student_courses` 或 `/teacher_courses`。
@@ -62,3 +59,16 @@ metadata:
 - `/app/classroom/ClientClassroom.tsx` - 核心教室邏輯 (大組件)
 - `/components/Whiteboard/` - 白板相關組件
 - `/lib/agora/` - Agora SDK 封裝
+
+## 子測試：白板同步 (Whiteboard Sync Subtests)
+
+將白板同步驗證作為 `classroom-room` 的可執行子測試，便於把高階教室驗證拆成具體可跑的子項目。已存在的白板同步資源：
+
+- 子技能檔案：[.agents/skills/classroom-room-whiteboard-sync/SKILL.md](.agents/skills/classroom-room-whiteboard-sync/SKILL.md) — 聚焦白板同步的驗證要點與替代策略（如 WebSocket 監聽）。
+- 測試實作：[e2e/classroom_room_whiteboard_sync.spec.ts](e2e/classroom_room_whiteboard_sync.spec.ts) — Playwright 測試檔，包含教師/學生登入、進入教室、教師繪圖與學生端 Canvas 檢查等可執行步驟。
+
+整合建議：
+
+- 把白板同步測試登錄為 `classroom-room` 的子項目；在高階檢查中加入一條「執行白板同步子測試」的步驟，並在 CI/本地驗證時允許單獨跑或與完整流程一起跑。
+- 若需要更細的覆蓋，可將白板子測試拆出更多 case（工具切換、PDF 同步、多參與者繪圖）。
+
