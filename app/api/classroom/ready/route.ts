@@ -4,8 +4,32 @@ import fs from 'fs';
 import path from 'path';
 import { broadcast } from '@/lib/classroomSSE';
 
+// In-memory lock to prevent race conditions during concurrent writes (common in e2e tests)
+const fileLocks = new Map<string, Promise<void>>();
+
 async function dataPathFor(uuid: string) {
   return await resolveDataFile(`classroom_ready_${uuid}.json`);
+}
+
+async function updateList(uuid: string, updater: (arr: Array<any>) => Array<any>) {
+  // Wait for existing lock if any
+  while (fileLocks.get(uuid)) {
+    await fileLocks.get(uuid);
+  }
+  
+  // Create lock
+  let resolveLock!: () => void;
+  fileLocks.set(uuid, new Promise(r => resolveLock = r));
+
+  try {
+    const arr = await readList(uuid);
+    const updated = updater(arr);
+    await writeList(uuid, updated);
+    return updated;
+  } finally {
+    resolveLock();
+    fileLocks.delete(uuid);
+  }
 }
 
 async function readList(uuid: string): Promise<Array<{ role: string; userId: string; present?: boolean }>> {
@@ -79,12 +103,31 @@ export async function POST(req: NextRequest) {
     if (!userId) return NextResponse.json({ error: 'userId required' }, { status: 400 });
     if (!['ready', 'unready'].includes(action)) return NextResponse.json({ error: 'action must be ready, unready, or clear-all' }, { status: 400 });
 
-    const arr = await readList(uuid);
-    const filtered = arr.filter((p) => !(p.role === role && p.userId === userId));
-    if (action === 'ready') {
-      filtered.push({ role, userId, present: !!present });
-    }
-    await writeList(uuid, filtered);
+    // Normalize userId to avoid case/whitespace mismatches between clients
+    const userIdNorm = String(userId).toLowerCase().trim();
+
+    const filtered = await updateList(uuid, (arr) => {
+      // Normalize existing participant entries
+      const normalized = (arr || []).map((p) => ({
+        role: p.role,
+        userId: String(p.userId).toLowerCase().trim(),
+        present: !!p.present,
+      }));
+
+      // Remove any existing entry for this role+userId
+      const updated = normalized.filter((p) => !(p.role === role && p.userId === userIdNorm));
+      if (action === 'ready') {
+        updated.push({ role, userId: userIdNorm, present: !!present });
+      }
+
+      // Deduplicate by role:userId (keep last occurrence)
+      const dedupe = new Map<string, { role: string; userId: string; present?: boolean }>();
+      for (const p of updated) {
+        dedupe.set(`${p.role}:${p.userId}`, p);
+      }
+      return Array.from(dedupe.values());
+    });
+
     // notify SSE subscribers (log for debugging)
     try {
       console.log(`/api/classroom/ready POST broadcast uuid=${uuid} role=${role} userId=${userId} action=${action} present=${!!present} participants=${filtered.length}`);
