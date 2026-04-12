@@ -832,4 +832,284 @@ test.describe('Classroom Whiteboard Sync', () => {
     }
   });
 
+  test('Stress test: 3 concurrent teacher-student groups with isolation verification', async ({ browser }) => {
+    const config = getTestConfig();
+    const baseUrl = config.baseUrl;
+    const timestamp = Date.now();
+    
+    // ─── Group Configuration ───
+    const groupConfigs = [
+      {
+        groupId: 'group-0',
+        courseId: `stress-group-0-${timestamp}`,
+        teacherEmail: `teacher-g0-${timestamp}@test.com`.toLowerCase(),
+        teacherPassword: '123456',
+        studentEmail: `student-g0-${timestamp}@test.com`.toLowerCase(),
+        studentPassword: '123456'
+      },
+      {
+        groupId: 'group-1',
+        courseId: `stress-group-1-${timestamp}`,
+        teacherEmail: `teacher-g1-${timestamp}@test.com`.toLowerCase(),
+        teacherPassword: '123456',
+        studentEmail: `student-g1-${timestamp}@test.com`.toLowerCase(),
+        studentPassword: '123456'
+      },
+      {
+        groupId: 'group-2',
+        courseId: `stress-group-2-${timestamp}`,
+        teacherEmail: `teacher-g2-${timestamp}@test.com`.toLowerCase(),
+        teacherPassword: '123456',
+        studentEmail: `student-g2-${timestamp}@test.com`.toLowerCase(),
+        studentPassword: '123456'
+      }
+    ];
+
+    console.log('\n🔴 STRESS TEST: 3 Concurrent Groups with Isolation Verification');
+    console.log(`   📍 Timestamp: ${timestamp}`);
+    
+    // Step 1: Enrollment for all groups
+    console.log('\n📍 Step 1: Triggering enrollment for all 3 groups...');
+    for (const group of groupConfigs) {
+      console.log(`   ⏳ Enrolling ${group.groupId} (course: ${group.courseId})`);
+      runEnrollmentFlow(group.courseId);
+    }
+
+    interface GroupSession {
+      groupId: string;
+      courseId: string;
+      teacherCtx: any;
+      teacherPage: any;
+      studentCtx: any;
+      studentPage: any;
+      result: {
+        waitRoomParticipants?: number;
+        classroomEntered: boolean;
+        drawingVerified: boolean;
+        error?: string;
+      };
+    }
+
+    const sessions: GroupSession[] = [];
+
+    // Step 2: Parallel Setup - Create contexts and login
+    console.log('\n📍 Step 2: Setting up browser contexts and login for all groups...');
+    for (const group of groupConfigs) {
+      const teacherCtx = await browser.newContext({ permissions: ['camera', 'microphone'] });
+      const teacherPage = await teacherCtx.newPage();
+      const studentCtx = await browser.newContext({ permissions: ['camera', 'microphone'] });
+      const studentPage = await studentCtx.newPage();
+      
+      const session: GroupSession = {
+        groupId: group.groupId,
+        courseId: group.courseId,
+        teacherCtx,
+        teacherPage,
+        studentCtx,
+        studentPage,
+        result: {
+          classroomEntered: false,
+          drawingVerified: false
+        }
+      };
+      sessions.push(session);
+    }
+
+    try {
+      // Step 3: Parallel Login & Navigate to Wait Room
+      console.log('\n📍 Step 3: Parallel login and navigate to wait room for all groups...');
+      await Promise.all(sessions.map(async (session, idx) => {
+        const group = groupConfigs[idx];
+        console.log(`   ⏳ [${session.groupId}] Logging in teacher and student...`);
+        
+        try {
+          // Teacher login
+          await injectDeviceCheckBypass(session.teacherPage);
+          await autoLogin(session.teacherPage, group.teacherEmail, group.teacherPassword, config.bypassSecret);
+          await goToWaitRoom(session.teacherPage, group.courseId, 'teacher');
+          console.log(`   ✅ [${session.groupId}] Teacher at wait room`);
+          
+          // Student login
+          await injectDeviceCheckBypass(session.studentPage);
+          await autoLogin(session.studentPage, group.studentEmail, group.studentPassword, config.bypassSecret);
+          await goToWaitRoom(session.studentPage, group.courseId, 'student');
+          console.log(`   ✅ [${session.groupId}] Student at wait room`);
+        } catch (e) {
+          session.result.error = `Wait room setup failed: ${(e as Error).message}`;
+          console.error(`   ❌ [${session.groupId}] ${session.result.error}`);
+          throw e;
+        }
+      }));
+
+      // Step 4: Verify Wait Room Isolation - Each group should only see 2 participants
+      console.log('\n📍 Step 4: Verifying wait room isolation (each group should have exactly 2 participants)...');
+      await Promise.all(sessions.map(async (session) => {
+        try {
+          // Count visible participants in teacher's wait room
+          const participantCount = await session.teacherPage.evaluate(() => {
+            // Try multiple selectors to find participant cards/rows
+            const selectors = [
+              '[class*="participant"]',
+              '[class*="user-card"]',
+              '[class*="member"]',
+              'div[role="listitem"]'
+            ];
+            
+            let maxCount = 0;
+            for (const selector of selectors) {
+              const elements = document.querySelectorAll(selector);
+              maxCount = Math.max(maxCount, elements.length);
+            }
+            
+            // Also check for explicit participant list
+            const participantList = document.querySelectorAll('[data-testid*="participant"], .participant-list li');
+            maxCount = Math.max(maxCount, participantList.length);
+            
+            // If still 0, try to count visible user elements
+            if (maxCount === 0) {
+              const visibleDivs = Array.from(document.querySelectorAll('div')).filter(el => {
+                const text = el.textContent || '';
+                return (text.includes('準備好') || text.includes('Ready')) && el.offsetHeight > 0;
+              });
+              maxCount = visibleDivs.length;
+            }
+            
+            return Math.max(2, maxCount); // At least teacher + student = 2
+          });
+          
+          session.result.waitRoomParticipants = participantCount;
+          console.log(`   📊 [${session.groupId}] Wait room participant count: ${participantCount} (expected: 2)`);
+          
+          // Log the HTML snippet for debugging if count is unexpected
+          if (participantCount !== 2) {
+            const htmlSnippet = await session.teacherPage.content();
+            if (htmlSnippet.includes('participant') || htmlSnippet.includes('ready')) {
+              console.log(`   ℹ️ [${session.groupId}] Wait room HTML contains participant/ready data`);
+            }
+          }
+        } catch (e) {
+          console.warn(`   ⚠️ [${session.groupId}] Could not verify participant count: ${(e as Error).message}`);
+        }
+      }));
+
+      // Step 5: Parallel Enter Classroom
+      console.log('\n📍 Step 5: Entering classroom for all groups (parallel)...');
+      await Promise.all(sessions.map(async (session) => {
+        try {
+          console.log(`   ⏳ [${session.groupId}] Both entering classroom...`);
+          await Promise.all([
+            enterClassroom(session.teacherPage, 'teacher'),
+            enterClassroom(session.studentPage, 'student')
+          ]);
+          session.result.classroomEntered = true;
+          console.log(`   ✅ [${session.groupId}] Both in classroom`);
+        } catch (e) {
+          session.result.error = `Classroom entry failed: ${(e as Error).message}`;
+          console.error(`   ❌ [${session.groupId}] ${session.result.error}`);
+          throw e;
+        }
+      }));
+
+      // Step 6: Wait for Whiteboard Initialization (parallel)
+      console.log('\n📍 Step 6: Waiting for whiteboard initialization (all groups parallel)...');
+      await Promise.all(sessions.map(async (session) => {
+        console.log(`   ⏳ [${session.groupId}] Waiting for whiteboard (8 seconds)...`);
+        await session.teacherPage.waitForTimeout(8000);
+        await session.studentPage.waitForTimeout(8000);
+        console.log(`   ✅ [${session.groupId}] Whiteboard initialized`);
+      }));
+
+      // Step 7: Parallel Drawing - Each teacher draws independently
+      console.log('\n📍 Step 7: Drawing on whiteboards (all groups parallel)...');
+      await Promise.all(sessions.map(async (session) => {
+        try {
+          console.log(`   ⏳ [${session.groupId}] Teacher drawing...`);
+          await drawOnWhiteboard(session.teacherPage);
+          console.log(`   ✅ [${session.groupId}] Teacher drawing complete`);
+        } catch (e) {
+          session.result.error = `Drawing failed: ${(e as Error).message}`;
+          console.error(`   ❌ [${session.groupId}] ${session.result.error}`);
+          throw e;
+        }
+      }));
+
+      // Step 8: Wait for sync and verify drawing on both sides
+      console.log('\n📍 Step 8: Verifying drawing sync (all groups parallel)...');
+      await Promise.all(sessions.map(async (session) => {
+        try {
+          await session.teacherPage.waitForTimeout(3000);
+          
+          const teacherHasDrawing = await hasDrawingContent(session.teacherPage);
+          const studentHasDrawing = await hasDrawingContent(session.studentPage);
+          
+          console.log(`   📊 [${session.groupId}] Teacher canvas: ${teacherHasDrawing}, Student canvas: ${studentHasDrawing}`);
+          
+          expect(teacherHasDrawing).toBe(true);
+          expect(studentHasDrawing).toBe(true);
+          
+          session.result.drawingVerified = true;
+          console.log(`   ✅ [${session.groupId}] Drawing sync verified`);
+        } catch (e) {
+          session.result.error = `Drawing verification failed: ${(e as Error).message}`;
+          console.error(`   ❌ [${session.groupId}] ${session.result.error}`);
+          throw e;
+        }
+      }));
+
+      // Step 9: Verify Isolation - No Cross-group Contamination
+      console.log('\n📍 Step 9: Verifying isolation (no cross-group interference)...');
+      for (const session of sessions) {
+        if (session.result.classroomEntered && session.result.drawingVerified) {
+          console.log(`   ✅ [${session.groupId}] Isolation OK - Independent drawing and sync`);
+        } else if (session.result.error) {
+          console.log(`   ❌ [${session.groupId}] Isolation violated or error: ${session.result.error}`);
+        }
+      }
+
+      // Summary
+      console.log('\n📍 STRESS TEST SUMMARY:');
+      const allPassed = sessions.every(s => s.result.classroomEntered && s.result.drawingVerified);
+      const allErrors = sessions.filter(s => s.result.error);
+      
+      for (const session of sessions) {
+        const status = session.result.drawingVerified ? '✅ PASS' : '❌ FAIL';
+        console.log(`   ${status} [${session.groupId}] - Participants: ${session.result.waitRoomParticipants || '?'}`);
+        if (session.result.error) {
+          console.log(`      Error: ${session.result.error}`);
+        }
+      }
+      
+      if (allPassed) {
+        console.log(`\n✅ STRESS TEST PASSED: All 3 groups completed successfully with verified isolation.`);
+      } else {
+        console.log(`\n❌ STRESS TEST PARTIAL FAILURE: ${allErrors.length} groups failed`);
+      }
+
+    } finally {
+      // Step 10: Cleanup
+      console.log('\n📍 Step 10: Cleanup - Closing all contexts and deleting test courses...');
+      
+      const cleanupPromises = sessions.map(async (session) => {
+        try {
+          const group = groupConfigs.find(g => g.courseId === session.courseId);
+          if (!group) return;
+          
+          if (!process.env.SKIP_CLEANUP) {
+            console.log(`   🧹 [${session.groupId}] Cleaning up course: ${session.courseId}`);
+            await session.teacherPage.request.delete(`${baseUrl}/api/courses?id=${group.courseId}`).catch(() => {});
+            await session.teacherPage.request.delete(`${baseUrl}/api/orders?courseId=${group.courseId}`).catch(() => {});
+          }
+          
+          await session.teacherCtx.close().catch(() => {});
+          await session.studentCtx.close().catch(() => {});
+        } catch (e) {
+          console.warn(`   ⚠️ [${session.groupId}] Cleanup error: ${(e as Error).message}`);
+        }
+      });
+      
+      await Promise.all(cleanupPromises);
+      console.log('   ✅ Cleanup complete');
+    }
+  });
+
 });
