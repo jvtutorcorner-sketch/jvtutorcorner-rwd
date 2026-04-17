@@ -1,24 +1,36 @@
 // app/api/points/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserPoints, setUserPoints } from '@/lib/pointsStorage';
+import { withAnyAuth, AuthedRequest } from '@/lib/auth/apiGuard';
+
+const API_PATH = '/api/points';
+
 
 export const runtime = 'nodejs';
 export const revalidate = 0; // Disable caching for point balance
 
 // GET /api/points?userId=xxx
-export async function GET(req: NextRequest) {
-  const userId = req.nextUrl.searchParams.get('userId');
+const _GET = withAnyAuth(API_PATH, async (req: AuthedRequest) => {
+  const url = new URL(req.url);
+  const userId = url.searchParams.get('userId');
   if (!userId) {
     return NextResponse.json({ ok: false, error: 'userId required' }, { status: 400 });
   }
 
+  // 非 admin/system 使用者只能查詢自己的點數
+  if (req.session.role !== 'admin' && req.session.role !== 'system' && req.session.userId !== userId) {
+    return NextResponse.json({ ok: false, error: 'Forbidden: cannot query other user points' }, { status: 403 });
+  }
+
   const balance = await getUserPoints(userId);
   return NextResponse.json({ ok: true, userId, balance });
-}
+});
+
+export const GET = _GET;
 
 // POST /api/points
 // { userId, action: 'add' | 'deduct' | 'set', amount }
-export async function POST(req: NextRequest) {
+const _POST = withAnyAuth(API_PATH, async (req: AuthedRequest) => {
   try {
     const body = await req.json();
     const { userId, action, amount, reason } = body;
@@ -35,6 +47,11 @@ export async function POST(req: NextRequest) {
         { ok: false, error: 'amount must be non-negative' },
         { status: 400 }
       );
+    }
+
+    // 非 admin/system 不能修改其他使用者點數
+    if (req.session.role !== 'admin' && req.session.role !== 'system' && req.session.userId !== userId) {
+      return NextResponse.json({ ok: false, error: 'Forbidden: cannot modify other user points' }, { status: 403 });
     }
 
     const current = await getUserPoints(userId);
@@ -61,7 +78,7 @@ export async function POST(req: NextRequest) {
 
     await setUserPoints(userId, newBalance);
 
-    console.log(`[points API] ${userId}: ${action} ${amount} (${current} -> ${newBalance}) reason=${reason || '-'}`);
+    console.log(`[points API] ${userId}: ${action} ${amount} (${current} -> ${newBalance}) reason=${reason || '-'} by=${req.session.email}`);
 
     // Trigger Workflow (non-blocking)
     if (action === 'add') {
@@ -84,4 +101,6 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
-}
+});
+
+export const POST = _POST;

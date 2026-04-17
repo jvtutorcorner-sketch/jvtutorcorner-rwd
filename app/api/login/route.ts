@@ -5,6 +5,7 @@ import resolveDataFile from '@/lib/localData';
 import { ddbDocClient } from '@/lib/dynamo';
 import { ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { verifyCaptcha } from '@/lib/captcha';
+import { createSession } from '@/lib/auth/sessionManager';
 
 async function readProfiles() {
   try {
@@ -110,7 +111,30 @@ export async function POST(req: Request) {
     if (found.email) publicProfile.email = found.email;
     if (found.firstName) publicProfile.firstName = found.firstName;
     if (found.lastName) publicProfile.lastName = found.lastName;
-    return NextResponse.json({ ok: true, profile: publicProfile });
+
+    // 建立 server-side session 並回傳 HttpOnly cookie
+    let sessionToken: string | null = null;
+    try {
+      sessionToken = await createSession({
+        userId: publicProfile.roid_id || publicProfile.id || found.email,
+        email: found.email || email,
+        role: found.role || 'user',
+        plan: found.plan || 'viewer',
+      });
+    } catch (sessionErr) {
+      // Session 建立失敗不中斷登入（graceful degradation）
+      console.error('[login] Failed to create session:', sessionErr);
+    }
+
+    const res = NextResponse.json({ ok: true, profile: publicProfile });
+    if (sessionToken) {
+      const isProduction = process.env.NODE_ENV === 'production';
+      res.headers.set(
+        'Set-Cookie',
+        `session=${encodeURIComponent(sessionToken)}; HttpOnly; Path=/; SameSite=Strict; Max-Age=86400${isProduction ? '; Secure' : ''}`
+      );
+    }
+    return res;
   } catch (err: any) {
     console.error(err);
     return NextResponse.json({ message: err?.message || 'Server error' }, { status: 500 });
