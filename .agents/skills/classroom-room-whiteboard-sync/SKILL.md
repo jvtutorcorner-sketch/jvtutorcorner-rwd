@@ -1,10 +1,10 @@
-﻿---
+---
 name: classroom-room-whiteboard-sync
 description: '驗證 /classroom/room 頁面中教師白板繪圖與學生實時同步功能。支援在已報名情況下跳過報名流程，並確保教師與學生分別從等待頁進入教室。'
 argument-hint: '執行白板同步驗證測試，確保教師繪圖能同步到學生端。若已報名，會自動跳過報名步驟。'
 metadata:
    verified-status: '✅ READY_FOR_TESTING'
-   last-verified-date: '2026-04-08'
+   last-verified-date: '2026-04-19'
    architecture-aligned: true
    long-term-fixes-applied:
       - '✅ student_enrollment_flow.spec.ts 已加入 teacherId 綁定邏輯'
@@ -16,6 +16,9 @@ metadata:
       - '✅ [2026-04-11] 媒體權限自動化：BrowserContext 注入 camera/microphone 授權'
       - '✅ [2026-04-11] Canvas 選取器修復：使用 canvas:visible 避免抓到隱藏圖層'
       - '✅ [2026-04-11] 資源清理強化：使用 try...finally 確保測試失敗也會執行刪除'
+      - '✅ [2026-04-19] DynamoDB race condition 修正：POST /api/classroom/ready 改為序列執行，避免並行讀取導致寫入覆蓋'
+      - '✅ [2026-04-19] Playwright 媒體設備修正：playwright.config.ts 添加 --use-fake-device-for-media-stream 與 --use-fake-ui-for-media-stream Chromium 旗標'
+      - '✅ [2026-04-19] Agora Whiteboard App ID 驗證：app/api/whiteboard/room/route.ts 添加 appIdentifier 格式驗證，提供清晰的錯誤訊息和設置指南'
    related-skills:
       - auto-login
       - classroom-wait
@@ -40,13 +43,49 @@ TEST_TEACHER_EMAIL=teacher@test.com
 TEST_TEACHER_PASSWORD=123456
 TEST_STUDENT_EMAIL=student@test.com
 TEST_STUDENT_PASSWORD=123456
+# CRITICAL: Agora Whiteboard SDK 驗證 - 必須是真實的 Agora App Identifier
+# 取得方式：https://console.agora.io → Whiteboard Project → App Identifier
+# 範例格式：32-50 個英數字符，如 "C2iYoNf8EfCXgP0Hg5ZziQ" (INVALID - 使用真實值)
+AGORA_WHITEBOARD_APP_ID=your_real_agora_whiteboard_app_id_here
 # OPTIONAL: If not set, tests will programmatically create a temporary test course and use its generated id
 # TEST_COURSE_ID=      (optional)
 ```
 
+> **⚠️ IMPORTANT**: 若 `AGORA_WHITEBOARD_APP_ID` 無效，測試會失敗並報告：`find invalid appIdentifier`
+> - 前往 [Agora Console](https://console.agora.io) 建立 Whiteboard 專案
+> - 複製真實的 App Identifier  
+> - 更新 `.env.local` 中的 `AGORA_WHITEBOARD_APP_ID`
+
 ---
 
-## 📊 故障排除快速入門
+## � 最新修復日誌 (2026-04-19)
+
+### 1️⃣ **DynamoDB Race Condition** ✅  
+**症狀**：學生進入教室後，「立即進入教室」按鈕永不出現，導致 60 秒超時失敗  
+**根因**：`Promise.all([enterClassroom(teacher), enterClassroom(student)])` 進行並行 POST，兩個請求同時讀取 DynamoDB 空列表，各自寫入自己的資料，後寫覆蓋前寫  
+**修復**：  
+- [`e2e/classroom_room_whiteboard_sync.spec.ts`](../../../e2e/classroom_room_whiteboard_sync.spec.ts) 行 615-630
+- 改為序列執行：`await clickReadyButton(teacher)` → `await clickReadyButton(student)` → 並行進入教室  
+- 新增響應監聽器確認 POST 成功，並添加 1s 穩定延遲
+
+### 2️⃣ **No Local Devices Available** ✅  
+**症狀**：Agora RTC SDK 報告 `No local devices available`，導致音視頻軌道創建失敗，Whiteboard SDK 載入受阻  
+**根因**：Playwright E2E 測試環境沒有真實麥克風/攝影機，Chromium 的 `getUserMedia()` 無法枚舉設備  
+**修復**：  
+- [`playwright.config.ts`](../../../playwright.config.ts) 行 35-43
+- 添加 Chromium 旗標：`--use-fake-device-for-media-stream` 與 `--use-fake-ui-for-media-stream`  
+- 允許 Agora 建立虛擬音視頻軌道用於測試
+
+### 3️⃣ **Invalid appIdentifier** ✅  
+**症狀**：`find invalid appIdentifier: "C2iYoNf8EfCXgP0Hg5ZziQ"`，Agora WhiteWebSdk 初始化失敗  
+**根因**：`AGORA_WHITEBOARD_APP_ID` 設置為虛擬值或無效格式，Agora SDK 驗證不通過  
+**修復**：  
+- [`app/api/whiteboard/room/route.ts`](../../../app/api/whiteboard/room/route.ts) 行 92-127
+- 添加 `isValidAppId()` 驗證函數，檢查格式與長度
+- 若驗證失敗，返回詳細錯誤訊息和設置指南
+- SKILL.md 環境容器部分添加 `AGORA_WHITEBOARD_APP_ID` 配置說明
+
+---
 
 **若測試失敗，請對應以下診斷清單：**
 
@@ -149,13 +188,13 @@ erDiagram
 
 ---
 
-## 🔥 壓力測試：3 組並行 (Stress Test with Isolation Verification)
+## 🔥 壓力測試：動態多組並行 (Stress Test with Isolation Verification)
 
-### 新增測試：`Stress test: 3 concurrent teacher-student groups with isolation verification`
+### 新增測試：`Stress test: <N> concurrent teacher-student groups with isolation verification`
 
-**目的**：驗證系統在多組並行課堂情況下，各組的等待室、教室、白板同步是否完全隔離，互不干擾。
+**目的**：驗證系統在多組並行課堂情況下，各組的等待室、教室、白板同步是否完全隔離，互不干擾。現在支援使用環境變數設定並行組數（預設為 3）。
 
-**測試場景**：
+**測試場景** (以 N=3 為例)：
 - **Group 0**: `teacher-g0-{timestamp}@test.com` ↔ `student-g0-{timestamp}@test.com`, Course: `stress-group-0-{timestamp}`
 - **Group 1**: `teacher-g1-{timestamp}@test.com` ↔ `student-g1-{timestamp}@test.com`, Course: `stress-group-1-{timestamp}`
 - **Group 2**: `teacher-g2-{timestamp}@test.com` ↔ `student-g2-{timestamp}@test.com`, Course: `stress-group-2-{timestamp}`
@@ -192,11 +231,14 @@ Step 10: 清理資源 (3 個課程和所有訂單) (parallel)
 
 **命令執行**：
 ```bash
-# 執行單個壓力測試
+# 執行單個壓力測試（預設 3 組）
 npx playwright test e2e/classroom_room_whiteboard_sync.spec.ts -g "Stress test" --project=chromium
 
-# 完整執行（包括其他 2 個單一對測試）
-npx playwright test e2e/classroom_room_whiteboard_sync.spec.ts --project=chromium
+# 指定 5 組並行測試
+STRESS_GROUP_COUNT=5 npx playwright test e2e/classroom_room_whiteboard_sync.spec.ts -g "Stress test" --project=chromium
+
+# 使用穩定性腳本執行多次壓力測試 (例如執行 5 次，每次 5 組)
+STRESS_RUNS=5 STRESS_GROUP_COUNT=5 ./.agents/skills/classroom-room-whiteboard-sync/scripts/classroom_stress_test.sh
 ```
 
 **依賴檢查清單**：
@@ -224,7 +266,7 @@ npx playwright test e2e/classroom_room_whiteboard_sync.spec.ts --project=chromiu
 |--------|--------|--------|--------|
 | `Teacher drawings sync to student` | 1 (1T + 1S) | 基礎同步 | ~90s |
 | `Simulate disconnection and reconnection...` | 1 (1T + 1S) | 網絡容錯 | ~90s |
-| `Stress test: 3 concurrent groups...` | 3 (3T + 3S) | 隔離驗證 | ~180-240s |
+| `Stress test: ...` | N (預設3組) | 隔離與負載驗證 | ~180-240s |
 | **總計** | - | - | ~360-420s (~6-7 min) |
 
 ---

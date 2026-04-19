@@ -140,6 +140,18 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
                 setStatus(`連接 Agora (${region})...`);
                 const { WhiteWebSdk, DeviceType } = (window as any).WhiteWebSdk;
 
+                // ⚠️ CRITICAL: Verify appIdentifier is complete
+                console.log(`[BoardImpl] Received appIdentifier length: ${appIdentifier?.length}, First 30 chars: "${appIdentifier?.substring(0, 30)}"`);
+                if (!appIdentifier || appIdentifier.length < 30) {
+                  console.error(`[BoardImpl] ❌ ERROR: appIdentifier is incomplete or missing!`);
+                  console.error(`[BoardImpl] Expected length: ~40, Got: ${appIdentifier?.length}`);
+                  console.error(`[BoardImpl] Full value: "${appIdentifier}"`);
+                  setStatus(`錯誤：無效的白板配置 (appId 不完整)`);
+                  setPhase("Error");
+                  return;
+                }
+                console.log(`[BoardImpl] ✅ appIdentifier is valid (${appIdentifier.length} chars)`);
+
                 const whiteWebSdk = new WhiteWebSdk({
                     appIdentifier,
                     deviceType: DeviceType.Surface,

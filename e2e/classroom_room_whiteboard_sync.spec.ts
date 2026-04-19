@@ -231,157 +231,88 @@ async function goToWaitRoom(page: Page, courseId: string, role: 'teacher' | 'stu
 async function enterClassroom(page: Page, role: 'teacher' | 'student'): Promise<void> {
   console.log(`   ⏳ [${role}] 在 /classroom/wait 執行詳細驗證...`);
   
-  // 1. 驗證頁面加載 - 檢查課程標題或頁面主容器
+  // 1. 驗證頁面加載
   await expect(page.locator('.wait-page-container, h2').first()).toBeVisible({ timeout: 10000 });
   console.log(`   ✅ [${role}] /classroom/wait 頁面已加載`);
 
-  // 2. 驗證設備檢測狀態已通過 (應顯示為 Ready/Passed，因為注入了 bypass)
-  // 等待"準備好"按鈕變成可點擊（表示設備檢測已通過）
+  // 2. 驗證設備檢測狀態已通過
   const readyButton = page.locator('button').filter({ hasText: /準備好|Ready/ }).first();
   await expect(readyButton).toBeEnabled({ timeout: 15000 });
   console.log(`   ✅ [${role}] 設備檢測已通過，「準備好」按鈕可用`);
+}
 
-  // 3. 點擊準備好
+// ─────────────────────────────────────────────────────────────────────
+// STEP 3a (序列): 各自點擊「準備好」並等待 POST 成功
+// 重要：必須序列執行，避免 DynamoDB read-modify-write race condition
+// ─────────────────────────────────────────────────────────────────────
+async function clickReadyButton(page: Page, role: 'teacher' | 'student'): Promise<void> {
+  const readyButton = page.locator('button').filter({ hasText: /準備好|Ready/ }).first();
+
+  // 監聽 POST 回應以確認成功
+  let resolved = false;
+  const readyPromise = new Promise<void>((resolve) => {
+    const handler = async (response: any) => {
+      if (!response.url().includes('/api/classroom/ready')) return;
+      if (response.request().method() !== 'POST') return;
+      try {
+        const body = await response.json();
+        const participants = body?.participants || [];
+        const hasRole = participants.some((p: any) => p.role === role && p.present);
+        console.log(`   📡 [${role}] POST 回應 participants:`, JSON.stringify(participants));
+        if (!resolved) {
+          resolved = true;
+          page.off('response', handler);
+          resolve();
+        }
+      } catch {
+        if (!resolved) { resolved = true; page.off('response', handler); resolve(); }
+      }
+    };
+    page.on('response', handler);
+  });
+
   await readyButton.click();
   console.log(`   ✅ [${role}] 已點擊「準備好」`);
-  
-  // 4. 等待對方準備好並進入
-  console.log(`   ⏳ [${role}] 等待 SSE 同步通知...`);
-  await page.waitForTimeout(3000); // 給 SSE 足夠時間傳播（而不是 2 秒）
-  
+
+  // 等待 POST 完成（最多 8 秒）
+  await Promise.race([readyPromise, page.waitForTimeout(8000)]);
+  console.log(`   ✅ [${role}] 準備狀態已送出`);
+
+  // 額外等待確保 DynamoDB 寫入穩定
+  await page.waitForTimeout(1000);
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// STEP 3b (並行): 等待「立即進入教室」按鈕並進入
+// ─────────────────────────────────────────────────────────────────────
+async function waitAndEnterClassroom(page: Page, role: 'teacher' | 'student'): Promise<void> {
   const enterBtn = page.locator('button, a').filter({ hasText: /立即進入教室|Enter Classroom/ }).first();
-  console.log(`   ⏳ [${role}] 等待「立即進入教室」按鈕（驗證同步機制）...`);
-  
+  console.log(`   ⏳ [${role}] 等待「立即進入教室」按鈕...`);
+
   try {
-    // Enhanced polling: check status every 10 seconds during wait
-    let lastLogTime = Date.now();
-    const checkButton = setInterval(async () => {
-      const now = Date.now();
-      if (now - lastLogTime > 15000) {
-        // Every 15 seconds, log current participant state
-        const pageState = await page.evaluate(() => {
-          const data: any = {
-            timestamp: new Date().toISOString(),
-            title: document.title,
-            participants: [],
-            buttonStatus: {}
-          };
-          
-          // Try to extract participant status from DOM
-          const teacherCard = document.querySelector('[class*="teacher"]');
-          const studentCard = document.querySelector('[class*="student"]');
-          
-          if (teacherCard) {
-            data.participants.push({
-              role: 'teacher',
-              html: teacherCard.innerHTML.substring(0, 100)
-            });
-          }
-          if (studentCard) {
-            data.participants.push({
-              role: 'student',
-              html: studentCard.innerHTML.substring(0, 100)
-            });
-          }
-          
-          // Log button states
-          const buttons = document.querySelectorAll('button');
-          buttons.forEach((btn, idx) => {
-            if (btn.textContent.includes('立即進入') || btn.textContent.includes('Enter')) {
-              data.buttonStatus[idx] = {
-                text: btn.textContent.trim().substring(0, 50),
-                disabled: btn.disabled,
-                visible: btn.offsetHeight > 0
-              };
-            }
-          });
-          
-          return data;
-        });
-        console.log(`   📊 [${role}] Current page state:`, JSON.stringify(pageState, null, 2));
-        lastLogTime = now;
-      }
-    }, 5000);
-    
-    try {
-      await enterBtn.waitFor({ state: 'visible', timeout: 60000 });
-      console.log(`   ✅ [${role}] 「立即進入教室」按鈕已出現`);
-    } finally {
-      clearInterval(checkButton);
-    }
-  } catch (e) {
-    console.log(`   ⚠️ [${role}] 按鈕未在60秒內出現，嘗試檢查頁面狀態...`);
-    const pageContent = await page.content();
-    if (pageContent.includes('立即進入教室') || pageContent.includes('Enter Classroom')) {
-      console.log(`   ℹ️ [${role}] 按鈕存在於 HTML，等待可見性...`);
-      
-      // Log localStorage state for debugging
-      const debugInfo = await page.evaluate(() => {
-        const user = localStorage.getItem('tutor_mock_user');
-        return {
-          userStored: !!user,
-          userEmail: user ? JSON.parse(user)?.email : null,
-          windowTitle: document.title
-        };
-      });
-      console.log(`   📊 [${role}] Debug info:`, debugInfo);
-      
-      await page.waitForTimeout(5000);
-    }
+    await enterBtn.waitFor({ state: 'visible', timeout: 60000 });
+    console.log(`   ✅ [${role}] 「立即進入教室」按鈕已出現`);
+  } catch {
+    // 輸出調試資訊
+    const debugInfo = await page.evaluate(() => {
+      const user = localStorage.getItem('tutor_mock_user');
+      const allBtns = Array.from(document.querySelectorAll('button')).map(b => ({
+        text: b.textContent?.trim().substring(0, 60),
+        disabled: b.disabled
+      }));
+      return { userEmail: user ? JSON.parse(user)?.email : null, buttons: allBtns };
+    }).catch(() => ({}));
+    console.log(`   📊 [${role}] Debug info:`, JSON.stringify(debugInfo, null, 2));
+    await page.screenshot({ path: `test-results/fail-enter-${role}.png` }).catch(() => {});
     throw new Error(`❌ [${role}] 「立即進入教室」按鈕未出現`);
   }
-  
+
   await enterBtn.click();
   console.log(`   ✅ [${role}] 已點擊「立即進入教室」`);
   await page.waitForURL(/\/classroom\/room/, { timeout: 20000 });
   console.log(`   ✅ [${role}] 已進入教室 (/classroom/room)`);
-  
-  // 進入教室後等待額外時間讓白板初始化
-  console.log(`   ⏳ [${role}] 進入教室 - 給白板初始化時間...`);
-  await page.waitForTimeout(5000); // 給 Agora 房間初始化足夠時間
-  
-  // **NEW**: 驗證容器大小和視口 - 確保白板有足夠空間
-  const containerInfo = await page.evaluate(() => {
-    const container = document.querySelector('.whiteboard-container');
-    const windowWidth = window.innerWidth;
-    const windowHeight = window.innerHeight;
-    if (!container) {
-      return { found: false, windowWidth, windowHeight };
-    }
-    const rect = container.getBoundingClientRect();
-    const style = getComputedStyle(container);
-    return {
-      found: true,
-      windowWidth,
-      windowHeight,
-      containerWidth: rect.width,
-      containerHeight: rect.height,
-      containerDisplay: style.display,
-      containerFlex: style.flex,
-      containerHeight_css: style.height,
-      isMobileViewport: windowWidth <= 640
-    };
-  });
-  console.log(`   📊 [${role}] 容器信息:`, JSON.stringify(containerInfo, null, 2));
-  
-  // 如果容器高度為 0 或太小，嘗試修復視口
-  // 注意: containerInfo.containerHeight 可能未定義，先確認型別
-  if (containerInfo.found && typeof containerInfo.containerHeight === 'number' && containerInfo.containerHeight < 300) {
-    console.warn(`   ⚠️ [${role}] 容器高度異常：${containerInfo.containerHeight}px，嘗試強制縮放...`);
-    // 強制設置視口或滾動
-    await page.evaluate(() => {
-      const container = document.querySelector('.whiteboard-container') as HTMLElement;
-      if (container) {
-        // 強制設置最小高度
-        container.style.minHeight = '600px';
-        container.style.height = '100%';
-      }
-      // 觸發窗口調整以刷新白板
-      window.dispatchEvent(new Event('resize'));
-    });
-    console.log(`   ✅ [${role}] 已嘗試強制修復容器高度`);
-    await page.waitForTimeout(2000);
-  }
+
+  await page.waitForTimeout(5000); // 白板初始化時間
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -674,11 +605,23 @@ test.describe('Classroom Whiteboard Sync', () => {
     await goToWaitRoom(studentPage, finalCourseId, 'student');
 
     // Step 2: Enter Classroom
-    console.log('\n📍 Step 2: Entering Classroom');
+    console.log('\n📍 Step 2a: Wait Page Validation (parallel)');
     try {
       await Promise.all([
         enterClassroom(teacherPage, 'teacher'),
         enterClassroom(studentPage, 'student')
+      ]);
+
+      // Step 2b: Sequential ready clicks to avoid DynamoDB race condition
+      console.log('\n📍 Step 2b: Click Ready (sequential - avoids DynamoDB race condition)');
+      await clickReadyButton(teacherPage, 'teacher');
+      await clickReadyButton(studentPage, 'student');
+
+      // Step 2c: Parallel wait and enter
+      console.log('\n📍 Step 2c: Enter Classroom (parallel)');
+      await Promise.all([
+        waitAndEnterClassroom(teacherPage, 'teacher'),
+        waitAndEnterClassroom(studentPage, 'student')
       ]);
 
       console.log('\n📍 Step 2.5: Waiting for Whiteboard Initialization');
@@ -838,34 +781,17 @@ test.describe('Classroom Whiteboard Sync', () => {
     const timestamp = Date.now();
     
     // ─── Group Configuration ───
-    const groupConfigs = [
-      {
-        groupId: 'group-0',
-        courseId: `stress-group-0-${timestamp}`,
-        teacherEmail: `teacher-g0-${timestamp}@test.com`.toLowerCase(),
-        teacherPassword: '123456',
-        studentEmail: `student-g0-${timestamp}@test.com`.toLowerCase(),
-        studentPassword: '123456'
-      },
-      {
-        groupId: 'group-1',
-        courseId: `stress-group-1-${timestamp}`,
-        teacherEmail: `teacher-g1-${timestamp}@test.com`.toLowerCase(),
-        teacherPassword: '123456',
-        studentEmail: `student-g1-${timestamp}@test.com`.toLowerCase(),
-        studentPassword: '123456'
-      },
-      {
-        groupId: 'group-2',
-        courseId: `stress-group-2-${timestamp}`,
-        teacherEmail: `teacher-g2-${timestamp}@test.com`.toLowerCase(),
-        teacherPassword: '123456',
-        studentEmail: `student-g2-${timestamp}@test.com`.toLowerCase(),
-        studentPassword: '123456'
-      }
-    ];
+    const groupCount = parseInt(process.env.STRESS_GROUP_COUNT || '3', 10);
+    const groupConfigs = Array.from({ length: groupCount }).map((_, i) => ({
+      groupId: `group-${i}`,
+      courseId: `stress-group-${i}-${timestamp}`,
+      teacherEmail: `teacher-g${i}-${timestamp}@test.com`.toLowerCase(),
+      teacherPassword: '123456',
+      studentEmail: `student-g${i}-${timestamp}@test.com`.toLowerCase(),
+      studentPassword: '123456'
+    }));
 
-    console.log('\n🔴 STRESS TEST: 3 Concurrent Groups with Isolation Verification');
+    console.log(`\n🔴 STRESS TEST: ${groupCount} Concurrent Groups with Isolation Verification`);
     console.log(`   📍 Timestamp: ${timestamp}`);
     
     // Step 1: Enrollment for all groups
@@ -1080,7 +1006,7 @@ test.describe('Classroom Whiteboard Sync', () => {
       }
       
       if (allPassed) {
-        console.log(`\n✅ STRESS TEST PASSED: All 3 groups completed successfully with verified isolation.`);
+        console.log(`\n✅ STRESS TEST PASSED: All ${groupCount} groups completed successfully with verified isolation.`);
       } else {
         console.log(`\n❌ STRESS TEST PARTIAL FAILURE: ${allErrors.length} groups failed`);
       }

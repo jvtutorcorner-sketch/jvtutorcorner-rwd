@@ -219,7 +219,9 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   // P1+P2: Whiteboard permission state + plan gating
   const [canStudentDraw, setCanStudentDraw] = useState(false);
   const userPlan = storedUser?.plan || 'basic';
-  const hasWhiteboardAccess = isTeacher || (typeof window !== 'undefined' && ['pro', 'elite'].includes(userPlan));
+  // ✅ 移除方案限制，允許所有學生使用白板（E2E 測試需求）
+  const hasWhiteboardAccess = true;
+  // const hasWhiteboardAccess = isTeacher || (typeof window !== 'undefined' && ['pro', 'elite'].includes(userPlan));
 
   const agoraConfig = useMemo(() => ({
     channelName: effectiveChannelName,

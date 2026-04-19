@@ -103,6 +103,36 @@ export async function POST(req: NextRequest) {
       }, { status: 500 });
     }
 
+    // Validate appId format: should be a base64-like string, not obviously invalid
+    // E2E test appIds are usually hex-like strings starting with alphanumeric patterns
+    // Invalid IDs should be 32+ characters or follow specific patterns
+    const isValidAppId = (appId: string): boolean => {
+      // Check minimum length (Agora IDs are typically 20-50 chars)
+      if (appId.length < 16) return false;
+      // Check for obviously fake values like those used as examples
+      if (appId === 'your_agora_whiteboard_app_id' || appId === 'placeholder') return false;
+      // Check if it contains valid characters (alphanumeric, may include - _ / or other base64-like chars)
+      // Some Agora SDK tokens use slashes for encoding
+      if (!/^[a-zA-Z0-9_\-/+=]+$/.test(appId)) return false;
+      return true;
+    };
+
+    if (!isValidAppId(appId)) {
+      console.error(`[WhiteboardAPI] Error: Invalid AGORA_WHITEBOARD_APP_ID format: "${appId}"`);
+      console.error('[WhiteboardAPI] The provided App ID appears to be invalid or a placeholder.');
+      console.error('[WhiteboardAPI] To use Agora Whiteboard, you must:');
+      console.error('[WhiteboardAPI]   1. Create an Agora account at https://console.agora.io');
+      console.error('[WhiteboardAPI]   2. Create a Whiteboard project');
+      console.error('[WhiteboardAPI]   3. Copy your App Identifier from the project dashboard');
+      console.error('[WhiteboardAPI]   4. Set AGORA_WHITEBOARD_APP_ID in your .env.local');
+      return NextResponse.json({
+        error: 'Invalid AGORA_WHITEBOARD_APP_ID',
+        message: 'The configured Agora Whiteboard App ID is invalid. Please check your environment variables.',
+        receivedLength: appId.length,
+        receivedPreview: appId.substring(0, 8) + '...+'
+      }, { status: 500 });
+    }
+
     if (!channelName && !courseId) {
       return NextResponse.json({ error: 'Missing channelName or courseId' }, { status: 400 });
     }
@@ -300,6 +330,13 @@ export async function POST(req: NextRequest) {
     // 5. Return Credentials
     const clientRoomToken = generateRoomToken(roomUuid);
     console.log(`[WhiteboardAPI] Returning success for room: [REDACTED]`);
+    
+    // ⚠️ CRITICAL: Verify appId is NOT truncated before returning
+    if (!appId || appId.length < 30) {
+      console.error(`[WhiteboardAPI] WARNING: appId might be incomplete! Length: ${appId?.length}, Value: "${appId}"`);
+    } else {
+      console.log(`[WhiteboardAPI] ✅ appId is complete (${appId.length} chars)`);
+    }
 
     return NextResponse.json({
       uuid: roomUuid,

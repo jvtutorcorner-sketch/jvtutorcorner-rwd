@@ -376,6 +376,7 @@ export default function ClassroomWaitPage() {
     console.log(`toggleReady: setting optimistic state to ${nextReadyState} for role ${role} and userId ${userId}`);
 
     // 2. Send the state change to the server.
+    console.log(`toggleReady: About to send POST with:`, { syncUuid, role, userId, action: nextReadyState ? 'ready' : 'unready', present: nextReadyState });
     fetch('/api/classroom/ready', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },

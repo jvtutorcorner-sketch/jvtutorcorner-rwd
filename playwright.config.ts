@@ -35,7 +35,13 @@ export default defineConfig({
         video: 'retain-on-failure',
         headless: false,
         launchOptions: {
-            args: ['--start-maximized'],
+            args: [
+                '--start-maximized',
+                // Provide synthetic camera/microphone streams so Agora RTC can create
+                // local tracks without physical devices (E2E test environment)
+                '--use-fake-device-for-media-stream',
+                '--use-fake-ui-for-media-stream',
+            ],
         }
     },
 
