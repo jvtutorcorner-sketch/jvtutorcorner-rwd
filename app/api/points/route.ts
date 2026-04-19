@@ -18,7 +18,9 @@ const _GET = withAnyAuth(API_PATH, async (req: AuthedRequest) => {
   }
 
   // 非 admin/system 使用者只能查詢自己的點數
-  if (req.session.role !== 'admin' && req.session.role !== 'system' && req.session.userId !== userId) {
+  // session.userId is stored as roid_id; also accept session.email match for email-keyed lookups
+  const isSelf = req.session.userId === userId || req.session.email === userId;
+  if (req.session.role !== 'admin' && req.session.role !== 'system' && !isSelf) {
     return NextResponse.json({ ok: false, error: 'Forbidden: cannot query other user points' }, { status: 403 });
   }
 
@@ -50,7 +52,9 @@ const _POST = withAnyAuth(API_PATH, async (req: AuthedRequest) => {
     }
 
     // 非 admin/system 不能修改其他使用者點數
-    if (req.session.role !== 'admin' && req.session.role !== 'system' && req.session.userId !== userId) {
+    // session.userId is stored as roid_id; also accept session.email match for email-keyed mutations
+    const isSelf = req.session.userId === userId || req.session.email === userId;
+    if (req.session.role !== 'admin' && req.session.role !== 'system' && !isSelf) {
       return NextResponse.json({ ok: false, error: 'Forbidden: cannot modify other user points' }, { status: 403 });
     }
 

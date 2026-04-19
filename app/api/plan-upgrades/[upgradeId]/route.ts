@@ -92,17 +92,14 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ up
             // 3. If marked as PAID and this is a POINTS purchase, add points to the user and activate app plans
             if (upgrade.itemType === 'POINTS' && upgrade.userId && upgrade.points) {
                 try {
-                    // Update points balance
-                    await docClient.send(new UpdateCommand({
-                        TableName: POINTS_TABLE,
-                        Key: { userId: upgrade.userId },
-                        UpdateExpression: 'SET updatedAt = :u ADD balance :p',
-                        ExpressionAttributeValues: {
-                            ':p': upgrade.points,
-                            ':u': updatedAt,
-                        },
-                    }));
-                    console.log(`[plan-upgrades PATCH] Granted ${upgrade.points} points to ${upgrade.userId}`);
+                    // Use the unified storage layer to ensure consistency (works for both DynamoDB and LOCAL_POINTS)
+                    const { getUserPoints, setUserPoints } = await import('@/lib/pointsStorage');
+                    const currentBalance = await getUserPoints(upgrade.userId);
+                    const newBalance = currentBalance + upgrade.points;
+                    await setUserPoints(upgrade.userId, newBalance);
+                    
+                    console.log(`[plan-upgrades PATCH] Granted ${upgrade.points} points to ${upgrade.userId} (via pointsStorage: ${currentBalance} -> ${newBalance})`);
+
 
                     // ACTIVATE App Plans if any
                     if (upgrade.appPlanIds && Array.isArray(upgrade.appPlanIds) && upgrade.appPlanIds.length > 0) {
