@@ -45,28 +45,56 @@ function getTestConfig(): TestConfig {
 // Helpers
 // ─────────────────────────────────────────────────────────────────────
 
-function runEnrollmentFlow(courseId: string): void {
+function runEnrollmentFlow(courseId: string, maxRetries: number = 2): void {
   const config = getTestConfig();
   const cmd = process.platform === 'win32'
     ? `set TEST_COURSE_ID=${courseId}&& set SKIP_CLEANUP=true&& npx playwright test e2e/student_enrollment_flow.spec.ts --project=chromium`
     : `TEST_COURSE_ID=${courseId} SKIP_CLEANUP=true npx playwright test e2e/student_enrollment_flow.spec.ts --project=chromium`;
   
-  console.log(`   🚀 Running enrollment flow: ${cmd}`);
+  console.log(`   🚀 Running enrollment flow for course: ${courseId}`);
+  // Ensure all critical env vars are passed to subprocess
   const childEnv = { 
     ...process.env,
+    // Auth credentials
+    TEST_TEACHER_EMAIL: config.teacherEmail,
+    TEST_TEACHER_PASSWORD: process.env.TEST_TEACHER_PASSWORD,
+    TEST_STUDENT_EMAIL: config.studentEmail,
+    TEST_STUDENT_PASSWORD: process.env.TEST_STUDENT_PASSWORD,
     QA_TEACHER_EMAIL: config.teacherEmail,
     QA_STUDENT_EMAIL: config.studentEmail,
-    TEST_TEACHER_EMAIL: config.teacherEmail,
-    TEST_STUDENT_EMAIL: config.studentEmail,
-    PWDEBUG: undefined // Disable debug in sub-process
+    // Base URL
+    NEXT_PUBLIC_BASE_URL: process.env.NEXT_PUBLIC_BASE_URL,
+    // Agora config
+    AGORA_WHITEBOARD_APP_ID: process.env.AGORA_WHITEBOARD_APP_ID,
+    AGORA_WHITEBOARD_AK: process.env.AGORA_WHITEBOARD_AK,
+    AGORA_WHITEBOARD_SK: process.env.AGORA_WHITEBOARD_SK,
+    // Bypass secret
+    LOGIN_BYPASS_SECRET: process.env.LOGIN_BYPASS_SECRET,
+    // Disable debug in sub-process
+    PWDEBUG: undefined
   } as any;
 
-  try {
-    execSync(cmd, { stdio: 'inherit', cwd: path.resolve(__dirname, '..'), env: childEnv });
-  } catch (err) {
-    console.error('   ❌ Enrollment flow sub-process failed!');
-    throw err;
+  let lastError: Error | null = null;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`   📌 Enrollment attempt ${attempt}/${maxRetries}`);
+      execSync(cmd, { stdio: 'inherit', cwd: path.resolve(__dirname, '..'), env: childEnv });
+      console.log(`   ✅ Enrollment flow succeeded for course: ${courseId}`);
+      return;
+    } catch (err) {
+      lastError = err as Error;
+      if (attempt < maxRetries) {
+        console.warn(`   ⚠️  Enrollment attempt ${attempt} failed, retrying in 2s...`);
+        // Small delay before retry
+        const startTime = Date.now();
+        while (Date.now() - startTime < 2000) {
+          // Busy wait (avoid async/await complexity)
+        }
+      }
+    }
   }
+  console.error(`   ❌ Enrollment flow failed for course: ${courseId} after ${maxRetries} attempts`);
+  throw lastError || new Error(`Enrollment flow failed for course: ${courseId}`);
 }
 
 async function injectDeviceCheckBypass(page: Page): Promise<void> {
