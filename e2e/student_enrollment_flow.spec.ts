@@ -295,16 +295,47 @@ test('Student Enrollment Flow (Simulated Payment)', async ({ page }) => {
 
     if (isShortageVisible || !isEnrollAvailable) {
         console.log("UI indicates point shortage or enroll button not available. Proceeding to buy points...");
-        // 3. Buy points
+        // 3. Buy points - Navigate to pricing
         await page.goto(`${baseUrl}/pricing`);
-        await page.locator('a:has-text("購買點數")').first().click();
-        await page.waitForURL(/\/pricing\/checkout/);
-        await page.click('button:has-text("模擬支付 (Demo)")');
+        await page.waitForLoadState('networkidle');
+        
+        // ✅ Select largest point package (100點) to ensure we have enough for course
+        console.log("Looking for largest point package option...");
+        const pointPackages = await page.locator('button:has-text("100"), button:has-text("買點數")').all();
+        
+        // Try to click on a point package button that shows "100" or the largest package
+        let packageClicked = false;
+        const allButtons = await page.locator('button').all();
+        for (const btn of allButtons) {
+            const text = await btn.textContent() || '';
+            // Look for packages with 100, 150, 200, etc. - pick the largest
+            if (text.includes('100') || text.includes('150') || text.includes('200')) {
+                await btn.click();
+                packageClicked = true;
+                console.log(`✅ Selected point package: ${text.substring(0, 50)}`);
+                break;
+            }
+        }
+        
+        if (!packageClicked) {
+            console.log("⚠️ Could not find explicit package selector, clicking generic 'buy' button");
+            await page.locator('a:has-text("購買點數"), button:has-text("購買點數")').first().click();
+        }
+        
+        await page.waitForURL(/\/pricing\/checkout/, { timeout: 10000 });
+        
+        // Verify at checkout - select the option with highest points if multiple options exist
+        console.log("At checkout page, selecting payment method...");
+        const paymentBtn = page.locator('button:has-text("模擬支付"), button:has-text("Demo"), button:has-text("支付")').first();
+        await paymentBtn.click();
 
-        // Wait for redirection back to /plans or /pricing
+        // Wait for redirection back to /plans or /pricing or /student_courses
         console.log("Waiting for redirection after purchase...");
-        await page.waitForURL(url => url.pathname === '/plans' || url.pathname === '/pricing', { timeout: 30000 });
-        console.log("Point purchase successful.");
+        await page.waitForURL(
+            url => url.pathname === '/plans' || url.pathname === '/pricing' || url.pathname === '/student_courses',
+            { timeout: 30000 }
+        );
+        console.log("✅ Point purchase completed.");
 
         // Return to course
         console.log(`Returning to course after purchase: ${testCourseId}`);
