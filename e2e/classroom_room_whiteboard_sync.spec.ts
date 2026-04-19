@@ -822,13 +822,19 @@ test.describe('Classroom Whiteboard Sync', () => {
     
     // ─── Group Configuration ───
     const groupCount = parseInt(process.env.STRESS_GROUP_COUNT || '3', 10);
+    const baseConfig = getTestConfig();
+    
+    // Use consistent test accounts - enrollment subprocess already uses these
+    // to create courses. For stress test, we'll simulate concurrent groups
+    // using the same validated accounts
     const groupConfigs = Array.from({ length: groupCount }).map((_, i) => ({
       groupId: `group-${i}`,
       courseId: `stress-group-${i}-${timestamp}`,
-      teacherEmail: `teacher-g${i}-${timestamp}@test.com`.toLowerCase(),
-      teacherPassword: '123456',
-      studentEmail: `student-g${i}-${timestamp}@test.com`.toLowerCase(),
-      studentPassword: '123456'
+      // Reuse the known working test accounts
+      teacherEmail: baseConfig.teacherEmail,
+      teacherPassword: baseConfig.teacherPassword,
+      studentEmail: baseConfig.studentEmail,
+      studentPassword: baseConfig.studentPassword
     }));
 
     console.log(`\n🔴 STRESS TEST: ${groupCount} Concurrent Groups with Isolation Verification`);
