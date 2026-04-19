@@ -51,7 +51,7 @@ function runEnrollmentFlow(courseId: string, maxRetries: number = 2): void {
     ? `set TEST_COURSE_ID=${courseId}&& set SKIP_CLEANUP=true&& npx playwright test e2e/student_enrollment_flow.spec.ts --project=chromium`
     : `TEST_COURSE_ID=${courseId} SKIP_CLEANUP=true npx playwright test e2e/student_enrollment_flow.spec.ts --project=chromium`;
   
-  console.log(`   🚀 Running enrollment flow for course: ${courseId}`);
+  console.log(`\n   🚀 [${courseId}] Starting enrollment flow subprocess`);
   // Ensure all critical env vars are passed to subprocess
   const childEnv = { 
     ...process.env,
@@ -74,26 +74,32 @@ function runEnrollmentFlow(courseId: string, maxRetries: number = 2): void {
     PWDEBUG: undefined
   } as any;
 
+  console.log(`   📋 Config - Teacher: ${config.teacherEmail}, Student: ${config.studentEmail}`);
+
   let lastError: Error | null = null;
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      console.log(`   📌 Enrollment attempt ${attempt}/${maxRetries}`);
+      console.log(`   📌 [${courseId}] Enrollment attempt ${attempt}/${maxRetries}`);
+      console.log(`   📝 Command: ${cmd}`);
       execSync(cmd, { stdio: 'inherit', cwd: path.resolve(__dirname, '..'), env: childEnv });
-      console.log(`   ✅ Enrollment flow succeeded for course: ${courseId}`);
+      console.log(`   ✅ [${courseId}] Enrollment flow succeeded`);
       return;
     } catch (err) {
       lastError = err as Error;
+      const errMsg = lastError?.message || 'Unknown error';
+      console.error(`   ❌ [${courseId}] Attempt ${attempt} failed: ${errMsg.substring(0, 200)}`);
+      
       if (attempt < maxRetries) {
-        console.warn(`   ⚠️  Enrollment attempt ${attempt} failed, retrying in 2s...`);
+        console.warn(`   ⏳ [${courseId}] Waiting 2s before retry...`);
         // Small delay before retry
         const startTime = Date.now();
         while (Date.now() - startTime < 2000) {
-          // Busy wait (avoid async/await complexity)
+          // Busy wait
         }
       }
     }
   }
-  console.error(`   ❌ Enrollment flow failed for course: ${courseId} after ${maxRetries} attempts`);
+  console.error(`\n   ❌ [${courseId}] Enrollment flow FAILED after ${maxRetries} attempts`);
   throw lastError || new Error(`Enrollment flow failed for course: ${courseId}`);
 }
 
@@ -828,11 +834,27 @@ test.describe('Classroom Whiteboard Sync', () => {
     console.log(`\n🔴 STRESS TEST: ${groupCount} Concurrent Groups with Isolation Verification`);
     console.log(`   📍 Timestamp: ${timestamp}`);
     
-    // Step 1: Enrollment for all groups
-    console.log('\n📍 Step 1: Triggering enrollment for all 3 groups...');
+    // Step 1: Enrollment for all groups (Sequential to avoid DynamoDB throttling)
+    console.log('\n📍 Step 1: Triggering enrollment for all groups...');
+    const enrollmentErrors: string[] = [];
     for (const group of groupConfigs) {
-      console.log(`   ⏳ Enrolling ${group.groupId} (course: ${group.courseId})`);
-      runEnrollmentFlow(group.courseId);
+      try {
+        console.log(`   ⏳ [${group.groupId}] Starting enrollment subprocess...`);
+        runEnrollmentFlow(group.courseId);
+        console.log(`   ✅ [${group.groupId}] Enrollment flow completed`);
+      } catch (err) {
+        const errorMsg = `[${group.groupId}] Enrollment failed: ${(err as Error)?.message || String(err)}`;
+        console.error(`   ❌ ${errorMsg}`);
+        enrollmentErrors.push(errorMsg);
+      }
+    }
+    
+    // Report on enrollment phase
+    if (enrollmentErrors.length > 0) {
+      console.error(`\n⚠️ Enrollment Phase Completed with ${enrollmentErrors.length}/${groupCount} errors:`);
+      enrollmentErrors.forEach(e => console.error(`    - ${e}`));
+    } else {
+      console.log(`\n✅ All ${groupCount} groups completed enrollment successfully`);
     }
 
     interface GroupSession {

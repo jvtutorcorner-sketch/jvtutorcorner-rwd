@@ -1,0 +1,197 @@
+[
+  {
+    "path": "LINE",
+    "id": "LINE",
+    "updatedAt": "2026-03-03T17:04:03.411Z",
+    "label": "LINE 官方帳號",
+    "permissions": [
+      {
+        "roleName": "Admin",
+        "roleId": "admin",
+        "visible": true
+      },
+      {
+        "roleName": "Teacher",
+        "roleId": "teacher",
+        "visible": false
+      },
+      {
+        "roleName": "Student",
+        "roleId": "student",
+        "visible": false
+      },
+      {
+        "roleId": "fin",
+        "roleName": "FIN",
+        "visible": false
+      },
+      {
+        "roleId": "tech",
+        "roleName": "TECH",
+        "visible": false
+      },
+      {
+        "roleId": "hr",
+        "roleName": "HR",
+        "visible": false
+      }
+    ],
+    "sortOrder": 0
+  },
+  {
+    "path": "PAYPAL",
+    "id": "PAYPAL",
+    "updatedAt": "2026-03-03T17:04:03.411Z",
+    "label": "PayPal 收款",
+    "permissions": [
+      {
+        "roleName": "Admin",
+        "roleId": "admin",
+        "visible": true
+      },
+      {
+        "roleName": "Teacher",
+        "roleId": "teacher",
+        "visible": false
+      },
+      {
+        "roleName": "Student",
+        "roleId": "student",
+        "visible": true
+      },
+      {
+        "roleId": "fin",
+        "roleName": "FIN",
+        "visible": false
+      },
+      {
+        "roleId": "hr",
+        "roleName": "HR",
+        "visible": false
+      },
+      {
+        "roleId": "tech",
+        "roleName": "TECH",
+        "visible": false
+      }
+    ],
+    "sortOrder": 1
+  },
+  {
+    "path": "ECPAY",
+    "id": "ECPAY",
+    "updatedAt": "2026-03-03T17:04:03.411Z",
+    "label": "綠界科技 ECPay",
+    "permissions": [
+      {
+        "roleName": "Admin",
+        "roleId": "admin",
+        "visible": true
+      },
+      {
+        "roleName": "Teacher",
+        "roleId": "teacher",
+        "visible": false
+      },
+      {
+        "roleName": "Student",
+        "roleId": "student",
+        "visible": true
+      },
+      {
+        "roleId": "fin",
+        "roleName": "FIN",
+        "visible": false
+      },
+      {
+        "roleId": "hr",
+        "roleName": "HR",
+        "visible": false
+      },
+      {
+        "roleId": "tech",
+        "roleName": "TECH",
+        "visible": false
+      }
+    ],
+    "sortOrder": 2
+  },
+  {
+    "path": "STRIPE",
+    "id": "STRIPE",
+    "updatedAt": "2026-03-03T17:04:03.411Z",
+    "label": "Stripe 信用卡收款",
+    "permissions": [
+      {
+        "roleName": "Admin",
+        "roleId": "admin",
+        "visible": true
+      },
+      {
+        "roleName": "Teacher",
+        "roleId": "teacher",
+        "visible": false
+      },
+      {
+        "roleName": "Student",
+        "roleId": "student",
+        "visible": true
+      },
+      {
+        "roleId": "fin",
+        "roleName": "FIN",
+        "visible": false
+      },
+      {
+        "roleId": "tech",
+        "roleName": "TECH",
+        "visible": false
+      },
+      {
+        "roleId": "hr",
+        "roleName": "HR",
+        "visible": false
+      }
+    ],
+    "sortOrder": 3
+  },
+  {
+    "path": "AI_ASSISTANT",
+    "id": "AI_ASSISTANT",
+    "updatedAt": "2026-03-03T17:04:03.411Z",
+    "label": "AI 客服小幫手",
+    "permissions": [
+      {
+        "roleName": "Admin",
+        "roleId": "admin",
+        "visible": true
+      },
+      {
+        "roleName": "Teacher",
+        "roleId": "teacher",
+        "visible": false
+      },
+      {
+        "roleName": "Student",
+        "roleId": "student",
+        "visible": false
+      },
+      {
+        "roleName": "FIN",
+        "roleId": "fin",
+        "visible": false
+      },
+      {
+        "roleName": "TECH",
+        "roleId": "tech",
+        "visible": false
+      },
+      {
+        "roleName": "HR",
+        "roleId": "hr",
+        "visible": false
+      }
+    ],
+    "sortOrder": 4
+  }
+]

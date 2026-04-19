@@ -1,0 +1,28 @@
+[
+  {
+    "id": "94ec3f20-e101-4a1d-9557-04e316a27921",
+    "title": "哇！學習讚",
+    "subject": "其他",
+    "level": "一般",
+    "language": "中文",
+    "teacherName": "老師 王",
+    "teacherId": "6ef22438-5ed5-4e7f-8db6-818e46baec6d",
+    "pricePerSession": 0,
+    "durationMinutes": 50,
+    "tags": [],
+    "mode": "online",
+    "description": "持續學習",
+    "status": "上架",
+    "nextStartDate": "2026-02-16T17:12:38",
+    "startDate": null,
+    "endDate": "2026-03-10T17:12:41",
+    "startTime": null,
+    "endTime": null,
+    "totalSessions": null,
+    "seatsLeft": null,
+    "currency": "TWD",
+    "membershipPlan": "basic",
+    "createdAt": "2026-02-16T09:12:46.200Z",
+    "updatedAt": "2026-02-16T09:12:46.200Z"
+  }
+]

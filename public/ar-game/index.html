@@ -1,0 +1,1254 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+
+  <!--
+    ╔══════════════════════════════════════════════════════════════╗
+    ║  WebAR 行動遊戲框架  —  Single Page Application             ║
+    ║  技術棧：A-Frame 1.4.2 + AR.js（Camera BG）+ nipplejs       ║
+    ╚══════════════════════════════════════════════════════════════╝
+
+    【行動裝置優化 Meta Tags】
+    - width=device-width   : 以裝置實體像素為準，不做縮放
+    - initial-scale=1.0    : 初始縮放比例 1:1
+    - maximum-scale=1.0    : 禁止放大（防止雙擊縮放）
+    - user-scalable=no     : 徹底禁止使用者縮放
+    - viewport-fit=cover   : 擴展到 iPhone 瀏海與 Home Bar 區域
+  -->
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+
+  <!-- iOS 全螢幕 Web App 模式 -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+  <!-- Android Chrome 全螢幕 -->
+  <meta name="mobile-web-app-capable" content="yes">
+
+  <title>WebAR 行動遊戲框架</title>
+
+  <!-- ================================================================
+       外部函式庫 CDN
+       ================================================================ -->
+
+  <!--
+    A-Frame 1.4.2：宣告式 3D / WebXR 場景框架
+    提供 <a-scene>、<a-entity>、<a-camera> 等自訂 HTML 元素，
+    底層使用 Three.js 進行 WebGL 渲染
+  -->
+  <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+
+  <!--
+    nipplejs 0.10.1：輕量虛擬搖桿函式庫
+    支援 Touch、Mouse 事件；可設定 static/dynamic/semi 等模式
+  -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.10.1/nipplejs.min.js"></script>
+
+  <!-- ================================================================
+       全域樣式
+       ================================================================ -->
+  <style>
+    /* ---------- 全域重設 ---------- */
+    *, *::before, *::after {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+
+      /* 禁止文字選取，防止長按喚出系統選單 */
+      -webkit-user-select: none;
+      user-select: none;
+
+      /* 禁止被點擊時出現的藍/灰色高亮遮罩（iOS/Android） */
+      -webkit-tap-highlight-color: transparent;
+
+      /*
+        touch-action: none
+        → 告訴瀏覽器「我的 JS 會自己處理所有觸控」
+        → 瀏覽器不再攔截以實作 scroll / zoom，也不再有 300ms click 延遲
+        → 對搖桿容器與技能按鍵特別重要
+      */
+      touch-action: none;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;        /* 隱藏捲軸，防止頁面滑動 */
+      background: #000;
+
+      /*
+        overscroll-behavior: none
+        → 禁止 iOS Safari 的「橡皮筋」下拉更新（Pull-to-Refresh）
+        → 禁止 Chrome Android 的下拉更新
+      */
+      overscroll-behavior: none;
+      overscroll-behavior-y: none;
+    }
+
+    /* ================================================================
+       【Layer 0】後置鏡頭影像背景
+        - position: fixed → 不隨頁面捲動
+        - object-fit: cover → 填滿畫面且保持長寬比
+        - z-index: 0 → 最底層
+       ================================================================ */
+    #camera-bg {
+      position: fixed;
+      inset: 0;                  /* top/right/bottom/left = 0 */
+      width: 100%;
+      height: 100%;
+      object-fit: cover;         /* 等比裁切填滿，不留空白 */
+      z-index: 0;
+      transform: scaleX(1);      /* 後置鏡頭不需翻轉；前置鏡頭需改為 scaleX(-1) */
+    }
+
+    /* ================================================================
+       【Layer 1】A-Frame 3D 場景：疊加在鏡頭影像上方
+        - renderer="alpha: true" 使 WebGL canvas 背景透明
+        - 因此底層的 #camera-bg 會透出，形成 AR 效果
+       ================================================================ */
+    a-scene {
+      position: fixed !important;
+      inset: 0;
+      width: 100% !important;
+      height: 100% !important;
+      z-index: 1;
+    }
+
+    /* 強制清除 A-Frame canvas 預設的黑色背景 */
+    a-scene canvas {
+      background: transparent !important;
+    }
+
+    /* ================================================================
+       【Layer 10】HUD 覆蓋層：固定 2D 介面，不隨 AR 視角移動
+        - pointer-events: none → 預設不攔截點擊
+          （點擊事件會穿透到 A-Frame 場景，由子元素個別開啟）
+        - padding: env(safe-area-inset-*) → 自動避開 iPhone 瀏海/Home Bar
+       ================================================================ */
+    #hud-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 10;
+      pointer-events: none;
+
+      /* Safe Area 保護：iPhone X+ 的瀏海與底部 Home Bar */
+      padding-top:    max(env(safe-area-inset-top,    0px), 8px);
+      padding-right:  max(env(safe-area-inset-right,  0px), 12px);
+      padding-bottom: max(env(safe-area-inset-bottom, 0px), 20px);
+      padding-left:   max(env(safe-area-inset-left,   0px), 12px);
+    }
+
+    /* ────────────────────────────────────────
+       頂部狀態列（HP / MP / 分數）
+       ──────────────────────────────────────── */
+    #status-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      padding: 6px 4px;
+    }
+
+    .bars-group {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .bar-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .bar-label {
+      color: #fff;
+      font-family: 'Arial', sans-serif;
+      font-size: 10px;
+      font-weight: 700;
+      text-shadow: 0 1px 3px rgba(0,0,0,.9);
+      min-width: 18px;
+    }
+
+    .bar-track {
+      width: 110px;
+      height: 10px;
+      background: rgba(0,0,0,.55);
+      border-radius: 5px;
+      border: 1px solid rgba(255,255,255,.25);
+      overflow: hidden;
+    }
+
+    .bar-fill {
+      height: 100%;
+      border-radius: 5px;
+      transition: width .4s ease;
+    }
+
+    #hp-fill {
+      width: 80%;
+      background: linear-gradient(90deg, #2ecc71, #27ae60);
+    }
+
+    #mp-fill {
+      width: 60%;
+      background: linear-gradient(90deg, #3498db, #2980b9);
+    }
+
+    #score-badge {
+      background: rgba(0,0,0,.55);
+      border: 1px solid rgba(255,200,0,.45);
+      border-radius: 10px;
+      padding: 5px 10px;
+      color: #ffd700;
+      font-family: 'Arial', sans-serif;
+      font-size: 13px;
+      font-weight: 700;
+      text-shadow: 0 1px 3px rgba(0,0,0,.9);
+      white-space: nowrap;
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+    }
+
+    /* ────────────────────────────────────────
+       虛擬搖桿容器（左下角）
+       - pointer-events: auto → 必須開啟，才能偵測觸控
+       ──────────────────────────────────────── */
+    #joystick-zone {
+      position: absolute;
+      bottom: 24px;
+      left: 16px;
+      width: 128px;
+      height: 128px;
+      pointer-events: auto;
+    }
+
+    /* ────────────────────────────────────────
+       技能按鍵區域（右下角）
+       ──────────────────────────────────────── */
+    #skill-buttons {
+      position: absolute;
+      bottom: 24px;
+      right: 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 14px;
+      pointer-events: auto;
+    }
+
+    /* 每個按鍵由「提示文字 + 圓形按鍵」垂直排列 */
+    .skill-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+    }
+
+    /* 防禦盾牌（技能 A）偏左，產生斜對角佈局感 */
+    #item-a {
+      align-self: flex-start;
+      margin-right: 52px;
+    }
+
+    .skill-btn {
+      width: 58px;
+      height: 58px;
+      border-radius: 50%;
+      border: 2.5px solid rgba(255,255,255,.6);
+      background: rgba(20, 20, 30, .50);
+
+      color: #fff;
+      font-size: 24px;
+      line-height: 1;
+
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+
+      /* 按下回饋動畫 */
+      transition: transform .1s ease, background .12s ease, box-shadow .12s ease;
+
+      backdrop-filter: blur(5px);
+      -webkit-backdrop-filter: blur(5px);
+      box-shadow: 0 2px 10px rgba(0,0,0,.45);
+
+      /* 取消按鈕原生樣式 */
+      -webkit-appearance: none;
+      appearance: none;
+      outline: none;
+      touch-action: none;   /* 由 JS 處理，不讓瀏覽器干預 */
+    }
+
+    /* 防禦盾牌（藍色系）靜態光暈 */
+    #btn-a {
+      border-color: rgba(100,180,255,.85);
+      box-shadow: 0 0 14px rgba(100,180,255,.35), 0 2px 8px rgba(0,0,0,.45);
+    }
+
+    /* 攻擊長劍（紅色系）靜態光暈 */
+    #btn-b {
+      border-color: rgba(255,100,100,.85);
+      box-shadow: 0 0 14px rgba(255,100,100,.35), 0 2px 8px rgba(0,0,0,.45);
+    }
+
+    /* ------- 按下時的視覺回饋（縮放 + 變色）------- */
+    .skill-btn.pressed {
+      transform: scale(.82);
+    }
+
+    #btn-a.pressed {
+      background: rgba(100,180,255,.40);
+      box-shadow: 0 0 24px rgba(100,180,255,.75);
+    }
+
+    #btn-b.pressed {
+      background: rgba(255,100,100,.40);
+      box-shadow: 0 0 24px rgba(255,100,100,.75);
+    }
+
+    .skill-label {
+      color: rgba(255,255,255,.75);
+      font-family: 'Arial', sans-serif;
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: .5px;
+      text-shadow: 0 1px 3px rgba(0,0,0,.9);
+      text-align: center;
+    }
+
+    /* ────────────────────────────────────────
+       技能觸發浮動提示（螢幕中央）
+       ──────────────────────────────────────── */
+    #action-toast {
+      position: absolute;
+      top: 45%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+
+      background: rgba(10, 10, 20, .72);
+      color: #fff;
+      font-family: 'Arial', sans-serif;
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: 1px;
+
+      padding: 9px 24px;
+      border-radius: 22px;
+      border: 1px solid rgba(255,255,255,.2);
+
+      white-space: nowrap;
+      pointer-events: none;
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+
+      /* 預設隱藏 */
+      opacity: 0;
+      transition: opacity .25s ease;
+    }
+
+    #action-toast.visible {
+      opacity: 1;
+    }
+
+    /* ────────────────────────────────────────
+       開發除錯面板（正式上線前可隱藏）
+       ──────────────────────────────────────── */
+    #debug-panel {
+      position: absolute;
+      top: 55px;
+      left: 4px;
+      font-family: 'Courier New', monospace;
+      font-size: 10px;
+      color: rgba(255,255,200,.7);
+      text-shadow: 0 1px 2px rgba(0,0,0,.9);
+      line-height: 1.6;
+      pointer-events: none;
+    }
+
+    /* ================================================================
+       【Layer 100】啟動許可蓋板
+        瀏覽器需在「明確的使用者手勢」後，才能請求裝置 API 權限
+        (getUserMedia, DeviceOrientationEvent.requestPermission)
+       ================================================================ */
+    #start-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      background: rgba(8, 8, 20, .95);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 30px;
+      text-align: center;
+      font-family: 'Arial', sans-serif;
+    }
+
+    #start-overlay .icon   { font-size: 64px; margin-bottom: 16px; }
+    #start-overlay h1      { color: #fff; font-size: 22px; margin-bottom: 12px; }
+    #start-overlay p       { color: rgba(255,255,255,.65); font-size: 13px; line-height: 1.65; margin-bottom: 28px; }
+    #start-overlay strong  { color: rgba(255,255,255,.9); }
+
+    #start-btn {
+      background: linear-gradient(135deg, #6c5ce7, #a29bfe);
+      border: none;
+      border-radius: 28px;
+      color: #fff;
+      font-family: 'Arial', sans-serif;
+      font-size: 17px;
+      font-weight: 700;
+      padding: 14px 44px;
+      cursor: pointer;
+      letter-spacing: .5px;
+      box-shadow: 0 6px 24px rgba(108,92,231,.5);
+      transition: transform .1s ease;
+      touch-action: manipulation;
+    }
+
+    #start-btn:active {
+      transform: scale(.94);
+    }
+
+    /* 啟動畫面錯誤提示 */
+    #error-msg {
+      margin-top: 18px;
+      color: #ff7675;
+      font-size: 13px;
+      display: none;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+
+<body>
+
+  <!--
+    ╔══════════════════════════════════════════════════════════════╗
+    ║            畫面層次（z-index）結構說明                       ║
+    ╠══════════════════════════════════════════════════════════════╣
+    ║  z:  0  │ #camera-bg      │ 後置鏡頭 Video 背景            ║
+    ║  z:  1  │ <a-scene>       │ 透明背景的 3D WebGL 場景        ║
+    ║  z: 10  │ #hud-overlay    │ 2D HUD：搖桿、技能鍵、血條      ║
+    ║  z:100  │ #start-overlay  │ 啟動許可蓋板                    ║
+    ╚══════════════════════════════════════════════════════════════╝
+  -->
+
+  <!-- ═══════════════════════════════════════════════════════════
+       【Layer 0】後置攝影機影像串流
+       autoplay   : 取得串流後自動播放
+       playsinline: iOS 必須加此屬性，否則會以全螢幕播放
+       muted      : getUserMedia 的 video 串流不需要音訊
+       ═══════════════════════════════════════════════════════════ -->
+  <video id="camera-bg" autoplay playsinline muted></video>
+
+
+  <!-- ═══════════════════════════════════════════════════════════
+       【Layer 1】A-Frame 3D AR 場景
+
+       renderer="alpha: true"
+         → WebGL context 以 premultiplied alpha 模式初始化
+         → canvas 背景設為透明，底層 video 得以透出
+
+       vr-mode-ui="enabled: false"
+         → 隱藏右下角的「進入 VR」按鈕，避免誤觸
+
+       device-orientation-permission-ui="enabled: false"
+         → 關閉 A-Frame 內建的 iOS 感測器權限彈窗
+         → 我們在啟動流程中自行處理 iOS 13+ 的 requestPermission
+
+       loading-screen="enabled: false"
+         → 關閉 A-Frame 預設的深藍色載入畫面（我們有自己的蓋板）
+
+       embedded
+         → 讓 A-Frame 不強制佔用全視窗，與我們的 CSS 定位搭配
+       ═══════════════════════════════════════════════════════════ -->
+  <a-scene
+    id="ar-scene"
+    renderer="alpha: true; antialias: true; logarithmicDepthBuffer: true;"
+    vr-mode-ui="enabled: false"
+    device-orientation-permission-ui="enabled: false"
+    loading-screen="enabled: false"
+    embedded
+  >
+
+    <!-- ───────────────────────────────────────────────────────
+         資源預載區塊 <a-assets>
+         所有要用到的 3D 模型、音效、貼圖先在此宣告，
+         A-Frame 會在場景初始化時自動下載並快取這些資源
+         ─────────────────────────────────────────────────────── -->
+    <a-assets timeout="30000">
+
+      <!--
+        ╔══════════════════════════════════════════════════════╗
+        ║  【glTF/GLB 模型載入範例 — 正式使用時取消以下註解】  ║
+        ╠══════════════════════════════════════════════════════╣
+        ║  步驟 1: 準備 .glb 檔案（推薦使用 Blender 匯出）    ║
+        ║  步驟 2: 將檔案放到 /public/ar-game/assets/models/  ║
+        ║  步驟 3: 取消以下 <a-asset-item> 的註解             ║
+        ║  步驟 4: 在 #character 的 <a-gltf-model> 取消註解   ║
+        ╚══════════════════════════════════════════════════════╝
+      -->
+      <!-- <a-asset-item id="hero-model"  src="./assets/models/hero.glb"></a-asset-item> -->
+      <!-- <a-asset-item id="idle-anim"   src="./assets/models/hero_idle.glb"></a-asset-item> -->
+
+    </a-assets>
+
+    <!-- ───────────────────────────────────────────────────────
+         主角 Entity
+         - position="0 0 -3"  : 預設放在相機正前方 3 公尺
+         - character-controller : 我們自訂的 A-Frame Component，
+                                  負責以 tick() 每幀更新位移與旋轉
+         ─────────────────────────────────────────────────────── -->
+    <a-entity
+      id="character"
+      position="0 0 -3"
+      character-controller
+    >
+
+      <!--
+        ══════════════════════════════════════════════════════════
+        【glTF 模型版本 — 有模型時啟用此區塊，並移除下方幾何體群】
+
+        src="#hero-model"
+          → 使用 <a-assets> 中預載的模型 ID
+
+        scale="0.01 0.01 0.01"
+          → glTF 預設單位為公分，縮放到公尺（視模型尺寸調整）
+
+        animation-mixer="clip: Idle; loop: repeat; crossFadeDuration: 0.3"
+          → 播放模型內建的 "Idle" 動畫循環
+          → crossFadeDuration: 動畫切換時的淡入淡出時間（秒）
+
+        骨骼動畫切換方式（在 JS 中）：
+          const mixer = charEl.components['animation-mixer'];
+          mixer.playAnimation('Walk');
+        ══════════════════════════════════════════════════════════
+      -->
+      <!--
+      <a-gltf-model
+        src="#hero-model"
+        scale="0.01 0.01 0.01"
+        animation-mixer="clip: Idle; loop: repeat; crossFadeDuration: 0.3"
+      ></a-gltf-model>
+      -->
+
+      <!-- ══════════════════════════════════════
+           【備用幾何體角色 — 無 3D 模型時使用】
+           用基本形狀組合成簡易人形角色
+           ══════════════════════════════════════ -->
+
+      <!-- 身體（圓柱體，藍色） -->
+      <a-cylinder
+        id="char-body"
+        color="#4A90E2"
+        radius="0.22"
+        height="0.9"
+        position="0 0.45 0"
+        segments-radial="12"
+      ></a-cylinder>
+
+      <!-- 頭部（球體，膚色） -->
+      <a-sphere
+        id="char-head"
+        color="#F0C27F"
+        radius="0.18"
+        position="0 1.1 0"
+      ></a-sphere>
+
+      <!-- 左手（長方體，同身體色；防禦時抬起） -->
+      <a-box
+        id="char-arm-l"
+        color="#4A90E2"
+        width="0.09" height="0.45" depth="0.09"
+        position="-0.32 0.42 0"
+        rotation="0 0 12"
+      ></a-box>
+
+      <!-- 右手持劍（較細長的灰色長方體；攻擊時揮出） -->
+      <a-box
+        id="char-arm-r"
+        color="#BDC3C7"
+        width="0.07" height="0.62" depth="0.07"
+        position="0.32 0.52 0"
+        rotation="0 0 -18"
+      ></a-box>
+
+      <!-- 左腳 -->
+      <a-cylinder
+        color="#2C3E50"
+        radius="0.09"
+        height="0.45"
+        position="-0.12 0.01 0"
+        segments-radial="8"
+      ></a-cylinder>
+
+      <!-- 右腳 -->
+      <a-cylinder
+        color="#2C3E50"
+        radius="0.09"
+        height="0.45"
+        position="0.12 0.01 0"
+        segments-radial="8"
+      ></a-cylinder>
+
+      <!-- 地面陰影圓圈（半透明黑圓，幫助玩家感知角色相對地面位置） -->
+      <a-circle
+        color="#000000"
+        opacity="0.28"
+        radius="0.28"
+        rotation="-90 0 0"
+        position="0 0.005 0"
+        segments="16"
+      ></a-circle>
+
+    </a-entity>
+
+    <!-- ───────────────────────────────────────────────────────
+         地面參考平面
+         半透明綠色網格，讓玩家感知 AR 空間的「地板」在哪裡
+         rotation="-90 0 0" → 水平鋪平
+         ─────────────────────────────────────────────────────── -->
+    <a-plane
+      color="#27AE60"
+      opacity="0.12"
+      width="20"
+      height="20"
+      rotation="-90 0 0"
+      position="0 -0.01 0"
+    ></a-plane>
+
+    <!-- ───────────────────────────────────────────────────────
+         光源設定
+         ─────────────────────────────────────────────────────── -->
+    <!-- 環境光：全方向均勻補光，避免背面全黑 -->
+    <a-light type="ambient"     color="#CCDDFF" intensity="0.65"></a-light>
+    <!-- 方向光：模擬太陽，從右上前方照射，產生立體陰影感 -->
+    <a-light type="directional" color="#FFFFFF" intensity="0.85" position="2 4 3"></a-light>
+
+    <!-- ───────────────────────────────────────────────────────
+         AR 攝影機
+         - position="0 1.6 0"  : 模擬人眼站立高度（1.6 公尺）
+         - look-controls
+             magicWindowTrackingEnabled: true
+               → 啟用 iOS/Android 的陀螺儀「魔法視窗模式」
+               → 讓 3D 場景隨手機實際旋轉而旋轉（形成 AR 追蹤感）
+             touchEnabled: false
+               → 關閉 A-Frame 預設的「滑動旋轉視角」觸控行為
+               → 避免與虛擬搖桿的觸控事件產生衝突
+             pointerLockEnabled: false
+               → 桌面版不鎖定滑鼠指標
+         ─────────────────────────────────────────────────────── -->
+    <a-camera
+      id="ar-camera"
+      position="0 1.6 0"
+      look-controls="magicWindowTrackingEnabled: true; touchEnabled: false; pointerLockEnabled: false;"
+    ></a-camera>
+
+  </a-scene>
+
+
+  <!-- ═══════════════════════════════════════════════════════════
+       【Layer 10】HUD 2D 覆蓋層
+       固定在畫面上方，完全不受 AR 場景的相機旋轉影響
+       ═══════════════════════════════════════════════════════════ -->
+  <div id="hud-overlay">
+
+    <!-- ── 頂部狀態列：HP 血量 / MP 魔力 / 分數 ── -->
+    <div id="status-bar">
+      <div class="bars-group">
+        <div class="bar-row">
+          <span class="bar-label">HP</span>
+          <div class="bar-track"><div class="bar-fill" id="hp-fill"></div></div>
+        </div>
+        <div class="bar-row">
+          <span class="bar-label">MP</span>
+          <div class="bar-track"><div class="bar-fill" id="mp-fill"></div></div>
+        </div>
+      </div>
+      <div id="score-badge">⭐&nbsp;<span id="score-val">0</span></div>
+    </div>
+
+    <!-- ── 開發用除錯面板（上線前隱藏 display:none 即可）── -->
+    <div id="debug-panel">
+      角色位置：<span id="dbg-pos">0.00, 0.00, 0.00</span><br>
+      搖桿向量：<span id="dbg-joy">靜止</span><br>
+      角色狀態：<span id="dbg-state">一般</span>
+    </div>
+
+    <!-- ── 技能觸發浮動文字（螢幕中央）── -->
+    <div id="action-toast"></div>
+
+    <!-- ── 虛擬搖桿容器（左下角；nipplejs 動態注入子 DOM）── -->
+    <div id="joystick-zone"></div>
+
+    <!-- ── 技能按鍵群（右下角）── -->
+    <div id="skill-buttons">
+
+      <!-- 技能 A：防禦盾牌（偏左，形成斜角排列）-->
+      <div class="skill-item" id="item-a">
+        <button class="skill-btn" id="btn-a" aria-label="防禦技能：舉盾">🛡️</button>
+        <span class="skill-label">防禦</span>
+      </div>
+
+      <!-- 技能 B：攻擊長劍 -->
+      <div class="skill-item">
+        <button class="skill-btn" id="btn-b" aria-label="攻擊技能：揮劍">⚔️</button>
+        <span class="skill-label">攻擊</span>
+      </div>
+
+    </div>
+
+  </div>
+
+
+  <!-- ═══════════════════════════════════════════════════════════
+       【Layer 100】啟動許可蓋板
+       任何需要「裝置 API（相機、感測器）」的 Web App，
+       都必須在使用者主動手勢（點擊）後才能發出請求，
+       這是瀏覽器安全策略（Permission Policy）的硬性要求
+       ═══════════════════════════════════════════════════════════ -->
+  <div id="start-overlay">
+    <div class="icon">🎮</div>
+    <h1>WebAR 行動遊戲框架</h1>
+    <p>
+      本遊戲需要開啟<strong>後置相機</strong>以呈現 AR 畫面。<br>
+      在 <strong>iOS 13+</strong> 裝置上，也需要允許<strong>感測器存取</strong><br>
+      讓 3D 場景隨手機旋轉而追蹤。<br><br>
+      請按下「開始遊戲」並允許所有權限請求。
+    </p>
+    <button id="start-btn">▶&ensp;開始遊戲</button>
+    <div id="error-msg"></div>
+  </div>
+
+
+  <!-- ═══════════════════════════════════════════════════════════
+       主要 JavaScript
+       ═══════════════════════════════════════════════════════════ -->
+  <script>
+    'use strict';
+
+    // ╔══════════════════════════════════════════════════════════════╗
+    // ║  1. 全域遊戲狀態（Single Source of Truth）                   ║
+    // ╚══════════════════════════════════════════════════════════════╝
+    const GameState = {
+      hp:          80,    // 當前血量（0~100）
+      mp:          60,    // 當前魔力（0~100）
+      score:        0,    // 分數
+
+      isDefending: false, // 是否處於防禦狀態
+      isAttacking: false, // 是否正在攻擊（攻擊動畫 CD 內為 true）
+
+      /**
+       * moveVector: 搖桿輸入轉換後的移動向量（已乘上力度）
+       *   x → Three.js 世界的 X 軸（左負右正）
+       *   z → Three.js 世界的 Z 軸（前負後正；前進方向為 -Z）
+       */
+      moveVector:  { x: 0, z: 0 },
+
+      moveSpeed:   3.0,   // 角色移動速度（公尺/秒）
+    };
+
+
+    // ╔══════════════════════════════════════════════════════════════╗
+    // ║  2. A-Frame 自訂 Component：character-controller             ║
+    // ║     職責：每幀（tick）根據 GameState.moveVector 更新位置     ║
+    // ╚══════════════════════════════════════════════════════════════╝
+    AFRAME.registerComponent('character-controller', {
+
+      schema: {
+        /* 如需從 HTML attribute 傳入設定，可在此宣告，例如：
+           speed: { type: 'number', default: 3 }
+           然後用 this.data.speed 取得                         */
+      },
+
+      init() {
+        // this.el.object3D 是角色的 Three.js Group 物件，
+        // 可直接操作 .position、.rotation（Euler）、.scale
+        this.obj3D = this.el.object3D;
+      },
+
+      /**
+       * tick(time, timeDelta) — A-Frame 每幀自動呼叫
+       *
+       * @param {number} time       累計執行時間（毫秒）
+       * @param {number} timeDelta  距上一幀的時間差（毫秒）
+       *
+       * 使用 timeDelta 做「幀率無關移動」（Frame-rate independent movement）：
+       *   位移 = 速度（m/s）× 時間差（s）
+       * 這樣無論手機跑 30fps 還是 60fps，角色移動速度都一致
+       */
+      tick(time, timeDelta) {
+        const { x: vx, z: vz } = GameState.moveVector;
+
+        // 向量長度接近 0 時不做任何更新（節省 CPU）
+        if (Math.abs(vx) < 0.005 && Math.abs(vz) < 0.005) return;
+
+        const dt    = timeDelta / 1000;           // 毫秒 → 秒
+        const speed = GameState.moveSpeed;
+        const pos   = this.obj3D.position;
+
+        // ── 位移更新 ──
+        pos.x += vx * speed * dt;
+        pos.z += vz * speed * dt;
+
+        // ── 旋轉更新：讓角色面向移動方向 ──
+        //
+        // Math.atan2(x, z) 計算向量 (vx, vz) 與 +Z 軸的夾角（弧度）
+        // Three.js 使用右手座標系：+Z 是「螢幕朝你」的方向
+        // 往前走（nipplejs 向上）會給 vz = -1，atan2 算出負角（朝前旋轉）
+        const targetRotY = Math.atan2(vx, vz);
+
+        // 線性插值（Lerp）讓旋轉平滑，避免瞬間轉向抖動
+        // Math.min(dt * 12, 1) 確保插值比例不超過 1（不會過衝）
+        this.obj3D.rotation.y = THREE.MathUtils.lerp(
+          this.obj3D.rotation.y,
+          targetRotY,
+          Math.min(dt * 12, 1)
+        );
+
+        // 更新 Debug 面板
+        const dbgPos = document.getElementById('dbg-pos');
+        if (dbgPos) {
+          dbgPos.textContent =
+            `${pos.x.toFixed(2)}, ${pos.y.toFixed(2)}, ${pos.z.toFixed(2)}`;
+        }
+      }
+
+    }); // end registerComponent
+
+
+    // ╔══════════════════════════════════════════════════════════════╗
+    // ║  3. 啟動流程（點擊「開始遊戲」按鈕後執行）                  ║
+    // ╚══════════════════════════════════════════════════════════════╝
+    document.getElementById('start-btn').addEventListener('click', async () => {
+
+      const errorDiv = document.getElementById('error-msg');
+      errorDiv.style.display = 'none';
+
+      try {
+        // ── Step 1：請求後置相機串流 ──
+        //
+        // getUserMedia 是 WebRTC API，需要 HTTPS 或 localhost
+        // facingMode: { ideal: 'environment' } → 優先後置，不強制（桌機可降級前置）
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: 'environment' },
+            width:  { ideal: 1280 },
+            height: { ideal: 720  },
+          },
+          audio: false,
+        });
+
+        // ── Step 2：將串流餵給 <video> 元素 ──
+        const video = document.getElementById('camera-bg');
+        video.srcObject = stream;
+        await video.play();
+
+        // ── Step 3：iOS 13+ 需在使用者手勢內請求感測器權限 ──
+        //
+        // DeviceOrientationEvent.requestPermission 只在 iOS Safari 13+ 存在，
+        // 其他平台（Android Chrome、桌面）沒有此 API，需要做 typeof 檢查
+        if (
+          typeof DeviceOrientationEvent !== 'undefined' &&
+          typeof DeviceOrientationEvent.requestPermission === 'function'
+        ) {
+          const perm = await DeviceOrientationEvent.requestPermission();
+          if (perm !== 'granted') {
+            // 使用者拒絕感測器：遊戲仍可運行，但無法用陀螺儀轉動視角
+            console.warn('[AR] 感測器權限被拒，陀螺儀追蹤停用');
+          }
+        }
+
+        // ── Step 4：隱藏啟動蓋板 ──
+        document.getElementById('start-overlay').style.display = 'none';
+
+        // ── Step 5：初始化所有遊戲子系統 ──
+        initHUD();
+        initJoystick();
+        initSkillButtons();
+        initTouchBlockers();
+
+        console.log('%c[WebAR] 遊戲啟動成功 ✓', 'color:#2ecc71; font-weight:bold;');
+
+      } catch (err) {
+        // 常見錯誤：NotAllowedError（用戶拒絕）, NotFoundError（無相機）,
+        //           NotSupportedError（非 HTTPS）
+        console.error('[WebAR] 啟動失敗：', err);
+        errorDiv.textContent =
+          `⚠️ 無法開啟相機（${err.name}）。\n請確認已授予相機權限，且使用 HTTPS 連線。`;
+        errorDiv.style.display = 'block';
+      }
+
+    });
+
+
+    // ╔══════════════════════════════════════════════════════════════╗
+    // ║  4. 虛擬搖桿（nipplejs）                                     ║
+    // ╚══════════════════════════════════════════════════════════════╝
+    function initJoystick() {
+
+      /**
+       * nipplejs.create() 設定說明：
+       *
+       * zone        搖桿感應的 DOM 容器元素
+       * mode        'static'  → 底座固定在 position 指定的位置
+       *             'dynamic' → 跟隨手指按下位置生成（適合大屏幕）
+       *             'semi'    → 在 zone 內靠近手指觸點生成
+       * position    底座中心點（相對於 zone 容器）
+       * size        底座直徑（像素）
+       * color       底座填充色，支援 rgba
+       * dynamicPage 是否在頁面 resize 後重新計算座標
+       */
+      const joystick = nipplejs.create({
+        zone:        document.getElementById('joystick-zone'),
+        mode:        'static',
+        position:    { left: '50%', top: '50%' },
+        size:        112,
+        color:       'rgba(255, 255, 255, 0.5)',
+        dynamicPage: true,
+      });
+
+      // ── 搖桿移動：更新全域移動向量 ──
+      joystick.on('move', (evt, data) => {
+        if (!data || !data.vector) return;
+
+        /**
+         * data.vector  正規化後的方向向量，範圍 -1 ~ +1
+         *   .x  左(-1) → 右(+1)
+         *   .y  上(-1) → 下(+1)  ← nipplejs 的 Y 方向與螢幕 Y 軸相同
+         *
+         * data.force   推桿力度 0 ~ (推桿移動距離 / 搖桿最大半徑)
+         *              在 static 模式下，超出底座邊緣後不再增加
+         *              我們 clamp 到最大值 1
+         *
+         * 座標映射到 Three.js 世界：
+         *   3D X 軸 ← nipplejs X（方向相同，左右移動）
+         *   3D Z 軸 ← nipplejs Y × (-1)（因為 nipplejs 向上 = Y 負，
+         *             而前進方向在 Three.js 是 -Z，所以剛好抵消需翻轉）
+         */
+        const force = Math.min(data.force || 1, 1);
+
+        GameState.moveVector.x =  data.vector.x * force;
+        GameState.moveVector.z = -data.vector.y * force;  // ← 翻轉 Y→Z
+
+        // 更新 Debug 面板
+        const dbgJoy = document.getElementById('dbg-joy');
+        if (dbgJoy) {
+          dbgJoy.textContent =
+            `x:${data.vector.x.toFixed(2)} ` +
+            `y:${data.vector.y.toFixed(2)} ` +
+            `f:${force.toFixed(2)}`;
+        }
+      });
+
+      // ── 搖桿放開：清零移動向量，角色停止 ──
+      joystick.on('end', () => {
+        GameState.moveVector.x = 0;
+        GameState.moveVector.z = 0;
+
+        const dbgJoy = document.getElementById('dbg-joy');
+        if (dbgJoy) dbgJoy.textContent = '靜止';
+      });
+
+      console.log('[搖桿] nipplejs 初始化完成');
+    }
+
+
+    // ╔══════════════════════════════════════════════════════════════╗
+    // ║  5. 技能按鍵邏輯                                             ║
+    // ╚══════════════════════════════════════════════════════════════╝
+    function initSkillButtons() {
+
+      /**
+       * bindSkillButton — 通用按鍵綁定輔助函式
+       *
+       * 同時處理 touchstart/touchend（手機）和 mousedown/mouseup（桌面開發），
+       * 並加入 pressed CSS class 作為視覺回饋
+       *
+       * @param {HTMLElement} btn         目標按鈕元素
+       * @param {Function}    onPress     按下時觸發
+       * @param {Function}    [onRelease] 放開時觸發（可選）
+       */
+      function bindSkillButton(btn, onPress, onRelease) {
+
+        const activate = () => {
+          btn.classList.add('pressed');
+          onPress();
+        };
+
+        const deactivate = () => {
+          btn.classList.remove('pressed');
+          if (onRelease) onRelease();
+        };
+
+        // touchstart / touchend：passive:false 允許我們呼叫 preventDefault
+        btn.addEventListener('touchstart', (e) => {
+          e.preventDefault();   // 阻止 300ms click 延遲與頁面捲動
+          activate();
+        }, { passive: false });
+
+        btn.addEventListener('touchend', (e) => {
+          e.preventDefault();
+          deactivate();
+        }, { passive: false });
+
+        btn.addEventListener('touchcancel', (e) => {
+          e.preventDefault();
+          deactivate();
+        }, { passive: false });
+
+        // 桌面滑鼠（方便開發測試）
+        btn.addEventListener('mousedown', activate);
+        btn.addEventListener('mouseup',   deactivate);
+        btn.addEventListener('mouseleave', deactivate);
+      }
+
+      // ── 技能 A：防禦盾牌 ──
+      bindSkillButton(
+        document.getElementById('btn-a'),
+
+        // onPress：進入防禦狀態
+        () => {
+          GameState.isDefending = true;
+
+          // 在 Console 記錄（實際遊戲可在此觸發防禦音效、粒子特效等）
+          console.log('%c[技能A] 🛡️ 舉盾防禦！isDefending=true', 'color:#4af;');
+
+          // 觸發 3D 場景特效
+          playDefenseEffect(true);
+
+          // 更新 Debug 面板
+          const dbgState = document.getElementById('dbg-state');
+          if (dbgState) dbgState.textContent = '防禦中 🛡️';
+
+          showToast('🛡️  防禦！');
+
+          // 扣除魔力示範
+          GameState.mp = Math.max(0, GameState.mp - 8);
+          updateHUD();
+        },
+
+        // onRelease：解除防禦
+        () => {
+          GameState.isDefending = false;
+          console.log('[技能A] 防禦解除');
+          playDefenseEffect(false);
+
+          const dbgState = document.getElementById('dbg-state');
+          if (dbgState) dbgState.textContent = '一般';
+        }
+      );
+
+      // ── 技能 B：攻擊長劍 ──
+      bindSkillButton(
+        document.getElementById('btn-b'),
+
+        // onPress：發動攻擊
+        () => {
+          // 攻擊 CD 保護（動畫播完前不可重複）
+          if (GameState.isAttacking) return;
+          GameState.isAttacking = true;
+
+          console.log('%c[技能B] ⚔️ 揮劍攻擊！', 'color:#f64; font-weight:bold;');
+
+          playAttackEffect();
+          showToast('⚔️  攻擊！');
+
+          // 加分示範
+          GameState.score += 10;
+
+          // 扣除魔力示範
+          GameState.mp = Math.max(0, GameState.mp - 15);
+          updateHUD();
+
+          const dbgState = document.getElementById('dbg-state');
+          if (dbgState) dbgState.textContent = '攻擊中 ⚔️';
+
+          // 500ms 後重設 CD（視動畫時長調整）
+          setTimeout(() => {
+            GameState.isAttacking = false;
+            if (dbgState) dbgState.textContent = '一般';
+            console.log('[技能B] 攻擊 CD 結束');
+          }, 500);
+        }
+      );
+
+      console.log('[技能按鍵] 初始化完成');
+    }
+
+
+    // ╔══════════════════════════════════════════════════════════════╗
+    // ║  6. 3D 場景動畫特效（操控 A-Frame Entity 屬性）              ║
+    // ╚══════════════════════════════════════════════════════════════╝
+
+    /**
+     * 防禦特效：
+     *  - 左手（arm-l）抬起，模擬舉盾姿勢
+     *  - 身體改為防禦色（冰藍）
+     *
+     * @param {boolean} active  true=進入防禦 / false=解除防禦
+     */
+    function playDefenseEffect(active) {
+      const armL = document.getElementById('char-arm-l');
+      const body = document.getElementById('char-body');
+
+      if (armL) {
+        // A-Frame 的 animation component 屬性格式：
+        // setAttribute('animation', { property, to, dur, easing, ... })
+        // 若同一元素有多個動畫，用 'animation__<name>' 區分
+        armL.setAttribute('animation__raise', {
+          property: 'rotation',
+          to:   active ? '0 0 -75' : '0 0 12',  // 舉起 or 放下
+          dur:  200,
+          easing: 'easeOutQuad',
+        });
+      }
+
+      if (body) {
+        body.setAttribute('color', active ? '#6AB0DE' : '#4A90E2');
+      }
+    }
+
+    /**
+     * 攻擊特效：
+     *  - 右手（arm-r）向上揮出再回來（來回動畫）
+     *  - 身體閃爍攻擊紅色，0.5 秒後恢復
+     */
+    function playAttackEffect() {
+      const armR = document.getElementById('char-arm-r');
+      const body = document.getElementById('char-body');
+
+      if (armR) {
+        armR.setAttribute('animation__swing', {
+          property: 'rotation',
+          from:     '0 0 -18',
+          to:       '0 0 72',       // 大角度揮出
+          dur:      240,
+          easing:   'easeOutCubic',
+          dir:      'alternate',    // 揮出後自動反向收回
+          loop:     1,
+        });
+      }
+
+      if (body) {
+        body.setAttribute('color', '#E74C3C');  // 攻擊紅
+        setTimeout(() => {
+          // 若防禦中維持防禦藍，否則恢復預設藍
+          body.setAttribute('color', GameState.isDefending ? '#6AB0DE' : '#4A90E2');
+        }, 480);
+      }
+
+      // 若未防禦，攻擊後讓左手回到自然位置
+      const armL = document.getElementById('char-arm-l');
+      if (armL && !GameState.isDefending) {
+        armL.setAttribute('animation__lower', {
+          property: 'rotation',
+          to:       '0 0 12',
+          dur:      300,
+          easing:   'easeOutQuad',
+        });
+      }
+    }
+
+
+    // ╔══════════════════════════════════════════════════════════════╗
+    // ║  7. 浮動提示文字                                             ║
+    // ╚══════════════════════════════════════════════════════════════╝
+    let _toastTimer = null;
+
+    function showToast(msg) {
+      const el = document.getElementById('action-toast');
+      el.textContent = msg;
+      el.classList.add('visible');
+
+      if (_toastTimer) clearTimeout(_toastTimer);
+      _toastTimer = setTimeout(() => el.classList.remove('visible'), 1400);
+    }
+
+
+    // ╔══════════════════════════════════════════════════════════════╗
+    // ║  8. HUD 數值渲染                                             ║
+    // ╚══════════════════════════════════════════════════════════════╝
+    function initHUD() {
+      updateHUD();
+    }
+
+    function updateHUD() {
+      document.getElementById('hp-fill').style.width  = `${GameState.hp}%`;
+      document.getElementById('mp-fill').style.width  = `${GameState.mp}%`;
+      document.getElementById('score-val').textContent = GameState.score;
+    }
+
+
+    // ╔══════════════════════════════════════════════════════════════╗
+    // ║  9. 行動裝置觸控保護                                         ║
+    // ║     禁止 Pull-to-Refresh / 雙擊縮放 / 頁面捲動              ║
+    // ╚══════════════════════════════════════════════════════════════╝
+    function initTouchBlockers() {
+
+      /**
+       * 禁止 Pull-to-Refresh 與多點縮放（Pinch-to-Zoom）
+       *
+       * 在 document 頂層攔截 touchmove，呼叫 preventDefault()。
+       * { passive: false } 是必要的——現代瀏覽器預設 passive:true，
+       * 這樣 preventDefault 不會生效。
+       *
+       * 注意：搖桿容器和技能按鍵的 touchstart 已各自呼叫
+       * preventDefault，所以不需要在這裡排除特定元素。
+       */
+      document.addEventListener('touchmove', (e) => {
+        e.preventDefault();
+      }, { passive: false });
+
+      /**
+       * 禁止雙擊縮放（Double-Tap Zoom）
+       *
+       * 偵測 300ms 內的第二次 touchend => 鎖定
+       * iOS Safari 和舊版 Chrome 在 touch-action: none 生效後
+       * 通常已不會觸發，此為額外保障
+       */
+      let _lastTouchEnd = 0;
+      document.addEventListener('touchend', (e) => {
+        const now = Date.now();
+        if (now - _lastTouchEnd < 300) {
+          e.preventDefault();
+        }
+        _lastTouchEnd = now;
+      }, { passive: false });
+
+      /**
+       * 禁止右鍵選單（長按 Context Menu，在 Android 常見）
+       */
+      document.addEventListener('contextmenu', (e) => e.preventDefault());
+
+      console.log('[觸控保護] Pull-to-Refresh / 雙擊縮放 / 捲動 已全部禁用');
+    }
+
+
+    // ╔══════════════════════════════════════════════════════════════╗
+    // ║  10. A-Frame 場景載入後的透明度修正                          ║
+    // ╚══════════════════════════════════════════════════════════════╝
+    document.getElementById('ar-scene').addEventListener('loaded', () => {
+      const scene    = document.getElementById('ar-scene');
+      const renderer = scene.renderer;
+
+      if (renderer) {
+        // 將 WebGL 的清除顏色設為完全透明（RGBA 0,0,0,0）
+        // 這樣每幀清除畫面時不會畫上黑色，後置相機的 video 得以透出
+        renderer.setClearColor(0x000000, 0);
+        console.log('[A-Frame] 場景已載入，WebGL 清除色設為透明 ✓');
+      }
+    });
+
+
+    console.log(
+      '%c[WebAR Framework] 所有模組已定義，等待使用者點擊啟動...',
+      'color:#a29bfe; font-weight:bold;'
+    );
+
+  </script>
+
+</body>
+</html>

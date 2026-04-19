@@ -1,0 +1,81 @@
+{
+  "teacherPage": {
+    "showContact": true,
+    "showIntro": true,
+    "showSubjects": true
+  },
+  "studentPage": {
+    "showGoals": true,
+    "showPreferredSubjects": true
+  },
+  "classroom": {
+    "enableWhiteboard": true,
+    "enableMedia": true,
+    "enablePdfUpload": true,
+    "whiteboardRoles": [
+      "admin",
+      "teacher"
+    ],
+    "mediaRoles": [
+      "admin",
+      "teacher",
+      "student"
+    ],
+    "pdfRoles": [
+      "admin",
+      "teacher"
+    ],
+    "defaultWhiteboardSystem": "canvas"
+  },
+  "defaultPlan": "basic",
+  "siteUrl": "",
+  "roles": [
+    {
+      "isActive": true,
+      "order": 0,
+      "description": "管理者",
+      "id": "admin",
+      "name": "Admin",
+      "updatedAt": "2026-02-15T16:19:15.223Z"
+    },
+    {
+      "isActive": true,
+      "order": 1,
+      "description": "老師",
+      "id": "teacher",
+      "name": "Teacher",
+      "updatedAt": "2026-02-15T16:19:15.223Z"
+    },
+    {
+      "isActive": true,
+      "order": 2,
+      "description": "學生",
+      "id": "student",
+      "name": "Student",
+      "updatedAt": "2026-02-15T16:19:15.223Z"
+    },
+    {
+      "isActive": true,
+      "order": 3,
+      "description": "財務",
+      "id": "fin",
+      "name": "FIN",
+      "updatedAt": "2026-02-15T16:19:15.223Z"
+    },
+    {
+      "isActive": true,
+      "order": 4,
+      "description": "技術",
+      "id": "tech",
+      "name": "TECH",
+      "updatedAt": "2026-02-15T16:19:15.223Z"
+    },
+    {
+      "id": "hr",
+      "name": "HR",
+      "description": "HR",
+      "isActive": true,
+      "order": 5
+    }
+  ]
+}
