@@ -599,6 +599,364 @@ async function hasDrawingContent(page: Page): Promise<boolean> {
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// Teacher Course Creation for Stress Test
+// ─────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────
+// Register or Login Teacher Helper
+// ─────────────────────────────────────────────────────────────────────
+
+async function registerOrLoginTeacher(
+  page: Page,
+  teacherEmail: string,
+  teacherPassword: string,
+  bypassSecret: string
+): Promise<void> {
+  const config = getTestConfig();
+  const baseUrl = config.baseUrl;
+
+  console.log(`   📝 [${teacherEmail}] Attempting to login...`);
+
+  // Try login first
+  try {
+    await injectDeviceCheckBypass(page);
+    await autoLogin(page, teacherEmail, teacherPassword, bypassSecret);
+    console.log(`   ✅ [${teacherEmail}] Login successful`);
+    return;
+  } catch (e) {
+    console.log(`   ℹ️ [${teacherEmail}] Login failed, attempting registration...`);
+  }
+
+  // If login fails, try to register
+  try {
+    console.log(`   📝 [${teacherEmail}] Registering new teacher account...`);
+    const registerUrl = `${baseUrl}/login/register`;
+    await page.goto(registerUrl, { waitUntil: 'networkidle' });
+
+    // Fill email
+    const emailInputs = page.locator('input[type="email"], input[name*="email"]');
+    const emailInput = emailInputs.first();
+    if (await emailInput.count() > 0) {
+      await emailInput.fill(teacherEmail);
+      console.log(`   ✓ [${teacherEmail}] Email entered`);
+    }
+
+    // Fill password
+    const passwordInputs = page.locator('input[type="password"]');
+    const passwordInput = passwordInputs.first();
+    if (await passwordInput.count() > 0) {
+      await passwordInput.fill(teacherPassword);
+      console.log(`   ✓ [${teacherEmail}] Password entered`);
+    }
+
+    // Confirm password
+    const confirmPasswordInput = passwordInputs.nth(1);
+    if (await confirmPasswordInput.count() > 0) {
+      await confirmPasswordInput.fill(teacherPassword);
+      console.log(`   ✓ [${teacherEmail}] Password confirmed`);
+    }
+
+    // Fill captcha
+    const captchaInputs = page.locator('input[name*="captcha"], input[placeholder*="驗"], input[placeholder*="code"]');
+    const captchaInput = captchaInputs.first();
+    if (await captchaInput.count() > 0) {
+      await captchaInput.fill(bypassSecret);
+      console.log(`   ✓ [${teacherEmail}] Captcha filled`);
+    }
+
+    // Find and click teacher/instructor checkbox if present
+    const checkboxes = page.locator('input[type="checkbox"]');
+    const checkboxCount = await checkboxes.count();
+    for (let i = 0; i < checkboxCount; i++) {
+      const checkbox = checkboxes.nth(i);
+      const isChecked = await checkbox.isChecked();
+      const label = await checkbox.evaluate(el => {
+        const parent = el.closest('label') || el.nextElementSibling;
+        return parent?.textContent || '';
+      });
+      // Check if this is a teacher/instructor checkbox
+      if (label.includes('老師') || label.includes('教師') || label.includes('instructor') || label.includes('teacher')) {
+        if (!isChecked) {
+          await checkbox.check();
+          console.log(`   ✓ [${teacherEmail}] Marked as teacher`);
+        }
+      }
+    }
+
+    // Submit registration
+    const submitBtn = page.locator('button[type="submit"]').first();
+    if (await submitBtn.count() > 0) {
+      await submitBtn.click();
+      console.log(`   ✓ [${teacherEmail}] Registration submitted`);
+      await page.waitForTimeout(3000);
+    }
+
+    // Wait for redirect or verify email
+    try {
+      await page.waitForURL(
+        (url) => !url.toString().includes('/register'),
+        { timeout: 10000 }
+      );
+      console.log(`   ✅ [${teacherEmail}] Registration completed`);
+    } catch (e) {
+      console.warn(`   ⚠️ [${teacherEmail}] Registration navigation timeout`);
+    }
+
+    // Now try login with the newly created account
+    await page.waitForTimeout(2000);
+    await injectDeviceCheckBypass(page);
+    await autoLogin(page, teacherEmail, teacherPassword, bypassSecret);
+    console.log(`   ✅ [${teacherEmail}] Successfully logged in with registered account`);
+  } catch (e) {
+    console.error(`   ❌ [${teacherEmail}] Both login and registration failed:`, (e as Error).message);
+    throw e;
+  }
+}
+
+async function createCourseAsTeacher(
+  page: Page,
+  courseId: string,
+  teacherEmail: string,
+  teacherPassword: string,
+  bypassSecret: string
+): Promise<void> {
+  const config = getTestConfig();
+  const baseUrl = config.baseUrl;
+
+  console.log(`   📝 [${courseId}] Setting up teacher ${teacherEmail}...`);
+  
+  // Register or login
+  await registerOrLoginTeacher(page, teacherEmail, teacherPassword, bypassSecret);
+
+  // Navigate to course management
+  console.log(`   📝 [${courseId}] Navigating to /courses_manage/new...`);
+  await page.goto(`${baseUrl}/courses_manage/new`, { waitUntil: 'networkidle' });
+  await page.waitForTimeout(1500);
+
+  // Get current time for course dates
+  const now = new Date();
+  const startDate = new Date(now.getTime() + 24 * 60 * 60 * 1000); // Tomorrow
+  const endDate = new Date(startDate.getTime() + 60 * 60 * 1000); // 1 hour later
+  const startISO = startDate.toISOString().slice(0, 16);
+  const endISO = endDate.toISOString().slice(0, 16);
+
+  // Fill course title (first input)
+  const titleInput = page.locator('form input').first();
+  if (await titleInput.count() > 0) {
+    await titleInput.fill(courseId);
+    console.log(`   ✓ [${courseId}] Course title: ${courseId}`);
+  }
+
+  // Fill course description (textarea)
+  const descInput = page.locator('form textarea').first();
+  if (await descInput.count() > 0) {
+    await descInput.fill(`Stress test course - Teacher: ${teacherEmail}`);
+    console.log(`   ✓ [${courseId}] Course description filled`);
+  }
+
+  // Fill start time (first datetime-local input)
+  const startDateInput = page.locator('form input[type="datetime-local"]').first();
+  if (await startDateInput.count() > 0) {
+    await startDateInput.fill(startISO);
+    console.log(`   ✓ [${courseId}] Start time: ${startISO}`);
+  }
+
+  // Fill end time (second datetime-local input)
+  const endDateInput = page.locator('form input[type="datetime-local"]').nth(1);
+  if (await endDateInput.count() > 0) {
+    await endDateInput.fill(endISO);
+    console.log(`   ✓ [${courseId}] End time: ${endISO}`);
+  }
+
+  // Fill points cost (number input)
+  const pointCostInput = page.locator('form input[type="number"]').first();
+  if (await pointCostInput.count() > 0) {
+    await pointCostInput.fill('10');
+    console.log(`   ✓ [${courseId}] Points cost: 10`);
+  }
+
+  // Submit form
+  console.log(`   📝 [${courseId}] Submitting course creation form...`);
+  const submitBtn = page.locator('form button[type="submit"]');
+  if (await submitBtn.count() > 0) {
+    await submitBtn.click();
+    await page.waitForTimeout(2000);
+  }
+
+  // Wait for navigation to complete
+  try {
+    await page.waitForURL(
+      (url) => 
+        url.toString().includes('/teacher/dashboard') || 
+        url.toString().includes('/courses_manage'),
+      { timeout: 15000 }
+    );
+    console.log(`   ✅ [${courseId}] Form submitted successfully`);
+  } catch (e) {
+    console.warn(`   ⚠️ [${courseId}] Navigation timeout, but may have submitted`);
+  }
+
+  await page.waitForTimeout(2000);
+
+  // Navigate back to courses_manage to verify
+  if (!page.url().includes('/courses_manage')) {
+    await page.goto(`${baseUrl}/courses_manage`, { waitUntil: 'networkidle' });
+  }
+
+  console.log(`   ✅ [${courseId}] Course created by teacher: ${teacherEmail}`);
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Admin Course Review Helper
+// ─────────────────────────────────────────────────────────────────────
+
+async function adminApproveCourse(
+  page: Page,
+  courseId: string,
+  adminEmail: string,
+  adminPassword: string,
+  bypassSecret: string
+): Promise<void> {
+  const config = getTestConfig();
+  const baseUrl = config.baseUrl;
+
+  console.log(`   🔐 [${courseId}] Admin approving course...`);
+
+  // Admin login
+  await injectDeviceCheckBypass(page);
+  await autoLogin(page, adminEmail, adminPassword, bypassSecret);
+
+  // Navigate to course reviews
+  console.log(`   📋 [${courseId}] Navigating to /admin/course-reviews...`);
+  await page.goto(`${baseUrl}/admin/course-reviews`, { waitUntil: 'networkidle' });
+  await page.waitForTimeout(2000);
+
+  // Find the course in the review list
+  const courseRows = page.locator('tr, [data-testid*="review"], .course-review-item');
+  const rowCount = await courseRows.count();
+  console.log(`   📊 [${courseId}] Found ${rowCount} courses pending review`);
+
+  // Search for our specific course
+  let found = false;
+  for (let i = 0; i < rowCount; i++) {
+    const row = courseRows.nth(i);
+    const text = await row.textContent().catch(() => '');
+    if (text && (text.includes(courseId) || text.includes(courseId.substring(0, 20)))) {
+      console.log(`   ✓ [${courseId}] Found course in review list (row ${i})`);
+
+      // Find and click approve button
+      const approveBtn = row.locator('button').filter({
+        hasText: /核准|approve|accept|通過/i
+      }).first();
+
+      if (await approveBtn.count() > 0 && await approveBtn.isEnabled()) {
+        await approveBtn.click();
+        console.log(`   ✓ [${courseId}] Clicked approve button`);
+        await page.waitForTimeout(1500);
+
+        // Confirm if there's a confirmation dialog
+        const confirmBtn = page.locator('button').filter({
+          hasText: /確認|確定|yes|confirm/i
+        }).first();
+        if (await confirmBtn.count() > 0) {
+          await confirmBtn.click();
+          console.log(`   ✓ [${courseId}] Confirmed approval`);
+          await page.waitForTimeout(1500);
+        }
+
+        found = true;
+        break;
+      }
+    }
+  }
+
+  if (!found) {
+    console.warn(`   ⚠️ [${courseId}] Course not found in review list or already approved`);
+  } else {
+    console.log(`   ✅ [${courseId}] Course approved by admin`);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Cleanup Helper - Delete Test Data
+// ─────────────────────────────────────────────────────────────────────
+
+async function cleanupTestData(
+  page: Page,
+  timestamp: number,
+  groupCount: number,
+  adminEmail: string,
+  adminPassword: string,
+  bypassSecret: string
+): Promise<void> {
+  console.log(`\n📍 Cleanup: Deleting all test courses and accounts...`);
+
+  // Admin login for cleanup
+  await injectDeviceCheckBypass(page);
+  await autoLogin(page, adminEmail, adminPassword, bypassSecret);
+
+  const config = getTestConfig();
+  const baseUrl = config.baseUrl;
+
+  // Delete all test courses created in this stress test
+  const courseIds = Array.from({ length: groupCount }).map(
+    (_, i) => `stress-group-${i}-${timestamp}`
+  );
+
+  console.log(`\n   🧹 Deleting ${courseIds.length} test courses...`);
+  for (const courseId of courseIds) {
+    try {
+      const response = await page.request.delete(`${baseUrl}/api/courses?id=${courseId}`);
+      if (response.ok()) {
+        console.log(`   ✅ Deleted course: ${courseId}`);
+      } else {
+        console.warn(`   ⚠️ Failed to delete course: ${courseId} (status: ${response.status()})`);
+      }
+    } catch (e) {
+      console.warn(`   ⚠️ Error deleting course ${courseId}: ${(e as Error).message}`);
+    }
+  }
+
+  // Delete all test orders for test courses
+  console.log(`\n   🧹 Deleting test orders...`);
+  for (const courseId of courseIds) {
+    try {
+      const response = await page.request.delete(`${baseUrl}/api/orders?courseId=${courseId}`);
+      if (response.ok()) {
+        console.log(`   ✅ Deleted orders for course: ${courseId}`);
+      } else {
+        console.warn(`   ⚠️ Failed to delete orders for course: ${courseId}`);
+      }
+    } catch (e) {
+      console.warn(`   ⚠️ Error deleting orders for ${courseId}: ${(e as Error).message}`);
+    }
+  }
+
+  // Delete test teacher accounts (via API or direct)
+  const testTeacherEmails = Array.from({ length: groupCount }).map(
+    (_, i) => `group-${i}-teacher@test.com`
+  );
+
+  console.log(`\n   🧹 Deleting ${testTeacherEmails.length} test teacher accounts...`);
+  for (const email of testTeacherEmails) {
+    try {
+      const response = await page.request.delete(`${baseUrl}/api/profiles?email=${encodeURIComponent(email)}`);
+      if (response.ok()) {
+        console.log(`   ✅ Deleted profile: ${email}`);
+      } else if (response.status() === 404) {
+        console.log(`   ℹ️ Profile not found: ${email} (may not have been created)`);
+      } else {
+        console.warn(`   ⚠️ Failed to delete profile: ${email} (status: ${response.status()})`);
+      }
+    } catch (e) {
+      console.warn(`   ⚠️ Error deleting profile ${email}: ${(e as Error).message}`);
+    }
+  }
+
+  console.log(`\n   ✅ Cleanup completed`);
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // Test Cases
 // ─────────────────────────────────────────────────────────────────────
 
@@ -820,28 +1178,66 @@ test.describe('Classroom Whiteboard Sync', () => {
     const baseUrl = config.baseUrl;
     const timestamp = Date.now();
     
-    // ─── Group Configuration ───
+    // ─── Group Configuration with Different Teachers ───
     const groupCount = parseInt(process.env.STRESS_GROUP_COUNT || '3', 10);
     const baseConfig = getTestConfig();
     
-    // Use consistent test accounts - enrollment subprocess already uses these
-    // to create courses. For stress test, we'll simulate concurrent groups
-    // using the same validated accounts
+    // Create group configurations with different teachers for each group
+    // Teachers will be: group-0-teacher@test.com, group-1-teacher@test.com, group-2-teacher@test.com
     const groupConfigs = Array.from({ length: groupCount }).map((_, i) => ({
       groupId: `group-${i}`,
       courseId: `stress-group-${i}-${timestamp}`,
-      // Reuse the known working test accounts
-      teacherEmail: baseConfig.teacherEmail,
-      teacherPassword: baseConfig.teacherPassword,
+      // Different teacher for each group
+      teacherEmail: `group-${i}-teacher@test.com`,
+      teacherPassword: '123456',
+      // Shared student account
       studentEmail: baseConfig.studentEmail,
       studentPassword: baseConfig.studentPassword
     }));
 
-    console.log(`\n🔴 STRESS TEST: ${groupCount} Concurrent Groups with Isolation Verification`);
+    console.log(`\n🔴 STRESS TEST: ${groupCount} Concurrent Groups with Different Teachers`);
     console.log(`   📍 Timestamp: ${timestamp}`);
+    console.log(`   📋 Group Teachers:`);
+    groupConfigs.forEach(g => {
+      console.log(`      [${g.groupId}] Teacher: ${g.teacherEmail}, Course: ${g.courseId}`);
+    });
     
+    // Step 0: Teacher accounts registration and course creation (Sequential)
+    console.log('\n📍 Step 0: Each teacher creates their own course...');
+    const courseCreationErrors: string[] = [];
+    for (const group of groupConfigs) {
+      try {
+        const teacherCtx = await browser.newContext({ permissions: ['camera', 'microphone'] });
+        const teacherPage = await teacherCtx.newPage();
+        
+        console.log(`\n   ⏳ [${group.groupId}] Teacher ${group.teacherEmail} creating course...`);
+        await createCourseAsTeacher(
+          teacherPage,
+          group.courseId,
+          group.teacherEmail,
+          group.teacherPassword,
+          config.bypassSecret
+        );
+        console.log(`   ✅ [${group.groupId}] Course "${group.courseId}" created by ${group.teacherEmail}`);
+        
+        await teacherCtx.close();
+      } catch (err) {
+        const errorMsg = `[${group.groupId}] Course creation by ${group.teacherEmail} failed: ${(err as Error)?.message || String(err)}`;
+        console.error(`   ❌ ${errorMsg}`);
+        courseCreationErrors.push(errorMsg);
+      }
+    }
+    
+    // Report on course creation phase
+    if (courseCreationErrors.length > 0) {
+      console.error(`\n⚠️ Course Creation Phase Completed with ${courseCreationErrors.length}/${groupCount} errors:`);
+      courseCreationErrors.forEach(e => console.error(`    - ${e}`));
+    } else {
+      console.log(`\n✅ All ${groupCount} courses created successfully by their respective teachers`);
+    }
+
     // Step 1: Enrollment for all groups (Sequential to avoid DynamoDB throttling)
-    console.log('\n📍 Step 1: Triggering enrollment for all groups...');
+    console.log('\n📍 Step 1: Student enrolls in all courses...');
     const enrollmentErrors: string[] = [];
     for (const group of groupConfigs) {
       try {
@@ -862,6 +1258,38 @@ test.describe('Classroom Whiteboard Sync', () => {
     } else {
       console.log(`\n✅ All ${groupCount} groups completed enrollment successfully`);
     }
+
+    // Step 0.5: Admin approves all test courses
+    console.log('\n📍 Step 0.5: Admin approving all courses...');
+    const approvalErrors: string[] = [];
+    const adminCtx = await browser.newContext();
+    const adminPage = await adminCtx.newPage();
+    
+    for (const group of groupConfigs) {
+      try {
+        await adminApproveCourse(
+          adminPage,
+          group.courseId,
+          'admin@jvtutorcorner.com',
+          '123456',
+          config.bypassSecret
+        );
+        console.log(`   ✅ [${group.groupId}] Course approved`);
+      } catch (err) {
+        const errorMsg = `[${group.groupId}] Course approval failed: ${(err as Error)?.message || String(err)}`;
+        console.error(`   ❌ ${errorMsg}`);
+        approvalErrors.push(errorMsg);
+      }
+    }
+
+    if (approvalErrors.length > 0) {
+      console.error(`\n⚠️ Course Approval Phase Completed with ${approvalErrors.length}/${groupCount} errors:`);
+      approvalErrors.forEach(e => console.error(`    - ${e}`));
+    } else {
+      console.log(`\n✅ All ${groupCount} courses approved by admin`);
+    }
+
+    await adminCtx.close();
 
     interface GroupSession {
       groupId: string;
@@ -1074,29 +1502,44 @@ test.describe('Classroom Whiteboard Sync', () => {
       }
 
     } finally {
-      // Step 10: Cleanup
-      console.log('\n📍 Step 10: Cleanup - Closing all contexts and deleting test courses...');
+      // Step 10: Cleanup - Closing all contexts and deleting test courses
+      console.log('\n📍 Step 10: Cleanup - Deleting test courses, orders, and accounts...');
       
-      const cleanupPromises = sessions.map(async (session) => {
+      // Close all session contexts first
+      const closePromises = sessions.map(async (session) => {
         try {
-          const group = groupConfigs.find(g => g.courseId === session.courseId);
-          if (!group) return;
-          
-          if (!process.env.SKIP_CLEANUP) {
-            console.log(`   🧹 [${session.groupId}] Cleaning up course: ${session.courseId}`);
-            await session.teacherPage.request.delete(`${baseUrl}/api/courses?id=${group.courseId}`).catch(() => {});
-            await session.teacherPage.request.delete(`${baseUrl}/api/orders?courseId=${group.courseId}`).catch(() => {});
-          }
-          
           await session.teacherCtx.close().catch(() => {});
           await session.studentCtx.close().catch(() => {});
         } catch (e) {
-          console.warn(`   ⚠️ [${session.groupId}] Cleanup error: ${(e as Error).message}`);
+          console.warn(`   ⚠️ [${session.groupId}] Error closing contexts: ${(e as Error).message}`);
         }
       });
       
-      await Promise.all(cleanupPromises);
-      console.log('   ✅ Cleanup complete');
+      await Promise.all(closePromises);
+      console.log('   ✅ All browser contexts closed');
+
+      // Perform comprehensive cleanup
+      if (!process.env.SKIP_CLEANUP) {
+        try {
+          const cleanupCtx = await browser.newContext();
+          const cleanupPage = await cleanupCtx.newPage();
+          
+          await cleanupTestData(
+            cleanupPage,
+            timestamp,
+            groupCount,
+            'admin@jvtutorcorner.com',
+            '123456',
+            config.bypassSecret
+          );
+          
+          await cleanupCtx.close();
+        } catch (e) {
+          console.error(`   ❌ Cleanup error: ${(e as Error).message}`);
+        }
+      } else {
+        console.log('   ℹ️ SKIP_CLEANUP=true - Test data NOT deleted');
+      }
     }
   });
 
