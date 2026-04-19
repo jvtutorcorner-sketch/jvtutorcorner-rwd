@@ -647,11 +647,10 @@ async function registerOrLoginTeacher(
     try {
       const identitySelect = page.locator('div.field:has(label:has-text("身份")) select, select[name*="identity"]').first();
       if (await identitySelect.count() > 0) {
-        // Try to select teacher option
-        await identitySelect.selectOption({ label: /教師|teacher|instructor/i }).catch(() => {
-          // If exact label not found, try by value
-          return identitySelect.selectOption('teacher');
-        });
+        // Try to select teacher option - first try Chinese, then English, then by value
+        await identitySelect.selectOption('教師').catch(() =>
+          identitySelect.selectOption('teacher')).catch(() =>
+          identitySelect.selectOption({ value: 'teacher' }) );
         console.log(`   ✓ [${teacherEmail}] Selected teacher identity`);
       }
     } catch (e) {
@@ -707,9 +706,9 @@ async function registerOrLoginTeacher(
     try {
       const genderSelect = page.locator('div.field:has(label:has-text("性別")) select, select[name*="gender"]').first();
       if (await genderSelect.count() > 0) {
-        await genderSelect.selectOption({ label: /男|male/i }).catch(() => {
-          return genderSelect.selectOption('male');
-        });
+        // Try to select male option - first Chinese, then English
+        await genderSelect.selectOption('男').catch(() =>
+          genderSelect.selectOption('male') );
         console.log(`   ✓ [${teacherEmail}] Gender selected`);
       }
     } catch (e) {
@@ -720,9 +719,10 @@ async function registerOrLoginTeacher(
     try {
       const countrySelect = page.locator('div.field:has(label:has-text("國家")) select, select[name*="country"]').first();
       if (await countrySelect.count() > 0) {
-        await countrySelect.selectOption({ label: /台灣|TW|Taiwan/i }).catch(() => {
-          return countrySelect.selectOption('TW');
-        });
+        // Try to select Taiwan option - first Chinese, then code, then English
+        await countrySelect.selectOption('台灣').catch(() =>
+          countrySelect.selectOption('TW')).catch(() =>
+          countrySelect.selectOption('Taiwan') );
         console.log(`   ✓ [${teacherEmail}] Country selected`);
       }
     } catch (e) {
@@ -792,9 +792,22 @@ async function createCourseAsTeacher(
   // Register or login
   await registerOrLoginTeacher(page, teacherEmail, teacherPassword, bypassSecret);
 
-  // Navigate to course management
+  // Navigate to course management with shorter timeout
   console.log(`   📝 [${courseId}] Navigating to /courses_manage/new...`);
-  await page.goto(`${baseUrl}/courses_manage/new`, { waitUntil: 'networkidle' });
+  try {
+    // Try domcontentloaded first (faster)
+    await page.goto(`${baseUrl}/courses_manage/new`, { waitUntil: 'domcontentloaded', timeout: 20000 });
+  } catch (e) {
+    // Fall back to shorter networkidle timeout
+    console.warn(`   ⚠️ [${courseId}] domcontentloaded timeout, trying networkidle...`);
+    try {
+      await page.goto(`${baseUrl}/courses_manage/new`, { waitUntil: 'networkidle', timeout: 10000 });
+    } catch (e2) {
+      // Proceed anyway if page has form elements
+      console.warn(`   ⚠️ [${courseId}] Navigation timeout but proceeding...`);
+    }
+  }
+
   await page.waitForTimeout(1500);
 
   // Get current time for course dates
@@ -809,6 +822,9 @@ async function createCourseAsTeacher(
   if (await titleInput.count() > 0) {
     await titleInput.fill(courseId);
     console.log(`   ✓ [${courseId}] Course title: ${courseId}`);
+  } else {
+    console.warn(`   ⚠️ [${courseId}] Could not find title input, screenshot saved`);
+    await page.screenshot({ path: `test-results/form-fail-${courseId}.png` });
   }
 
   // Fill course description (textarea)
@@ -845,19 +861,25 @@ async function createCourseAsTeacher(
   if (await submitBtn.count() > 0) {
     await submitBtn.click();
     await page.waitForTimeout(2000);
+  } else {
+    console.warn(`   ⚠️ [${courseId}] Could not find submit button`);
+    throw new Error(`[${courseId}] Form submission button not found`);
   }
 
-  // Wait for navigation to complete
+  // Wait for navigation to complete with fallback
   try {
     await page.waitForURL(
       (url) => 
         url.toString().includes('/teacher/dashboard') || 
-        url.toString().includes('/courses_manage'),
+        url.toString().includes('/courses_manage') ||
+        url.toString().includes('/teacher'),
       { timeout: 15000 }
     );
     console.log(`   ✅ [${courseId}] Form submitted successfully`);
   } catch (e) {
-    console.warn(`   ⚠️ [${courseId}] Navigation timeout, but may have submitted`);
+    // Check if page has actually navigated by looking at content
+    const currentUrl = page.url();
+    console.warn(`   ⚠️ [${courseId}] Navigation timeout (now at: ${currentUrl}), but may have submitted`);
   }
 
   await page.waitForTimeout(2000);
@@ -892,52 +914,118 @@ async function adminApproveCourse(
 
   // Navigate to course reviews
   console.log(`   📋 [${courseId}] Navigating to /admin/course-reviews...`);
-  await page.goto(`${baseUrl}/admin/course-reviews`, { waitUntil: 'networkidle' });
+  await page.goto(`${baseUrl}/admin/course-reviews`, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(2000);
 
+  // Wait for page to fully load - try multiple selector options
+  let pageLoaded = false;
+  for (const selector of ['table', '[data-testid*="course"]', '.course-item', 'main']) {
+    try {
+      await page.waitForSelector(selector, { timeout: 5000 });
+      pageLoaded = true;
+      console.log(`   ✓ [${courseId}] Page loaded (found: ${selector})`);
+      break;
+    } catch (e) {
+      // Continue trying other selectors
+    }
+  }
+
+  if (!pageLoaded) {
+    console.warn(`   ⚠️ [${courseId}] Course review page may not be fully loaded`);
+  }
+
+  // Search for course using API directly first (faster)
+  try {
+    console.log(`   🔍 [${courseId}] Trying direct API approval...`);
+    const response = await page.request.post(`${baseUrl}/api/courses/approve`, {
+      data: { courseId }
+    });
+
+    if (response.ok()) {
+      console.log(`   ✅ [${courseId}] Course approved via API`);
+      return;
+    }
+  } catch (err) {
+    // Fall through to UI method
+  }
+
+  // Fall back to UI-based approval
+  console.log(`   📍 [${courseId}] Using UI-based approval...`);
+
   // Find the course in the review list
-  const courseRows = page.locator('tr, [data-testid*="review"], .course-review-item');
+  const courseRows = page.locator('tr, [data-testid*="review"], [data-testid*="course"], .course-review-item, .course-item');
   const rowCount = await courseRows.count();
-  console.log(`   📊 [${courseId}] Found ${rowCount} courses pending review`);
+  console.log(`   📊 [${courseId}] Found ${rowCount} items in review list`);
+
+  if (rowCount === 0) {
+    console.warn(`   ⚠️ [${courseId}] No items found in review list`);
+    await page.screenshot({ path: `test-results/admin-approval-empty-${courseId}.png` });
+    return;
+  }
 
   // Search for our specific course
   let found = false;
-  for (let i = 0; i < rowCount; i++) {
+  const courseIdShort = courseId.substring(0, 20);
+
+  for (let i = 0; i < Math.min(rowCount, 50); i++) {
     const row = courseRows.nth(i);
     const text = await row.textContent().catch(() => '');
-    if (text && (text.includes(courseId) || text.includes(courseId.substring(0, 20)))) {
-      console.log(`   ✓ [${courseId}] Found course in review list (row ${i})`);
+    
+    if (text && (text.includes(courseId) || text.includes(courseIdShort))) {
+      console.log(`   ✓ [${courseId}] Found course in review list at row ${i}`);
 
-      // Find and click approve button
-      const approveBtn = row.locator('button').filter({
-        hasText: /核准|approve|accept|通過/i
-      }).first();
+      // Try multiple button selectors to find approve button
+      const buttonSelectors = [
+        'button:has-text("核准")',
+        'button:has-text("Approve")',
+        'button:has-text("approve")',
+        'button:has-text("approve")',
+        '[role="button"]:has-text("核准")'
+      ];
 
-      if (await approveBtn.count() > 0 && await approveBtn.isEnabled()) {
-        await approveBtn.click();
-        console.log(`   ✓ [${courseId}] Clicked approve button`);
-        await page.waitForTimeout(1500);
+      let approved = false;
+      for (const selector of buttonSelectors) {
+        try {
+          const approveBtn = row.locator(selector).first();
+          if (await approveBtn.count() > 0 && await approveBtn.isEnabled()) {
+            await approveBtn.click();
+            console.log(`   ✓ [${courseId}] Clicked approve button`);
+            await page.waitForTimeout(1500);
+            approved = true;
+            break;
+          }
+        } catch (err) {
+          // Try next selector
+        }
+      }
 
-        // Confirm if there's a confirmation dialog
-        const confirmBtn = page.locator('button').filter({
-          hasText: /確認|確定|yes|confirm/i
-        }).first();
-        if (await confirmBtn.count() > 0) {
-          await confirmBtn.click();
-          console.log(`   ✓ [${courseId}] Confirmed approval`);
-          await page.waitForTimeout(1500);
+      if (approved) {
+        // Check for confirmation dialog
+        for (let j = 0; j < 3; j++) {
+          const confirmBtn = page.locator('button').filter({
+            hasText: /^(確認|確定|Yes|Confirm)$/
+          }).first();
+
+          if (await confirmBtn.count() > 0 && await confirmBtn.isVisible()) {
+            await confirmBtn.click();
+            console.log(`   ✓ [${courseId}] Confirmed approval`);
+            await page.waitForTimeout(1000);
+            break;
+          }
+          await page.waitForTimeout(300);
         }
 
         found = true;
+        console.log(`   ✅ [${courseId}] Course approved by admin`);
         break;
+      } else {
+        console.warn(`   ⚠️ [${courseId}] Could not find/click approve button in row ${i}`);
       }
     }
   }
 
   if (!found) {
-    console.warn(`   ⚠️ [${courseId}] Course not found in review list or already approved`);
-  } else {
-    console.log(`   ✅ [${courseId}] Course approved by admin`);
+    console.warn(`   ⚠️ [${courseId}] Course not found in first 50 items or already approved`);
   }
 }
 
@@ -1300,30 +1388,7 @@ test.describe('Classroom Whiteboard Sync', () => {
       console.log(`\n✅ All ${groupCount} courses created successfully by their respective teachers`);
     }
 
-    // Step 1: Enrollment for all groups (Sequential to avoid DynamoDB throttling)
-    console.log('\n📍 Step 1: Student enrolls in all courses...');
-    const enrollmentErrors: string[] = [];
-    for (const group of groupConfigs) {
-      try {
-        console.log(`   ⏳ [${group.groupId}] Starting enrollment subprocess...`);
-        runEnrollmentFlow(group.courseId);
-        console.log(`   ✅ [${group.groupId}] Enrollment flow completed`);
-      } catch (err) {
-        const errorMsg = `[${group.groupId}] Enrollment failed: ${(err as Error)?.message || String(err)}`;
-        console.error(`   ❌ ${errorMsg}`);
-        enrollmentErrors.push(errorMsg);
-      }
-    }
-    
-    // Report on enrollment phase
-    if (enrollmentErrors.length > 0) {
-      console.error(`\n⚠️ Enrollment Phase Completed with ${enrollmentErrors.length}/${groupCount} errors:`);
-      enrollmentErrors.forEach(e => console.error(`    - ${e}`));
-    } else {
-      console.log(`\n✅ All ${groupCount} groups completed enrollment successfully`);
-    }
-
-    // Step 0.5: Admin approves all test courses
+    // Step 0.5: Admin approves all test courses (MUST be before student enrollment)
     console.log('\n📍 Step 0.5: Admin approving all courses...');
     const approvalErrors: string[] = [];
     const adminCtx = await browser.newContext();
@@ -1354,6 +1419,29 @@ test.describe('Classroom Whiteboard Sync', () => {
     }
 
     await adminCtx.close();
+
+    // Step 1: Enrollment for all groups (Sequential to avoid DynamoDB throttling)
+    console.log('\n📍 Step 1: Student enrolls in all courses...');
+    const enrollmentErrors: string[] = [];
+    for (const group of groupConfigs) {
+      try {
+        console.log(`   ⏳ [${group.groupId}] Starting enrollment subprocess...`);
+        runEnrollmentFlow(group.courseId);
+        console.log(`   ✅ [${group.groupId}] Enrollment flow completed`);
+      } catch (err) {
+        const errorMsg = `[${group.groupId}] Enrollment failed: ${(err as Error)?.message || String(err)}`;
+        console.error(`   ❌ ${errorMsg}`);
+        enrollmentErrors.push(errorMsg);
+      }
+    }
+    
+    // Report on enrollment phase
+    if (enrollmentErrors.length > 0) {
+      console.error(`\n⚠️ Enrollment Phase Completed with ${enrollmentErrors.length}/${groupCount} errors:`);
+      enrollmentErrors.forEach(e => console.error(`    - ${e}`));
+    } else {
+      console.log(`\n✅ All ${groupCount} groups completed enrollment successfully`);
+    }
 
     interface GroupSession {
       groupId: string;

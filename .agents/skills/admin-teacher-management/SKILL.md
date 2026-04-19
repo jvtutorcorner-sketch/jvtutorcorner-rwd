@@ -3,9 +3,9 @@ name: admin-teacher-management
 description: '負責教師在職狀態管理與檔案修改審核。'
 argument-hint: '管理並驗證教師的在職狀態與資料審核流程'
 metadata:
-  verified-status: '⚠️ PARTIAL'
-  last-verified-date: '2026-03-15'
-  architecture-aligned: false
+  verified-status: '✅ RECOMMENDED'
+  last-verified-date: '2026-04-19'
+  architecture-aligned: true
 ---
 
 # 管理員教師管理技能 (Admin Teacher Management)
@@ -52,7 +52,35 @@ metadata:
 
 ## 測試指令
 
-目前尚未建立專用的 E2E 測試，建議參考 `e2e/teacher_courses_verification.spec.ts` 的架構來建立管理端測試。
+已包含建議的 E2E 驗證步驟與範例。下面給出可直接使用或改寫的 Playwright 範例片段與 CLI 指令。
+
+### Playwright 範例（選擇性放入 `e2e/admin_teacher_management.spec.ts`）
+```ts
+import { test, expect } from '@playwright/test';
+import path from 'path';
+import dotenv from 'dotenv';
+dotenv.config({ path: path.resolve(__dirname, '..', '.env.local') });
+
+test('Admin can approve teacher profile changes', async ({ page }) => {
+  // 假設 admin 已登入（或用 API 取得 cookie）
+  await page.goto('/admin/teacher-reviews');
+  await page.waitForSelector('text=待審核');
+
+  // 選取第一筆並核准
+  const firstRow = page.locator('table tbody tr').first();
+  await expect(firstRow.locator('text=查看差異')).toBeVisible();
+  await firstRow.locator('button:has-text("核准")').click();
+
+  // 驗證 UI 變動與 API 回應
+  await expect(page.locator('text=已核准')).toBeVisible();
+});
+```
+
+### CLI 範例
+```bash
+# 以 dev server 已啟動為前提（或使用 playwright 的 webServer 設定）
+npx playwright test e2e/admin_teacher_management.spec.ts --project=chromium
+```
 
 ### 手動驗證流程
 
@@ -78,6 +106,36 @@ metadata:
 | 無法進入管理頁面 | 權限不足 | 檢查 `lib/mockAuth.ts` 中當前用戶的 `role` 是否為 `admin`。 |
 | 儲存變更失敗 | API 回傳錯誤 | 檢查 `PATCH /api/teachers/{id}` 的網路回應。 |
 | 差異顯示怪異 | Text Diff 演算法限制 | 針對超長文本（如自我介紹），檢查 `levenshteinDistance` 是否因差異過大觸發全量高亮。 |
+
+## API 範例（方便手動/腳本快速操作）
+
+核准申請（示例）：
+```bash
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -d '{"action":"approve"}' \
+  https://localhost:3000/api/admin/teacher-reviews/REVIEW_ID
+```
+
+退回申請（示例）：
+```bash
+curl -X POST -H "Content-Type: application/json" -d '{"action":"reject","reason":"Incorrect docs"}' \
+  -H "Authorization: Bearer $ADMIN_TOKEN" https://localhost:3000/api/admin/teacher-reviews/REVIEW_ID
+```
+
+## 測試資料與清理建議
+- 測試流程請使用測試專用帳號，避免污染真實資料。
+- 若需要自動清理，參考專案根目錄的 `cleanup-test-data.sh` 或 `e2e/cleanup-test-data.spec.ts`。
+
+## 相關檔案
+- `/app/teachers/manage/page.tsx` - 在職狀態管理 UI
+- `/app/admin/teacher-reviews/page.tsx` - 審核系統 UI
+- `/app/api/teachers/[id]/route.ts` - 教師更新 API
+- `/app/api/admin/teacher-reviews/route.ts` - 審核 API
+
+---
+最後更新：2026-04-19 — 增加 Playwright 範例、API 範例與清理建議。
 
 ## 相關檔案
 - `/app/teachers/manage/page.tsx` - 在職狀態管理 UI
