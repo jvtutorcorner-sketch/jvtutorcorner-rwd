@@ -632,81 +632,145 @@ async function registerOrLoginTeacher(
     console.log(`   📝 [${teacherEmail}] Registering new teacher account...`);
     const registerUrl = `${baseUrl}/login/register`;
     await page.goto(registerUrl, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1500);
 
-    // Fill email
-    const emailInputs = page.locator('input[type="email"], input[name*="email"]');
-    const emailInput = emailInputs.first();
+    // Extract email parts for name
+    const emailParts = teacherEmail.split('@')[0].split('-');
+    const firstName = emailParts[0] || 'Teacher';
+    const lastName = emailParts.slice(1).join('-') || 'Test';
+
+    // Select Identity: Teacher/Instructor
+    // Using robust selector from recommendation_onboarding.spec.ts pattern
+    console.log(`   📝 [${teacherEmail}] Filling registration form...`);
+    
+    // Select 身份 (Identity) - look for select with label containing "身份"
+    try {
+      const identitySelect = page.locator('div.field:has(label:has-text("身份")) select, select[name*="identity"]').first();
+      if (await identitySelect.count() > 0) {
+        // Try to select teacher option
+        await identitySelect.selectOption({ label: /教師|teacher|instructor/i }).catch(() => {
+          // If exact label not found, try by value
+          return identitySelect.selectOption('teacher');
+        });
+        console.log(`   ✓ [${teacherEmail}] Selected teacher identity`);
+      }
+    } catch (e) {
+      console.log(`   ⚠️ [${teacherEmail}] Could not select identity, continuing...`);
+    }
+
+    // Fill First Name - using robust selector
+    const firstNameInput = page.locator('div.field:has(label:has-text("First Name")) input, input[name*="firstName"], input[name*="first"]').first();
+    if (await firstNameInput.count() > 0) {
+      await firstNameInput.fill(firstName);
+      console.log(`   ✓ [${teacherEmail}] First name: ${firstName}`);
+    }
+
+    // Fill Last Name
+    const lastNameInput = page.locator('div.field:has(label:has-text("Last Name")) input, input[name*="lastName"], input[name*="last"]').first();
+    if (await lastNameInput.count() > 0) {
+      await lastNameInput.fill(lastName);
+      console.log(`   ✓ [${teacherEmail}] Last name: ${lastName}`);
+    }
+
+    // Fill Email
+    const emailInput = page.locator('div.field:has(label:has-text("Email")) input, input[type="email"]').first();
     if (await emailInput.count() > 0) {
       await emailInput.fill(teacherEmail);
       console.log(`   ✓ [${teacherEmail}] Email entered`);
     }
 
-    // Fill password
+    // Fill Password (first password field)
     const passwordInputs = page.locator('input[type="password"]');
-    const passwordInput = passwordInputs.first();
-    if (await passwordInput.count() > 0) {
-      await passwordInput.fill(teacherPassword);
+    if (await passwordInputs.nth(0).count() > 0) {
+      await passwordInputs.nth(0).fill(teacherPassword);
       console.log(`   ✓ [${teacherEmail}] Password entered`);
     }
 
-    // Confirm password
-    const confirmPasswordInput = passwordInputs.nth(1);
-    if (await confirmPasswordInput.count() > 0) {
-      await confirmPasswordInput.fill(teacherPassword);
+    // Confirm Password (second password field)
+    if (await passwordInputs.nth(1).count() > 0) {
+      await passwordInputs.nth(1).fill(teacherPassword);
       console.log(`   ✓ [${teacherEmail}] Password confirmed`);
     }
 
-    // Fill captcha
-    const captchaInputs = page.locator('input[name*="captcha"], input[placeholder*="驗"], input[placeholder*="code"]');
-    const captchaInput = captchaInputs.first();
+    // Fill Birthdate
+    try {
+      const birthdateInput = page.locator('div.field:has(label:has-text("出生日期")) input, input[name*="birthdate"], input[type="date"]').first();
+      if (await birthdateInput.count() > 0) {
+        await birthdateInput.fill('1990-01-01');
+        console.log(`   ✓ [${teacherEmail}] Birthdate filled`);
+      }
+    } catch (e) {
+      console.log(`   ⚠️ [${teacherEmail}] Could not fill birthdate, continuing...`);
+    }
+
+    // Select Gender
+    try {
+      const genderSelect = page.locator('div.field:has(label:has-text("性別")) select, select[name*="gender"]').first();
+      if (await genderSelect.count() > 0) {
+        await genderSelect.selectOption({ label: /男|male/i }).catch(() => {
+          return genderSelect.selectOption('male');
+        });
+        console.log(`   ✓ [${teacherEmail}] Gender selected`);
+      }
+    } catch (e) {
+      console.log(`   ⚠️ [${teacherEmail}] Could not select gender, continuing...`);
+    }
+
+    // Select Country
+    try {
+      const countrySelect = page.locator('div.field:has(label:has-text("國家")) select, select[name*="country"]').first();
+      if (await countrySelect.count() > 0) {
+        await countrySelect.selectOption({ label: /台灣|TW|Taiwan/i }).catch(() => {
+          return countrySelect.selectOption('TW');
+        });
+        console.log(`   ✓ [${teacherEmail}] Country selected`);
+      }
+    } catch (e) {
+      console.log(`   ⚠️ [${teacherEmail}] Could not select country, continuing...`);
+    }
+
+    // Accept terms
+    try {
+      const termsCheckbox = page.locator('input[name="terms"], input[name*="agreement"]').first();
+      if (await termsCheckbox.count() > 0 && !(await termsCheckbox.isChecked())) {
+        await termsCheckbox.check();
+        console.log(`   ✓ [${teacherEmail}] Terms accepted`);
+      }
+    } catch (e) {
+      console.log(`   ⚠️ [${teacherEmail}] Could not accept terms, continuing...`);
+    }
+
+    // Fill Captcha (bypass)
+    const captchaInput = page.locator('input[placeholder*="驗"], input[placeholder*="code"], input[name*="captcha"]').first();
     if (await captchaInput.count() > 0) {
       await captchaInput.fill(bypassSecret);
       console.log(`   ✓ [${teacherEmail}] Captcha filled`);
     }
 
-    // Find and click teacher/instructor checkbox if present
-    const checkboxes = page.locator('input[type="checkbox"]');
-    const checkboxCount = await checkboxes.count();
-    for (let i = 0; i < checkboxCount; i++) {
-      const checkbox = checkboxes.nth(i);
-      const isChecked = await checkbox.isChecked();
-      const label = await checkbox.evaluate(el => {
-        const parent = el.closest('label') || el.nextElementSibling;
-        return parent?.textContent || '';
-      });
-      // Check if this is a teacher/instructor checkbox
-      if (label.includes('老師') || label.includes('教師') || label.includes('instructor') || label.includes('teacher')) {
-        if (!isChecked) {
-          await checkbox.check();
-          console.log(`   ✓ [${teacherEmail}] Marked as teacher`);
-        }
-      }
-    }
-
-    // Submit registration
+    // Submit registration form
     const submitBtn = page.locator('button[type="submit"]').first();
     if (await submitBtn.count() > 0) {
       await submitBtn.click();
-      console.log(`   ✓ [${teacherEmail}] Registration submitted`);
-      await page.waitForTimeout(3000);
+      console.log(`   ✓ [${teacherEmail}] Registration form submitted`);
+      await page.waitForTimeout(2000);
     }
 
-    // Wait for redirect or verify email
+    // Wait for redirect away from register page
     try {
       await page.waitForURL(
         (url) => !url.toString().includes('/register'),
-        { timeout: 10000 }
+        { timeout: 15000 }
       );
-      console.log(`   ✅ [${teacherEmail}] Registration completed`);
+      console.log(`   ✅ [${teacherEmail}] Registration completed, redirected successfully`);
     } catch (e) {
-      console.warn(`   ⚠️ [${teacherEmail}] Registration navigation timeout`);
+      console.log(`   ⚠️ [${teacherEmail}] Navigation timeout after registration`);
     }
 
     // Now try login with the newly created account
     await page.waitForTimeout(2000);
     await injectDeviceCheckBypass(page);
     await autoLogin(page, teacherEmail, teacherPassword, bypassSecret);
-    console.log(`   ✅ [${teacherEmail}] Successfully logged in with registered account`);
+    console.log(`   ✅ [${teacherEmail}] Successfully logged in with newly registered account`);
   } catch (e) {
     console.error(`   ❌ [${teacherEmail}] Both login and registration failed:`, (e as Error).message);
     throw e;
