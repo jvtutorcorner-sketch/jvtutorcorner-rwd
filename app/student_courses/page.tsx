@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
@@ -75,7 +75,7 @@ function StudentCoursesContent() {
     const isTeacher = current?.role === 'teacher';
 
     if (isAdmin) {
-      const baseUrl = '/api/orders?limit=50';
+      const baseUrl = '/api/orders?limit=500';
       fetch(baseUrl)
         .then((r) => r.json())
         .then((data) => {
@@ -129,7 +129,7 @@ function StudentCoursesContent() {
           setLoading(false);
         });
     } else {
-      const baseUrl = '/api/orders?limit=50';
+      const baseUrl = '/api/orders?limit=500';
       const url = `${baseUrl}&userId=${encodeURIComponent(current?.email || '')}`;
       fetch(url)
         .then((r) => r.json())

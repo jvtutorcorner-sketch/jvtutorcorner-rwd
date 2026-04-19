@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import fetch from 'node-fetch';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
@@ -12,13 +11,7 @@ const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
 const adminEmail = process.env.QA_ADMIN_EMAIL || 'admin@jvtutorcorner.com';
 const adminPassword = process.env.QA_ADMIN_PASSWORD || '123456';
 
-interface CourseData {
-  ok?: boolean;
-  courses?: Array<{ id: string; title: string }>;
-  message?: string;
-}
-
-async function getAuthToken(email: string, password: string): Promise<string | null> {
+async function getAuthToken(email, password) {
   try {
     console.log(`🔐 Getting auth token for ${email}...`);
     const response = await fetch(`${baseUrl}/api/auth/login`, {
@@ -36,64 +29,92 @@ async function getAuthToken(email: string, password: string): Promise<string | n
     console.log(`✅ Login successful for ${email}`);
     return email; // Token or identifier
   } catch (err) {
-    console.warn(`⚠️ Login error: ${(err as Error).message}`);
+    console.warn(`⚠️ Login error: ${err.message}`);
     return null;
   }
 }
 
-async function deleteTestCourses(): Promise<void> {
+async function deleteTestCourses() {
   console.log(`\n🎯 Step 1: Deleting stress test courses...`);
 
-  const patterns = ['stress-group-', 'E2E 自動驗證課程-'];
+  const patterns = ['stress-group-', 'E2E 自動驗證課程-', 'E2E', 'stress'];
   let deletedCount = 0;
 
-  for (const pattern of patterns) {
-    try {
-      console.log(`   🔍 Searching for courses with pattern: "${pattern}"`);
-      
-      // Try to get courses that match the pattern
-      const response = await fetch(`${baseUrl}/api/courses?limit=100`);
-      
-      if (!response.ok) {
-        console.warn(`   ⚠️ Failed to fetch courses (status: ${response.status})`);
-        continue;
-      }
+  try {
+    console.log(`   🔍 Fetching all courses...`);
+    const response = await fetch(`${baseUrl}/api/courses?limit=500`);
+    
+    if (!response.ok) {
+      console.warn(`   ⚠️ Failed to fetch courses (status: ${response.status})`);
+      return;
+    }
 
-      const courses = await response.json() as CourseData;
-      const courseList = courses.courses || (Array.isArray(courses) ? courses : []);
-      
-      // Filter courses matching the pattern
-      const matchingCourses = courseList.filter((course: any) => {
-        const title = course.title || course.id || '';
-        return title.includes(pattern);
-      });
+    const data = await response.json();
+    const courseList = data.courses || (Array.isArray(data) ? data : []);
+    
+    console.log(`   📋 Total courses found: ${courseList.length}`);
 
-      for (const course of matchingCourses) {
-        const courseId = course.id;
-        try {
-          const delResponse = await fetch(`${baseUrl}/api/courses?id=${courseId}`, {
+    // Filter courses matching any test pattern
+    const matchingCourses = courseList.filter((course) => {
+      const id = (course.id || '').toString().toLowerCase();
+      const title = (course.title || '').toString().toLowerCase();
+      return patterns.some(pattern => id.includes(pattern.toLowerCase()) || title.includes(pattern.toLowerCase()));
+    });
+
+    console.log(`   🎯 Matching test courses: ${matchingCourses.length}`);
+
+    for (const course of matchingCourses) {
+      const courseId = course.id;
+      const courseTitle = course.title || 'Unknown';
+      
+      try {
+        // Try multiple delete endpoints
+        let delResponse = null;
+        let deletedVia = '';
+
+        // Method 1: Try DELETE with id parameter
+        delResponse = await fetch(`${baseUrl}/api/courses?id=${courseId}`, {
+          method: 'DELETE'
+        });
+        deletedVia = 'DELETE /api/courses?id=...';
+
+        // Method 2: If Method 1 fails, try DELETE with pathname
+        if (!delResponse.ok && delResponse.status !== 204) {
+          delResponse = await fetch(`${baseUrl}/api/courses/${courseId}`, {
             method: 'DELETE'
           });
-
-          if (delResponse.ok || delResponse.status === 204) {
-            console.log(`   ✅ Deleted course: ${courseId}`);
-            deletedCount++;
-          } else {
-            console.warn(`   ⚠️ Failed to delete ${courseId} (status: ${delResponse.status})`);
-          }
-        } catch (err) {
-          console.warn(`   ⚠️ Error deleting ${courseId}: ${(err as Error).message}`);
+          deletedVia = 'DELETE /api/courses/{id}';
         }
+
+        // Method 3: If still failing, try POST with delete action
+        if (!delResponse.ok && delResponse.status !== 204) {
+          delResponse = await fetch(`${baseUrl}/api/courses`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: courseId, action: 'delete' })
+          });
+          deletedVia = 'POST /api/courses (delete action)';
+        }
+
+        if (delResponse && (delResponse.ok || delResponse.status === 204)) {
+          console.log(`   ✅ Deleted: "${courseTitle}" (${courseId}) via ${deletedVia}`);
+          deletedCount++;
+        } else {
+          const status = delResponse?.status || 'unknown';
+          console.warn(`   ⚠️ Failed to delete "${courseTitle}" (${courseId}) - Status: ${status}`);
+        }
+      } catch (err) {
+        console.warn(`   ⚠️ Error deleting course "${courseTitle}" (${courseId}): ${err.message}`);
       }
-    } catch (err) {
-      console.warn(`   ⚠️ Error processing pattern "${pattern}": ${(err as Error).message}`);
     }
+  } catch (err) {
+    console.warn(`   ⚠️ Error in deleteTestCourses: ${err.message}`);
   }
 
   console.log(`   📊 Total courses deleted: ${deletedCount}`);
 }
 
-async function deleteTestOrders(): Promise<void> {
+async function deleteTestOrders() {
   console.log(`\n🎯 Step 2: Deleting test orders...`);
 
   const coursePatterns = ['stress-group-0-', 'stress-group-1-', 'stress-group-2-'];
@@ -115,18 +136,24 @@ async function deleteTestOrders(): Promise<void> {
   console.log(`   📊 Total order deletions attempted: ${deletedCount}`);
 }
 
-async function deleteTestProfiles(): Promise<void> {
-  console.log(`\n🎯 Step 3: Deleting test teacher profiles...`);
+async function deleteTestProfiles() {
+  console.log(`\n🎯 Step 3: Deleting test profiles (teachers & students)...`);
 
-  const testEmails = [
+  // Fixed E2E test accounts
+  const fixedTestEmails = [
+    // Stress test accounts
     'group-0-teacher@test.com',
     'group-1-teacher@test.com',
-    'group-2-teacher@test.com'
+    'group-2-teacher@test.com',
+    'group-0-student@test.com',
+    'group-1-student@test.com',
+    'group-2-student@test.com'
   ];
 
   let deletedCount = 0;
 
-  for (const email of testEmails) {
+  // Delete fixed test emails
+  for (const email of fixedTestEmails) {
     try {
       const response = await fetch(`${baseUrl}/api/profiles?email=${email}`, {
         method: 'DELETE'
@@ -141,14 +168,70 @@ async function deleteTestProfiles(): Promise<void> {
         console.warn(`   ⚠️ Failed to delete ${email} (status: ${response.status})`);
       }
     } catch (err) {
-      console.warn(`   ⚠️ Error deleting profile ${email}: ${(err as Error).message}`);
+      console.warn(`   ⚠️ Error deleting profile ${email}: ${err.message}`);
     }
   }
 
   console.log(`   📊 Total profiles deleted: ${deletedCount}`);
 }
 
-async function main(): Promise<void> {
+async function deleteE2ETestProfiles() {
+  console.log(`\n🎯 Step 4: Deleting E2E test profiles (dynamic accounts)...`);
+
+  try {
+    // Get all profiles and filter by test patterns
+    const response = await fetch(`${baseUrl}/api/profiles?limit=1000`);
+    
+    if (!response.ok) {
+      console.warn(`   ⚠️ Failed to fetch profiles (status: ${response.status})`);
+      return;
+    }
+
+    const data = await response.json();
+    const profiles = data.profiles || (Array.isArray(data) ? data : []);
+
+    // Test patterns to match
+    const testPatterns = [
+      'testuser_',      // navbar_verification.spec.ts
+      'teacher_',       // navbar_verification.spec.ts (teacher role test)
+      'group-',         // classroom_room_whiteboard_sync.spec.ts
+      '@example.com',   // Generic test domain
+      '@test.com'       // Test domain
+    ];
+
+    let deletedCount = 0;
+
+    for (const profile of profiles) {
+      const email = profile.email || '';
+      
+      // Check if email matches any test pattern
+      const isTestAccount = testPatterns.some(pattern => email.includes(pattern));
+      
+      if (isTestAccount) {
+        try {
+          const delResponse = await fetch(`${baseUrl}/api/profiles?email=${email}`, {
+            method: 'DELETE'
+          });
+
+          if (delResponse.ok || delResponse.status === 204) {
+            console.log(`   ✅ Deleted E2E profile: ${email}`);
+            deletedCount++;
+          } else if (delResponse.status !== 404) {
+            console.warn(`   ⚠️ Failed to delete ${email} (status: ${delResponse.status})`);
+          }
+        } catch (err) {
+          console.warn(`   ⚠️ Error deleting profile ${email}: ${err.message}`);
+        }
+      }
+    }
+
+    console.log(`   📊 Total E2E profiles deleted: ${deletedCount}`);
+  } catch (err) {
+    console.warn(`   ⚠️ Error in E2E profile cleanup: ${err.message}`);
+  }
+}
+
+async function main() {
   console.log('═══════════════════════════════════════════════════════');
   console.log('🧹 TEST DATA CLEANUP');
   console.log('═══════════════════════════════════════════════════════');
@@ -167,12 +250,13 @@ async function main(): Promise<void> {
     await deleteTestCourses();
     await deleteTestOrders();
     await deleteTestProfiles();
+    await deleteE2ETestProfiles();
 
     console.log('\n✅ Cleanup process completed successfully');
     console.log('═══════════════════════════════════════════════════════\n');
 
   } catch (err) {
-    console.error(`\n❌ Cleanup failed: ${(err as Error).message}`);
+    console.error(`\n❌ Cleanup failed: ${err.message}`);
     process.exit(1);
   }
 }

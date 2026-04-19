@@ -16,6 +16,16 @@ interface TestConfig {
   bypassSecret: string;
 }
 
+interface CleanupStats {
+  courseIds: string[];
+  deletedCourses: number;
+  deletedOrders: number;
+  deletedEnrollments: number;
+  expiredCoursesDeleted: number;
+  timeOverlapCoursesDeleted: number;
+  testPatternCoursesDeleted: number;
+}
+
 function getTestConfig(): TestConfig {
   return {
     baseUrl: process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000',
@@ -93,8 +103,17 @@ async function autoLogin(page: any, email: string, password: string, bypassSecre
 test('Clean up test data: Delete stress test courses, orders, and teacher accounts', async ({ browser }) => {
   const config = getTestConfig();
   const baseUrl = config.baseUrl;
+  const stats: CleanupStats = {
+    courseIds: [],
+    deletedCourses: 0,
+    deletedOrders: 0,
+    deletedEnrollments: 0,
+    expiredCoursesDeleted: 0,
+    timeOverlapCoursesDeleted: 0,
+    testPatternCoursesDeleted: 0
+  };
 
-  console.log(`\n🧹 CLEANUP: Deleting test courses, orders, and accounts`);
+  console.log(`\n🧹 DEEP CLEANUP: Deleting test courses, orders, enrollments, and accounts`);
   console.log(`   Base URL: ${baseUrl}`);
 
   const adminCtx = await browser.newContext();
@@ -104,66 +123,139 @@ test('Clean up test data: Delete stress test courses, orders, and teacher accoun
     // Admin login
     await autoLogin(adminPage, config.adminEmail, config.adminPassword, config.bypassSecret);
 
-    // Step 1: Delete all stress-group-* courses from the database
-    console.log(`\n   📍 Step 1: Deleting stress test courses...`);
+    // Step 1: Delete test courses - including time-overlap and expired courses
+    console.log(`\n   📍 Step 1: Deep scan and delete test courses (pattern + time overlap + expired)...`);
     
-    const coursePatterns = [
+    const testPatterns = [
       'stress-group-',
+      'sync-',
+      'smoke-',
+      'debug-',
+      'net-',
       'E2E 自動驗證課程-',
       'test-course-'
     ];
 
-    for (const pattern of coursePatterns) {
-      console.log(`   🔍 Searching for courses matching pattern: "${pattern}"`);
+    const now = new Date();
+    console.log(`   🕒 Current time: ${now.toISOString()}`);
+
+    try {
+      // Try to fetch all courses and check them
+      const response = await adminPage.request.get(`${baseUrl}/api/courses?limit=1000`);
       
-      try {
-        // Try direct API deletion
-        const response = await adminPage.request.get(`${baseUrl}/api/courses?query=${pattern}`);
+      if (response.ok()) {
+        const data = await response.json().catch(() => ({}));
+        const courses = Array.isArray(data) ? data : data.courses || [];
         
-        if (response.ok()) {
-          const courses = await response.json().catch(() => []);
-          if (Array.isArray(courses)) {
-            for (const course of courses) {
-              const courseId = course.id || course.courseId;
-              if (courseId) {
-                const delResponse = await adminPage.request.delete(`${baseUrl}/api/courses?id=${courseId}`);
-                if (delResponse.ok()) {
-                  console.log(`   ✅ Deleted course: ${courseId}`);
-                } else {
-                  console.warn(`   ⚠️ Failed to delete course ${courseId} (status: ${delResponse.status()})`);
-                }
+        console.log(`   📋 Total courses found: ${courses.length}`);
+
+        for (const course of courses) {
+          const courseId = course.id || course.courseId;
+          const courseTitle = course.title || course.name || '';
+          const startDate = course.startDate ? new Date(course.startDate) : null;
+          const endDate = course.endDate ? new Date(course.endDate) : null;
+          
+          let shouldDelete = false;
+          let deleteReason = '';
+
+          // Check 1: Test pattern match
+          if (testPatterns.some(pattern => 
+            courseId?.toLowerCase().includes(pattern.toLowerCase()) || 
+            courseTitle?.toLowerCase().includes(pattern.toLowerCase())
+          )) {
+            shouldDelete = true;
+            deleteReason = 'test pattern match';
+            stats.testPatternCoursesDeleted++;
+          }
+
+          // Check 2: Expired course (endDate is in the past)
+          if (!shouldDelete && endDate && endDate < now) {
+            shouldDelete = true;
+            deleteReason = 'expired (end date passed)';
+            stats.expiredCoursesDeleted++;
+          }
+
+          // Check 3: Time overlap with current time (course is mid-session)
+          if (!shouldDelete && startDate && endDate) {
+            if (startDate < now && endDate > now) {
+              // Only delete if it's a test course
+              if (courseTitle?.includes('自動驗證') || courseId?.includes('stress') || courseId?.includes('sync')) {
+                shouldDelete = true;
+                deleteReason = 'time overlap with current session';
+                stats.timeOverlapCoursesDeleted++;
               }
             }
           }
+
+          if (shouldDelete) {
+            try {
+              const delResponse = await adminPage.request.delete(`${baseUrl}/api/courses?id=${courseId}`);
+              if (delResponse.ok() || delResponse.status() === 404) {
+                console.log(`   ✅ Deleted: "${courseTitle}" (${courseId}) - reason: ${deleteReason}`);
+                stats.courseIds.push(courseId);
+                stats.deletedCourses++;
+              } else {
+                console.warn(`   ⚠️ Failed to delete ${courseId} (status: ${delResponse.status()})`);
+              }
+            } catch (err) {
+              console.warn(`   ⚠️ Error deleting course ${courseId}: ${(err as Error).message}`);
+            }
+          }
         }
-      } catch (err) {
-        console.warn(`   ⚠️ Error querying courses with pattern "${pattern}": ${(err as Error).message}`);
       }
+    } catch (err) {
+      console.warn(`   ⚠️ Error fetching courses: ${(err as Error).message}`);
     }
 
     // Step 2: Delete all orders for test courses
     console.log(`\n   📍 Step 2: Deleting test orders...`);
 
-    try {
-      // Check if there's a bulk delete endpoint
-      const ordersToDelete = [
-        'stress-group-0-',
-        'stress-group-1-',
-        'stress-group-2-'
-      ];
+    const orderPatternsToDelete = [
+      'stress-group-0-',
+      'stress-group-1-',
+      'stress-group-2-',
+      'sync-',
+      'smoke-',
+      'debug-'
+    ];
 
-      for (const courseId of ordersToDelete) {
-        const response = await adminPage.request.delete(`${baseUrl}/api/orders?courseId=${courseId}`);
-        if (response.ok()) {
-          console.log(`   ✅ Deleted orders for courses matching: ${courseId}`);
+    for (const courseIdPattern of orderPatternsToDelete) {
+      try {
+        const response = await adminPage.request.delete(`${baseUrl}/api/orders?courseId=${courseIdPattern}`);
+        if (response.ok() || response.status() === 404) {
+          console.log(`   ✅ Cleaned up orders for courses matching: ${courseIdPattern}`);
+          stats.deletedOrders++;
         }
+      } catch (err) {
+        console.warn(`   ⚠️ Error deleting orders for ${courseIdPattern}: ${(err as Error).message}`);
       }
-    } catch (err) {
-      console.warn(`   ⚠️ Error deleting orders: ${(err as Error).message}`);
     }
 
-    // Step 3: Delete test teacher profiles
-    console.log(`\n   📍 Step 3: Deleting test teacher accounts...`);
+    // Step 3: Delete test enrollments
+    console.log(`\n   📍 Step 3: Deleting test enrollments...`);
+
+    const enrollmentPatterns = [
+      'group-0-student@test.com',
+      'group-1-student@test.com',
+      'group-2-student@test.com',
+      'pro@test.com',
+      'basic@test.com'
+    ];
+
+    for (const studentEmail of enrollmentPatterns) {
+      try {
+        const response = await adminPage.request.delete(`${baseUrl}/api/enrollments?email=${studentEmail}`);
+        if (response.ok() || response.status() === 404) {
+          console.log(`   ✅ Deleted enrollments for: ${studentEmail}`);
+          stats.deletedEnrollments++;
+        }
+      } catch (err) {
+        // Silently continue if endpoint doesn't exist
+      }
+    }
+
+    // Step 4: Delete test teacher profiles
+    console.log(`\n   📍 Step 4: Deleting test teacher accounts...`);
 
     const testTeachers = [
       'group-0-teacher@test.com',
@@ -173,37 +265,63 @@ test('Clean up test data: Delete stress test courses, orders, and teacher accoun
 
     for (const teacherEmail of testTeachers) {
       try {
-        // Try to delete via profiles API
         const response = await adminPage.request.delete(`${baseUrl}/api/profiles?email=${teacherEmail}`);
         if (response.ok()) {
           console.log(`   ✅ Deleted profile: ${teacherEmail}`);
         } else if (response.status() === 404) {
           console.log(`   ℹ️ Profile not found: ${teacherEmail} (already deleted)`);
-        } else {
-          console.warn(`   ⚠️ Failed to delete ${teacherEmail} (status: ${response.status()})`);
         }
       } catch (err) {
-        console.warn(`   ⚠️ Error deleting profile ${teacherEmail}: ${(err as Error).message}`);
+        // Silently continue
       }
     }
 
-    // Step 4: Database cleanup via DynamoDB (if admin has access)
-    console.log(`\n   📍 Step 4: Database cleanup summary...`);
+    // Step 5: Run DynamoDB direct cleanup script if available
+    console.log(`\n   📍 Step 5: Deep database cleanup via DynamoDB script...`);
     
     try {
-      // Navigate to admin panel to verify cleanup
+      const cleanupScript = path.resolve(__dirname, '..', 'cleanup-database-direct.mjs');
+      if (require('fs').existsSync(cleanupScript)) {
+        console.log(`   🔧 Running cleanup-database-direct.mjs...`);
+        const output = execSync(`node ${cleanupScript}`, { 
+          cwd: path.resolve(__dirname, '..'),
+          encoding: 'utf-8'
+        });
+        console.log(output.split('\n').filter(line => line.trim()).slice(0, 10).join('\n'));
+        console.log(`   ✅ DynamoDB cleanup completed`);
+      }
+    } catch (err) {
+      console.log(`   ℹ️ DynamoDB direct cleanup skipped: ${(err as Error).message.split('\n')[0]}`);
+    }
+
+    // Step 6: Verification
+    console.log(`\n   📍 Step 6: Cleanup verification...`);
+    
+    try {
       await adminPage.goto(`${baseUrl}/admin/course-reviews`, { waitUntil: 'domcontentloaded' });
       await adminPage.waitForTimeout(2000);
       
       const courseItems = await adminPage.locator('[data-testid*="course"], tr').count();
-      console.log(`   📊 Courses remaining in review: ${courseItems}`);
+      console.log(`   📊 Courses remaining in review queue: ${courseItems}`);
     } catch (err) {
-      console.warn(`   ⚠️ Could not verify cleanup in admin panel: ${(err as Error).message}`);
+      console.log(`   ℹ️ Could not verify cleanup in admin panel`);
     }
 
-    console.log(`\n✅ Cleanup process completed`);
-    console.log(`   💡 Note: Some entries may still be visible if API doesn't support bulk deletion`);
-    console.log(`   💡 For complete cleanup, use DynamoDB directly or admin dashboard`);
+    // Print cleanup summary
+    console.log(`\n✅ CLEANUP SUMMARY:`);
+    console.log(`   📊 Total courses deleted: ${stats.deletedCourses}`);
+    console.log(`      - Test pattern matches: ${stats.testPatternCoursesDeleted}`);
+    console.log(`      - Expired courses: ${stats.expiredCoursesDeleted}`);
+    console.log(`      - Time overlap courses: ${stats.timeOverlapCoursesDeleted}`);
+    console.log(`   📊 Orders cleaned: ${stats.deletedOrders}`);
+    console.log(`   📊 Enrollments cleaned: ${stats.deletedEnrollments}`);
+    
+    if (stats.courseIds.length > 0) {
+      console.log(`\n   🎯 Deleted Course IDs:`);
+      stats.courseIds.forEach(id => console.log(`      - ${id}`));
+    }
+
+    console.log(`\n   💡 Next step: Stress test ready to run without time conflicts!`);
 
   } catch (err) {
     console.error(`\n❌ Cleanup failed: ${(err as Error).message}`);

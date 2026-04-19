@@ -40,10 +40,37 @@ metadata:
 
 ## 快速啟動
 
-### 基礎白板同步測試（推薦首先執行）
+### 前置步驟：深度清理測試資料 ⚠️ 重要
+
+時間重疊的課程是導致測試失敗的主要原因之一。測試前必須執行清理：
 
 ```bash
 # 確保 dev server 已啟動
+npm run dev
+
+# 在另一個終端執行清理（5-10 秒）
+npx playwright test e2e/cleanup-test-data.spec.ts --project=chromium
+```
+
+**清理操作包含**：
+- ✅ 刪除所有測試課程（test 模式 + 已過期 + 時間重疊）
+- ✅ 刪除相關訂單記錄
+- ✅ 刪除相關注冊記錄
+- ✅ 刪除測試教師帳號
+- ✅ DynamoDB 深度清理（orders + enrollments 表）
+
+**時間重疊課程檢測邏輯**：
+```typescript
+// 課程被標記為刪除的條件（滿足任一即可）：
+1. 課程 ID 或標題包含測試模式：stress-group-*, sync-*, smoke-*, debug-*, E2E自動驗證
+2. 課程結束時間已過期（endDate < 現在時間）
+3. 課程進行中且與現在時間重疊（startDate < 現在時間 < endDate）且是測試課程
+```
+
+### 基礎白板同步測試（推薦首先執行）
+
+```bash
+# 確保 dev server 已啟動 (如果沒有)
 npm run dev
 
 # 在另一個終端執行測試
@@ -58,11 +85,14 @@ npx playwright test e2e/classroom_room_whiteboard_sync.spec.ts -g "Teacher drawi
 ### 壓力測試（3 組併發，可選）
 
 ```bash
-# 執行並發測試（預期需要 5-10 分鐘）
-npx playwright test e2e/classroom_room_whiteboard_sync.spec.ts -g "Stress test" --project=chromium
+# ⚠️ 必須先執行清理！
+npx playwright test e2e/cleanup-test-data.spec.ts --project=chromium
+
+# 然後執行並發測試（預期需要 5-10 分鐘）
+npx playwright test e2e/classroom_room_whiteboard_sync.spec.ts -g "stress" --project=chromium
 
 # 自定義組數
-STRESS_GROUP_COUNT=5 npx playwright test e2e/classroom_room_whiteboard_sync.spec.ts -g "Stress test" --project=chromium
+STRESS_GROUP_COUNT=5 npx playwright test e2e/classroom_room_whiteboard_sync.spec.ts -g "stress" --project=chromium
 ```
 
 **當前狀態**：⚠️ 報名流程在 subprocess 並發環境下有穩定性問題（正在改進）
@@ -364,3 +394,126 @@ STRESS_RUNS=5 STRESS_GROUP_COUNT=5 ./.agents/skills/classroom-room-whiteboard-sy
 
 ---
 
+## 🧹 深度清理操作指南 (2026-04-19 新增)
+
+### 為什麼需要深度清理？
+
+時間重疊的課程是導致壓力測試失敗的主要原因。當多個測試課程在相同時間段運行時，會造成：
+- ❌ 教室進入失敗（課程已進行中，但報名頁面仍允許進入）
+- ❌ SSE 同步混亂（多個課程的狀態互相污染）
+- ❌ 白板房間衝突（Agora SDK 房間 ID 重複）
+- ❌ 點數扣除異常（訂單狀態混亂）
+
+### 清理腳本架構
+
+JV Tutor Corner 提供 **3 層次清理系統**：
+
+#### Layer 1: UI-based Cleanup (Playwright E2E)
+**檔案**: `e2e/cleanup-test-data.spec.ts`  
+**功能**:
+- 管理員登入 → 課程審核頁面
+- 檢測 3 種課程刪除條件：
+  1. 課程 ID/標題 match test pattern（`stress-group-*`, `sync-*`, `E2E自動驗證課程`）
+  2. 課程已過期（endDate < 現在時間）
+  3. **課程進行中**（startDate < 現在 < endDate）且是 test 課程 ⭐
+- 調用 API 刪除課程、訂單、注冊記錄
+- **優點**: 無需直接 AWS 存取
+- **缺點**: 依賴 UI 可用性，清理不完全
+
+#### Layer 2: API-based Cleanup (HTTPS/REST)
+**內部**: Layer 1 自動調用 3 個 API 端點
+```
+DELETE /api/courses?id={courseId}
+DELETE /api/orders?courseId={courseIdPattern}
+DELETE /api/enrollments?email={studentEmail}
+```
+- **優點**: 更快速，支援批量刪除
+- **缺點**: 不清理孤立記錄（whiteboard_permissions 等）
+
+#### Layer 3: Database-level Cleanup (DynamoDB 直接操作)
+**檔案**: `cleanup-database-direct.mjs`  
+**功能**:
+- 直接掃描 DynamoDB 表：
+  - `jvtutorcorner-courses` → 刪除 test pattern 課程
+  - `jvtutorcorner-teachers` → 刪除 test teacher
+  - `jvtutorcorner-orders` → 刪除 test pattern 訂單
+  - `jvtutorcorner-enrollments` → 刪除 test pattern 注冊
+- **優點**: 最徹底，支援孤立記錄清理
+- **缺點**: 需要 AWS 認證
+
+### 完整清理流程
+
+**推薦的 3-step 清理順序**：
+
+```bash
+# Step 1: 清理 UI 層 + API 層（5-10 秒）
+npx playwright test e2e/cleanup-test-data.spec.ts --project=chromium
+
+# Step 2: 等待 3 秒，確保 DynamoDB 一致性
+sleep 3
+
+# Step 3: 深度清理 DynamoDB（若需要）
+node cleanup-database-direct.mjs
+```
+
+### 時間重疊檢測邏輯
+
+課程被標記為刪除的條件（滿足任一即可）：
+
+| 條件 | 檢查邏輯 | 優先級 | 備註 |
+|------|--------|--------|------|
+| **Test Pattern Match** | 課程 ID 或標題包含：`stress-group-*`, `sync-*`, `smoke-*`, `debug-*`, `E2E自動驗證課程` | 2 | 快速識別測試課程 |
+| **Expired Course** | `endDate < 現在時間` | 1 | 清理已結束的課程 |
+| **Time Overlap (進行中)** | `startDate < 現在時間 < endDate` **且** 是測試課程 | 0 ⭐ | **最優先清理** |
+
+### 清理統計輸出示例
+
+```
+🧹 DEEP CLEANUP: Deleting test courses, orders, enrollments, and accounts
+   Base URL: http://localhost:3000
+   🕒 Current time: 2026-04-19T15:30:00Z
+
+   📍 Step 1: Deep scan and delete test courses...
+   📋 Total courses found: 47
+   
+   ✅ Deleted: "E2E 自動驗證課程-1776609792646" (sync-1776609786665)
+      - reason: test pattern match
+   ✅ Deleted: "Test Course X" (stress-group-0-1776000000000)
+      - reason: test pattern match + time overlap
+   ✅ Deleted: "Old Test" (debug-1776500000000)
+      - reason: expired (end date passed)
+
+   📍 Step 2: Deleting test orders...
+   ✅ Cleaned up orders for courses matching: stress-group-0-
+   ✅ Cleaned up orders for courses matching: sync-
+
+   📍 Step 3: Deleting test enrollments...
+   ✅ Deleted enrollments for: group-0-student@test.com
+
+   📍 Step 4: Deleting test teacher accounts...
+   ℹ️ Profile not found: group-0-teacher@test.com (already deleted)
+
+   📍 Step 5: Deep database cleanup via DynamoDB script...
+   ✅ DynamoDB cleanup completed
+
+✅ CLEANUP SUMMARY:
+   📊 Total courses deleted: 12
+      - Test pattern matches: 8
+      - Expired courses: 2
+      - Time overlap courses: 2
+   📊 Orders cleaned: 5
+   📊 Enrollments cleaned: 8
+
+   💡 Next step: Stress test ready to run without time conflicts!
+```
+
+### 常見清理問題
+
+| 問題 | 原因 | 解決方案 |
+|------|------|--------|
+| 清理後課程仍存在 | API 端點不支援批量刪除 | 執行 `node cleanup-database-direct.mjs` 進行深度清理 |
+| 清理異常終止 | AWS 認證失敗 | 驗證 `.env.local` 中的 AWS_ACCESS_KEY_ID 與 AWS_SECRET_ACCESS_KEY |
+| 時間重疊課程未刪除 | test pattern 規則不匹配 | 檢查課程 title 是否包含「自動驗證」或課程 id 是否符合 test prefix |
+| 訂單刪除失敗 | 訂單已被其他進程修改 | 重新執行清理腳本（會自動跳過已刪除的項目） |
+
+---

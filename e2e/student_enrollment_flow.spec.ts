@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+﻿import { test, expect } from '@playwright/test';
 import dotenv from 'dotenv';
 import path from 'path';
 
@@ -144,6 +144,8 @@ test('Student Enrollment Flow (Simulated Payment)', async ({ page }) => {
                 pointCost: expectedDeduction,
                 startDate: new Date().toISOString(),
                 endDate: new Date(Date.now() + 30 * 86400000).toISOString(),
+                startTime: new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString(),
+                endTime: new Date(Date.now() + 1 * 60 * 60 * 1000).toISOString(),
                 status: '上架'
             };
             
@@ -367,7 +369,7 @@ test('Student Enrollment Flow (Simulated Payment)', async ({ page }) => {
     console.log("Starting enrollment flow...");
 
     console.log("Clicking '立即報名課程'...");
-    await page.click('button:has-text("立即報名課程")');
+    await enrollBtn.click();
 
     console.log("Waiting for '確認報名' button...");
     const confirmBtn = page.locator('button:has-text("確認報名")');
