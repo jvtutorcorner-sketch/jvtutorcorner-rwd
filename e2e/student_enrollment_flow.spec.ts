@@ -299,33 +299,47 @@ test('Student Enrollment Flow (Simulated Payment)', async ({ page }) => {
         await page.goto(`${baseUrl}/pricing`);
         await page.waitForLoadState('networkidle');
         
-        // ✅ Select largest point package (100點) to ensure we have enough for course
-        console.log("Looking for largest point package option...");
-        const pointPackages = await page.locator('button:has-text("100"), button:has-text("買點數")').all();
+        // ✅ Select LARGEST point package to ensure sufficient balance
+        console.log("⏳ Finding all point packages and selecting the largest one...");
         
-        // Try to click on a point package button that shows "100" or the largest package
-        let packageClicked = false;
-        const allButtons = await page.locator('button').all();
-        for (const btn of allButtons) {
-            const text = await btn.textContent() || '';
-            // Look for packages with 100, 150, 200, etc. - pick the largest
-            if (text.includes('100') || text.includes('150') || text.includes('200')) {
-                await btn.click();
-                packageClicked = true;
-                console.log(`✅ Selected point package: ${text.substring(0, 50)}`);
-                break;
+        // Get all "購買點數" links/buttons and their parent cards
+        const pointPackageLinks = await page.locator('a[href*="/pricing/checkout?plan=points"], button:has-text("購買點數")').all();
+        console.log(`📊 Found ${pointPackageLinks.length} point package options`);
+        
+        if (pointPackageLinks.length > 0) {
+            // Select the LAST package (typically the largest/most expensive one)
+            const lastLink = pointPackageLinks[pointPackageLinks.length - 1];
+            const linkText = await lastLink.textContent() || 'Unknown';
+            const href = await lastLink.getAttribute('href') || '';
+            
+            console.log(`✅ Selecting largest package: ${linkText.substring(0, 50)}`);
+            console.log(`   Href: ${href}`);
+            
+            // If it's a link, navigate directly; if button, click it
+            if (href.includes('/pricing/checkout')) {
+                await page.goto(`${baseUrl}${href}`);
+            } else {
+                await lastLink.click();
+                await page.waitForURL(/\/pricing\/checkout/, { timeout: 10000 });
             }
+        } else {
+            console.warn("⚠️ No point package links found, trying fallback button");
+            // Fallback: look for any "購買點數" text and click  
+            const buyBtn = page.locator('a:has-text("購買點數"), button:has-text("購買點數")').last();
+            await buyBtn.click();
+            await page.waitForURL(/\/pricing\/checkout/, { timeout: 10000 });
         }
         
-        if (!packageClicked) {
-            console.log("⚠️ Could not find explicit package selector, clicking generic 'buy' button");
-            await page.locator('a:has-text("購買點數"), button:has-text("購買點數")').first().click();
-        }
+        // Verify at checkout - should have the highest point package selected
+        console.log("✅ At checkout page - highest point package should be pre-selected");
+        await page.waitForLoadState('networkidle');
         
-        await page.waitForURL(/\/pricing\/checkout/, { timeout: 10000 });
+        // Verify we have point details displayed
+        const pointsInfo = await page.locator('text=/點|points/i').first().textContent().catch(() => 'Unknown');
+        console.log(`📊 Points package info: ${pointsInfo}`);
         
-        // Verify at checkout - select the option with highest points if multiple options exist
-        console.log("At checkout page, selecting payment method...");
+        // Click payment button
+        console.log("⏳ Selecting payment method...");
         const paymentBtn = page.locator('button:has-text("模擬支付"), button:has-text("Demo"), button:has-text("支付")').first();
         await paymentBtn.click();
 

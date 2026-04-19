@@ -453,6 +453,7 @@ export default function PricingPage() {
                     <Link
                       href={`/pricing/checkout?plan=${plan.id}`}
                       className="card-button primary"
+                      data-testid={`points-package-${plan.id}`}
                     >
                       購買點數
                     </Link>
