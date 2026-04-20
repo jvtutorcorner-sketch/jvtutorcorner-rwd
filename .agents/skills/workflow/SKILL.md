@@ -24,6 +24,7 @@ metadata:
   - 驗證 caching 與 artifact 設定是否正確（避免漏掉 cache key）
   - 更新 README 或相關文件中的使用說明（若有必要）
   - 新增/更新 Playwright/E2E 測試對應的 job（若改動影響測試）
+  - **API Registry 更新**：若異動涉及 API 提供，必須執行 `node scripts/inspect_apis.mjs` 並提交 `docs/api_registry.md` 的變更。
 
 - Commit 與 PR 標準建議：
   - Commit 類型建議使用 Conventional Commits 類型前綴，例如：

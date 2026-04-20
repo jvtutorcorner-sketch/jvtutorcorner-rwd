@@ -54,6 +54,7 @@ metadata:
 - [ ] 定價資料初始化（`scripts/init-pricing-data.mjs`）
 - [ ] 定價資料合併（`scripts/merge-pricing-data.mjs`）
 - [ ] 環境變數確認：`PAYPAL_CLIENT_ID`、`STRIPE_SECRET_KEY`、`LINEPAY_API_KEY` 等
+- [ ] **API 紀錄更新**：若有新增或修改 API 路由，必須執行 `node scripts/inspect_apis.mjs` 並確認 `docs/api_registry.md` 已更新。
 
 ## Commit 模板
 

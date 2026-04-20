@@ -126,6 +126,8 @@ feat(ai-chat): <簡短描述>
 
 ### 2. 必要驗證檔案 (Required Validation Files)
 - [ ] `lib/platform-skills.ts` (工具定義)
+- [ ] **API Registry**: `docs/api_registry.md` (確認新增工具對應的 API 已被紀錄)
 
 ### 3. 執行驗證指令 (Validation Command)
 - 目前以手動在 `/apps/ai-chat` 進行測試為主
+- **API 紀錄更新**: `node scripts/inspect_apis.mjs`
