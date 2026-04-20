@@ -133,40 +133,92 @@
   - 待 API 實裝驗證
 - **架構對齊**: ❓ 待確認
 
-### 10. payment (workflow)
+### 11. payment-infrastructure
 - **狀態**: ❌ UNVERIFIED
 - **驗證日期**: -
-- **最後更新**: 2026-03-15
+- **最後更新**: 2026-04-20
 - **驗證項目**:
-  - ❌ Payment workflow
-- **已知問題**: 
-  - 待詳細功能規格
-- **架構對齐**: ❓ 待確認
+  - ❌ 支付閘道整合架構 (Stripe/PayPal/LINE Pay/ECPay)
+  - ❌ 訂單生命週期狀態機 (OSM)
+  - ❌ Webhook 冪等性與安全性驗證
+- **已知問題**: 待核心架構驗證
+- **架構對齊**: ✅ 已規劃對齊
 
-### 12. purchase-flow-verification
+### 12. payment-flow-validation
 - **狀態**: ✅ VERIFIED
 - **驗證日期**: 2026-04-06
-- **最後更新**: 2026-04-06
+- **最後更新**: 2026-04-20
 - **驗證項目**:
-  - ✅ 點數購買 (/pricing → /pricing/checkout)
-  - ✅ 方案訂購驗證 (Subscription/Bundles)
-  - ✅ 模擬與真實支付模式驗證
-  - ✅ 計價扣點邏輯 (pricing-deduction)
+  - ✅ 點數與方案購買完整流程
+  - ✅ 模擬與真實支付跳轉驗證
+  - ✅ 支付後資產同步檢查
 - **已知問題**: 無
 - **架構對齊**: ✅ 對齊完成
 
-### 13. purchase-refund-flow
+### 13. payment-refund-orchestration
 - **狀態**: 🔄 IN-PROGRESS
 - **驗證日期**: 2026-04-06
-- **最後更新**: 2026-04-06
+- **最後更新**: 2026-04-20
 - **驗證項目**:
-  - ✅ 管理員撤銷訂單業務連動
-  - 🔄 點數套餐退款 (金流退回 + 點數扣除)
-  - 🔄 方案退款 (Plan status Revert)
-  - ✅ 串接核心技術工具 `monetary-refund`
-- **已知問題**: 
-  - 目前測試較多偏重在 `course-point-return` 的點數返還驗證。
+  - ✅ 業務端退款流程編排
+  - 🔄 資產扣回與狀態回滾邏輯
+  - ✅ 串接 `payment-refund-gateway`
+- **已知問題**: 退款邊際案例待補充
 - **架構對齊**: ✅ 已規劃對齊
+
+### 14. payment-refund-gateway
+- **狀態**: 🏗️ IN PROGRESS
+- **驗證日期**: 2026-04-06
+- **最後更新**: 2026-04-20
+- **驗證項目**:
+  - ✅ Stripe/PayPal 原路退款 API 調用
+  - ✅ Webhook 退款事件監聽
+- **架構對齊**: ✅ 對齊完成
+
+### 15. payment-restitution-logic
+- **狀態**: ✅ VERIFIED
+- **驗證日期**: 2026-04-06
+- **最後更新**: 2026-04-20
+- **驗證項目**:
+  - ✅ 課程取消引發的點數返還
+  - ✅ Enrollment 狀態同步
+- **架構對齊**: ✅ 對齊完成
+
+### 16. payment-gateway-stripe-verification
+- **狀態**: ❌ UNVERIFIED
+- **驗證日期**: -
+- **最後更新**: 2026-04-20
+- **驗證項目**:
+  - ❌ Stripe 支付全流程測試
+  - ❌ 管理員端服務連線診斷
+- **架構對齊**: ❓ 待確認
+
+### 17. payment-simulation-linepay
+- **狀態**: ✅ VERIFIED
+- **驗證日期**: 2026-04-17
+- **最後更新**: 2026-04-20
+- **驗證項目**:
+  - ✅ LINE Pay 模擬支付重定向
+  - ✅ Confirm API 模擬邏輯
+- **架構對齊**: ✅ 對齊完成
+
+### 18. payment-fee-deduction-logic
+- **狀態**: ✅ VERIFIED
+- **驗證日期**: 2026-04-03
+- **最後更新**: 2026-04-20
+- **驗證項目**:
+  - ✅ App 方案綁定扣點邏輯
+  - ✅ 淨點數入帳計算
+- **架構對齊**: ✅ 對齊完成
+
+### 19. payment-pricing-configuration
+- **狀態**: ✅ VERIFIED
+- **驗證日期**: 2026-04-06
+- **最後更新**: 2026-04-20
+- **驗證項目**:
+  - ✅ /settings/pricing 全面功能驗證
+  - ✅ 折扣方案與應用程式方案存儲
+- **架構對齊**: ✅ 對齊完成
 
 ---
 

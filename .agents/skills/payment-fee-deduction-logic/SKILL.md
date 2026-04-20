@@ -1,5 +1,5 @@
 ---
-name: pricing-deduction-verification
+name: payment-fee-deduction-logic
 description: '驗證點數購買有勾選應用程式方案的扣點邏輯。確保使用者在購買綁定 App 方案的點數套餐時，實際獲得的點數已扣除 App 方案的成本。'
 argument-hint: '執行點數扣除邏輯驗證測試'
 metadata:
@@ -8,7 +8,7 @@ metadata:
   architecture-aligned: true
 ---
 
-# 點數購買扣點邏輯驗證技能 (Pricing Deduction Verification Skill)
+# 支付手續費扣除邏輯技能 (Payment Fee Deduction Logic Skill)
 
 此技能用於驗證當點數套餐綁定了「應用程式方案 (App Plan)」且該方案設有「點數成本 (Points Cost)」時，系統是否能正確執行扣點邏輯。
 

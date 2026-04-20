@@ -1,5 +1,5 @@
 ---
-name: monetary-refund
+name: payment-refund-gateway
 description: '技術面：專注重於金流商（Stripe, PayPal, LINE Pay）實體金額金流退回 API 集成與呼叫技術細節。'
 argument-hint: '調用 Stripe/PayPal/LINE Pay API 執行技術面退款'
 metadata:
@@ -8,7 +8,7 @@ metadata:
   architecture-aligned: true
 ---
 
-# 金流退款技術工具技能 (Monetary Refund Tech Tool Skill)
+# 金流退款技術工具技能 (Payment Refund Gateway Skill)
 
 > [!TIP]
 > 此技能為技術性的「開發工具集」 (Utility Skill)，供業務層（如 `purchase-refund-flow`）調用，不單獨處理業務端的資產連動扣除。

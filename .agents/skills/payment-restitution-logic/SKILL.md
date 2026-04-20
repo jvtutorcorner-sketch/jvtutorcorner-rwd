@@ -1,5 +1,5 @@
 ---
-name: course-point-return
+name: payment-restitution-logic
 description: '負責處理課程取消後的點數返還（Point Return）邏輯，將已消耗的點數加回學生帳戶。'
 argument-hint: '實作或更新點數返還/扣點回補邏輯'
 metadata:
@@ -8,7 +8,7 @@ metadata:
   architecture-aligned: true
 ---
 
-# 課程點數返還技能 (Course Point Return Skill)
+# 點數資產歸還邏輯技能 (Payment Restitution Logic Skill)
 
 > [!NOTE]
 > 此技能專注於「學生端取消課程」後的資產退回流程，不涉及真實金錢（Monetary）的金流退款。
@@ -18,7 +18,7 @@ metadata:
 ## 職責定義 (Scope)
 - **場景**：專用於 Enrollment（報名紀錄）的取消。
 - **目標**：原路退回「點數」，撤銷課程權限。
-- **與 `purchase-refund-flow` 的區別**：本技能處理的是「把點數還給學生」；而 `purchase-refund-flow` 處理的是「從學生身上把點數抽回來（退錢）」。
+- **與 `payment-refund-orchestration` 的區別**：本技能處理的是「把點數還給學生」；而 `payment-refund-orchestration` 處理的是「從學生身上把點數抽回來（退錢）」。
 
 ## 點數返還核心流程
 

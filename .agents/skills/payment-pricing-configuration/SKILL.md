@@ -1,5 +1,5 @@
 ---
-name: pricing-settings-verification
+name: payment-pricing-configuration
 description: '確認 "/settings/pricing" 的訂閱方案、點數購買、折扣方案與應用程式方案都有正確儲存，且相關計算邏輯 100% 正確（包含折扣與點數扣除）。'
 argument-hint: '執行 "/settings/pricing" 全面性功能的 E2E 驗證測試'
 metadata:
@@ -14,7 +14,7 @@ metadata:
     - '✅ Playwright webServer 自動啟動開發服務器'
 ---
 
-# 方案設定全面驗證技能 (Pricing Settings Verification Skill)
+# 支付定價與方案配置技能 (Payment Pricing Configuration Skill)
 
 全面驗證 `/settings/pricing` 頁面的訂閱方案、點數購買、折扣方案、應用程式方案的儲存與計算邏輯。
 

@@ -1,5 +1,5 @@
 ---
-name: purchase-refund-flow
+name: payment-refund-orchestration
 description: '負責驗證點數與方案（訂閱/組合包）購買後的退款驗證，包含金流原路退回、資產扣除與狀態同步。'
 argument-hint: '執行點數或方案退款驗證 (金流 vs 點數扣除)'
 metadata:
@@ -8,7 +8,7 @@ metadata:
   architecture-aligned: true
 ---
 
-# 點數與方案退款驗證技能 (Purchase Refund Flow Skill)
+# 點數與方案退款編排技能 (Payment Refund Orchestration Skill)
 
 > [!IMPORTANT]
 > 此技能為「核心業務流程」 (Core Business Flow)，處理管理者撤銷訂單後的資產正確性。
@@ -17,8 +17,8 @@ metadata:
 
 ## 退款核心邏輯與聯動層次
 
-1.  **金流回退 (呼叫 `monetary-refund`)**：
-    - 根據訂單的 `paymentMethod` (stripe/paypal) 使用 **`monetary-refund`** 的技術工具執行金流退還。
+1.  **金流回退 (呼叫 `payment-refund-gateway`)**：
+    - 根據訂單的 `paymentMethod` (stripe/paypal) 使用 **`payment-refund-gateway`** 的技術工具執行金流退還。
 2.  **資產扣除 (關鍵業務)**：
     - **點數退款**：從學員點數餘額扣回退款套餐所含的點數（例如退回 100 點套餐，餘額減少 100 點）。
     - **方案退款**：撤銷學員目前的訂閱等級 (Plan) 權限至原始等級。
@@ -27,8 +27,8 @@ metadata:
     - 觸發 24 小時退款限制檢查 (見 `app/api/orders/[orderId]/route.ts`)。
 
 ## 相關組合技能
-- **`monetary-refund`**：提供金流 API 呼叫的技術支持。
-- **`point-return` (原 `order-refund`)**：處理「課程報名 (Enrollment)」的取消與點數退回；與本技能處理的「購買行為產生的資產扣除」方向相反。
+- **`payment-refund-gateway`**：提供金流 API 呼叫的技術支持。
+- **`point-restitution-flow`**：處理「課程報名 (Enrollment)」的取消與點數退回；與本技能處理的「購買行為產生的資產扣除」方向相反。
 
 ## 測試指令
 ```bash

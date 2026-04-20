@@ -1,5 +1,5 @@
 ---
-name: purchase-flow-verification
+name: payment-flow-validation
 description: '自動化驗證點數與方案（訂閱/組合包）購買流程，包含模擬支付、真實支付跳轉、點數扣除邏輯與餘額同步。'
 argument-hint: '執行點數或方案購買流程測試 (模擬 vs 真實)'
 metadata:
@@ -8,7 +8,7 @@ metadata:
   architecture-aligned: true
 ---
 
-# 點數與方案購買驗證技能 (Purchase Flow Verification Skill)
+# 支付與資產獲取驗證技能 (Payment Flow Validation Skill)
 
 此技能專注於驗證學生在平台上的資產獲取邏輯，確保無論是購買「點數套餐」還是「訂閱方案/組合包」，金流管道（Stripe/PayPal/模擬）能正確運作、資產準確入帳且權限即時同步。
 
