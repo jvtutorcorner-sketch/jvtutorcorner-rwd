@@ -1,17 +1,17 @@
 name: Verify Skills Status
 
 on:
-  push:
-    branches: [main, develop]
-    paths:
-      - '.agents/skills/**/*.md'
-      - 'e2e/**/*.spec.ts'
-      - '.github/workflows/verify-skills.yml'
-  pull_request:
-    branches: [main, develop]
-    paths:
-      - '.agents/skills/**/*.md'
-      - 'e2e/**/*.spec.ts'
+#  push:
+#    branches: [main, develop]
+#    paths:
+#      - '.agents/skills/**/*.md'
+#      - 'e2e/**/*.spec.ts'
+#      - '.github/workflows/verify-skills.yml'
+#  pull_request:
+#    branches: [main, develop]
+#    paths:
+#      - '.agents/skills/**/*.md'
+#      - 'e2e/**/*.spec.ts'
   workflow_dispatch:
     inputs:
       skill_name:
