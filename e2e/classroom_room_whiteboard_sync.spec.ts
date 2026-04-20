@@ -1,4 +1,4 @@
-﻿import { test, expect, Dialog } from '@playwright/test';
+import { test, expect, Dialog } from '@playwright/test';
 import dotenv from 'dotenv';
 import path from 'path';
 import {
@@ -517,15 +517,26 @@ test.describe('[stress] Concurrent Groups', () => {
         }
       }));
 
-      // Step 5: Parallel Enter Classroom
-      console.log('\n📍 Step 5: Entering classroom for all groups (parallel)...');
+      // Step 5: Parallel Ready Check and Enter Classroom
+      console.log('\n📍 Step 5: Ready check and entering classroom for all groups (parallel groups)...');
       await Promise.all(sessions.map(async (session) => {
         try {
-          console.log(`   ⏳ [${session.groupId}] Both entering classroom...`);
+          console.log(`   ⏳ [${session.groupId}] Validating wait page...`);
           await Promise.all([
             enterClassroom(session.teacherPage, 'teacher'),
             enterClassroom(session.studentPage, 'student')
           ]);
+
+          console.log(`   ⏳ [${session.groupId}] Clicking Ready (sequential within group)...`);
+          await clickReadyButton(session.teacherPage, 'teacher');
+          await clickReadyButton(session.studentPage, 'student');
+
+          console.log(`   ⏳ [${session.groupId}] Entering room...`);
+          await Promise.all([
+            waitAndEnterClassroom(session.teacherPage, 'teacher'),
+            waitAndEnterClassroom(session.studentPage, 'student')
+          ]);
+
           session.result.classroomEntered = true;
           console.log(`   ✅ [${session.groupId}] Both in classroom`);
         } catch (e) {

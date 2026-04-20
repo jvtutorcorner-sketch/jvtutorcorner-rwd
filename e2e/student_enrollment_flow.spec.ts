@@ -1,4 +1,4 @@
-﻿import { test, expect } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 import dotenv from 'dotenv';
 import path from 'path';
 
@@ -135,6 +135,10 @@ test('Student Enrollment Flow (Simulated Payment)', async ({ page }) => {
 
         console.log("Creating point-based test course...");
         try {
+            const now = new Date();
+            const tzOffset = now.getTimezoneOffset() * 60000; // offset in milliseconds
+            const localISOTime = (timeMs: number) => new Date(timeMs - tzOffset).toISOString().slice(0, 16);
+            
             // 📌 課程建立 payload 中加入 teacherId
             const coursePayload: any = {
                 id: testCourseId,
@@ -142,10 +146,10 @@ test('Student Enrollment Flow (Simulated Payment)', async ({ page }) => {
                 teacherName: "Test Bot",
                 enrollmentType: "points",
                 pointCost: expectedDeduction,
-                startDate: new Date().toISOString(),
-                endDate: new Date(Date.now() + 30 * 86400000).toISOString(),
-                startTime: new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString(),
-                endTime: new Date(Date.now() + 1 * 60 * 60 * 1000).toISOString(),
+                startDate: localISOTime(now.getTime()),
+                endDate: localISOTime(now.getTime() + 30 * 86400000),
+                startTime: localISOTime(now.getTime() - 1 * 60 * 60 * 1000),
+                endTime: localISOTime(now.getTime() + 1 * 60 * 60 * 1000),
                 status: '上架'
             };
             

@@ -4,7 +4,7 @@ description: '檢查 /student_courses 頁面的按鈕顯示、時間驗證、資
 argument-hint: '測試並驗證 /student_courses 頁面的所有功能'
 metadata:
   verified-status: '✅ VERIFIED'
-  last-verified-date: '2026-03-15'
+  last-verified-date: '2026-04-20'
   architecture-aligned: true
 ---
 

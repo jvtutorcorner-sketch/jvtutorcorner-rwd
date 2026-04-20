@@ -474,8 +474,10 @@ export async function createCourseAsTeacher(
   await page.waitForTimeout(1500);
 
   const now = new Date();
-  const startISO = new Date(now.getTime() + 86400000).toISOString().slice(0, 16);
-  const endISO = new Date(now.getTime() + 90000000).toISOString().slice(0, 16);
+  const tzOffset = now.getTimezoneOffset() * 60000;
+  // Set start time to 1 hour ago and end time to 1 hour from now to ensure it's active
+  const startISO = new Date(now.getTime() - tzOffset - 3600000).toISOString().slice(0, 16);
+  const endISO = new Date(now.getTime() - tzOffset + 3600000).toISOString().slice(0, 16);
 
   await page.locator('form input').first().fill(courseId).catch(() => {});
   await page.locator('form textarea').first().fill(`Stress test — Teacher: ${teacherEmail}`).catch(() => {});
