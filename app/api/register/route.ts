@@ -51,6 +51,8 @@ export async function POST(req: Request) {
 
     // ── Email Verification Setup ─────────────────────────────────────
     const { generateVerificationToken, sendVerificationEmail } = await import('@/lib/email/verificationService');
+    const { initializeVerificationStatus } = await import('@/lib/email/emailVerificationStatus');
+    
     const verificationToken = generateVerificationToken();
     const verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(); // 24 hours
 
@@ -62,6 +64,10 @@ export async function POST(req: Request) {
       emailVerified: false,
       verificationToken,
       verificationExpires,
+      // Initialize verification tracking fields
+      emailVerificationStatus: 'pending',
+      emailVerificationAttempts: 0,
+      emailVerificationResendCount: 0,
       createdAt: new Date().toISOString(),
       updatedAtUtc: new Date().toISOString()
     };
@@ -74,6 +80,11 @@ export async function POST(req: Request) {
     // Persist Profile to DynamoDB
     try {
       await ddbDocClient.send(new PutCommand({ TableName: PROFILES_TABLE, Item: profile }));
+
+      // Initialize verification status and log the SENT event
+      initializeVerificationStatus(id, email, verificationToken, verificationExpires).catch(err => {
+        console.error('[register] Failed to initialize verification status', err);
+      });
 
       // Send verification email (non-blocking)
       sendVerificationEmail(email, verificationToken).catch(err => {
