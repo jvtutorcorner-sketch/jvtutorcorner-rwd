@@ -6,6 +6,7 @@ import Link from 'next/link';
 import Editor from '@monaco-editor/react';
 import { AI_SKILLS, getSkillById } from '@/lib/ai-skills';
 import { ExecutionEnvironment, EXECUTION_ENVIRONMENT_META } from '@/lib/platform-agents';
+import { PaymentAppForm } from '@/components/add-app/forms/PaymentAppForm';
 
 export default function AddAppPage() {
     return (
@@ -255,7 +256,7 @@ function AddAppForm() {
 
     // For Email
     const [selectedEmailProvider, setSelectedEmailProvider] = useState(
-        ['RESEND', 'BREVO'].includes(providerFromUrl) ? providerFromUrl : 'RESEND'
+        ['RESEND', 'GMAIL'].includes(providerFromUrl) ? providerFromUrl : 'RESEND'
     );
     const [emailData, setEmailData] = useState({
         name: '',
@@ -279,14 +280,12 @@ function AddAppForm() {
     useEffect(() => {
         if (isEmail) {
             const resendTpl = '<p>這是一封從您的 Resend 整合發出的測試郵件。如果您收到這封信，代表您的 API Key 與寄件者設定已正確生效！</p>';
-            const brevoTpl = '<p>這是一封從您的 Brevo 整合發出的測試郵件。如果您收到這封信，代表您的 SMTP 帳號與密碼設定已正確生效！</p>';
+            const gmailTpl = '<p>這是一封從您的 Gmail 整合發出的測試郵件。如果您收到這封信，代表您的應用程式密碼設定已正確生效！</p>';
 
-            if (selectedEmailProvider === 'RESEND' && testEmailData.html === brevoTpl) {
+            if (selectedEmailProvider === 'RESEND' && (testEmailData.html === '')) {
                 setTestEmailData(prev => ({ ...prev, html: resendTpl }));
-            } else if (selectedEmailProvider === 'BREVO' && (testEmailData.html === resendTpl || testEmailData.html === '')) {
-                setTestEmailData(prev => ({ ...prev, html: brevoTpl }));
-            } else if (selectedEmailProvider === 'RESEND' && (testEmailData.html === '')) {
-                setTestEmailData(prev => ({ ...prev, html: resendTpl }));
+            } else if (selectedEmailProvider === 'GMAIL' && (testEmailData.html === '' || testEmailData.html === resendTpl)) {
+                setTestEmailData(prev => ({ ...prev, html: gmailTpl }));
             }
         }
     }, [selectedEmailProvider, isEmail]);
@@ -430,8 +429,8 @@ function AddAppForm() {
             return;
         }
 
-        if (selectedEmailProvider === 'BREVO' && !emailData.smtpUser) {
-            alert('請填寫 SMTP 使用者名稱');
+        if (selectedEmailProvider === 'GMAIL' && !emailData.smtpUser) {
+            alert('請填寫 Gmail 帳號 (即 SMTP 使用者名稱)');
             return;
         }
 
@@ -447,14 +446,15 @@ function AddAppForm() {
                 smtpPass: emailData.smtpPass,
                 fromAddress: emailData.fromAddress,
             };
-        } else if (selectedEmailProvider === 'BREVO') {
+        } else if (selectedEmailProvider === 'GMAIL') {
             testConfig = {
-                smtpHost: 'smtp-relay.brevo.com',
-                smtpPort: '587',
+                smtpHost: emailData.smtpHost || 'smtp.gmail.com',
+                smtpPort: emailData.smtpPort || '587',
                 smtpUser: emailData.smtpUser,
                 smtpPass: emailData.smtpPass,
                 fromAddress: emailData.fromAddress,
             };
+
         }
 
         try {
@@ -610,14 +610,15 @@ function AddAppForm() {
                         smtpPass: emailData.smtpPass, // User enters API Key here
                         fromAddress: emailData.fromAddress,
                     };
-                } else if (selectedEmailProvider === 'BREVO') {
+                } else if (selectedEmailProvider === 'GMAIL') {
                     config = {
-                        smtpHost: 'smtp-relay.brevo.com',
-                        smtpPort: '587',
+                        smtpHost: emailData.smtpHost || 'smtp.gmail.com',
+                        smtpPort: emailData.smtpPort || '587',
                         smtpUser: emailData.smtpUser,
                         smtpPass: emailData.smtpPass,
                         fromAddress: emailData.fromAddress,
                     };
+
                 }
 
                 payload = {
@@ -810,135 +811,12 @@ function AddAppForm() {
                     <form onSubmit={handleSave} className="space-y-6">
                         {isPayment ? (
                             <>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                        設定名稱 (僅供您辨識)
-                                    </label>
-                                    <input
-                                        type="text"
-                                        name="name"
-                                        value={paymentData.name}
-                                        onChange={handlePaymentChange}
-                                        placeholder="例如：我的綠界個人帳戶"
-                                        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-green-500 focus:border-green-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                                        required
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                        選擇金流服務供應商 <span className="text-red-500">*</span>
-                                    </label>
-                                    <div className="relative">
-                                        <select
-                                            value={selectedPaymentProvider}
-                                            onChange={(e) => setSelectedPaymentProvider(e.target.value)}
-                                            className="w-full pl-4 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-green-500 focus:border-green-500 sm:text-sm rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                                        >
-                                            <option value="ECPAY">綠界科技 (ECPay)</option>
-                                            <option value="STRIPE">Stripe</option>
-                                            <option value="PAYPAL">PayPal</option>
-                                            <option value="LINEPAY">Line Pay</option>
-                                            <option value="JKOPAY">街口支付 (JkoPay)</option>
-                                        </select>
-                                    </div>
-                                </div>
-
-                                {selectedPaymentProvider === 'ECPAY' && (
-                                    <div className="space-y-4 p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800/50">
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                                特店編號 (MerchantID) <span className="text-red-500">*</span>
-                                            </label>
-                                            <input type="text" name="ecpayMerchantId" value={paymentData.ecpayMerchantId} onChange={handlePaymentChange} className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600" required />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                                HashKey <span className="text-red-500">*</span>
-                                            </label>
-                                            <input type="text" name="ecpayHashKey" value={paymentData.ecpayHashKey} onChange={handlePaymentChange} className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600" required />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                                HashIV <span className="text-red-500">*</span>
-                                            </label>
-                                            <input type="text" name="ecpayHashIV" value={paymentData.ecpayHashIV} onChange={handlePaymentChange} className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600" required />
-                                        </div>
-                                    </div>
-                                )}
-
-                                {selectedPaymentProvider === 'STRIPE' && (
-                                    <div className="space-y-4 p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800/50">
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                                Connect Account ID (選填)
-                                            </label>
-                                            <input type="text" name="stripeAccountId" value={paymentData.stripeAccountId} onChange={handlePaymentChange} placeholder="acct_1Ou..." className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600" />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                                Public Key <span className="text-red-500">*</span>
-                                            </label>
-                                            <input type="text" name="stripePublicKey" value={paymentData.stripePublicKey} onChange={handlePaymentChange} className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600" required />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                                Secret Key <span className="text-red-500">*</span>
-                                            </label>
-                                            <input type="password" name="stripeSecretKey" value={paymentData.stripeSecretKey} onChange={handlePaymentChange} className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600" required />
-                                        </div>
-                                    </div>
-                                )}
-
-                                {selectedPaymentProvider === 'PAYPAL' && (
-                                    <div className="space-y-4 p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800/50">
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                                Client ID <span className="text-red-500">*</span>
-                                            </label>
-                                            <input type="text" name="paypalClientId" value={paymentData.paypalClientId} onChange={handlePaymentChange} className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600" required />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                                Secret Key <span className="text-red-500">*</span>
-                                            </label>
-                                            <input type="password" name="paypalSecretKey" value={paymentData.paypalSecretKey} onChange={handlePaymentChange} className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600" required />
-                                        </div>
-                                    </div>
-                                )}
-
-                                {selectedPaymentProvider === 'LINEPAY' && (
-                                    <div className="space-y-4 p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800/50">
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                                Line Pay Channel ID <span className="text-red-500">*</span>
-                                            </label>
-                                            <input type="text" name="linePayChannelId" value={paymentData.linePayChannelId} onChange={handlePaymentChange} className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600" required />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                                Line Pay Channel Secret <span className="text-red-500">*</span>
-                                            </label>
-                                            <input type="password" name="linePayChannelSecret" value={paymentData.linePayChannelSecret} onChange={handlePaymentChange} className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600" required />
-                                        </div>
-                                    </div>
-                                )}
-
-                                {selectedPaymentProvider === 'JKOPAY' && (
-                                    <div className="space-y-4 p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800/50">
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                                街口特店編號 (Merchant ID) <span className="text-red-500">*</span>
-                                            </label>
-                                            <input type="text" name="jkopayMerchantId" value={paymentData.jkopayMerchantId} onChange={handlePaymentChange} className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600" required />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                                街口 Secret Key <span className="text-red-500">*</span>
-                                            </label>
-                                            <input type="password" name="jkopaySecretKey" value={paymentData.jkopaySecretKey} onChange={handlePaymentChange} className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600" required />
-                                        </div>
-                                    </div>
-                                )}
+                                <PaymentAppForm
+                                    paymentData={paymentData}
+                                    handlePaymentChange={handlePaymentChange}
+                                    selectedPaymentProvider={selectedPaymentProvider}
+                                    setSelectedPaymentProvider={setSelectedPaymentProvider}
+                                />
                             </>
                         ) : isAskPlanAgent ? (
                             <>
@@ -1919,7 +1797,7 @@ function AddAppForm() {
                                             className="w-full pl-4 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                                         >
                                             <option value="RESEND">Resend 郵件服務 (推薦)</option>
-                                            <option value="BREVO">Brevo 郵件服務</option>
+                                            <option value="GMAIL">Gmail SMTP (個人/公司)</option>
                                         </select>
                                     </div>
                                 </div>
@@ -2039,66 +1917,89 @@ function AddAppForm() {
                                             </div>
                                         </div>
 
-                                        <div className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-4 rounded-lg text-xs text-gray-600 dark:text-gray-400">
-                                            💡 <strong>小提示：</strong> 雖然這是 Resend 介面，但後端仍使用 SMTP 協定發送，因此如果您日後更換主機，也可以無痛遷移。
-                                        </div>
                                     </div>
                                 )}
 
-                                {selectedEmailProvider === 'BREVO' && (
+                                {selectedEmailProvider === 'GMAIL' && (
                                     <div className="space-y-4">
-                                        <div className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-blue-50 dark:bg-blue-900/10">
+                                        <div className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg bg-red-50 dark:bg-red-900/10">
                                             <div className="flex items-center gap-3 mb-4">
                                                 <div className="text-3xl">📧</div>
                                                 <div>
-                                                    <h4 className="text-sm font-bold text-gray-800 dark:text-white">Brevo SMTP 設定</h4>
-                                                    <p className="text-xs text-gray-500">提供每日 300 封免費額度，開通即可發信</p>
+                                                    <h4 className="text-sm font-bold text-gray-800 dark:text-white">Gmail SMTP 設定</h4>
+                                                    <p className="text-xs text-gray-500">串接您的個人或 Google Workspace 帳號</p>
                                                 </div>
                                             </div>
 
                                             <div className="space-y-4">
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div>
+                                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                                            SMTP 主機
+                                                        </label>
+                                                        <input
+                                                            type="text"
+                                                            name="smtpHost"
+                                                            value={emailData.smtpHost || 'smtp.gmail.com'}
+                                                            onChange={handleEmailChange}
+                                                            className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                                            埠號
+                                                        </label>
+                                                        <input
+                                                            type="text"
+                                                            name="smtpPort"
+                                                            value={emailData.smtpPort || '587'}
+                                                            onChange={handleEmailChange}
+                                                            className="w-full px-4 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                                        />
+                                                    </div>
+                                                </div>
                                                 <div>
                                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                                        SMTP 使用者名稱 (Login) <span className="text-red-500">*</span>
+                                                        Gmail 地址 (User) <span className="text-red-500">*</span>
                                                     </label>
                                                     <input
-                                                        type="text"
+                                                        type="email"
                                                         name="smtpUser"
                                                         value={emailData.smtpUser}
                                                         onChange={handleEmailChange}
-                                                        placeholder="您的 Brevo 登入信箱"
-                                                        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono"
+                                                        placeholder="yourname@gmail.com"
+                                                        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono"
                                                         required
                                                     />
                                                 </div>
                                                 <div>
                                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                                        SMTP 密碼 (Password) <span className="text-red-500">*</span>
+                                                        應用程式密碼 (App Password) <span className="text-red-500">*</span>
                                                     </label>
                                                     <input
                                                         type="password"
                                                         name="smtpPass"
                                                         value={emailData.smtpPass}
                                                         onChange={handleEmailChange}
-                                                        placeholder="SMTP Key..."
-                                                        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono"
+                                                        placeholder="16 位數應用程式密碼"
+                                                        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white font-mono"
                                                         required
                                                     />
                                                     <p className="mt-1 text-[10px] text-gray-400">
-                                                        取得 SMTP Key：前往 <a href="https://app.brevo.com/settings/keys/smtp" target="_blank" rel="noreferrer" className="text-blue-500 underline">Brevo SMTP & API</a>
+                                                        💡 請使用 Google 的「應用程式密碼」而非一般登入密碼。
                                                     </p>
                                                 </div>
                                                 <div>
                                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                                        寄件者信箱 (From Address) <span className="text-red-500">*</span>
+                                                        寄件者顯示信箱 <span className="text-red-500">*</span>
                                                     </label>
                                                     <input
                                                         type="text"
                                                         name="fromAddress"
                                                         value={emailData.fromAddress}
                                                         onChange={handleEmailChange}
-                                                        placeholder="例如: no-reply@yourdomain.com"
-                                                        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                                        placeholder="yourname@gmail.com"
+                                                        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-red-500 focus:border-red-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                                                         required
                                                     />
                                                 </div>
@@ -2108,7 +2009,7 @@ function AddAppForm() {
                                                     <button
                                                         type="button"
                                                         onClick={() => setShowTestEmail(!showTestEmail)}
-                                                        className="flex items-center gap-2 text-sm font-bold text-blue-600 dark:text-blue-400 hover:text-blue-700 transition-colors"
+                                                        className="flex items-center gap-2 text-sm font-bold text-red-600 dark:text-red-400 hover:text-red-700 transition-colors"
                                                     >
                                                         <span>{showTestEmail ? '▼' : '▶'}</span>
                                                         測試寄送實際郵件 (可選)
@@ -2149,7 +2050,7 @@ function AddAppForm() {
                                                                 type="button"
                                                                 onClick={handleSendTestEmail}
                                                                 disabled={testSending || !testEmailData.to}
-                                                                className={`w-full py-2 rounded-md text-sm font-bold transition-all flex items-center justify-center gap-2 ${testSending ? 'bg-blue-200 text-blue-400 cursor-wait' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'}`}
+                                                                className={`w-full py-2 rounded-md text-sm font-bold transition-all flex items-center justify-center gap-2 ${testSending ? 'bg-red-200 text-red-400 cursor-wait' : 'bg-red-100 text-red-700 hover:bg-red-200'}`}
                                                             >
                                                                 {testSending ? (
                                                                     <>
@@ -2168,10 +2069,6 @@ function AddAppForm() {
                                                     )}
                                                 </div>
                                             </div>
-                                        </div>
-
-                                        <div className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-4 rounded-lg text-xs text-gray-600 dark:text-gray-400">
-                                            💡 <strong>小提示：</strong> 申請 Brevo 帳戶即可獲得每日 300 封免費發信額度。無須繁雜的網域認證也能使用。
                                         </div>
                                     </div>
                                 )}
@@ -2283,11 +2180,10 @@ function AddAppForm() {
                                                 />
                                             </div>
                                         )}
+                                        </div>
                                     </div>
-
-                                </div>
-                            </>
-                        )}
+                                </>
+                            )}
 
                         <div className="pt-4 flex gap-4">
                             <Link
@@ -2319,6 +2215,6 @@ function AddAppForm() {
                     </form>
                 </div>
             </div>
-        </div >
+        </div>
     );
 }

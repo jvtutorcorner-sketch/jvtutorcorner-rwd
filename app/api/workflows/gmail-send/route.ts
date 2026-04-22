@@ -17,30 +17,70 @@ export const runtime = 'nodejs';
  */
 export async function POST(req: NextRequest) {
     try {
-        const { to, subject, body, html } = await req.json();
+        const { to, subject, body, html, purpose } = await req.json();
 
         if (!to || typeof to !== 'string' || !to.includes('@')) {
             return NextResponse.json({ ok: false, error: 'Valid recipient email is required' }, { status: 400 });
         }
 
+        // --- Whitelist Check ---
+        const { isEmailWhitelisted } = await import('@/lib/email/whitelist');
+        const isWhitelisted = await isEmailWhitelisted(to);
+        
+        // Allow bypass if it's a verification email (to let new users register and verify)
+        if (!isWhitelisted && purpose !== 'verification') {
+            console.warn(`[gmail-send] Blocked sending to ${to} (not in whitelist)`);
+            return NextResponse.json({ 
+                ok: false, 
+                error: `Sending to ${to} is blocked by whitelist configuration.`,
+                code: 'WHITELIST_BLOCKED'
+            }, { status: 403 });
+        }
+        // -----------------------
+
         if (!subject || typeof subject !== 'string') {
             return NextResponse.json({ ok: false, error: 'Subject is required' }, { status: 400 });
         }
 
-        const smtpUser = process.env.SMTP_USER;
-        const smtpPass = process.env.SMTP_PASS;
+        // ── Resolve SMTP configuration ──────────────────────────────────
+        let smtpUser = process.env.SMTP_USER;
+        let smtpPass = process.env.SMTP_PASS;
+        let smtpHost = process.env.SMTP_HOST || 'smtp.gmail.com';
+        let smtpPort = parseInt(process.env.SMTP_PORT || '587', 10);
+        let fromName = process.env.SMTP_FROM || 'JV Tutor Workflow';
+
+        // 1. Try active GMAIL integration from DynamoDB
+        try {
+            const { ScanCommand } = await import('@aws-sdk/lib-dynamodb');
+            const { ddbDocClient } = await import('@/lib/dynamo');
+            const APPS_TABLE = process.env.DYNAMODB_TABLE_APP_INTEGRATIONS || 'jvtutorcorner-app-integrations';
+            
+            const { Items } = await ddbDocClient.send(new ScanCommand({
+                TableName: APPS_TABLE,
+                FilterExpression: '#tp = :tp AND #st = :st',
+                ExpressionAttributeNames: { '#tp': 'type', '#st': 'status' },
+                ExpressionAttributeValues: { ':tp': 'GMAIL', ':st': 'ACTIVE' },
+            }));
+
+            if (Items && Items.length > 0) {
+                const config = Items[0].config;
+                if (config?.smtpUser) smtpUser = config.smtpUser;
+                if (config?.smtpPass) smtpPass = config.smtpPass;
+                if (config?.smtpHost) smtpHost = config.smtpHost;
+                if (config?.smtpPort) smtpPort = parseInt(config.smtpPort, 10);
+                if (config?.fromAddress) fromName = config.fromAddress;
+            }
+        } catch (dbErr) {
+            console.warn('[gmail-send] DynamoDB lookup failed, falling back to env vars:', dbErr);
+        }
 
         if (!smtpUser || !smtpPass) {
             console.warn('[gmail-send] SMTP_USER / SMTP_PASS not configured.');
             return NextResponse.json(
-                { ok: false, error: 'SMTP credentials not configured. Set SMTP_USER and SMTP_PASS in environment variables.' },
+                { ok: false, error: 'Gmail credentials not configured. Add a GMAIL integration in /apps or set SMTP_USER and SMTP_PASS in environment.' },
                 { status: 503 }
             );
         }
-
-        const smtpHost = process.env.SMTP_HOST || 'smtp.gmail.com';
-        const smtpPort = parseInt(process.env.SMTP_PORT || '587', 10);
-        const fromName = process.env.SMTP_FROM || 'JV Tutor Workflow';
 
         const transporter = nodemailer.createTransport({
             host: smtpHost,

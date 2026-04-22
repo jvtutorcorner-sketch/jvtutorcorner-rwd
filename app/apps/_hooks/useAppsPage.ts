@@ -174,6 +174,19 @@ export function useAppsPage() {
                 }
             };
             document.addEventListener('keydown', handleEscape);
+            
+            // Switch test email template based on provider type
+            if (selectedAppConfig && ['RESEND', 'GMAIL', 'SMTP'].includes(selectedAppConfig.type)) {
+                const type = selectedAppConfig.type;
+                const resendTpl = '<p>這是一封從您的 Resend 整合發出的測試郵件。如果您收到這封信，代表您的 API Key 與寄件者設定已正確生效！</p>';
+                const gmailTpl = '<p>這是一封從您的 Gmail 整合發出的測試郵件。如果您收到這封信，代表您的應用程式密碼設定已正確生效！</p>';
+                const smtpTpl = '<p>這是一封從您的 SMTP 整合發出的測試郵件。如果您收到這封信，代表您的 SMTP 設定已正確生效！</p>';
+
+                if (type === 'RESEND') setTestEmailData(prev => ({ ...prev, html: resendTpl }));
+                else if (type === 'GMAIL') setTestEmailData(prev => ({ ...prev, html: gmailTpl }));
+                else if (type === 'SMTP') setTestEmailData(prev => ({ ...prev, html: smtpTpl }));
+            }
+
             return () => {
                 document.removeEventListener('keydown', handleEscape);
                 document.body.style.overflow = 'unset';
@@ -451,26 +464,56 @@ export function useAppsPage() {
     };
 
     const handleSendTestEmail = async (app: AppIntegration) => {
+        const provider = app.type;
         if (!editedConfig.smtpPass || !editedConfig.fromAddress || !testEmailData.to) {
-            alert('請填寫 API Key、寄件者以及收件者內容');
+            alert('請填寫密碼/API Key、寄件者以及收件者內容');
             return;
         }
+
+        if ((provider === 'GMAIL' || provider === 'SMTP') && !editedConfig.smtpUser) {
+            alert('請填寫 SMTP 使用者名稱 (通常與寄件者相同)');
+            return;
+        }
+
         setTestSending(true);
         setTestResult(null);
+
+        let testConfig: any = {};
+        if (provider === 'RESEND') {
+            testConfig = {
+                smtpHost: 'smtp.resend.com',
+                smtpPort: '465',
+                smtpUser: 'resend',
+                smtpPass: editedConfig.smtpPass,
+                fromAddress: editedConfig.fromAddress,
+            };
+        } else if (provider === 'GMAIL') {
+            testConfig = {
+                smtpHost: editedConfig.smtpHost || 'smtp.gmail.com',
+                smtpPort: editedConfig.smtpPort || '587',
+                smtpUser: editedConfig.smtpUser,
+                smtpPass: editedConfig.smtpPass,
+                fromAddress: editedConfig.fromAddress,
+            };
+
+        } else if (provider === 'SMTP') {
+            testConfig = {
+                smtpHost: editedConfig.smtpHost,
+                smtpPort: editedConfig.smtpPort,
+                smtpUser: editedConfig.smtpUser,
+                smtpPass: editedConfig.smtpPass,
+                fromAddress: editedConfig.fromAddress,
+            };
+        }
+
         try {
             const res = await fetch('/api/app-integrations/test', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     integrationId: app.integrationId,
-                    type: 'RESEND',
-                    config: {
-                        smtpHost: 'smtp.resend.com',
-                        smtpPort: '465',
-                        smtpUser: 'resend',
-                        smtpPass: editedConfig.smtpPass,
-                        fromAddress: editedConfig.fromAddress,
-                    },
+                    type: provider,
+                    config: testConfig,
                     emailTest: testEmailData,
                 }),
             });

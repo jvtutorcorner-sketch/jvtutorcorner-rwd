@@ -74,7 +74,19 @@
   - 管理員審核頁面 (/admin/course-reviews) 待驗證完整性
 - **架構對齐**: ⚠️ 部分對齐，待 schema 更新驗證
 
-### 6. admin-teacher-management
+### 6. course-scheduling-reminders
+- **狀態**: ✅ VERIFIED
+- **驗證日期**: 2026-04-22
+- **最後更新**: 2026-04-22
+- **驗證項目**:
+  - ✅ 日曆顯示與色標標準化
+  - ✅ 10 分鐘進場區間限制
+  - ✅ 自動化 3 小時郵件提醒機制
+  - ✅ 發信前認證狀態校驗
+- **已知問題**: 無
+- **架構對齊**: ✅ 已完成雙向對齊
+
+### 7. admin-teacher-management
 - **狀態**: ⚠️ PARTIAL
 - **驗證日期**: 2026-03-15
 - **最後更新**: 2026-03-15
@@ -85,7 +97,7 @@
   - TeacherReview 實體 pending 實裝，待驗證
 - **架構對齐**: ⚠️ 部分對齐，TeacherReview 架構待確認
 
-### 7. admin-order-management
+### 8. admin-order-management
 - **狀態**: 🔄 IN-PROGRESS
 - **驗證日期**: 2026-04-06
 - **最後更新**: 2026-04-06
@@ -98,7 +110,7 @@
   - 部分複雜篩選邏輯（如跨表搜尋）待優化。
 - **架構對齊**: ✅ 對齊完成
 
-### 8. course-point-return (原 order-refund)
+### 9. course-point-return (原 order-refund)
 - **狀態**: ✅ VERIFIED
 - **驗證日期**: 2026-04-06
 - **最後更新**: 2026-04-06
@@ -109,7 +121,7 @@
 - **已知問題**: 無
 - **架構對齊**: ✅ 對齐完成
 
-### 9. course-alignment
+### 10. course-alignment
 - **狀態**: ✅ VERIFIED
 - **驗證日期**: 2026-03-15
 - **最後更新**: 2026-03-15
@@ -121,7 +133,19 @@
 - **已知問題**: 無
 - **架構對齊**: ✅ 對齐完成
 
-### 10. ai-chat
+### 11. email-service-integration
+- **狀態**: ✅ VERIFIED
+- **驗證日期**: 2026-04-22
+- **最後更新**: 2026-04-22
+- **驗證項目**:
+  - ✅ 支援 Gmail SMTP 與 Resend 雙供應商
+  - ✅ AWS EventBridge + Lambda 任務調度架構
+  - ✅ 基於實體認證狀態的動態白名單 (Whitelist)
+  - ✅ 專屬驗證信 bypass 機制
+- **已知問題**: 無
+- **架構對齊**: ✅ 已完成雙向對齊
+
+### 12. ai-chat
 - **狀態**: ❌ UNVERIFIED
 - **驗證日期**: -
 - **最後更新**: 2026-03-15
@@ -133,7 +157,7 @@
   - 待 API 實裝驗證
 - **架構對齊**: ❓ 待確認
 
-### 11. payment-infrastructure
+### 13. payment-infrastructure
 - **狀態**: ❌ UNVERIFIED
 - **驗證日期**: -
 - **最後更新**: 2026-04-20
@@ -144,7 +168,7 @@
 - **已知問題**: 待核心架構驗證
 - **架構對齊**: ✅ 已規劃對齊
 
-### 12. payment-flow-validation
+### 14. payment-flow-validation
 - **狀態**: ✅ VERIFIED
 - **驗證日期**: 2026-04-06
 - **最後更新**: 2026-04-20
@@ -155,7 +179,7 @@
 - **已知問題**: 無
 - **架構對齊**: ✅ 對齊完成
 
-### 13. payment-refund-orchestration
+### 15. payment-refund-orchestration
 - **狀態**: 🔄 IN-PROGRESS
 - **驗證日期**: 2026-04-06
 - **最後更新**: 2026-04-20
@@ -166,7 +190,7 @@
 - **已知問題**: 退款邊際案例待補充
 - **架構對齊**: ✅ 已規劃對齊
 
-### 14. payment-refund-gateway
+### 16. payment-refund-gateway
 - **狀態**: 🏗️ IN PROGRESS
 - **驗證日期**: 2026-04-06
 - **最後更新**: 2026-04-20
@@ -175,7 +199,7 @@
   - ✅ Webhook 退款事件監聽
 - **架構對齊**: ✅ 對齊完成
 
-### 15. payment-restitution-logic
+### 17. payment-restitution-logic
 - **狀態**: ✅ VERIFIED
 - **驗證日期**: 2026-04-06
 - **最後更新**: 2026-04-20
@@ -184,7 +208,7 @@
   - ✅ Enrollment 狀態同步
 - **架構對齊**: ✅ 對齊完成
 
-### 16. payment-gateway-stripe-verification
+### 18. payment-gateway-stripe-verification
 - **狀態**: ❌ UNVERIFIED
 - **驗證日期**: -
 - **最後更新**: 2026-04-20
@@ -193,7 +217,7 @@
   - ❌ 管理員端服務連線診斷
 - **架構對齊**: ❓ 待確認
 
-### 17. payment-simulation-linepay
+### 19. payment-simulation-linepay
 - **狀態**: ✅ VERIFIED
 - **驗證日期**: 2026-04-17
 - **最後更新**: 2026-04-20
@@ -202,7 +226,7 @@
   - ✅ Confirm API 模擬邏輯
 - **架構對齊**: ✅ 對齊完成
 
-### 18. payment-fee-deduction-logic
+### 20. payment-fee-deduction-logic
 - **狀態**: ✅ VERIFIED
 - **驗證日期**: 2026-04-03
 - **最後更新**: 2026-04-20
@@ -211,7 +235,7 @@
   - ✅ 淨點數入帳計算
 - **架構對齊**: ✅ 對齊完成
 
-### 19. payment-pricing-configuration
+### 21. payment-pricing-configuration
 - **狀態**: ✅ VERIFIED
 - **驗證日期**: 2026-04-06
 - **最後更新**: 2026-04-20

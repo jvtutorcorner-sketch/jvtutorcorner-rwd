@@ -585,7 +585,7 @@ async function testGEMINI(config: Record<string, any>, prompt?: string) {
     }
 }
 
-async function testSMTP(config: Record<string, string>, emailTest?: { to: string; subject: string; html: string; bcc?: string }) {
+async function testSMTP(config: Record<string, string>, emailTest?: { to: string; subject: string; html: string; bcc?: string }, type: string = 'SMTP') {
     const host = config.smtpHost;
     const port = parseInt(config.smtpPort, 10);
     const user = config.smtpUser;
@@ -615,7 +615,7 @@ async function testSMTP(config: Record<string, string>, emailTest?: { to: string
                 from: `"System Test" <${from}>`,
                 to: emailTest.to,
                 subject: emailTest.subject || '系統整合測試郵件',
-                html: emailTest.html || '<p>这是一封测试邮件，证明您的 SMTP/Resend 設定已生效。</p>',
+                html: emailTest.html || `<p>這是一封測試郵件，證明您的 <strong>${type}</strong> 設定已成功生效！</p>`,
                 bcc: emailTest.bcc,
             });
             return {
@@ -634,8 +634,6 @@ async function testSMTP(config: Record<string, string>, emailTest?: { to: string
             errorMsg = `Resend 網域未驗證: ${errorMsg}。如果您沒有自訂網域，請將寄件者改為 onboarding@resend.dev。驗證請至：https://resend.com/domains`;
         } else if (host.includes('resend.com') && (errorMsg.includes('Invalid login') || errorMsg.includes('auth'))) {
             errorMsg += ' (若是 Resend，請確認 User 為 "resend" 且 Password 為正確的 API Key)';
-        } else if (host.includes('brevo.com') && (errorMsg.includes('Invalid login') || errorMsg.includes('auth'))) {
-            errorMsg += ' (若是 Brevo，請確認 User 為您的登入信箱，且 Password 為正確的 SMTP Key)';
         }
         return { success: false, message: `SMTP 測試失敗: ${errorMsg}` };
     }
@@ -675,9 +673,10 @@ const TEST_HANDLERS: Record<string, (config: Record<string, any>, prompt?: strin
     OPENAI: testOPENAI,
     ANTHROPIC: testANTHROPIC,
     GEMINI: testGEMINI,
-    SMTP: (config, _, emailTest) => testSMTP(config as Record<string, string>, emailTest),
-    RESEND: (config, _, emailTest) => testSMTP(config as Record<string, string>, emailTest),
-    BREVO: (config, _, emailTest) => testSMTP(config as Record<string, string>, emailTest),
+    SMTP: (config, _, emailTest) => testSMTP(config as Record<string, string>, emailTest, 'SMTP'),
+    GMAIL: (config, _, emailTest) => testSMTP(config as Record<string, string>, emailTest, 'GMAIL'),
+    RESEND: (config, _, emailTest) => testSMTP(config as Record<string, string>, emailTest, 'RESEND'),
+
     CONTEXT7: (config) => testCONTEXT7(config),
 };
 

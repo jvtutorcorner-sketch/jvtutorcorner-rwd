@@ -14,11 +14,26 @@ export const runtime = 'nodejs';
  */
 export async function POST(req: NextRequest) {
     try {
-        const { to, subject, body, html } = await req.json();
+        const { to, subject, body, html, purpose } = await req.json();
 
         if (!to || typeof to !== 'string' || !to.includes('@')) {
             return NextResponse.json({ ok: false, error: 'Valid recipient email is required' }, { status: 400 });
         }
+
+        // --- Whitelist Check ---
+        const { isEmailWhitelisted } = await import('@/lib/email/whitelist');
+        const isWhitelisted = await isEmailWhitelisted(to);
+        
+        // Allow bypass if it's a verification email (to let new users register and verify)
+        if (!isWhitelisted && purpose !== 'verification') {
+            console.warn(`[resend-send] Blocked sending to ${to} (not in whitelist)`);
+            return NextResponse.json({ 
+                ok: false, 
+                error: `Sending to ${to} is blocked by whitelist configuration.`,
+                code: 'WHITELIST_BLOCKED'
+            }, { status: 403 });
+        }
+        // -----------------------
         if (!subject || typeof subject !== 'string') {
             return NextResponse.json({ ok: false, error: 'Subject is required' }, { status: 400 });
         }

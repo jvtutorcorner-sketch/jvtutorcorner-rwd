@@ -17,7 +17,7 @@ export interface TestResult {
 
 export const PAYMENT_TYPES = ['ECPAY', 'PAYPAL', 'STRIPE', 'LINEPAY', 'JKOPAY'];
 export const CHANNEL_TYPES = ['LINE', 'TELEGRAM', 'WHATSAPP', 'MESSENGER', 'SLACK', 'TEAMS', 'DISCORD', 'WECHAT'];
-export const EMAIL_TYPES = ['RESEND', 'BREVO'];
+export const EMAIL_TYPES = ['RESEND', 'GMAIL'];
 export const DATABASE_TYPES = ['DYNAMODB', 'MONGODB', 'POSTGRESQL', 'MYSQL', 'REDIS', 'QDRANT'];
 export const AI_CONTAINER_TYPES = ['AI_CHATROOM', 'ASK_PLAN_AGENT', 'SMART_ROUTER'];
 
@@ -42,6 +42,11 @@ export const PAYMENT_META: Record<string, MetaEntry> = {
     JKOPAY: { badge: 'bg-red-100 text-red-800', label: '街口支付 (JkoPay)', icon: '💴', desc: '台灣在地行動支付領導品牌' },
 };
 
+export const EMAIL_META: Record<string, MetaEntry> = {
+    RESEND: { badge: 'bg-indigo-100 text-indigo-800', label: 'Resend 郵件服務', icon: '🚀', desc: '專為開發者設計的現代郵件發送服務 (只需 API Key)' },
+    GMAIL: { badge: 'bg-red-100 text-red-800', label: 'Gmail SMTP', icon: '📧', desc: '串接您個人的 Gmail 帳號發送自動化郵件 (需應用程式密碼)' },
+};
+
 export const AI_META: Record<string, MetaEntry> = {
     OPENAI: { badge: 'bg-gray-100 text-gray-800', label: 'OpenAI ChatGPT', icon: '🧠', desc: '強大的通用大語言模型' },
     ANTHROPIC: { badge: 'bg-orange-100 text-orange-800', label: 'Anthropic (Claude)', icon: '🎭', desc: '專注於安全性與長文本理解的 AI 模型' },
@@ -52,10 +57,6 @@ export const AI_META: Record<string, MetaEntry> = {
     CONTEXT7: { badge: 'bg-teal-100 text-teal-800', label: 'Context7 MCP', icon: '🎨', desc: '連結 Figma 與外部知識庫，為 AI 提供即時設計上下文與技術文檔' },
 };
 
-export const EMAIL_META: Record<string, MetaEntry> = {
-    RESEND: { badge: 'bg-indigo-100 text-indigo-800', label: 'Resend 郵件服務', icon: '🚀', desc: '專為開發者設計的現代郵件發送服務 (只需 API Key)' },
-    BREVO: { badge: 'bg-blue-100 text-blue-800', label: 'Brevo 郵件服務', icon: '📧', desc: '全方位的電子郵件與行銷平台，提供高免費額度' },
-};
 
 export const DATABASE_META: Record<string, MetaEntry> = {
     DYNAMODB: { badge: 'bg-orange-100 text-orange-800', label: 'DynamoDB', icon: '🗄️', desc: 'AWS 無伺服器資料庫，自動擴展無限可用性' },

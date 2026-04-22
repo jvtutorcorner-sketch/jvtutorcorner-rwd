@@ -323,30 +323,20 @@ export default function RegisterPage() {
         return;
       }
       setSaved(true);
-      setSaved(true);
       const newUserId = data?.profile?.roid_id || data?.profile?.id || payload.roid_id;
       setRegisteredUserId(newUserId);
       
-      // Auto-login after registration
-      const userObj: StoredUser = {
-        email: payload.email,
-        plan: payload.plan || 'viewer',
-        role: payload.role || 'student',
-        firstName: payload.firstName,
-        lastName: payload.lastName,
-        roid_id: newUserId,
-        id: newUserId,
-      };
-      setStoredUser(userObj);
-      localStorage.setItem('jv_just_registered', 'true');
+      // We no longer auto-login immediately for security/verification reasons
+      // instead we show a success message asking them to check their email.
       
-      // Trigger auth change event for Header to update
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new Event('tutor:auth-changed'));
-      }
-      
-      // Redirect to home page where ProductTour will run
-      setTimeout(() => router.push('/'), 1500);
+      setFormError(null);
+      // Wait a bit to let the user see the success message
+      setTimeout(() => {
+        // We can either stay on the page with a big success card
+        // or redirect to a dedicated "check your mail" page.
+        // For now, let's just update the status so the UI shows a success state.
+      }, 1000);
+
     } catch (err: any) {
       console.error(err);
       setFormError(err?.message || '儲存失敗');
@@ -365,7 +355,23 @@ export default function RegisterPage() {
       <section className="section">
         <div className="card">
           <h2>基本資料</h2>
-          <form onSubmit={handleSubmit} className="modal-form">
+            {saved ? (
+              <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+                <div style={{ fontSize: '64px', marginBottom: '20px' }}>📧</div>
+                <h2 style={{ color: '#059669', marginBottom: '16px' }}>註冊成功！請驗證您的電子郵件</h2>
+                <p style={{ fontSize: '18px', color: '#4b5563', lineHeight: '1.6', marginBottom: '24px' }}>
+                  我們已發送一封驗證信至 <strong>{email}</strong>。<br />
+                  請前往您的信箱並點擊驗證連結以啟用帳戶。
+                </p>
+                <div style={{ padding: '16px', backgroundColor: '#ecfdf5', borderRadius: '8px', border: '1px solid #d1fae5', color: '#065f46', fontSize: '14px', marginBottom: '32px' }}>
+                  提示：驗證後您的電子郵件將自動加入平台白名單，即可接收課程通知。
+                </div>
+                <Link href="/login" className="modal-button primary" style={{ display: 'inline-block', width: 'auto', padding: '12px 32px' }}>
+                  返回登入
+                </Link>
+              </div>
+            ) : (
+              <form onSubmit={handleSubmit} className="modal-form">
             <div className="field">
               <label>身份 <span style={{ color: 'red' }}>*</span></label>
               <select
@@ -581,10 +587,8 @@ export default function RegisterPage() {
               <Link href="/login" className="modal-button secondary">返回登入</Link>
             </div>
 
-            {saved && !showQuestionnaire && (
-              <p className="form-success">帳戶已建立！正在進行個人化設定…</p>
-            )}
-          </form>
+            </form>
+          )}
         </div>
       </section>
 

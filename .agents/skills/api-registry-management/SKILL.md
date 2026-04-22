@@ -1,3 +1,13 @@
+---
+name: api-registry-management
+description: '負責管理與維護專案內所有 API 的紀錄與自動化偵查。確保所有新增、刪除或修改的 API 都能即時更新至 `docs/api_registry.md`，並提供 introspection 功能供其他功能（如效能測試）參考。'
+argument-hint: '執行偵查腳本以建立/更新 API registry（Next.js 與 FastAPI 路由）'
+metadata:
+  verified-status: '❌ UNVERIFIED'
+  last-verified-date: '-'
+  architecture-aligned: false
+---
+
 # API Registry Management Skill
 
 負責管理與維護專案內所有 API 的紀錄與自動化偵查。確保所有新增、刪除或修改的 API 都能即時更新至 `docs/api_registry.md`，並提供 introspection 功能供其他功能（如效能測試）參考。

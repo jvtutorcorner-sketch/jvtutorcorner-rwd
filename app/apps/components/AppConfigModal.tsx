@@ -253,13 +253,13 @@ export default function AppConfigModal({
                                         setEditedConfig={setEditedConfig}
                                     />
 
-                                    {/* RESEND email test */}
-                                    {app.type === 'RESEND' && (
+                                    {/* Email test section */}
+                                    {['RESEND', 'GMAIL', 'SMTP'].includes(app.type) && (
                                         <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
                                             <button
                                                 type="button"
                                                 onClick={() => setShowTestEmail(!showTestEmail)}
-                                                className="flex items-center gap-2 text-sm font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 transition-colors"
+                                                className={`flex items-center gap-2 text-sm font-bold hover:opacity-80 transition-colors ${app.type === 'GMAIL' ? 'text-red-600 dark:text-red-400' : 'text-indigo-600 dark:text-indigo-400'}`}
                                             >
                                                 <span>{showTestEmail ? '▼' : '▶'}</span>
                                                 測試寄送實際郵件 (可選)
@@ -437,8 +437,8 @@ function ConfigFields({ app, aiTypes, editedConfig, showSecret, setEditedConfig 
     setEditedConfig: (c: Record<string, any>) => void;
 }) {
     const filteredKeys = Object.keys(editedConfig).filter(key => {
-        if (key === 'models') return false;
         if (app.type === 'RESEND' && !['smtpPass', 'fromAddress'].includes(key)) return false;
+        if (['GMAIL', 'SMTP'].includes(app.type) && !['smtpHost', 'smtpPort', 'smtpUser', 'smtpPass', 'fromAddress'].includes(key)) return false;
         if (aiTypes.includes(app.type)) {
             if (key === 'systemInstruction') return false;
             if (app.type === 'AI_CHATROOM' && key === 'linkedServiceId') return false;
@@ -451,7 +451,8 @@ function ConfigFields({ app, aiTypes, editedConfig, showSecret, setEditedConfig 
             <ul className="space-y-4 text-gray-700 dark:text-gray-300">
                 {filteredKeys.map(key => {
                     if (app.type === 'RESEND' && !['smtpPass', 'fromAddress'].includes(key)) return null;
-                    const label = (app.type === 'RESEND' && key === 'smtpPass') ? 'API Key' :
+                    const label = (app.type === 'GMAIL' && key === 'smtpPass') ? '應用程式密碼' :
+                        (['RESEND', 'SMTP'].includes(app.type) && key === 'smtpPass') ? 'API Key / Password' :
                         LABEL_MAP[key] || (key.charAt(0).toUpperCase() + key.slice(1).replace(/([A-Z])/g, ' $1'));
                     const isSecretField = key.toLowerCase().includes('secret') || key.toLowerCase().includes('key') || key.toLowerCase().includes('token') || key.toLowerCase().includes('password') || key === 'smtpPass';
                     return (
@@ -743,7 +744,7 @@ function TestConnectionSection({ app, aiTypes, testingId, testPayAmount, testPay
 }) {
     const PAYMENT_TYPES_LOCAL = ['ECPAY', 'PAYPAL', 'STRIPE', 'LINEPAY', 'JKOPAY'];
     const CHANNEL_TYPES_LOCAL = ['LINE', 'TELEGRAM', 'WHATSAPP', 'MESSENGER', 'SLACK', 'TEAMS', 'DISCORD', 'WECHAT'];
-    const EMAIL_TYPES_LOCAL = ['SMTP', 'RESEND'];
+    const EMAIL_TYPES_LOCAL = ['SMTP', 'RESEND', 'GMAIL'];
     const isPayment = PAYMENT_TYPES_LOCAL.includes(app.type);
     const isChannel = CHANNEL_TYPES_LOCAL.includes(app.type);
     const isAI = aiTypes.includes(app.type);

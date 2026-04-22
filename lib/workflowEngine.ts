@@ -67,7 +67,7 @@ let lambdaClient: LambdaClient | null = null;
 
 function getOrCreateLambdaClient(): LambdaClient {
     if (lambdaClient) return lambdaClient;
-    
+
     const region = process.env.AWS_REGION || 'ap-northeast-1';
     const accessKeyId = process.env.AWS_ACCESS_KEY_ID || '';
     const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY || '';
@@ -110,7 +110,7 @@ function parseTemplate(template: string, data: any) {
 function evaluateCondition(node: Node, data: any): boolean {
     const { variable, operator, value } = (node.data as any)?.config || {};
     const actualValue = parseTemplate(variable, data);
-    
+
     switch (operator) {
         case 'greater_than': return Number(actualValue) > Number(value);
         case 'less_than': return Number(actualValue) < Number(value);
@@ -324,10 +324,12 @@ async function analyzeLineImageWithVisionAI(imageBuffer: Buffer, aiIntegration: 
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
             body: JSON.stringify({
                 model,
-                messages: [{ role: 'user', content: [
-                    { type: 'text', text: prompt },
-                    { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64}` } }
-                ]}],
+                messages: [{
+                    role: 'user', content: [
+                        { type: 'text', text: prompt },
+                        { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64}` } }
+                    ]
+                }],
                 max_tokens: 1024, response_format: { type: 'json_object' }
             })
         });
@@ -343,10 +345,12 @@ async function analyzeLineImageWithVisionAI(imageBuffer: Buffer, aiIntegration: 
             headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
             body: JSON.stringify({
                 model, max_tokens: 1024,
-                messages: [{ role: 'user', content: [
-                    { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64 } },
-                    { type: 'text', text: prompt }
-                ]}]
+                messages: [{
+                    role: 'user', content: [
+                        { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64 } },
+                        { type: 'text', text: prompt }
+                    ]
+                }]
             })
         });
         if (!res.ok) throw new Error(`Anthropic Vision error: ${res.status}`);
@@ -374,13 +378,13 @@ async function executeAction(actionNode: Node, payloadData: any, logs: any[]) {
     const { actionType, config } = actionNode.data as any;
     const nodeLabel = (actionNode.data as any)?.label || actionType;
     const timestamp = new Date().toISOString();
-    
-    logs.push({ 
-        nodeId: actionNode.id, 
-        nodeLabel, 
-        status: 'running', 
+
+    logs.push({
+        nodeId: actionNode.id,
+        nodeLabel,
+        status: 'running',
         time: timestamp,
-        payload: JSON.parse(JSON.stringify(payloadData)) 
+        payload: JSON.parse(JSON.stringify(payloadData))
     });
 
     try {
@@ -390,7 +394,17 @@ async function executeAction(actionNode: Node, payloadData: any, logs: any[]) {
                 const to = parseTemplate(config?.to || process.env.DAILY_REPORT_EMAIL || 'jvtutorcorner@gmail.com', payloadData);
                 const subject = parseTemplate(config?.subject, payloadData);
                 const body = parseTemplate(config?.body, payloadData);
-                
+
+                // --- Whitelist Check ---
+                const { isEmailWhitelisted } = await import('./email/whitelist');
+                if (!(await isEmailWhitelisted(to))) {
+                    const blockMsg = `[Workflow Engine] Blocked sending to ${to} (not in whitelist)`;
+                    console.warn(blockMsg);
+                    logs.push({ nodeId: actionNode.id, nodeLabel, status: 'blocked', time: new Date().toISOString(), error: 'Email not whitelisted' });
+                    break;
+                }
+                // -----------------------
+
                 const transporter = await getTransporter();
                 if (transporter) {
                     await transporter.sendMail({
@@ -413,7 +427,7 @@ async function executeAction(actionNode: Node, payloadData: any, logs: any[]) {
                     const recipientEmail = parseTemplate(config?.userEmail || '{{email}}', payloadData);
                     const title = parseTemplate(config?.title || '', payloadData);
                     const lineConfig = await getLINEIntegration();
-                    
+
                     if (!lineConfig || !lineConfig.config?.channelAccessToken) {
                         throw new Error('LINE integration not found or missing channelAccessToken');
                     }
@@ -440,7 +454,7 @@ async function executeAction(actionNode: Node, payloadData: any, logs: any[]) {
             case 'action_http_request': {
                 const url = parseTemplate(config?.url, payloadData);
                 const method = (config?.method || 'GET').toUpperCase();
-                
+
                 // Parse headers if provided
                 let headers: Record<string, string> = { 'Content-Type': 'application/json' };
                 if (config?.headers) {
@@ -457,7 +471,7 @@ async function executeAction(actionNode: Node, payloadData: any, logs: any[]) {
                         }
                     }
                 }
-                
+
                 // Parse body if provided
                 let body: any = undefined;
                 if (config?.body && ['POST', 'PUT', 'PATCH'].includes(method)) {
@@ -473,7 +487,7 @@ async function executeAction(actionNode: Node, payloadData: any, logs: any[]) {
                         }
                     }
                 }
-                
+
                 const response = await fetch(url, {
                     method,
                     headers,
@@ -580,14 +594,14 @@ async function executeAction(actionNode: Node, payloadData: any, logs: any[]) {
 
                 try {
                     const lambdaTimeoutMs = parseInt(process.env.LAMBDA_TIMEOUT_MS || '30000', 10);
-                    
+
                     logs.push(`[Python] 🚀 Executing Lambda function (timeout: ${lambdaTimeoutMs}ms)...`);
 
                     const pyLambdaCommand = new InvokeCommand({
                         FunctionName: process.env.AWS_LAMBDA_FUNCTION_NAME || 'RunPythonWorkflowNode',
                         InvocationType: 'RequestResponse',
-                        Payload: Buffer.from(JSON.stringify({ 
-                            script, 
+                        Payload: Buffer.from(JSON.stringify({
+                            script,
                             data: payloadData,
                             timeout_ms: lambdaTimeoutMs
                         })),
@@ -605,8 +619,8 @@ async function executeAction(actionNode: Node, payloadData: any, logs: any[]) {
 
                     const pyResultStr = Buffer.from(pyLambdaResponseAny.Payload || []).toString('utf-8');
                     let pyResult: any = {};
-                    try { 
-                        pyResult = JSON.parse(pyResultStr); 
+                    try {
+                        pyResult = JSON.parse(pyResultStr);
                     } catch (parseErr) {
                         logs.push(`[Python] ❌ Failed to parse Lambda response: ${pyResultStr}`);
                         throw new Error(`Invalid Lambda response format`);
@@ -627,16 +641,16 @@ async function executeAction(actionNode: Node, payloadData: any, logs: any[]) {
                         Object.assign(payloadData, pyResult.output);
                     }
                     logs.push(`[Python] ✅ Success - Output: ${String(payloadData.python_result).substring(0, 100)}...`);
-                    
+
                 } catch (error: any) {
                     const errorMsg = error?.message || String(error);
                     logs.push(`[Python] ❌ Error: ${errorMsg}`);
-                    
+
                     // For Amplify, provide diagnostic hints
                     if (process.env.AWS_AMPLIFY) {
                         logs.push('[Python] 📋 Amplify diagnostic: Check AWS credentials and Lambda function configuration');
                     }
-                    
+
                     throw error;
                 }
                 break;
@@ -668,7 +682,7 @@ async function executeAction(actionNode: Node, payloadData: any, logs: any[]) {
 
             case 'action_delay': {
                 const milliseconds = parseInt(config?.milliseconds || '0') || 0;
-                
+
                 if (milliseconds > 0 && milliseconds <= 300000) { // Max 5 minutes
                     await new Promise(resolve => setTimeout(resolve, milliseconds));
                 }
@@ -697,24 +711,24 @@ async function executeAction(actionNode: Node, payloadData: any, logs: any[]) {
                 const inputField = config?.inputField || 'imageBase64';
                 const outputField = config?.outputField || 'analysisResult';
                 const prompt = config?.prompt ? parseTemplate(config.prompt, payloadData) : undefined;
-                
+
                 const imageBase64 = getValueByPath(payloadData, inputField) || parseTemplate(inputField, payloadData);
-                
+
                 if (!imageBase64) throw new Error(`Image data not found in path: ${inputField}`);
 
                 const targetUrl = apiEndpoint.startsWith('http') ? apiEndpoint : `${baseUrl}${apiEndpoint.startsWith('/') ? '' : '/'}${apiEndpoint}`;
-                
+
                 const imgRes = await fetch(targetUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ imageBase64, prompt })
                 });
-                
+
                 const imgData = await imgRes.json();
                 if (!imgRes.ok || !imgData.ok) {
                     throw new Error(`Image analysis failed: ${imgData.error || imgRes.statusText}`);
                 }
-                
+
                 payloadData[outputField] = imgData.result;
                 break;
             }
@@ -722,27 +736,27 @@ async function executeAction(actionNode: Node, payloadData: any, logs: any[]) {
             case 'action_ai_dispatch': {
                 const qField = config?.queryField || 'message.content';
                 const outField = config?.outputField || 'dispatchResult';
-                
+
                 // Parse template first, if not found then traverse path
                 let query = parseTemplate(qField, payloadData);
                 if (query === qField || typeof query !== 'string') {
                     // Try to get from path if parseTemplate didn't change anything or returned non-string
                     query = getValueByPath(payloadData, qField?.replace(/\{\{|\}\}/g, '')) || query;
                 }
-                
+
                 const dispatchRes = await fetch(`${getInternalBaseUrl()}/api/ai-chat/dispatch`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ query })
                 });
-                
+
                 let dispatchData;
-                try { dispatchData = await dispatchRes.json(); } catch(e) {}
-                
+                try { dispatchData = await dispatchRes.json(); } catch (e) { }
+
                 if (!dispatchRes.ok) {
                     throw new Error(`AI Dispatch failed: ${dispatchData?.error || dispatchRes.statusText}`);
                 }
-                
+
                 payloadData[outField] = dispatchData;
                 break;
             }
@@ -750,35 +764,35 @@ async function executeAction(actionNode: Node, payloadData: any, logs: any[]) {
             case 'action_agent_execute': {
                 const agentIdField = config?.agentIdField || 'dispatchResult.primary.id';
                 const inField = config?.inputField || 'message.content';
-                
+
                 // Clean the {{ }} for getting the value by path if needed
                 const cleanAgentIdField = agentIdField.replace(/\{\{|\}\}/g, '');
                 const cleanInField = inField.replace(/\{\{|\}\}/g, '');
-                
+
                 const agentId = parseTemplate(agentIdField, payloadData) || getValueByPath(payloadData, cleanAgentIdField);
                 const query = parseTemplate(inField, payloadData) || getValueByPath(payloadData, cleanInField);
-                
+
                 const useSmartRouter = !!config?.useSmartRouter;
                 const usePromptCache = !!config?.usePromptCache;
 
                 const executeRes = await fetch(`${getInternalBaseUrl()}/api/ai-chat`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
+                    body: JSON.stringify({
                         messages: [{ role: 'user', content: query }],
                         agentId: agentId && typeof agentId === 'string' && agentId !== agentIdField ? agentId : undefined,
                         useSmartRouter,
                         usePromptCache
                     })
                 });
-                
+
                 let executeData;
-                try { executeData = await executeRes.json(); } catch(e) {}
-                
+                try { executeData = await executeRes.json(); } catch (e) { }
+
                 if (!executeRes.ok) {
                     throw new Error(`Agent Execution failed: ${executeData?.error || executeRes.statusText}`);
                 }
-                
+
                 payloadData.agent_output = executeData?.reply;
                 payloadData.agent_execution_details = executeData;
                 break;
@@ -870,7 +884,7 @@ async function executeAction(actionNode: Node, payloadData: any, logs: any[]) {
             case 'action_context7_retrieval': {
                 const query = parseTemplate(config?.query || '{{user_query}}', payloadData);
                 const libraryId = parseTemplate(config?.libraryId || '', payloadData);
-                
+
                 try {
                     const res = await fetch(`${getInternalBaseUrl()}/api/workflows/context7-retrieve`, {
                         method: 'POST',
@@ -889,7 +903,7 @@ async function executeAction(actionNode: Node, payloadData: any, logs: any[]) {
                 const to = parseTemplate(config?.to || '{{recipient_email}}', payloadData);
                 const subject = parseTemplate(config?.subject || 'Message', payloadData);
                 const body = parseTemplate(config?.body || '{{message}}', payloadData);
-                
+
                 try {
                     const res = await fetch(`${getInternalBaseUrl()}/api/workflows/gmail-send`, {
                         method: 'POST',
@@ -926,7 +940,7 @@ async function executeAction(actionNode: Node, payloadData: any, logs: any[]) {
             case 'action_notebooklm_create': {
                 const title = parseTemplate(config?.title || 'New Notebook', payloadData);
                 const content = parseTemplate(config?.content || '{{text}}', payloadData);
-                
+
                 try {
                     const res = await fetch(`${getInternalBaseUrl()}/api/workflows/notebooklm-create`, {
                         method: 'POST',
@@ -944,7 +958,7 @@ async function executeAction(actionNode: Node, payloadData: any, logs: any[]) {
             case 'action_figma_export': {
                 const fileKey = parseTemplate(config?.fileKey || '', payloadData);
                 const format = config?.format || 'json';
-                
+
                 try {
                     const res = await fetch(`${getInternalBaseUrl()}/api/workflows/figma-export`, {
                         method: 'POST',
@@ -963,7 +977,7 @@ async function executeAction(actionNode: Node, payloadData: any, logs: any[]) {
                 const fileContent = config?.fileContent || '';
                 const fileName = config?.fileName || 'file';
                 const fileType = config?.fileType || 'json';
-                
+
                 try {
                     const res = await fetch(`${getInternalBaseUrl()}/api/workflows/import-file`, {
                         method: 'POST',
@@ -982,7 +996,7 @@ async function executeAction(actionNode: Node, payloadData: any, logs: any[]) {
                 const format = config?.format || 'json';
                 const fileName = parseTemplate(config?.fileName || 'export', payloadData);
                 const data = parseTemplate(config?.dataField || '{{payload}}', payloadData);
-                
+
                 try {
                     const res = await fetch(`${getInternalBaseUrl()}/api/workflows/export-file`, {
                         method: 'POST',
@@ -1010,7 +1024,7 @@ async function executeAction(actionNode: Node, payloadData: any, logs: any[]) {
                     if (finalReply) payloadData._finalReply = finalReply;
                 }
         }
-        
+
         // Mark success
         const logEntry = logs.find(l => l.nodeId === actionNode.id && l.status === 'running');
         if (logEntry) {
@@ -1041,11 +1055,11 @@ export async function executeSingleWorkflow(wf: { id?: string, name?: string, no
     for (const tNode of nodesToStart) {
         const currentLogs: any[] = [];
         const currentPayload = JSON.parse(JSON.stringify(payload));
-        
-        currentLogs.push({ 
-            nodeId: tNode.id, 
-            nodeLabel: (tNode.data as any)?.label || 'Trigger', 
-            status: 'success', 
+
+        currentLogs.push({
+            nodeId: tNode.id,
+            nodeLabel: (tNode.data as any)?.label || 'Trigger',
+            status: 'success',
             time: new Date().toISOString(),
             payload: JSON.parse(JSON.stringify(currentPayload))
         });
@@ -1064,7 +1078,7 @@ export async function executeSingleWorkflow(wf: { id?: string, name?: string, no
                 try {
                     await executeAction(currentNode, currentPayload, currentLogs);
                 } catch (e) {
-                    break; 
+                    break;
                 }
             }
 
@@ -1078,11 +1092,11 @@ export async function executeSingleWorkflow(wf: { id?: string, name?: string, no
                     const result = evaluateCondition(currentNode, currentPayload);
                     const branchId = result ? 'true' : 'false';
                     if (edge.sourceHandle && edge.sourceHandle !== branchId) continue;
-                    
-                    currentLogs.push({ 
-                        nodeId: currentNode.id, 
-                        nodeLabel: (currentNode.data as any)?.label || 'Logic', 
-                        status: result ? 'success' : 'failed_condition', 
+
+                    currentLogs.push({
+                        nodeId: currentNode.id,
+                        nodeLabel: (currentNode.data as any)?.label || 'Logic',
+                        status: result ? 'success' : 'failed_condition',
                         result: result,
                         time: new Date().toISOString()
                     });
@@ -1091,7 +1105,7 @@ export async function executeSingleWorkflow(wf: { id?: string, name?: string, no
                 queue.push(nextNode);
             }
         }
-        
+
         executionTrails.push({
             workflowId: wf.id || 'test_id',
             workflowName: wf.name || 'Test Workflow',
@@ -1107,7 +1121,7 @@ export async function executeSingleWorkflow(wf: { id?: string, name?: string, no
  */
 export async function triggerWorkflow(triggerType: string, data: any) {
     const executionTrails: any[] = [];
-    
+
     try {
         const allWorkflows = await listWorkflows();
         const activeWorkflows = allWorkflows.filter(wf => wf.isActive);

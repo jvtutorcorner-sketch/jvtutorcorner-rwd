@@ -1,38 +1,39 @@
+---
+name: email-notification-testing
+description: '本 Skill 負責驗證系統內的郵件發送功能與自動化提醒排程。確保通訊模組在不同環境（Local/Amplify）下都能正確運行。'
+argument-hint: '驗證郵件發送與排程提醒的設定與流程'
+metadata:
+  verified-status: '❌ UNVERIFIED'
+  last-verified-date: '-'
+  architecture-aligned: false
+---
+
 # Email Notification & Automation Testing
 
 本 Skill 負責驗證系統內的郵件發送功能與自動化提醒排程。確保通訊模組在不同環境（Local/Amplify）下都能正確運行。
 
 ## 1. 核心驗證能力
-1. **SMTP 連通性測試**: 驗證 Gmail 或第三方適配器的連線配置。
+1. **SMTP 連通性測試**: 驗證 Gmail、Resend 或第三方適配器的連線配置。
 2. **自動化排程驗證**: 測試課程提醒的掃描、生成與發送全流程。
+3. **Gmail Workflow 驗證**: 測試單獨的 Gmail 發送路由與動態配置。
 
 ---
 
 ## 2. 測試流程 (Test Procedures)
 
-### A. 整合配置測試 (Direct SMTP Check)
-透過 `app-integrations/test` API 驗證當前環境或手動輸入的配置。
+### B. Gmail 基建測試 (Gmail Workflow Check)
+驗證 Gmail SMTP 是否能夠透過動態配置或環境變數正確發信。
 
-**調用說明**:
-```bash
-POST /api/app-integrations/test
-{
-  "type": "SMTP",
-  "config": {
-    "smtpHost": "smtp.gmail.com",
-    "smtpPort": "587",
-    "smtpUser": "your-email@gmail.com",
-    "smtpPass": "your-app-password"
-  },
-  "emailTest": {
-    "to": "test@example.com",
-    "subject": "System Verification",
-    "html": "<p>Verification successful.</p>"
-  }
-}
-```
+1. **自動化腳本**: 執行 `npx ts-node scripts/test-gmail-send.ts`。
+2. **手動驗證**:
+   - 前往 `/apps` -> 新增 `Gmail SMTP` -> 填寫資料並點擊「測試寄送實際郵件」。
 
-### B. 提醒排程端對端測試 (E2E Reminder Flow)
+[!NOTE]
+測試失敗通常是因為：
+- `SMTP_PASS` 尚為佔位符（需使用 16 位應用程式密碼）。
+- 被白名單攔截（收件者必須是註冊用戶）。
+
+### C. 提醒排程端對端測試 (E2E Reminder Flow)
 本測試模擬從資料庫讀取待提醒課程到發送郵件的完整邏輯。
 
 1. **自動化腳本**: 執行 `npx ts-node scripts/test-reminder-flow.ts` 進行快速驗證。

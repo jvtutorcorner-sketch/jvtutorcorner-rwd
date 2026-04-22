@@ -66,3 +66,23 @@ amplifytools.xcconfig
 #amplify-do-not-edit-end
 
 certificates
+
+# prod
+build/
+dist/
+
+# temp / logs
+*.log
+*.txt
+*.png
+*.webm
+*.csv
+.local_data/
+.uploads/
+scratch/
+tmp/
+__pycache__/
+
+# test results
+test-results/
+playwright-report/

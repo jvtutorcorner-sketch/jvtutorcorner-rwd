@@ -54,15 +54,20 @@ async function sendReminderEmail(to: string, courseTitle: string, startTime: str
 
   const formattedTime = new Date(startTime).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
 
+  const minutes = parseInt(reminderMinutes, 10);
+  const timeDisplay = minutes >= 60 && minutes % 60 === 0 
+    ? `${minutes / 60} 小時` 
+    : `${minutes} 分鐘`;
+
   await transporter.sendMail({
     from: `"JV Tutor 課程提醒" <${user}>`,
     to,
-    subject: `[課程提醒] ${courseTitle} 將於 ${reminderMinutes} 分鐘後開始`,
+    subject: `[課程提醒] ${courseTitle} 將於 ${timeDisplay} 後開始`,
     html: `
       <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e5e7eb; border-radius: 8px;">
         <h2 style="color: #4f46e5;">課程即將開始提醒</h2>
         <p>親愛的學生，您好：</p>
-        <p>您報名的課程 <strong>${courseTitle}</strong> 即將在 <strong>${reminderMinutes} 分鐘後</strong> 開始。</p>
+        <p>您報名的課程 <strong>${courseTitle}</strong> 即將在 <strong>${timeDisplay} 後</strong> 開始。</p>
         <div style="background: #f3f4f6; padding: 15px; border-radius: 6px; margin: 20px 0;">
           <p style="margin: 0;"><strong>課程名稱：</strong> ${courseTitle}</p>
           <p style="margin: 5px 0 0 0;"><strong>開始時間：</strong> ${formattedTime}</p>
@@ -112,10 +117,30 @@ export async function POST(request: NextRequest) {
 
         // Check if it's time to send (within 5 minutes window or already past)
         if (now >= targetTime) {
-          const course = COURSES.find(c => c.id === r.courseId);
-          const courseTitle = course?.title || '您的課程';
+          // Whitelist check
+          const { isEmailWhitelisted } = await import('@/lib/email/whitelist');
+          const isWhitelisted = await isEmailWhitelisted(r.userId);
+
+          if (!isWhitelisted) {
+            console.warn(`[process-reminders] Skip sending to ${r.userId} (not in whitelist)`);
+            // Mark as not_sent so we don't try again
+            await docClient.send(new UpdateCommand({
+              TableName: TABLE_NAME,
+              Key: { id: r.id },
+              UpdateExpression: 'SET emailStatus = :status, emailError = :err, updatedAt = :now',
+              ExpressionAttributeValues: {
+                ':status': 'not_sent',
+                ':err': 'Recipient email not whitelisted',
+                ':now': new Date().toISOString()
+              }
+            }));
+            processed.push(r.id); // Counting as processed (as in handled)
+            continue;
+          }
 
           // Send email
+          const course = COURSES.find(c => c.id === r.courseId);
+          const courseTitle = course?.title || '您的課程';
           await sendReminderEmail(r.userId, courseTitle, r.eventStartTime, r.reminderMinutes);
 
           // Update status in DB

@@ -221,6 +221,32 @@ export async function PATCH(request: NextRequest) {
       new PutCommand({ TableName: TABLE_NAME, Item: item }),
     );
 
+    // ── Create Reminder Logic ──────────────────────────────────────────
+    // When enrollment becomes ACTIVE, create a 3-hour reminder (180 mins)
+    if (status === 'ACTIVE' && item.startTime) {
+      try {
+        const protocol = request.headers.get('x-forwarded-proto') || 'http';
+        const host = request.headers.get('host') || 'localhost:3000';
+        const base = process.env.NEXT_PUBLIC_BASE_URL || `${protocol}://${host}`;
+        
+        await fetch(`${base}/api/calendar/reminders`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: item.email,
+            eventId: `enroll_${item.id}`,
+            courseId: item.courseId,
+            eventStartTime: item.startTime,
+            reminderMinutes: 180, // 3 hours before
+          }),
+        });
+        console.log(`[enroll API] Created 3h reminder for ${item.email} on course ${item.courseId}`);
+      } catch (remErr) {
+        console.error('[enroll API] Failed to create 3h reminder:', remErr);
+      }
+    }
+    // ───────────────────────────────────────────────────────────────────
+
     return NextResponse.json({ ok: true, enrollment: item }, { status: 200 });
   } catch (err: any) {
     console.error('[enroll API] PATCH 發生錯誤:', err?.message || err, err?.stack);

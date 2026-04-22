@@ -49,11 +49,19 @@ export async function POST(req: Request) {
     // Note: For simplicity, password is stored as-is. In production, hash passwords.
     const plan = body.role === 'teacher' ? null : (body.plan ?? 'free');
 
+    // ── Email Verification Setup ─────────────────────────────────────
+    const { generateVerificationToken, sendVerificationEmail } = await import('@/lib/email/verificationService');
+    const verificationToken = generateVerificationToken();
+    const verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(); // 24 hours
+
     // Create profile object
     const profile = {
       ...body,
       email,
       plan,
+      emailVerified: false,
+      verificationToken,
+      verificationExpires,
       createdAt: new Date().toISOString(),
       updatedAtUtc: new Date().toISOString()
     };
@@ -66,6 +74,11 @@ export async function POST(req: Request) {
     // Persist Profile to DynamoDB
     try {
       await ddbDocClient.send(new PutCommand({ TableName: PROFILES_TABLE, Item: profile }));
+
+      // Send verification email (non-blocking)
+      sendVerificationEmail(email, verificationToken).catch(err => {
+        console.error('[register] Failed to send verification email', err);
+      });
 
       // If role is teacher, also create a teacher record
       if (body.role === 'teacher') {
