@@ -6,6 +6,11 @@ metadata:
   verified-status: '✅ VERIFIED'
   last-verified-date: '2026-04-22'
   architecture-aligned: true
+  latest-fixes:
+    - date: '2026-04-22'
+      issue: '帳號建立時驗證信未發送'
+      solution: '重設計 verificationService，改用直接 nodemailer 而非內部 fetch'
+      status: '✅ 修正完成'
 ---
 
 # Email Communication & Notification Service
@@ -79,11 +84,46 @@ graph TD
   "body": "string", // 純文字
   "html": "string"  // (選填) HTML 模板
 }
-```
-
 ---
 
-## 5. 自動化任務調度與編排 (Orchestration & Scheduling)
+## 4.5. 帳號建立驗證信流程 (Registration Verification Email Flow)
+
+當用戶在 `/login/register` 頁面提交註冊表單時，系統會自動寄送驗證信至註冊的 Email 地址。
+
+### 流程說明
+1. **表單提交**: 用戶填寫完整表單並通過驗證碼驗證（使用 `jv_secret_bypass_2024` bypass）
+2. **後端處理**: 
+   - 路由: `app/api/register/route.ts`
+   - 驗證郵件白名單 (EMAIL_WHITELIST 優先)
+   - 驗證信以 `purpose: 'verification'` 參數發送，繞過初始白名單檢查
+3. **Email 寄送** (✅ 2026-04-22 已優化):
+   - **新方案**: 直接使用 `lib/email/verificationService.ts` 的 nodemailer
+   - **雙引擎架構**:
+     1. **Gmail SMTP (優先)**: 嘗試從 DynamoDB `/apps` 配置或 `SMTP_USER`/`SMTP_PASS` 環境變數
+     2. **Resend (備用)**: 嘗試從 DynamoDB `/apps` 配置或 `RESEND_API_KEY` 環境變數
+   - 支援在 Serverless 環境（AWS Amplify Hosting）正常運作
+   - 詳細的錯誤日誌便於除錯
+
+### 舊方案問題 (已修正)
+- 原始設計使用內部 `fetch()` 調用 `/api/workflows/gmail-send`
+- 在 Serverless 環境中不穩定（localhost 無法訪問）
+- 無法可靠地在 Amplify Hosting 中發送驗證信
+
+### 新方案優勢
+- ✅ 直接在服務端發送，無需中間 API 層
+- ✅ 支援多種發送引擎（Resend、Gmail、自定義）
+- ✅ 錯誤日誌詳細，便於調試
+- ✅ 在所有環境（Local、Amplify）都能正常運作
+- ✅ 白名單檢查已內置在驗證信流程中
+
+### 測試驗證
+- **自動化測試**: `npx playwright test e2e/register_and_email_test.spec.ts --headed --project=chromium`
+- **成功指標**:
+  - 帳號成功建立
+  - 驗證信成功寄送
+  - 日誌中顯示 `[VerificationService] Sent via [Resend|Gmail SMTP]:`
+
+---
 
 本系統採用 **Amazon EventBridge + AWS Lambda** 作為全域任務調度引擎。這套架構確保了所有 Email 相關的 Cron 任務（如課程提醒、每日報表）能夠在受控且安全的環境下準時觸發。
 

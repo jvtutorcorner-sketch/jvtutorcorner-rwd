@@ -8,7 +8,7 @@ export async function GET(req: NextRequest) {
     const email = searchParams.get('email')?.toLowerCase();
 
     if (!token || !email) {
-        return NextResponse.redirect(new URL('/login?error=invalid_verification_link', req.url));
+        return NextResponse.redirect(new URL('/auth/verify-email?error=invalid_verification_link', req.url));
     }
 
     try {
@@ -25,14 +25,14 @@ export async function GET(req: NextRequest) {
         }));
 
         if (!Items || Items.length === 0) {
-            return NextResponse.redirect(new URL('/login?error=invalid_token', req.url));
+            return NextResponse.redirect(new URL('/auth/verify-email?error=invalid_token', req.url));
         }
 
         const profile = Items[0];
 
         // 2. Check expiry
         if (profile.verificationExpires && new Date(profile.verificationExpires) < new Date()) {
-            return NextResponse.redirect(new URL('/login?error=token_expired', req.url));
+            return NextResponse.redirect(new URL('/auth/verify-email?error=token_expired', req.url));
         }
 
         // 3. Update profile as verified
@@ -49,11 +49,11 @@ export async function GET(req: NextRequest) {
 
         console.log(`[VerifyEmail] ✅ Email ${email} verified successfully`);
 
-        // 4. Redirect to login with success message
-        return NextResponse.redirect(new URL('/login?message=email_verified', req.url));
+        // 4. Redirect to verification success page
+        return NextResponse.redirect(new URL('/auth/verify-email?message=email_verified', req.url));
 
     } catch (error) {
         console.error('[VerifyEmail] Error during verification:', error);
-        return NextResponse.redirect(new URL('/login?error=verification_failed', req.url));
+        return NextResponse.redirect(new URL('/auth/verify-email?error=verification_failed', req.url));
     }
 }
