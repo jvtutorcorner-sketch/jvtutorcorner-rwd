@@ -58,6 +58,10 @@ export async function POST(request: Request) {
     let durationMinutes = 0;
     let totalSessions = 1;
     let courseTitle = '';
+    let courseTeacherName = '';
+    let courseStartDate = '';
+    let courseStartTime = '';
+    let courseEndTime = '';
     let coursePointCost = 0;
     let courseTeacherId = '';
 
@@ -72,6 +76,10 @@ export async function POST(request: Request) {
           courseTitle = res.Item.title || '';
           coursePointCost = Number(res.Item.pointCost) || 0;
           courseTeacherId = res.Item.teacherId || res.Item.teacherEmail || '';
+          courseTeacherName = res.Item.teacherName || '';
+          courseStartDate = res.Item.startDate || res.Item.nextStartDate || '';
+          courseStartTime = res.Item.startTime || '';
+          courseEndTime = res.Item.endTime || '';
         } else {
           const course = COURSES.find(c => c.id === courseId);
           durationMinutes = course?.durationMinutes || 0;
@@ -79,6 +87,10 @@ export async function POST(request: Request) {
           courseTitle = course?.title || '';
           coursePointCost = Number((course as any)?.pointCost) || 0;
           courseTeacherId = (course as any)?.teacherId || (course as any)?.teacherEmail || '';
+          courseTeacherName = (course as any)?.teacherName || '';
+          courseStartDate = (course as any)?.startDate || '';
+          courseStartTime = (course as any)?.startTime || '';
+          courseEndTime = (course as any)?.endTime || '';
         }
       }
     } catch (e) {
@@ -94,47 +106,51 @@ export async function POST(request: Request) {
 
     let pointsEscrowId: string | null = null;
 
-    if (paymentMethod === 'points' && effectivePointsToDeduct > 0) {
-      const deductResult = await deductUserPoints(userId, effectivePointsToDeduct);
-      if (!deductResult.ok) {
+    if (paymentMethod === 'points') {
+      if (effectivePointsToDeduct > 0) {
+        const deductResult = await deductUserPoints(userId, effectivePointsToDeduct);
+        if (!deductResult.ok) {
+          return NextResponse.json({
+            error: deductResult.error,
+            ok: false,
+          }, { status: 400 });
+        }
+
+        // 🔒 Place deducted points into escrow until course completion
+        const newEscrowId = randomUUID();
+        try {
+          await createEscrow({
+            escrowId: newEscrowId,
+            orderId,
+            enrollmentId: enrollmentId || '',
+            studentId: userId,
+            teacherId: courseTeacherId,
+            courseId,
+            courseTitle,
+            points: effectivePointsToDeduct,
+            teacherName: courseTeacherName || undefined,
+            durationMinutes: durationMinutes || undefined,
+            totalSessions: totalSessions || undefined,
+            courseStartDate: courseStartDate || undefined,
+            courseStartTime: courseStartTime || undefined,
+            courseEndTime: courseEndTime || undefined,
+          });
+          pointsEscrowId = newEscrowId;
+        } catch (escrowErr) {
+          // Escrow creation failure is non-fatal — points were already deducted.
+          // Log clearly so ops team can manually reconcile if needed.
+          console.error(
+            `[orders API] ⚠️ ESCROW CREATION FAILED for order ${orderId}. Points were deducted but escrow not recorded. Manual reconciliation required.`,
+            escrowErr
+          );
+        }
+      } else if (effectivePointsToDeduct === 0) {
+        // paymentMethod is 'points' but no point cost found — reject to prevent free enrollment
         return NextResponse.json({
-          error: deductResult.error,
+          error: '此課程未設定點數費用，無法以點數報名。',
           ok: false,
         }, { status: 400 });
       }
-      console.log(
-        `[orders API] Deducted ${effectivePointsToDeduct} pts from ${userId} (new balance: ${deductResult.newBalance}) for "${courseTitle}"`
-      );
-
-      // 🔒 Place deducted points into escrow until course completion
-      const newEscrowId = randomUUID();
-      try {
-        await createEscrow({
-          escrowId: newEscrowId,
-          orderId,
-          enrollmentId: enrollmentId || '',
-          studentId: userId,
-          teacherId: courseTeacherId,
-          courseId,
-          courseTitle,
-          points: effectivePointsToDeduct,
-        });
-        pointsEscrowId = newEscrowId;
-      } catch (escrowErr) {
-        // Escrow creation failure is non-fatal — points were already deducted.
-        // Log clearly so ops team can manually reconcile if needed.
-        console.error(
-          `[orders API] ⚠️ ESCROW CREATION FAILED for order ${orderId}. Points were deducted but escrow not recorded. Manual reconciliation required.`,
-          escrowErr
-        );
-      }
-    } else if (paymentMethod === 'points' && effectivePointsToDeduct === 0) {
-      // paymentMethod is 'points' but no point cost found — reject to prevent free enrollment
-      console.warn(`[orders API] paymentMethod='points' but effectivePointsToDeduct=0 for course '${courseId}'. Rejecting.`);
-      return NextResponse.json({
-        error: '此課程未設定點數費用，無法以點數報名。',
-        ok: false,
-      }, { status: 400 });
     }
 
     const order = {
