@@ -178,7 +178,7 @@ export default function MenuBar() {
                         {user?.role === 'teacher' && (
                           <>
                             <li><Link href="/teacher/profile" onClick={() => setMenuOpen(false)} className="menu-link">個人檔案</Link></li>
-                            <li><Link href="/teacher/teacher-escrow" onClick={() => setMenuOpen(false)} className="menu-link">點數收入</Link></li>
+                            <li><Link href="/teacher-escrow" onClick={() => setMenuOpen(false)} className="menu-link">點數收入</Link></li>
                           </>
                         )}
 

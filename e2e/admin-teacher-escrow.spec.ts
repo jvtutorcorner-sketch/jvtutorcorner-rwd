@@ -79,8 +79,8 @@ test.describe('Teacher Earnings & Admin Dashboard', () => {
     }
 
     // Step 2: Navigate to Teacher Escrow Page
-    console.log('\n📝 Step 2: Navigate to /teacher/teacher-escrow');
-    await page.goto(`${BASE_URL}/teacher/teacher-escrow`);
+    console.log('\n📝 Step 2: Navigate to /teacher-escrow');
+    await page.goto(`${BASE_URL}/teacher-escrow`);
     await page.waitForLoadState('networkidle');
     
     // Verify page title and heading
@@ -203,9 +203,9 @@ test.describe('Teacher Earnings & Admin Dashboard', () => {
       console.log(`   ⚠️  Navigation timeout`);
     }
 
-    // Step 2: Navigate to /teacher/teacher-escrow
-    console.log('\n📝 Step 2: Navigate to /teacher/teacher-escrow');
-    await page.goto(`${BASE_URL}/teacher/teacher-escrow`);
+    // Step 2: Navigate to /teacher-escrow
+    console.log('\n📝 Step 2: Navigate to /teacher-escrow');
+    await page.goto(`${BASE_URL}/teacher-escrow`);
     await page.waitForLoadState('networkidle');
 
     const heading = page.locator('h1').first();
