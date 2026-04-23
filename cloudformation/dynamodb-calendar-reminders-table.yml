@@ -1,0 +1,70 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'DynamoDB table for calendar reminders with user and order associations'
+
+Parameters:
+  TableName:
+    Type: String
+    Default: jvtutorcorner-calendar-reminders
+    Description: Name of the calendar reminders table
+
+Resources:
+  CalendarRemindersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref TableName
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: eventStartTime
+          AttributeType: S
+        - AttributeName: orderId
+          AttributeType: S
+        - AttributeName: courseId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: userId-eventStartTime-index
+          KeySchema:
+            - AttributeName: userId
+              KeyType: HASH
+            - AttributeName: eventStartTime
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: orderId-index
+          KeySchema:
+            - AttributeName: orderId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        - IndexName: courseId-eventStartTime-index
+          KeySchema:
+            - AttributeName: courseId
+              KeyType: HASH
+            - AttributeName: eventStartTime
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      Tags:
+        - Key: Application
+          Value: jvtutorcorner
+        - Key: Environment
+          Value: production
+
+Outputs:
+  TableName:
+    Description: Name of the calendar reminders table
+    Value: !Ref CalendarRemindersTable
+    Export:
+      Name: !Sub '${AWS::StackName}-TableName'
+  
+  TableArn:
+    Description: ARN of the calendar reminders table
+    Value: !GetAtt CalendarRemindersTable.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-TableArn'

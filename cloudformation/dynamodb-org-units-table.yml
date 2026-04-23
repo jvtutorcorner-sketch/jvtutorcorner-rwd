@@ -1,0 +1,88 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudFormation template for Organizational Units table - Hierarchical structure within organizations'
+
+Parameters:
+  OrgUnitsTableName:
+    Type: String
+    Default: jvtutorcorner-org-units
+    Description: DynamoDB table name for organizational units
+
+Resources:
+  # ==========================================
+  # Organizational Units Table
+  # ==========================================
+  OrgUnitsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref OrgUnitsTableName
+      
+      AttributeDefinitions:
+        # Primary Key
+        - AttributeName: id
+          AttributeType: S
+        
+        # GSI: Query all units by organization
+        - AttributeName: orgId
+          AttributeType: S
+        
+        # For potential future queries
+        - AttributeName: path
+          AttributeType: S
+      
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      
+      BillingMode: PAY_PER_REQUEST
+      
+      GlobalSecondaryIndexes:
+        # GSI: List all org units by organization ID
+        - IndexName: byOrgId
+          KeySchema:
+            - AttributeName: orgId
+              KeyType: HASH
+            - AttributeName: path
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      
+      # Enable DynamoDB Streams for change tracking
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      
+      # Encryption at rest
+      SSESpecification:
+        SSEEnabled: true
+      
+      # Point-in-time recovery
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      
+      Tags:
+        - Key: Project
+          Value: jvtutorcorner
+        - Key: Environment
+          Value: production
+        - Key: Purpose
+          Value: B2B-OrgUnits
+        - Key: DataType
+          Value: Hierarchical
+
+Outputs:
+  OrgUnitsTableName:
+    Description: Name of the Org Units DynamoDB table
+    Value: !Ref OrgUnitsTable
+    Export:
+      Name: !Sub '${AWS::StackName}-OrgUnitsTableName'
+  
+  OrgUnitsTableArn:
+    Description: ARN of the Org Units DynamoDB table
+    Value: !GetAtt OrgUnitsTable.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-OrgUnitsTableArn'
+  
+  OrgUnitsTableStreamArn:
+    Description: ARN of the Org Units table stream
+    Value: !GetAtt OrgUnitsTable.StreamArn
+    Export:
+      Name: !Sub '${AWS::StackName}-OrgUnitsTableStreamArn'

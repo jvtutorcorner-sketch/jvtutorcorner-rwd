@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>藥品影像分析 - LINE LIFF 前端</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto Mono', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 500px;
+            width: 100%;
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px 20px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .header p {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        .content {
+            padding: 30px 20px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #333;
+        }
+
+        input[type="text"],
+        textarea {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.3s;
+            font-family: inherit;
+        }
+
+        input[type="text"]:focus,
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        .file-input-wrapper {
+            position: relative;
+            overflow: hidden;
+            display: inline-block;
+            width: 100%;
+        }
+
+        .file-input-wrapper input[type="file"] {
+            position: absolute;
+            left: -9999px;
+        }
+
+        .file-input-label {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            padding: 40px 20px;
+            border: 2px dashed #667eea;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+            color: #667eea;
+        }
+
+        .file-input-wrapper input[type="file"]:hover ~ .file-input-label {
+            background-color: rgba(102, 126, 234, 0.05);
+        }
+
+        .file-input-label.has-file {
+            border-style: solid;
+            background-color: rgba(102, 126, 234, 0.1);
+        }
+
+        .file-name {
+            font-size: 12px;
+            color: #999;
+            margin-top: 8px;
+            text-align: center;
+        }
+
+        .preview-image {
+            max-width: 100%;
+            max-height: 200px;
+            margin-top: 12px;
+            border-radius: 8px;
+            object-fit: cover;
+        }
+
+        button {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-top: 20px;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 30px;
+            height: 30px;
+            border: 3px solid rgba(102, 126, 234, 0.1);
+            border-top-color: #667eea;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .result {
+            margin-top: 30px;
+            display: none;
+        }
+
+        .alert {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+
+        .alert-success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+
+        .alert-error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+
+        .result-content {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 13px;
+            color: #333;
+            overflow-x: auto;
+        }
+
+        .result-content pre {
+            margin: 0;
+            font-family: 'Courier New', monospace;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .info-box {
+            background-color: #e7f3ff;
+            border-left: 4px solid #2196F3;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+            font-size: 13px;
+            color: #0c5aa0;
+        }
+
+        .error-detail {
+            margin-top: 10px;
+            font-size: 12px;
+            opacity: 0.9;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>💊 藥品影像分析</h1>
+            <p>上傳藥品圖片進行分析</p>
+        </div>
+
+        <div class="content">
+            <div class="info-box">
+                ℹ️ 在此上傳藥品圖片（JPG/PNG），系統將幫助識別藥品資訊
+            </div>
+
+            <form id="uploadForm">
+                <!-- 圖片選擇 -->
+                <div class="form-group">
+                    <label for="imageInput">📷 選擇藥品圖片 *</label>
+                    <div class="file-input-wrapper">
+                        <input 
+                            type="file" 
+                            id="imageInput" 
+                            accept="image/jpeg,image/png" 
+                            required
+                        >
+                        <label for="imageInput" class="file-input-label" id="fileLabel">
+                            <span>🖼️ 點擊選擇或拖拽圖片</span>
+                        </label>
+                    </div>
+                    <div class="file-name" id="fileName"></div>
+                    <img id="preview" class="preview-image" style="display: none;">
+                </div>
+
+                <!-- 使用者訊息 -->
+                <div class="form-group">
+                    <label for="userMessage">💬 藥品資訊或疑問（選擇性）</label>
+                    <textarea 
+                        id="userMessage" 
+                        placeholder="例如：這是阿斯匹靈嗎？ 或 藥品名稱..."
+                    ></textarea>
+                </div>
+
+                <!-- 提交按鈕 -->
+                <button type="submit" id="submitBtn">上傳分析</button>
+
+                <!-- 加載指示器 -->
+                <div class="loading" id="loading">
+                    <div class="spinner"></div>
+                    <p style="margin-top: 10px; color: #667eea;">上傳中...</p>
+                </div>
+            </form>
+
+            <!-- 結果顯示 -->
+            <div class="result" id="result">
+                <div id="resultContent"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE_URL = 'http://localhost:8000';
+        const form = document.getElementById('uploadForm');
+        const imageInput = document.getElementById('imageInput');
+        const fileLabel = document.getElementById('fileLabel');
+        const fileName = document.getElementById('fileName');
+        const preview = document.getElementById('preview');
+        const userMessage = document.getElementById('userMessage');
+        const submitBtn = document.getElementById('submitBtn');
+        const loading = document.getElementById('loading');
+        const result = document.getElementById('result');
+        const resultContent = document.getElementById('resultContent');
+
+        // 圖片拖拽上傳
+        fileLabel.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            fileLabel.style.backgroundColor = 'rgba(102, 126, 234, 0.1)';
+        });
+
+        fileLabel.addEventListener('dragleave', () => {
+            fileLabel.style.backgroundColor = '';
+        });
+
+        fileLabel.addEventListener('drop', (e) => {
+            e.preventDefault();
+            fileLabel.style.backgroundColor = '';
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                imageInput.files = files;
+                updatePreview();
+            }
+        });
+
+        // 圖片選擇變更
+        imageInput.addEventListener('change', updatePreview);
+
+        function updatePreview() {
+            const file = imageInput.files[0];
+            if (file) {
+                fileName.textContent = `選擇的檔案: ${file.name}`;
+                fileLabel.classList.add('has-file');
+
+                // 顯示預覽
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    preview.src = e.target.result;
+                    preview.style.display = 'block';
+                };
+                reader.readAsDataURL(file);
+
+                // 檢查檔案大小（5MB）
+                const maxSize = 5 * 1024 * 1024;
+                if (file.size > maxSize) {
+                    showError(`檔案過大！最大允許 ${maxSize / (1024*1024)}MB，實際: ${(file.size / (1024*1024)).toFixed(2)}MB`);
+                    imageInput.value = '';
+                    return;
+                }
+
+                // 檢查檔案類型
+                if (!['image/jpeg', 'image/png'].includes(file.type)) {
+                    showError('僅支援 JPEG 和 PNG 格式的圖片');
+                    imageInput.value = '';
+                    return;
+                }
+            }
+        }
+
+        // 表單提交
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const file = imageInput.files[0];
+            if (!file) {
+                showError('請選擇圖片檔案');
+                return;
+            }
+
+            // 準備 FormData
+            const formData = new FormData();
+            formData.append('image_file', file);
+            if (userMessage.value.trim()) {
+                formData.append('user_message', userMessage.value.trim());
+            }
+
+            // 顯示加載狀態
+            loading.style.display = 'block';
+            result.style.display = 'none';
+            submitBtn.disabled = true;
+
+            try {
+                const response = await fetch(
+                    `${API_BASE_URL}/api/v1/medication/analyze`,
+                    {
+                        method: 'POST',
+                        body: formData,
+                        headers: {
+                            // 不要手動設定 Content-Type，讓瀏覽器自動設定
+                        }
+                    }
+                );
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    showSuccess(data);
+                } else {
+                    showError(data.message || '分析失敗，請重試', data);
+                }
+            } catch (error) {
+                console.error('錯誤:', error);
+                showError(`網路錯誤: ${error.message}`);
+            } finally {
+                loading.style.display = 'none';
+                submitBtn.disabled = false;
+            }
+        });
+
+        function showSuccess(data) {
+            result.style.display = 'block';
+            resultContent.innerHTML = `
+                <div class="alert alert-success">
+                    ✓ ${data.message}
+                </div>
+                <div class="result-content">
+                    <strong>回應資訊:</strong>
+                    <pre>${JSON.stringify(data.data, null, 2)}</pre>
+                </div>
+            `;
+        }
+
+        function showError(message, data = null) {
+            result.style.display = 'block';
+            let html = `
+                <div class="alert alert-error">
+                    ✗ ${message}
+            `;
+            if (data && data.error_type) {
+                html += `<div class="error-detail">錯誤類型: ${data.error_type}</div>`;
+            }
+            html += `</div>`;
+
+            if (data && typeof data === 'object') {
+                html += `
+                    <div class="result-content">
+                        <strong>詳細資訊:</strong>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    </div>
+                `;
+            }
+
+            resultContent.innerHTML = html;
+        }
+
+        // 頁面載入時檢查 API 連接
+        async function checkAPIConnection() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/health`);
+                if (!response.ok) {
+                    console.warn('API 可能未啟動');
+                }
+            } catch (error) {
+                console.error('無法連接到 API:', error);
+                console.warn('請確保後端應用已運行: python main.py');
+            }
+        }
+
+        checkAPIConnection();
+    </script>
+</body>
+</html>

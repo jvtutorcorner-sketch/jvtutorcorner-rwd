@@ -1,0 +1,303 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudFormation template for B2B/B2C hybrid tables - Organizations and Licenses'
+
+Parameters:
+  OrganizationsTableName:
+    Type: String
+    Default: jvtutorcorner-organizations
+    Description: DynamoDB table name for organization records
+
+  LicensesTableName:
+    Type: String
+    Default: jvtutorcorner-licenses
+    Description: DynamoDB table name for license/seat management
+
+  ProfilesTableName:
+    Type: String
+    Default: jvtutorcorner-profiles
+    Description: DynamoDB table name for user profiles (must already exist)
+
+  RolesTableName:
+    Type: String
+    Default: jvtutorcorner-roles
+    Description: DynamoDB table name for roles
+
+  PagePermissionsTableName:
+    Type: String
+    Default: jvtutorcorner-page-permissions
+    Description: DynamoDB table name for page permissions
+
+Resources:
+  # ==========================================
+  # Organizations Table (B2B Accounts)
+  # ==========================================
+  OrganizationsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref OrganizationsTableName
+      AttributeDefinitions:
+        - AttributeName: organizationId
+          AttributeType: S
+        - AttributeName: billingEmail
+          AttributeType: S
+        - AttributeName: status
+          AttributeType: S
+      KeySchema:
+        - AttributeName: organizationId
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+      GlobalSecondaryIndexes:
+        - IndexName: BillingEmailIndex
+          KeySchema:
+            - AttributeName: billingEmail
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        - IndexName: StatusIndex
+          KeySchema:
+            - AttributeName: status
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: false
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: Project
+          Value: jvtutorcorner
+        - Key: Environment
+          Value: production
+        - Key: Purpose
+          Value: B2B-Organizations
+
+  # ==========================================
+  # Licenses Table (Seat Management)
+  # ==========================================
+  LicensesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref LicensesTableName
+      AttributeDefinitions:
+        - AttributeName: licenseId
+          AttributeType: S
+        - AttributeName: organizationId
+          AttributeType: S
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: status
+          AttributeType: S
+      KeySchema:
+        - AttributeName: licenseId
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+      GlobalSecondaryIndexes:
+        - IndexName: OrganizationIdIndex
+          KeySchema:
+            - AttributeName: organizationId
+              KeyType: HASH
+            - AttributeName: status
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: UserIdIndex
+          KeySchema:
+            - AttributeName: userId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true  # Auto-cleanup expired licenses
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: Project
+          Value: jvtutorcorner
+        - Key: Environment
+          Value: production
+        - Key: Purpose
+          Value: B2B-Licenses
+
+  # ==========================================
+  # Profiles Table (Enhanced for B2B)
+  # ==========================================
+  # NOTE: This assumes Profiles table already exists
+  # You'll need to update it manually or via migration script
+  # Uncomment below if creating fresh:
+  
+  # ProfilesTable:
+  #   Type: AWS::DynamoDB::Table
+  #   Properties:
+  #     TableName: !Ref ProfilesTableName
+  #     AttributeDefinitions:
+  #       - AttributeName: id
+  #         AttributeType: S
+  #       - AttributeName: email
+  #         AttributeType: S
+  #       - AttributeName: organizationId
+  #         AttributeType: S
+  #     KeySchema:
+  #       - AttributeName: id
+  #         KeyType: HASH
+  #     BillingMode: PAY_PER_REQUEST
+  #     GlobalSecondaryIndexes:
+  #       - IndexName: EmailIndex
+  #         KeySchema:
+  #           - AttributeName: email
+  #             KeyType: HASH
+  #         Projection:
+  #           ProjectionType: ALL
+  #       - IndexName: OrganizationIdIndex
+  #         KeySchema:
+  #           - AttributeName: organizationId
+  #             KeyType: HASH
+  #         Projection:
+  #           ProjectionType: ALL
+  #     SSESpecification:
+  #       SSEEnabled: true
+  #     PointInTimeRecoverySpecification:
+  #       PointInTimeRecoveryEnabled: true
+  #     Tags:
+  #       - Key: Project
+  #         Value: jvtutorcorner
+
+  # ==========================================
+  # Roles Table (RBAC)
+  # ==========================================
+  RolesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref RolesTableName
+      AttributeDefinitions:
+        - AttributeName: roleId
+          AttributeType: S
+        - AttributeName: name
+          AttributeType: S
+      KeySchema:
+        - AttributeName: roleId
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+      GlobalSecondaryIndexes:
+        - IndexName: RoleNameIndex
+          KeySchema:
+            - AttributeName: name
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: false
+      Tags:
+        - Key: Project
+          Value: jvtutorcorner
+        - Key: Environment
+          Value: production
+        - Key: Purpose
+          Value: RBAC-Roles
+
+  # ==========================================
+  # Page Permissions Table (RBAC)
+  # ==========================================
+  PagePermissionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref PagePermissionsTableName
+      AttributeDefinitions:
+        - AttributeName: permissionId
+          AttributeType: S
+        - AttributeName: roleId
+          AttributeType: S
+        - AttributeName: path
+          AttributeType: S
+      KeySchema:
+        - AttributeName: permissionId
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+      GlobalSecondaryIndexes:
+        - IndexName: RolePathIndex
+          KeySchema:
+            - AttributeName: roleId
+              KeyType: HASH
+            - AttributeName: path
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: PathIndex
+          KeySchema:
+            - AttributeName: path
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: false
+      Tags:
+        - Key: Project
+          Value: jvtutorcorner
+        - Key: Environment
+          Value: production
+        - Key: Purpose
+          Value: RBAC-PagePermissions
+
+Outputs:
+  OrganizationsTableName:
+    Description: Name of Organizations DynamoDB table
+    Value: !Ref OrganizationsTableName
+    Export:
+      Name: !Sub '${AWS::StackName}-OrganizationsTableName'
+
+  OrganizationsTableArn:
+    Description: ARN of Organizations DynamoDB table
+    Value: !GetAtt OrganizationsTable.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-OrganizationsTableArn'
+
+  LicensesTableName:
+    Description: Name of Licenses DynamoDB table
+    Value: !Ref LicensesTableName
+    Export:
+      Name: !Sub '${AWS::StackName}-LicensesTableName'
+
+  LicensesTableArn:
+    Description: ARN of Licenses DynamoDB table
+    Value: !GetAtt LicensesTable.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-LicensesTableArn'
+
+  RolesTableName:
+    Description: Name of Roles DynamoDB table
+    Value: !Ref RolesTableName
+    Export:
+      Name: !Sub '${AWS::StackName}-RolesTableName'
+
+  RolesTableArn:
+    Description: ARN of Roles DynamoDB table
+    Value: !GetAtt RolesTable.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-RolesTableArn'
+
+  PagePermissionsTableName:
+    Description: Name of Page Permissions DynamoDB table
+    Value: !Ref PagePermissionsTableName
+    Export:
+      Name: !Sub '${AWS::StackName}-PagePermissionsTableName'
+
+  PagePermissionsTableArn:
+    Description: ARN of Page Permissions DynamoDB table
+    Value: !GetAtt PagePermissionsTable.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-PagePermissionsTableArn'

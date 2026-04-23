@@ -182,7 +182,7 @@ async function readSettings() {
           ]
         },
         {
-          id: '/teacher/earnings', path: '/teacher/earnings', label: '點數收入', permissions: [
+          id: '/teacher/teacher-escrow', path: '/teacher/teacher-escrow', label: '點數收入', permissions: [
             { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
             { roleId: 'teacher', roleName: 'Teacher', menuVisible: true, dropdownVisible: true, pageVisible: true },
             { roleId: 'student', roleName: 'Student', menuVisible: false, dropdownVisible: false, pageVisible: false }

@@ -1,0 +1,1538 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>浏览器操作指南 - 学生报名到教室</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.95;
+        }
+        
+        .nav-sidebar {
+            display: flex;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        
+        .nav-sidebar nav {
+            flex: 1;
+            padding: 0;
+            overflow-y: auto;
+            max-height: 80vh;
+            border-right: 1px solid #e0e0e0;
+        }
+        
+        .nav-item {
+            display: block;
+            padding: 12px 20px;
+            border-left: 3px solid transparent;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            color: #555;
+            font-weight: 500;
+        }
+        
+        .nav-item:hover {
+            background: #e8e8e8;
+            border-left-color: #667eea;
+        }
+        
+        .nav-item.active {
+            background: #667eea;
+            color: white;
+            border-left-color: #764ba2;
+        }
+        
+        .content {
+            flex: 3;
+            padding: 40px;
+        }
+        
+        .section {
+            display: none;
+        }
+        
+        .section.active {
+            display: block;
+            animation: fadeIn 0.5s ease;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+            font-size: 2em;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+        
+        h3 {
+            color: #764ba2;
+            margin-top: 25px;
+            margin-bottom: 15px;
+        }
+        
+        .step {
+            background: #f0f4ff;
+            border-left: 4px solid #667eea;
+            padding: 20px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        
+        .step h4 {
+            color: #667eea;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+        }
+        
+        .step-number {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 30px;
+            height: 30px;
+            background: #667eea;
+            color: white;
+            border-radius: 50%;
+            margin-right: 10px;
+            font-weight: bold;
+            font-size: 0.9em;
+        }
+        
+        .code-block {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 15px;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 10px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+        
+        .info-box {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        
+        .warning-box {
+            background: #fff3e0;
+            border-left: 4px solid #ff9800;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        
+        .success-box {
+            background: #e8f5e9;
+            border-left: 4px solid #4caf50;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        th {
+            background: #667eea;
+            color: white;
+            font-weight: bold;
+        }
+        
+        tr:hover {
+            background: #f5f5f5;
+        }
+        
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin: 20px 0;
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1em;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+        }
+        
+        .btn:hover {
+            background: #764ba2;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        
+        .btn-alt {
+            background: #f0f0f0;
+            color: #333;
+            border: 1px solid #ddd;
+        }
+        
+        .btn-alt:hover {
+            background: #e0e0e0;
+        }
+        
+        .url-link {
+            display: inline-block;
+            background: #f0f0f0;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-family: monospace;
+            color: #667eea;
+            font-weight: 500;
+        }
+        
+        .quick-access {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        
+        .quick-access-item {
+            background: #f9f9f9;
+            border: 1px solid #ddd;
+            padding: 15px;
+            border-radius: 6px;
+            transition: all 0.3s ease;
+        }
+        
+        .quick-access-item:hover {
+            border-color: #667eea;
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.1);
+        }
+        
+        .quick-access-item h4 {
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+        
+        .screen-mockup {
+            background: #f0f0f0;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            padding: 20px;
+            margin: 20px 0;
+            text-align: center;
+            color: #999;
+            min-height: 200px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-style: italic;
+        }
+        
+        .footer {
+            background: #f8f9fa;
+            padding: 20px;
+            text-align: center;
+            color: #666;
+            font-size: 0.9em;
+            border-top: 1px solid #e0e0e0;
+        }
+        
+        .layout {
+            display: flex;
+            min-height: calc(100vh - 200px);
+        }
+        
+        .layout nav {
+            width: 250px;
+        }
+        
+        .layout .content {
+            flex: 1;
+            overflow-y: auto;
+        }
+        
+        @media (max-width: 768px) {
+            .layout {
+                flex-direction: column;
+            }
+            
+            .layout nav {
+                width: 100%;
+                border-right: none;
+                border-bottom: 1px solid #e0e0e0;
+                display: flex;
+                overflow-x: auto;
+            }
+            
+            .nav-item {
+                flex-shrink: 0;
+            }
+            
+            .header h1 {
+                font-size: 1.5em;
+            }
+        }
+        
+        .emoji {
+            font-size: 1.2em;
+            margin-right: 8px;
+        }
+        
+        ul, ol {
+            margin-left: 20px;
+            margin-top: 10px;
+        }
+        
+        li {
+            margin-bottom: 8px;
+        }
+        
+        a {
+            color: #667eea;
+            text-decoration: none;
+        }
+        
+        a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1><span class="emoji">🎓</span>完整浏览器操作指南</h1>
+            <p>学生报名 → 点数确认 → 进入教室 → 开始上课</p>
+        </div>
+        
+        <div class="layout">
+            <nav class="nav-sidebar">
+                <a class="nav-item active" onclick="showSection('overview')">
+                    <span class="emoji">📋</span>概览
+                </a>
+                <a class="nav-item" onclick="showSection('step1')">
+                    <span class="emoji">🚀</span>第一步：启动服务
+                </a>
+                <a class="nav-item" onclick="showSection('step2')">
+                    <span class="emoji">👤</span>第二步：准备账号
+                </a>
+                <a class="nav-item" onclick="showSection('step3')">
+                    <span class="emoji">📝</span>第三步：学生报名
+                </a>
+                <a class="nav-item" onclick="showSection('step4')">
+                    <span class="emoji">💰</span>第四步：点数确认
+                </a>
+                <a class="nav-item" onclick="showSection('step5')">
+                    <span class="emoji">👨‍🎓</span>第五步：学生进教室
+                </a>
+                <a class="nav-item" onclick="showSection('step6')">
+                    <span class="emoji">👨‍🏫</span>第六步：教师进教室
+                </a>
+                <a class="nav-item" onclick="showSection('step7')">
+                    <span class="emoji">🎥</span>第七步：双方进入
+                </a>
+                <a class="nav-item" onclick="showSection('step8')">
+                    <span class="emoji">💬</span>第八步：教室互动
+                </a>
+                <a class="nav-item" onclick="showSection('faq')">
+                    <span class="emoji">❓</span>常见问题
+                </a>
+                <a class="nav-item" onclick="showSection('links')">
+                    <span class="emoji">🔗</span>快速链接
+                </a>
+            </nav>
+            
+            <div class="content">
+                <!-- 概览 -->
+                <div id="overview" class="section active">
+                    <h2><span class="emoji">📋</span>完整流程概览</h2>
+                    
+                    <div class="info-box">
+                        <strong>此指南介绍如何在真实浏览器中手动操作以下流程：</strong>
+                    </div>
+                    
+                    <div class="quick-access">
+                        <div class="quick-access-item">
+                            <h4>1️⃣ 启动服务</h4>
+                            <p>启动本地开发服务器</p>
+                        </div>
+                        <div class="quick-access-item">
+                            <h4>2️⃣ 学生登入</h4>
+                            <p>以学生身份登入系统</p>
+                        </div>
+                        <div class="quick-access-item">
+                            <h4>3️⃣ 购买点数</h4>
+                            <p>如需进行点数充值</p>
+                        </div>
+                        <div class="quick-access-item">
+                            <h4>4️⃣ 报名课程</h4>
+                            <p>选择课程并使用点数报名</p>
+                        </div>
+                        <div class="quick-access-item">
+                            <h4>5️⃣ 确认扣除</h4>
+                            <p>在点数页面确认点数已扣除</p>
+                        </div>
+                        <div class="quick-access-item">
+                            <h4>6️⃣ 进入等待页</h4>
+                            <p>学生进入教室等待页</p>
+                        </div>
+                        <div class="quick-access-item">
+                            <h4>7️⃣ 教师准备</h4>
+                            <p>教师新窗口登入并进入相同课程</p>
+                        </div>
+                        <div class="quick-access-item">
+                            <h4>8️⃣ 进入教室</h4>
+                            <p>双方都准备好后进入教室房间</p>
+                        </div>
+                    </div>
+                    
+                    <h3>操作时间估算</h3>
+                    <table>
+                        <tr>
+                            <th>阶段</th>
+                            <th>预计时间</th>
+                            <th>说明</th>
+                        </tr>
+                        <tr>
+                            <td>启动服务 → 登入</td>
+                            <td>3-5 分钟</td>
+                            <td>首次启动较慢，包括编译时间</td>
+                        </tr>
+                        <tr>
+                            <td>报名课程</td>
+                            <td>2-3 分钟</td>
+                            <td>包括购买点数（如需）</td>
+                        </tr>
+                        <tr>
+                            <td>确认点数 → 进教室</td>
+                            <td>2 分钟</td>
+                            <td>快速导航确认</td>
+                        </tr>
+                        <tr>
+                            <td>教师登入 → 进教室</td>
+                            <td>2-3 分钟</td>
+                            <td>新窗口登入</td>
+                        </tr>
+                        <tr>
+                            <td>双方设备检测 → 进教室</td>
+                            <td>3-5 分钟</td>
+                            <td>包括浏览器权限提示</td>
+                        </tr>
+                        <tr>
+                            <td><strong>总计</strong></td>
+                            <td><strong>12-20 分钟</strong></td>
+                            <td>首次可能更长，之后会更快</td>
+                        </tr>
+                    </table>
+                    
+                    <h3>所需设备和软件</h3>
+                    <ul>
+                        <li><strong>电脑：</strong>Windows / Mac / Linux</li>
+                        <li><strong>浏览器：</strong>Chrome / Firefox / Edge / Safari（支持 WebRTC）</li>
+                        <li><strong>Node.js：</strong>v16 或更高版本</li>
+                        <li><strong>网络：</strong>至少 2 个独立的网络连接或同一网络下的 2 部设备</li>
+                        <li><strong>硬件：</strong>摄像头和麦克风（可选，设备检测会提示）</li>
+                    </ul>
+                    
+                    <div class="button-group">
+                        <button class="btn" onclick="showSection('step1')">开始第一步 →</button>
+                    </div>
+                </div>
+                
+                <!-- 第一步 -->
+                <div id="step1" class="section">
+                    <h2><span class="emoji">🚀</span>第一步：启动开发服务器</h2>
+                    
+                    <div class="step">
+                        <h4><span class="step-number">1</span>打开终端或命令提示符</h4>
+                        <ul>
+                            <li><strong>Windows：</strong>按 <code>Win + R</code>，输入 <code>cmd</code> 或 <code>powershell</code></li>
+                            <li><strong>Mac：</strong>打开 Terminal（应用 → 工具程序 → 终端）</li>
+                            <li><strong>Linux：</strong>打开您的终端应用</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="step">
+                        <h4><span class="step-number">2</span>进入项目目录</h4>
+                        <div class="code-block">cd D:\jvtutorcorner-rwd</div>
+                        <p>（请根据您的实际项目路径调整）</p>
+                    </div>
+                    
+                    <div class="step">
+                        <h4><span class="step-number">3</span>选择启动方式</h4>
+                        
+                        <h5>🔹 选项 A：HTTP 模式（推荐）</h5>
+                        <div class="code-block">npm run dev:http</div>
+                        <p><strong>访问：</strong><span class="url-link">http://localhost:3001</span></p>
+                        
+                        <h5>🔹 选项 B：标准开发模式</h5>
+                        <div class="code-block">npm run dev</div>
+                        <p><strong>访问：</strong><span class="url-link">http://localhost:3000</span></p>
+                        
+                        <h5>🔹 选项 C：HTTPS 模式</h5>
+                        <div class="code-block">npm run dev:https</div>
+                        <p><strong>访问：</strong><span class="url-link">https://localhost:3000</span></p>
+                    </div>
+                    
+                    <div class="success-box">
+                        ✅ 包含消息 <strong>"ready - started server on 0.0.0.0:3000"</strong> 或类似消息时，服务器已成功启动
+                    </div>
+                    
+                    <div class="step">
+                        <h4><span class="step-number">4</span>打开浏览器访问</h4>
+                        <ul>
+                            <li>打开任意浏览器（Chrome / Firefox / Edge）</li>
+                            <li>在地址栏粘贴上述链接（例如：<span class="url-link">http://localhost:3000</span>）</li>
+                            <li>按 Enter 访问</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="warning-box">
+                        ⚠️ <strong>首次启动可能需要 1-2 分钟</strong>，因为 Next.js 需要编译项目。请耐心等待。
+                    </div>
+                    
+                    <div class="button-group">
+                        <button class="btn btn-alt" onclick="showSection('overview')">← 返回概览</button>
+                        <button class="btn" onclick="showSection('step2')">下一步：准备账号 →</button>
+                    </div>
+                </div>
+                
+                <!-- 第二步 -->
+                <div id="step2" class="section">
+                    <h2><span class="emoji">👤</span>第二步：准备测试账号</h2>
+                    
+                    <h3>检查环境变量配置</h3>
+                    
+                    <div class="step">
+                        <h4><span class="step-number">1</span>定位 .env.local 文件</h4>
+                        <ul>
+                            <li>打开项目根目录</li>
+                            <li>查找名为 <strong>.env.local</strong> 的文件</li>
+                            <li>用文本编辑器打开（例如：VS Code、Notepad++）</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="step">
+                        <h4><span class="step-number">2</span>确保包含以下配置</h4>
+                        
+                        <div class="code-block">
+# 学生测试账号
+TEST_STUDENT_EMAIL=basic@test.com
+TEST_STUDENT_PASSWORD=123456
+
+# 教师测试账号
+TEST_TEACHER_EMAIL=lin@test.com
+TEST_TEACHER_PASSWORD=123456
+
+# 验证码绕过密钥
+LOGIN_BYPASS_SECRET=jv_secret_bypass_2024
+                        </div>
+                    </div>
+                    
+                    <div class="success-box">
+                        ✅ 如果缺少这些行，请复制上述代码粘贴到 .env.local 底部，然后保存。
+                    </div>
+                    
+                    <h3>账号信息速查表</h3>
+                    <table>
+                        <tr>
+                            <th>角色</th>
+                            <th>邮箱</th>
+                            <th>密码</th>
+                            <th>说明</th>
+                        </tr>
+                        <tr>
+                            <td>学生</td>
+                            <td><code>basic@test.com</code></td>
+                            <td><code>123456</code></td>
+                            <td>学生账号，用于报名课程</td>
+                        </tr>
+                        <tr>
+                            <td>教师</td>
+                            <td><code>lin@test.com</code></td>
+                            <td><code>123456</code></td>
+                            <td>教师账号，用于授课</td>
+                        </tr>
+                        <tr>
+                            <td>验证码</td>
+                            <td colspan="2"><code>jv_secret_bypass_2024</code></td>
+                            <td>在登入页面的验证码字段输入</td>
+                        </tr>
+                    </table>
+                    
+                    <div class="info-box">
+                        💡 <strong>提示：</strong>这些是测试账号。在生产环境中会有不同的账号管理方式。
+                    </div>
+                    
+                    <div class="button-group">
+                        <button class="btn btn-alt" onclick="showSection('step1')">← 返回第一步</button>
+                        <button class="btn" onclick="showSection('step3')">下一步：学生报名 →</button>
+                    </div>
+                </div>
+                
+                <!-- 第三步 -->
+                <div id="step3" class="section">
+                    <h2><span class="emoji">📝</span>第三步：学生报名课程</h2>
+                    
+                    <div class="step">
+                        <h4><span class="step-number">1</span>学生登入</h4>
+                        <ol>
+                            <li>打开第一个浏览器标签</li>
+                            <li>访问 <span class="url-link">http://localhost:3000/login</span></li>
+                            <li>输入以下信息：
+                                <ul>
+                                    <li><strong>邮箱：</strong>basic@test.com</li>
+                                    <li><strong>密码：</strong>123456</li>
+                                    <li><strong>验证码：</strong>jv_secret_bypass_2024</li>
+                                </ul>
+                            </li>
+                            <li>点击 <strong>登入</strong> 按钮</li>
+                            <li>等待跳转 → 应进入 <span class="url-link">/student_courses</span> 页面</li>
+                        </ol>
+                        <div class="success-box">
+                            ✅ 右上角应显示学生名称"三 张"或类似信息
+                        </div>
+                    </div>
+                    
+                    <div class="step">
+                        <h4><span class="step-number">2</span>检查点数（可选）</h4>
+                        <ol>
+                            <li>点击导航栏 → <strong>课程点数</strong></li>
+                            <li>或直接访问 <span class="url-link">http://localhost:3000/pricing</span></li>
+                            <li>观察页面显示的点数余额（例：0 点、10 点、100 点）</li>
+                            <li><strong>记录当前点数</strong>（稍后需要验证扣除）</li>
+                        </ol>
+                    </div>
+                    
+                    <div class="step">
+                        <h4><span class="step-number">3</span>购买点数（如点数不足）</h4>
+                        <p><strong>如果当前点数 ≥ 10，可跳过此步骤</strong></p>
+                        
+                        <ol>
+                            <li>在 <span class="url-link">/pricing</span> 页面找到任意点数套餐</li>
+                            <li>点击 <strong>购买点数</strong> 或 <strong>立即购买</strong> 按钮</li>
+                            <li>进入 <span class="url-link">/pricing/checkout</span> 结算页面</li>
+                            <li>选择支付方式（例如：PayPal、信用卡等）</li>
+                            <li>点击 <strong>模拟支付 (Demo)</strong> 按钮</li>
+                            <li>等待 2-3 秒 → 页面自动返回 <span class="url-link">/pricing</span> 或 <span class="url-link">/plans</span></li>
+                            <li>刷新页面（按 F5） → 确认点数已增加</li>
+                        </ol>
+                        <div class="success-box">
+                            ✅ 点数应从原来的点数增加（例如：0 点 → 20 点 / 100 点）
+                        </div>
+                    </div>
+                    
+                    <div class="step">
+                        <h4><span class="step-number">4</span>选择课程并报名</h4>
+                        <ol>
+                            <li>访问首页 <span class="url-link">http://localhost:3000</span></li>
+                            <li>或从导航栏点击 <strong>课程</strong> → 浏览课程列表</li>
+                            <li>点击任意课程卡片 → 进入课程详情页 <span class="url-link">/courses/{courseId}</span></li>
+                            <li>找到 <strong>立即报名课程</strong> 按钮，点击</li>
+                        </ol>
+                    </div>
+                    
+                    <div class="step">
+                        <h4><span class="step-number">5</span>填写报名信息</h4>
+                        <p>弹出的报名对话框中：</p>
+                        <ol>
+                            <li>选择 <strong>点数报名</strong> 标签（如有多个选项）</li>
+                            <li>页面会显示：
+                                <ul>
+                                    <li>点数成本（例如：10 点）</li>
+                                    <li>您的余额（例如：20 点）</li>
+                                </ul>
+                            </li>
+                            <li>在 <strong>开始时间</strong> 字段，输入以下任一时间：
+                                <ul>
+                                    <li><strong>当前时间</strong>（例如：2026-03-28 16:30）</li>
+                                    <li>或选择 <strong>未来 5 分钟内的时间</strong></li>
+                                </ul>
+                            </li>
+                            <li>💡 <strong>为什么需要设置当前/近期时间？</strong>因为"进入教室"按钮只在课程时间范围内显示</li>
+                        </ol>
+                    </div>
+                    
+                    <div class="warning-box">
+                        ⚠️ <strong>重要：</strong>如果设置开始时间为未来（超过 5 分钟），"进入教室"按钮将不会显示。请确保使用当前或很近的时间。
+                    </div>
+                    
+                    <div class="step">
+                        <h4><span class="step-number">6</span>确认报名</h4>
+                        <ol>
+                            <li>确认所有信息无误</li>
+                            <li>点击 <strong>确认报名</strong> 按钮</li>
+                            <li>系统处理报名请求（约 1-2 秒）</li>
+                            <li>页面自动跳转回 <span class="url-link">/student_courses</span>（我的课程）</li>
+                        </ol>
+                        <div class="success-box">
+                            ✅ 在课程列表中应看到刚才报名的课程
+                        </div>
+                    </div>
+                    
+                    <div class="button-group">
+                        <button class="btn btn-alt" onclick="showSection('step2')">← 返回第二步</button>
+                        <button class="btn" onclick="showSection('step4')">下一步：点数确认 →</button>
+                    </div>
+                </div>
+                
+                <!-- 第四步 -->
+                <div id="step4" class="section">
+                    <h2><span class="emoji">💰</span>第四步：确认点数扣除</h2>
+                    
+                    <div class="info-box">
+                        此步骤验证点数是否正确从您的账户扣除
+                    </div>
+                    
+                    <div class="step">
+                        <h4><span class="step-number">1</span>访问课程点数页面</h4>
+                        <ol>
+                            <li>点击导航栏 → <strong>课程点数</strong></li>
+                            <li>或直接访问 <span class="url-link">http://localhost:3000/pricing</span></li>
+                        </ol>
+                    </div>
+                    
+                    <div class="step">
+                        <h4><span class="step-number">2</span>查看点数余额</h4>
+                        <ol>
+                            <li>观察页面顶部显示的点数（通常带"点"字，例如："10 点"）</li>
+                            <li><strong>对比与第二步中记录的点数：</strong>
+                                <ul>
+                                    <li><strong>示例 1：</strong>之前 20 点 → 现在 10 点 ✅ 正确（扣除 10 点）</li>
+                                    <li><strong>示例 2：</strong>之前 0 点 买 20 点 → 报名后 10 点 ✅ 正确（扣除 10 点）</li>
+                                    <li><strong>示例 3：</strong>之前 20 点 → 现在仍是 20 点 ❌ 异常（未扣除）</li>
+                                </ul>
+                            </li>
+                        </ol>
+                    </div>
+                    
+                    <div class="success-box">
+                        ✅ <strong>预期结果：</strong>新余额 = 原余额 - 课程点数成本
+                    </div>
+                    
+                    <div class="warning-box">
+                        ⚠️ <strong>如果点数未扣除？</strong>
+                        <ul>
+                            <li>检查浏览器缓存：按 Ctrl+Shift+Delete 清除缓存</li>
+                            <li>刷新页面：按 F5 重新加载</li>
+                            <li>查看浏览器控制台（F12 → Console）是否有错误</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="step">
+                        <h4><span class="step-number">3</span>截图记录（可选）</h4>
+                        <p>为了文档记录，可以：</p>
+                        <ol>
+                            <li>按 Ctrl+PrintScreen 截图整个屏幕</li>
+                            <li>或在浏览器按 F12 → 点击设备切换图标 → 截图该面板</li>
+                            <li>保存截图以备后用</li>
+                        </ol>
+                    </div>
+                    
+                    <div class="button-group">
+                        <button class="btn btn-alt" onclick="showSection('step3')">← 返回第三步</button>
+                        <button class="btn" onclick="showSection('step5')">下一步：学生进教室 →</button>
+                    </div>
+                </div>
+                
+                <!-- 第五步 -->
+                <div id="step5" class="section">
+                    <h2><span class="emoji">👨‍🎓</span>第五步：学生进入教室等待页</h2>
+                    
+                    <div class="step">
+                        <h4><span class="step-number">1</span>返回学生课程列表</h4>
+                        <ol>
+                            <li>点击导航栏 → <strong>我的课程</strong></li>
+                            <li>或直接访问 <span class="url-link">http://localhost:3000/student_courses</span></li>
+                        </ol>
+                    </div>
+                    
+                    <div class="step">
+                        <h4><span class="step-number">2</span>找到报名的课程</h4>
+                        <ol>
+                            <li>在课程列表中找到刚才报名的课程行</li>
+                            <li>确认 <strong>开始时间</strong> 在当前时间范围内</li>
+                            <li>观察 <strong>进入教室</strong> 按钮（应为蓝色可点击链接）</li>
+                        </ol>
+                        <div class="warning-box">
+                            ⚠️ 如果 "进入教室" 按钮显示为灰色或 "-"，
+                            <ul>
+                                <li>检查开始时间是否已过期</li>
+                                <li>可以返回课程页面重新报名，使用更晚的时间</li>
+                            </ul>
+                        </div>
+                    </div>
+                    
+                    <div class="step">
+                        <h4><span class="step-number">3</span>点击"进入教室"</h4>
+                        <ol>
+                            <li>点击 <strong>进入教室</strong> 按钮</li>
+                            <li>页面加载 → 进入 <span class="url-link">/classroom/wait</span> 页面</li>
+                            <li>等待 2-3 秒让页面完全加载</li>
+                        </ol>
+                        <div class="success-box">
+                            ✅ 应看到以下内容：
+                            <ul>
+                                <li>课程名称</li>
+                                <li>角色标识：<strong>学生</strong></li>
+                                <li>设备检测区域（摄像头、麦克风状态）</li>
+                                <li><strong>设备检测</strong> 按钮</li>
+                                <li><strong>准备好</strong> 按钮（可能为灰色，device check 前）</li>
+                            </ul>
+                        </div>
+                    </div>
+                    
+                    <div class="step">
+                        <h4><span class="step-number">4</span>进行设备检测</h4>
+                        <ol>
+                            <li>点击 <strong>设备检测</strong> 按钮</li>
+                            <li>浏览器会弹出权限请求：
+                                <ul>
+                                    <li>"是否允许访问您的摄像头？" → 点击 <strong>允许</strong> 或 <strong>Allow</strong></li>
+                                    <li>"是否允许访问您的麦克风？" → 点击 <strong>允许</strong> 或 <strong>Allow</strong></li>
+                                </ul>
+                            </li>
+                            <li>等待 2-3 秒，系统检测您的设备</li>
+                            <li><strong>准备好</strong> 按钮应变为可点击（蓝色）</li>
+                        </ol>
+                        <div class="warning-box">
+                            ⚠️ <strong>没有摄像头/麦克风？</strong>
+                            <ul>
+                                <li>在开发环境 (localhost) 中，某些权限可能会自动绕过</li>
+                                <li>您仍可点击 "准备好" 继续</li>
+                            </ul>
+                        </div>
+                    </div>
+                    
+                    <div class="step">
+                        <h4><span class="step-number">5</span>标记为准备好</h4>
+                        <ol>
+                            <li>点击 <strong>准备好</strong> 按钮</li>
+                            <li>页面左下角会显示：<strong>已准备好</strong>（绿色状态）</li>
+                            <li>页面会等待教师也进入并准备好</li>
+                        </ol>
+                        <div class="info-box">
+                            💡 <strong>提示：</strong>此时耐心等待教师按照第六步进行操作
+                        </div>
+                    </div>
+                    
+                    <div class="button-group">
+                        <button class="btn btn-alt" onclick="showSection('step4')">← 返回第四步</button>
+                        <button class="btn" onclick="showSection('step6')">下一步：教师进教室 →</button>
+                    </div>
+                </div>
+                
+                <!-- 第六步 -->
+                <div id="step6" class="section">
+                    <h2><span class="emoji">👨‍🏫</span>第六步：教师进入教室等待页</h2>
+                    
+                    <div class="info-box">
+                        现在需要在 <strong>新浏览器窗口或隐身标签页</strong> 中以教师身份进行操作
+                    </div>
+                    
+                    <div class="step">
+                        <h4><span class="step-number">1</span>打开新浏览器窗口或隐身标签</h4>
+                        <ul>
+                            <li><strong>方法一（推荐）：</strong>按 Ctrl+N 打开新标签页</li>
+                            <li><strong>方法二：</strong>按 Ctrl+Shift+N 打开隐身/无痕窗口</li>
+                            <li>目的：防止与学生账号混淆</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="step">
+                        <h4><span class="step-number">2</span>教师登入</h4>
+                        <ol>
+                            <li>访问登入页 <span class="url-link">http://localhost:3000/login</span></li>
+                            <li>输入教师信息：
+                                <ul>
+                                    <li><strong>邮箱：</strong>lin@test.com</li>
+                                    <li><strong>密码：</strong>123456</li>
+                                    <li><strong>验证码：</strong>jv_secret_bypass_2024</li>
+                                </ul>
+                            </li>
+                            <li>点击 <strong>登入</strong> 按钮</li>
+                            <li>进入教师页面 <span class="url-link">/teacher_courses</span></li>
+                        </ol>
+                        <div class="success-box">
+                            ✅ 右上角应显示教师名称
+                        </div>
+                    </div>
+                    
+                    <div class="step">
+                        <h4><span class="step-number">3</span>找到同一个课程</h4>
+                        <ol>
+                            <li>在 <span class="url-link">/teacher_courses</span> 课程列表中找到学生报名的课程</li>
+                            <li><strong>确保课程 ID 相同</strong>（可在浏览器地址栏中检查 courseId 参数）</li>
+                            <li>确认 <strong>开始时间</strong> 在当前时间范围内</li>
+                            <li>观察 <strong>进入教室</strong> 按钮</li>
+                        </ol>
+                        <div class="warning-box">
+                            ⚠️ 如果在教师课程列表中看不到该课程：
+                            <ul>
+                                <li>检查课程是否已发布</li>
+                                <li>课程可能需要关联特定教师</li>
+                                <li>提供课程 ID，手动访问：<span class="url-link">http://localhost:3000/courses/{courseId}</span></li>
+                            </ul>
+                        </div>
+                    </div>
+                    
+                    <div class="step">
+                        <h4><span class="step-number">4</span>教师点击"进入教室"</h4>
+                        <ol>
+                            <li>点击 <strong>进入教室</strong> 按钮</li>
+                            <li>进入 <span class="url-link">/classroom/wait</span> 等待页</li>
+                            <li>观察页面是否显示学生已在线</li>
+                        </ol>
+                    </div>
+                    
+                    <div class="step">
+                        <h4><span class="step-number">5</span>教师进行设备检测</h4>
+                        <ol>
+                            <li>点击 <strong>设备检测</strong> 按钮</li>
+                            <li>允许浏览器访问摄像头和麦克风</li>
+                            <li>等待设备检测完成</li>
+                        </ol>
+                    </div>
+                    
+                    <div class="step">
+                        <h4><span class="step-number">6</span>教师标记为准备好</h4>
+                        <ol>
+                            <li>点击 <strong>准备好</strong> 按钮</li>
+                            <li>页面左下角显示：<strong>已准备好</strong>（绿色）</li>
+                            <li>此时学生的页面应该也会更新，显示教师已准备好</li>
+                        </ol>
+                        <div class="success-box">
+                            ✅ <strong>关键时刻：</strong>一旦教师也标记为"准备好"，
+                            <ul>
+                                <li>学生页面会显示教师已准备好</li>
+                                <li>"进入教室"按钮应变为活动状态</li>
+                                <li>双方都可以点击进入教室房间</li>
+                            </ul>
+                        </div>
+                    </div>
+                    
+                    <div class="button-group">
+                        <button class="btn btn-alt" onclick="showSection('step5')">← 返回第五步</button>
+                        <button class="btn" onclick="showSection('step7')">下一步：双方进入教室 →</button>
+                    </div>
+                </div>
+                
+                <!-- 第七步 -->
+                <div id="step7" class="section">
+                    <h2><span class="emoji">🎥</span>第七步：双方进入教室（/classroom/room）</h2>
+                    
+                    <div class="success-box">
+                        ✅ <strong>前提条件：</strong>学生和教师都已在等待页标记为"准备好"
+                    </div>
+                    
+                    <div class="step">
+                        <h4><span class="step-number">1</span>页面同步验证</h4>
+                        <p><strong>学生的浏览器应显示：</strong></p>
+                        <ul>
+                            <li>✓ 学生已准备好</li>
+                            <li>✓ 教师已准备好</li>
+                            <li>"进入教室" 按钮 （通常为蓝色）</li>
+                        </ul>
+                        <p><strong>教师的浏览器应显示：</strong></p>
+                        <ul>
+                            <li>✓ 教师已准备好</li>
+                            <li>✓ 学生已准备好</li>
+                            <li>"进入教室" 按钮 （通常为蓝色）</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="step">
+                        <h4><span class="step-number">2</span>学生点击"进入教室"</h4>
+                        <ol>
+                            <li>返回学生浏览器标签页</li>
+                            <li>点击等待页上的 <strong>进入教室</strong> 按钮</li>
+                            <li>页面加载 → 进入 <span class="url-link">/classroom/room</span></li>
+                            <li>等待 3-5 秒，Agora 音视频框架初始化</li>
+                        </ol>
+                    </div>
+                    
+                    <div class="step">
+                        <h4><span class="step-number">3</span>教师点击"进入教室"</h4>
+                        <ol>
+                            <li>返回教师浏览器标签页（新窗口/隐身窗口）</li>
+                            <li>点击等待页上的 <strong>进入教室</strong> 按钮</li>
+                            <li>页面加载 → 进入 <span class="url-link">/classroom/room</span></li>
+                            <li>等待 3-5 秒，Agora 音视频框架初始化</li>
+                        </ol>
+                    </div>
+                    
+                    <div class="step">
+                        <h4><span class="step-number">4</span>等待连接建立</h4>
+                        <p>进入教室后，系统需要时间建立音视频连接：</p>
+                        <ol>
+                            <li><strong>页面加载中：</strong>可能显示 "正在连接..." 或加载动画</li>
+                            <li><strong>本地视频预览：</strong>应看到自己的摄像头画面</li>
+                            <li><strong>远端视频：</strong>2-5 秒后应看到对方的摄像头画面</li>
+                            <li><strong>音频测试：</strong>可尝试说话，对方应能听到</li>
+                        </ol>
+                        <div class="warning-box">
+                            ⚠️ 如果 3-5 秒后仍看不到对方视频，检查：
+                            <ul>
+                                <li>浏览器控制台（F12）是否有错误</li>
+                                <li>网络连接是否正常</li>
+                                <li>Agora 权限是否被允许</li>
+                            </ul>
+                        </div>
+                    </div>
+                    
+                    <div class="success-box">
+                        ✅ <strong>成功标志：</strong>
+                        <ul>
+                            <li>两个浏览器都进入 /classroom/room 页面</li>
+                            <li>双方都能看到对方的视频（如已开启摄像头）</li>
+                            <li>可以听到对方的声音（如已开启麦克风）</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="button-group">
+                        <button class="btn btn-alt" onclick="showSection('step6')">← 返回第六步</button>
+                        <button class="btn" onclick="showSection('step8')">下一步：教室互动 →</button>
+                    </div>
+                </div>
+                
+                <!-- 第八步 -->
+                <div id="step8" class="section">
+                    <h2><span class="emoji">💬</span>第八步：教室内互动测试</h2>
+                    
+                    <div class="info-box">
+                        现在双方都在教室内，可以测试各种功能
+                    </div>
+                    
+                    <div class="step">
+                        <h4><span class="step-number">1</span>音视频控制</h4>
+                        <p><strong>左侧面板（通常）：</strong></p>
+                        <ul>
+                            <li>🔴 <strong>摄像头按钮</strong> - 点击开/关摄像头</li>
+                            <li>🎤 <strong>麦克风按钮</strong> - 点击开/关麦克风</li>
+                            <li>如打开摄像头，对方应实时看到您的视频</li>
+                            <li>如打开麦克风，对方应能听到您的声音</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="step">
+                        <h4><span class="step-number">2</span>聊天功能</h4>
+                        <ol>
+                            <li>点击右侧面板的 <strong>聊天</strong> 或 <strong>Chat</strong> 标签</li>
+                            <li>在文本框输入一条测试消息（例如："你好，我是学生"）</li>
+                            <li>点击 <strong>发送</strong> 按钮或按 Enter</li>
+                            <li>观察：
+                                <ul>
+                                    <li>自己的消息应显示在聊天窗口（通常靠右）</li>
+                                    <li>对方的浏览器中应实时显示您的消息（靠左）</li>
+                                </ul>
+                            </li>
+                            <li>对方也发送一条消息，您应能实时接收</li>
+                        </ol>
+                        <div class="success-box">
+                            ✅ 聊天应实时同步，双方都能看到对方的消息
+                        </div>
+                    </div>
+                    
+                    <div class="step">
+                        <h4><span class="step-number">3</span>互动白板（如可用）</h4>
+                        <ol>
+                            <li>点击中央或右侧的 <strong>白板</strong> 或 <strong>Whiteboard</strong> 标签</li>
+                            <li>选择绘图工具（例如：笔、线条、圆形等）</li>
+                            <li>在白板上绘画或书写</li>
+                            <li>观察：
+                                <ul>
+                                    <li>您的绘图应实时显示在对方的白板上</li>
+                                    <li>对方也可以在白板上绘图，您应能看到</li>
+                                </ul>
+                            </li>
+                        </ol>
+                    </div>
+                    
+                    <div class="step">
+                        <h4><span class="step-number">4</span>课程工具（如有）</h4>
+                        <p>根据您的教室实现，可能有以下功能：</p>
+                        <ul>
+                            <li>📋 <strong>课程计时器</strong> - 显示剩余课程时间</li>
+                            <li>🖐️ <strong>举手功能</strong> - 学生可举手吸引教师注意</li>
+                            <li>📄 <strong>文件共享</strong> - 上传 PDF 或文档</li>
+                            <li>📱 <strong>屏幕共享</strong> - 共享整个屏幕或特定窗口</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="step">
+                        <h4><span class="step-number">5</span>离开教室</h4>
+                        <p><strong>学生离开：</strong></p>
+                        <ol>
+                            <li>点击页面右上角或左下角的 <strong>离开</strong> 或 <strong>Leave</strong> 按钮</li>
+                            <li>可能会弹出确认对话框 → 点击 <strong>确认</strong></li>
+                            <li>页面自动返回 <span class="url-link">/student_courses</span></li>
+                        </ol>
+                        
+                        <p><strong>教师结束课程：</strong></p>
+                        <ol>
+                            <li>点击页面右上角或左下角的 <strong>结束课程</strong> 或 <strong>End Class</strong> 按钮</li>
+                            <li>弹出确认对话框："确定要结束课程吗？"</li>
+                            <li>点击 <strong>确认</strong> 或 <strong>Yes</strong></li>
+                            <li>页面自动返回 <span class="url-link">/teacher_courses</span></li>
+                            <li>💡 <strong>注意：</strong>教师结束课程后，学生可能也会被强制离开</li>
+                        </ol>
+                    </div>
+                    
+                    <div class="success-box">
+                        ✅ <strong>完整流程验证完成！</strong>
+                        <ul>
+                            <li>✅ 学生报名课程</li>
+                            <li>✅ 点数正确扣除</li>
+                            <li>✅ 学生进入教室</li>
+                            <li>✅ 教师进入教室</li>
+                            <li>✅ 双方可互动通信</li>
+                            <li>✅ 课程结束返回课程列表</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="warning-box">
+                        📝 <strong>后续测试建议：</strong>
+                        <ol>
+                            <li>测试多个课程，验证不同价格点的点数扣除</li>
+                            <li>测试时间边界情况（课程开始/结束时间附近）</li>
+                            <li>测试网络中断恢复的稳定性</li>
+                            <li>测试多学生同时进入同一课程</li>
+                            <li>记录所有问题并反馈给开发团队</li>
+                        </ol>
+                    </warning-box>
+                    
+                    <div class="button-group">
+                        <button class="btn btn-alt" onclick="showSection('step7')">← 返回第七步</button>
+                        <button class="btn" onclick="showSection('faq')">查看常见问题 →</button>
+                    </div>
+                </div>
+                
+                <!-- FAQ -->
+                <div id="faq" class="section">
+                    <h2><span class="emoji">❓</span>常见问题排查</h2>
+                    
+                    <div class="step">
+                        <h4>Q1：页面加载后一直空白或加载中</h4>
+                        <p><strong>可能原因：</strong></p>
+                        <ul>
+                            <li>Next.js 编译中</li>
+                            <li>浏览器缓存问题</li>
+                            <li>网络连接中断</li>
+                        </ul>
+                        <p><strong>解决方案：</strong></p>
+                        <ul>
+                            <li>1️⃣ 等待 2-3 分钟，开发服务器第一次启动较慢</li>
+                            <li>2️⃣ 按 <strong>Ctrl+Shift+Delete</strong> 清除浏览器缓存（History、Cookies、Storage）</li>
+                            <li>3️⃣ 关闭浏览器开发工具（F12）</li>
+                            <li>4️⃣ 按 <strong>F5</strong> 强制刷新</li>
+                            <li>5️⃣ 重启浏览器或尝试其他浏览器</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="step">
+                        <h4>Q2："进入教室"按钮显示为灰色或为"-"</h4>
+                        <p><strong>可能原因：</strong></p>
+                        <ul>
+                            <li>课程开始时间已过期</li>
+                            <li>未成功登入</li>
+                            <li>课程状态不正确</li>
+                        </ul>
+                        <p><strong>解决方案：</strong></p>
+                        <ul>
+                            <li>1️⃣ 检查您设置的课程开始时间是否 ≥ 当前时间</li>
+                            <li>2️⃣ 如已过期，返回课程页面重新报名，使用当前时间</li>
+                            <li>3️⃣ 检查浏览器右上角是否显示您的用户名</li>
+                            <li>4️⃣ 刷新页面重新加载课程列表</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="step">
+                        <h4>Q3：学生或教师在等待页看不到对方</h4>
+                        <p><strong>可能原因：</strong></p>
+                        <ul>
+                            <li>不在同一个课程</li>
+                            <li>页面同步延迟</li>
+                            <li>localStorage 数据混乱</li>
+                        </ul>
+                        <p><strong>解决方案：</strong></p>
+                        <ul>
+                            <li>1️⃣ 检查两个浏览器的 URL 中 <strong>courseId</strong> 是否相同</li>
+                            <li>2️⃣ 两个页面都按 <strong>F5</strong> 刷新</li>
+                            <li>3️⃣ 打开浏览器开发工具 (F12) → Application → Local Storage</li>
+                                <ul>
+                                    <li>检查 <strong>tutor_mock_user</strong> 字段内的 email 和 role 是否正确</li>
+                                    <li>学生应为 "basic@test.com" / "student"</li>
+                                    <li>教师应为 "lin@test.com" / "teacher"</li>
+                                </ul>
+                            <li>4️⃣ 如仍未解决，清除 localStorage 后重新登入</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="step">
+                        <h4>Q4："进入教室"后页面空白或视频加载不出</h4>
+                        <p><strong>可能原因：</strong></p>
+                        <ul>
+                            <li>Agora SDK 初始化中（正常需要 3-5 秒）</li>
+                            <li>摄像头/麦克风权限未被允许</li>
+                            <li>浏览器不支持 WebRTC</li>
+                        </ul>
+                        <p><strong>解决方案：</strong></p>
+                        <ul>
+                            <li>1️⃣ 耐心等待 5-10 秒，Agora 可能在初始化</li>
+                            <li>2️⃣ 按 F12 打开浏览器控制台，查看是否有红色错误</li>
+                            <li>3️⃣ 检查浏览器地址栏左侧是否有"摄像头/麦克风"权限图标，点击允许</li>
+                            <li>4️⃣ 尝试其他浏览器（推荐 Chrome）</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="step">
+                        <h4>Q5：设备检测失败（"无法访问摄像头/麦克风"）</h4>
+                        <p><strong>可能原因：</strong></p>
+                        <ul>
+                            <li>浏览器权限被拒绝</li>
+                            <li>HTTP vs HTTPS 限制</li>
+                            <li>设备被其他应用占用</li>
+                        </ul>
+                        <p><strong>解决方案：</strong></p>
+                        <ul>
+                            <li>1️⃣ <strong>HTTP 场景：</strong>某些浏览器在非 HTTPS 环境下限制摄像头权限</li>
+                                <ul>
+                                    <li>尝试 HTTPS：<code>npm run dev:https</code></li>
+                                    <li>或访问 <span class="url-link">https://localhost:3000</span></li>
+                                </ul>
+                            <li>2️⃣ <strong>权限管理：</strong>检查浏览器设置 → 隐私和安全 → 网站权限</li>
+                                <ul>
+                                    <li>确保 localhost:3000 被允许访问摄像头/麦克风</li>
+                                    <li>不在"拒绝"列表中</li>
+                                </ul>
+                            <li>3️⃣ <strong>设备冲突：</strong>关闭其他使用摄像头的应用或浏览器标签</li>
+                            <li>4️⃣ <strong>重启设备：</strong>重启您的摄像头或计算机</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="step">
+                        <h4>Q6：登入后收不到或显示错误的账户信息</h4>
+                        <p><strong>可能原因：</strong></p>
+                        <ul>
+                            <li>邮箱或密码输入错误</li>
+                            <li>.env.local 配置缺失</li>
+                        </ul>
+                        <p><strong>解决方案：</strong></p>
+                        <ul>
+                            <li>1️⃣ 重新检查 .env.local 中的账号信息</li>
+                            <li>2️⃣ 确保验证码字段输入的是 <code>jv_secret_bypass_2024</code>（而不是随机数字）</li>
+                            <li>3️⃣ 打开浏览器控制台（F12 → Console）查看登入 API 返回的错误信息</li>
+                            <li>4️⃣ 尝试手动访问 `http://localhost:3000/api/login` 测试后端</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="step">
+                        <h4>Q7：点数购买后没有增加</h4>
+                        <p><strong>可能原因：</strong></p>
+                        <ul>
+                            <li>页面缓存未更新</li>
+                            <li>支付模拟失败</li>
+                        </ul>
+                        <p><strong>解决方案：</strong></p>
+                        <ul>
+                            <li>1️⃣ 按 <strong>Ctrl+Shift+Delete</strong> 清除浏览器缓存</li>
+                            <li>2️⃣ 访问 <span class="url-link">http://localhost:3000/pricing</span> 重新查看</li>
+                            <li>3️⃣ 打开浏览器开发工具 (F12) → 检查 Network 标签中 API 调用的响应</li>
+                            <li>4️⃣ 检查终端是否有相关错误日志</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="step">
+                        <h4>Q8：点数已扣除，但课程列表中看不到该课程</h4>
+                        <p><strong>可能原因：</strong></p>
+                        <ul>
+                            <li>页面缓存问题</li>
+                            <li>API 请求失败</li>
+                        </ul>
+                        <p><strong>解决方案：</strong></p>
+                        <ul>
+                            <li>1️⃣ 刷新页面（F5）</li>
+                            <li>2️⃣ 清除浏览器缓存后重新访问</li>
+                            <li>3️⃣ 打开浏览器开发工具 → Network → 查看对 `/api/orders` 的请求</li>
+                            <li>4️⃣ 检查响应是否包含新报名的课程数据</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="step">
+                        <h4>Q9：网络请求显示 404 或 500 错误</h4>
+                        <p><strong>可能原因：</strong></p>
+                        <ul>
+                            <li>后端服务器未启动</li>
+                            <li>API 端点不存在或有 Bug</li>
+                        </ul>
+                        <p><strong>解决方案：</strong></p>
+                        <ul>
+                            <li>1️⃣ 检查终端中运行的开发服务器是否仍在运行</li>
+                            <li>2️⃣ 打开浏览器开发工具 (F12) → Console 和 Network 标签</li>
+                            <li>3️⃣ 记录具体的错误码和 API 路径</li>
+                            <li>4️⃣ 重启开发服务器（在终端按 Ctrl+C，然后重新运行 `npm run dev:http`）</li>
+                            <li>5️⃣ 提交 Bug 报告，附带错误日志</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="button-group">
+                        <button class="btn btn-alt" onclick="showSection('step8')">← 返回第八步</button>
+                        <button class="btn" onclick="showSection('links')">查看快速链接 →</button>
+                    </div>
+                </div>
+                
+                <!-- 快速链接 -->
+                <div id="links" class="section">
+                    <h2><span class="emoji">🔗</span>快速链接与资源</h2>
+                    
+                    <h3>本地开发环境链接</h3>
+                    <table>
+                        <tr>
+                            <th>页面</th>
+                            <th>URL</th>
+                            <th>说明</th>
+                        </tr>
+                        <tr>
+                            <td>首页</td>
+                            <td><span class="url-link">http://localhost:3000</span></td>
+                            <td>主首页，课程浏览</td>
+                        </tr>
+                        <tr>
+                            <td>登入</td>
+                            <td><span class="url-link">http://localhost:3000/login</span></td>
+                            <td>账户登入</td>
+                        </tr>
+                        <tr>
+                            <td>学生课程</td>
+                            <td><span class="url-link">http://localhost:3000/student_courses</span></td>
+                            <td>我的课程列表</td>
+                        </tr>
+                        <tr>
+                            <td>教师课程</td>
+                            <td><span class="url-link">http://localhost:3000/teacher_courses</span></td>
+                            <td>我要授课列表</td>
+                        </tr>
+                        <tr>
+                            <td>课程点数</td>
+                            <td><span class="url-link">http://localhost:3000/pricing</span></td>
+                            <td>点数购买与管理</td>
+                        </tr>
+                        <tr>
+                            <td>教室等待</td>
+                            <td><span class="url-link">http://localhost:3000/classroom/wait?courseId=TEST</span></td>
+                            <td>进入教室前的等待页</td>
+                        </tr>
+                        <tr>
+                            <td>教室房间</td>
+                            <td><span class="url-link">http://localhost:3000/classroom/room?courseId=TEST</span></td>
+                            <td>教室内的互动空间</td>
+                        </tr>
+                    </table>
+                    
+                    <h3>浏览器开发工具快捷键</h3>
+                    <table>
+                        <tr>
+                            <th>快捷键</th>
+                            <th>功能</th>
+                            <th>用途</th>
+                        </tr>
+                        <tr>
+                            <td><strong>F12</strong> 或 <strong>Ctrl+Shift+I</strong></td>
+                            <td>打开/关闭开发工具</td>
+                            <td>查看控制台、网络、存储等</td>
+                        </tr>
+                        <tr>
+                            <td><strong>F5</strong></td>
+                            <td>刷新页面</td>
+                            <td>重新加载当前页面</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Ctrl+R</strong></td>
+                            <td>硬刷新（清除缓存）</td>
+                            <td>忽略浏览器缓存重新加载</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Ctrl+Shift+Delete</strong></td>
+                            <td>打开清除数据对话框</td>
+                            <td>清除历史、Cookies、存储等</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Ctrl+N</strong></td>
+                            <td>打开新标签页</td>
+                            <td>用于教师登入（分离账号）</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Ctrl+Shift+N</strong></td>
+                            <td>打开隐身窗口</td>
+                            <td>完全隔离浏览数据</td>
+                        </tr>
+                    </table>
+                    
+                    <h3>项目文件与技能文档</h3>
+                    <ul>
+                        <li>📋 <strong>完整浏览器操作指南</strong>（本文件）：
+                            <code>BROWSER_OPERATION_GUIDE.md</code>
+                        </li>
+                        <li>🏗️ <strong>项目架构文档</strong>：
+                            <a href="architecture_overview.md">architecture_overview.md</a>
+                        </li>
+                        <li>📚 <strong>学生报名流程 Skill</strong>：
+                            <a href=".agents/skills/student-enrollment-flow/SKILL.md">.agents/skills/student-enrollment-flow/SKILL.md</a>
+                        </li>
+                        <li>📚 <strong>学生课程页面 Skill</strong>：
+                            <a href=".agents/skills/student-courses-page/SKILL.md">.agents/skills/student-courses-page/SKILL.md</a>
+                        </li>
+                        <li>📚 <strong>教师课程页面 Skill</strong>：
+                            <a href=".agents/skills/teacher-courses-page/SKILL.md">.agents/skills/teacher-courses-page/SKILL.md</a>
+                        </li>
+                        <li>📚 <strong>教室等待页 Skill</strong>：
+                            <a href=".agents/skills/classroom-wait/SKILL.md">.agents/skills/classroom-wait/SKILL.md</a>
+                        </li>
+                        <li>📚 <strong>教室房间 Skill</strong>：
+                            <a href=".agents/skills/classroom-room/SKILL.md">.agents/skills/classroom-room/SKILL.md</a>
+                        </li>
+                    </ul>
+                    
+                    <h3>测试账号信息</h3>
+                    <table>
+                        <tr>
+                            <th>角色</th>
+                            <th>邮箱</th>
+                            <th>密码</th>
+                            <th>验证码</th>
+                        </tr>
+                        <tr>
+                            <td>学生</td>
+                            <td><code>basic@test.com</code></td>
+                            <td><code>123456</code></td>
+                            <td rowspan="2"><code>jv_secret_bypass_2024</code></td>
+                        </tr>
+                        <tr>
+                            <td>教师</td>
+                            <td><code>lin@test.com</code></td>
+                            <td><code>123456</code></td>
+                        </tr>
+                    </table>
+                    
+                    <h3>命令行指令速查</h3>
+                    <div class="code-block">
+# 启动开发服务器
+npm run dev              # 标准模式 (localhost:3000)
+npm run dev:http        # HTTP 模式 (localhost:3001)
+npm run dev:https       # HTTPS 模式 (localhost:3000)
+
+# 编译项目
+npm run build
+
+# 生产模式启动
+npm start
+
+# 运行 Playwright 测试
+npm test
+npx playwright test e2e/student_enrollment.spec.ts
+
+# 清除缓存后启建
+rm -rf .next node_modules && npm install && npm run dev
+                    </div>
+                    
+                    <h3>需要帮助？</h3>
+                    <ul>
+                        <li>❓ 查看常见问题部分</li>
+                        <li>🐛 在浏览器开发工具 (F12) → Console 查看错误日志</li>
+                        <li>📞 联系开发团队提交 Bug 报告</li>
+                        <li>💡 查看项目 README.md 了解更多信息</li>
+                    </ul>
+                    
+                    <div class="button-group">
+                        <button class="btn btn-alt" onclick="showSection('faq')">← 返回常见问题</button>
+                        <button class="btn" onclick="showSection('overview')">← 返回概览</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p>📝 完整浏览器操作指南 v1.0 | 最后更新：2026-03-28</p>
+            <p>用于手动测试学生报名流程、点数管理和教室互动功能</p>
+        </div>
+    </div>
+    
+    <script>
+        function showSection(id) {
+            // Hide all sections
+            const sections = document.querySelectorAll('.section');
+            sections.forEach(section => section.classList.remove('active'));
+            
+            // Remove active class from all nav items
+            const navItems = document.querySelectorAll('.nav-item');
+            navItems.forEach(item => item.classList.remove('active'));
+            
+            // Show selected section
+            document.getElementById(id).classList.add('active');
+            
+            // Add active class to clicked nav item
+            event.target.classList.add('active');
+            
+            // Scroll to top
+            document.querySelector('.content').scrollTop = 0;
+        }
+    </script>
+</body>
+</html>

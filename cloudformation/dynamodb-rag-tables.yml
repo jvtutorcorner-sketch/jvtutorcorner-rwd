@@ -1,0 +1,157 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudFormation template for RAG (AI/Vector) supporting tables'
+
+Parameters:
+  CourseMaterialsTableName:
+    Type: String
+    Default: jvtutorcorner-course-materials
+    Description: DynamoDB table name for course materials and documents
+
+  VectorMetadataTableName:
+    Type: String
+    Default: jvtutorcorner-vector-metadata
+    Description: DynamoDB table name for vector embedding metadata
+
+Resources:
+  # ==========================================
+  # Course Materials Table (RAG Content)
+  # ==========================================
+  CourseMaterialsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref CourseMaterialsTableName
+      AttributeDefinitions:
+        - AttributeName: materialId
+          AttributeType: S
+        - AttributeName: courseId
+          AttributeType: S
+        - AttributeName: createdAt
+          AttributeType: S
+        - AttributeName: contentType
+          AttributeType: S
+      KeySchema:
+        - AttributeName: materialId
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+      GlobalSecondaryIndexes:
+        - IndexName: CourseIdIndex
+          KeySchema:
+            - AttributeName: courseId
+              KeyType: HASH
+            - AttributeName: createdAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: ContentTypeIndex
+          KeySchema:
+            - AttributeName: contentType
+              KeyType: HASH
+            - AttributeName: createdAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: KEYS_ONLY
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: false
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: Project
+          Value: jvtutorcorner
+        - Key: Environment
+          Value: production
+        - Key: Purpose
+          Value: RAG-CourseMaterials
+
+  # ==========================================
+  # Vector Metadata Table (Embedding Sync)
+  # ==========================================
+  VectorMetadataTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref VectorMetadataTableName
+      AttributeDefinitions:
+        - AttributeName: vectorId
+          AttributeType: S
+        - AttributeName: sourceType
+          AttributeType: S
+        - AttributeName: sourceId
+          AttributeType: S
+        - AttributeName: syncStatus
+          AttributeType: S
+      KeySchema:
+        - AttributeName: vectorId
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+      GlobalSecondaryIndexes:
+        - IndexName: SourceIndex
+          KeySchema:
+            - AttributeName: sourceType
+              KeyType: HASH
+            - AttributeName: sourceId
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: SyncStatusIndex
+          KeySchema:
+            - AttributeName: syncStatus
+              KeyType: HASH
+          Projection:
+            ProjectionType: KEYS_ONLY
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: false
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: Project
+          Value: jvtutorcorner
+        - Key: Environment
+          Value: production
+        - Key: Purpose
+          Value: RAG-VectorMetadata
+
+Outputs:
+  CourseMaterialsTableName:
+    Description: Name of Course Materials DynamoDB table
+    Value: !Ref CourseMaterialsTableName
+    Export:
+      Name: !Sub '${AWS::StackName}-CourseMaterialsTableName'
+
+  CourseMaterialsTableArn:
+    Description: ARN of Course Materials DynamoDB table
+    Value: !GetAtt CourseMaterialsTable.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-CourseMaterialsTableArn'
+
+  CourseMaterialsStreamArn:
+    Description: Stream ARN of Course Materials table (for Lambda triggers)
+    Value: !GetAtt CourseMaterialsTable.StreamArn
+    Export:
+      Name: !Sub '${AWS::StackName}-CourseMaterialsStreamArn'
+
+  VectorMetadataTableName:
+    Description: Name of Vector Metadata DynamoDB table
+    Value: !Ref VectorMetadataTableName
+    Export:
+      Name: !Sub '${AWS::StackName}-VectorMetadataTableName'
+
+  VectorMetadataTableArn:
+    Description: ARN of Vector Metadata DynamoDB table
+    Value: !GetAtt VectorMetadataTable.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-VectorMetadataTableArn'
+
+  VectorMetadataStreamArn:
+    Description: Stream ARN of Vector Metadata table (for sync monitoring)
+    Value: !GetAtt VectorMetadataTable.StreamArn
+    Export:
+      Name: !Sub '${AWS::StackName}-VectorMetadataStreamArn'

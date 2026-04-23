@@ -1,0 +1,188 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Three-Tier Report Scheduler - EventBridge + Lambda
+  Health check every 6 hours, daily news at 00:00 TW, weekly risk analysis Mon 00:00 TW
+
+Parameters:
+  AppBaseUrl:
+    Type: String
+    Description: The base URL of your Amplify-deployed application (e.g., https://main.xxxxx.amplifyapp.com)
+    AllowedPattern: 'https?://.*'
+    ConstraintDescription: Must be a valid URL starting with http:// or https://
+  
+  CronSecret:
+    Type: String
+    Description: The CRON_SECRET value matching your .env.local / Amplify environment variables
+    NoEcho: true
+    MinLength: 8
+
+Resources:
+  # IAM Role for Lambda
+  DailyReportLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: jvtutor-daily-report-lambda-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: CloudWatchLogs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: '*'
+
+  # Lambda Function — accepts tier from EventBridge input
+  DailyReportSchedulerFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: jvtutor-daily-report-scheduler
+      Description: Triggers tier-based report generation via the Next.js API
+      Runtime: nodejs20.x
+      Handler: index.handler
+      Timeout: 180
+      MemorySize: 128
+      Role: !GetAtt DailyReportLambdaRole.Arn
+      Environment:
+        Variables:
+          APP_BASE_URL: !Ref AppBaseUrl
+          CRON_SECRET: !Ref CronSecret
+      Code:
+        ZipFile: |
+          const https = require('https');
+          const http = require('http');
+          exports.handler = async (event) => {
+            const tier = (event && event.tier) || 'full';
+            console.log(`[Report] ${tier} tier triggered:`, new Date().toISOString());
+            const baseUrl = process.env.APP_BASE_URL;
+            const cronSecret = process.env.CRON_SECRET;
+            if (!baseUrl) return { statusCode: 500, body: 'APP_BASE_URL not set' };
+            const url = `${baseUrl}/api/cron/daily-report?tier=${tier}`;
+            console.log('[Report] Calling:', url);
+            const body = JSON.stringify({ tier });
+            return new Promise((resolve, reject) => {
+              const parsedUrl = new URL(url);
+              const client = parsedUrl.protocol === 'https:' ? https : http;
+              const req = client.request({
+                hostname: parsedUrl.hostname,
+                port: parsedUrl.port || 443,
+                path: `${parsedUrl.pathname}${parsedUrl.search}`,
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Content-Length': Buffer.byteLength(body),
+                  'Authorization': `Bearer ${cronSecret}`
+                },
+                timeout: 120000
+              }, (res) => {
+                let data = '';
+                res.on('data', c => data += c);
+                res.on('end', () => {
+                  console.log('[Report] Response:', data);
+                  resolve({ statusCode: 200, body: data });
+                });
+              });
+              req.on('error', e => { console.error('[Report] Error:', e); resolve({ statusCode: 500, body: e.message }); });
+              req.on('timeout', () => { req.destroy(); resolve({ statusCode: 504, body: 'Timeout' }); });
+              req.write(body);
+              req.end();
+            });
+          };
+
+  # ─── Tier 1: Health Check — every 6 hours ───
+  HealthCheckScheduleRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: jvtutor-report-health-6h
+      Description: 'AWS health check every 6 hours (no AI cost)'
+      ScheduleExpression: 'cron(0 */6 * * ? *)'
+      State: ENABLED
+      Targets:
+        - Id: HealthCheckTarget
+          Arn: !GetAtt DailyReportSchedulerFunction.Arn
+          Input: '{"tier": "health"}'
+
+  HealthCheckLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref DailyReportSchedulerFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt HealthCheckScheduleRule.Arn
+
+  # ─── Tier 2: Daily News — every day at 00:00 Taiwan Time (16:00 UTC) ───
+  DailyNewsScheduleRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: jvtutor-report-daily-news
+      Description: 'Daily news + health check at 00:00 Taiwan Time (16:00 UTC)'
+      ScheduleExpression: 'cron(0 16 * * ? *)'
+      State: ENABLED
+      Targets:
+        - Id: DailyNewsTarget
+          Arn: !GetAtt DailyReportSchedulerFunction.Arn
+          Input: '{"tier": "daily"}'
+
+  DailyNewsLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref DailyReportSchedulerFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt DailyNewsScheduleRule.Arn
+
+  # ─── Tier 3: Weekly Risk Analysis — Monday 00:00 Taiwan Time (Sunday 16:00 UTC) ───
+  WeeklyRiskScheduleRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: jvtutor-report-weekly-risk
+      Description: 'Weekly risk analysis + trends on Monday 00:00 Taiwan Time (Sun 16:00 UTC)'
+      ScheduleExpression: 'cron(0 16 ? * SUN *)'
+      State: ENABLED
+      Targets:
+        - Id: WeeklyRiskTarget
+          Arn: !GetAtt DailyReportSchedulerFunction.Arn
+          Input: '{"tier": "weekly"}'
+
+  WeeklyRiskLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref DailyReportSchedulerFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt WeeklyRiskScheduleRule.Arn
+
+Outputs:
+  LambdaFunctionArn:
+    Description: ARN of the Report Scheduler Lambda function
+    Value: !GetAtt DailyReportSchedulerFunction.Arn
+
+  HealthCheckRuleArn:
+    Description: ARN of the health check schedule (every 6h)
+    Value: !GetAtt HealthCheckScheduleRule.Arn
+
+  DailyNewsRuleArn:
+    Description: ARN of the daily news schedule (00:00 TW)
+    Value: !GetAtt DailyNewsScheduleRule.Arn
+
+  WeeklyRiskRuleArn:
+    Description: ARN of the weekly risk schedule (Mon 00:00 TW)
+    Value: !GetAtt WeeklyRiskScheduleRule.Arn
+
+  ScheduleSummary:
+    Description: Schedule overview
+    Value: >
+      Tier 1 Health: every 6h | 
+      Tier 2 Daily: 00:00 TW (16:00 UTC) | 
+      Tier 3 Weekly: Mon 00:00 TW (Sun 16:00 UTC)

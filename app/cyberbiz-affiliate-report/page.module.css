@@ -1,0 +1,349 @@
+.container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 32px 20px;
+  background: #f5f7fa;
+  min-height: 100vh;
+}
+
+.header {
+  margin-bottom: 32px;
+}
+
+.header h1 {
+  font-size: 28px;
+  font-weight: 700;
+  color: #333;
+  margin: 0 0 8px 0;
+}
+
+.subtitle {
+  font-size: 14px;
+  color: #666;
+  margin: 0;
+}
+
+.status {
+  color: #0984e3;
+  font-weight: 600;
+}
+
+.filterBar {
+  margin-bottom: 24px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.filterBar label {
+  font-size: 14px;
+  color: #333;
+  font-weight: 500;
+}
+
+.filterBar select {
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+  background: white;
+  cursor: pointer;
+}
+
+/* KPI Grid */
+.kpiGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+  margin-bottom: 32px;
+}
+
+.kpiCard {
+  background: white;
+  padding: 24px;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  transition: all 0.3s ease;
+}
+
+.kpiCard:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.kpiLabel {
+  font-size: 12px;
+  color: #999;
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+
+.kpiValue {
+  font-size: 28px;
+  font-weight: 700;
+  color: #333;
+  margin-bottom: 8px;
+}
+
+.unit {
+  font-size: 12px;
+  color: #999;
+  margin-left: 4px;
+}
+
+.kpiTrend {
+  font-size: 12px;
+}
+
+.trendUp {
+  color: #27ae60;
+  font-weight: 600;
+}
+
+/* Chart Section */
+.chartSection {
+  background: white;
+  padding: 32px;
+  border-radius: 8px;
+  margin-bottom: 32px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.chartSection h2 {
+  font-size: 16px;
+  font-weight: 700;
+  color: #333;
+  margin: 0 0 24px 0;
+}
+
+.chartContainer {
+  width: 100%;
+  height: 400px;
+  margin-bottom: 16px;
+  overflow-x: auto;
+}
+
+.chart {
+  width: 100%;
+  height: 100%;
+}
+
+.chartLegend {
+  display: flex;
+  gap: 32px;
+  padding: 16px;
+  background: #f9f9f9;
+  border-radius: 4px;
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #666;
+}
+
+.legendColor {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  display: inline-block;
+}
+
+/* Performance Section */
+.performanceSection {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 32px;
+  margin-bottom: 32px;
+}
+
+.performanceColumn {
+  background: white;
+  padding: 32px;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.performanceColumn h3 {
+  font-size: 14px;
+  font-weight: 700;
+  color: #333;
+  margin: 0 0 24px 0;
+}
+
+/* Bar Chart */
+.barChart {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.barItem {
+  display: grid;
+  grid-template-columns: 150px 1fr 80px;
+  gap: 12px;
+  align-items: center;
+}
+
+.barLabel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #333;
+  min-width: 150px;
+}
+
+.rank {
+  font-weight: 700;
+  color: #0984e3;
+  min-width: 20px;
+}
+
+.bar {
+  height: 24px;
+  background: #f0f0f0;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.barFill {
+  height: 100%;
+  background: linear-gradient(to right, #0984e3, #00b4d8);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.barValue {
+  text-align: right;
+  font-size: 12px;
+  color: #999;
+  font-weight: 600;
+}
+
+/* Pie Chart */
+.pieChart {
+  text-align: center;
+}
+
+.pieChartLegend {
+  display: flex;
+  justify-content: center;
+  gap: 24px;
+  margin-top: 16px;
+  font-size: 12px;
+  color: #666;
+}
+
+/* Table Section */
+.tableSection {
+  background: white;
+  padding: 32px;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.tableSection h2 {
+  font-size: 16px;
+  font-weight: 700;
+  color: #333;
+  margin: 0 0 24px 0;
+}
+
+.tableWrapper {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.table th {
+  background: #f9f9f9;
+  padding: 12px;
+  text-align: left;
+  font-weight: 700;
+  color: #333;
+  border-bottom: 2px solid #ddd;
+}
+
+.table td {
+  padding: 12px;
+  border-bottom: 1px solid #eee;
+  color: #666;
+}
+
+.table tbody tr:hover {
+  background: #f9f9f9;
+}
+
+.activityCell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.date {
+  font-size: 12px;
+  color: #999;
+}
+
+.name {
+  font-size: 13px;
+  color: #333;
+  font-weight: 500;
+}
+
+.totalRow {
+  background: #f5f5f5;
+  font-weight: 700;
+  color: #333;
+}
+
+.totalRow td {
+  border-top: 2px solid #ddd;
+  border-bottom: 2px solid #ddd;
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .performanceSection {
+    grid-template-columns: 1fr;
+  }
+
+  .kpiGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .container {
+    padding: 16px;
+  }
+
+  .kpiGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .chartSection,
+  .performanceColumn,
+  .tableSection {
+    padding: 16px;
+  }
+
+  .barItem {
+    grid-template-columns: 100px 1fr 60px;
+  }
+
+  .table {
+    font-size: 12px;
+  }
+
+  .table th,
+  .table td {
+    padding: 8px;
+  }
+}

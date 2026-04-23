@@ -1,0 +1,56 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudFormation template for AI Models configuration table'
+
+Parameters:
+  AIModelsTableName:
+    Type: String
+    Default: jvtutorcorner-ai-models
+    Description: DynamoDB table name for AI model configurations
+
+Resources:
+  # ==========================================
+  # AI Models Configuration Table
+  # ==========================================
+  AIModelsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref AIModelsTableName
+      AttributeDefinitions:
+        - AttributeName: provider
+          AttributeType: S
+      KeySchema:
+        - AttributeName: provider
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: Project
+          Value: jvtutorcorner
+        - Key: Environment
+          Value: production
+        - Key: Purpose
+          Value: AI-Models-Config
+
+Outputs:
+  AIModelsTableName:
+    Description: Name of AI Models DynamoDB table
+    Value: !Ref AIModelsTableName
+    Export:
+      Name: !Sub '${AWS::StackName}-AIModelsTableName'
+
+  AIModelsTableArn:
+    Description: ARN of AI Models DynamoDB table
+    Value: !GetAtt AIModelsTable.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-AIModelsTableArn'
+
+  AIModelsStreamArn:
+    Description: Stream ARN of AI Models table
+    Value: !GetAtt AIModelsTable.StreamArn
+    Export:
+      Name: !Sub '${AWS::StackName}-AIModelsStreamArn'
