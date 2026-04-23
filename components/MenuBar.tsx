@@ -169,7 +169,6 @@ export default function MenuBar() {
                           <>
                             <li><Link href="/admin/orders" onClick={() => setMenuOpen(false)} className="menu-link">{t('admin_orders')}</Link></li>
                             <li><Link href="/admin/teacher-reviews" onClick={() => setMenuOpen(false)} className="menu-link">老師審核</Link></li>
-                            <li><Link href="/admin/teacher-escrow" onClick={() => setMenuOpen(false)} className="menu-link">老師點數暫存</Link></li>
                             <li><Link href="/admin/ai-chat" onClick={() => setMenuOpen(false)} className="menu-link">AI 聊天室</Link></li>
                             <li><Link href="/admin/settings" onClick={() => setMenuOpen(false)} className="menu-link">{t('site_settings')}</Link></li>
                           </>
@@ -177,7 +176,10 @@ export default function MenuBar() {
 
                         {/* Teacher specific items */}
                         {user?.role === 'teacher' && (
-                          <li><Link href="/teacher/profile" onClick={() => setMenuOpen(false)} className="menu-link">個人檔案</Link></li>
+                          <>
+                            <li><Link href="/teacher/profile" onClick={() => setMenuOpen(false)} className="menu-link">個人檔案</Link></li>
+                            <li><Link href="/teacher/earnings" onClick={() => setMenuOpen(false)} className="menu-link">點數收入</Link></li>
+                          </>
                         )}
 
                         {/* Dynamic Dropdown Items */}
