@@ -182,6 +182,13 @@ async function readSettings() {
           ]
         },
         {
+          id: '/admin/teacher-escrow', path: '/admin/teacher-escrow', label: '後台：老師點數暫存', permissions: [
+            { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
+            { roleId: 'teacher', roleName: 'Teacher', menuVisible: false, dropdownVisible: false, pageVisible: false },
+            { roleId: 'student', roleName: 'Student', menuVisible: false, dropdownVisible: false, pageVisible: false }
+          ]
+        },
+        {
           id: '/admin/whiteboard_canvas', path: '/admin/whiteboard_canvas', label: '後台：原生白板', permissions: [
             { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
             { roleId: 'teacher', roleName: 'Teacher', menuVisible: false, dropdownVisible: false, pageVisible: false },
