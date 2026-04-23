@@ -109,8 +109,6 @@ export default function TeacherEscrowManager({ teacherId }: TeacherEscrowManager
 
   return (
     <div style={{ padding: '20px' }}>
-      <h2>老師點數暫存記錄</h2>
-
       {error && (
         <div style={{ color: '#d32f2f', padding: '10px', marginBottom: '20px', backgroundColor: '#ffebee', borderRadius: '4px' }}>
           ❌ {error}
@@ -118,24 +116,24 @@ export default function TeacherEscrowManager({ teacherId }: TeacherEscrowManager
       )}
 
       {/* Filter Section */}
-      <div style={{ marginBottom: '20px', padding: '15px', backgroundColor: '#f5f5f5', borderRadius: '4px' }}>
-        <label style={{ marginRight: '15px' }}>
-          <strong>狀態篩選：</strong>
+      <div style={{ marginBottom: '24px', display: 'flex', gap: '16px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <label style={{ fontSize: '14px', fontWeight: 'bold' }}>狀態篩選</label>
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value as any)}
-            style={{ marginLeft: '10px', padding: '5px', minWidth: '150px' }}
+            style={{ padding: '8px', border: '1px solid #ccc', borderRadius: '4px', minWidth: '150px' }}
           >
-            <option value="RELEASED">已釋放（老師收到）</option>
+            <option value="RELEASED">已釋放</option>
             <option value="HOLDING">暫存中</option>
             <option value="REFUNDED">已退款</option>
             <option value="ALL">全部</option>
           </select>
-        </label>
+        </div>
       </div>
 
       {/* Summary Section */}
-      {filterStatus === 'RELEASED' && (
+      {filterStatus === 'RELEASED' && !loading && (
         <div style={{
           padding: '15px',
           marginBottom: '20px',
@@ -157,19 +155,16 @@ export default function TeacherEscrowManager({ teacherId }: TeacherEscrowManager
         </p>
       )}
 
-      {/* Records Table */}
+      {/* Records Table - Simplified */}
       {!loading && escrows.length > 0 && (
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '15px' }}>
-            <thead style={{ backgroundColor: '#f5f5f5' }}>
+          <table style={{ borderCollapse: 'collapse', border: '2px solid #ccc', width: '100%' }}>
+            <thead>
               <tr>
-                <th style={{ padding: '10px', textAlign: 'left', borderBottom: '2px solid #ddd' }}>操作</th>
-                <th style={{ padding: '10px', textAlign: 'left', borderBottom: '2px solid #ddd' }}>Escrow ID</th>
-                <th style={{ padding: '10px', textAlign: 'left', borderBottom: '2px solid #ddd' }}>訂單 ID</th>
-                <th style={{ padding: '10px', textAlign: 'left', borderBottom: '2px solid #ddd' }}>課程名稱</th>
-                <th style={{ padding: '10px', textAlign: 'center', borderBottom: '2px solid #ddd' }}>點數</th>
-                <th style={{ padding: '10px', textAlign: 'center', borderBottom: '2px solid #ddd' }}>狀態</th>
-                <th style={{ padding: '10px', textAlign: 'left', borderBottom: '2px solid #ddd' }}>釋放時間</th>
+                <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>操作</th>
+                <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'center' }}>點數</th>
+                <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'center' }}>狀態</th>
+                <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>釋放時間</th>
               </tr>
             </thead>
             <tbody>
@@ -177,11 +172,11 @@ export default function TeacherEscrowManager({ teacherId }: TeacherEscrowManager
                 <tr
                   key={record.escrowId}
                   style={{
-                    borderBottom: '1px solid #eee',
+                    borderBottom: '2px solid #ccc',
                     backgroundColor: expandedEscrowId === record.escrowId ? '#f9f9f9' : 'white',
                   }}
                 >
-                  <td style={{ padding: '10px' }}>
+                  <td style={{ border: '2px solid #ccc', padding: '8px' }}>
                     <button
                       onClick={() =>
                         setExpandedEscrowId(
@@ -201,19 +196,10 @@ export default function TeacherEscrowManager({ teacherId }: TeacherEscrowManager
                       {expandedEscrowId === record.escrowId ? '收起' : '詳情'}
                     </button>
                   </td>
-                  <td style={{ padding: '10px', fontFamily: 'monospace', fontSize: '12px' }}>
-                    {record.escrowId.slice(0, 8)}...
-                  </td>
-                  <td style={{ padding: '10px', fontFamily: 'monospace', fontSize: '12px' }}>
-                    {record.orderId.slice(0, 8)}...
-                  </td>
-                  <td style={{ padding: '10px' }}>
-                    <strong>{record.courseTitle}</strong>
-                  </td>
-                  <td style={{ padding: '10px', textAlign: 'center', fontWeight: 'bold', color: '#2e7d32' }}>
+                  <td style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'center', fontWeight: 'bold', color: '#2e7d32' }}>
                     +{record.points}
                   </td>
-                  <td style={{ padding: '10px', textAlign: 'center' }}>
+                  <td style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'center' }}>
                     <span
                       style={{
                         padding: '4px 8px',
@@ -227,7 +213,7 @@ export default function TeacherEscrowManager({ teacherId }: TeacherEscrowManager
                       {getStatusLabel(record.status)}
                     </span>
                   </td>
-                  <td style={{ padding: '10px', fontSize: '12px' }}>
+                  <td style={{ border: '2px solid #ccc', padding: '8px', fontSize: '12px' }}>
                     {record.releasedAt ? formatDate(record.releasedAt) : '—'}
                   </td>
                 </tr>
