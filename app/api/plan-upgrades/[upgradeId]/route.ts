@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { ddbDocClient as docClient } from '@/lib/dynamo';
 import { UpdateCommand, GetCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { getUserPoints, setUserPoints } from '@/lib/pointsStorage';
 
 const UPGRADES_TABLE = process.env.DYNAMODB_TABLE_PLAN_UPGRADES || 'jvtutorcorner-plan-upgrades';
 const PROFILES_TABLE = process.env.DYNAMODB_TABLE_PROFILES || 'jvtutorcorner-profiles';
@@ -93,7 +94,6 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ up
             if (upgrade.itemType === 'POINTS' && upgrade.userId && upgrade.points) {
                 try {
                     // Use the unified storage layer to ensure consistency (works for both DynamoDB and LOCAL_POINTS)
-                    const { getUserPoints, setUserPoints } = await import('@/lib/pointsStorage');
                     const currentBalance = await getUserPoints(upgrade.userId);
                     const newBalance = currentBalance + upgrade.points;
                     await setUserPoints(upgrade.userId, newBalance);

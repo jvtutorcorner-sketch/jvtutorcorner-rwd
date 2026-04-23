@@ -119,7 +119,8 @@ export async function POST(request: Request) {
         // 🔒 Place deducted points into escrow until course completion
         const newEscrowId = randomUUID();
         try {
-          await createEscrow({
+          // Build the core escrow params first
+          const escrowParams: any = {
             escrowId: newEscrowId,
             orderId,
             enrollmentId: enrollmentId || '',
@@ -128,13 +129,17 @@ export async function POST(request: Request) {
             courseId,
             courseTitle,
             points: effectivePointsToDeduct,
-            teacherName: courseTeacherName || undefined,
-            durationMinutes: durationMinutes || undefined,
-            totalSessions: totalSessions || undefined,
-            courseStartDate: courseStartDate || undefined,
-            courseStartTime: courseStartTime || undefined,
-            courseEndTime: courseEndTime || undefined,
-          });
+          };
+
+          // Add optional display fields if available
+          if (courseTeacherName) escrowParams.teacherName = courseTeacherName;
+          if (durationMinutes) escrowParams.durationMinutes = durationMinutes;
+          if (totalSessions) escrowParams.totalSessions = totalSessions;
+          if (courseStartDate) escrowParams.courseStartDate = courseStartDate;
+          if (courseStartTime) escrowParams.courseStartTime = courseStartTime;
+          if (courseEndTime) escrowParams.courseEndTime = courseEndTime;
+
+          await createEscrow(escrowParams);
           pointsEscrowId = newEscrowId;
         } catch (escrowErr) {
           // Escrow creation failure is non-fatal — points were already deducted.

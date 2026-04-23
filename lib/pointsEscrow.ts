@@ -35,6 +35,13 @@ export type EscrowRecord = {
   updatedAt: string;
   releasedAt?: string;
   refundedAt?: string;
+  // Optional display fields stored at creation time (for display when course is deleted)
+  teacherName?: string;
+  durationMinutes?: number;
+  totalSessions?: number;
+  courseStartDate?: string;
+  courseStartTime?: string;
+  courseEndTime?: string;
 };
 
 // In-memory fallback for development
@@ -151,6 +158,12 @@ export async function createEscrow(params: {
   courseId: string;
   courseTitle: string;
   points: number;
+  teacherName?: string;
+  durationMinutes?: number;
+  totalSessions?: number;
+  courseStartDate?: string;
+  courseStartTime?: string;
+  courseEndTime?: string;
 }): Promise<EscrowRecord> {
   const now = new Date().toISOString();
   const record: EscrowRecord = {

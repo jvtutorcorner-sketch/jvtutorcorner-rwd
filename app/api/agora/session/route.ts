@@ -87,9 +87,11 @@ export async function POST(req: NextRequest) {
  *   durationSeconds— 實際課堂秒數
  */
 export async function PATCH(req: NextRequest) {
+    let reqStatus: string | undefined;
     try {
         const body = await req.json();
         const { sessionId, status, endedAt, durationSeconds } = body;
+        reqStatus = status;
 
         if (!sessionId) {
             return NextResponse.json({ ok: false, error: 'sessionId is required' }, { status: 400 });
@@ -145,6 +147,17 @@ export async function PATCH(req: NextRequest) {
     } catch (error: any) {
         if (error.name === 'ConditionalCheckFailedException') {
             return NextResponse.json({ ok: false, error: 'Session not found' }, { status: 404 });
+        }
+        // If the agora sessions table doesn't exist (dev/local env), return ok for
+        // non-completed statuses — escrow release only triggers on 'completed'
+        if (error.__type === 'com.amazonaws.dynamodb.v20120810#ResourceNotFoundException' ||
+            error.name === 'ResourceNotFoundException') {
+            console.warn('[agora/session PATCH] agora-sessions table not found');
+            if (reqStatus === 'completed') {
+                console.error('[agora/session PATCH] Cannot release escrow: sessions table missing');
+                return NextResponse.json({ ok: false, error: 'Failed to update session' }, { status: 500 });
+            }
+            return NextResponse.json({ ok: true, warning: 'sessions table not found, session update skipped' });
         }
         console.error('Error updating Agora session:', error);
         return NextResponse.json({ ok: false, error: 'Failed to update session' }, { status: 500 });

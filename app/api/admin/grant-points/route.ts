@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ScanCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
 import { ddbDocClient } from '@/lib/dynamo';
+import { LOCAL_POINTS } from '@/lib/pointsStorage';
 
 const PROFILES_TABLE = process.env.DYNAMODB_TABLE_PROFILES || process.env.PROFILES_TABLE || 'jvtutorcorner-profiles';
 const POINTS_TABLE = process.env.DYNAMODB_TABLE_USER_POINTS || 'jvtutorcorner-user-points';
@@ -11,9 +12,6 @@ const useDynamo =
   POINTS_TABLE.length > 0 &&
   (process.env.NODE_ENV === 'production' ||
     !!(process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID));
-
-// In-memory fallback for development
-const LOCAL_POINTS: Record<string, number> = {};
 
 // Only allow running in non-production by default, or require ADMIN_SECRET in production
 export async function POST(req: NextRequest) {

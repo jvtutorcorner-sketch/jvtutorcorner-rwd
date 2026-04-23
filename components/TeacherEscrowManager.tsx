@@ -16,6 +16,13 @@ type EscrowRecord = {
   updatedAt: string;
   releasedAt?: string;
   refundedAt?: string;
+  // Optional display fields stored at creation time
+  teacherName?: string;
+  durationMinutes?: number;
+  totalSessions?: number;
+  courseStartDate?: string;
+  courseStartTime?: string;
+  courseEndTime?: string;
 };
 
 type CourseInfo = {
@@ -210,7 +217,7 @@ export default function TeacherEscrowManager({ teacherId }: TeacherEscrowManager
       case 'RELEASED':
         return '已入帳';
       case 'HOLDING':
-        return '等待釋放';
+        return '課程進行中';
       case 'REFUNDED':
         return '已退款';
       default:
@@ -232,11 +239,11 @@ export default function TeacherEscrowManager({ teacherId }: TeacherEscrowManager
   };
 
   // Use totalSessions from course directly; count RELEASED escrows as completed sessions
-  const getRemainingInfo = (courseId: string) => {
-    const total = courseMap[courseId]?.totalSessions || 0;
+  const getRemainingInfo = (courseId: string, record?: EscrowRecord) => {
+    const total = courseMap[courseId]?.totalSessions ?? record?.totalSessions ?? 0;
     const completed = escrows.filter(r => r.courseId === courseId && r.status === 'RELEASED').length;
     const remaining = Math.max(0, total - completed);
-    const duration = courseMap[courseId]?.durationMinutes || 0;
+    const duration = courseMap[courseId]?.durationMinutes ?? record?.durationMinutes ?? 0;
     const remainingMinutes = remaining * duration;
     return { remaining, remainingMinutes, total, completed };
   };
@@ -261,7 +268,7 @@ export default function TeacherEscrowManager({ teacherId }: TeacherEscrowManager
             style={{ marginLeft: '10px', padding: '5px', minWidth: '150px' }}
           >
             <option value="RELEASED">已入帳</option>
-            <option value="HOLDING">等待釋放</option>
+            <option value="HOLDING">課程進行中</option>
             <option value="REFUNDED">已退款</option>
             <option value="ALL">全部</option>
           </select>
@@ -313,30 +320,31 @@ export default function TeacherEscrowManager({ teacherId }: TeacherEscrowManager
             </thead>
             <tbody>
               {escrows.map((record) => {
-                const { remaining, remainingMinutes } = getRemainingInfo(record.courseId);
+                const { remaining, remainingMinutes } = getRemainingInfo(record.courseId, record);
                 const studentName = userMap[record.studentId]
                   ? `${userMap[record.studentId].firstName || ''} ${userMap[record.studentId].lastName || ''}`.trim()
                   : record.studentId;
                 const courseInfo = courseMap[record.courseId];
+                // Use escrow record fields first, fall back to courseInfo from API
+                const resolvedTeacherName = record.teacherName || courseInfo?.teacherName || '-';
+                const resolvedDuration = record.durationMinutes ?? courseInfo?.durationMinutes;
                 const startDateTime = (() => {
-                  const c = courseInfo;
-                  if (!c) return '-';
-                  const rawDatePart = c.nextStartDate || c.startDate;
-                  if (!rawDatePart) return '-';
-                  const datePart = rawDatePart.split('T')[0];
-                  const cleanedTime = cleanTimeString(c.startTime);
+                  const rawDate = courseInfo?.nextStartDate || courseInfo?.startDate || record.courseStartDate;
+                  const rawTime = courseInfo?.startTime || record.courseStartTime;
+                  if (!rawDate) return '-';
+                  const datePart = rawDate.split('T')[0];
+                  const cleanedTime = cleanTimeString(rawTime);
                   if (!cleanedTime) {
                     return formatDateTime(`${datePart}T09:00:00`);
                   }
                   return formatDateTime(`${datePart}T${cleanedTime}`);
                 })();
                 const endDateTime = (() => {
-                  const c = courseInfo;
-                  if (!c) return '-';
-                  const rawDatePart = c.nextStartDate || c.startDate;
-                  if (!rawDatePart) return '-';
-                  const datePart = rawDatePart.split('T')[0];
-                  const cleanedTime = cleanTimeString(c.endTime);
+                  const rawDate = courseInfo?.nextStartDate || courseInfo?.startDate || record.courseStartDate;
+                  const rawTime = courseInfo?.endTime || record.courseEndTime;
+                  if (!rawDate) return '-';
+                  const datePart = rawDate.split('T')[0];
+                  const cleanedTime = cleanTimeString(rawTime);
                   if (!cleanedTime) {
                     return formatDateTime(`${datePart}T10:00:00`);
                   }
@@ -358,10 +366,10 @@ export default function TeacherEscrowManager({ teacherId }: TeacherEscrowManager
                       <strong>{record.courseTitle}</strong>
                     </td>
                     <td data-label="老師" style={{ border: '2px solid #ccc', padding: '6px' }}>
-                      {courseInfo?.teacherName || '-'}
+                      {resolvedTeacherName}
                     </td>
                     <td data-label="單堂時間(分)" style={{ border: '2px solid #ccc', padding: '6px', textAlign: 'center' }}>
-                      {courseInfo?.durationMinutes || '-'}
+                      {resolvedDuration ?? '-'}
                     </td>
                     <td data-label="剩餘課程數" style={{ border: '2px solid #ccc', padding: '6px', textAlign: 'center' }}>
                       {remaining}
@@ -441,21 +449,21 @@ export default function TeacherEscrowManager({ teacherId }: TeacherEscrowManager
             const studentName = userMap[record.studentId]
               ? `${userMap[record.studentId].firstName || ''} ${userMap[record.studentId].lastName || ''}`.trim()
               : record.studentId;
-            const { remaining, remainingMinutes, total, completed } = getRemainingInfo(record.courseId);
+            const { remaining, remainingMinutes, total, completed } = getRemainingInfo(record.courseId, record);
             const detailStartDateTime = (() => {
-              if (!courseInfo) return '-';
-              const rawDatePart = courseInfo.nextStartDate || courseInfo.startDate;
-              if (!rawDatePart) return '-';
-              const datePart = rawDatePart.split('T')[0];
-              const cleanedTime = cleanTimeString(courseInfo.startTime);
+              const rawDate = courseInfo?.nextStartDate || courseInfo?.startDate || record.courseStartDate;
+              const rawTime = courseInfo?.startTime || record.courseStartTime;
+              if (!rawDate) return '-';
+              const datePart = rawDate.split('T')[0];
+              const cleanedTime = cleanTimeString(rawTime);
               return cleanedTime ? formatDateTime(`${datePart}T${cleanedTime}`) : formatDateTime(`${datePart}T09:00:00`);
             })();
             const detailEndDateTime = (() => {
-              if (!courseInfo) return '-';
-              const rawDatePart = courseInfo.nextStartDate || courseInfo.startDate;
-              if (!rawDatePart) return '-';
-              const datePart = rawDatePart.split('T')[0];
-              const cleanedTime = cleanTimeString(courseInfo.endTime);
+              const rawDate = courseInfo?.nextStartDate || courseInfo?.startDate || record.courseStartDate;
+              const rawTime = courseInfo?.endTime || record.courseEndTime;
+              if (!rawDate) return '-';
+              const datePart = rawDate.split('T')[0];
+              const cleanedTime = cleanTimeString(rawTime);
               return cleanedTime ? formatDateTime(`${datePart}T${cleanedTime}`) : formatDateTime(`${datePart}T10:00:00`);
             })();
             return (
@@ -489,7 +497,7 @@ export default function TeacherEscrowManager({ teacherId }: TeacherEscrowManager
                   </tr>
                   <tr>
                     <td style={{ padding: '6px 8px', fontWeight: 'bold', color: '#555' }}>老師:</td>
-                    <td style={{ padding: '6px 8px' }}>{courseInfo?.teacherName || '-'}</td>
+                    <td style={{ padding: '6px 8px' }}>{record.teacherName || courseInfo?.teacherName || '-'}</td>
                   </tr>
                   <tr>
                     <td style={{ padding: '6px 8px', fontWeight: 'bold', color: '#555' }}>老師 ID:</td>
@@ -497,7 +505,7 @@ export default function TeacherEscrowManager({ teacherId }: TeacherEscrowManager
                   </tr>
                   <tr>
                     <td style={{ padding: '6px 8px', fontWeight: 'bold', color: '#555' }}>單堂時間(分):</td>
-                    <td style={{ padding: '6px 8px' }}>{courseInfo?.durationMinutes || '-'}</td>
+                    <td style={{ padding: '6px 8px' }}>{record.durationMinutes ?? courseInfo?.durationMinutes ?? '-'}</td>
                   </tr>
                   <tr>
                     <td style={{ padding: '6px 8px', fontWeight: 'bold', color: '#555' }}>課程總數:</td>
