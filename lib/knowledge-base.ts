@@ -92,7 +92,7 @@ export async function searchKnowledge(query: string, limit: number = 5) {
         with_payload: true,
     });
 
-    return results.map((r) => ({
+    return results.map((r: { score: number; payload?: Record<string, unknown> | null }) => ({
         score: r.score,
         metadata: r.payload as unknown as KnowledgeMetadata,
         content: r.payload?.content as string,
