@@ -41,6 +41,7 @@ const LICENSES_TABLE = process.env.DYNAMODB_TABLE_LICENSES || 'jvtutorcorner-lic
 const PROFILES_TABLE = process.env.DYNAMODB_TABLE_PROFILES || 'jvtutorcorner-profiles';
 const COURSES_TABLE = process.env.DYNAMODB_TABLE_COURSES || 'jvtutorcorner-courses';
 const PLAN_UPGRADES_TABLE = process.env.DYNAMODB_TABLE_PLAN_UPGRADES || 'jvtutorcorner-plan-upgrades';
+const POINTS_ESCROW_TABLE = process.env.DYNAMODB_TABLE_POINTS_ESCROW || 'jvtutorcorner-points-escrow';
 
 // ==========================================
 // DynamoDB Client Setup
@@ -470,6 +471,65 @@ async function createPlanUpgradesTable() {
 }
 
 
+async function createPointsEscrowTable() {
+  console.log(`\n📦 [PointsEscrow] Creating table: ${POINTS_ESCROW_TABLE}`);
+
+  if (await tableExists(POINTS_ESCROW_TABLE)) {
+    console.log(`⚠️  [PointsEscrow] Table already exists, skipping creation`);
+    return;
+  }
+
+  const params = {
+    TableName: POINTS_ESCROW_TABLE,
+    BillingMode: 'PAY_PER_REQUEST',
+    AttributeDefinitions: [
+      { AttributeName: 'escrowId', AttributeType: 'S' },
+      { AttributeName: 'orderId',  AttributeType: 'S' },
+      { AttributeName: 'studentId', AttributeType: 'S' },
+      { AttributeName: 'teacherId', AttributeType: 'S' },
+    ],
+    KeySchema: [
+      { AttributeName: 'escrowId', KeyType: 'HASH' },
+    ],
+    GlobalSecondaryIndexes: [
+      {
+        IndexName: 'byOrderId',
+        KeySchema: [{ AttributeName: 'orderId', KeyType: 'HASH' }],
+        Projection: { ProjectionType: 'ALL' },
+      },
+      {
+        IndexName: 'byStudentId',
+        KeySchema: [{ AttributeName: 'studentId', KeyType: 'HASH' }],
+        Projection: { ProjectionType: 'ALL' },
+      },
+      {
+        IndexName: 'byTeacherId',
+        KeySchema: [{ AttributeName: 'teacherId', KeyType: 'HASH' }],
+        Projection: { ProjectionType: 'ALL' },
+      },
+    ],
+    SSESpecification: { Enabled: true },
+    Tags: [
+      { Key: 'Project', Value: 'jvtutorcorner' },
+      { Key: 'Purpose', Value: 'Points-Escrow' },
+    ],
+  };
+
+  try {
+    await client.send(new CreateTableCommand(params));
+    console.log(`✅ [PointsEscrow] Table creation initiated`);
+    await waitForTableActive(POINTS_ESCROW_TABLE);
+  } catch (error) {
+    if (error instanceof ResourceInUseException) {
+      console.log(`⚠️  [PointsEscrow] Table already exists (race condition)`);
+    } else {
+      console.error(`❌ [PointsEscrow] Failed to create table:`, error.message);
+      throw error;
+    }
+  }
+}
+
+
 // ==========================================
 // Main Execution
 // ==========================================
@@ -488,6 +548,7 @@ async function main() {
     { name: 'Profiles Table Update', fn: updateProfilesTable },
     { name: 'Courses Table Verification', fn: verifyCoursesTable },
     { name: 'Plan Upgrades Table', fn: createPlanUpgradesTable },
+    { name: 'Points Escrow Table', fn: createPointsEscrowTable },
   ];
 
   let successCount = 0;
@@ -527,6 +588,7 @@ async function main() {
   console.log(`     DYNAMODB_TABLE_ORGANIZATIONS=${ORGANIZATIONS_TABLE}`);
   console.log(`     DYNAMODB_TABLE_ORG_UNITS=${ORG_UNITS_TABLE}`);
   console.log(`     DYNAMODB_TABLE_LICENSES=${LICENSES_TABLE}`);
+  console.log(`     DYNAMODB_TABLE_POINTS_ESCROW=${POINTS_ESCROW_TABLE}`);
   console.log('  3. Deploy your application\n');
 }
 

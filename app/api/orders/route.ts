@@ -4,6 +4,7 @@ import { DynamoDBDocumentClient, PutCommand, ScanCommand, GetCommand, DeleteComm
 import { randomUUID } from 'crypto';
 import { COURSES } from '@/data/courses';
 import { deductUserPoints } from '@/lib/pointsStorage';
+import { createEscrow } from '@/lib/pointsEscrow';
 
 // DynamoDB client initialization
 const ddbRegion = process.env.CI_AWS_REGION || process.env.AWS_REGION;
@@ -53,11 +54,12 @@ export async function POST(request: Request) {
     const createdAt = new Date().toISOString();
     const orderNumber = `${userId}-${createdAt}`;
 
-    // Fetch course duration, total sessions, and pointCost (server-authoritative)
+    // Fetch course duration, total sessions, pointCost, and teacherId (server-authoritative)
     let durationMinutes = 0;
     let totalSessions = 1;
     let courseTitle = '';
     let coursePointCost = 0;
+    let courseTeacherId = '';
 
     try {
       if (courseId) {
@@ -69,12 +71,14 @@ export async function POST(request: Request) {
           totalSessions = res.Item.totalSessions || 1;
           courseTitle = res.Item.title || '';
           coursePointCost = Number(res.Item.pointCost) || 0;
+          courseTeacherId = res.Item.teacherId || res.Item.teacherEmail || '';
         } else {
           const course = COURSES.find(c => c.id === courseId);
           durationMinutes = course?.durationMinutes || 0;
           totalSessions = course?.totalSessions || 1;
           courseTitle = course?.title || '';
           coursePointCost = Number((course as any)?.pointCost) || 0;
+          courseTeacherId = (course as any)?.teacherId || (course as any)?.teacherEmail || '';
         }
       }
     } catch (e) {
@@ -88,6 +92,8 @@ export async function POST(request: Request) {
         ? (coursePointCost > 0 ? coursePointCost : Number(pointsUsed) || 0)
         : 0;
 
+    let pointsEscrowId: string | null = null;
+
     if (paymentMethod === 'points' && effectivePointsToDeduct > 0) {
       const deductResult = await deductUserPoints(userId, effectivePointsToDeduct);
       if (!deductResult.ok) {
@@ -99,6 +105,29 @@ export async function POST(request: Request) {
       console.log(
         `[orders API] Deducted ${effectivePointsToDeduct} pts from ${userId} (new balance: ${deductResult.newBalance}) for "${courseTitle}"`
       );
+
+      // 🔒 Place deducted points into escrow until course completion
+      const newEscrowId = randomUUID();
+      try {
+        await createEscrow({
+          escrowId: newEscrowId,
+          orderId,
+          enrollmentId: enrollmentId || '',
+          studentId: userId,
+          teacherId: courseTeacherId,
+          courseId,
+          courseTitle,
+          points: effectivePointsToDeduct,
+        });
+        pointsEscrowId = newEscrowId;
+      } catch (escrowErr) {
+        // Escrow creation failure is non-fatal — points were already deducted.
+        // Log clearly so ops team can manually reconcile if needed.
+        console.error(
+          `[orders API] ⚠️ ESCROW CREATION FAILED for order ${orderId}. Points were deducted but escrow not recorded. Manual reconciliation required.`,
+          escrowErr
+        );
+      }
     } else if (paymentMethod === 'points' && effectivePointsToDeduct === 0) {
       // paymentMethod is 'points' but no point cost found — reject to prevent free enrollment
       console.warn(`[orders API] paymentMethod='points' but effectivePointsToDeduct=0 for course '${courseId}'. Rejecting.`);
@@ -123,6 +152,7 @@ export async function POST(request: Request) {
       currency: currency || 'TWD',
       paymentMethod: paymentMethod || null,
       pointsUsed: effectivePointsToDeduct || 0,
+      pointsEscrowId: pointsEscrowId || null,
       status: clientStatus || 'PENDING',
       startTime: startTime || null,
       endTime: endTime || null,

@@ -8,6 +8,7 @@ const enrollTable = process.env.ENROLLMENTS_TABLE || "jvtutorcorner-enrollments"
 const teachersTable = process.env.DYNAMODB_TABLE_TEACHERS || "jvtutorcorner-teachers";
 const coursesTable = process.env.DYNAMODB_TABLE_COURSES || "jvtutorcorner-courses";
 const carouselTable = process.env.DYNAMODB_TABLE_CAROUSEL || "jvtutorcorner-carousel";
+const pointsEscrowTable = process.env.DYNAMODB_TABLE_POINTS_ESCROW || "jvtutorcorner-points-escrow";
 
 const client = new DynamoDBClient(endpoint ? { region, endpoint } : { region });
 
@@ -50,12 +51,16 @@ async function createTableIfNotExists(tableName, pkName = "id") {
     console.log(`Teachers table: ${teachersTable}`);
     console.log(`Courses table: ${coursesTable}`);
     console.log(`Carousel table: ${carouselTable}`);
+    console.log(`Points Escrow table: ${pointsEscrowTable}`);
 
     await createTableIfNotExists(ordersTable, "orderId");
     await createTableIfNotExists(enrollTable, "id");
     await createTableIfNotExists(teachersTable, "id");
     await createTableIfNotExists(coursesTable, "id");
     await createTableIfNotExists(carouselTable, "id");
+    
+    // Create Points Escrow table with GSI
+    await createPointsEscrowTable();
 
     console.log("Done. Tables creation requested.");
     console.log("You can verify via AWS Console or with AWS CLI: aws dynamodb describe-table --table-name <name>");
@@ -64,3 +69,44 @@ async function createTableIfNotExists(tableName, pkName = "id") {
     process.exit(1);
   }
 })();
+
+async function createPointsEscrowTable() {
+  const exists = await tableExists(pointsEscrowTable);
+  if (exists) {
+    console.log(`Table already exists: ${pointsEscrowTable}`);
+    return;
+  }
+
+  const params = {
+    TableName: pointsEscrowTable,
+    AttributeDefinitions: [
+      { AttributeName: "escrowId", AttributeType: "S" },
+      { AttributeName: "orderId", AttributeType: "S" },
+      { AttributeName: "teacherId", AttributeType: "S" },
+    ],
+    KeySchema: [
+      { AttributeName: "escrowId", KeyType: "HASH" },
+    ],
+    GlobalSecondaryIndexes: [
+      {
+        IndexName: "byOrderId",
+        KeySchema: [
+          { AttributeName: "orderId", KeyType: "HASH" },
+        ],
+        Projection: { ProjectionType: "ALL" },
+      },
+      {
+        IndexName: "byTeacherId",
+        KeySchema: [
+          { AttributeName: "teacherId", KeyType: "HASH" },
+        ],
+        Projection: { ProjectionType: "ALL" },
+      },
+    ],
+    BillingMode: "PAY_PER_REQUEST",
+  };
+
+  console.log(`Creating table ${pointsEscrowTable} with GSI (byOrderId, byTeacherId)...`);
+  await client.send(new CreateTableCommand(params));
+  console.log(`Create request sent for ${pointsEscrowTable}. It may take a few seconds to become ACTIVE.`);
+}

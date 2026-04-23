@@ -44,6 +44,7 @@ const MONITORED_TABLES = [
   'jvtutorcorner-pricing',
   'jvtutorcorner-user-profiles',
   'jvtutorcorner-orders',
+  'jvtutorcorner-points-escrow',
   'jvtutorcorner-subscriptions',
   'jvtutorcorner-carousel',
   'jvtutorcorner-app-integrations',

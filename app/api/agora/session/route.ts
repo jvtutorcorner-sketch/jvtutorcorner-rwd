@@ -3,6 +3,7 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { PutCommand, UpdateCommand, GetCommand, DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 import { v4 as uuidv4 } from 'uuid';
 import type { SessionUpsertPayload } from '@/lib/agora/types';
+import { getEscrowByOrder, releaseEscrow } from '@/lib/pointsEscrow';
 
 const client = new DynamoDBClient({
     region: process.env.AWS_REGION || 'ap-northeast-1',
@@ -110,6 +111,35 @@ export async function PATCH(req: NextRequest) {
                 ':updatedAt': now,
             },
         }));
+
+        // 🔓 If course completed, fetch the session's orderId and release the escrow to the teacher
+        const finalStatus = status || 'completed';
+        if (finalStatus === 'completed') {
+            try {
+                // Fetch full session record to get orderId
+                const sessionRes = await docClient.send(new GetCommand({ TableName: TABLE_NAME, Key: { sessionId } }));
+                const sessionOrderId = sessionRes.Item?.orderId;
+                if (sessionOrderId) {
+                    const escrow = await getEscrowByOrder(sessionOrderId);
+                    if (escrow && escrow.status === 'HOLDING') {
+                        const releaseResult = await releaseEscrow(escrow.escrowId);
+                        if (releaseResult.ok) {
+                            console.log(
+                                `[agora/session PATCH] Escrow ${escrow.escrowId} released to teacher ${escrow.teacherId} (${escrow.points} pts) for completed session ${sessionId}`
+                            );
+                        } else {
+                            console.error(
+                                `[agora/session PATCH] Failed to release escrow ${escrow.escrowId}:`,
+                                releaseResult.error
+                            );
+                        }
+                    }
+                }
+            } catch (escrowErr) {
+                // Non-fatal: session update already succeeded; escrow can be released manually
+                console.error('[agora/session PATCH] Error during escrow release:', escrowErr);
+            }
+        }
 
         return NextResponse.json({ ok: true });
     } catch (error: any) {

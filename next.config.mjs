@@ -41,6 +41,7 @@ const nextConfig = {
     DYNAMODB_TABLE_TEACHERS: process.env.DYNAMODB_TABLE_TEACHERS || 'jvtutorcorner-teachers',
     DYNAMODB_TABLE_ENROLLMENTS: process.env.DYNAMODB_TABLE_ENROLLMENTS || 'jvtutorcorner-enrollments',
     DYNAMODB_TABLE_ORDERS: process.env.DYNAMODB_TABLE_ORDERS || 'jvtutorcorner-orders',
+    DYNAMODB_TABLE_POINTS_ESCROW: process.env.DYNAMODB_TABLE_POINTS_ESCROW || 'jvtutorcorner-points-escrow',
     DYNAMODB_TABLE_ROLES: process.env.DYNAMODB_TABLE_ROLES || 'jvtutorcorner-roles',
     DYNAMODB_TABLE_PAGE_PERMISSIONS: process.env.DYNAMODB_TABLE_PAGE_PERMISSIONS || 'jvtutorcorner-page-permissions',
     DYNAMODB_TABLE_WHITEBOARD_PERMISSIONS: process.env.DYNAMODB_TABLE_WHITEBOARD_PERMISSIONS || 'jvtutorcorner-whiteboard-permissions',
