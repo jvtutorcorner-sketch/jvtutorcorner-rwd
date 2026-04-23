@@ -273,3 +273,94 @@ npx playwright test e2e/points-escrow-release.spec.ts
 | **payment-restitution-logic** | 點數返還（課程取消） | 課程被取消 |
 | **student-enrollment-flow** | 報名完整流程 | 搜尋 → 付款 → 進教室 |
 | **payment-refund-orchestration** | 金流退款（金錢） | 訂單被退款 |
+
+---
+
+## /teacher-escrow 頁面欄位對照
+
+### 頁面架構
+
+| 角色 | 標題 | 資料範圍 |
+|:---|:---|:---|
+| admin | 老師點數暫存管理 | 所有老師的 Escrow 記錄 |
+| teacher | 我的點數收入 | 只顯示自己 teacherId 的記錄 |
+
+### Table 欄位（12 欄）與資料來源
+
+| 欄位 | 資料來源 | 備註 |
+|:---|:---|:---|
+| 學生 | `userMap[record.studentId]` → `/api/profile?email=` | fallback: studentId raw |
+| 課程名稱 | `record.courseTitle` | escrow 記錄直接包含 |
+| 老師 | `courseMap[record.courseId]?.teacherName` → `/api/courses?id=` | fallback: '-' |
+| 單堂時間(分) | `courseMap[record.courseId]?.durationMinutes` | 從課程資料取得 |
+| 剩餘課程數 | `totalSessions - RELEASED 筆數` | 以同課程 RELEASED escrow 數為已完成數 |
+| 剩餘時間(分) | `剩餘課程數 × durationMinutes` | 計算欄位 |
+| 開始時間 | `courseMap[courseId].nextStartDate + startTime` | 格式化為台灣時間 |
+| 結束時間 | `courseMap[courseId].nextStartDate + endTime` | 格式化為台灣時間 |
+| 點數 | `record.points` | escrow 記錄直接包含 |
+| 點數入帳時間 | `record.releasedAt` | RELEASED 時才有值 |
+| 狀態 | `record.status` | HOLDING/RELEASED/REFUNDED → 已翻譯 |
+| 詳情 | 展開按鈕 | 點擊展開 detail section |
+
+### Detail Section 分組欄位（完整 22 個欄位）
+
+**Escrow 識別**
+- Escrow ID: `record.escrowId`
+- 訂單 ID: `record.orderId`
+- 報名 ID: `record.enrollmentId`
+
+**課程資訊**
+- 課程 ID: `record.courseId`
+- 課程名稱: `record.courseTitle`
+- 老師: `courseMap[courseId].teacherName`
+- 老師 ID: `record.teacherId`
+- 單堂時間(分): `courseMap[courseId].durationMinutes`
+- 課程總數: `courseMap[courseId].totalSessions`
+- 已完成: RELEASED escrow 計算
+- 剩餘課程數: `total - completed`
+- 剩餘時間(分): `remaining × durationMinutes`
+- 開始時間: `nextStartDate + startTime`
+- 結束時間: `nextStartDate + endTime`
+
+**學生資訊**
+- 學生: `userMap[studentId]` → firstName + lastName
+- 學生 ID: `record.studentId` (raw email)
+
+**點數與狀態**
+- 點數: `record.points`
+- 狀態: HOLDING=等待釋放, RELEASED=已入帳, REFUNDED=已退款
+
+**時間紀錄**
+- 建立時間: `record.createdAt`
+- 最後更新: `record.updatedAt`
+- 點數入帳時間: `record.releasedAt`
+- 退款時間: `record.refundedAt`
+
+### 已知限制
+
+- **剩餘課程數計算**：以同 courseId 的 RELEASED escrow 記錄數作為「已完成課程數」（非真實的 Agora session attendance）。若課程有多個學生分別報名，各自的 RELEASED 記錄都會被計入，可能高估完成次數。真實的解法需要一個獨立的 session-attendance DynamoDB table。
+- **startTime/endTime 欄位**：課程建立時需從 datetime-local input 提取時間部分（已在 `courses_manage/new/page.tsx`、`NewCourseForm.tsx`、`courses_manage/[id]/edit/page.tsx` 修正）。舊課程資料中這兩個欄位可能為空（顯示 '-'）。
+
+### Teacher Escrow 測試指令
+
+```powershell
+# 驗證頁面欄位完整性（管理員視角）
+$env:QA_TEST_BASE_URL='http://localhost:3000'
+npx playwright test e2e/admin-teacher-escrow.spec.ts --project=chromium --reporter=line
+
+# 含 API field integrity check
+npx playwright test e2e/admin-teacher-escrow.spec.ts --project=chromium --grep "API field integrity"
+
+# 全部測試
+npx playwright test e2e/admin-teacher-escrow.spec.ts --project=chromium
+```
+
+### 測試覆蓋範圍（admin-teacher-escrow.spec.ts）
+
+| 測試 | 驗證內容 |
+|:---|:---|
+| Admin can access | 12 欄位標頭、資料完整性、Detail section 22 個欄位、狀態過濾 |
+| Teacher can access | 自己的記錄、過濾功能、Detail 老師 ID |
+| API field integrity | Escrow DB 欄位 11 個、Course cross-check 7 個欄位、Profile cross-check |
+| Teacher menu | 導覽列含「點數收入」連結指向 /teacher-escrow |
+

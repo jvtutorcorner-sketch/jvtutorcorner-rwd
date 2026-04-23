@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { COURSE_RECORDS } from "@/data/courseRecords";
 
 type EscrowRecord = {
   escrowId: string;
@@ -232,13 +231,14 @@ export default function TeacherEscrowManager({ teacherId }: TeacherEscrowManager
     }
   };
 
+  // Use totalSessions from course directly; count RELEASED escrows as completed sessions
   const getRemainingInfo = (courseId: string) => {
     const total = courseMap[courseId]?.totalSessions || 0;
-    const attended = COURSE_RECORDS.filter(r => r.courseId === courseId && r.status === 'attended').length;
-    const remaining = Math.max(0, total - attended);
+    const completed = escrows.filter(r => r.courseId === courseId && r.status === 'RELEASED').length;
+    const remaining = Math.max(0, total - completed);
     const duration = courseMap[courseId]?.durationMinutes || 0;
     const remainingMinutes = remaining * duration;
-    return { remaining, remainingMinutes };
+    return { remaining, remainingMinutes, total, completed };
   };
 
   return (
@@ -437,39 +437,113 @@ export default function TeacherEscrowManager({ teacherId }: TeacherEscrowManager
           <h3>詳細資訊</h3>
           {(() => {
             const record = escrows.find((e) => e.escrowId === expandedEscrowId)!;
+            const courseInfo = courseMap[record.courseId];
             const studentName = userMap[record.studentId]
               ? `${userMap[record.studentId].firstName || ''} ${userMap[record.studentId].lastName || ''}`.trim()
               : record.studentId;
+            const { remaining, remainingMinutes, total, completed } = getRemainingInfo(record.courseId);
+            const detailStartDateTime = (() => {
+              if (!courseInfo) return '-';
+              const rawDatePart = courseInfo.nextStartDate || courseInfo.startDate;
+              if (!rawDatePart) return '-';
+              const datePart = rawDatePart.split('T')[0];
+              const cleanedTime = cleanTimeString(courseInfo.startTime);
+              return cleanedTime ? formatDateTime(`${datePart}T${cleanedTime}`) : formatDateTime(`${datePart}T09:00:00`);
+            })();
+            const detailEndDateTime = (() => {
+              if (!courseInfo) return '-';
+              const rawDatePart = courseInfo.nextStartDate || courseInfo.startDate;
+              if (!rawDatePart) return '-';
+              const datePart = rawDatePart.split('T')[0];
+              const cleanedTime = cleanTimeString(courseInfo.endTime);
+              return cleanedTime ? formatDateTime(`${datePart}T${cleanedTime}`) : formatDateTime(`${datePart}T10:00:00`);
+            })();
             return (
-              <table style={{ width: '100%' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <tbody>
-                  <tr>
-                    <td style={{ padding: '8px', fontWeight: 'bold', width: '150px' }}>Escrow ID:</td>
-                    <td style={{ padding: '8px', fontFamily: 'monospace' }}>{record.escrowId}</td>
+                  <tr style={{ backgroundColor: '#f0f4ff' }}>
+                    <td colSpan={2} style={{ padding: '6px 8px', fontWeight: 'bold', fontSize: '13px', color: '#1565c0' }}>Escrow 識別</td>
                   </tr>
                   <tr>
-                    <td style={{ padding: '8px', fontWeight: 'bold' }}>訂單 ID:</td>
-                    <td style={{ padding: '8px', fontFamily: 'monospace' }}>{record.orderId}</td>
+                    <td style={{ padding: '6px 8px', fontWeight: 'bold', width: '160px', color: '#555' }}>Escrow ID:</td>
+                    <td style={{ padding: '6px 8px', fontFamily: 'monospace', fontSize: '12px' }}>{record.escrowId}</td>
                   </tr>
                   <tr>
-                    <td style={{ padding: '8px', fontWeight: 'bold' }}>課程 ID:</td>
-                    <td style={{ padding: '8px', fontFamily: 'monospace' }}>{record.courseId}</td>
+                    <td style={{ padding: '6px 8px', fontWeight: 'bold', color: '#555' }}>訂單 ID:</td>
+                    <td style={{ padding: '6px 8px', fontFamily: 'monospace', fontSize: '12px' }}>{record.orderId}</td>
                   </tr>
                   <tr>
-                    <td style={{ padding: '8px', fontWeight: 'bold' }}>課程名稱:</td>
-                    <td style={{ padding: '8px' }}>{record.courseTitle}</td>
+                    <td style={{ padding: '6px 8px', fontWeight: 'bold', color: '#555' }}>報名 ID:</td>
+                    <td style={{ padding: '6px 8px', fontFamily: 'monospace', fontSize: '12px' }}>{record.enrollmentId || '-'}</td>
+                  </tr>
+                  <tr style={{ backgroundColor: '#f0f4ff' }}>
+                    <td colSpan={2} style={{ padding: '6px 8px', fontWeight: 'bold', fontSize: '13px', color: '#1565c0' }}>課程資訊</td>
                   </tr>
                   <tr>
-                    <td style={{ padding: '8px', fontWeight: 'bold' }}>學生:</td>
-                    <td style={{ padding: '8px' }}>{studentName}</td>
+                    <td style={{ padding: '6px 8px', fontWeight: 'bold', color: '#555' }}>課程 ID:</td>
+                    <td style={{ padding: '6px 8px', fontFamily: 'monospace', fontSize: '12px' }}>{record.courseId}</td>
                   </tr>
                   <tr>
-                    <td style={{ padding: '8px', fontWeight: 'bold' }}>點數:</td>
-                    <td style={{ padding: '8px', fontWeight: 'bold', color: '#2e7d32' }}>+{record.points}</td>
+                    <td style={{ padding: '6px 8px', fontWeight: 'bold', color: '#555' }}>課程名稱:</td>
+                    <td style={{ padding: '6px 8px' }}>{record.courseTitle}</td>
                   </tr>
                   <tr>
-                    <td style={{ padding: '8px', fontWeight: 'bold' }}>狀態:</td>
-                    <td style={{ padding: '8px' }}>
+                    <td style={{ padding: '6px 8px', fontWeight: 'bold', color: '#555' }}>老師:</td>
+                    <td style={{ padding: '6px 8px' }}>{courseInfo?.teacherName || '-'}</td>
+                  </tr>
+                  <tr>
+                    <td style={{ padding: '6px 8px', fontWeight: 'bold', color: '#555' }}>老師 ID:</td>
+                    <td style={{ padding: '6px 8px', fontFamily: 'monospace', fontSize: '12px' }}>{record.teacherId || '-'}</td>
+                  </tr>
+                  <tr>
+                    <td style={{ padding: '6px 8px', fontWeight: 'bold', color: '#555' }}>單堂時間(分):</td>
+                    <td style={{ padding: '6px 8px' }}>{courseInfo?.durationMinutes || '-'}</td>
+                  </tr>
+                  <tr>
+                    <td style={{ padding: '6px 8px', fontWeight: 'bold', color: '#555' }}>課程總數:</td>
+                    <td style={{ padding: '6px 8px' }}>{total || '-'}</td>
+                  </tr>
+                  <tr>
+                    <td style={{ padding: '6px 8px', fontWeight: 'bold', color: '#555' }}>已完成:</td>
+                    <td style={{ padding: '6px 8px' }}>{completed}</td>
+                  </tr>
+                  <tr>
+                    <td style={{ padding: '6px 8px', fontWeight: 'bold', color: '#555' }}>剩餘課程數:</td>
+                    <td style={{ padding: '6px 8px', fontWeight: 'bold', color: remaining > 0 ? '#1565c0' : '#999' }}>{remaining}</td>
+                  </tr>
+                  <tr>
+                    <td style={{ padding: '6px 8px', fontWeight: 'bold', color: '#555' }}>剩餘時間(分):</td>
+                    <td style={{ padding: '6px 8px' }}>{remainingMinutes} 分鐘</td>
+                  </tr>
+                  <tr>
+                    <td style={{ padding: '6px 8px', fontWeight: 'bold', color: '#555' }}>開始時間:</td>
+                    <td style={{ padding: '6px 8px', fontSize: '12px' }}>{detailStartDateTime}</td>
+                  </tr>
+                  <tr>
+                    <td style={{ padding: '6px 8px', fontWeight: 'bold', color: '#555' }}>結束時間:</td>
+                    <td style={{ padding: '6px 8px', fontSize: '12px' }}>{detailEndDateTime}</td>
+                  </tr>
+                  <tr style={{ backgroundColor: '#f0f4ff' }}>
+                    <td colSpan={2} style={{ padding: '6px 8px', fontWeight: 'bold', fontSize: '13px', color: '#1565c0' }}>學生資訊</td>
+                  </tr>
+                  <tr>
+                    <td style={{ padding: '6px 8px', fontWeight: 'bold', color: '#555' }}>學生:</td>
+                    <td style={{ padding: '6px 8px' }}>{studentName}</td>
+                  </tr>
+                  <tr>
+                    <td style={{ padding: '6px 8px', fontWeight: 'bold', color: '#555' }}>學生 ID:</td>
+                    <td style={{ padding: '6px 8px', fontFamily: 'monospace', fontSize: '12px' }}>{record.studentId}</td>
+                  </tr>
+                  <tr style={{ backgroundColor: '#f0f4ff' }}>
+                    <td colSpan={2} style={{ padding: '6px 8px', fontWeight: 'bold', fontSize: '13px', color: '#1565c0' }}>點數與狀態</td>
+                  </tr>
+                  <tr>
+                    <td style={{ padding: '6px 8px', fontWeight: 'bold', color: '#555' }}>點數:</td>
+                    <td style={{ padding: '6px 8px', fontWeight: 'bold', color: '#2e7d32', fontSize: '16px' }}>+{record.points}</td>
+                  </tr>
+                  <tr>
+                    <td style={{ padding: '6px 8px', fontWeight: 'bold', color: '#555' }}>狀態:</td>
+                    <td style={{ padding: '6px 8px' }}>
                       <span
                         style={{
                           padding: '4px 8px',
@@ -483,19 +557,26 @@ export default function TeacherEscrowManager({ teacherId }: TeacherEscrowManager
                       </span>
                     </td>
                   </tr>
-                  <tr>
-                    <td style={{ padding: '8px', fontWeight: 'bold' }}>建立時間:</td>
-                    <td style={{ padding: '8px' }}>{formatDate(record.createdAt)}</td>
+                  <tr style={{ backgroundColor: '#f0f4ff' }}>
+                    <td colSpan={2} style={{ padding: '6px 8px', fontWeight: 'bold', fontSize: '13px', color: '#1565c0' }}>時間紀錄</td>
                   </tr>
                   <tr>
-                    <td style={{ padding: '8px', fontWeight: 'bold' }}>點數入帳時間:</td>
-                    <td style={{ padding: '8px' }}>
+                    <td style={{ padding: '6px 8px', fontWeight: 'bold', color: '#555' }}>建立時間:</td>
+                    <td style={{ padding: '6px 8px', fontSize: '12px' }}>{formatDate(record.createdAt)}</td>
+                  </tr>
+                  <tr>
+                    <td style={{ padding: '6px 8px', fontWeight: 'bold', color: '#555' }}>最後更新:</td>
+                    <td style={{ padding: '6px 8px', fontSize: '12px' }}>{record.updatedAt ? formatDate(record.updatedAt) : '-'}</td>
+                  </tr>
+                  <tr>
+                    <td style={{ padding: '6px 8px', fontWeight: 'bold', color: '#555' }}>點數入帳時間:</td>
+                    <td style={{ padding: '6px 8px', fontSize: '12px' }}>
                       {record.releasedAt ? formatDate(record.releasedAt) : '-'}
                     </td>
                   </tr>
                   <tr>
-                    <td style={{ padding: '8px', fontWeight: 'bold' }}>退款時間:</td>
-                    <td style={{ padding: '8px' }}>
+                    <td style={{ padding: '6px 8px', fontWeight: 'bold', color: '#555' }}>退款時間:</td>
+                    <td style={{ padding: '6px 8px', fontSize: '12px' }}>
                       {record.refundedAt ? formatDate(record.refundedAt) : '-'}
                     </td>
                   </tr>
