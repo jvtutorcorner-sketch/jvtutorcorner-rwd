@@ -50,9 +50,27 @@ export default function NewCoursePage() {
         // Combine date + time into ISO string for nextStartDate when provided
         if (form.startDateTime) {
             updates.nextStartDate = new Date(form.startDateTime).toISOString();
+            // Extract start time as HH:mm:ss
+            const startDate = new Date(form.startDateTime);
+            updates.startTime = startDate.toLocaleTimeString('zh-TW', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false,
+                timeZone: 'Asia/Taipei'
+            }).replace(/\//g, '-');
         }
         if (form.endDateTime) {
             updates.endDate = new Date(form.endDateTime).toISOString();
+            // Extract end time as HH:mm:ss
+            const endDate = new Date(form.endDateTime);
+            updates.endTime = endDate.toLocaleTimeString('zh-TW', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false,
+                timeZone: 'Asia/Taipei'
+            }).replace(/\//g, '-');
         }
         updates.pointCost = points;
         updates.enrollmentType = 'points'; // Teacher-created courses with pointCost are always point-based

@@ -76,6 +76,27 @@ export default function NewCourseForm({ onSuccess }: { onSuccess?: () => void })
         endDate: form.end_time || null,
         status: form.status || '上架',
       };
+      // Extract start and end times from datetime inputs
+      if (form.start_time) {
+        const startDate = new Date(form.start_time);
+        payload.startTime = startDate.toLocaleTimeString('zh-TW', {
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: false,
+          timeZone: 'Asia/Taipei'
+        }).replace(/\//g, '-');
+      }
+      if (form.end_time) {
+        const endDate = new Date(form.end_time);
+        payload.endTime = endDate.toLocaleTimeString('zh-TW', {
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: false,
+          timeZone: 'Asia/Taipei'
+        }).replace(/\//g, '-');
+      }
       if (stored) {
         payload.teacherName = stored.displayName || `${stored.firstName || ''} ${stored.lastName || ''}`.trim() || stored.email;
         payload.teacherId = stored.teacherId || null;

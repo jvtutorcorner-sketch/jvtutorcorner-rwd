@@ -88,6 +88,14 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       updateExpressionParts.push('endDate = :endDate');
       expressionAttributeValues[':endDate'] = body.endDate;
     }
+    if (body.startTime !== undefined) {
+      updateExpressionParts.push('startTime = :startTime');
+      expressionAttributeValues[':startTime'] = body.startTime;
+    }
+    if (body.endTime !== undefined) {
+      updateExpressionParts.push('endTime = :endTime');
+      expressionAttributeValues[':endTime'] = body.endTime;
+    }
     if (body.durationMinutes !== undefined) {
       updateExpressionParts.push('durationMinutes = :durationMinutes');
       expressionAttributeValues[':durationMinutes'] = body.durationMinutes;
