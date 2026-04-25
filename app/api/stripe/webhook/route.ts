@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { stripe } from '@/lib/stripe';
+import { handlePaymentSuccess } from '@/lib/paymentSuccessHandler';
 import profilesService from '@/lib/profilesService';
 import Stripe from 'stripe';
 
@@ -138,6 +139,22 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) 
                 }
             } else {
                 console.error(`[Stripe Webhook] Failed to update plan-upgrade ${orderId}: status ${res.status}`);
+            }
+
+            // 🟢 NEW: Handle post-payment logic (points, subscriptions, etc.)
+            try {
+                const result = await handlePaymentSuccess({
+                    orderId,
+                    paymentMethod: 'stripe',
+                    amount: session.amount_total ? session.amount_total / 100 : undefined, // Stripe uses cents
+                });
+                if (result.ok) {
+                    console.log(`[Stripe Webhook] Payment success handler completed. Points added: ${result.pointsAdded || 0}`);
+                } else {
+                    console.warn(`[Stripe Webhook] Payment success handler failed: ${result.error}`);
+                }
+            } catch (handlerErr) {
+                console.error('[Stripe Webhook] Payment success handler error:', handlerErr);
             }
         } catch (e) {
             console.error('[Stripe Webhook] Error updating order status:', e);

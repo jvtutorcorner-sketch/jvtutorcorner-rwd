@@ -118,6 +118,9 @@ export default function AdminDashboard() {
             <Link href="/admin/orders" className="text-sm font-medium text-gray-600 hover:text-green-600 flex items-center gap-2 p-2 rounded hover:bg-green-50 transition-colors">
               <span className="w-1.5 h-1.5 rounded-full bg-green-400"></span> 訂單管理列表
             </Link>
+            <Link href="/admin/payments" className="text-sm font-medium text-gray-600 hover:text-green-600 flex items-center gap-2 p-2 rounded hover:bg-green-50 transition-colors">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-400"></span> 💳 收款管理
+            </Link>
             <Link href="/admin/refunds" className="text-sm font-medium text-gray-600 hover:text-green-600 flex items-center gap-2 p-2 rounded hover:bg-green-50 transition-colors">
               <span className="w-1.5 h-1.5 rounded-full bg-green-400"></span> 退款申請處理
             </Link>

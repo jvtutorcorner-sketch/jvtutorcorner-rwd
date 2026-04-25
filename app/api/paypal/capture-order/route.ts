@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateAccessToken, PAYPAL_API } from '@/lib/paypal';
+import { handlePaymentSuccess } from '@/lib/paymentSuccessHandler';
 import profilesService from '@/lib/profilesService';
 
 export async function POST(req: NextRequest) {
@@ -41,6 +42,24 @@ export async function POST(req: NextRequest) {
                         console.error('[PayPal Capture] Failed to update order status via API', res.status);
                     } else {
                         console.log(`[PayPal Capture] Successfully updated order ${orderID} to PAID`);
+                    }
+
+                    // 🟢 NEW: Handle post-payment logic (points, subscriptions, etc.)
+                    try {
+                        const captureAmount = data.purchase_units?.[0]?.amount?.value;
+                        const result = await handlePaymentSuccess({
+                            orderId: orderID,
+                            paymentMethod: 'paypal',
+                            transactionId: data.id,
+                            amount: captureAmount ? Number(captureAmount) : undefined,
+                        });
+                        if (result.ok) {
+                            console.log(`[PayPal Capture] Payment success handler completed. Points added: ${result.pointsAdded || 0}`);
+                        } else {
+                            console.warn(`[PayPal Capture] Payment success handler failed: ${result.error}`);
+                        }
+                    } catch (handlerErr) {
+                        console.error('[PayPal Capture] Payment success handler error:', handlerErr);
                     }
                 } catch (e) {
                     console.error('[PayPal Capture] Error updating order status:', e);

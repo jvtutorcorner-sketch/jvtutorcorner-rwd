@@ -175,6 +175,13 @@ async function readSettings() {
           ]
         },
         {
+          id: '/admin/payments', path: '/admin/payments', label: '後台：收款管理', permissions: [
+            { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
+            { roleId: 'teacher', roleName: 'Teacher', menuVisible: false, dropdownVisible: false, pageVisible: false },
+            { roleId: 'student', roleName: 'Student', menuVisible: false, dropdownVisible: false, pageVisible: false }
+          ]
+        },
+        {
           id: '/admin/teacher-reviews', path: '/admin/teacher-reviews', label: '後台：老師資訊審核', permissions: [
             { roleId: 'admin', roleName: 'Admin', menuVisible: true, dropdownVisible: true, pageVisible: true },
             { roleId: 'teacher', roleName: 'Teacher', menuVisible: false, dropdownVisible: false, pageVisible: false },

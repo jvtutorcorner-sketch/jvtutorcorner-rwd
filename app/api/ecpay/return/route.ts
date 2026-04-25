@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyCheckMacValue } from '@/lib/ecpay';
+import { handlePaymentSuccess } from '@/lib/paymentSuccessHandler';
 import profilesService from '@/lib/profilesService';
 
 // Handle x-www-form-urlencoded data
@@ -71,6 +72,23 @@ export async function POST(req: NextRequest) {
                         }
                     } else {
                         console.error(`[ECPay Return] Failed to update plan-upgrade ${orderId}: status ${res.status}`);
+                    }
+
+                    // 🟢 NEW: Handle post-payment logic (points, subscriptions, etc.)
+                    try {
+                        const result = await handlePaymentSuccess({
+                            orderId,
+                            paymentMethod: 'ecpay',
+                            transactionId: merchantTradeNo,
+                            amount: Number(amount),
+                        });
+                        if (result.ok) {
+                            console.log(`[ECPay Return] Payment success handler completed. Points added: ${result.pointsAdded || 0}`);
+                        } else {
+                            console.warn(`[ECPay Return] Payment success handler failed: ${result.error}`);
+                        }
+                    } catch (handlerErr) {
+                        console.error('[ECPay Return] Payment success handler error:', handlerErr);
                     }
                 } catch (e) {
                     console.error('[ECPay Return] Error updating order status:', e);
