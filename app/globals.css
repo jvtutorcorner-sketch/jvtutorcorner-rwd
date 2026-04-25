@@ -122,9 +122,20 @@ a {
   -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid rgba(0, 0, 0, 0.05);
   transition: all 0.3s ease;
+  pointer-events: auto;
 }
 
-.site-header.scrolled {
+.site-header button {
+  pointer-events: auto;
+}
+
+.site-header button:active,
+.site-header button:focus,
+.site-header button:hover {
+  pointer-events: auto;
+}
+
+.site-header .scrolled {
   padding: 8px 24px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
 }
@@ -466,11 +477,54 @@ main {
 /* Hide hamburger on desktop, show on small screens. Use CSS instead of JS to avoid layout/hydration flash. */
 .menu-icon-btn {
   display: none;
+  pointer-events: auto;
+  cursor: pointer;
+  z-index: 101;
 }
 
 @media (max-width: 768px) {
+  button.menu-icon-btn {
+    display: inline-flex !important;
+    pointer-events: auto !important;
+    cursor: pointer !important;
+    z-index: 101;
+    width: 44px !important;
+    height: 44px !important;
+    min-width: 44px !important;
+    min-height: 44px !important;
+    max-width: none !important;
+    max-height: none !important;
+    padding: 8px !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex-shrink: 0 !important;
+    gap: 0 !important;
+  }
+  
+  button.menu-icon-btn span {
+    flex-shrink: 0 !important;
+    margin-bottom: 0 !important;
+  }
+  
   .menu-icon-btn {
-    display: inline-block;
+    display: inline-flex !important;
+    pointer-events: auto !important;
+    cursor: pointer !important;
+    z-index: 101;
+    width: 44px !important;
+    height: 44px !important;
+    min-width: 44px !important;
+    min-height: 44px !important;
+    max-width: none !important;
+    max-height: none !important;
+    padding: 8px !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex-shrink: 0 !important;
+  }
+  
+  .menu-icon-btn span {
+    flex-shrink: 0 !important;
   }
 
   /* hide the desktop nav on small screens */
