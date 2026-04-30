@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { WorkflowCanvas } from '@/components/workflows/WorkflowCanvas';
+import { getStoredUser } from '@/lib/mockAuth';
 
 export default function WorkflowEditorPage({ params: paramsPromise }: { params: Promise<{ id: string }> }) {
     const params = React.use(paramsPromise);
@@ -12,8 +13,13 @@ export default function WorkflowEditorPage({ params: paramsPromise }: { params: 
     const router = useRouter();
 
     useEffect(() => {
+        const user = getStoredUser();
+        if (!user || user.role !== 'admin') {
+            router.push('/login');
+            return;
+        }
         fetchWorkflow();
-    }, [id]);
+    }, [id, router]);
 
     const fetchWorkflow = async () => {
         try {

@@ -549,112 +549,7 @@ async function executeAction(actionNode: Node, payloadData: any, logs: any[]) {
                 break;
             }
 
-            case 'action_python_script': {
-                /**
-                 * Python 腳本執行節點
-                 * 
-                 * 版本信息:
-                 * • Runtime: Python 3.9, 3.10, 3.11 (推薦), 3.12
-                 * • Executor: AWS Lambda
-                 * • SDK: @aws-sdk/client-lambda ^3.1019.0
-                 * • Timeout: 30000ms (預設, 可自訂 1-300秒)
-                 * • Memory: 512MB - 3GB (Lambda 配置)
-                 * • Max Script Size: 1MB
-                 * • Max Data Size: 6MB
-                 * 
-                 * 常用套件 (通常在 Lambda 層中):
-                 * ✅ NumPy 1.24+
-                 * ✅ Pandas 2.0+
-                 * ✅ Pillow 10.1+ (圖片處理)
-                 * ✅ Boto3 1.28+ (AWS 服務)
-                 * ✅ Requests 2.31+ (HTTP)
-                 * ✅ 標準庫 (json, re, datetime, math 等)
-                 * 
-                 * 支援特性:
-                 * ✅ 同步執行
-                 * ✅ 異步操作 (asyncio)
-                 * ✅ 檔案臨時存儲 (/tmp)
-                 * ✅ 環境變數存取
-                 * ❌ 網絡連接 (需要配置)
-                 * 
-                 * 頻繁超時?
-                 * → 增加 LAMBDA_TIMEOUT_MS (最多 300000ms)
-                 * → 優化 Python 程式碼效率
-                 * → 拆分為多個小任務
-                 * 
-                 * 輸入: script (Python 程式碼), data (輸入資料)
-                 * 輸出: python_result (stdout/output)
-                 */
-                const script = config?.script || '';
-                if (!script.trim()) {
-                    payloadData.python_result = null;
-                    logs.push('[Python] ⚠️ Empty script - skipping');
-                    break;
-                }
 
-                try {
-                    const lambdaTimeoutMs = parseInt(process.env.LAMBDA_TIMEOUT_MS || '30000', 10);
-
-                    logs.push(`[Python] 🚀 Executing Lambda function (timeout: ${lambdaTimeoutMs}ms)...`);
-
-                    const pyLambdaCommand = new InvokeCommand({
-                        FunctionName: process.env.AWS_LAMBDA_FUNCTION_NAME || 'RunPythonWorkflowNode',
-                        InvocationType: 'RequestResponse',
-                        Payload: Buffer.from(JSON.stringify({
-                            script,
-                            data: payloadData,
-                            timeout_ms: lambdaTimeoutMs
-                        })),
-                    });
-
-                    // Execute with timeout wrapper
-                    const lambdaClient = getOrCreateLambdaClient();
-                    const lambdaPromise = lambdaClient.send(pyLambdaCommand);
-                    const timeoutPromise = new Promise((_, reject) =>
-                        setTimeout(() => reject(new Error('Lambda execution timeout')), lambdaTimeoutMs + 5000)
-                    );
-
-                    const pyLambdaResponse = await Promise.race([lambdaPromise, timeoutPromise]);
-                    const pyLambdaResponseAny: any = pyLambdaResponse as any;
-
-                    const pyResultStr = Buffer.from(pyLambdaResponseAny.Payload || []).toString('utf-8');
-                    let pyResult: any = {};
-                    try {
-                        pyResult = JSON.parse(pyResultStr);
-                    } catch (parseErr) {
-                        logs.push(`[Python] ❌ Failed to parse Lambda response: ${pyResultStr}`);
-                        throw new Error(`Invalid Lambda response format`);
-                    }
-                    if (pyLambdaResponseAny.FunctionError) {
-                        const errorMsg = pyResult.stderr || pyResult.errorMessage || 'Execution failed';
-                        logs.push(`[Python] ❌ Lambda execution error: ${errorMsg}`);
-                        throw new Error(`Python script error: ${errorMsg}`);
-                    }
-
-                    if (!pyResult.ok) {
-                        logs.push(`[Python] ❌ Script error: ${pyResult.stderr || 'Unknown error'}`);
-                        throw new Error(`Python script error: ${pyResult.stderr || pyResult.errorMessage || 'Execution failed'}`);
-                    }
-
-                    payloadData.python_result = pyResult.output ?? pyResult.stdout;
-                    if (pyResult.output && typeof pyResult.output === 'object') {
-                        Object.assign(payloadData, pyResult.output);
-                    }
-                    logs.push(`[Python] ✅ Success - Output: ${String(payloadData.python_result).substring(0, 100)}...`);
-
-                } catch (error: any) {
-                    const errorMsg = error?.message || String(error);
-                    logs.push(`[Python] ❌ Error: ${errorMsg}`);
-
-                    // For Amplify, provide diagnostic hints
-                    if (process.env.AWS_AMPLIFY) {
-                        logs.push('[Python] 📋 Amplify diagnostic: Check AWS credentials and Lambda function configuration');
-                    }
-
-                    throw error;
-                }
-                break;
-            }
 
             case 'action_data_transform': {
                 const xfPath = config?.path || '.';
@@ -937,20 +832,21 @@ async function executeAction(actionNode: Node, payloadData: any, logs: any[]) {
                 break;
             }
 
-            case 'action_notebooklm_create': {
-                const title = parseTemplate(config?.title || 'New Notebook', payloadData);
-                const content = parseTemplate(config?.content || '{{text}}', payloadData);
+            case 'action_qdrant_knowledge_base': {
+                const collectionName = parseTemplate(config?.collectionName || 'knowledge_base', payloadData);
+                const vectorSize = config?.vectorSize || 1536;
+                const documents = parseTemplate(config?.documents || '{{documents}}', payloadData);
 
                 try {
-                    const res = await fetch(`${getInternalBaseUrl()}/api/workflows/notebooklm-create`, {
+                    const res = await fetch(`${getInternalBaseUrl()}/api/workflows/qdrant-knowledge-base`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ title, content })
+                        body: JSON.stringify({ collectionName, vectorSize, documents })
                     });
                     const result = await res.json();
-                    payloadData.notebooklm_result = result;
+                    payloadData.qdrant_result = result;
                 } catch (e: any) {
-                    throw new Error(`NotebookLM creation failed: ${e.message}`);
+                    throw new Error(`Qdrant knowledge base operation failed: ${e.message}`);
                 }
                 break;
             }
@@ -1073,7 +969,7 @@ export async function executeSingleWorkflow(wf: { id?: string, name?: string, no
             visited.add(currentNode.id);
 
             // Execute logic or action
-            const isActionable = ['action', 'ai', 'python', 'javascript', 'http', 'transform', 'notification', 'input', 'output', 'export', 'delay'].includes(currentNode.type || '');
+            const isActionable = ['action', 'ai', 'javascript', 'http', 'transform', 'notification', 'input', 'output', 'export', 'delay'].includes(currentNode.type || '');
             if (isActionable) {
                 try {
                     await executeAction(currentNode, currentPayload, currentLogs);

@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { getStoredUser } from '@/lib/mockAuth';
 
 const TEMPLATE_CATEGORIES = [
     { id: 'all', name: '全部', icon: '📁' },
@@ -1427,212 +1428,6 @@ Feature: {{frame_name}} 頁面完整測試
         ]
     },
     {
-        id: 'python-practical',
-        name: 'Python 實用範本',
-        description: '完整 Python 腳本執行流程：資料驗證 → 成績統計計算 → 通過/未通過判斷 → 結構化輸出。示範 Lambda 常用模式。',
-        category: 'scripting',
-        icon: '🐍',
-        isFeatured: true,
-        nodes: [
-            {
-                id: 'node_1', type: 'trigger', position: { x: 300, y: 30 },
-                data: {
-                    label: '觸發：學生成績資料',
-                    triggerType: 'trigger_api_call',
-                    config: {
-                        testPayload: JSON.stringify({
-                            student_name: '王小明',
-                            email: 'student@example.com',
-                            course_id: 'CS101',
-                            scores: [85, 92, 78, 90, 65]
-                        }, null, 2)
-                    }
-                }
-            },
-            {
-                id: 'node_2', type: 'action', position: { x: 300, y: 160 },
-                data: {
-                    label: '正規化輸入變數',
-                    actionType: 'action_set_variable',
-                    config: {
-                        variables: [
-                            { key: 'student_name', value: '{{student_name}}' },
-                            { key: 'email',        value: '{{email}}' },
-                            { key: 'course_id',    value: '{{course_id}}' },
-                            { key: 'scores',       value: '{{scores}}' }
-                        ]
-                    }
-                }
-            },
-            {
-                id: 'node_3', type: 'python', position: { x: 300, y: 290 },
-                data: {
-                    label: '🐍 Python：資料驗證與前處理',
-                    actionType: 'action_python_script',
-                    config: {
-                        script: `# ═══════════════════════════════════════════════════════
-# Step 1｜資料驗證與前處理
-# 輸入: student_name, email, scores (list)
-# 輸出: validated_data (merged into workflow)
-# ═══════════════════════════════════════════════════════
-import json, re
-
-name   = data.get("student_name", "")
-email  = data.get("email", "")
-scores = data.get("scores", [])
-
-# ── 驗證 email 格式 ──────────────────────────────────
-email_valid = bool(re.match(r'^[^@]+@[^@]+\\.[^@]+$', email))
-
-# ── 過濾有效分數 (0~100 的數字) ─────────────────────
-valid_scores = [s for s in scores if isinstance(s, (int, float)) and 0 <= s <= 100]
-
-print(f"[驗證] 學生: {name}")
-print(f"[驗證] Email 有效: {email_valid}")
-print(f"[驗證] 有效分數數量: {len(valid_scores)}/{len(scores)}")
-
-return {
-    "name":              name,
-    "email":             email,
-    "email_valid":       email_valid,
-    "valid_scores":      valid_scores,
-    "total_subjects":    len(valid_scores),
-    "validation_passed": email_valid and len(valid_scores) > 0
-}`,
-                        timeout_ms: 10000,
-                        outputField: 'validated_data'
-                    }
-                }
-            },
-            {
-                id: 'node_4', type: 'logic', position: { x: 300, y: 480 },
-                data: {
-                    label: '驗證是否通過？',
-                    actionType: 'logic_condition',
-                    config: { variable: '{{validated_data.validation_passed}}', operator: 'equals', value: 'true' }
-                }
-            },
-            {
-                id: 'node_5', type: 'action', position: { x: 620, y: 600 },
-                data: {
-                    label: '驗證失敗：設定錯誤訊息',
-                    actionType: 'action_set_variable',
-                    config: {
-                        variables: [
-                            { key: 'error_msg',    value: 'Email 格式錯誤或無有效分數資料，請確認輸入。' },
-                            { key: 'calc_status',  value: 'validation_failed' }
-                        ]
-                    }
-                }
-            },
-            {
-                id: 'node_6', type: 'python', position: { x: 20, y: 600 },
-                data: {
-                    label: '🐍 Python：成績統計計算',
-                    actionType: 'action_python_script',
-                    config: {
-                        script: `# ═══════════════════════════════════════════════════════
-# Step 2｜成績統計計算
-# 輸入: validated_data.valid_scores, validated_data.name
-# 輸出: score_report (merged into workflow)
-# ═══════════════════════════════════════════════════════
-import json
-
-scores = data.get("valid_scores", [])
-name   = data.get("name", "學生")
-
-if not scores:
-    return {"error": "無有效分數資料", "passed": False}
-
-# ── 統計計算 ─────────────────────────────────────────
-avg     = sum(scores) / len(scores)
-highest = max(scores)
-lowest  = min(scores)
-passed_count = sum(1 for s in scores if s >= 60)
-
-# ── 等第判斷 (A/B/C/D/F) ─────────────────────────────
-grade = (
-    "A" if avg >= 90 else
-    "B" if avg >= 80 else
-    "C" if avg >= 70 else
-    "D" if avg >= 60 else "F"
-)
-passed = avg >= 60
-
-print(f"[計算] 分數: {scores}")
-print(f"[計算] 平均: {avg:.1f}, 最高: {highest}, 最低: {lowest}")
-print(f"[計算] 等第: {grade}, 通過: {passed}")
-
-return {
-    "student_name":   name,
-    "average":        round(avg, 1),
-    "highest":        highest,
-    "lowest":         lowest,
-    "grade":          grade,
-    "passed":         passed,
-    "passed_count":   passed_count,
-    "total_subjects": len(scores),
-    "summary":        f"{name} 平均 {avg:.1f} 分，等第 {grade}，{'通過 ✅' if passed else '未通過 ❌'}"
-}`,
-                        timeout_ms: 10000,
-                        outputField: 'score_report'
-                    }
-                }
-            },
-            {
-                id: 'node_7', type: 'logic', position: { x: 20, y: 820 },
-                data: {
-                    label: '是否通過課程？',
-                    actionType: 'logic_condition',
-                    config: { variable: '{{score_report.passed}}', operator: 'equals', value: 'true' }
-                }
-            },
-            {
-                id: 'node_8', type: 'action', position: { x: -160, y: 960 },
-                data: {
-                    label: '設定狀態：通過',
-                    actionType: 'action_set_variable',
-                    config: {
-                        variables: [
-                            { key: 'final_status', value: 'passed' },
-                            { key: 'calc_status',  value: 'completed' }
-                        ]
-                    }
-                }
-            },
-            {
-                id: 'node_9', type: 'action', position: { x: 200, y: 960 },
-                data: {
-                    label: '設定狀態：未通過',
-                    actionType: 'action_set_variable',
-                    config: {
-                        variables: [
-                            { key: 'final_status', value: 'failed' },
-                            { key: 'calc_status',  value: 'completed' }
-                        ]
-                    }
-                }
-            },
-            {
-                id: 'node_10', type: 'output', position: { x: 300, y: 1100 },
-                data: { label: '輸出：成績報告', actionType: 'output_workflow' }
-            }
-        ],
-        edges: [
-            { id: 'e1-2',  source: 'node_1', target: 'node_2',  type: 'smoothstep', animated: true },
-            { id: 'e2-3',  source: 'node_2', target: 'node_3',  type: 'smoothstep', animated: true },
-            { id: 'e3-4',  source: 'node_3', target: 'node_4',  type: 'smoothstep', animated: true },
-            { id: 'e4-5',  source: 'node_4', target: 'node_5',  sourceHandle: 'false', label: '未通過', type: 'smoothstep', animated: true },
-            { id: 'e4-6',  source: 'node_4', target: 'node_6',  sourceHandle: 'true',  label: '通過', type: 'smoothstep', animated: true },
-            { id: 'e6-7',  source: 'node_6', target: 'node_7',  type: 'smoothstep', animated: true },
-            { id: 'e7-8',  source: 'node_7', target: 'node_8',  sourceHandle: 'true',  label: '通過', type: 'smoothstep', animated: true },
-            { id: 'e7-9',  source: 'node_7', target: 'node_9',  sourceHandle: 'false', label: '未通過', type: 'smoothstep', animated: true },
-            { id: 'e5-10', source: 'node_5', target: 'node_10', type: 'smoothstep', animated: true },
-            { id: 'e8-10', source: 'node_8', target: 'node_10', type: 'smoothstep', animated: true },
-            { id: 'e9-10', source: 'node_9', target: 'node_10', type: 'smoothstep', animated: true }
-        ]
-    },
-    {
         id: 'javascript-practical',
         name: 'JavaScript 實用範本',
         description: '完整 JS 腳本執行流程：訂單資料清洗轉換 → 折扣計算 → Markdown 摘要報告生成。示範沙箱環境中的資料處理模式。',
@@ -1896,6 +1691,162 @@ return {
             { id: 'e6-7', source: 'node_6', target: 'node_7', type: 'smoothstep', animated: true },
             { id: 'e5-7', source: 'node_5', target: 'node_7', type: 'smoothstep', animated: true }
         ]
+    },
+    {
+        id: 'webhook-plan-1',
+        name: 'Webhook 轉發器 (Plan 1)',
+        description: '「全面採用方案 1」核心架構模式。Next.js 僅作為事件觸發器 (Event Emitter)，透過標準 HTTP POST 將資料轉發至外部 n8n / Make.com，避免耗用 Serverless 資源及 Cold Start 問題。',
+        category: 'integration',
+        icon: '📤',
+        isFeatured: true,
+        nodes: [
+            {
+                id: 'node_1', type: 'trigger', position: { x: 300, y: 30 },
+                data: {
+                    label: '觸發：業務事件 (e.g. 審核完成)',
+                    triggerType: 'trigger_api_call',
+                    config: {
+                        testPayload: JSON.stringify({
+                            event: 'course_approved',
+                            courseId: 'CRS-2025-001',
+                            teacherName: 'John Doe',
+                            actionBy: 'admin'
+                        }, null, 2)
+                    }
+                }
+            },
+            {
+                id: 'node_2', type: 'action', position: { x: 300, y: 160 },
+                data: {
+                    label: '資料打包準備',
+                    actionType: 'action_set_variable',
+                    config: {
+                        variables: [
+                            { key: 'webhook_url', value: 'https://hook.us1.make.com/YOUR_WEBHOOK_ID' },
+                            { key: 'payload_event', value: '{{event}}' },
+                            { key: 'payload_courseId', value: '{{courseId}}' },
+                            { key: 'payload_teacherName', value: '{{teacherName}}' },
+                            { key: 'payload_actionBy', value: '{{actionBy}}' }
+                        ]
+                    }
+                }
+            },
+            {
+                id: 'node_3', type: 'http', position: { x: 300, y: 290 },
+                data: {
+                    label: 'HTTP 請求 (轉發至 n8n/Make)',
+                    actionType: 'action_http_request',
+                    config: {
+                        method: 'POST',
+                        url: '{{webhook_url}}',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer YOUR_SECRET_TOKEN' },
+                        body: '{\n  "event": "{{payload_event}}",\n  "data": {\n    "courseId": "{{payload_courseId}}",\n    "teacherName": "{{payload_teacherName}}",\n    "actionBy": "{{payload_actionBy}}"\n  },\n  "timestamp": "{{timestamp}}"\n}',
+                        outputField: 'webhook_response'
+                    }
+                }
+            },
+            {
+                id: 'node_4', type: 'logic', position: { x: 300, y: 430 },
+                data: {
+                    label: '確定是否轉發成功',
+                    actionType: 'logic_condition',
+                    config: { variable: '{{webhook_response.status}}', operator: 'equals', value: '200' }
+                }
+            },
+            {
+                id: 'node_5', type: 'output', position: { x: 300, y: 580 },
+                data: { label: '輸出：流程結束', actionType: 'output_workflow' }
+            }
+        ],
+        edges: [
+            { id: 'e1-2', source: 'node_1', target: 'node_2', type: 'smoothstep', animated: true },
+            { id: 'e2-3', source: 'node_2', target: 'node_3', type: 'smoothstep', animated: true },
+            { id: 'e3-4', source: 'node_3', target: 'node_4', type: 'smoothstep', animated: true },
+            { id: 'e4-5', source: 'node_4', target: 'node_5', sourceHandle: 'true', label: '成功', type: 'smoothstep', animated: true }
+        ]
+    },
+    {
+        id: 'webhook-kb-plan-1',
+        name: 'Webhook 知識庫問答 (Plan 1)',
+        description: '將使用者提問透過 HTTP 轉發給 n8n/Make，由外部工作流執行 RAG (向量資料庫搜尋) 與 AI 總結後，同步回傳答案。完美實踐由平台當 Trigger 的安全架構。',
+        category: 'integration',
+        icon: '🧠',
+        isFeatured: true,
+        nodes: [
+            {
+                id: 'node_1', type: 'trigger', position: { x: 300, y: 30 },
+                data: {
+                    label: '觸發：用戶常見問題與搜尋',
+                    triggerType: 'trigger_api_call',
+                    config: {
+                        testPayload: JSON.stringify({
+                            userId: 'U-001',
+                            question: '請問 Next.js 課程的退款政策是什麼？'
+                        }, null, 2)
+                    }
+                }
+            },
+            {
+                id: 'node_2', type: 'action', position: { x: 300, y: 160 },
+                data: {
+                    label: '將問題打包成 Payload',
+                    actionType: 'action_set_variable',
+                    config: {
+                        variables: [
+                            { key: 'webhook_url', value: 'https://hook.us1.make.com/YOUR_KB_WEBHOOK' },
+                            { key: 'user_question', value: '{{question}}' },
+                            { key: 'user_id', value: '{{userId}}' }
+                        ]
+                    }
+                }
+            },
+            {
+                id: 'node_3', type: 'http', position: { x: 300, y: 290 },
+                data: {
+                    label: '同步 HTTP 請求 (等待外部 AI 回覆)',
+                    actionType: 'action_http_request',
+                    config: {
+                        method: 'POST',
+                        url: '{{webhook_url}}',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer YOUR_SECRET' },
+                        body: '{\n  "query": "{{user_question}}",\n  "metadata": {\n    "userId": "{{user_id}}"\n  }\n}',
+                        outputField: 'rag_response'
+                    }
+                }
+            },
+            {
+                id: 'node_4', type: 'logic', position: { x: 300, y: 430 },
+                data: {
+                    label: '檢查外部 KB 是否成功回傳',
+                    actionType: 'logic_condition',
+                    config: { variable: '{{rag_response.status}}', operator: 'equals', value: '200' }
+                }
+            },
+            {
+                id: 'node_5', type: 'action', position: { x: 300, y: 580 },
+                data: {
+                    label: '提取知識庫回答內容',
+                    actionType: 'action_set_variable',
+                    config: {
+                        variables: [
+                            { key: 'ai_answer', value: '{{rag_response.data.answer}}' },
+                            { key: 'source_docs', value: '{{rag_response.data.sources}}' }
+                        ]
+                    }
+                }
+            },
+            {
+                id: 'node_6', type: 'output', position: { x: 300, y: 730 },
+                data: { label: '輸出：回傳最終答案給用戶', actionType: 'output_workflow' }
+            }
+        ],
+        edges: [
+            { id: 'e1-2', source: 'node_1', target: 'node_2', type: 'smoothstep', animated: true },
+            { id: 'e2-3', source: 'node_2', target: 'node_3', type: 'smoothstep', animated: true },
+            { id: 'e3-4', source: 'node_3', target: 'node_4', type: 'smoothstep', animated: true },
+            { id: 'e4-5', source: 'node_4', target: 'node_5', sourceHandle: 'true', label: '成功擷取', type: 'smoothstep', animated: true },
+            { id: 'e5-6', source: 'node_5', target: 'node_6', type: 'smoothstep', animated: true }
+        ]
     }
 ];
 
@@ -1908,8 +1859,13 @@ export default function WorkflowsList() {
     const router = useRouter();
 
     useEffect(() => {
+        const user = getStoredUser();
+        if (!user || user.role !== 'admin') {
+            router.push('/login');
+            return;
+        }
         fetchWorkflows();
-    }, []);
+    }, [router]);
 
     const fetchWorkflows = async () => {
         try {

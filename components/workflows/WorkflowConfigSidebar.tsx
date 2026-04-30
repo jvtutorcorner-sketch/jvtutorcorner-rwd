@@ -284,34 +284,6 @@ export function WorkflowConfigSidebar({
                                     </div>
                                 )}
 
-                                {/* ── Python Script ── */}
-                                {selectedNode.data?.actionType === 'action_python_script' && (
-                                    <div className="space-y-3 border-t pt-4">
-                                        <h3 className="font-semibold text-sm text-green-600">🐍 Python 腳本</h3>
-                                        
-                                        {/* 版本信息提示 */}
-                                        <div className="bg-green-50 border border-green-200 rounded p-2 text-xs text-green-700">
-                                            <p className="font-semibold mb-1">✅ 版本: Python 3.9-3.12</p>
-                                            <ul className="list-disc list-inside space-y-1 text-green-600">
-                                                <li>超時: 30000ms (可調整)</li>
-                                                <li>記憶體: 512MB - 3GB (Lambda)</li>
-                                                <li>支援: NumPy, Pandas, 異步等</li>
-                                                <li>返回結果自動合併入資料</li>
-                                            </ul>
-                                        </div>
-
-                                        <Field label="腳本">
-                                            <textarea
-                                                className={`${textareaClass} bg-gray-900 text-green-300 border-gray-700 text-xs`}
-                                                rows={15}
-                                                placeholder="# data 變數包含工作流程資料&#10;# 使用 print() 輸出日誌&#10;# 使用 return 回傳結果"
-                                                value={selectedNode.data?.config?.script || ''}
-                                                onChange={(e) => handleConfigUpdate({ script: e.target.value })}
-                                            />
-                                        </Field>
-                                    </div>
-                                )}
-
                                 {/* ── JavaScript Script ── */}
                                 {selectedNode.data?.actionType === 'action_js_script' && (
                                     <div className="space-y-3 border-t pt-4">
@@ -1019,29 +991,38 @@ export function WorkflowConfigSidebar({
                                     </div>
                                 )}
 
-                                {/* ── NotebookLM Create ── */}
-                                {selectedNode.data?.actionType === 'action_notebooklm_create' && (
+                                {/* ── Qdrant Knowledge Base ── */}
+                                {selectedNode.data?.actionType === 'action_qdrant_knowledge_base' && (
                                     <div className="space-y-3 border-t pt-4">
-                                        <h3 className="font-semibold text-sm text-purple-600">📓 NotebookLM 建立文檔</h3>
-                                        <div className="p-2.5 bg-purple-50 border border-purple-200 rounded-lg text-[10px] text-purple-700">
-                                            建立新 NotebookLM 文檔並自動化處理。結果將存入 <code>notebooklm_result</code>。
+                                        <h3 className="font-semibold text-sm text-cyan-600">🧠 Qdrant 知識庫操作</h3>
+                                        <div className="p-2.5 bg-cyan-50 border border-cyan-200 rounded-lg text-[10px] text-cyan-700">
+                                            將文檔存入 Qdrant 知識庫並生成向量嵌入。結果將存入 <code>qdrant_result</code>。
                                         </div>
-                                        <Field label="文檔標題">
+                                        <Field label="集合名稱">
                                             <input
                                                 type="text"
                                                 className={inputClass}
-                                                value={selectedNode.data?.config?.title || ''}
-                                                onChange={(e) => handleConfigUpdate({ title: e.target.value })}
-                                                placeholder="{{docTitle}}"
+                                                value={selectedNode.data?.config?.collectionName || ''}
+                                                onChange={(e) => handleConfigUpdate({ collectionName: e.target.value })}
+                                                placeholder="knowledge_base"
                                             />
                                         </Field>
-                                        <Field label="文檔內容">
+                                        <Field label="向量維度">
+                                            <input
+                                                type="number"
+                                                className={inputClass}
+                                                value={selectedNode.data?.config?.vectorSize || 1536}
+                                                onChange={(e) => handleConfigUpdate({ vectorSize: parseInt(e.target.value) })}
+                                                placeholder="1536"
+                                            />
+                                        </Field>
+                                        <Field label="文檔內容 (JSON 陣列或模板)">
                                             <textarea
                                                 className={textareaClass}
-                                                rows={6}
-                                                value={selectedNode.data?.config?.content || ''}
-                                                onChange={(e) => handleConfigUpdate({ content: e.target.value })}
-                                                placeholder="{{docContent}}"
+                                                rows={8}
+                                                value={selectedNode.data?.config?.documents || ''}
+                                                onChange={(e) => handleConfigUpdate({ documents: e.target.value })}
+                                                placeholder='[{"id": "doc1", "text": "文檔內容"}] 或 {{documents}}'
                                             />
                                         </Field>
                                     </div>

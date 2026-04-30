@@ -163,8 +163,7 @@ const NODE_PALETTE: NodeCategory[] = [
         label: '處理 / 腳本',
         color: 'amber',
         items: [
-            { icon: '🐍', name: 'Python 腳本', type: 'python', subtype: 'action_python_script' },
-            { icon: '📜', name: 'JavaScript 腳本', type: 'javascript', subtype: 'action_js_script' },
+            { icon: '', name: 'JavaScript 腳本', type: 'javascript', subtype: 'action_js_script' },
             { icon: '🌐', name: 'HTTP 請求', type: 'http', subtype: 'action_http_request' },
             { icon: '⚙️', name: '提取 / 轉換欄位', type: 'transform', subtype: 'action_data_transform' },
         ],
@@ -189,7 +188,7 @@ const NODE_PALETTE: NodeCategory[] = [
         items: [
             { icon: '📚', name: 'Context7 文檔檢索', type: 'action', subtype: 'action_context7_retrieval' },
             { icon: '🔍', name: 'Gmail 發送郵件', type: 'action', subtype: 'action_gmail_send' },
-            { icon: '📓', name: 'NotebookLM 建立', type: 'action', subtype: 'action_notebooklm_create' },
+            { icon: '🧠', name: 'Qdrant 知識庫', type: 'action', subtype: 'action_qdrant_knowledge_base' },
             { icon: '🎨', name: 'Figma 匯出', type: 'action', subtype: 'action_figma_export' },
         ],
     },
@@ -460,14 +459,14 @@ function CanvasFlow({ initialWorkflow, onSave }: WorkflowCanvasProps) {
                 description: '',
                 triggerType: type === 'trigger' || type === 'webhook' ? subtype : undefined,
                 actionType: !['trigger', 'webhook'].includes(type) ? subtype : undefined,
-                config: subtype === 'action_python_script'
+                config: subtype === 'action_js_script'
                     ? { 
-                        script: `# ═══════════════════════════════════════════════════════════
-# Python Workflow Script — 初始化範例
-# ═══════════════════════════════════════════════════════════
-# 版本: Python 3.9-3.12
-# 超時: 30000ms (30 秒) — 支援長時間任務
-# 記憶體: 512MB - 3GB (可在 Lambda 配置)
+                        script: `// ═══════════════════════════════════════════════════════════
+// JavaScript Workflow Script — 初始化範例
+// ═══════════════════════════════════════════════════════════
+// 版本: Node.js 18+
+// 超時: 3000ms (3 秒) — 支援通用計算
+// 記憶體: 128MB (可在配置調整)
 #
 # 輸入: data (dict) — 工作流程資料
 # 輸出: print() 會顯示在日誌，return 會作為結果
@@ -504,7 +503,7 @@ print(json.dumps(result))
 # 📤 5️⃣ 回傳結果 (自動轉換為 JSON，合併入工作流程資料)
 return result`
                     }
-                    : subtype === 'action_js_script'
+                    : false
                     ? { 
                         script: `// ═══════════════════════════════════════════════════════════
 // JavaScript Workflow Script — 初始化範例
@@ -613,7 +612,7 @@ return result;`
 <p>如有任何問題，歡迎與我們聯繫。</p>
 <p style="color:#6b7280;font-size:13px;margin-top:24px;">JV Tutor Corner 團隊 敬上</p>`
                     }
-                    : subtype === 'action_notebooklm_create'
+                    : subtype === 'action_qdrant_knowledge_base'
                     ? { title: 'New Document', content: 'Document content goes here' }
                     : subtype === 'action_figma_export'
                     ? { fileKey: '{{figmaFileKey}}', format: 'json' }
