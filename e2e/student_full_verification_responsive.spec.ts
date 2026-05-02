@@ -5,16 +5,27 @@ import path from 'path';
 
 dotenv.config({ path: path.resolve(__dirname, '..', '.env.local') });
 
+function requireEnv(...keys: string[]): string {
+    for (const key of keys) {
+        const value = process.env[key];
+        if (value && value.trim()) {
+            return value.trim();
+        }
+    }
+    throw new Error(`Missing required environment variable(s): ${keys.join(', ')}`);
+}
+
 test('學生付款報名到上課與倒數計時測試 (響應式包含電腦版與縮小版)', async ({ browser }) => {
     // 增加超時時間，因為流程很長
     test.setTimeout(240000); 
 
-    const bypassSecret = process.env.NEXT_PUBLIC_LOGIN_BYPASS_SECRET || 'jv_secret_bypass_2024'; 
+    const bypassSecret = requireEnv('LOGIN_BYPASS_SECRET', 'NEXT_PUBLIC_LOGIN_BYPASS_SECRET', 'QA_CAPTCHA_BYPASS'); 
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
     
     const teacherEmail = process.env.QA_TEACHER_EMAIL || 'lin@test.com';
     const studentEmail = process.env.QA_STUDENT_EMAIL || 'pro@test.com';
-    const password = '123456';
+    const teacherPassword = requireEnv('QA_TEACHER_PASSWORD', 'TEST_TEACHER_PASSWORD');
+    const studentPassword = requireEnv('QA_STUDENT_PASSWORD', 'TEST_STUDENT_PASSWORD');
     const testCourseId = `test-course-full-${Date.now()}`;
     
     // ============================================
@@ -25,7 +36,7 @@ test('學生付款報名到上課與倒數計時測試 (響應式包含電腦版
         console.log(`[準備] 建立測試課程: ${testCourseId}`);
         // Login as Teacher to get ID
         const loginRes = await apiContext.request.post(`${baseUrl}/api/login`, {
-            data: { email: teacherEmail, password, captchaValue: bypassSecret }
+            data: { email: teacherEmail, password: teacherPassword, captchaValue: bypassSecret }
         });
         const teacherData = await loginRes.json();
         const teacherId = teacherData.profile?.id || 't1';
@@ -81,7 +92,7 @@ test('學生付款報名到上課與倒數計時測試 (響應式包含電腦版
         await studentPage.goto(`${baseUrl}/login`, { waitUntil: 'networkidle' });
         await studentPage.waitForTimeout(1000); // let React state settle
         await studentPage.fill('input[type="email"], #email', studentEmail);
-        await studentPage.fill('input[type="password"], #password', password);
+        await studentPage.fill('input[type="password"], #password', studentPassword);
         await studentPage.fill('input[placeholder*="圖片"], #captcha', bypassSecret);
         
         // 設定 dialog 自動接受
@@ -167,7 +178,7 @@ test('學生付款報名到上課與倒數計時測試 (響應式包含電腦版
         const teacherSkill = new TeacherEnterClassroomSkill(browser);
         const teacherResult = await teacherSkill.execute({
             email: teacherEmail,
-            password: password,
+            password: teacherPassword,
             courseId: testCourseId,
             environmentUrl: baseUrl,
             keepOpen: true // 需要保持頁面以持續 Session

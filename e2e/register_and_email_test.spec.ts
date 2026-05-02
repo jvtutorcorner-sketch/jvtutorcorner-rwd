@@ -1,11 +1,22 @@
 import { test, expect } from '@playwright/test';
 
-test('建立帳號並驗證 Email 寄送 - n7842165@gmail.com', async ({ page }) => {
-  const testEmail = 'test.email.' + Date.now() + '@gmail.com';
+function requireEnv(...keys: string[]): string {
+  for (const key of keys) {
+    const value = process.env[key];
+    if (value && value.trim()) {
+      return value.trim();
+    }
+  }
+  throw new Error(`Missing required environment variable(s): ${keys.join(', ')}`);
+}
+
+test('建立帳號並驗證 Email 寄送 - 測試信箱', async ({ page }) => {
+  const testEmail = 'test.email.' + Date.now() + '@example.com';
   const testPassword = 'TestPassword123!';
   const testFirstName = 'Test';
   const testLastName = 'User';
   const testBirthDate = '2000-01-15';
+  const loginBypassSecret = requireEnv('LOGIN_BYPASS_SECRET', 'NEXT_PUBLIC_LOGIN_BYPASS_SECRET', 'QA_CAPTCHA_BYPASS');
   
   console.log('\n' + '='.repeat(60));
   console.log('📧 Email 寄送功能測試');
@@ -95,7 +106,7 @@ test('建立帳號並驗證 Email 寄送 - n7842165@gmail.com', async ({ page })
   
   // Try to fill captcha - in test environment, use bypass secret
   const captchaInputField = page.locator('input[placeholder*="驗證"]');
-  await captchaInputField.fill('jv_secret_bypass_2024');  // Use bypass secret from .env.local
+  await captchaInputField.fill(loginBypassSecret);  // Use bypass secret from env
   console.log('   ✓ 填寫驗證碼 (Bypass)');
   
   // 4. 提交表單
@@ -132,7 +143,7 @@ test('建立帳號並驗證 Email 寄送 - n7842165@gmail.com', async ({ page })
   console.log('   📬 Email 服務配置:');
   console.log('      Host: smtp.gmail.com (或 Resend)');
   console.log('      Port: 587 (或 465 for Resend)');
-  console.log('      User: jvtutorcorner@gmail.com (或 Resend API Key)');
+  console.log('      User: <YOUR_EMAIL_SERVICE_USER> (或 Resend API Key)');
   console.log(`      Recipient: ${testEmail}`);
   console.log('      Whitelist: ✓ (已在 EMAIL_WHITELIST 中)');
   console.log('');
@@ -173,7 +184,7 @@ test('建立帳號並驗證 Email 寄送 - n7842165@gmail.com', async ({ page })
   // 填寫驗證碼 - 使用登入頁面的驗證碼輸入
   const loginCaptchaInput = page.locator('input[placeholder*="驗證"], input[placeholder*="captcha"], input[placeholder*="Captcha"]').first();
   if (await loginCaptchaInput.isVisible({ timeout: 2000 }).catch(() => false)) {
-    await loginCaptchaInput.fill('jv_secret_bypass_2024');
+    await loginCaptchaInput.fill(loginBypassSecret);
     console.log('   ✓ 填寫驗證碼');
   }
   

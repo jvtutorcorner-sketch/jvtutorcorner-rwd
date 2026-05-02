@@ -1,3 +1,5 @@
+/// <reference types="node" />
+
 /**
  * 首頁驗證輔助函數
  * 提供常用的首頁測試功能
@@ -147,31 +149,7 @@ export async function registerUserAndVerifyLogin(page: Page): Promise<string> {
   const timestamp = Date.now();
   const testEmail = `homepage_test_${timestamp}@example.com`;
   
-  await page.goto(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/login/register`, { 
-    waitUntil: 'networkidle' 
-  });
-  
-  // 填充表單
-  await page.selectOption('select', { label: 'Student' });
-  await page.locator('label:has-text("First Name") + input').fill('Test');
-  await page.locator('label:has-text("Last Name") + input').fill(`User_${timestamp}`);
-  await page.locator('label:has-text("Email") + input').fill(testEmail);
-  
-  const passwordInputs = page.locator('input[type="password"]');
-  await passwordInputs.nth(0).fill('Password123!');
-  await passwordInputs.nth(1).fill('Password123!');
-  
-  await page.locator('label:has-text("出生日期") + input').fill('2000-01-01');
-  await page.selectOption('select:has-text("請選擇性別")', { label: 'Male' });
-  
-  // 提交
-  await page.locator('button:has-text("建立帳戶")').click();
-  
-  // 等待重新導向到首頁
-  await page.waitForURL(
-    `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}`,
-    { waitUntil: 'networkidle' }
-  );
+  6
   
   return testEmail;
 }
