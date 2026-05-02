@@ -16,7 +16,7 @@ export class StudentEnrollAndEnterClassroomSkill {
         this.logs.push(logMsg);
     }
 
-    private async performLogin(page: Page, url: string, email: string, password: string) {
+    private async performLogin(page: Page, url: string, email: string, password: string, bypassSecret: string) {
         page.on('dialog', async dialog => {
             this.log(`💬 偵測到對話框: [${dialog.type()}] ${dialog.message()}`);
             await dialog.dismiss();
@@ -27,8 +27,8 @@ export class StudentEnrollAndEnterClassroomSkill {
         await page.fill('#email', email);
         await page.fill('#password', password);
 
-        this.log(`🧩 輸入萬用驗證碼 (jv_secret_bypass_2024) 以繞過 Captcha...`);
-        await page.fill('#captcha', 'jv_secret_bypass_2024');
+        this.log(`🧩 輸入驗證碼繞過碼 (已遮罩) 以繞過 Captcha...`);
+        await page.fill('#captcha', bypassSecret);
 
         await page.click('button[type="submit"]');
         await page.waitForURL(url => !url.href.includes('/login'), { timeout: 30000 }).catch(() => null);
@@ -143,6 +143,7 @@ export class StudentEnrollAndEnterClassroomSkill {
         const courseId = input.courseId || process.env.QA_TEST_COURSE_ID || '54837221-b952-4c70-bd83-0e026f735ff2';
         const email = input.email || process.env.QA_STUDENT_EMAIL;
         const password = input.password || process.env.QA_STUDENT_PASSWORD;
+        const bypassSecret = input.studentUniversalCode || process.env.LOGIN_BYPASS_SECRET || process.env.NEXT_PUBLIC_LOGIN_BYPASS_SECRET;
 
         try {
             context = await this.browser.newContext({
@@ -151,7 +152,8 @@ export class StudentEnrollAndEnterClassroomSkill {
             const page = await context.newPage();
 
             if (!email || !password) throw new Error('Input Error: 必須提供 email/password。');
-            await this.performLogin(page, envUrl, email, password);
+            if (!bypassSecret) throw new Error('Input Error: 缺少 LOGIN_BYPASS_SECRET，無法執行自動登入。');
+            await this.performLogin(page, envUrl, email, password, bypassSecret);
 
             const courseUrl = `${envUrl}/courses/${courseId}`;
             this.log(`🌐 前往課程頁面: ${courseUrl}`);

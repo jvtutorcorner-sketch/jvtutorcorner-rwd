@@ -4,7 +4,7 @@
 // ═══════════════════════════════════════════════════════
 //
 // 執行：
-//   k6 run -e API_HMAC_SECRET=jv_hmac_secret_change_in_production_2024 k6/tests/02_hmac_auth.test.js
+//   k6 run -e API_HMAC_SECRET=<YOUR_HMAC_SECRET> k6/tests/02_hmac_auth.test.js
 
 import http from 'k6/http';
 import { check, sleep, group } from 'k6';
@@ -108,7 +108,10 @@ export default function () {
       // 6 分鐘前的時間戳（超出 5 分鐘容許範圍）
       const oldTimestamp = String(Date.now() - 6 * 60 * 1000);
       const { hmac } = require('k6/crypto');
-      const secret   = __ENV.API_HMAC_SECRET || 'jv_hmac_secret_change_in_production_2024';
+      const secret = __ENV.API_HMAC_SECRET;
+      if (!secret) {
+        throw new Error('Missing required env var: API_HMAC_SECRET');
+      }
       const message  = `GET\n${path}\n${oldTimestamp}\n`;
       const fakeSig  = hmac('sha256', secret, message, 'hex');
 

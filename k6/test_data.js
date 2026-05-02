@@ -3,22 +3,35 @@
 
 import { SharedArray } from 'k6/data';
 
+function requireEnv(name) {
+  const value = __ENV[name];
+  if (!value) {
+    throw new Error(`[k6/test_data] Missing required env var: ${name}`);
+  }
+  return value;
+}
+
+const CAPTCHA_BYPASS = requireEnv('CAPTCHA_BYPASS');
+const STUDENT_PASSWORD = requireEnv('STUDENT_PASSWORD');
+const TEACHER_PASSWORD = requireEnv('TEACHER_PASSWORD');
+const ADMIN_PASSWORD = requireEnv('ADMIN_PASSWORD');
+
 // ─── 測試帳號 (從環境變數注入) ────────────────────────
 export const ACCOUNTS = {
   student: {
-    email: __ENV.STUDENT_EMAIL || 'pro@test.com',
-    password: __ENV.STUDENT_PASSWORD || '123456',
-    captchaValue: __ENV.CAPTCHA_BYPASS || 'jv_secret_bypass_2024',
+    email: __ENV.STUDENT_EMAIL || 'student@example.com',
+    password: STUDENT_PASSWORD,
+    captchaValue: CAPTCHA_BYPASS,
   },
   teacher: {
-    email: __ENV.TEACHER_EMAIL || 'lin@test.com',
-    password: __ENV.TEACHER_PASSWORD || '123456',
-    captchaValue: __ENV.CAPTCHA_BYPASS || 'jv_secret_bypass_2024',
+    email: __ENV.TEACHER_EMAIL || 'teacher@example.com',
+    password: TEACHER_PASSWORD,
+    captchaValue: CAPTCHA_BYPASS,
   },
   admin: {
-    email: __ENV.ADMIN_EMAIL || 'admin@jvtutorcorner.com',
-    password: __ENV.ADMIN_PASSWORD || '123456',
-    captchaValue: __ENV.CAPTCHA_BYPASS || 'jv_secret_bypass_2024',
+    email: __ENV.ADMIN_EMAIL || 'admin@example.com',
+    password: ADMIN_PASSWORD,
+    captchaValue: CAPTCHA_BYPASS,
   },
 };
 

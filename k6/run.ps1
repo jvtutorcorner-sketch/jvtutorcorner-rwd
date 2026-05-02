@@ -6,18 +6,32 @@
 param(
     [string]$Test = "smoke",
     [string]$BaseUrl = "http://localhost:3000",
-    [string]$HmacSecret = "jv_hmac_secret_change_in_production_2024",
-    [string]$StudentEmail = "pro@test.com",
-    [string]$StudentPassword = "123456",
-    [string]$TeacherEmail = "lin@test.com",
-    [string]$TeacherPassword = "123456",
-    [string]$AdminEmail = "admin@jvtutorcorner.com",
-    [string]$AdminPassword = "123456",
-    [string]$CaptchaBypass = "jv_secret_bypass_2024",
+    [string]$HmacSecret = $env:API_HMAC_SECRET,
+    [string]$StudentEmail = $(if ($env:STUDENT_EMAIL) { $env:STUDENT_EMAIL } else { "student@example.com" }),
+    [string]$StudentPassword = $env:STUDENT_PASSWORD,
+    [string]$TeacherEmail = $(if ($env:TEACHER_EMAIL) { $env:TEACHER_EMAIL } else { "teacher@example.com" }),
+    [string]$TeacherPassword = $env:TEACHER_PASSWORD,
+    [string]$AdminEmail = $(if ($env:ADMIN_EMAIL) { $env:ADMIN_EMAIL } else { "admin@example.com" }),
+    [string]$AdminPassword = $env:ADMIN_PASSWORD,
+    [string]$CaptchaBypass = $env:CAPTCHA_BYPASS,
     [string]$OutputDir = "k6\reports"
 )
 
 $ErrorActionPreference = "Stop"
+
+$requiredSecrets = @{
+    "API_HMAC_SECRET" = $HmacSecret
+    "STUDENT_PASSWORD" = $StudentPassword
+    "TEACHER_PASSWORD" = $TeacherPassword
+    "ADMIN_PASSWORD" = $AdminPassword
+    "CAPTCHA_BYPASS" = $CaptchaBypass
+}
+
+foreach ($entry in $requiredSecrets.GetEnumerator()) {
+    if ([string]::IsNullOrWhiteSpace($entry.Value)) {
+        throw "Missing required value for $($entry.Key). Pass it as parameter or set environment variable."
+    }
+}
 
 # ─── 確認 k6 已安裝 ────────────────────────────────────
 if (-not (Get-Command k6 -ErrorAction SilentlyContinue)) {

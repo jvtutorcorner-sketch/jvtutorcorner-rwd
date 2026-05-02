@@ -18,12 +18,17 @@ export class VerifyClassroomTerminationSyncSkill {
 
     // 步驟 1: 執行正式登入或繞過
     private async performLogin(page: Page, url: string, email?: string, password?: string, universalCode?: string) {
+        const bypassCode = universalCode || process.env.LOGIN_BYPASS_SECRET || process.env.NEXT_PUBLIC_LOGIN_BYPASS_SECRET;
+
         if (email && password) {
+            if (!bypassCode) {
+                throw new Error('Missing LOGIN_BYPASS_SECRET for automated login flow');
+            }
             this.log(`🔐 執行正式登入流程 (Email: ${email})...`);
             await page.goto(`${url}/login`);
             await page.fill('#email', email);
             await page.fill('#password', password);
-            await page.fill('#captcha', 'jv_secret_bypass_2024');
+            await page.fill('#captcha', bypassCode);
             await Promise.all([
                 page.waitForNavigation({ waitUntil: 'networkidle' }),
                 page.click('button[type="submit"]')

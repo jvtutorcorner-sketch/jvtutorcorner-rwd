@@ -16,7 +16,7 @@ export class TeacherEnterClassroomSkill {
         this.logs.push(logMsg);
     }
 
-    private async performLogin(page: Page, url: string, email: string, password: string) {
+    private async performLogin(page: Page, url: string, email: string, password: string, bypassSecret: string) {
         page.on('dialog', async dialog => {
             this.log(`💬 偵測到老師端對話框: [${dialog.type()}] ${dialog.message()}`);
             await dialog.dismiss();
@@ -27,8 +27,8 @@ export class TeacherEnterClassroomSkill {
         await page.fill('#email', email);
         await page.fill('#password', password);
 
-        this.log(`🧩 輸入萬用驗證碼 (jv_secret_bypass_2024)...`);
-        await page.fill('#captcha', 'jv_secret_bypass_2024');
+        this.log(`🧩 輸入驗證碼繞過碼 (已遮罩)...`);
+        await page.fill('#captcha', bypassSecret);
 
         await page.click('button[type="submit"]');
         await page.waitForURL(url => !url.href.includes('/login'), { timeout: 30000 }).catch(() => null);
@@ -149,6 +149,7 @@ export class TeacherEnterClassroomSkill {
         const envUrl = input.environmentUrl || process.env.QA_TEST_BASE_URL || 'http://localhost:3000';
         const email = input.email || process.env.QA_TEACHER_EMAIL;
         const password = input.password || process.env.QA_TEACHER_PASSWORD;
+        const bypassSecret = process.env.LOGIN_BYPASS_SECRET || process.env.NEXT_PUBLIC_LOGIN_BYPASS_SECRET;
         const courseId = input.courseId || process.env.QA_TEST_COURSE_ID;
 
         try {
@@ -159,7 +160,8 @@ export class TeacherEnterClassroomSkill {
 
             // 【步驟 1: 登入】
             if (!email || !password) throw new Error('Input Error: 必須提供老師 email/password 或設定對應環境變數。');
-            await this.performLogin(page, envUrl, email, password);
+            if (!bypassSecret) throw new Error('Input Error: 缺少 LOGIN_BYPASS_SECRET，無法執行自動登入。');
+            await this.performLogin(page, envUrl, email, password, bypassSecret);
 
             // 【步驟 2: 前往老師課程頁面】
             const teacherCoursesUrl = `${envUrl}/teacher_courses?includeTests=true`;

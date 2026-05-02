@@ -12,10 +12,18 @@ export const BASE_URL = __ENV.BASE_URL || 'http://localhost:3000';
 // ─── 測試帳號 (從 test_data.js 引用) ────────────────────
 export const ACCOUNTS = DATA_ACCOUNTS;
 
+function requireEnv(name) {
+  const value = __ENV[name];
+  if (!value) {
+    throw new Error(`[k6/config] Missing required env var: ${name}`);
+  }
+  return value;
+}
+
 
 // ─── HMAC 簽名工具 ─────────────────────────────────────
 // k6 的 WebCrypto  API 支援 HMAC-SHA256
-const HMAC_SECRET = __ENV.API_HMAC_SECRET || 'jv_hmac_secret_change_in_production_2024';
+const HMAC_SECRET = requireEnv('API_HMAC_SECRET');
 
 /**
  * 計算 HMAC-SHA256 (hex)

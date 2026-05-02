@@ -3,7 +3,15 @@
 
 import { hmac } from 'k6/crypto';
 
-const HMAC_SECRET = __ENV.API_HMAC_SECRET || 'jv_hmac_secret_change_in_production_2024';
+function requireEnv(name) {
+  const value = __ENV[name];
+  if (!value) {
+    throw new Error(`[k6/helpers/hmac] Missing required env var: ${name}`);
+  }
+  return value;
+}
+
+const HMAC_SECRET = requireEnv('API_HMAC_SECRET');
 
 /**
  * 計算 HMAC-SHA256 hex 簽名
