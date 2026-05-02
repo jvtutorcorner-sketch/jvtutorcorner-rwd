@@ -55,6 +55,13 @@ npm run test:prod
 
 ## 測試檔案一覽與執行指令
 
+> [!TIP]
+> **環境切換核心規則：**
+> - 執行 **Local** 測試：使用 `APP_ENV=local` 或 `npm run test:local`
+> - 執行 **Production** 測試：使用 `APP_ENV=production` 或 `npm run test:prod`
+> - 系統會根據 `APP_ENV` 自動加載對應的 `.env.local` 或 `.env.production`，因此指令中只需指定環境即可。
+> - 指令範例中預設使用 `APP_ENV=local`，若要測試正式環境，請將其替換為 `production`。
+
 ### 1. 課程剩餘時間驗證 — `verify_remaining_time.spec.ts`
 
 **目的：** 驗證教師結束課程後，剩餘時間正確更新於 DB 並同步至儀表板。
@@ -72,17 +79,21 @@ npm run test:prod
 7. 驗證兩端儀表板剩餘時間 < 60m
 
 ```bash
-# 標準執行
-npx playwright test e2e/verify_remaining_time.spec.ts
+# 本地環境執行 (預設)
+npx cross-env APP_ENV=local npx playwright test e2e/verify_remaining_time.spec.ts
 
-# 顯示瀏覽器
-npx playwright test e2e/verify_remaining_time.spec.ts --headed
+# 正式環境執行
+npx cross-env APP_ENV=production npx playwright test e2e/verify_remaining_time.spec.ts
 
-# UI 模式（除錯用）
-npx playwright test e2e/verify_remaining_time.spec.ts --ui
+# 使用 npm scripts (最簡潔)
+npm run test:local -- e2e/verify_remaining_time.spec.ts
+npm run test:prod -- e2e/verify_remaining_time.spec.ts
 
-# 保留測試資料 (Windows PowerShell)
-$env:SKIP_CLEANUP="true"; npx playwright test e2e/verify_remaining_time.spec.ts
+# 顯示瀏覽器 (Headed)
+npx cross-env APP_ENV=local npx playwright test e2e/verify_remaining_time.spec.ts --headed
+
+# UI 模式
+npx cross-env APP_ENV=local npx playwright test e2e/verify_remaining_time.spec.ts --ui
 ```
 
 ---
@@ -102,23 +113,17 @@ $env:SKIP_CLEANUP="true"; npx playwright test e2e/verify_remaining_time.spec.ts
 | `[debug]` | Single group verbose whiteboard debug | 600,000 ms |
 
 ```bash
-# 執行全部測試
-npx playwright test e2e/classroom_room_whiteboard_sync.spec.ts
+# 本地執行
+npx cross-env APP_ENV=local npx playwright test e2e/classroom_room_whiteboard_sync.spec.ts
 
-# 只執行 smoke
-npx playwright test e2e/classroom_room_whiteboard_sync.spec.ts -g "smoke"
+# 正式環境執行
+npx cross-env APP_ENV=production npx playwright test e2e/classroom_room_whiteboard_sync.spec.ts
 
-# 只執行 standard
-npx playwright test e2e/classroom_room_whiteboard_sync.spec.ts -g "standard"
+# 執行特定標籤 (如 smoke)
+npx cross-env APP_ENV=local npx playwright test e2e/classroom_room_whiteboard_sync.spec.ts -g "smoke"
 
-# 只執行 stress（並發測試，需時最長）
-npx playwright test e2e/classroom_room_whiteboard_sync.spec.ts -g "stress"
-
-# 自訂並發組數 (Windows PowerShell)
-$env:STRESS_GROUP_COUNT="5"; npx playwright test e2e/classroom_room_whiteboard_sync.spec.ts -g "stress"
-
-# 正式環境 stress 測試
-npm run test:production:stress
+# 壓力測試 (Stress) - 自訂並發組數
+npx cross-env APP_ENV=local STRESS_GROUP_COUNT=5 npx playwright test e2e/classroom_room_whiteboard_sync.spec.ts -g "stress"
 ```
 
 ---
@@ -144,14 +149,11 @@ npm run test:production:stress
 11. 找到「進入教室」按鈕並點擊
 
 ```bash
-# 標準執行
-npx playwright test e2e/student_enrollment_flow.spec.ts
+# 本地執行
+npx cross-env APP_ENV=local npx playwright test e2e/student_enrollment_flow.spec.ts
 
-# 指定課程 ID
-$env:TEST_COURSE_ID="my-course-id"; npx playwright test e2e/student_enrollment_flow.spec.ts
-
-# 保留測試資料
-$env:SKIP_CLEANUP="true"; npx playwright test e2e/student_enrollment_flow.spec.ts
+# 正式環境執行
+npx cross-env APP_ENV=production npx playwright test e2e/student_enrollment_flow.spec.ts
 ```
 
 ---
@@ -169,14 +171,11 @@ $env:SKIP_CLEANUP="true"; npx playwright test e2e/student_enrollment_flow.spec.t
 | Configuration Resolution | 1 | 缺少憑證時應回 503 |
 
 ```bash
-# 執行全部郵件測試
-npx playwright test e2e/email_service_verification.spec.ts
+# 本地執行
+npx cross-env APP_ENV=local npx playwright test e2e/email_service_verification.spec.ts
 
-# 只測 Gmail SMTP
-npx playwright test e2e/email_service_verification.spec.ts -g "Gmail"
-
-# 只測 Resend
-npx playwright test e2e/email_service_verification.spec.ts -g "Resend"
+# 正式環境執行
+npx cross-env APP_ENV=production npx playwright test e2e/email_service_verification.spec.ts
 ```
 
 > **注意：** 若 Gmail 或 Resend 憑證未配置，相關測試會回傳 503 並自動跳過斷言。
@@ -203,17 +202,11 @@ npx playwright test e2e/email_service_verification.spec.ts -g "Resend"
 | 9. 效能相關檢查 | 2 |
 
 ```bash
-# 執行全部首頁測試
-npx playwright test e2e/homepage_verification.spec.ts
+# 本地執行
+npx cross-env APP_ENV=local npx playwright test e2e/homepage_verification.spec.ts
 
-# 只測行動版（有 @mobile tag 的）
-npx playwright test e2e/homepage_verification.spec.ts -g "行動版"
-
-# 只測語言切換
-npx playwright test e2e/homepage_verification.spec.ts -g "語言切換"
-
-# 只測效能
-npx playwright test e2e/homepage_verification.spec.ts -g "效能"
+# 正式環境執行
+npx cross-env APP_ENV=production npx playwright test e2e/homepage_verification.spec.ts
 ```
 
 ---
@@ -225,13 +218,11 @@ npx playwright test e2e/homepage_verification.spec.ts -g "效能"
 **測試數：** 2（學生角色 + 教師角色）
 
 ```bash
-npx playwright test e2e/navbar_verification.spec.ts
+# 本地執行
+npx cross-env APP_ENV=local npx playwright test e2e/navbar_verification.spec.ts
 
-# 只測學生角色
-npx playwright test e2e/navbar_verification.spec.ts -g "Student"
-
-# 只測教師角色
-npx playwright test e2e/navbar_verification.spec.ts -g "Teacher"
+# 正式環境執行
+npx cross-env APP_ENV=production npx playwright test e2e/navbar_verification.spec.ts
 ```
 
 ---
@@ -251,11 +242,11 @@ npx playwright test e2e/navbar_verification.spec.ts -g "Teacher"
 | E10 | 重複釋放應為 idempotent（點數不重複增加）|
 
 ```bash
-# 執行全部邊界條件測試（依序執行！）
-npx playwright test e2e/points-escrow-edge-cases-simple.spec.ts
+# 本地環境執行 (預設)
+npx cross-env APP_ENV=local npx playwright test e2e/points-escrow-edge-cases-simple.spec.ts
 
-# 只執行特定測試
-npx playwright test e2e/points-escrow-edge-cases-simple.spec.ts -g "E5"
+# 正式環境執行
+npx cross-env APP_ENV=production npx playwright test e2e/points-escrow-edge-cases-simple.spec.ts
 ```
 
 ---
@@ -294,77 +285,77 @@ npx playwright test e2e/stripe_payment_verification.spec.ts -g "Admin"
 
 ### 9. 課程對齊驗證 — `course_alignment_verification.spec.ts`
 ```bash
-npx playwright test e2e/course_alignment_verification.spec.ts
+npx cross-env APP_ENV=local npx playwright test e2e/course_alignment_verification.spec.ts
 ```
 
 ### 10. 課程管理流程 — `course_management_flow.spec.ts`
 ```bash
-npx playwright test e2e/course_management_flow.spec.ts
+npx cross-env APP_ENV=local npx playwright test e2e/course_management_flow.spec.ts
 ```
 
 ### 11. 推薦系統問卷 — `recommendation_onboarding.spec.ts`
 ```bash
-npx playwright test e2e/recommendation_onboarding.spec.ts
+npx cross-env APP_ENV=local npx playwright test e2e/recommendation_onboarding.spec.ts
 ```
 
 ### 12. 學生課程頁驗證 — `student_courses_verification.spec.ts`
 ```bash
-npx playwright test e2e/student_courses_verification.spec.ts
+npx cross-env APP_ENV=local npx playwright test e2e/student_courses_verification.spec.ts
 ```
 
 ### 13. 教師課程頁驗證 — `teacher_courses_verification.spec.ts`
 ```bash
-npx playwright test e2e/teacher_courses_verification.spec.ts
+npx cross-env APP_ENV=local npx playwright test e2e/teacher_courses_verification.spec.ts
 ```
 
 ### 14. 訂單退款驗證 — `order_refund.spec.ts`
 ```bash
-npx playwright test e2e/order_refund.spec.ts
+npx cross-env APP_ENV=local npx playwright test e2e/order_refund.spec.ts
 ```
 
 ### 15. 點數購買（模擬）— `point_purchase_simulated.spec.ts`
 ```bash
-npx playwright test e2e/point_purchase_simulated.spec.ts
+npx cross-env APP_ENV=local npx playwright test e2e/point_purchase_simulated.spec.ts
 ```
 
 ### 16. 點數購買（真實）— `point_purchase_real.spec.ts`
 ```bash
-npx playwright test e2e/point_purchase_real.spec.ts
+npx cross-env APP_ENV=local npx playwright test e2e/point_purchase_real.spec.ts
 ```
 
 ### 17. LINE Pay 模擬 — `line_pay_simulated.spec.ts`
 ```bash
-npx playwright test e2e/line_pay_simulated.spec.ts
+npx cross-env APP_ENV=local npx playwright test e2e/line_pay_simulated.spec.ts
 ```
 
 ### 18. 定價綜合測試 — `pricing_comprehensive.spec.ts`
 ```bash
-npx playwright test e2e/pricing_comprehensive.spec.ts
+npx cross-env APP_ENV=local npx playwright test e2e/pricing_comprehensive.spec.ts
 ```
 
 ### 19. 教室等待頁驗證 — `classroom_wait_verification.spec.ts`
 ```bash
-npx playwright test e2e/classroom_wait_verification.spec.ts
+npx cross-env APP_ENV=local npx playwright test e2e/classroom_wait_verification.spec.ts
 ```
 
 ### 20. 教室房間驗證 — `classroom_room_verification.spec.ts`
 ```bash
-npx playwright test e2e/classroom_room_verification.spec.ts
+npx cross-env APP_ENV=local npx playwright test e2e/classroom_room_verification.spec.ts
 ```
 
 ### 21. 教室設備權限 — `classroom-wait-device-permissions.spec.ts`
 ```bash
-npx playwright test e2e/classroom-wait-device-permissions.spec.ts
+npx cross-env APP_ENV=local npx playwright test e2e/classroom-wait-device-permissions.spec.ts
 ```
 
 ### 22. 點數 Escrow 教師流程 — `admin-teacher-escrow.spec.ts`
 ```bash
-npx playwright test e2e/admin-teacher-escrow.spec.ts
+npx cross-env APP_ENV=local npx playwright test e2e/admin-teacher-escrow.spec.ts
 ```
 
 ### 23. 資料清理 — `cleanup-test-data.spec.ts`
 ```bash
-npx playwright test e2e/cleanup-test-data.spec.ts
+npx cross-env APP_ENV=local npx playwright test e2e/cleanup-test-data.spec.ts
 ```
 
 ---
@@ -373,18 +364,20 @@ npx playwright test e2e/cleanup-test-data.spec.ts
 
 ### 執行全部測試
 ```bash
-npm test
-# 或
-npx playwright test
+# 本地環境
+npx cross-env APP_ENV=local npx playwright test
+
+# 正式環境
+npx cross-env APP_ENV=production npx playwright test
 ```
 
 ### 依標籤篩選
 ```bash
-# 只跑 smoke 標籤（快速驗證）
-npx playwright test -g "smoke"
+# 本地環境 - 只跑 smoke
+npx cross-env APP_ENV=local npx playwright test -g "smoke"
 
-# 只跑 verification 標籤（用於 CI）
-npx playwright test --grep "verification"
+# 正式環境 - 只跑 verification
+npx cross-env APP_ENV=production npx playwright test --grep "verification"
 ```
 
 ### 正式環境完整測試

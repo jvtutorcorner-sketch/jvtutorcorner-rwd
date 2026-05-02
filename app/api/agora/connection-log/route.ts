@@ -101,24 +101,32 @@ export async function POST(req: NextRequest) {
 
         // ── 向後相容：同時寫入舊資料表 ─────────────────────────────────────────
         const connectionId = uuidv4();
-        await docClient.send(new PutCommand({
-            TableName: LEGACY_TABLE,
-            Item: {
-                connectionId,
-                userId: userId || 'anonymous',
-                courseId: courseId || 'unknown',
-                page: page || 'unknown',
-                role: role || 'unknown',
-                os: osName || os || 'unknown',
-                browser: browserName || browser || 'unknown',
-                device: deviceCategory || device || 'unknown',
-                agoraVersion: sdkVersion || agoraVersion || 'unknown',
-                systemRequirements: systemRequirementsCheck ?? systemRequirements ?? null,
-                timestamp: eventTimestamp,
-                orderId: orderId || null,
-                createdAt: now,
-            },
-        }));
+        try {
+            await docClient.send(new PutCommand({
+                TableName: LEGACY_TABLE,
+                Item: {
+                    connectionId,
+                    userId: userId || 'anonymous',
+                    courseId: courseId || 'unknown',
+                    page: page || 'unknown',
+                    role: role || 'unknown',
+                    os: osName || os || 'unknown',
+                    browser: browserName || browser || 'unknown',
+                    device: deviceCategory || device || 'unknown',
+                    agoraVersion: sdkVersion || agoraVersion || 'unknown',
+                    systemRequirements: systemRequirementsCheck ?? systemRequirements ?? null,
+                    timestamp: eventTimestamp,
+                    orderId: orderId || null,
+                    createdAt: now,
+                },
+            }));
+        } catch (legacyError: any) {
+            if (legacyError.name === 'ResourceNotFoundException') {
+                console.warn(`[Legacy Table] Table ${LEGACY_TABLE} not found, skipping legacy log.`);
+            } else {
+                console.error(`[Legacy Table] Failed to write to ${LEGACY_TABLE}:`, legacyError);
+            }
+        }
 
         return NextResponse.json({ ok: true, connectionId, participantId });
     } catch (error) {

@@ -547,59 +547,102 @@ export async function registerOrLoginTeacher(
   const { baseUrl } = getTestConfig();
 
   // Try login first
+  console.log(`   🔍 [${teacherEmail}] Attempting autoLogin...`);
   try {
     await injectDeviceCheckBypass(page);
     await autoLogin(page, teacherEmail, teacherPassword, bypassSecret);
-    console.log(`   ✅ [${teacherEmail}] Login OK`);
+    console.log(`   ✅ [${teacherEmail}] Login OK (already exists)`);
     return;
-  } catch {
-    console.log(`   ℹ️ [${teacherEmail}] Login failed — registering...`);
+  } catch (err) {
+    console.log(`   ℹ️ [${teacherEmail}] Login failed (${(err as Error).message}) — registering new account...`);
   }
 
-  // Avoid hanging on pages that keep background network activity alive.
-  await page.goto(`${baseUrl}/login/register`, { waitUntil: 'domcontentloaded', timeout: 20000 }).catch(async () => {
-    await page.goto(`${baseUrl}/login/register`, { waitUntil: 'networkidle', timeout: 10000 }).catch(() => {});
+  // Go to register page
+  console.log(`   🌐 [${teacherEmail}] Navigating to /login/register...`);
+  await page.goto(`${baseUrl}/login/register`, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(async (e) => {
+    console.warn(`   ⚠️ [${teacherEmail}] domcontentloaded timeout, retrying with networkidle...`, e.message);
+    await page.goto(`${baseUrl}/login/register`, { waitUntil: 'networkidle', timeout: 15000 }).catch((e2) => {
+      console.error(`   ❌ [${teacherEmail}] Failed to load register page:`, e2.message);
+    });
   });
-  await page.waitForTimeout(1200);
+  
+  await page.waitForTimeout(2000);
+  console.log(`   📝 [${teacherEmail}] Filling registration form...`);
 
   const [firstName, ...rest] = teacherEmail.split('@')[0].split('-');
   const lastName = rest.join('-') || 'Test';
 
   // Identity
-  await page.locator('div.field:has(label:has-text("身份")) select, select[name*="identity"]').first()
-    .selectOption('教師').catch(() =>
-      page.locator('select[name*="identity"]').first().selectOption('teacher').catch(() => {}));
+  console.log(`   👤 [${teacherEmail}] Selecting identity: teacher`);
+  const roleSelect = page.locator('select').filter({ hasText: /身份|Identity|Student|Teacher/i }).first();
+  await roleSelect.selectOption('teacher').catch(async (e) => {
+     console.warn(`   ⚠️ roleSelect failed, trying direct select:`, e.message);
+     await page.locator('select').first().selectOption('teacher');
+  });
 
   // Name / Email / Password
-  await page.locator('input[name*="firstName"], input[name*="first"]').first().fill(firstName).catch(() => {});
-  await page.locator('input[name*="lastName"], input[name*="last"]').first().fill(lastName).catch(() => {});
-  await page.locator('input[type="email"]').first().fill(teacherEmail).catch(() => {});
+  console.log(`   📧 [${teacherEmail}] Filling names and email...`);
+  await page.locator('input[name*="firstName"]').first().fill(firstName);
+  await page.locator('input[name*="lastName"]').first().fill(lastName);
+  await page.locator('input[type="email"]').first().fill(teacherEmail);
+  
+  console.log(`   🔑 [${teacherEmail}] Filling passwords...`);
   const pwInputs = page.locator('input[type="password"]');
-  await pwInputs.nth(0).fill(teacherPassword).catch(() => {});
-  await pwInputs.nth(1).fill(teacherPassword).catch(() => {});
+  await pwInputs.nth(0).fill(teacherPassword);
+  await pwInputs.nth(1).fill(teacherPassword);
 
-  // Optional fields
-  await page.locator('input[name*="birthdate"], input[type="date"]').first().fill('1990-01-01').catch(() => {});
-  await page.locator('select[name*="gender"]').first().selectOption('男').catch(() =>
-    page.locator('select[name*="gender"]').first().selectOption('male').catch(() => {}));
-  await page.locator('select[name*="country"]').first().selectOption('TW').catch(() => {});
-  await page.locator('input[name="terms"], input[name*="agreement"]').first().check().catch(() => {});
-  await page.locator('input[placeholder*="驗"], input[name*="captcha"]').first().fill(bypassSecret).catch(() => {});
-
-  await page.locator('button[type="submit"]').first().click();
-  try {
-    await Promise.race([
-      page.waitForSelector('text=註冊成功', { state: 'visible', timeout: 10000 }),
-      page.waitForURL((url) => !url.toString().includes('/register'), { timeout: 10000 })
-    ]);
-  } catch (e) {
-    // Ignore timeout and proceed to autoLogin
+  // Optional / Mandatory fields
+  console.log(`   📅 [${teacherEmail}] Filling birthdate and gender...`);
+  await page.locator('input[type="date"]').first().fill('1990-01-01');
+  await page.locator('select').filter({ hasText: /性別|Gender|男|女/i }).first().selectOption('male').catch(() => {});
+  
+  console.log(`   🌍 [${teacherEmail}] Selecting country: TW...`);
+  await page.locator('select').filter({ hasText: /國家|Country|台灣/i }).first().selectOption('TW').catch(() => {});
+  
+  console.log(`   ✅ [${teacherEmail}] Checking terms and captcha...`);
+  // Terms checkbox - search for label text or name
+  const termsCheckbox = page.locator('input[type="checkbox"]').filter({ has: page.locator('..', { hasText: /同意|terms|agree/i }) }).first();
+  if (await termsCheckbox.count() > 0) {
+    await termsCheckbox.check();
+  } else {
+    await page.locator('input[name="terms"]').first().check().catch(() => {});
   }
+  
+  await page.locator('input[placeholder*="驗"]').first().fill(bypassSecret);
+
+  console.log(`   🚀 [${teacherEmail}] Submitting form...`);
+  const submitBtn = page.locator('button[type="submit"]').filter({ hasText: /建立帳戶|Register|Submit/i }).first();
+  await submitBtn.click();
+  
+  console.log(`   ⏳ [${teacherEmail}] Waiting for registration result...`);
+  try {
+    const result = await Promise.race([
+      page.waitForSelector('text=註冊成功', { state: 'visible', timeout: 20000 }).then(() => 'success'),
+      page.waitForSelector('h2:has-text("註冊成功")', { state: 'visible', timeout: 20000 }).then(() => 'success'),
+      page.waitForSelector('.form-error', { state: 'visible', timeout: 20000 }).then(() => 'error'),
+      page.waitForURL((url) => !url.toString().includes('/register'), { timeout: 20000 }).then(() => 'success')
+    ]);
+
+    if (result === 'error') {
+      const errorMsg = await page.locator('.form-error').textContent();
+      console.error(`   ❌ [${teacherEmail}] Registration failed with error: ${errorMsg}`);
+      await page.screenshot({ path: `test-results/register-error-${teacherEmail.replace('@', '-')}.png` });
+      throw new Error(`Registration failed: ${errorMsg}`);
+    }
+    
+    console.log(`   ✨ [${teacherEmail}] Registration success signal received`);
+  } catch (e) {
+    if ((e as Error).message.includes('Registration failed')) throw e;
+    console.warn(`   ⚠️ [${teacherEmail}] Wait for success signal timeout/error, proceeding to login anyway...`);
+    await page.screenshot({ path: `test-results/register-timeout-${teacherEmail.replace('@', '-')}.png` }).catch(() => {});
+  }
+
   await page.waitForTimeout(2000);
 
+  console.log(`   🔑 [${teacherEmail}] Performing final autoLogin...`);
   await injectDeviceCheckBypass(page);
   await autoLogin(page, teacherEmail, teacherPassword, bypassSecret);
-  console.log(`   ✅ [${teacherEmail}] Registered + logged in`);
+  console.log(`   ✅ [${teacherEmail}] Registered + logged in successfully`);
 }
 
 export async function createCourseAsTeacher(
