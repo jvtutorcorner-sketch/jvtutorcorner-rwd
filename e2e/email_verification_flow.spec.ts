@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 test('驗證電子郵件連結流程', async ({ page, context }) => {
-  const testEmail = 'n7842165@gmail.com';
+  const testEmail = process.env.NEXT_PUBLIC_TEST_EMAIL || 'test@example.com';
   
   console.log('\n' + '='.repeat(70));
   console.log('📧 驗證電子郵件連結完整流程測試');

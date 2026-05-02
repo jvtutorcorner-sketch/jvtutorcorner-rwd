@@ -26,16 +26,26 @@ interface CleanupStats {
   testPatternCoursesDeleted: number;
 }
 
+function requireEnv(...keys: string[]): string {
+  for (const key of keys) {
+    const value = process.env[key];
+    if (value && value.trim()) {
+      return value.trim();
+    }
+  }
+  throw new Error(`Missing required environment variable(s): ${keys.join(', ')}`);
+}
+
 function getTestConfig(): TestConfig {
   return {
     baseUrl: process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000',
     adminEmail: process.env.QA_ADMIN_EMAIL || 'admin@jvtutorcorner.com',
-    adminPassword: process.env.QA_ADMIN_PASSWORD || '123456',
+    adminPassword: requireEnv('QA_ADMIN_PASSWORD', 'ADMIN_PASSWORD'),
     teacherEmail: process.env.QA_TEACHER_EMAIL || 'lin@test.com',
-    teacherPassword: process.env.TEST_TEACHER_PASSWORD || '123456',
+    teacherPassword: requireEnv('TEST_TEACHER_PASSWORD', 'QA_TEACHER_PASSWORD'),
     studentEmail: process.env.QA_STUDENT_EMAIL || 'basic@test.com',
-    studentPassword: process.env.TEST_STUDENT_PASSWORD || '123456',
-    bypassSecret: process.env.LOGIN_BYPASS_SECRET || 'bypass-secret'
+    studentPassword: requireEnv('TEST_STUDENT_PASSWORD', 'QA_STUDENT_PASSWORD'),
+    bypassSecret: requireEnv('LOGIN_BYPASS_SECRET', 'NEXT_PUBLIC_LOGIN_BYPASS_SECRET', 'QA_CAPTCHA_BYPASS')
   };
 }
 

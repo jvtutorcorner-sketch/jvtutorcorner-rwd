@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
-test('正式郵件功能測試 - n7842165@gmail.com', async ({ page, context }) => {
-  const testEmail = 'n7842165@gmail.com';
+test('正式郵件功能測試 - 測試信箱', async ({ page, context }) => {
+  const testEmail = process.env.NEXT_PUBLIC_TEST_EMAIL || 'test@example.com';
   
   console.log('\n' + '='.repeat(70));
   console.log('📧 正式郵件功能測試');
@@ -73,7 +73,7 @@ test('正式郵件功能測試 - n7842165@gmail.com', async ({ page, context }) 
   console.log('📬 郵件功能測試完成！');
   console.log('='.repeat(70));
   console.log('💡 請檢查伺服器日誌確認郵件是否成功發送');
-  console.log('📧 請檢查收件箱 (n7842165@gmail.com) 是否收到驗證信');
+  console.log(`📧 請檢查收件箱 (${testEmail}) 是否收到驗證信`);
   console.log('='.repeat(70) + '\n');
   
   // 加上斷言確保 API 呼叫成功

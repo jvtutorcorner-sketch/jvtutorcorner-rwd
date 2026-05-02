@@ -5,14 +5,24 @@ import path from 'path';
 // Load environment variables from .env.local
 dotenv.config({ path: path.resolve(__dirname, '..', '.env.local') });
 
+function requireEnv(...keys: string[]): string {
+  for (const key of keys) {
+    const value = process.env[key];
+    if (value && value.trim()) {
+      return value.trim();
+    }
+  }
+  throw new Error(`Missing required environment variable(s): ${keys.join(', ')}`);
+}
+
 test.describe('Student Courses Page Verification', () => {
   let page: Page;
   const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
   
   // Test credentials from .env.local or fallback
   const STUDENT_EMAIL = process.env.TEST_STUDENT_EMAIL || 'student@example.com';
-  const STUDENT_PASSWORD = process.env.TEST_STUDENT_PASSWORD || '';
-  const LOGIN_BYPASS_SECRET = process.env.LOGIN_BYPASS_SECRET || '';
+  const STUDENT_PASSWORD = requireEnv('TEST_STUDENT_PASSWORD', 'QA_STUDENT_PASSWORD');
+  const LOGIN_BYPASS_SECRET = requireEnv('LOGIN_BYPASS_SECRET', 'NEXT_PUBLIC_LOGIN_BYPASS_SECRET', 'QA_CAPTCHA_BYPASS');
 
   test.beforeEach(async ({ browser }) => {
     page = await browser.newPage();

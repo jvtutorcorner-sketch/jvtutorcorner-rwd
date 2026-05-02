@@ -10,7 +10,7 @@
 # .env.local
 TEST_STUDENT_EMAIL=student@example.com
 TEST_STUDENT_PASSWORD=your_password
-LOGIN_BYPASS_SECRET=jv_secure_bypass_2024
+LOGIN_BYPASS_SECRET=<YOUR_SECRET>
 ```
 
 ### 2. 運行自動化測試

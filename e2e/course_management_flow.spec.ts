@@ -5,15 +5,25 @@ import path from 'path';
 // Load environment variables from .env.local
 dotenv.config({ path: path.resolve(__dirname, '..', '.env.local') });
 
+function requireEnv(...keys: string[]): string {
+    for (const key of keys) {
+        const value = process.env[key];
+        if (value && value.trim()) {
+            return value.trim();
+        }
+    }
+    throw new Error(`Missing required environment variable(s): ${keys.join(', ')}`);
+}
+
 test.describe('課程管理流程驗證 - 老師建立→審核→管理員核准', () => {
     const BASE_URL = process.env.BASE_URL || process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-    const LOGIN_BYPASS_SECRET = process.env.LOGIN_BYPASS_SECRET || 'jv_secret_bypass_2024';
+    const LOGIN_BYPASS_SECRET = requireEnv('LOGIN_BYPASS_SECRET', 'NEXT_PUBLIC_LOGIN_BYPASS_SECRET');
 
     const TEACHER_EMAIL = process.env.TEST_TEACHER_EMAIL || 'lin@test.com';
-    const TEACHER_PASSWORD = process.env.TEST_TEACHER_PASSWORD || '123456';
+    const TEACHER_PASSWORD = requireEnv('TEST_TEACHER_PASSWORD', 'QA_TEACHER_PASSWORD');
     
     const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@jvtutorcorner.com';
-    const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '123456';
+    const ADMIN_PASSWORD = requireEnv('ADMIN_PASSWORD', 'QA_ADMIN_PASSWORD');
 
     /**
      * 自動登入函數
@@ -44,7 +54,7 @@ test.describe('課程管理流程驗證 - 老師建立→審核→管理員核�
             const captchaInput = page.locator(selector).first();
             if (await captchaInput.count() > 0) {
                 await captchaInput.fill(LOGIN_BYPASS_SECRET);
-                console.log(`  ✓ 驗證碼已填寫 (bypass: ${LOGIN_BYPASS_SECRET})`);
+                console.log('  ✓ 驗證碼已填寫 (bypass from env)');
                 break;
             }
         }

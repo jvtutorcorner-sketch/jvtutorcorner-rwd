@@ -11,9 +11,21 @@ import { test, expect } from '@playwright/test';
 
 const BASE_URL = process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:3000';
 
+function requireEnv(...keys: string[]): string {
+  for (const key of keys) {
+    const value = process.env[key];
+    if (value && value.trim()) {
+      return value.trim();
+    }
+  }
+  throw new Error(`Missing required environment variable(s): ${keys.join(', ')}`);
+}
+
+const LOGIN_BYPASS_SECRET = requireEnv('LOGIN_BYPASS_SECRET', 'NEXT_PUBLIC_LOGIN_BYPASS_SECRET', 'QA_CAPTCHA_BYPASS');
+
 test.describe('Email Verification Hybrid Schema', () => {
   // 生成唯一的測試郵件
-  const getTestEmail = () => `test.hybrid.${Date.now()}@gmail.com`;
+  const getTestEmail = () => `test.hybrid.${Date.now()}@example.com`;
 
   test('should initialize verification status on registration', async ({ page, request }) => {
     const testEmail = getTestEmail();
@@ -33,7 +45,7 @@ test.describe('Email Verification Hybrid Schema', () => {
     }
     
     // 提交表單（假設有驗證碼 bypass）
-    await page.fill('input[name="captcha"]', 'jv_secret_bypass_2024');
+    await page.fill('input[name="captcha"]', LOGIN_BYPASS_SECRET);
     await page.click('button:has-text("建立帳號")');
     
     // 等待重定向
@@ -60,7 +72,7 @@ test.describe('Email Verification Hybrid Schema', () => {
     await page.fill('input[type="text"]', 'Test User');
     await page.fill('input[type="email"]', testEmail);
     await page.fill('input[type="password"]', 'TestPassword123!');
-    await page.fill('input[name="captcha"]', 'jv_secret_bypass_2024');
+    await page.fill('input[name="captcha"]', LOGIN_BYPASS_SECRET);
     await page.click('button:has-text("建立帳號")');
     
     // 等待郵件發送

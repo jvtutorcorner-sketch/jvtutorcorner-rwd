@@ -1,8 +1,29 @@
 import { test, expect, Browser, Page } from '@playwright/test';
 import dotenv from 'dotenv';
 import path from 'path';
+import {
+  createCourseAsTeacherWithDuration,
+  adminApproveCourse,
+  runEnrollmentFlow,
+  goToWaitRoom,
+  enterClassroom,
+  clickReadyButton,
+  waitAndEnterClassroom,
+  drawOnWhiteboard as stableDrawOnWhiteboard,
+  hasDrawingContent as stableHasDrawingContent,
+} from './helpers/whiteboard_helpers';
+import { ADMIN_EMAIL, ADMIN_PASSWORD } from './test_data/whiteboard_test_data';
+import { measureSyncLatency } from './helpers/streaming_monitor';
 
 dotenv.config({ path: path.resolve(__dirname, '..', '.env.local') });
+
+function requireEnv(...keys: string[]): string {
+  for (const key of keys) {
+    const value = process.env[key];
+    if (value) return value;
+  }
+  throw new Error(`Missing required environment variable: ${keys.join(' or ')}`);
+}
 
 /**
  * 自動登入系統
@@ -16,55 +37,57 @@ dotenv.config({ path: path.resolve(__dirname, '..', '.env.local') });
  */
 async function autoLogin(page: Page, email: string, password: string, bypassSecret: string): Promise<void> {
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-  await page.goto(`${baseUrl}/login`);
-  
-  // 等待登入頁面基本結構載入
-  await page.waitForLoadState('domcontentloaded');
-  
-  // 填入 Email 與 Password
-  await page.fill('input[type="email"]', email);
-  await page.fill('input[type="password"]', password);
-  
-  // 【關鍵】先等待驗證碼圖片 img[alt="captcha"] 出現
-  // 這確保後端 captchaToken 已載入，登入按鈕才會解除 disabled
-  console.log('   ⏳ 等待驗證碼圖片 img[alt="captcha"] 渲染...');
-  await page.waitForSelector('img[alt="captcha"]', { timeout: 30000 });
-  console.log('   ✅ 驗證碼圖片已渲染');
-  
-  // 【關鍵】等待登入按鈕變為 enabled（captchaLoading=false && captchaToken 已存在）
-  console.log('   ⏳ 等待登入按鈕變為可用狀態...');
-  await page.waitForSelector('button[type="submit"]:not([disabled])', { timeout: 15000 });
-  console.log('   ✅ 登入按鈕已啟用');
-  
-  // 填入 Bypass Secret 至驗證碼欄位 (#captcha)
-  await page.fill('#captcha', bypassSecret);
-  console.log('   ✅ 已填入 Bypass Secret');
-  
-  // 處理登入成功後的 alert 對話框（login_success alert 會阻礙 router.push）
-  page.on('dialog', async dialog => {
-    console.log('   📢 Dialog 自動關閉:', dialog.message().substring(0, 60));
-    await dialog.dismiss();
+
+  // API login + localStorage hydration avoids UI/CAPTCHA timing stalls.
+  const captchaRes = await page.request.get(`${baseUrl}/api/captcha`).catch(() => null);
+  const captchaToken = (await captchaRes?.json().catch(() => ({} as any)))?.token || '';
+
+  const loginRes = await page.request.post(`${baseUrl}/api/login`, {
+    data: JSON.stringify({
+      email,
+      password,
+      captchaToken,
+      captchaValue: bypassSecret,
+    }),
+    headers: { 'Content-Type': 'application/json' },
   });
-  
-  // 點擊登入按鈕
-  await page.click('button[type="submit"]');
-  
-  // 【關鍵修正】等待真正離開 /login 頁面
-  // 原本的 regex /\/(home|\/)/ 因為 http:// 含 // 會立即匹配，導致登入 API 未完成就返回
-  await page.waitForURL(url => {
-    const pathname = new URL(url).pathname;
-    return !pathname.startsWith('/login');
-  }, { timeout: 30000 });
-  
-  // 稍等確保 localStorage['tutor_mock_user'] 已完整寫入
-  await page.waitForTimeout(500);
-  
-  // 驗證登入確實成功（localStorage 有 tutor_mock_user）
-  const isLoggedIn = await page.evaluate(() => !!localStorage.getItem('tutor_mock_user'));
-  if (!isLoggedIn) {
-    throw new Error('登入後 localStorage 無使用者資料，登入可能失敗');
+
+  if (!loginRes.ok()) {
+    throw new Error(`❌ Login failed (${loginRes.status()}): ${await loginRes.text()}`);
   }
-  console.log('   ✅ 登入成功，已重定向，localStorage 已設定');
+
+  const loginData = await loginRes.json().catch(() => ({}));
+  const profile: any = (loginData as any)?.profile || (loginData as any)?.data || loginData;
+  const role = profile?.role || (email.includes('teacher') || email.includes('lin@test.com') ? 'teacher' : 'student');
+
+  await page.goto(`${baseUrl}/login`, { waitUntil: 'domcontentloaded' });
+  await page.evaluate((p) => {
+    localStorage.setItem('tutor_mock_user', JSON.stringify({
+      email: p.email,
+      role: p.role,
+      plan: p.plan || 'basic',
+      id: p.id || p.userId || p.email,
+      teacherId: p.id || p.userId || p.email,
+    }));
+    const now = Date.now().toString();
+    sessionStorage.setItem('tutor_last_login_time', now);
+    localStorage.setItem('tutor_last_login_time', now);
+    sessionStorage.setItem('tutor_login_complete', 'true');
+    window.dispatchEvent(new Event('tutor:auth-changed'));
+  }, {
+    email: profile?.email || email,
+    role,
+    plan: profile?.plan,
+    id: profile?.id,
+    userId: profile?.userId,
+  });
+
+  const landing = role === 'teacher' ? `${baseUrl}/teacher_courses?includeTests=true` : `${baseUrl}/student_courses`;
+  await page.goto(landing, { waitUntil: 'networkidle' });
+
+  const isLoggedIn = await page.evaluate(() => !!localStorage.getItem('tutor_mock_user'));
+  if (!isLoggedIn) throw new Error('登入後 localStorage 無使用者資料，登入可能失敗');
+  console.log('   ✅ 登入成功（API + localStorage hydration）');
 }
 
 /**
@@ -79,44 +102,15 @@ async function autoLogin(page: Page, email: string, password: string, bypassSecr
  *    - 已準備好：「✓ 已準備好，點擊取消」
  */
 async function enterClassroomWaitPage(page: Page, courseId: string, role: 'teacher' | 'student'): Promise<void> {
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-  
-  // 【關鍵】在頁面任何腳本執行前注入 E2E bypass flag
-  // 這讓 classroom/wait 的 useEffect 讀到 window.__E2E_BYPASS_DEVICE_CHECK__ = true
-  // 使 deviceCheckPassed 立即為 true，「準備好」按鈕解除 disabled
+  // 保持設備檢查 bypass，避免 Ready 按鈕受權限檢查影響
   await page.addInitScript(() => {
     (window as any).__E2E_BYPASS_DEVICE_CHECK__ = true;
   });
-  
-  // 【關鍵】直接導航到 classroom/wait
-  // 跳過課程列表頁面（其「進入教室」連結有時間窗口限制）
-  console.log(`   📍 直接導航到 classroom/wait?courseId=${courseId}`);
-  await page.goto(`${baseUrl}/classroom/wait?courseId=${encodeURIComponent(courseId)}`);
-  await page.waitForLoadState('domcontentloaded');
-  
-  // 確認已在 classroom/wait 頁面
-  await page.waitForURL(/\/classroom\/wait/, { timeout: 15000 });
-  console.log(`   ✅ 已進入 classroom/wait 頁面`);
-  
-  // 等待頁面渲染（React 需要 useEffect 執行完成）
-  await page.waitForTimeout(2000);
-  
-  // 等待「點擊表示準備好」按鈕出現且可點擊
-  // 文字來自 t('wait.ready_toggle_not_ready') = "點擊表示準備好"
-  // disabled={!deviceCheckPassed || isUpdating}
-  console.log(`   ⏳ 等待「準備好」按鈕變為可點擊...`);
-  const readyBtn = page.locator('button:has-text("點擊表示準備好")').first();
-  await readyBtn.waitFor({ state: 'visible', timeout: 15000 });
-  await page.waitForSelector('button:has-text("點擊表示準備好"):not([disabled])', { timeout: 10000 });
-  console.log(`   ✅ 準備好按鈕已可點擊`);
-  
-  // 點擊「準備好」
-  console.log(`   🔄 點擊「準備好」按鈕...`);
-  await readyBtn.click();
-  
-  // 等待按鈕變為「✓ 已準備好，點擊取消」（確認狀態已更新）
-  await page.waitForSelector('button:has-text("已準備好")', { timeout: 10000 });
-  console.log(`   ✅ ${role === 'teacher' ? '教師' : '學生'}已點擊「準備好」（按鈕已變綠）`);
+
+  // 使用共用 helper：從課程清單點「進入教室」取得正確 wait 參數，再點 Ready。
+  await goToWaitRoom(page, courseId, role);
+  await enterClassroom(page, role);
+  await clickReadyButton(page, role);
 }
 
 /**
@@ -127,17 +121,24 @@ async function enterClassroomWaitPage(page: Page, courseId: string, role: 'teach
  * 需要等到按鈕不再 disabled 才點擊
  */
 async function enterFromWaitPage(page: Page): Promise<void> {
-  // 等待「✓ 立即進入教室」按鈕出現且已啟用
-  // canEnter = hasTeacher && hasStudent（雙方都已 ready 後才 enabled）
   console.log(`   ⏳ 等待「立即進入教室」按鈕啟用（等待雙方都準備好）...`);
-  await page.waitForSelector('button:has-text("立即進入教室"):not([disabled])', { timeout: 30000 });
-  
-  const enterRoomBtn = page.locator('button:has-text("立即進入教室")').first();
+  const enterRoomBtn = page
+    .locator('button, a')
+    .filter({ hasText: /立即進入教室|進入教室|開始上課|Enter Classroom|Start Class|Join/i })
+    .first();
+
+  await enterRoomBtn.waitFor({ state: 'visible', timeout: 30000 });
+
+  // Some builds use <a>, some use <button>. Only button needs enabled check.
+  const tagName = await enterRoomBtn.evaluate((el) => el.tagName.toLowerCase()).catch(() => 'button');
+  if (tagName === 'button') {
+    await expect(enterRoomBtn).toBeEnabled({ timeout: 30000 });
+  }
+
   console.log(`   🔄 點擊「立即進入教室」按鈕...`);
   await enterRoomBtn.click();
-  
-  // 等待進入教室頁 (/classroom/room)
-  await page.waitForURL(/\/classroom\/room/, { timeout: 20000 });
+
+  await page.waitForURL(/\/classroom\/room/, { timeout: 30000 });
   await page.waitForLoadState('domcontentloaded');
   console.log(`   ✅ 成功進入教室 (/classroom/room)`);
 }
@@ -240,15 +241,16 @@ test.describe('Classroom Room - Whiteboard Sync (Manual Sync Mode)', () => {
   
   test('Manual sync: Both teacher and student ready before entering classroom', async ({ browser }) => {
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-    const bypassSecret = process.env.NEXT_PUBLIC_LOGIN_BYPASS_SECRET || process.env.LOGIN_BYPASS_SECRET || 'jv_secret_bypass_2024';
+    const bypassSecret = requireEnv('LOGIN_BYPASS_SECRET', 'NEXT_PUBLIC_LOGIN_BYPASS_SECRET');
     
-    const teacherEmail = process.env.QA_TEACHER_EMAIL || process.env.TEST_TEACHER_EMAIL || 'lin@test.com';
-    const teacherPassword = process.env.TEST_TEACHER_PASSWORD || '123456';
+    const teacherEmail = process.env.QA_TEACHER_EMAIL || process.env.TEST_TEACHER_EMAIL || 'teacher@example.com';
+    const teacherPassword = requireEnv('TEST_TEACHER_PASSWORD', 'QA_TEACHER_PASSWORD');
     
-    const studentEmail = process.env.QA_STUDENT_EMAIL || process.env.TEST_STUDENT_EMAIL || 'pro@test.com';
-    const studentPassword = process.env.TEST_STUDENT_PASSWORD || '123456';
+    const studentEmail = process.env.QA_STUDENT_EMAIL || process.env.TEST_STUDENT_EMAIL || 'student@example.com';
+    const studentPassword = requireEnv('TEST_STUDENT_PASSWORD', 'QA_STUDENT_PASSWORD');
     
-    const courseId = process.env.TEST_COURSE_ID || 'eba868d3-542f-4b36-9255-202ab66b0d1a';
+    const usingProvidedCourseId = Boolean(process.env.TEST_COURSE_ID);
+    const courseId = process.env.TEST_COURSE_ID || `manual-sync-${Date.now()}`;
     
     console.log('\n========================================');
     console.log('🎬 手動同步白板測試流程開始');
@@ -258,7 +260,7 @@ test.describe('Classroom Room - Whiteboard Sync (Manual Sync Mode)', () => {
     console.log(`   教師帳號: ${teacherEmail}`);
     console.log(`   學生帳號: ${studentEmail}`);
     console.log(`   課程 ID: ${courseId}`);
-    console.log(`   Bypass Secret: ${bypassSecret}\n`);
+    console.log(`   Bypass Secret configured: ${Boolean(bypassSecret)}\n`);
     
     // --- 步驟 1: 教師登入並進入 classroom/wait ---
     console.log('\n📍 【步驟 1】教師登入 & 進入 classroom/wait');
@@ -266,8 +268,28 @@ test.describe('Classroom Room - Whiteboard Sync (Manual Sync Mode)', () => {
     
     const teacherContext = await browser.newContext();
     const teacherPage = await teacherContext.newPage();
+    let studentContext: Awaited<ReturnType<Browser['newContext']>> | undefined;
     
     try {
+      if (!usingProvidedCourseId) {
+        console.log('\n🧪 【前置】建立專用測試課程 + 報名，避免使用共享課程造成 room full');
+        await createCourseAsTeacherWithDuration(
+          teacherPage,
+          courseId,
+          teacherEmail,
+          teacherPassword,
+          bypassSecret,
+          5
+        );
+
+        const adminContext = await browser.newContext();
+        const adminPage = await adminContext.newPage();
+        await adminApproveCourse(adminPage, courseId, ADMIN_EMAIL, ADMIN_PASSWORD, bypassSecret);
+        await adminContext.close();
+
+        runEnrollmentFlow(courseId, teacherEmail, studentEmail);
+      }
+
       // 設置視窗大小以便操作
       await teacherPage.setViewportSize({ width: 1280, height: 800 });
       
@@ -285,7 +307,7 @@ test.describe('Classroom Room - Whiteboard Sync (Manual Sync Mode)', () => {
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       
       // 創建無痕上下文以避免 Cookie 衝突
-      const studentContext = await browser.newContext();
+      studentContext = await browser.newContext();
       const studentPage = await studentContext.newPage();
       
       // 設置視窗大小
@@ -307,13 +329,13 @@ test.describe('Classroom Room - Whiteboard Sync (Manual Sync Mode)', () => {
       await teacherPage.waitForTimeout(5000);
       
       console.log('   🔄 教師進入教室...');
-      await enterFromWaitPage(teacherPage);
+      await waitAndEnterClassroom(teacherPage, 'teacher');
       
       console.log('   ⏳ 等待 2 秒...');
       await teacherPage.waitForTimeout(2000);
       
       console.log('   🔄 學生進入教室...');
-      await enterFromWaitPage(studentPage);
+      await waitAndEnterClassroom(studentPage, 'student');
       
       // --- 步驟 4: 教師在白板繪圖 ---
       console.log('\n📍 【步驟 4】教師在白板繪圖');
@@ -322,31 +344,30 @@ test.describe('Classroom Room - Whiteboard Sync (Manual Sync Mode)', () => {
       console.log('   ⏳ 等待 3 秒讓教室完全加載...');
       await teacherPage.waitForTimeout(3000);
       
-      const drawingPoints = await drawOnWhiteboard(teacherPage);
+      await stableDrawOnWhiteboard(teacherPage);
       console.log(`   ✅ 教師已在白板繪製曲線`);
-      console.log(`   📊 繪圖點數: ${drawingPoints.length}`);
-      console.log(`   📍 繪圖座標: ${drawingPoints.map(p => `(${p.x.toFixed(0)}, ${p.y.toFixed(0)})`).join(' → ')}\n`);
+      console.log(`   📊 繪圖動作已送出\n`);
       
       // --- 步驟 5: 驗證學生能看到教師的繪圖 ---
       console.log('\n📍 【步驟 5】驗證學生看到教師繪圖');
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       
-      console.log('   ⏳ 等待 2 秒同步...');
-      await teacherPage.waitForTimeout(2000);
+      console.log('   ⏳ 量測同步延遲（最多 20 秒）...');
+      const syncProbe = await measureSyncLatency(studentPage, { maxWaitMs: 20000, pollIntervalMs: 500 });
+      console.log(`   📊 同步延遲: ${syncProbe.latencyMs ?? 'TIMEOUT'}ms`);
       
-      const teacherCanSeeDrawing = await verifyWhiteboardHasDrawing(teacherPage);
+      const teacherCanSeeDrawing = await stableHasDrawingContent(teacherPage);
       console.log(`   👨‍🏫 教師白板: ${teacherCanSeeDrawing ? '✅ 有繪圖內容' : '❌ 無繪圖內容'}`);
       
-      const studentCanSeeDrawing = await verifyWhiteboardHasDrawing(studentPage);
+      const studentCanSeeDrawing = syncProbe.synced || (await stableHasDrawingContent(studentPage));
       console.log(`   👨‍🎓 學生白板: ${studentCanSeeDrawing ? '✅ 有繪圖內容' : '❌ 無繪圖內容'}\n`);
       
-      // 驗證 Canvas 元素存在
-      const teacherCanvas = teacherPage.locator('canvas').first();
-      const studentCanvas = studentPage.locator('canvas').first();
-      
-      await expect(teacherCanvas).toBeVisible();
-      await expect(studentCanvas).toBeVisible();
-      console.log('   ✅ 兩端 Canvas 均可見\n');
+      // 驗證至少有一個可見 canvas，避免第一個 canvas 為隱藏緩衝層造成誤判
+      const teacherVisibleCanvasCount = await teacherPage.locator('canvas:visible').count();
+      const studentVisibleCanvasCount = await studentPage.locator('canvas:visible').count();
+      expect(teacherVisibleCanvasCount).toBeGreaterThan(0);
+      expect(studentVisibleCanvasCount).toBeGreaterThan(0);
+      console.log('   ✅ 兩端至少各有一個可見 Canvas\n');
       
       // 主要斷言
       console.log('\n📋 測試結果:');
@@ -371,6 +392,22 @@ test.describe('Classroom Room - Whiteboard Sync (Manual Sync Mode)', () => {
       await teacherPage.close();
       await studentPage.close();
     } finally {
+      if (!usingProvidedCourseId) {
+        try {
+          const cleanupContext = await browser.newContext();
+          const cleanupPage = await cleanupContext.newPage();
+          await autoLogin(cleanupPage, ADMIN_EMAIL, ADMIN_PASSWORD, bypassSecret);
+          await cleanupPage.request.delete(`${baseUrl}/api/courses?id=${courseId}`).catch(() => {});
+          await cleanupPage.request.delete(`${baseUrl}/api/orders?courseId=${courseId}`).catch(() => {});
+          await cleanupContext.close();
+        } catch (cleanupError) {
+          console.log('⚠️ 清理課程失敗:', cleanupError);
+        }
+      }
+
+      if (studentContext) {
+        await studentContext.close();
+      }
       await teacherContext.close();
     }
   });

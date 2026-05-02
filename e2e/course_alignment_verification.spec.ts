@@ -5,18 +5,28 @@ import path from 'path';
 // Load environment variables from .env.local
 dotenv.config({ path: path.resolve(__dirname, '..', '.env.local') });
 
+function requireEnv(...keys: string[]): string {
+    for (const key of keys) {
+        const value = process.env[key];
+        if (value && value.trim()) {
+            return value.trim();
+        }
+    }
+    throw new Error(`Missing required environment variable(s): ${keys.join(', ')}`);
+}
+
 test.describe('Course Alignment (Student vs Teacher) Verification', () => {
     let studentPage: Page;
     let teacherPage: Page;
 
     const BASE_URL = process.env.BASE_URL || process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-    const LOGIN_BYPASS_SECRET = process.env.LOGIN_BYPASS_SECRET || '';
+    const LOGIN_BYPASS_SECRET = requireEnv('LOGIN_BYPASS_SECRET', 'NEXT_PUBLIC_LOGIN_BYPASS_SECRET');
 
     const STUDENT_EMAIL = process.env.TEST_STUDENT_EMAIL || 'basic@test.com';
-    const STUDENT_PASSWORD = process.env.TEST_STUDENT_PASSWORD || '123456';
+    const STUDENT_PASSWORD = requireEnv('TEST_STUDENT_PASSWORD', 'QA_STUDENT_PASSWORD');
 
     const TEACHER_EMAIL = process.env.TEST_TEACHER_EMAIL || 'lin@test.com';
-    const TEACHER_PASSWORD = process.env.TEST_TEACHER_PASSWORD || '123456';
+    const TEACHER_PASSWORD = requireEnv('TEST_TEACHER_PASSWORD', 'QA_TEACHER_PASSWORD');
 
     interface CourseData {
         id: string;

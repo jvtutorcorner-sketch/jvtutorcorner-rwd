@@ -1,33 +1,67 @@
 import { test, expect } from '@playwright/test';
-import { TeacherEnterClassroomSkill } from '../automation/skills/TeacherEnterClassroom';
+import {
+    injectDeviceCheckBypass,
+    autoLogin,
+    createCourseAsTeacherWithDuration,
+    adminApproveCourse,
+    runEnrollmentFlow,
+    goToWaitRoom,
+} from './helpers/whiteboard_helpers';
+import { getTestConfig, ADMIN_EMAIL, ADMIN_PASSWORD } from './test_data/whiteboard_test_data';
 import dotenv from 'dotenv';
 import path from 'path';
 
 dotenv.config({ path: path.resolve(__dirname, '..', '.env.local') });
 
+const TEACHER_EMAIL = process.env.TEST_TEACHER_EMAIL || 'lin@test.com';
+const TEACHER_PASSWORD = process.env.TEST_TEACHER_PASSWORD || '<SECRET>';
+const STUDENT_EMAIL = process.env.TEST_STUDENT_EMAIL || 'student@test.com';
+
 test.describe('Classroom Wait Page Verification', () => {
     test('Verify wait page elements and device bypass', async ({ browser }) => {
-        const teacherSkill = new TeacherEnterClassroomSkill(browser);
-        
-        // We want to test specifically the wait page, so we'll use a part of the skill logic
-        // or just drive the page directly for more granular control if needed.
-        // For now, let's use the skill but stop at the wait page.
-        
-        const result = await teacherSkill.execute({ 
-            keepOpen: true,
-            timeoutMs: 60000 
-        });
+        const config = getTestConfig();
+        const teacherContext = await browser.newContext();
+        const teacherPage = await teacherContext.newPage();
+        const courseId = `wait-verify-${Date.now()}`;
 
-        expect(result.success).toBe(true);
-        const page = result.page!;
-        
-        // Assert we are in classroom environment
-        await expect(page).toHaveURL(/\/classroom/);
-        
-        // The skill already performs the setup, so we can verify the outcome
-        const readyBtn = page.locator('button:has-text("準備好")').first();
-        // Since the skill clicks 'ready', it might already be 'Ready' state or advanced.
-        
-        await page.close();
+        try {
+            await injectDeviceCheckBypass(teacherPage);
+            await autoLogin(teacherPage, TEACHER_EMAIL, TEACHER_PASSWORD, config.bypassSecret);
+
+            await createCourseAsTeacherWithDuration(
+                teacherPage,
+                courseId,
+                TEACHER_EMAIL,
+                TEACHER_PASSWORD,
+                config.bypassSecret,
+                5
+            );
+
+            const adminContext = await browser.newContext();
+            const adminPage = await adminContext.newPage();
+            await adminApproveCourse(adminPage, courseId, ADMIN_EMAIL, ADMIN_PASSWORD, config.bypassSecret);
+            await adminContext.close();
+
+            await runEnrollmentFlow(courseId, TEACHER_EMAIL, STUDENT_EMAIL);
+
+            await goToWaitRoom(teacherPage, courseId, 'teacher');
+            await expect(teacherPage).toHaveURL(/\/classroom\/wait/, { timeout: 30000 });
+
+            const readyBtn = teacherPage
+                .locator('button')
+                .filter({ hasText: /點擊表示準備好|準備好|Ready/i })
+                .first();
+            await expect(readyBtn).toBeVisible({ timeout: 15000 });
+            await expect(readyBtn).toBeEnabled({ timeout: 15000 });
+        } finally {
+            const adminContext = await browser.newContext();
+            const adminPage = await adminContext.newPage();
+            await injectDeviceCheckBypass(adminPage);
+            await autoLogin(adminPage, ADMIN_EMAIL, ADMIN_PASSWORD, config.bypassSecret);
+            await adminPage.request.delete(`${config.baseUrl}/api/courses?id=${courseId}`).catch(() => {});
+            await adminPage.request.delete(`${config.baseUrl}/api/orders?courseId=${courseId}`).catch(() => {});
+            await adminContext.close();
+            await teacherContext.close();
+        }
     });
 });

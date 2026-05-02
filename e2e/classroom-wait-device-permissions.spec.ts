@@ -16,14 +16,26 @@ dotenv.config({ path: path.resolve(__dirname, '..', '.env.local') });
  */
 
 function getTestConfig() {
-  return {
-    baseUrl: process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000',
-    bypassSecret: process.env.NEXT_PUBLIC_LOGIN_BYPASS_SECRET || process.env.LOGIN_BYPASS_SECRET || 'jv_secure_bypass_2024',
-    teacherEmail: (process.env.QA_TEACHER_EMAIL || process.env.TEST_TEACHER_EMAIL || 'teacher@test.com').toLowerCase(),
-    teacherPassword: process.env.TEST_TEACHER_PASSWORD || '123456',
-    studentEmail: (process.env.QA_STUDENT_EMAIL || process.env.TEST_STUDENT_EMAIL || 'student@test.com').toLowerCase(),
-    studentPassword: process.env.TEST_STUDENT_PASSWORD || '123456',
+  const requireEnv = (...keys: string[]): string => {
+    for (const key of keys) {
+      const value = process.env[key];
+      if (value && value.trim()) {
+        return value.trim();
+      }
+    }
+    throw new Error(`Missing required env vars: ${keys.join(', ')}`);
   };
+
+  const config = {
+    baseUrl: process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000',
+    bypassSecret: requireEnv('LOGIN_BYPASS_SECRET', 'NEXT_PUBLIC_LOGIN_BYPASS_SECRET', 'QA_CAPTCHA_BYPASS'),
+    teacherEmail: (process.env.QA_TEACHER_EMAIL || process.env.TEST_TEACHER_EMAIL || 'teacher@example.com').toLowerCase(),
+    teacherPassword: requireEnv('TEST_TEACHER_PASSWORD', 'QA_TEACHER_PASSWORD'),
+    studentEmail: (process.env.QA_STUDENT_EMAIL || process.env.TEST_STUDENT_EMAIL || 'student@example.com').toLowerCase(),
+    studentPassword: requireEnv('TEST_STUDENT_PASSWORD', 'QA_STUDENT_PASSWORD'),
+  };
+
+  return config;
 }
 
 async function injectDeviceCheckBypass(page: Page): Promise<void> {

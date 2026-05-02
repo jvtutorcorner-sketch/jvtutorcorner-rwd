@@ -1,5 +1,15 @@
 import { test, expect } from '@playwright/test';
 
+function requireEnv(...keys: string[]): string {
+  for (const key of keys) {
+    const value = process.env[key];
+    if (value && value.trim()) {
+      return value.trim();
+    }
+  }
+  throw new Error(`Missing required environment variable(s): ${keys.join(', ')}`);
+}
+
 /**
  * Teacher Earnings & Admin Escrow Points Dashboard Verification
  *
@@ -16,14 +26,21 @@ import { test, expect } from '@playwright/test';
  */
 
 const BASE_URL = process.env.QA_TEST_BASE_URL || 'http://localhost:3000';
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@jvtutorcorner.com';
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '123456';
-const TEACHER_EMAIL = process.env.TEST_TEACHER_EMAIL || 'lin@test.com';
-const TEACHER_PASSWORD = process.env.TEST_TEACHER_PASSWORD || '123456';
-const LOGIN_BYPASS_SECRET = 'jv_secret_bypass_2024';
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@example.com';
+const ADMIN_PASSWORD = requireEnv('ADMIN_PASSWORD', 'QA_ADMIN_PASSWORD');
+const TEACHER_EMAIL = process.env.TEST_TEACHER_EMAIL || process.env.QA_TEACHER_EMAIL || 'teacher@example.com';
+const TEACHER_PASSWORD = requireEnv('TEST_TEACHER_PASSWORD', 'QA_TEACHER_PASSWORD');
+const LOGIN_BYPASS_SECRET = requireEnv('LOGIN_BYPASS_SECRET', 'NEXT_PUBLIC_LOGIN_BYPASS_SECRET', 'QA_CAPTCHA_BYPASS');
 
 /** Shared login helper */
 async function loginAs(page: any, email: string, password: string, role: string) {
+  if (!password) {
+    throw new Error(`Missing password for role: ${role}`);
+  }
+  if (!LOGIN_BYPASS_SECRET) {
+    throw new Error('Missing LOGIN_BYPASS_SECRET');
+  }
+
   await page.goto(`${BASE_URL}/login`);
   await page.waitForLoadState('domcontentloaded');
   await page.fill('input[type="email"]', email);
