@@ -1,54 +1,67 @@
 # Skill 驗證狀態摘要
 
-最後更新: 2026-04-30
+最後更新: 2026-05-02
 
 ## 統計
 
-- **總計**: 21 個 Skill
-- **✅ 已驗證**: 15
-- **⚠️ 部分驗證**: 2
-- **🔄 驗證中**: 1
-- **❌ 未驗證**: 3
+- **總計**: 37 個 Skill
+- **✅ 已驗證**: 0
+- **⚠️ 部分驗證**: 0
+- **🔄 驗證中**: 0
+- **❌ 未驗證**: 37
 
 ## 已驗證的 Skill
 
 ```
-✅ auto-login
-✅ student-enrollment-flow
-✅ student-courses-page
-✅ teacher-courses-page
-✅ course-scheduling-reminders
-✅ course-alignment
-✅ email-service-integration
-✅ payment-flow-validation
-✅ payment-restitution-logic
-✅ payment-simulation-linepay
-✅ payment-fee-deduction-logic
-✅ payment-pricing-configuration
-✅ payment-gateway-stripe-verification
-✅ payment-refund-gateway
-✅ points-escrow
+
 ```
 
 ## 部分驗證的 Skill
 
 ```
-⚠️ course-management-service
-⚠️ admin-teacher-management
+
 ```
 
 ## 未驗證的 Skill
 
 ```
+❌ admin-order-management
+❌ admin-teacher-management
 ❌ ai-chat
-❌ payment-gateway-stripe-verification (臨時 UNVERIFIED，實際已驗證)
+❌ api-performance-testing
+❌ api-registry-management
+❌ auto-login
+❌ big-data-collection
+❌ classroom-ready
+❌ classroom-room
+❌ classroom-room-whiteboard-sync
+❌ classroom-wait
+❌ classroom-wait-device-permissions
+❌ course-alignment
+❌ course-management-service
+❌ course-scheduling-reminders
+❌ email-notification-testing
+❌ email-service-integration
+❌ env-check
+❌ homepage-verification
+❌ image-analysis
+❌ navbar-verification
+❌ payment-fee-deduction-logic
+❌ payment-flow-validation
+❌ payment-gateway-stripe-verification
+❌ payment-infrastructure
+❌ payment-pricing-configuration
+❌ payment-refund-gateway
+❌ payment-refund-orchestration
+❌ payment-restitution-logic
+❌ payment-simulation-linepay
+❌ points-escrow
+❌ product-detection-ml
+❌ recommendation-onboarding
+❌ student-courses-page
+❌ student-enrollment-flow
+❌ teacher-courses-page
 ❌ workflow
-```
-
-## 驗證中的 Skill
-
-```
-🔄 admin-order-management
 ```
 
 ---
