@@ -186,22 +186,22 @@ export default function ClientHomePage({
                 {user ? (
                   <>
                     <Link href="/courses" className="btn-primary">
-                      瀏覽所有課程
+                      {t('browse_all_courses')}
                     </Link>
                     <button 
                       className="btn-secondary"
                       onClick={() => setShowUserQuestionnaire(true)}
                     >
-                      更新學習偏好
+                      {t('update_learning_preferences')}
                     </button>
                   </>
                 ) : (
                   <>
                     <Link href="/login/register" className="btn-primary">
-                      免費開始使用
+                      {t('start_for_free')}
                     </Link>
                     <Link href="/courses" className="btn-secondary">
-                      探索熱門課程
+                      {t('explore_popular_courses')}
                     </Link>
                   </>
                 )}
@@ -261,24 +261,24 @@ export default function ClientHomePage({
           <div className="section-header-enhanced">
             <div>
               <h2 className="section-title-large">
-                {user ? `${user.firstName || user.email?.split('@')[0] || '您'} 的專屬推薦` : '為您精選的課程'}
+                {user ? `${user.firstName || user.email?.split('@')[0] || t('you')}${t('personalized_recommendations_user_suffix')}` : t('personalized_recommendations_guest')}
               </h2>
-              <p className="section-subtitle">基於您的興趣和學習進度</p>
+              <p className="section-subtitle">{t('recommendations_subtitle')}</p>
             </div>
             {!user ? (
               <Link href="/login/register" className="section-link-cta">
-                建立帳號，獲得個性化推薦 →
+                {t('create_account_for_recommendations')}
               </Link>
             ) : (
                <button className="section-link-cta" onClick={() => setShowUserQuestionnaire(true)} id="tour-questionnaire-btn">
-                 更新您的學習偏好 →
+                 {t('update_learning_preferences_arrow')}
                </button>
             )}
           </div>
           {recsLoading ? (
             <div className="loading-state">
               <div className="loading-spinner"></div>
-              <p>正在為您挑選最佳課程…</p>
+              <p>{t('loading_recommendations')}</p>
             </div>
           ) : (
             <div className="card-grid">
@@ -295,10 +295,10 @@ export default function ClientHomePage({
         <div className="container">
           <div className="section-header-enhanced">
             <div>
-              <h2 className="section-title-large">熱門教師</h2>
-              <p className="section-subtitle">來自各領域的頂尖教育專家</p>
+              <h2 className="section-title-large">{t('popular_teachers')}</h2>
+              <p className="section-subtitle">{t('popular_teachers_subtitle')}</p>
             </div>
-            <Link href="/teachers" className="section-link-cta">查看所有教師 →</Link>
+            <Link href="/teachers" className="section-link-cta">{t('view_all_teachers_arrow')}</Link>
           </div>
           <div className="card-grid">
             {recommendedTeachers.map((teacher) => (
@@ -361,21 +361,21 @@ export default function ClientHomePage({
       <section className="section-accent">
         <div className="container">
           <div className="contact-container text-center" style={{ maxWidth: '600px', margin: '0 auto', textAlign: 'center' }}>
-            <h2 style={{ fontSize: '2.5rem', color: 'white', marginBottom: '16px' }}>訂閱最新消息</h2>
-            <p style={{ color: 'rgba(255,255,255,0.8)', marginBottom: '32px' }}>第一時間獲得專屬優惠和新課程通知</p>
+            <h2 style={{ fontSize: '2.5rem', color: 'white', marginBottom: '16px' }}>{t('subscribe_newsletter_title')}</h2>
+            <p style={{ color: 'rgba(255,255,255,0.8)', marginBottom: '32px' }}>{t('subscribe_newsletter_subtitle')}</p>
             <form className="contact-form" style={{ display: 'flex', gap: '12px' }} onSubmit={(e) => {
               e.preventDefault();
-              alert('感謝您的訂閱！');
+              alert(t('subscribe_success_alert'));
             }}>
               <input 
                 type="email" 
-                placeholder="輸入您的電子郵件地址" 
+                placeholder={t('email_placeholder_subscribe')} 
                 required 
                 className="form-input"
                 style={{ flex: 1, padding: '14px 20px', borderRadius: '10px' }}
               />
               <button type="submit" className="btn-primary" style={{ background: 'white', color: '#4f46e5', boxShadow: 'none' }}>
-                立即訂閱
+                {t('subscribe_now')}
               </button>
             </form>
           </div>
