@@ -32,34 +32,14 @@ export async function POST(req: Request) {
     // Check bypass via value OR via header
     const headerList = await headers();
     const e2eHeader = headerList.get('X-E2E-Secret');
-    const isBypassAttempt = Boolean(bypassSecret) && (captchaValue === bypassSecret || e2eHeader === bypassSecret);
+    const isBypassAttempt = Boolean(bypassSecret) && (
+      (captchaValue && bypassSecret && captchaValue.trim() === bypassSecret.trim()) || 
+      (e2eHeader && bypassSecret && e2eHeader.trim() === bypassSecret.trim())
+    );
 
     if (isBypassAttempt) {
-      const adminEmail = process.env.ADMIN_EMAIL;
-      const adminPass = process.env.ADMIN_PASSWORD;
-
-      if (adminEmail && adminPass &&
-          String(email).toLowerCase() === String(adminEmail).toLowerCase() && 
-          password === adminPass) {
-        skipCaptcha = true;
-      }
-
-      const testTeacherEmail = process.env.TEST_TEACHER_EMAIL;
-      const testTeacherPass = process.env.TEST_TEACHER_PASSWORD;
-      const testStudentEmail = process.env.TEST_STUDENT_EMAIL;
-      const testStudentPass = process.env.TEST_STUDENT_PASSWORD;
-
-      if (testTeacherEmail && testTeacherPass && 
-          String(email).toLowerCase() === String(testTeacherEmail).toLowerCase() && 
-          password === testTeacherPass) {
-        skipCaptcha = true;
-      }
-
-      if (testStudentEmail && testStudentPass && 
-          String(email).toLowerCase() === String(testStudentEmail).toLowerCase() && 
-          password === testStudentPass) {
-        skipCaptcha = true;
-      }
+      skipCaptcha = true;
+      console.log('[login] captcha bypass triggered via secret');
     }
 
     // 2. Validate captcha if not a test account

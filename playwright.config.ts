@@ -35,6 +35,9 @@ export default defineConfig({
 
     use: {
         baseURL: BASE_URL,
+        extraHTTPHeaders: {
+            'X-E2E-Secret': process.env.LOGIN_BYPASS_SECRET || '',
+        },
         trace: 'on-first-retry',
         screenshot: 'only-on-failure',
         video: 'retain-on-failure',

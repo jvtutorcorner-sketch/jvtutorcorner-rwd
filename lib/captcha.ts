@@ -97,7 +97,7 @@ export async function verifyCaptcha(token: string | undefined, value: string | u
   const bypassSecret = getBypassSecret();
 
   // 1. Check bypass via provided value (form field)
-  if (bypassSecret && value === bypassSecret) {
+  if (bypassSecret && value && value.trim() === bypassSecret.trim()) {
     console.log('[captcha] bypass code used via value');
     return true;
   }
@@ -106,7 +106,7 @@ export async function verifyCaptcha(token: string | undefined, value: string | u
   try {
     const headerList = await headers();
     const e2eHeader = headerList.get('X-E2E-Secret');
-    if (bypassSecret && e2eHeader === bypassSecret) {
+    if (bypassSecret && e2eHeader && e2eHeader.trim() === bypassSecret.trim()) {
       console.log('[captcha] bypass code used via X-E2E-Secret header');
       return true;
     }

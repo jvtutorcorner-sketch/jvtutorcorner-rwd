@@ -124,8 +124,11 @@ npx cross-env APP_ENV=production npx playwright test e2e/classroom_room_whiteboa
 # 執行特定標籤 (如 smoke)
 npx cross-env APP_ENV=local npx playwright test e2e/classroom_room_whiteboard_sync.spec.ts -g "smoke"
 
-# 壓力測試 (Stress) - 自訂並發組數
-npx cross-env APP_ENV=local STRESS_GROUP_COUNT=5 npx playwright test e2e/classroom_room_whiteboard_sync.spec.ts -g "stress"
+# 壓力測試 (Stress) - 自訂並發組數與時長
+# STRESS_GROUP_COUNT: 組數 (預設 3)
+# STRESS_TEST_DURATION: 課程分鐘 (預設 60)
+# STRESS_STAY_SECONDS: 教室停留秒數 (預設 10)
+npx cross-env APP_ENV=local STRESS_GROUP_COUNT=5 STRESS_TEST_DURATION=120 STRESS_STAY_SECONDS=60 npx playwright test e2e/classroom_room_whiteboard_sync.spec.ts -g "stress"
 ```
 
 ---

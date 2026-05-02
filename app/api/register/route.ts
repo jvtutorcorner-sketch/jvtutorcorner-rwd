@@ -4,7 +4,8 @@ import path from 'path';
 import resolveDataFile from '@/lib/localData';
 import { ddbDocClient } from '@/lib/dynamo';
 import { PutCommand, ScanCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
-import { verifyCaptcha } from '@/lib/captcha';
+import { verifyCaptcha, getBypassSecret } from '@/lib/captcha';
+import { headers } from 'next/headers';
 
 
 const PROFILES_TABLE = process.env.DYNAMODB_TABLE_PROFILES || process.env.PROFILES_TABLE || 'jvtutorcorner-profiles';
@@ -19,8 +20,16 @@ export async function POST(req: Request) {
     }
 
 
-    // Validate captcha (supporting bypass secret)
-    if (!(await verifyCaptcha(captchaToken, captchaValue))) {
+    // Validate captcha (supporting bypass secret / header)
+    const headerList = await headers();
+    const e2eHeader = headerList.get('X-E2E-Secret');
+    const bypassSecret = getBypassSecret();
+    const isBypass = Boolean(bypassSecret) && (
+      (captchaValue && bypassSecret && captchaValue.trim() === bypassSecret.trim()) || 
+      (e2eHeader && bypassSecret && e2eHeader.trim() === bypassSecret.trim())
+    );
+
+    if (!isBypass && !(await verifyCaptcha(captchaToken, captchaValue))) {
       return NextResponse.json({ message: 'captcha_incorrect' }, { status: 400 });
     }
 
