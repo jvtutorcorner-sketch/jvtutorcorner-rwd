@@ -4,6 +4,8 @@ import path from 'path';
 import {
   getTestConfig,
   getStressGroupConfigs,
+  getCourseId,
+  getSmokeCourseId,
   ADMIN_EMAIL,
   ADMIN_PASSWORD,
   COURSE_ID_PREFIXES,
@@ -34,7 +36,7 @@ test.describe('[smoke] Whiteboard Quick Entry', () => {
 
   test('Quick classroom entry and canvas load', async ({ browser }) => {
     const config = getTestConfig();
-    const courseId = `${COURSE_ID_PREFIXES.smoke}${Date.now()}`;
+    const courseId = getSmokeCourseId(Date.now());
     runEnrollmentFlow(courseId);
 
     const teacherCtx = await browser.newContext({ permissions: ['camera', 'microphone'] });
@@ -83,7 +85,7 @@ test.describe('[standard] Whiteboard Sync', () => {
 
   test('Teacher drawings sync to student', async ({ browser }) => {
     const config = getTestConfig();
-    const baseId = process.env.TEST_COURSE_ID || `sync-${Date.now()}`;
+    const _runTs = Date.now();
     
     // Step 0: Enrollment Check
     console.log('\n📍 Step 0: Enrollment Check');
@@ -92,7 +94,7 @@ test.describe('[standard] Whiteboard Sync', () => {
     const foundId = await checkAndFindEnrollment(tempPage, config, forcedId);
     await tempPage.context().close();
 
-    const finalCourseId = foundId || forcedId || `sync-${Date.now()}`;
+    const finalCourseId = foundId || forcedId || getCourseId('standard', _runTs);
 
     if (foundId) {
       console.log(`   ⏭️ Using existing enrollment: ${finalCourseId}`);

@@ -3,8 +3,9 @@ import { chromium } from 'playwright';
 import type { Page } from '@playwright/test';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, GetCommand } from '@aws-sdk/lib-dynamodb';
+import { getQuickCourseId } from './test_data/whiteboard_test_data';
 try { require('dotenv').config({ path: '.env.local' }); } catch (e) {}
-const COURSE_ID = process.env.E2E_COURSE_ID || 'c1';
+const COURSE_ID = getQuickCourseId(Date.now());
 
 /**
  * 快速延遲測試（簡化版）

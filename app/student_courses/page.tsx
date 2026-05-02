@@ -546,7 +546,7 @@ function StudentCoursesContent() {
               </thead>
               <tbody>
                 {paginatedOrders.map((o) => (
-                  <tr key={o.orderId}>
+                  <tr key={o.orderId} data-course-id={o.courseId}>
                     <td data-label={t('student_courses_student')} style={{ border: '2px solid #ccc', padding: '6px' }}>{o.userId ? (userMap[o.userId]?.firstName && userMap[o.userId]?.lastName ? `${userMap[o.userId].firstName} ${userMap[o.userId].lastName}` : o.userId) : '-'}</td>
                     <td data-label={t('student_courses_course_name')} style={{ border: '2px solid #ccc', padding: '6px' }}>
                       {o.courseId ? (

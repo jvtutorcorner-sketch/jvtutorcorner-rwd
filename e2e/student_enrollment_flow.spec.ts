@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 
 import fs from 'fs';
+import { getCourseId } from './test_data/whiteboard_test_data';
 const APP_ENV = process.env.APP_ENV || 'local';
 dotenv.config({ path: path.resolve(__dirname, '..', `.env.${APP_ENV}`) });
 
@@ -130,7 +131,7 @@ test('Student Enrollment Flow (Simulated Payment)', async ({ page }) => {
                 teacherId = teacherEmail;
             }
         }
-        testCourseId = process.env.TEST_COURSE_ID || `e2e-sync-${Date.now()}`;
+        testCourseId = process.env.TEST_COURSE_ID || getCourseId('standard', Date.now());
         testCourseTitle = `E2E 自動驗證課程-${Date.now()}`;
         expectedDeduction = 10;
 
@@ -288,29 +289,74 @@ test('Student Enrollment Flow (Simulated Payment)', async ({ page }) => {
     }
     console.log(`✓ Successfully on student_courses page`);
 
-    // Navigate straight to course page to perform "UI-based Point Check"
-    console.log(`Navigating to course page for point check: ${testCourseId}`);
-    await page.goto(`${baseUrl}/courses/${testCourseId}`, { waitUntil: 'networkidle' });
-    await page.waitForTimeout(2000);
+    // 2. Point Check (API-based + UI verification)
+    console.log(`\n📍 Step 2: Checking point balance for ${email}...`);
+    let needsPoints = false;
+    try {
+        const balanceCheckRes = await page.request.get(`${baseUrl}/api/points?userId=${encodeURIComponent(email)}`, {
+            headers: { 'X-E2E-Secret': String(bypassSecret || '') }
+        });
+        if (balanceCheckRes.ok()) {
+            const balanceData = await balanceCheckRes.json();
+            const currentBalance = balanceData.balance || 0;
+            console.log(`   📊 API Balance: ${currentBalance}, Required: ${expectedDeduction}`);
+            if (currentBalance < expectedDeduction) {
+                console.log(`   ⚠️ Insufficient points via API. Current: ${currentBalance}, Need: ${expectedDeduction}`);
+                needsPoints = true;
+            }
+        }
+    } catch (e) {
+        console.warn("   ⚠️ API balance check failed, falling back to UI check", e);
+    }
 
-    const pointShortageMsg = page.locator('text=點數不足').first();
-    const buyPointsLink = page.locator('a:has-text("購買點數"), button:has-text("購買點數")').first();
-    const enrollBtn = page.locator('button:has-text("立即報名課程"), button:has-text("立即報名")').first();
+    if (!needsPoints) {
+        console.log(`   🔍 Navigating to course page for UI point check: ${testCourseId}`);
+        await page.goto(`${baseUrl}/courses/${testCourseId}`, { waitUntil: 'networkidle' });
+        await page.waitForTimeout(2000);
 
-    const isShortageVisible = (await pointShortageMsg.count() > 0) || (await buyPointsLink.count() > 0);
-    const isEnrollAvailable = (await enrollBtn.count() > 0) && (await enrollBtn.isEnabled());
+        const pointShortageMsg = page.locator('text=點數不足').first();
+        const buyPointsLink = page.locator('a:has-text("購買點數"), button:has-text("購買點數")').first();
+        const enrollBtn = page.locator('button:has-text("立即報名課程"), button:has-text("立即報名")').first();
 
-    if (isShortageVisible || !isEnrollAvailable) {
-        console.log("UI indicates point shortage or enroll button not available. Proceeding to buy points...");
-        // 3. Buy points - Navigate to pricing
+        const isShortageVisible = (await pointShortageMsg.count() > 0) || (await buyPointsLink.count() > 0);
+        const isEnrollAvailable = (await enrollBtn.count() > 0) && (await enrollBtn.isEnabled());
+
+        if (isShortageVisible || !isEnrollAvailable) {
+            console.log("   ⚠️ UI indicates point shortage or enroll button not available.");
+            needsPoints = true;
+        } else {
+            console.log("   ✅ Sufficient points and enroll button available in UI.");
+        }
+    }
+
+    if (needsPoints) {
+        console.log("   🚀 Proceeding to purchase points...");
+        console.log(`\n📍 Step 3: Purchasing points for ${email}...`);
         await page.goto(`${baseUrl}/pricing`);
         await page.waitForLoadState('networkidle');
         
         // ✅ Select LARGEST point package to ensure sufficient balance
-        console.log("⏳ Finding all point packages and selecting the largest one...");
+        console.log("   ⏳ Finding all point packages and selecting the largest one...");
         
         // Get all "購買點數" links/buttons and their parent cards
-        const pointPackageLinks = await page.locator('a[href*="/pricing/checkout?plan=points"], button:has-text("購買點數")').all();
+        // Wait for point package buttons to appear
+        const pointBtnLocator = page.locator('a:has-text("購買點數"), button:has-text("購買點數"), [data-testid*="points-package"]');
+        try {
+            await pointBtnLocator.first().waitFor({ state: 'visible', timeout: 15000 });
+        } catch (e) {
+            console.warn("⚠️ Point purchase buttons did not appear within 15s. Checking auth state...");
+            const loginLink = page.locator('a:has-text("登入"), a[href="/login"]').first();
+            if (await loginLink.isVisible()) {
+                console.error("❌ User not logged in on pricing page. Attempting to re-sync auth...");
+                await page.evaluate((data) => {
+                    localStorage.setItem('tutor_mock_user', JSON.stringify(data));
+                    window.dispatchEvent(new Event('tutor:auth-changed'));
+                }, loginData);
+                await page.reload({ waitUntil: 'networkidle' });
+                await pointBtnLocator.first().waitFor({ state: 'visible', timeout: 10000 }).catch(() => {});
+            }
+        }
+        const pointPackageLinks = await pointBtnLocator.all();
         console.log(`📊 Found ${pointPackageLinks.length} point package options`);
         
         if (pointPackageLinks.length > 0) {
@@ -365,15 +411,36 @@ test('Student Enrollment Flow (Simulated Payment)', async ({ page }) => {
         console.log("UI indicates sufficient points (Enroll button found). Proceeding with enrollment.");
     }
 
+    // 4. Final Enrollment Step
     // Capture point balance before enrollment for verification
-    const balanceBeforeEnrollRes = await page.request.get(`${baseUrl}/api/points?userId=${email}`);
-    const balanceBeforeEnroll = (await balanceBeforeEnrollRes.json()).balance;
-    console.log(`Point balance before enrollment: ${balanceBeforeEnroll}`);
+    console.log("\n📍 Step 4: Final Enrollment...");
+    
+    // Retry point check if it was just purchased
+    let balanceBeforeEnroll = 0;
+    for (let i = 0; i < 3; i++) {
+        const balanceBeforeEnrollRes = await page.request.get(`${baseUrl}/api/points?userId=${encodeURIComponent(email)}`, {
+            headers: { 'X-E2E-Secret': String(bypassSecret || '') }
+        });
+        if (balanceBeforeEnrollRes.ok()) {
+            const resData = await balanceBeforeEnrollRes.json();
+            balanceBeforeEnroll = resData.balance || 0;
+            if (balanceBeforeEnroll >= expectedDeduction) break;
+            console.log(`   ⏳ Waiting for balance sync... (Attempt ${i+1}/3, Current: ${balanceBeforeEnroll})`);
+            await page.waitForTimeout(2000);
+        }
+    }
+    console.log(`   📊 Final Point balance before enrollment: ${balanceBeforeEnroll}`);
+    if (balanceBeforeEnroll < expectedDeduction) {
+        console.error("   ❌ Point shortage detected even after sync attempts. Enrollment might fail.");
+    }
+    // Re-locate enrollment button because the page might have reloaded or navigated
+    const enrollBtn = page.locator('button:has-text("立即報名課程"), button:has-text("立即報名")').first();
+    await enrollBtn.waitFor({ state: 'visible', timeout: 10000 });
 
     // Proceed with enrollment UI interactions
-    console.log("Starting enrollment flow...");
+    console.log("   🚀 Clicking '立即報名課程'...");
 
-    console.log("Clicking '立即報名課程'...");
+
     await enrollBtn.click();
 
     console.log("Waiting for '確認報名' button...");

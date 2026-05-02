@@ -413,7 +413,7 @@ export default function PricingPage() {
         </section>
       )}
 
-      {dynamicPointsPlans.length > 0 && (
+      {POINTS_PLANS.length > 0 && (
         <section className="section" style={{ marginTop: '2rem' }}>
           <header className="page-header" style={{ marginBottom: '2rem' }}>
             <h2>點數方案</h2>

@@ -24,6 +24,9 @@ export function runEnrollmentFlow(
   maxRetries = 2
 ): void {
   const config = getTestConfig();
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+  
+  // Use playwright CLI to run the enrollment spec as a subprocess
   const cmd =
     process.platform === 'win32'
       ? `set TEST_COURSE_ID=${courseId}&& set SKIP_CLEANUP=true&& npx playwright test e2e/student_enrollment_flow.spec.ts --project=chromium`
@@ -31,24 +34,33 @@ export function runEnrollmentFlow(
 
   const childEnv = {
     ...process.env,
+    TEST_COURSE_ID: courseId,
     TEST_TEACHER_EMAIL: teacherEmail || config.teacherEmail,
     TEST_TEACHER_PASSWORD: process.env.TEST_TEACHER_PASSWORD,
     TEST_STUDENT_EMAIL: studentEmail || config.studentEmail,
     TEST_STUDENT_PASSWORD: process.env.TEST_STUDENT_PASSWORD,
     QA_TEACHER_EMAIL: teacherEmail || config.teacherEmail,
     QA_STUDENT_EMAIL: studentEmail || config.studentEmail,
-    NEXT_PUBLIC_BASE_URL: process.env.NEXT_PUBLIC_BASE_URL,
+    NEXT_PUBLIC_BASE_URL: baseUrl,
     AGORA_WHITEBOARD_APP_ID: process.env.AGORA_WHITEBOARD_APP_ID,
     AGORA_WHITEBOARD_AK: process.env.AGORA_WHITEBOARD_AK,
     AGORA_WHITEBOARD_SK: process.env.AGORA_WHITEBOARD_SK,
     LOGIN_BYPASS_SECRET: process.env.LOGIN_BYPASS_SECRET,
-    PWDEBUG: undefined,
+    // Preserve PWDEBUG if explicitly set in current process, otherwise undefined
+    PWDEBUG: process.env.PWDEBUG, 
   } as any;
 
-  console.log(`\n   🚀 [${courseId}] Starting enrollment subprocess`);
+  console.log(`\n   🚀 [Enrollment] Starting subprocess for course: ${courseId}`);
+  console.log(`      - Teacher: ${childEnv.TEST_TEACHER_EMAIL}`);
+  console.log(`      - Student: ${childEnv.TEST_STUDENT_EMAIL}`);
+  
   let lastError: Error | null = null;
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
+      if (attempt > 1) {
+          console.log(`   🔄 [Enrollment] Retry attempt ${attempt}/${maxRetries}...`);
+      }
+      
       const output = execSync(cmd, {
         stdio: 'pipe',
         cwd: path.resolve(__dirname, '../..'),
@@ -60,36 +72,37 @@ export function runEnrollmentFlow(
         console.log(`   🔍 [${courseId}] Enrollment output:\n${output}`);
       }
 
-      console.log(`   ✅ [${courseId}] Enrollment flow succeeded`);
+      console.log(`   ✅ [Enrollment] Flow succeeded for course: ${courseId}`);
       
-      // ⭐ Critical: Wait for course list cache to update
-      // In stress tests, DynamoDB/cache may need extra time to propagate
-      console.log(`   ⏳ [${courseId}] Waiting 3s for course list cache refresh...`);
+      // ⭐ Critical: Wait for data to propagate in DB/Cache
+      console.log(`   ⏳ [Enrollment] Waiting 3s for system sync...`);
       const startWait = Date.now();
       while (Date.now() - startWait < 3000) { /* wait */ }
       
       return;
     } catch (err) {
       lastError = err as Error;
-      console.error(`   ❌ [${courseId}] Attempt ${attempt}/${maxRetries} failed`);
+      console.error(`   ❌ [Enrollment] Attempt ${attempt}/${maxRetries} failed`);
 
       const e = err as any;
-      const stdoutTail = (e?.stdout ? String(e.stdout) : '')
-        .split(/\r?\n/)
-        .slice(-20)
-        .join('\n');
-      const stderrTail = (e?.stderr ? String(e.stderr) : '')
-        .split(/\r?\n/)
-        .slice(-20)
-        .join('\n');
-      const mergedTail = [stdoutTail, stderrTail].filter(Boolean).join('\n');
-
-      if (mergedTail) {
-        console.error(`   🧪 [${courseId}] Enrollment failure tail:\n${mergedTail}`);
+      const fullOutput = (e?.stdout ? String(e.stdout) : '') + '\n' + (e?.stderr ? String(e.stderr) : '');
+      
+      // Extract specific errors like "No point package links found" or "Insufficient points"
+      if (fullOutput.includes('No point package links found')) {
+          console.error(`      ⚠️ [Detail] Pricing page failed to load package buttons.`);
+      } else if (fullOutput.includes('Point shortage')) {
+          console.error(`      ⚠️ [Detail] Student has insufficient points and top-up failed.`);
+      }
+      
+      const tail = fullOutput.split(/\r?\n/).slice(-15).join('\n');
+      if (tail) {
+        console.error(`   🧪 [Enrollment] Error Tail:\n${tail}`);
       }
 
       if (attempt < maxRetries) {
-        const t = Date.now() + 2000;
+        // Linear backoff
+        const backoff = 2000 * attempt;
+        const t = Date.now() + backoff;
         while (Date.now() < t) { /* busy wait */ }
       }
     }

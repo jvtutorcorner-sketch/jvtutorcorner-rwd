@@ -128,7 +128,7 @@ npx cross-env APP_ENV=local npx playwright test e2e/classroom_room_whiteboard_sy
 # STRESS_GROUP_COUNT: 組數 (預設 3)
 # STRESS_TEST_DURATION: 課程分鐘 (預設 60)
 # STRESS_STAY_SECONDS: 教室停留秒數 (預設 10)
-npx cross-env APP_ENV=local STRESS_GROUP_COUNT=5 STRESS_TEST_DURATION=120 STRESS_STAY_SECONDS=60 npx playwright test e2e/classroom_room_whiteboard_sync.spec.ts -g "stress"
+npx cross-env APP_ENV=local STRESS_GROUP_COUNT=10 STRESS_TEST_DURATION=2 STRESS_STAY_SECONDS=60 npx playwright test e2e/classroom_room_whiteboard_sync.spec.ts -g "stress"
 ```
 
 ---
@@ -377,12 +377,69 @@ npx cross-env APP_ENV=production npx playwright test
 ```
 
 ### 依標籤篩選
+
+> [!TIP]
+> 所有 `-g` / `--grep` 的字串會對應到 `test.describe('[tag] …')` 的描述名稱。
+
 ```bash
-# 本地環境 - 只跑 smoke
+# ── Smoke：最快速冒煙驗證（白板入室、Canvas 可見）
 npx cross-env APP_ENV=local npx playwright test -g "smoke"
 
-# 正式環境 - 只跑 verification
-npx cross-env APP_ENV=production npx playwright test --grep "verification"
+# ── Quick：快速白板同步（quick-sync-test.spec.ts）
+npx cross-env APP_ENV=local npx playwright test -g "quick"
+npx cross-env APP_ENV=local npx playwright test e2e/quick-sync-test.spec.ts
+
+# ── Standard：完整白板同步繪圖驗證
+npx cross-env APP_ENV=local npx playwright test -g "standard"
+
+# ── Stress：並發壓力測試（多組 Teacher+Student 同時入室）
+npx cross-env APP_ENV=local npx playwright test -g "stress"
+npx cross-env APP_ENV=local npx playwright test -g "stress-multi-duration"
+
+# ── Stress（指定 Duration 與並發數）
+npx cross-env APP_ENV=local TEST_DURATIONS=1,3 TEST_CONCURRENT_LOADS=1,3 npx playwright test -g "stress-multi-duration"
+
+# ── Verification：UI 頁面驗證（student/teacher_courses、classroom-wait）
+npx cross-env APP_ENV=local npx playwright test --grep "verification"
+
+# ── Escrow：點數暫存釋放流程
+npx cross-env APP_ENV=local npx playwright test --grep "escrow"
+
+# ── Payment：支付閘道 (Stripe/PayPal/LINE Pay) 驗證
+npx cross-env APP_ENV=local npx playwright test --grep "payment"
+
+# ── Email：郵件發送功能驗證
+npx cross-env APP_ENV=local npx playwright test --grep "email"
+
+# ── 正式環境執行（只跑 smoke + verification）
+npx cross-env APP_ENV=production npx playwright test --grep "smoke|verification"
+```
+
+### 課程 ID 環境變數控制
+
+自 2026-05-02 起，所有測試場景統一使用 `getCourseId(scenario)` 產生課程 ID，
+可透過環境變數覆寫讓不同測試共用同一課程，避免重複建課或卡住：
+
+| 場景 | 預設前綴 | 對應 spec |
+|------|----------|-----------|
+| `smoke` | `smoke-<ts>` | `classroom_room_whiteboard_sync.spec.ts` |
+| `quick` | `quick-<ts>` | `quick-sync-test.spec.ts` |
+| `standard` | `sync-<ts>` | `classroom_room_whiteboard_sync.spec.ts` |
+| `stress` | `stress-group-<i>-<ts>` | `classroom_stress_test_multi_duration.spec.ts` |
+| `debug` | `debug-<ts>` | 手動測試用 |
+
+```bash
+# 讓 smoke 測試重用既有課程（不重新建課）
+npx cross-env APP_ENV=local TEST_COURSE_ID=smoke-1777714801139 npx playwright test -g "smoke"
+
+# 讓 enrollment flow 與 standard sync 共用同一課程
+npx cross-env APP_ENV=local TEST_COURSE_ID=sync-1777714801139 SKIP_CLEANUP=true npx playwright test -g "standard"
+
+# 只保留課程 ID（不清除）以便下次重跑
+npx cross-env APP_ENV=local SKIP_CLEANUP=true npx playwright test -g "smoke"
+
+# 顯示 enrollment 子程序詳細 log
+npx cross-env APP_ENV=local DEBUG_ENROLLMENT_FLOW=1 npx playwright test -g "smoke"
 ```
 
 ### 正式環境完整測試
@@ -422,7 +479,11 @@ npx playwright show-report test-results
 |---|---|
 | `getTestConfig()` | 從環境變數讀取教師/學生帳號設定 |
 | `getStressGroupConfigs(n)` | 產生 n 組並發測試設定 |
-| `COURSE_ID_PREFIXES` | 各場景課程 ID 前綴（smoke/sync/stress/debug）|
+| `getCourseId(scenario, ts?)` | **統一課程 ID 產生器**（尊重 `TEST_COURSE_ID` / `E2E_COURSE_ID` 覆寫）|
+| `getSmokeCourseId(ts?)` | `getCourseId('smoke')` 的便捷別名 |
+| `getQuickCourseId(ts?)` | `getCourseId('quick')` 的便捷別名（取代舊 `E2E_COURSE_ID \|\| 'c1'`）|
+| `COURSE_ID_PREFIXES` | 各場景課程 ID 前綴（smoke / quick / sync / stress / debug / net）|
+| `CourseScenario` | TypeScript 型別，合法的 scenario 字串聯集 |
 | `ADMIN_EMAIL / ADMIN_PASSWORD` | 管理員帳號常數 |
 
 ---

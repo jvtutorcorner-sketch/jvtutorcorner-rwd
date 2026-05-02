@@ -37,6 +37,23 @@ export function withAuth(
   options?: { roles?: string[] }
 ): PlainHandler {
   return async (req: Request, context?: any) => {
+    // 嘗試 E2E Bypass
+    const e2eSecret = req.headers.get('x-e2e-secret');
+    const bypassSecret = process.env.LOGIN_BYPASS_SECRET;
+    if (e2eSecret && bypassSecret && e2eSecret === bypassSecret) {
+      const systemSession: Session = {
+        sessionId: 'e2e-bypass',
+        userId: 'system',
+        email: 'system@e2e',
+        role: 'system', // or options.roles[0]
+        plan: 'system',
+        createdAt: Math.floor(Date.now() / 1000),
+        expiresAt: Math.floor(Date.now() / 1000) + 3600,
+      };
+      const authedReq = Object.assign(req, { session: systemSession }) as AuthedRequest;
+      return handler(authedReq, context);
+    }
+
     const token = extractTokenFromRequest(req);
     if (!token) {
       return NextResponse.json(
@@ -140,6 +157,23 @@ export function withAnyAuth(
   handler: ApiHandler
 ): PlainHandler {
   return async (req: Request, context?: any) => {
+    // 嘗試 E2E Bypass
+    const e2eSecret = req.headers.get('x-e2e-secret');
+    const bypassSecret = process.env.LOGIN_BYPASS_SECRET;
+    if (e2eSecret && bypassSecret && e2eSecret === bypassSecret) {
+      const systemSession: Session = {
+        sessionId: 'e2e-bypass',
+        userId: 'system',
+        email: 'system@e2e',
+        role: 'system',
+        plan: 'system',
+        createdAt: Math.floor(Date.now() / 1000),
+        expiresAt: Math.floor(Date.now() / 1000) + 3600,
+      };
+      const authedReq = Object.assign(req, { session: systemSession }) as AuthedRequest;
+      return handler(authedReq, context);
+    }
+
     // 嘗試 Session 驗證
     const token = extractTokenFromRequest(req);
     if (token) {

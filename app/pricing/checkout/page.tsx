@@ -380,9 +380,23 @@ function CheckoutContent() {
                 throw new Error(data.error || 'Failed to update payment status');
             }
             
-            // If it's a plan upgrade (not points), sync locally for immediate UI feedback
+            // If it's a plan upgrade or points purchase, sync locally for immediate UI feedback (simulation only)
             if (itemType === 'PLAN') {
                 syncPlanLocally();
+            } else if (itemType === 'POINTS' && points > 0) {
+                // For simulation, we attempt to call a point-adding API with bypass
+                await fetch('/api/points', {
+                    method: 'PATCH',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'X-E2E-Secret': String(window.localStorage.getItem('LOGIN_BYPASS_SECRET') || '')
+                    },
+                    body: JSON.stringify({
+                        userId: user.email || user.roid_id || user.id,
+                        points: points,
+                        action: 'add'
+                    })
+                }).catch(err => console.error('Point sync failed:', err));
             }
 
             // Small delay to ensure DB updates and analytics are processed

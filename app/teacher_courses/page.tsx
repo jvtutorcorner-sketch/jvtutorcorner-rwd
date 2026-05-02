@@ -506,7 +506,7 @@ function TeacherCoursesContent() {
               </thead>
               <tbody>
                 {paginatedOrders.map((o) => (
-                  <tr key={o.orderId}>
+                  <tr key={o.orderId} data-course-id={o.courseId}>
                     <td data-label={t('role_student')} style={{ border: '2px solid #ccc', padding: '6px' }}>{o.userId ? (userMap[o.userId]?.firstName && userMap[o.userId]?.lastName ? `${userMap[o.userId].firstName} ${userMap[o.userId].lastName}` : o.userId) : '-'}</td>
                     <td data-label={t('student_courses_course_name')} style={{ border: '2px solid #ccc', padding: '6px' }}>
                       {o.courseId ? (
@@ -685,7 +685,7 @@ function TeacherCoursesContent() {
                 if (!canEnter) return null;
 
                 return (
-                  <div key={c.id} style={{ padding: '16px', border: '1px solid #eee', borderRadius: '8px', background: '#f9f9f9' }}>
+                  <div key={c.id} data-course-id={c.id} style={{ padding: '16px', border: '1px solid #eee', borderRadius: '8px', background: '#f9f9f9' }}>
                     <div style={{ fontWeight: 'bold', marginBottom: '8px' }}>{c.title}</div>
                     <div style={{ fontSize: '12px', color: '#666', marginBottom: '12px' }}>
                       {formatDateTime(c.startDate)} ~ {formatDateTime(c.endDate)}

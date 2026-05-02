@@ -47,12 +47,62 @@ export const DEFAULT_STRESS_GROUP_COUNT = 3;
 
 /** Course-ID prefixes per scenario — used by cleanup scripts too */
 export const COURSE_ID_PREFIXES = {
-  smoke: 'smoke-',
+  smoke:    'smoke-',
+  quick:    'quick-',
   standard: 'sync-',
-  stress: 'stress-group-',
-  debug: 'debug-',
-  network: 'net-',
+  stress:   'stress-group-',
+  debug:    'debug-',
+  network:  'net-',
 } as const;
+
+export type CourseScenario = keyof typeof COURSE_ID_PREFIXES;
+
+/**
+ * Returns a **stable, unique** course ID for a given test scenario.
+ *
+ * Priority (highest → lowest):
+ *  1. `process.env.TEST_COURSE_ID`   — manual override for any scenario
+ *  2. `process.env.E2E_COURSE_ID`    — legacy override (quick-sync-test compatibility)
+ *  3. `<prefix><timestamp>`           — auto-generated, guaranteed unique per run
+ *
+ * @param scenario  One of the COURSE_ID_PREFIXES keys (default: 'standard')
+ * @param timestamp Provide `Date.now()` once at test start so all calls in the
+ *                  same run share the same suffix (avoids mid-test divergence).
+ *
+ * @example
+ *   // In smoke test:
+ *   const courseId = getCourseId('smoke', Date.now());
+ *   // → 'smoke-1777714801139'  (or TEST_COURSE_ID if set)
+ *
+ *   // In quick-sync-test:
+ *   const courseId = getCourseId('quick');
+ *   // → 'quick-1777714801139'  (or E2E_COURSE_ID / TEST_COURSE_ID if set)
+ */
+export function getCourseId(
+  scenario: CourseScenario = 'standard',
+  timestamp: number = Date.now()
+): string {
+  // Env-var overrides come first so individual runs can be targeted
+  const override = process.env.TEST_COURSE_ID || process.env.E2E_COURSE_ID;
+  if (override && override.trim()) return override.trim();
+
+  return `${COURSE_ID_PREFIXES[scenario]}${timestamp}`;
+}
+
+/**
+ * Convenience alias for the `quick` scenario — drop-in replacement for the
+ * old `process.env.E2E_COURSE_ID || 'c1'` pattern in quick-sync-test.spec.ts.
+ */
+export function getQuickCourseId(timestamp: number = Date.now()): string {
+  return getCourseId('quick', timestamp);
+}
+
+/**
+ * Convenience alias for the `smoke` scenario.
+ */
+export function getSmokeCourseId(timestamp: number = Date.now()): string {
+  return getCourseId('smoke', timestamp);
+}
 
 // ─────────────────────────────────────────────────────────────────────
 // Config helpers
