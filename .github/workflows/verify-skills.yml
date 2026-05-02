@@ -1,22 +1,6 @@
 name: Verify Skills Status
 
 on:
-  push:
-    branches: [main, develop]
-    paths:
-      - '.agents/skills/**/*.md'
-      - 'e2e/**/*.spec.ts'
-      - 'scripts/validate-skill-frontmatter.js'
-      - 'scripts/update-skill-status.js'
-      - '.github/workflows/verify-skills.yml'
-  pull_request:
-    branches: [main, develop]
-    paths:
-      - '.agents/skills/**/*.md'
-      - 'e2e/**/*.spec.ts'
-      - 'scripts/validate-skill-frontmatter.js'
-      - 'scripts/update-skill-status.js'
-      - '.github/workflows/verify-skills.yml'
   workflow_dispatch:
 
 permissions:
