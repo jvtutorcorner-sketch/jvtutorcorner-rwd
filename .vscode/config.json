@@ -41,7 +41,7 @@
       "title": "Gemini Pro (Personal)",
       "provider": "google-palm",
       "model": "gemini-pro",
-      "apiKey": "AIzaSyD2hTBVKH9AicqxCkkF69Y-pDh7cIxX27Y",
+      "apiKey": "<YOUR_API_KEY>",
       "description": "個人訂閱：獨立 Provider，節省平台積分。"
     }
   ],
