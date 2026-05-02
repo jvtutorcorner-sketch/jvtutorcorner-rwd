@@ -6,14 +6,12 @@
 ```env
 NEXT_PUBLIC_BASE_URL=http://localhost:3000
 LOGIN_BYPASS_SECRET=your-bypass-secret
-TEST_TEACHER_EMAIL=lin@test.com
-TEST_TEACHER_PASSWORD=your-password
-TEST_STUDENT_EMAIL=pro@test.com
-TEST_STUDENT_PASSWORD=your-password
-ADMIN_EMAIL=admin@jvtutorcorner.com
-ADMIN_PASSWORD=your-admin-password
 QA_CAPTCHA_BYPASS=your-bypass-secret
+# ... 其他測試帳號資訊
 ```
+
+### 關鍵機制：Captcha 繞過 Header
+系統支援透過 `X-E2E-Secret` Header 進行繞過，其值必須與 `LOGIN_BYPASS_SECRET` 一致。這在遠端伺服器未開啟表單繞過時非常有用。
 
 ### 啟動開發伺服器
 ```bash
@@ -23,7 +21,11 @@ npm run dev
 ### 環境切換 (Environment Switching)
 測試環境由 `APP_ENV` 環境變數控制，這會決定加載哪一個 `.env` 檔案：
 - **Local (預設)**: 加載 `.env.local`，對向 `http://localhost:3000`。
-- **Production**: 加載 `.env.production`，對向正式網址（如 `jvtutorcorner.com`）。
+- **Production**: 加載 `.env.production`。此檔案包含生產環境金鑰，且 `NEXT_PUBLIC_BASE_URL` 應設為 `http://localhost:3000` 以支持 **Local-to-Production (L2P)** 測試模式。
+
+> [!IMPORTANT]
+> **.env.production 的特殊處理：**
+> 為了支援自動化測試，`lib/captcha.ts` 會在找不到環境變數時，主動讀取本地的 `.env.production` 檔案來獲取 `LOGIN_BYPASS_SECRET`。這讓您不需要將秘密資訊 push 到遠端伺服器，也能在本地執行完整流程。
 
 執行指令範例：
 ```bash
@@ -138,7 +140,7 @@ npx cross-env APP_ENV=local STRESS_GROUP_COUNT=5 npx playwright test e2e/classro
 **流程：**
 1. 嘗試尋找現有可用課程；找不到則建立測試課程
 2. 清除既有訂單（避免時間衝突）
-3. 學生登入 (API 直接登入，繞過 Captcha)
+3. 學生登入 (透過 `X-E2E-Secret` Header 繞過 Captcha)
 4. 判斷點數是否充足，不足則購買最大點數套餐
 5. 記錄報名前點數餘額
 6. 點擊「立即報名課程」→「確認報名」
@@ -419,6 +421,23 @@ npx playwright show-report test-results
 | `getStressGroupConfigs(n)` | 產生 n 組並發測試設定 |
 | `COURSE_ID_PREFIXES` | 各場景課程 ID 前綴（smoke/sync/stress/debug）|
 | `ADMIN_EMAIL / ADMIN_PASSWORD` | 管理員帳號常數 |
+
+---
+
+## 安全性與自動化 (Security & Automation)
+
+### Captcha 繞過機制 (Bypass Mechanism)
+
+為了讓自動化測試能流暢執行，系統提供了以下三層驗證碼繞過方案：
+
+1.  **表單欄位繞過**：在驗證碼輸入框填入 `LOGIN_BYPASS_SECRET`。
+2.  **HTTP Header 繞過**：發送 API 請求時攜帶 `X-E2E-Secret: {secret}` Header。這可以完全避開 UI 操作。
+3.  **測試帳號白名單**：部分測試帳號（如 Admin）在密碼正確且提供 Secret 的情況下會自動跳過驗證。
+
+> [!TIP]
+> **金鑰加載優先級：**
+> 1. 系統環境變數 (`process.env`)
+> 2. `.env.local` 或 `.env.production` 檔案 (由 `lib/captcha.ts` 自動尋找)
 
 ---
 
