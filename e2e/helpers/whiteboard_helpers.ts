@@ -587,7 +587,14 @@ export async function registerOrLoginTeacher(
   await page.locator('input[placeholder*="驗"], input[name*="captcha"]').first().fill(bypassSecret).catch(() => {});
 
   await page.locator('button[type="submit"]').first().click();
-  await page.waitForURL((url) => !url.toString().includes('/register'), { timeout: 15000 }).catch(() => {});
+  try {
+    await Promise.race([
+      page.waitForSelector('text=註冊成功', { state: 'visible', timeout: 10000 }),
+      page.waitForURL((url) => !url.toString().includes('/register'), { timeout: 10000 })
+    ]);
+  } catch (e) {
+    // Ignore timeout and proceed to autoLogin
+  }
   await page.waitForTimeout(2000);
 
   await injectDeviceCheckBypass(page);

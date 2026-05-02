@@ -20,6 +20,20 @@ QA_CAPTCHA_BYPASS=your-bypass-secret
 npm run dev
 ```
 
+### 環境切換 (Environment Switching)
+測試環境由 `APP_ENV` 環境變數控制，這會決定加載哪一個 `.env` 檔案：
+- **Local (預設)**: 加載 `.env.local`，對向 `http://localhost:3000`。
+- **Production**: 加載 `.env.production`，對向正式網址（如 `jvtutorcorner.com`）。
+
+執行指令範例：
+```bash
+# 執行本地測試
+npm run test:local
+
+# 執行正式環境測試
+npm run test:prod
+```
+
 ---
 
 ## Playwright 設定 (playwright.config.ts)
@@ -264,10 +278,10 @@ npx playwright test e2e/points-escrow-edge-cases-simple.spec.ts -g "E5"
 
 ```bash
 # 測試本地環境
-npx playwright test e2e/stripe_payment_verification.spec.ts
+npm run test:local e2e/stripe_payment_verification.spec.ts
 
 # 測試正式環境 Stripe
-$env:QA_TEST_BASE_URL="https://www.jvtutorcorner.com"; npx playwright test e2e/stripe_payment_verification.spec.ts
+npm run test:prod e2e/stripe_payment_verification.spec.ts
 
 # 只測 Webhook
 npx playwright test e2e/stripe_payment_verification.spec.ts -g "Webhook"
@@ -375,7 +389,7 @@ npx playwright test --grep "verification"
 
 ### 正式環境完整測試
 ```bash
-$env:NEXT_PUBLIC_BASE_URL="https://www.jvtutorcorner.com"; npx playwright test
+npm run test:prod
 ```
 
 ### 查看 HTML 報告

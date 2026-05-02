@@ -398,11 +398,11 @@ export default function RegisterPage() {
             <div className="field-row">
               <div className="field">
                 <label>First Name <span style={{ color: 'red' }}>*</span></label>
-                <input ref={firstNameRef} value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+                <input ref={firstNameRef} name="firstName" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
               </div>
               <div className="field">
                 <label>Last Name <span style={{ color: 'red' }}>*</span></label>
-                <input ref={lastNameRef} value={lastName} onChange={(e) => setLastName(e.target.value)} />
+                <input ref={lastNameRef} name="lastName" value={lastName} onChange={(e) => setLastName(e.target.value)} />
               </div>
             </div>
 
@@ -490,12 +490,12 @@ export default function RegisterPage() {
 
             <div className="field">
               <label>出生日期 <span style={{ color: 'red' }}>*</span></label>
-              <input ref={birthdateRef} type="date" value={birthdate} onChange={(e) => setBirthdate(e.target.value)} />
+              <input ref={birthdateRef} name="birthdate" type="date" value={birthdate} onChange={(e) => setBirthdate(e.target.value)} />
             </div>
 
             <div className="field">
               <label>性別 <span style={{ color: 'red' }}>*</span></label>
-              <select ref={genderRef} value={gender} onChange={(e) => setGender(e.target.value)}>
+              <select ref={genderRef} name="gender" value={gender} onChange={(e) => setGender(e.target.value)}>
                 <option value="">請選擇</option>
                 <option value="male">男</option>
                 <option value="female">女</option>
@@ -504,7 +504,7 @@ export default function RegisterPage() {
 
             <div className="field">
               <label>國家 <span style={{ color: 'red' }}>*</span></label>
-              <select ref={countryRef} value={country} onChange={(e) => setCountry(e.target.value)}>
+              <select ref={countryRef} name="country" value={country} onChange={(e) => setCountry(e.target.value)}>
                 <option value="">請選擇</option>
                 {countries.map((c) => (
                   <option key={c.code} value={c.code}>{`${c.label} ${c.code}`}</option>
