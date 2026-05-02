@@ -7,9 +7,17 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, '.env.local') });
 
+function requireEnv(name, ...fallbacks) {
+  for (const key of [name, ...fallbacks]) {
+    const value = process.env[key];
+    if (value) return value;
+  }
+  throw new Error(`Missing required environment variable: ${name}`);
+}
+
 const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-const adminEmail = process.env.QA_ADMIN_EMAIL || 'admin@jvtutorcorner.com';
-const adminPassword = process.env.QA_ADMIN_PASSWORD || '123456';
+const adminEmail = process.env.QA_ADMIN_EMAIL || process.env.ADMIN_EMAIL || 'admin@example.com';
+const adminPassword = requireEnv('QA_ADMIN_PASSWORD', 'ADMIN_PASSWORD');
 
 async function getAuthToken(email, password) {
   try {

@@ -6,11 +6,19 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, '.env.local') });
 
+function requireEnv(name, ...fallbacks) {
+  for (const key of [name, ...fallbacks]) {
+    const value = process.env[key];
+    if (value) return value;
+  }
+  throw new Error(`Missing required environment variable: ${name}`);
+}
+
 const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-const teacherEmail = process.env.QA_TEACHER_EMAIL || process.env.TEST_TEACHER_EMAIL || 'lin@test.com';
-const teacherPassword = process.env.TEST_TEACHER_PASSWORD || '123456';
-const studentEmail = process.env.QA_STUDENT_EMAIL || process.env.TEST_STUDENT_EMAIL || 'pro@test.com';
-const bypassSecret = process.env.NEXT_PUBLIC_LOGIN_BYPASS_SECRET || process.env.LOGIN_BYPASS_SECRET || 'jv_secure_bypass_2024';
+const teacherEmail = process.env.QA_TEACHER_EMAIL || process.env.TEST_TEACHER_EMAIL || 'teacher@example.com';
+const teacherPassword = requireEnv('TEST_TEACHER_PASSWORD', 'QA_TEACHER_PASSWORD');
+const studentEmail = process.env.QA_STUDENT_EMAIL || process.env.TEST_STUDENT_EMAIL || 'student@example.com';
+const bypassSecret = requireEnv('LOGIN_BYPASS_SECRET', 'NEXT_PUBLIC_LOGIN_BYPASS_SECRET');
 const testCourseId = process.env.TEST_COURSE_ID || '3ea66887-8145-4c10-ab3b-bf2d887c0bd4';
 
 console.log(`📋 Test Setup Configuration:`);

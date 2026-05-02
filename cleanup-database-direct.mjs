@@ -1,4 +1,31 @@
 #!/usr/bin/env node
+/**
+ * ⚠️ DEPRECATED - DO NOT USE
+ * 
+ * This script has been deprecated and replaced by cleanup-test-data.mjs
+ * 
+ * Reasons for deprecation:
+ * - Performs direct DynamoDB operations without environment protection
+ * - No dry-run mode to preview changes before executing
+ * - No user confirmation prompts
+ * - High risk of accidentally deleting production data
+ * 
+ * MIGRATION GUIDE:
+ * Instead, use: node cleanup-test-data.mjs
+ * 
+ * For more information, see the improved cleanup-test-data.mjs script
+ */
+
+console.error('❌ ERROR: cleanup-database-direct.mjs is DEPRECATED');
+console.error('');
+console.error('This script has been deprecated due to safety concerns.');
+console.error('Please use the safer version instead:');
+console.error('');
+console.error('  node cleanup-test-data.mjs          # Preview mode (dry-run)');
+console.error('  node cleanup-test-data.mjs --execute  # Execute with confirmation');
+console.error('');
+process.exit(1);
+
 import * as dotenv from 'dotenv';
 import * as path from 'path';
 import * as fs from 'fs';

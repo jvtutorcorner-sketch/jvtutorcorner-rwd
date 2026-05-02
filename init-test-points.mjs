@@ -10,8 +10,6 @@ import path from 'path';
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@jvtutorcorner.com';
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '123456';
 
 async function grantPoints() {
   console.log(`🎯 Initializing test points at: ${BASE_URL}\n`);
@@ -37,7 +35,7 @@ async function grantPoints() {
 
     // Step 2: Verify the student points
     console.log('\n✓ Verifying student points...');
-    const studentEmail = process.env.QA_STUDENT_EMAIL || 'pro@test.com';
+    const studentEmail = process.env.QA_STUDENT_EMAIL || process.env.TEST_STUDENT_EMAIL || 'student@example.com';
     const checkRes = await fetch(`${BASE_URL}/api/points?userId=${encodeURIComponent(studentEmail)}`);
     const checkData = await checkRes.json();
     console.log(`✅ ${studentEmail} points: ${checkData.balance}`);

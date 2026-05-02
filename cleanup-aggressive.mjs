@@ -85,18 +85,6 @@ function isTestCourse(course) {
   );
 }
 
-function isOldCourse(course) {
-  // Courses created more than 2 days ago
-  const createdAt = course.createdAt?.N || course.createdAt?.S;
-  if (!createdAt) return false;
-  
-  const createdTime = isNaN(createdAt) ? new Date(createdAt).getTime() : parseInt(createdAt);
-  const now = Date.now();
-  const twoDaysMs = 2 * 24 * 60 * 60 * 1000;
-  
-  return (now - createdTime) > twoDaysMs;
-}
-
 function getTimeRange(course) {
   const startTime = course.startTime?.N || course.startTime?.S;
   const endTime = course.endTime?.N || course.endTime?.S;
@@ -152,40 +140,10 @@ async function deleteTestCourses() {
     }
   }
 
-  // Strategy 2: Delete very old courses (> 7 days)
-  const oldCourses = courses.filter(c => {
-    if (isTestCourse(c)) return false; // Already counted
-    
-    const createdAt = c.createdAt?.N || c.createdAt?.S;
-    if (!createdAt) return false;
-    
-    const createdTime = isNaN(createdAt) ? new Date(createdAt).getTime() : parseInt(createdAt);
-    const now = Date.now();
-    const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
-    
-    return (now - createdTime) > sevenDaysMs;
-  });
-  
-  console.log(`   🎯 Found ${oldCourses.length} very old courses (> 7 days)`);
-  
-  for (const course of oldCourses) {
-    const courseId = course.id?.S;
-    if (!courseId) continue;
-    
-    try {
-      await client.send(new DeleteItemCommand({
-        TableName: coursesTable,
-        Key: { id: { S: courseId } }
-      }));
-      
-      const title = course.title?.S || '?';
-      const createdAt = course.createdAt?.S || 'unknown';
-      console.log(`   ✅ Deleted old course: ${title} (created: ${createdAt})`);
-      deletedCount++;
-    } catch (err) {
-      console.warn(`   ⚠️ Error deleting ${courseId}: ${err.message}`);
-    }
-  }
+  // Strategy 2: OLD LOGIC REMOVED
+  // ⚠️ We no longer delete courses based on creation date alone
+  // This was too dangerous as it could delete legitimate production data
+  // To safely clean old test data, use cleanup-test-data.mjs instead
 
   console.log(`   📊 Total courses deleted: ${deletedCount}`);
   return deletedCount;

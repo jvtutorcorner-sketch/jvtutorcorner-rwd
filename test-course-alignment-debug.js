@@ -8,12 +8,10 @@ const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 // 測試帳號
 const STUDENT = {
   email: 'basic@test.com',
-  password: '123456',
 };
 
 const TEACHER = {
   email: 'lin@test.com',
-  password: '123456',
 };
 
 async function diagnoseAlignment() {

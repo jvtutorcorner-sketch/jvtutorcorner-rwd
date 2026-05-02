@@ -1,14 +1,15 @@
 import google.generativeai as genai
 import PIL.Image
-import requests
 import json
-from io import BytesIO
+import os
 
 # ==========================================
 # 1. 設定 Gemini API Key
 # ==========================================
-# 請將這裡換成您在 Google AI Studio 申請的 API Key
-API_KEY = "AIzaSyCEZpUWEbxRHWdtT_ZflXvWg3uB9FpiIPc"
+# 從環境變數讀取 API Key，避免硬編碼機密資訊
+API_KEY = os.getenv("GEMINI_API_KEY")
+if not API_KEY:
+    raise RuntimeError("Missing GEMINI_API_KEY environment variable")
 genai.configure(api_key=API_KEY)
 
 # ==========================================
