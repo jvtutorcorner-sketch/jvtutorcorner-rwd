@@ -8,7 +8,6 @@
 
 | 節點類型 | 語言 | 用途 | 超時 | 沙箱 |
 |---------|------|------|------|------|
-| `python` | Python | 複雜計算、資料科學 | 30s | Lambda |
 | `javascript` | JavaScript | 快速轉換、驗證 | 3s | isolated-vm |
 | `action` | 泛用 | 郵件、HTTP 等 | 可變 | 無 |
 
@@ -20,7 +19,7 @@
 
 | 需求 | 對應文檔 | 位置 |
 |------|---------|------|
-| **測試 JS/Python 腳本** | WORKFLOW_SCRIPT_TEST_GUIDE.md | 詳細步驟、常見場景 |
+| **測試 JS 腳本** | WORKFLOW_SCRIPT_TEST_GUIDE.md | 詳細步驟、常見場景 |
 | **了解代碼變更** | WORKFLOW_SCRIPT_REFACTOR_SUMMARY.md | 所有變更記錄、驗証清單 |
 | **部署到 Amplify** | AMPLIFY_WORKFLOW_DEPLOYMENT_CHECKLIST.md | 環境變數、檢查清單 |
 | **看完整更新摘要** | WORKFLOW_SCRIPT_COMPLETE_UPDATE_SUMMARY.md | 概覽、功能矩陣、時間線 |
@@ -57,27 +56,12 @@ git push origin main  # ✓ 等待 Amplify 構建
 4. 觀看 console.log 輸出
 ```
 
-### 添加新的 Python 腳本節點
-
-```
-1. Workflow Canvas → 拖拽 "Python 腳本" 節點
-2. 側邊欄：自動填入 40 行範例 ✓
-3. 編輯腳本，測試
-4. 觀看 print() 輸出
-```
-
 ### 訪問工作流程資料
 
 **JavaScript**:
 ```javascript
 const name = data?.student_name || 'default';
 const items = data?.items || [];
-```
-
-**Python**:
-```python
-name = data.get("student_name", "default")
-items = data.get("items", [])
 ```
 
 ---
@@ -88,18 +72,14 @@ items = data.get("items", [])
 |------|------|------|
 | "JS 節點不顯示" | 未更新 Canvas | 清除瀏覽器緩存 (Ctrl+Shift+Del) |
 | "側邊欄顯示不正確" | CSS 問題 | 檢查 Tailwind 類名 |
-| "Python 超時" | 腳本耗時 | 增加超時設置或優化代碼 |
-| "Lambda 找不到" | AWS 配置 | 檢查 AWS_LAMBDA_FUNCTION_NAME |
 
 ---
 
 ## 📊 版本兼容性
 
 ```
-Python:           3.9  3.10  3.11⭐  3.12
-Node.js:                      18+⭐  20   22
+Node.js:          18+⭐  20   22
 Amplify:          ✓ 兼容 (230MB 限制內)
-AWS Lambda:       ✓ 已配置
 isolated-vm:      6.0.2+
 Next.js:          13+ / 14
 React:            18+
@@ -196,12 +176,6 @@ Q: JavaScript 節點不執行?
 → 檢查: 超時設置 (預設 3000ms)
 → 檢查: 資料格式是否正確
 
-Q: Python 節點不執行?
-→ 檢查: Lambda 函數是否存在
-→ 檢查: AWS 認證是否正確
-→ 檢查: print() 輸出
-→ 檢查: 超時設置 (預設 30000ms)
-
 Q: Amplify 部署失敗?
 → 檢查: npm run build 本地是否通過
 → 檢查: 環境變數是否設置
@@ -215,12 +189,11 @@ Q: Amplify 部署失敗?
 ### 初級 (開始使用)
 1. 閱讀: [WORKFLOW_SCRIPT_TEST_GUIDE.md](WORKFLOW_SCRIPT_TEST_GUIDE.md) 前 50 行
 2. 試驗: JavaScript 節點範例腳本
-3. 試驗: Python 節點範例腳本
 
 ### 中級 (自訂腳本)
 1. 學習: [常見測試場景](WORKFLOW_SCRIPT_TEST_GUIDE.md#常見测试场景)
 2. 實作: 編寫自己的轉換腳本
-3. 調試: 使用 console.log / print
+3. 調試: 使用 console.log
 
 ### 高級 (優化和擴展)
 1. 研究: [WORKFLOW_SCRIPT_REFACTOR_SUMMARY.md](WORKFLOW_SCRIPT_REFACTOR_SUMMARY.md)

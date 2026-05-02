@@ -70,8 +70,8 @@ metadata:
 確保 `.env.local` 中有以下配置：
 ```bash
 TEST_TEACHER_EMAIL=lin@test.com
-TEST_TEACHER_PASSWORD=123456
-LOGIN_BYPASS_SECRET=jv_secret_bypass_2024
+TEST_TEACHER_PASSWORD=<YOUR_PASSWORD>
+LOGIN_BYPASS_SECRET=<YOUR_BYPASS_SECRET>
 ```
 
 ### 自動化測試

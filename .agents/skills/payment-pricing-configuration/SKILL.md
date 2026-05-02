@@ -4,14 +4,16 @@ description: '確認 "/settings/pricing" 的訂閱方案、點數購買、折扣
 argument-hint: '執行 "/settings/pricing" 全面性功能的 E2E 驗證測試'
 metadata:
   verified-status: '✅ VERIFIED'
-  last-verified-date: '2026-04-06'
+  last-verified-date: '2026-04-30'
   architecture-aligned: true
+  notes: '環境配置由 lib/envConfig.ts 統一管理 (APP_ENV)；paymentSuccessHandler 冪等性確保支付後配置生效'
   dependencies:
     - 'auto-login skill (用於 Admin 登入)'
   improvements:
     - '✅ 整合 auto-login skill 登入方式（使用 Bypass Secret）'
     - '✅ 自動清理測試資料'
     - '✅ Playwright webServer 自動啟動開發服務器'
+    - '⭐ NEW: 環境切換由 APP_ENV 控制，無需手動配置各個金流 URL'
 ---
 
 # 支付定價與方案配置技能 (Payment Pricing Configuration Skill)

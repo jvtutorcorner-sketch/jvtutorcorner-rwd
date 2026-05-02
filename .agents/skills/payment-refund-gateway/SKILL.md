@@ -3,9 +3,10 @@ name: payment-refund-gateway
 description: '技術面：專注重於金流商（Stripe, PayPal, LINE Pay）實體金額金流退回 API 集成與呼叫技術細節。'
 argument-hint: '調用 Stripe/PayPal/LINE Pay API 執行技術面退款'
 metadata:
-  verified-status: '🏗️ IN PROGRESS'
-  last-verified-date: '2026-04-06'
+  verified-status: '✅ VERIFIED'
+  last-verified-date: '2026-04-30'
   architecture-aligned: true
+  notes: '所有金流現 API (Stripe/PayPal/LINE Pay) 已由 lib/envConfig.ts 統一管理環境切換 (APP_ENV)'
 ---
 
 # 金流退款技術工具技能 (Payment Refund Gateway Skill)

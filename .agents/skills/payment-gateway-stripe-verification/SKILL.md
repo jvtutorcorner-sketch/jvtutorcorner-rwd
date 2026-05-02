@@ -3,9 +3,10 @@ name: payment-gateway-stripe-verification
 description: '測試 Stripe 支付流程——包括學生端在 /pricing 頁面的支付測試，以及管理員在 /apps 頁面的 Stripe 服務連線診斷。'
 argument-hint: '執行 Stripe 支付測試流程，包含故障診斷'
 metadata:
-  verified-status: '❌ UNVERIFIED'
-  last-verified-date: '-'
-  architecture-aligned: false
+  verified-status: '✅ VERIFIED'
+  last-verified-date: '2026-04-30'
+  architecture-aligned: true
+  notes: '環境配置已統一至 lib/envConfig.ts (APP_ENV switch)'
 ---
 
 # Stripe 支付整合驗證技能 (Stripe Payment Integration Skill)
@@ -32,29 +33,38 @@ metadata:
 ## 環境驗證 (Environment Validation)
 
 ### 1. 必要環境變數
+
+**⭐ NEW (2026-04-30): 環境配置統一**
+
 在 `.env.local` 中確認以下變數：
 
 ```bash
+# 🔑 環境開關 (所有金流由此決定 sandbox/live)
+APP_ENV=local  # local = 沙盒, production = 正式
+
 # Stripe 公鑰與祕鑰
-NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_...
-STRIPE_SECRET_KEY=sk_test_...
+# 注意: Stripe 自動從金鑰前綴判斷環境 (sk_test_* vs sk_live_*)
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=<YOUR_STRIPE_PUBLISHABLE_KEY>
+STRIPE_SECRET_KEY=<YOUR_STRIPE_SECRET_KEY>  # APP_ENV=local 時需使用 test key
 
 # Webhook 密鑰（用於驗證 Stripe 回調）
-STRIPE_WEBHOOK_SECRET=whsec_...
+STRIPE_WEBHOOK_SECRET=<YOUR_STRIPE_WEBHOOK_SECRET>
 
 # 測試帳號
-TEST_STUDENT_EMAIL=pro@test.com
-TEST_STUDENT_PASSWORD=123456
-ADMIN_EMAIL=admin@jvtutorcorner.com
-ADMIN_PASSWORD=123456
+TEST_STUDENT_EMAIL=<YOUR_TEST_STUDENT_EMAIL>
+TEST_STUDENT_PASSWORD=<YOUR_PASSWORD>
+ADMIN_EMAIL=<YOUR_ADMIN_EMAIL>
+ADMIN_PASSWORD=<YOUR_PASSWORD>
 
-# 登入繞過
-LOGIN_BYPASS_SECRET=jv_secret_bypass_2024
-NEXT_PUBLIC_LOGIN_BYPASS_SECRET=jv_secret_bypass_2024
+# 登入繞過（僅限 local/e2e）
+LOGIN_BYPASS_SECRET=<YOUR_BYPASS_SECRET>
+# NEXT_PUBLIC_LOGIN_BYPASS_SECRET=<YOUR_BYPASS_SECRET>  # 僅舊版流程相容，預設不建議啟用
 
 # 基礎 URL
-NEXT_PUBLIC_BASE_URL=http://www.jvtutorcorner.com
+NEXT_PUBLIC_BASE_URL=http://localhost:3000
 ```
+
+**⚠️ 重要**：啟動時若 `APP_ENV=production` 搭配 `sk_test_*` 金鑰，會立即報錯。確保配置一致。
 
 ### 2. 必要檢查清單
 - [ ] Stripe 帳戶已建立，且處於 Test Mode（不是 Live Mode）
@@ -81,9 +91,9 @@ NEXT_PUBLIC_BASE_URL=http://www.jvtutorcorner.com
 ```
 1. 開啟測試瀏覽器
 2. 導航至 /login
-3. Email 輸入欄填入：pro@test.com
-4. Password 輸入欄填入：123456
-5. 驗證碼欄位填入：jv_secret_bypass_2024
+3. Email 輸入欄填入：TEST_STUDENT_EMAIL 對應值
+4. Password 輸入欄填入：TEST_STUDENT_PASSWORD 對應值
+5. 驗證碼欄位填入：LOGIN_BYPASS_SECRET 對應值（僅限 local/e2e）
 6. 點擊「登入」按鈕
 7. 等待頁面導航至首頁或儀表板
 8. 確認 Navbar 顯示「個人設定」等 Student 選項
@@ -160,9 +170,9 @@ NEXT_PUBLIC_BASE_URL=http://www.jvtutorcorner.com
 ```
 1. 開啟新的測試瀏覽器窗口或清空 Cookie
 2. 導航至 /login
-3. Email 輸入欄填入：admin@jvtutorcorner.com
-4. Password 輸入欄填入：123456
-5. 驗證碼欄位填入：jv_secret_bypass_2024
+3. Email 輸入欄填入：ADMIN_EMAIL 對應值
+4. Password 輸入欄填入：ADMIN_PASSWORD 對應值
+5. 驗證碼欄位填入：LOGIN_BYPASS_SECRET 對應值（僅限 local/e2e）
 6. 點擊「登入」按鈕
 7. 等待頁面導航至 Admin Dashboard
 8. 確認 Navbar 顯示「訂單管理」、「老師審核」等 Admin 選項
@@ -212,9 +222,9 @@ NEXT_PUBLIC_BASE_URL=http://www.jvtutorcorner.com
    1. 點擊 Stripe 列對應的「配置」或「Edit」按鈕
    2. 會彈出配置模態視窗 (AppConfigModal)
    3. 確認以下欄位已填入：
-      - Webhook Secret (whsec_...)
-      - Secret Key (sk_test_...)
-      - Publishable Key (pk_test_...)
+      - Webhook Secret (`<YOUR_STRIPE_WEBHOOK_SECRET>`)
+      - Secret Key (`<YOUR_STRIPE_SECRET_KEY>`)
+      - Publishable Key (`<YOUR_STRIPE_PUBLISHABLE_KEY>`)
    4. 檢查「Status」為「enabled」或「active」
 
 方法 B：點擊「詳細」或「Detail」（若存在）

@@ -3,9 +3,10 @@ name: payment-refund-orchestration
 description: '負責驗證點數與方案（訂閱/組合包）購買後的退款驗證，包含金流原路退回、資產扣除與狀態同步。'
 argument-hint: '執行點數或方案退款驗證 (金流 vs 點數扣除)'
 metadata:
-  verified-status: '🏗️ IN PROGRESS'
-  last-verified-date: '2026-04-06'
+  verified-status: '✅ VERIFIED'
+  last-verified-date: '2026-04-30'
   architecture-aligned: true
+  notes: '與 payment-infrastructure 統一的環境配置 (APP_ENV) 及 paymentSuccessHandler 冪等性配合'
 ---
 
 # 點數與方案退款編排技能 (Payment Refund Orchestration Skill)
@@ -29,6 +30,12 @@ metadata:
 ## 相關組合技能
 - **`payment-refund-gateway`**：提供金流 API 呼叫的技術支持。
 - **`point-restitution-flow`**：處理「課程報名 (Enrollment)」的取消與點數退回；與本技能處理的「購買行為產生的資產扣除」方向相反。
+- **`payment-infrastructure`**：建立了冪等性策略 (Idempotency)，防止webhook重複觸發導致的多次退款。
+
+## ⭐ 最近更新 (2026-04-30)
+
+- **環境配置統一**：`lib/envConfig.ts` 控制所有金流的 sandbox/live 路徑
+- **冪等性強化**：`paymentSuccessHandler` 已完整輸出冪等性判斷，防止webhook重複導致二次退款的困擾
 
 ## 測試指令
 ```bash

@@ -40,7 +40,7 @@ metadata:
      - Password、Confirm Password
      - Birthdate、Gender、Country
      - 服務條款勾選
-     - 驗證碼（使用 Bypass Secret）
+    - 驗證碼（local/e2e 可使用 Bypass Secret；正式環境需使用真實 CAPTCHA）
    - 提交表單
    - **檢查點**: 
      - 帳號應成功建立
@@ -48,7 +48,8 @@ metadata:
      - Email 白名單應允許發送
 
 3. **驗證碼 Bypass 說明**:
-   - 驗證碼輸入框應輸入 `jv_secret_bypass_2024` （與 `LOGIN_BYPASS_SECRET` 相同）
+  - 僅限 local/e2e 測試使用，正式環境不得使用 bypass。
+   - 驗證碼輸入框應輸入 `<YOUR_BYPASS_SECRET>` （與 `LOGIN_BYPASS_SECRET` 相同）
    - 系統會在 `lib/captcha.ts` 的 `verifyCaptcha()` 函數中驗證此 bypass secret
    - 不需要識別實際驗證碼圖片文字
 
@@ -82,7 +83,7 @@ metadata:
 **AWS Amplify 計畫架構提醒**:
 在正式環境（Amplify Hosting）中，Next.js 的 Cron API **不會自動觸發**。必須確保與專案架構對齊：
 1. **觸發源**: 必須配置 **AWS EventBridge** 規則。
-2. **執行源**: 必須透過 [amplify/functions](file:///d:/jvtutorcorner-rwd/amplify/functions/dailyReportScheduler) 下的專屬 Lambda 函數定時向 API 發送 POST 請求。
+2. **執行源**: 必須透過 [amplify/functions/dailyReportScheduler](../../../amplify/functions/dailyReportScheduler) 下的專屬 Lambda 函數定時向 API 發送 POST 請求。
 3. **驗證**: 手動驗證排程時，請確保帶入正確的 `Authorization: Bearer ${CRON_SECRET}` 標頭。
 
 ---
@@ -128,6 +129,6 @@ npx playwright test e2e/register_and_email_test.spec.ts --headed --project=chrom
 - **API 401/403**: 檢查調用時的 `CRON_SECRET` 是否與雲端配置一致。
 
 ## 5. 相關資源
-- [Email 整合規格 (Skill)](file:///d:/jvtutorcorner-rwd/.agents/skills/email-service-integration/SKILL.md)
-- [Amplify Lambda 範例](file:///d:/jvtutorcorner-rwd/.agents/skills/email-service-integration/examples/amplify-lambda-scheduler.js)
-- [帳號註冊 Email 驗證測試](file:///d:/jvtutorcorner-rwd/e2e/register_and_email_test.spec.ts) ✅ 2026-04-22 驗證通過
+- [Email 整合規格 (Skill)](../email-service-integration/SKILL.md)
+- [Amplify Lambda 範例](../email-service-integration/examples/amplify-lambda-scheduler.js)
+- [帳號註冊 Email 驗證測試](../../../e2e/register_and_email_test.spec.ts) ✅ 2026-04-22 驗證通過

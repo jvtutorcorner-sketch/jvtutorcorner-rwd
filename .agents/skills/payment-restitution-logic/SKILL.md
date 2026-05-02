@@ -3,9 +3,10 @@ name: payment-restitution-logic
 description: '負責處理課程取消後的點數返還（Point Return）邏輯，將已消耗的點數加回學生帳戶。'
 argument-hint: '實作或更新點數返還/扣點回補邏輯'
 metadata:
-  verified-status: '🏗️ IN PROGRESS'
-  last-verified-date: '2026-04-06'
+  verified-status: '✅ VERIFIED'
+  last-verified-date: '2026-04-30'
   architecture-aligned: true
+  notes: '與 paymentSuccessHandler 冪等性配合，確保課程激活與取消的對稱性'
 ---
 
 # 點數資產歸還邏輯技能 (Payment Restitution Logic Skill)

@@ -190,8 +190,8 @@ BASE_URL=http://localhost:3000
 # 正式環境（取消下方註解以切換）
 # BASE_URL=https://www.jvtutorcorner.com
 TEST_STUDENT_EMAIL=<student-email>
-TEST_STUDENT_PASSWORD=<student-password>
-LOGIN_BYPASS_SECRET=<bypass-secret>
+TEST_STUDENT_PASSWORD=<YOUR_PASSWORD>
+LOGIN_BYPASS_SECRET=<YOUR_BYPASS_SECRET>  # 僅限 local/e2e
 DYNAMODB_TABLE_USER_INTERACTIONS=jvtutorcorner-user-interactions
 ```
 

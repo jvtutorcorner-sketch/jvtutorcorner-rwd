@@ -4,8 +4,9 @@ description: '自動化學生購買與報名課程的完整流程，確保報名
 argument-hint: '執行學生報名流程測試 (含自動餘額檢查與補點)'
 metadata:
   verified-status: '✅ VERIFIED'
-  last-verified-date: '2026-04-04'
+  last-verified-date: '2026-04-30'
   architecture-aligned: true
+  notes: '支付後的報名啟動由 paymentSuccessHandler 獨佔負責 (冪等性保證)；環境配置由 APP_ENV 統一控制'
 ---
 
 # 學生報名流程技能 (Student Enrollment Flow Skill)

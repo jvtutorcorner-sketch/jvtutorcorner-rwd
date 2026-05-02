@@ -47,5 +47,5 @@ metadata:
 
 ## 規則與限制
 - **不可手動編輯**: `docs/api_registry.md` 應該透過 `scripts/inspect_apis.mjs` 產生，除非是為了補件說明。
-- **原始碼連結**: 產生的 Markdown 應包含 `file:///` 協定的連結，方便在 IDE 中直接跳轉至實作頁面。
+- **原始碼連結**: 產生的 Markdown 應使用工作區相對路徑（例如 `app/api/orders/route.ts`），避免暴露本機絕對路徑。
 - **頻率**: 每次涉及 API 結構變更的對談 (Task) 結束前，都應執行一次更新。

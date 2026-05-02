@@ -26,11 +26,11 @@ npx playwright test e2e/classroom-wait-device-permissions.spec.ts --project=chro
 **環境前置**：`.env.local` 須包含以下變數：
 ```
 NEXT_PUBLIC_BASE_URL=http://localhost:3000
-LOGIN_BYPASS_SECRET=jv_secure_bypass_2024
+LOGIN_BYPASS_SECRET=<YOUR_BYPASS_SECRET>
 TEST_TEACHER_EMAIL=teacher@test.com
-TEST_TEACHER_PASSWORD=123456
+TEST_TEACHER_PASSWORD=<YOUR_PASSWORD>
 TEST_STUDENT_EMAIL=student@test.com
-TEST_STUDENT_PASSWORD=123456
+TEST_STUDENT_PASSWORD=<YOUR_PASSWORD>
 ```
 
 ---

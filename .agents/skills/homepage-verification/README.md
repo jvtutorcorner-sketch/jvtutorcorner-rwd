@@ -124,7 +124,7 @@ IDLE_THRESHOLD_MS=5000 npx playwright test e2e/homepage_verification.spec.ts --t
 
 ```env
 NEXT_PUBLIC_BASE_URL=http://localhost:3000
-NEXT_PUBLIC_LOGIN_BYPASS_SECRET=jv_secret_bypass_2024
+NEXT_PUBLIC_LOGIN_BYPASS_SECRET=<YOUR_BYPASS_SECRET>
 
 # 可選：加速訪客問卷觸發時間（毫秒）
 # IDLE_THRESHOLD_MS=5000

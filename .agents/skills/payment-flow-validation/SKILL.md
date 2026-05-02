@@ -37,10 +37,30 @@ metadata:
 
 ## 環境驗證 (Environment Validation)
 
+### 0️⃣ 環境開關統一 ⭐ (NEW: 2026-04-30)
+
+**所有金流現已採用統一環境開關 `APP_ENV`**。
+
+```bash
+# .env.local 或 .env.production 中選擇：
+APP_ENV=local        # → Stripe sk_test_*, PayPal sandbox, LINE Pay sandbox, ECPay staging
+APP_ENV=production   # → Stripe sk_live_*, PayPal live, LINE Pay live, ECPay live
+```
+
+- ✅ **Stripe** 自動從 `STRIPE_SECRET_KEY` 推斷（`sk_test_*` vs `sk_live_*`）
+- ✅ **PayPal** 從 `PAYPAL_API_BASE_URL_SANDBOX` / `PAYPAL_API_BASE_URL_PROD` 選擇（由 `lib/envConfig.ts` 管理）
+- ✅ **LINE Pay** 從 `LINEPAY_SITE_URL_SANDBOX` / `LINEPAY_SITE_URL_PROD` 選擇（由 `lib/envConfig.ts` 管理）
+- ✅ **ECPay** 從 `lib/envConfig.ts` 自動選擇 staging/live URL
+
+**注意**：啟動時 `lib/envConfig.ts` 會驗證金鑰與 `APP_ENV` 的一致性，若不符會立即報錯。
+
 ### 1. 必要環境變數
+- [ ] `APP_ENV=local` (本地測試) 或 `APP_ENV=production` (正式)
 - [ ] `NEXT_PUBLIC_BASE_URL`
 - [ ] `TEST_STUDENT_EMAIL` / `TEST_STUDENT_PASSWORD`
 - [ ] `LOGIN_BYPASS_SECRET`
+- [ ] PayPal: `PAYPAL_API_BASE_URL_SANDBOX` 與 `PAYPAL_API_BASE_URL_PROD`
+- [ ] LINE Pay: `LINEPAY_SITE_URL_SANDBOX` 與 `LINEPAY_SITE_URL_PROD`
 
 ### 2. 必要驗證檔案
 - [ ] `e2e/point_purchase_simulated.spec.ts`

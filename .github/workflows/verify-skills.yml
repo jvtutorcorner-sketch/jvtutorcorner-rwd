@@ -1,44 +1,71 @@
 name: Verify Skills Status
 
 on:
-#  push:
-#    branches: [main, develop]
-#    paths:
-#      - '.agents/skills/**/*.md'
-#      - 'e2e/**/*.spec.ts'
-#      - '.github/workflows/verify-skills.yml'
-#  pull_request:
-#    branches: [main, develop]
-#    paths:
-#      - '.agents/skills/**/*.md'
-#      - 'e2e/**/*.spec.ts'
+  push:
+    branches: [main, develop]
+    paths:
+      - '.agents/skills/**/*.md'
+      - 'e2e/**/*.spec.ts'
+      - 'scripts/validate-skill-frontmatter.js'
+      - 'scripts/update-skill-status.js'
+      - '.github/workflows/verify-skills.yml'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - '.agents/skills/**/*.md'
+      - 'e2e/**/*.spec.ts'
+      - 'scripts/validate-skill-frontmatter.js'
+      - 'scripts/update-skill-status.js'
+      - '.github/workflows/verify-skills.yml'
   workflow_dispatch:
-    inputs:
-      skill_name:
-        description: 'Skill 名稱（留空檢查所有）'
-        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-skills-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   validate-frontmatter:
-    name: 驗證 Frontmatter 格式
+    if: github.event_name != 'push' || !contains(github.event.head_commit.message, '[skip ci]')
+    name: Validate Frontmatter
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
 
-      - name: 驗證 Skill frontmatter
+      - name: Validate Skill frontmatter
         run: node scripts/validate-skill-frontmatter.js
 
+      - name: Scan for hardcoded secrets (skills/workflow)
+        shell: bash
+        run: |
+          set -euo pipefail
+          PATTERN='(ghp_[A-Za-z0-9]{20,}|sk_live_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|jv_(secret|secure)_bypass_[0-9]{4})'
+          if grep -RInE --exclude-dir=.git --exclude-dir=node_modules "$PATTERN" .agents/skills .github/workflows; then
+            echo "Potential hardcoded secret detected."
+            exit 1
+          fi
+
   update-status:
-    name: 更新 Skill 狀態
+    if: github.event_name == 'push' && github.actor != 'github-actions[bot]' && !contains(github.event.head_commit.message, '[skip ci]')
+    name: Update Skill Status
     runs-on: ubuntu-latest
     needs: validate-frontmatter
+    timeout-minutes: 10
+    permissions:
+      contents: write
     
     steps:
       - name: Checkout code
@@ -48,56 +75,58 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
 
-      - name: 更新 Skill 狀態
+      - name: Update Skill status files
         run: node scripts/update-skill-status.js
 
-      - name: Commit 變更
-        if: github.event_name == 'push'
+      - name: Commit and push changes
+        shell: bash
         run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git add .agents/skills/
-          git diff --quiet && git diff --staged --quiet || git commit -m "chore(skills): auto-update verification status"
+          set -euo pipefail
+          if [ -z "$(git status --porcelain .agents/skills/)" ]; then
+            echo "No skill status changes to commit."
+            exit 0
+          fi
 
-      - name: Push changes
-        if: github.event_name == 'push'
-        uses: ad-m/github-push-action@master
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          branch: ${{ github.ref }}
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git add .agents/skills/
+          git commit -m "chore(skills): auto-update verification status [skip ci]"
+          git push origin "HEAD:${GITHUB_REF#refs/heads/}"
 
   test-affected-skills:
-    name: 測試受影響的 Skill
+    if: github.event_name != 'push' || !contains(github.event.head_commit.message, '[skip ci]')
+    name: Test Affected Skills
     runs-on: ubuntu-latest
     needs: validate-frontmatter
-    
-    strategy:
-      matrix:
-        node-version: [20.x]
+    timeout-minutes: 45
     
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node-version }}
+          node-version: '20'
+          cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
 
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps
+        run: npx playwright install --with-deps chromium
 
-      - name: 執行驗證測試
-        run: npx playwright test --grep 'verification' --reporter=html
+      - name: Run verification tests
+        run: npx playwright test --grep "verification" --reporter=html
 
       - name: Upload test report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report
+          name: playwright-report-${{ github.run_number }}
           path: playwright-report/
-          retention-days: 30
+          retention-days: 14

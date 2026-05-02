@@ -84,6 +84,7 @@ graph TD
   "body": "string", // 純文字
   "html": "string"  // (選填) HTML 模板
 }
+```
 ---
 
 ## 4.5. 帳號建立驗證信流程 (Registration Verification Email Flow)
@@ -91,7 +92,9 @@ graph TD
 當用戶在 `/login/register` 頁面提交註冊表單時，系統會自動寄送驗證信至註冊的 Email 地址。
 
 ### 流程說明
-1. **表單提交**: 用戶填寫完整表單並通過驗證碼驗證（使用 `jv_secret_bypass_2024` bypass）
+1. **表單提交**: 用戶填寫完整表單並通過驗證碼驗證。
+  - local/e2e 可使用 `<YOUR_BYPASS_SECRET>` 進行測試 bypass。
+  - 正式環境必須使用真實 CAPTCHA 驗證，不可使用 bypass。
 2. **後端處理**: 
    - 路由: `app/api/register/route.ts`
    - 驗證郵件白名單 (EMAIL_WHITELIST 優先)
@@ -143,7 +146,7 @@ graph TD
     - **零成本運行**: 任務量完全在 AWS Free Tier 範圍內。
 
 ### 相關實作參考
-- **實作範例**: [amplify-lambda-scheduler.js](file:///d:/jvtutorcorner-rwd/.agents/skills/email-service-integration/examples/amplify-lambda-scheduler.js)
+- **實作範例**: [amplify-lambda-scheduler.js](examples/amplify-lambda-scheduler.js)
 - **課程提醒 API**: `app/api/cron/process-reminders/route.ts`
 - **每日報表 API**: `app/api/cron/daily-report/route.ts`
 

@@ -126,7 +126,10 @@ curl -X POST -H "Content-Type: application/json" -d '{"action":"reject","reason"
 
 ## 測試資料與清理建議
 - 測試流程請使用測試專用帳號，避免污染真實資料。
-- 若需要自動清理，參考專案根目錄的 `cleanup-test-data.sh` 或 `e2e/cleanup-test-data.spec.ts`。
+- 若需要自動清理，使用安全版本的清理工具：
+  - **推薦**: `node cleanup-test-data.mjs` (Dry-run 預覽)
+  - **執行**: `node cleanup-test-data.mjs --execute` (實際刪除)
+  - 支援環境防護、確認提示、精確比對
 
 ## 相關檔案
 - `/app/teachers/manage/page.tsx` - 在職狀態管理 UI

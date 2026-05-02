@@ -4,10 +4,11 @@ description: '點數暫存（Escrow）系統：學生報名時扣點，課程完
 argument-hint: '驗證報名扣點與課程完成時的 Escrow 釋放邏輯'
 metadata:
   verified-status: '✅ VERIFIED'
-  last-verified-date: '2026-04-23'
+  last-verified-date: '2026-04-30'
   infrastructure-deployed: '✅ Table 配置 + 初始化腳本'
   amplify-build-status: '✅ 修復 js-yaml TypeScript 錯誤'
   architecture-aligned: true
+  notes: '與 paymentSuccessHandler 冪等性配合，確保報名點數扣除的原子性'
   verification-results:
     - '✅ 1 分鐘課程倒數自動結束：教室自動跳轉回等待頁 (1.5m)'
     - '✅ 白板隨機繪圖：老師 3 條線有內容'
@@ -15,8 +16,9 @@ metadata:
     - '✅ 雙方進入等待室 → 準備好 → 進入教室 完整流程'
     - '✅ DynamoDB Escrow Table 初始化腳本完成'
     - '✅ 環境變數配置完成（next.config.mjs, .env.local.example）'
-    - '✅ 清理腳本更新（cleanup-aggressive.mjs, cleanup-database-direct.mjs）'
+    - '✅ 清理腳本升級完成（cleanup-test-data.mjs 安全版本，已移除危險的舊腳本）'
     - '✅ AWS 健康檢查監視表更新'
+    - '⭐ NEW: paymentSuccessHandler 冪等性保證重複 webhook 不會導致二次扣點'
     - '⚠️ Escrow HOLDING 查詢：production jvtutorcorner-points-escrow DynamoDB table 未部署'
     - '⚠️ 老師點數增加驗證：因 Escrow table 未部署，無法驗證'
 ---
@@ -153,11 +155,16 @@ Manual cancel or app trigger
 - **[.env.local.example](../../.env.local.example)** ✅ 2026-04-23 更新
   - 加入 `DYNAMODB_TABLE_POINTS_ESCROW=jvtutorcorner-points-escrow`
 
-- **[cleanup-database-direct.mjs](../../../cleanup-database-direct.mjs)** ✅ 2026-04-23 更新
-  - 新增 `deleteTestEscrowsFromDB()` 清理測試 Escrow 記錄
+- **[cleanup-test-data.mjs](../../../cleanup-test-data.mjs)** ✅ 2026-05-01 升級為安全版本
+  - ✅ 環境防護檢查（禁止 Production 執行）
+  - ✅ Dry-run 模式支援（預覽不刪除）
+  - ✅ 互動式確認提示
+  - ✅ 精確測試資料比對（前綴匹配）
+  - 自動清理測試 Escrow 記錄（以及課程、訂單、報名記錄）
 
-- **[cleanup-aggressive.mjs](../../../cleanup-aggressive.mjs)** ✅ 2026-04-23 更新
-  - 新增 `deleteTestEscrows()` 清理測試 Escrow 記錄（包含統計輸出）
+**廢棄腳本**（已標記不建議使用）:
+- ~~cleanup-database-direct.mjs~~ - 已廢棄，使用 cleanup-test-data.mjs 替代
+- ~~cleanup-aggressive.mjs~~ - 已移除危險的舊資料刪除邏輯
 
 - **[lib/awsHealthChecker.ts](../../../lib/awsHealthChecker.ts)** ✅ 2026-04-23 更新
   - 加入 `jvtutorcorner-points-escrow` 到監視表清單

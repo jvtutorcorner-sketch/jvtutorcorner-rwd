@@ -1,6 +1,6 @@
 ---
 name: auto-login
-description: '自動登入驗證技能。讀取 .env.local 中的測試帳號資訊，並使用特有的 Bypass Secret 繞過驗證碼完成登入。支援 Teacher 與 Student 角色。'
+description: '自動登入驗證技能。讀取 .env.local 中的測試帳號資訊，並在 local/e2e 環境使用 Bypass Secret 繞過驗證碼。支援 Teacher 與 Student 角色。'
 argument-hint: '執行自動登入，並指定角色 (teacher/student)'
 metadata:
   verified-status: '✅ VERIFIED'
@@ -10,7 +10,7 @@ metadata:
 
 # 自動登入技能 (Auto-Login Skill - Secure Version)
 
-此技能允許開發者或 AI 助手使用預設的測試憑據與 **安全的 Bypass Secret** 自動登入系統，並繞過圖形驗證碼。此實作會**查詢資料庫**以獲取真實的 User Profile。
+此技能允許開發者或 AI 助手在 **local/e2e 測試環境** 使用測試憑據與 Bypass Secret 進行自動登入，並查詢資料庫取得真實的 User Profile。
 
 ## 安全性功能
 
@@ -25,25 +25,25 @@ metadata:
 
 ```bash
 # 安全繞過金鑰 (必須填寫此金鑰至驗證碼欄位才能繞過)
-LOGIN_BYPASS_SECRET=jv_secret_bypass_2024
-NEXT_PUBLIC_LOGIN_BYPASS_SECRET=jv_secret_bypass_2024
+LOGIN_BYPASS_SECRET=<YOUR_BYPASS_SECRET>
+# NEXT_PUBLIC_LOGIN_BYPASS_SECRET=<YOUR_BYPASS_SECRET>  # 僅舊版流程相容，預設不建議啟用
 
 # Teacher 測試帳號
 TEST_TEACHER_EMAIL=teacher@test.com
-TEST_TEACHER_PASSWORD=123456
+TEST_TEACHER_PASSWORD=<YOUR_PASSWORD>
 
 # Student 測試帳號
 TEST_STUDENT_EMAIL=student@test.com
-TEST_STUDENT_PASSWORD=123456
+TEST_STUDENT_PASSWORD=<YOUR_PASSWORD>
 
 # Email 白名單 (用於帳號建立測試)
-EMAIL_WHITELIST=n7842165@gmail.com, @jvtutorcorner.com, pro@test.com
+EMAIL_WHITELIST=qa-owner@example.com, @example.com, student@test.com
 
 # SMTP 設定 (用於驗證信寄送)
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
-SMTP_USER=jvtutorcorner@gmail.com
-SMTP_PASS=vitu otqp cmdu wxwd
+SMTP_USER=<YOUR_SMTP_USER_EMAIL>
+SMTP_PASS=<YOUR_SMTP_PASS>
 ```
 
 ## 使用方式
@@ -55,8 +55,8 @@ SMTP_PASS=vitu otqp cmdu wxwd
 3. **圖片載入驗證 (重要)**：必須**先等待驗證碼圖片 (`img[alt="captcha"]`) 呈現**。這確保了後端 `captchaToken` 已載入，且登入按鈕已解除 `disabled` 狀態。
 4. **填寫驗證碼與點擊**：在驗證碼圖片出現且登入按鈕變為啟用 (Enabled) 狀態後，在驗證碼欄位填入 `LOGIN_BYPASS_SECRET`，並點擊提交按鈕。
 5. **驗證狀態**：截圖或檢查 DOM 以確認已登入成功（應看到使用者姓名或首頁內容）。
-5. **登出清理 (重要)**：驗證完畢後，**必須點擊「登出」按鈕**以登出系統，確保不留下活躍會話。
-6. **結束任務**：關閉瀏覽器分頁或視窗以結束技能執行。
+6. **登出清理 (重要)**：驗證完畢後，**必須點擊「登出」按鈕**以登出系統，確保不留下活躍會話。
+7. **結束任務**：關閉瀏覽器分頁或視窗以結束技能執行。
 
 ### 對於帳號建立註冊 (Registration via `/login/register`)
 當進行帳號註冊測試時：
@@ -64,7 +64,7 @@ SMTP_PASS=vitu otqp cmdu wxwd
 2. **填寫表單欄位**:
    - Role: 選擇 Student 或 Teacher
    - First Name / Last Name: 任意英文名字
-   - Email: 使用 EMAIL_WHITELIST 中的地址（如 `n7842165@gmail.com`）
+   - Email: 使用 EMAIL_WHITELIST 中的地址（如 `qa-owner@example.com`）
    - Password / Confirm Password: 任意複雜密碼
    - Birthdate: 任意有效日期（格式: YYYY-MM-DD）
    - Gender: 選擇 Male/Female
@@ -72,7 +72,7 @@ SMTP_PASS=vitu otqp cmdu wxwd
    - Terms Checkbox: 勾選同意
 3. **驗證碼填寫**:
    - **重要**: 點擊「重新取得」按鈕加載驗證碼圖片
-   - 在驗證碼輸入框填入 `jv_secret_bypass_2024` (與 LOGIN_BYPASS_SECRET 相同)
+   - 在驗證碼輸入框填入 `<YOUR_BYPASS_SECRET>` (與 LOGIN_BYPASS_SECRET 相同)
    - **不需要**識別實際驗證碼圖片文字
 4. **提交表單**: 點擊「建立帳戶」按鈕
 5. **驗證結果**:
@@ -87,7 +87,7 @@ SMTP_PASS=vitu otqp cmdu wxwd
 
 ### 1. 必要環境變數 (Required Environment Variables)
 - [ ] `.env.local` 必須包含 `LOGIN_BYPASS_SECRET` (安全繞過金鑰)
-- [ ] `.env.local` 必須包含 `NEXT_PUBLIC_LOGIN_BYPASS_SECRET` (公開的驗證碼 bypass secret)
+- [ ] 若舊版流程仍在使用，`.env.local` 可選擇包含 `NEXT_PUBLIC_LOGIN_BYPASS_SECRET` (僅相容用途)
 - [ ] `.env.local` 必須包含 `TEST_TEACHER_EMAIL` / `TEST_TEACHER_PASSWORD`
 - [ ] `.env.local` 必須包含 `TEST_STUDENT_EMAIL` / `TEST_STUDENT_PASSWORD`
 - [ ] `.env.local` 應包含 `EMAIL_WHITELIST` (用於註冊測試)
@@ -104,12 +104,9 @@ SMTP_PASS=vitu otqp cmdu wxwd
 ## 程式碼實作細節
 
 - **後端邏輯**：在 `app/api/login/route.ts` 和 `app/api/register/route.ts` 中，驗證碼值會透過 `lib/captcha.ts` 的 `verifyCaptcha()` 函數進行驗證。
-- **Bypass 機制**：當 `captchaValue` 等於下列任一值時，驗證自動通過（不需驗證實際驗證碼）:
-  - `process.env.LOGIN_BYPASS_SECRET`
-  - `process.env.NEXT_PUBLIC_LOGIN_BYPASS_SECRET`
-  - 硬編碼值: `jv_secret_bypass_2024` 或 `jv_secure_bypass_2024`
-- **適用場景**: 開發、測試、自動化 E2E 測試均可使用 bypass secret
-- **安全考量**: 此機制僅在開發/測試環境啟用，正式環境應移除或禁用
+- **Bypass 機制**：應僅接受 `process.env.LOGIN_BYPASS_SECRET`。
+- **安全要求**：若程式碼存在硬編碼 fallback（固定字串或公開變數 fallback），必須視為安全缺陷並立即移除。
+- **適用場景**: 開發、測試、自動化 E2E 測試可使用 bypass secret；正式環境禁止使用。
 
 ### 驗證碼實作路徑
 - **生成**: `lib/captcha.ts` -> `generateCaptcha()`
@@ -118,24 +115,24 @@ SMTP_PASS=vitu otqp cmdu wxwd
 
 ## 環境切換 (Environment Switching)
 
-此 skill 同時支援 **開發環境 (localhost:3000)** 與 **正式環境 (jvtutorcorner.com)**。
+此 skill 預設支援 **開發環境 (localhost:3000)** 與 **測試環境**。正式環境驗證應以人工 CAPTCHA 流程執行，不應使用 bypass。
 
 ```bash
 # 開發環境（預設）
 npx playwright test e2e/classroom_flow.spec.ts --project=chromium
 
-# 正式環境
-BASE_URL=https://www.jvtutorcorner.com npx playwright test e2e/classroom_flow.spec.ts --project=chromium
+# 測試環境（需由維運提供測試域名）
+BASE_URL=https://staging.example.com npx playwright test e2e/classroom_flow.spec.ts --project=chromium
 ```
 
-> ⚠️ **注意**：`LOGIN_BYPASS_SECRET` 機制在正式環境同樣有效，在驗證碼欄位輸入 Secret 即可繞過 CAPTCHA。  
-> 僅限測試使用，請勿公開此 Secret。
+> ⚠️ **安全警示**：若在正式環境仍可用 `LOGIN_BYPASS_SECRET` 繞過 CAPTCHA，請視為 P0 安全事件並立即停用 bypass。
 
 ## 注意事項
 
 - 此環境變數與繞過功能僅限於開發與測試環境。
 - 請勿將 `LOGIN_BYPASS_SECRET` 設為過於簡單的值。
-- 在帳號建立時，驗證碼 bypass 與登入流程中的 bypass 使用相同的 secret (`jv_secret_bypass_2024`)。
+- 在帳號建立時，驗證碼 bypass 與登入流程中的 bypass 使用相同的 secret (`<YOUR_BYPASS_SECRET>`)。
+- 請勿在日誌、終端輸出或錯誤訊息中回顯任何 Secret 實際值。
 - 若 bypass secret 無效，系統會要求正確的驗證碼圖片文字，此時應檢查:
   - `.env.local` 中的環境變數是否正確配置
   - `lib/captcha.ts` 中的 `verifyCaptcha()` 邏輯是否被正確調用
@@ -166,15 +163,15 @@ BASE_URL=https://www.jvtutorcorner.com npx playwright test e2e/classroom_flow.sp
 
 1. **檢查 Email 配置**:
    ```bash
-   # 確認至少一個 Email 服務已配置
-   echo "Resend 設定:" $RESEND_API_KEY
-   echo "Gmail SMTP 設定:" $SMTP_USER $SMTP_PASS
+   # 僅檢查「是否已配置」，不要輸出 secret 值
+   if ($env:RESEND_API_KEY) { "Resend: configured" } else { "Resend: missing" }
+   if ($env:SMTP_USER -and $env:SMTP_PASS) { "Gmail SMTP: configured" } else { "Gmail SMTP: missing" }
    ```
 
 2. **檢查 Email 白名單**:
    ```bash
    # 確認註冊的 Email 在白名單中
-   echo $EMAIL_WHITELIST  # 應該包含 n7842165@gmail.com 或 @gmail.com
+   echo $EMAIL_WHITELIST  # 應該包含 qa-owner@example.com 或對應測試網域
    ```
 
 3. **查看伺服器日誌**:
@@ -196,7 +193,7 @@ BASE_URL=https://www.jvtutorcorner.com npx playwright test e2e/classroom_flow.sp
 3. **兩者都失敗時** 返回錯誤並記錄日誌
 
 優先順序：
-- DynamoDB `/apps` 中的 ACTIVE 配置 > 環境變數 > 硬編碼預設值
+- DynamoDB `/apps` 中的 ACTIVE 配置 > 環境變數（不應存在硬編碼預設值）
 
 ### Q: 在 Amplify Hosting 中如何設定 Email 服務？
 
@@ -205,13 +202,13 @@ BASE_URL=https://www.jvtutorcorner.com npx playwright test e2e/classroom_flow.sp
 **方式 1: 使用環境變數** (簡單)
 ```bash
 # Amplify Console > Hosting > Environment variables
-SMTP_USER=jvtutorcorner@gmail.com
-SMTP_PASS=vitu otqp cmdu wxwd  # 16 位元應用程式密碼
+SMTP_USER=<YOUR_SMTP_USER_EMAIL>
+SMTP_PASS=<YOUR_SMTP_PASS>  # 16 位元應用程式密碼
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 
 # 或 Resend
-RESEND_API_KEY=re_xxxxx
+RESEND_API_KEY=<YOUR_RESEND_API_KEY>
 RESEND_FROM=noreply@yourdomain.com
 ```
 

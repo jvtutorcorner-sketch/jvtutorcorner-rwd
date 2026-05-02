@@ -3,9 +3,14 @@ name: payment-infrastructure
 description: '負責支付系統的全局架構、多支付閘道（PayPal, Stripe, LINE Pay, ECPay）整合、訂單生命週期管理、Webhook 安全校驗以及支付流程的高可用性優化。'
 argument-hint: '記錄與標準化支付系統相關的變更，區分購買流程與退款邏輯'
 metadata:
-  verified-status: '❌ UNVERIFIED'
-  last-verified-date: '-'
+  verified-status: '✅ VERIFIED'
+  last-verified-date: '2026-04-30'
   architecture-aligned: true
+  recent-changes:
+    - '✨ NEW: lib/envConfig.ts - 所有金流環境統一控制'
+    - '🔒 IMPROVED: paymentSuccessHandler 冪等性 - 防止webhook重複導致資產超發'
+    - '🐛 FIXED: PayPal return route 補上handlePaymentSuccess呼叫'
+    - '🚨 HARDENED: plan-upgrades PATCH 移除未授權的業務邏輯'
 ---
 
 # Payment Infrastructure & Lifecycle Management (Payment Infrastructure Skill)
@@ -75,16 +80,44 @@ sequenceDiagram
 
 - [ ] **驗證機制**：是否已實現 Webhook 來源的簽名驗證？
 - [ ] **併發處理**：在高併發下是否會發生重複配給？（使用 DynamoDB `ConditionExpression`）。
+- [ ] **冪等性策略** ⭐ **NEW**: 訂單若已是 `COMPLETED` 時，`paymentSuccessHandler` 會立即回傳（`lib/paymentSuccessHandler.ts` L#45）。
 - [ ] **錯誤日誌**：是否完整紀錄了 Gateway 回傳的錯誤代碼與原始 Payload？
-- [ ] **環境一致性**：所有金鑰是否均從 `.env.local` 讀取，且生產/沙箱配置正確？
+- [ ] **環境一致性** ⭐ **IMPROVED**: 所有金流現採 `lib/envConfig.ts` 統一控制。驗證 `APP_ENV` 與金鑰一致性（啟動時自動檢查）。
+- [ ] **業務邏輯隔離**：點數/方案授權邏輯 **必須** 由 `lib/paymentSuccessHandler.ts` 獨占，其他路由 (如 `plan-upgrades PATCH`) 嚴禁重複觸發。
 - [ ] **API 註冊**：若新增 API 路由，是否已執行 `node scripts/inspect_apis.mjs` 更新註冊表？
 
-## 6. PR / Commit 規範
+## 6. 最近更新說明 (Recent Changes — 2026-04-30)
+
+### A. 環境配置統一 (Environment Configuration Unification)
+**文件**: `lib/envConfig.ts` (NEW)
+- 所有支付閘道 (Stripe, PayPal, LINE Pay, ECPay) 現均由 `APP_ENV` 開關控制
+- 啟動時驗證憑證與環境是否一致（如 `APP_ENV=production` 搭配 `sk_live_*`）
+- 舊的 `NODE_ENV` 與個別 env 變數判斷已移除
+
+### B. Webhook 冪等性強化 (Webhook Idempotency Hardening)
+**文件**: `lib/paymentSuccessHandler.ts` (REWRITTEN)
+- 新增冪等性防守：若訂單狀態已是 `COMPLETED`，立即回傳，不重複執行業務邏輯
+- 所有資產配給 (點數/訂閱/課程激活) 均集中於此 handler，由 Webhook 獨占觸發
+- 使用 DynamoDB SDK 直接更新 Enrollment 狀態（不再用 HTTP fetch），確保原子性
+
+### C. 安全性增強 (Security Hardening)
+**文件**: `app/api/plan-upgrades/[upgradeId]/route.ts` (PATCHED)
+- 移除 PATCH 處理器中的未授權業務邏輯（不再授予點數/激活方案）
+- PATCH 現僅負責狀態更新，業務邏輯由 Webhook 驅動的 `paymentSuccessHandler` 執行
+
+### D. PayPal Return 流程修復 (PayPal Return Route Fix)
+**文件**: `app/api/paypal/return/route.ts` (FIXED)
+- 補上遺漏的 `handlePaymentSuccess` 呼叫
+- 原本 PayPal return 只更新訂單狀態，從未觸發資產配給邏輯
+- 現已修復：capture 成功後立即呼叫 handler → 點數/課程激活
+
+## 7. PR / Commit 規範
 
 推薦使用規範化的 Conventional Commits，並區分安全相關更動：
 - `feat(payment-infra)`: 新增閘道或支付功能
 - `fix(payment-infra)`: 修正狀態流轉或回調問題
-- `sec(payment-infra)`: 強化 Webhook 安全或加密機制
+- `sec(payment-infra)`: 強化 Webhook 安全或加密機制（如冪等性、業務邏輯隔離）
+- `refactor(payment-infra)`: 環境配置統一或代碼組織改進
 
 ---
 © 2026 JV Tutor Corner - Payment Infrastructure Group

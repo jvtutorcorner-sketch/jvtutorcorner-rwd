@@ -20,8 +20,18 @@ metadata:
 
 ## 環境準備
 
-在 `.env.local` 中建議設定：
+在 `.env.local` 中建議設定（⭐ 2026-04-30 更新）：
 ```bash
+# 🔐 環境開關 (所有金流依據此決定 sandbox/live)
+APP_ENV=local  # local = LINE Pay sandbox, production = LINE Pay live
+
+# LINE Pay 配置 (由 lib/envConfig.ts 控制)
+LINEPAY_CHANNEL_ID=<YOUR_LINEPAY_CHANNEL_ID>
+LINEPAY_CHANNEL_SECRET_KEY=<YOUR_LINEPAY_CHANNEL_SECRET_KEY>
+# URL 自動依據 APP_ENV 選擇：
+# APP_ENV=local  → LINEPAY_SITE_URL_SANDBOX (https://sandbox-api-pay.line.me)
+# APP_ENV=production → LINEPAY_SITE_URL_PROD (https://api-pay.line.me)
+
 # 啟用支付模擬模式
 NEXT_PUBLIC_PAYMENT_MOCK_MODE=true
 ```
