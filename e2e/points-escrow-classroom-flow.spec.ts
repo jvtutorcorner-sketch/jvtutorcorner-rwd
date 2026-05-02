@@ -19,15 +19,22 @@ import { getTestConfig } from './test_data/whiteboard_test_data';
 
 dotenv.config({ path: path.resolve(__dirname, '..', '.env.local') });
 
+function requireEnv(...keys: string[]): string {
+  for (const key of keys) {
+    const value = process.env[key];
+    if (value && value.trim()) {
+      return value.trim();
+    }
+  }
+  throw new Error(`Missing required environment variable(s): ${keys.join(', ')}`);
+}
+
 // ─────────────────────────────────────────────────────────────────────
 // Helper: API-only login (no UI form, no captcha image waiting)
 // 取自 whiteboard_helpers.ts autoLogin 的相同邏輯
 // ─────────────────────────────────────────────────────────────────────
 async function apiLogin(page: Page, email: string, password: string, baseUrl: string): Promise<void> {
-  const bypassSecret =
-    process.env.NEXT_PUBLIC_LOGIN_BYPASS_SECRET ||
-    process.env.LOGIN_BYPASS_SECRET ||
-    'jv_secret_bypass_2024';
+  const bypassSecret = requireEnv('LOGIN_BYPASS_SECRET', 'NEXT_PUBLIC_LOGIN_BYPASS_SECRET', 'QA_CAPTCHA_BYPASS');
 
   // Step 1: Get captcha token
   const captchaRes = await page.request.get(`${baseUrl}/api/captcha`).catch(() => null);

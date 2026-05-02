@@ -1,9 +1,44 @@
 import { test, expect } from '@playwright/test';
 import dotenv from 'dotenv';
 import path from 'path';
-import fs from 'fs';
 
 dotenv.config({ path: path.resolve(__dirname, '..', '.env.local') });
+
+async function apiLogin(baseUrl: string, page: any, email: string, password: string, bypassSecret: string) {
+    const captchaRes = await page.request.get(`${baseUrl}/api/captcha`).catch(() => null);
+    const captchaToken = (await captchaRes?.json().catch(() => ({} as any)))?.token || '';
+
+    const loginRes = await page.request.post(`${baseUrl}/api/login`, {
+        data: JSON.stringify({ email, password, captchaToken, captchaValue: bypassSecret }),
+        headers: { 'Content-Type': 'application/json' },
+    });
+
+    const loginData = await loginRes.json().catch(() => ({} as any));
+    if (!loginRes.ok()) {
+        throw new Error(`Login failed (${loginRes.status()}): ${loginData?.message || 'unknown error'}`);
+    }
+}
+
+async function getBalance(baseUrl: string, page: any, userId: string): Promise<number> {
+    const res = await page.request.get(`${baseUrl}/api/points?userId=${encodeURIComponent(userId)}`);
+    const json = await res.json().catch(() => ({} as any));
+    if (!res.ok() || !json?.ok || typeof json?.balance !== 'number') {
+        throw new Error(`Failed to get balance: status=${res.status()} body=${JSON.stringify(json)}`);
+    }
+    return json.balance;
+}
+
+async function setBalance(baseUrl: string, page: any, userId: string, amount: number): Promise<number> {
+    const res = await page.request.post(`${baseUrl}/api/points`, {
+        data: JSON.stringify({ userId, action: 'set', amount, reason: 'Order refund test baseline' }),
+        headers: { 'Content-Type': 'application/json' },
+    });
+    const json = await res.json().catch(() => ({} as any));
+    if (!res.ok() || !json?.ok || typeof json?.balance !== 'number') {
+        throw new Error(`Failed to set balance: status=${res.status()} body=${JSON.stringify(json)}`);
+    }
+    return json.balance;
+}
 
 test('Order Refund Verification (Points refund + Enrollment cancellation)', async ({ page }) => {
     test.setTimeout(120000);
@@ -13,29 +48,21 @@ test('Order Refund Verification (Points refund + Enrollment cancellation)', asyn
     const bypassSecret = process.env.LOGIN_BYPASS_SECRET || process.env.NEXT_PUBLIC_LOGIN_BYPASS_SECRET;
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
 
-    if (!email || !baseUrl) {
-        throw new Error('❌ Missing Environment Variables: TEST_STUDENT_EMAIL, NEXT_PUBLIC_BASE_URL');
+    if (!email || !password || !bypassSecret || !baseUrl) {
+        throw new Error('❌ Missing Environment Variables: TEST_STUDENT_EMAIL, TEST_STUDENT_PASSWORD, LOGIN_BYPASS_SECRET, NEXT_PUBLIC_BASE_URL');
     }
 
     console.log(`Starting order refund test for ${email} at ${baseUrl}`);
 
-    // --- 1. Prepare: Get Initial Points ---
-    const balanceBeforeRes = await page.request.get(`${baseUrl}/api/points?userId=${email}`);
-    const balanceStart = (await balanceBeforeRes.json()).balance || 0;
-    console.log(`Starting balance: ${balanceStart}`);
+    await apiLogin(baseUrl, page, email, password, bypassSecret);
 
-    // Ensure we have at least 100 points
-    await page.request.post(`${baseUrl}/api/points`, {
-        data: JSON.stringify({
-            userId: email,
-            action: 'add',
-            amount: 100,
-            reason: 'Add initial points for order refund test'
-        })
-    });
-    const balanceAfterAddRes = await page.request.get(`${baseUrl}/api/points?userId=${email}`);
-    const balanceStartActual = (await balanceAfterAddRes.json()).balance;
-    console.log(`Balance after add: ${balanceStartActual}`);
+    // --- 1. Prepare: Get Initial Points ---
+    const originalBalance = await getBalance(baseUrl, page, email);
+    console.log(`Starting balance: ${originalBalance}`);
+
+    // Normalize baseline so deduction/refund assertions are deterministic.
+    const baselineBalance = await setBalance(baseUrl, page, email, 120);
+    console.log(`Balance normalized to: ${baselineBalance}`);
 
     // --- 2. Enroll using Points ---
     // For speed, let's use the API to create a mock enrollment and order
@@ -71,7 +98,8 @@ test('Order Refund Verification (Points refund + Enrollment cancellation)', asyn
             enrollmentId: enrollmentId
         })
     });
-    
+
+    expect(orderCreateRes.ok()).toBe(true);
     const orderCreateData = await orderCreateRes.json();
     console.log("Order creation response:", orderCreateData);
     const realOrderId = orderCreateData.order?.orderId;
@@ -79,10 +107,9 @@ test('Order Refund Verification (Points refund + Enrollment cancellation)', asyn
     console.log(`Created order with realId: ${realOrderId}`);
 
     // /api/orders already deducts the points if paymentMethod='points'
-    const balanceAfterEnrollRes = await page.request.get(`${baseUrl}/api/points?userId=${email}`);
-    const balanceAfterEnroll = (await balanceAfterEnrollRes.json()).balance;
+    const balanceAfterEnroll = await getBalance(baseUrl, page, email);
     console.log(`Balance after enroll: ${balanceAfterEnroll}`);
-    expect(balanceAfterEnroll).toBe(balanceStartActual - pointCost);
+    expect(balanceAfterEnroll).toBe(baselineBalance - pointCost);
 
     // --- 3. Trigger Refund ---
     console.log(`Triggering refund for order: ${realOrderId}...`);
@@ -112,10 +139,9 @@ test('Order Refund Verification (Points refund + Enrollment cancellation)', asyn
 
     // --- 4. Final Verification ---
     // a. Balance should be back
-    const balanceFinalRes = await page.request.get(`${baseUrl}/api/points?userId=${email}`);
-    const balanceFinal = (await balanceFinalRes.json()).balance;
+    const balanceFinal = await getBalance(baseUrl, page, email);
     console.log(`Final balance: ${balanceFinal}`);
-    expect(balanceFinal).toBe(balanceStartActual);
+    expect(balanceFinal).toBe(baselineBalance);
     console.log("✅ Points successfully refunded!");
 
     // b. Enrollment should be CANCELLED
@@ -137,5 +163,6 @@ test('Order Refund Verification (Points refund + Enrollment cancellation)', asyn
     console.log("Cleaning up test data...");
     await page.request.delete(`${baseUrl}/api/orders/${realOrderId}`);
     await page.request.delete(`${baseUrl}/api/enroll?id=${enrollmentId}`);
+    await setBalance(baseUrl, page, email, originalBalance);
     console.log("Cleanup complete.");
 });

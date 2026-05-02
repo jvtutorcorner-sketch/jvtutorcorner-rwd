@@ -5,9 +5,19 @@ import path from 'path';
 // Load .env.local explicitly
 dotenv.config({ path: path.resolve(__dirname, '..', '.env.local') });
 
+function requireEnv(...keys: string[]): string {
+  for (const key of keys) {
+    const value = process.env[key];
+    if (value && value.trim()) {
+      return value.trim();
+    }
+  }
+  throw new Error(`Missing required environment variable(s): ${keys.join(', ')}`);
+}
+
 // Read from process.env or .env.local
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-const BYPASS_SECRET = process.env.LOGIN_BYPASS_SECRET || 'jv_secret_bypass_2024';
+const BYPASS_SECRET = requireEnv('LOGIN_BYPASS_SECRET', 'NEXT_PUBLIC_LOGIN_BYPASS_SECRET', 'QA_CAPTCHA_BYPASS');
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 

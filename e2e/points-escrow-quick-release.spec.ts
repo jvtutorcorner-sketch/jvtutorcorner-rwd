@@ -40,6 +40,16 @@ import { getTestConfig } from './test_data/whiteboard_test_data';
 
 dotenv.config({ path: path.resolve(__dirname, '..', '.env.local') });
 
+function requireEnv(...keys: string[]): string {
+  for (const key of keys) {
+    const value = process.env[key];
+    if (value && value.trim()) {
+      return value.trim();
+    }
+  }
+  throw new Error(`Missing required environment variable(s): ${keys.join(', ')}`);
+}
+
 const DURATION_MINUTES = Math.max(1, parseInt(process.env.COURSE_DURATION_MINUTES || '1', 10));
 
 // ─────────────────────────────────────────────────────────────────────
@@ -51,10 +61,7 @@ async function apiLogin(
   password: string,
   baseUrl: string
 ): Promise<{ profile: any }> {
-  const bypassSecret =
-    process.env.NEXT_PUBLIC_LOGIN_BYPASS_SECRET ||
-    process.env.LOGIN_BYPASS_SECRET ||
-    'jv_secret_bypass_2024';
+  const bypassSecret = requireEnv('LOGIN_BYPASS_SECRET', 'NEXT_PUBLIC_LOGIN_BYPASS_SECRET', 'QA_CAPTCHA_BYPASS');
 
   const captchaRes = await page.request.get(`${baseUrl}/api/captcha`).catch(() => null);
   const captchaToken = (await captchaRes?.json().catch(() => ({})))?.token || '';
@@ -194,6 +201,23 @@ test.describe(`點數暫存驗證 — ${DURATION_MINUTES} 分鐘課程`, () => {
         } else {
           console.log(`\n📝 Step 3: 使用既有課程 ID: ${courseId}（跳過建立）`);
         }
+
+        // ─── Step 3.5: 確保學生點數充足 ─────────────────────────
+        console.log(`\n📝 Step 3.5: 設定學生點數為 100（避免點數不足）...`);
+        const setPointsRes = await studentPage.request.post(`${baseURL}/api/points`, {
+          data: JSON.stringify({
+            userId: config.studentEmail,
+            action: 'set',
+            amount: 100,
+            reason: 'escrow quick release test baseline',
+          }),
+          headers: { 'Content-Type': 'application/json' },
+        });
+        const setPointsData = await setPointsRes.json().catch(() => ({}));
+        if (!setPointsRes.ok() || !setPointsData?.ok) {
+          throw new Error(`❌ 設定學生點數失敗 (${setPointsRes.status()}): ${JSON.stringify(setPointsData)}`);
+        }
+        console.log(`   ✅ 學生點數設定完成: ${setPointsData.balance ?? 'unknown'}`);
 
         // ─── Step 4: 學生直接 API 報名（不透過 subprocess，避免覆蓋課程設定）─
         console.log(`\n📝 Step 4: 學生直接 API 報名...`);

@@ -32,6 +32,18 @@ import { getTestConfig } from './test_data/whiteboard_test_data';
 
 dotenv.config({ path: path.resolve(__dirname, '..', '.env.local') });
 
+function requireEnv(...keys: string[]): string {
+  for (const key of keys) {
+    const value = process.env[key];
+    if (value && value.trim()) {
+      return value.trim();
+    }
+  }
+  throw new Error(`Missing required environment variable(s): ${keys.join(', ')}`);
+}
+
+const BYPASS_SECRET = requireEnv('QA_CAPTCHA_BYPASS', 'LOGIN_BYPASS_SECRET', 'NEXT_PUBLIC_LOGIN_BYPASS_SECRET');
+
 const DURATION_MINUTES = Math.max(1, parseInt(process.env.COURSE_DURATION_MINUTES || '60', 10));
 const TEACHER_STAY_MINUTES = Math.max(1, parseInt(process.env.TEACHER_STAY_MINUTES || '2', 10));
 
@@ -46,10 +58,7 @@ async function apiLogin(
   password: string,
   baseUrl: string
 ): Promise<{ profile: any }> {
-  const bypassSecret =
-    process.env.NEXT_PUBLIC_LOGIN_BYPASS_SECRET ||
-    process.env.LOGIN_BYPASS_SECRET ||
-    'jv_secret_bypass_2024';
+  const bypassSecret = BYPASS_SECRET;
 
   const captchaRes = await page.request.get(`${baseUrl}/api/captcha`).catch(() => null);
   const captchaToken = (await captchaRes?.json().catch(() => ({})))?.token || '';
@@ -333,8 +342,8 @@ test.describe(`點數暫存課程中途退出驗證 — ${DURATION_MINUTES} 分�
         // ─── Step 6: 雙方進入等待室 ───
         console.log(`\n📝 Step 6: 雙方進入等待室...`);
 
-        const goWaitTeacher = goToWaitRoom(pageTeacher, courseId, 'teacher', orderId, process.env.QA_CAPTCHA_BYPASS || 'jv_secret_bypass_2024');
-        const goWaitStudent = goToWaitRoom(pageStudent, courseId, 'student', orderId, process.env.QA_CAPTCHA_BYPASS || 'jv_secret_bypass_2024');
+        const goWaitTeacher = goToWaitRoom(pageTeacher, courseId, 'teacher', orderId, BYPASS_SECRET);
+        const goWaitStudent = goToWaitRoom(pageStudent, courseId, 'student', orderId, BYPASS_SECRET);
         await Promise.all([goWaitTeacher, goWaitStudent]);
 
         console.log(`   ✅ 老師已在等待室`);

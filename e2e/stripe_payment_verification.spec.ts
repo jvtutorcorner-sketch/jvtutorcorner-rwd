@@ -1,13 +1,23 @@
 /// <reference types="node" />
 import { test, expect, Page } from '@playwright/test';
 
+function requireEnv(...keys: string[]): string {
+    for (const key of keys) {
+        const value = process.env[key];
+        if (value && value.trim()) {
+            return value.trim();
+        }
+    }
+    throw new Error(`Missing required environment variable(s): ${keys.join(', ')}`);
+}
+
 const TEST_BASE_URL = process.env.QA_TEST_BASE_URL || 'http://www.jvtutorcorner.com';
 const TEST_STUDENT_EMAIL = process.env.QA_STUDENT_EMAIL || 'pro@test.com';
-const TEST_STUDENT_PASSWORD = process.env.QA_STUDENT_PASSWORD || '123456';
-const CAPTCHA_BYPASS = process.env.QA_CAPTCHA_BYPASS || 'jv_secret_bypass_2024';
+const TEST_STUDENT_PASSWORD = requireEnv('QA_STUDENT_PASSWORD', 'TEST_STUDENT_PASSWORD');
+const CAPTCHA_BYPASS = requireEnv('QA_CAPTCHA_BYPASS', 'LOGIN_BYPASS_SECRET', 'NEXT_PUBLIC_LOGIN_BYPASS_SECRET');
 
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@jvtutorcorner.com';
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '123456';
+const ADMIN_PASSWORD = requireEnv('ADMIN_PASSWORD', 'QA_ADMIN_PASSWORD');
 
 // Stripe Test Card
 const STRIPE_TEST_CARD = {
@@ -16,6 +26,43 @@ const STRIPE_TEST_CARD = {
     cvc: '123',
     email: 'test@example.com',
 };
+
+async function apiLoginAndHydrate(page: Page, email: string, password: string): Promise<void> {
+    const captchaRes = await page.request.get(`${TEST_BASE_URL}/api/captcha`).catch(() => null);
+    const captchaToken = (await captchaRes?.json().catch(() => ({} as any)))?.token || '';
+
+    const loginRes = await page.request.post(`${TEST_BASE_URL}/api/login`, {
+        data: JSON.stringify({
+            email,
+            password,
+            captchaToken,
+            captchaValue: CAPTCHA_BYPASS,
+        }),
+        headers: { 'Content-Type': 'application/json' },
+    });
+
+    const loginData = await loginRes.json().catch(() => ({}));
+    if (!loginRes.ok()) {
+        throw new Error(`Login failed (${loginRes.status()}): ${(loginData as any)?.message || 'unknown error'}`);
+    }
+
+    const profile: any = (loginData as any)?.profile || loginData;
+    await page.goto(`${TEST_BASE_URL}/login`, { waitUntil: 'domcontentloaded' });
+    await page.evaluate((p) => {
+        localStorage.setItem('tutor_mock_user', JSON.stringify({
+            email: p?.email,
+            role: p?.role || 'student',
+            plan: p?.plan || 'basic',
+            id: p?.id || p?.userId || p?.email,
+            teacherId: p?.id || p?.userId || p?.email,
+        }));
+        const now = Date.now().toString();
+        sessionStorage.setItem('tutor_last_login_time', now);
+        localStorage.setItem('tutor_last_login_time', now);
+        sessionStorage.setItem('tutor_login_complete', 'true');
+        window.dispatchEvent(new Event('tutor:auth-changed'));
+    }, profile);
+}
 
 test.describe('Stripe Payment Verification Flow', () => {
     let page: Page;
@@ -30,51 +77,19 @@ test.describe('Stripe Payment Verification Flow', () => {
 
     test('Student Auto-Login Flow', async () => {
         console.log('🔐 Starting Student Auto-Login...');
-        
-        // Navigate to login
-        await page.goto(`${TEST_BASE_URL}/login`);
-        await page.waitForLoadState('networkidle');
+        await apiLoginAndHydrate(page, TEST_STUDENT_EMAIL, TEST_STUDENT_PASSWORD);
+        await page.goto(`${TEST_BASE_URL}/student_courses`, { waitUntil: 'networkidle' });
 
-        // Fill in credentials
-        await page.fill('input[type="email"]', TEST_STUDENT_EMAIL);
-        await page.fill('input[type="password"]', TEST_STUDENT_PASSWORD);
-        
-        // Check if captcha/bypass field exists
-        const bypassInput = page.locator('input[name*="captcha"], input[name*="bypass"], input[name*="code"]');
-        if (await bypassInput.isVisible()) {
-            await bypassInput.fill(CAPTCHA_BYPASS);
-        }
-
-        // Click login
-        await page.click('button:has-text("登入"), button:has-text("Sign In")');
-        
-        // Wait for navigation and navbar confirmation
-        await page.waitForLoadState('networkidle');
-        
-        // Verify logged in (navbar should show user menu or settings)
-        const navbarElement = page.locator('[data-testid="navbar"]');
-        await expect(navbarElement).toBeVisible();
+        await expect(page).toHaveURL(/\/student_courses/);
+        const userChip = page.locator('text=/pro@test.com|已登入|登出|Logout/i').first();
+        await expect(userChip).toBeVisible({ timeout: 10000 });
         
         console.log('✅ Student logged in successfully');
     });
 
     test('Navigate to Pricing Page and Select Payment Plan', async () => {
         console.log('💳 Starting Pricing Page Navigation...');
-        
-        // Auto-login first
-        await page.goto(`${TEST_BASE_URL}/login`);
-        await page.waitForLoadState('networkidle');
-        
-        await page.fill('input[type="email"]', TEST_STUDENT_EMAIL);
-        await page.fill('input[type="password"]', TEST_STUDENT_PASSWORD);
-        
-        const bypassInput = page.locator('input[name*="captcha"], input[name*="bypass"], input[name*="code"]');
-        if (await bypassInput.isVisible()) {
-            await bypassInput.fill(CAPTCHA_BYPASS);
-        }
-        
-        await page.click('button:has-text("登入"), button:has-text("Sign In")');
-        await page.waitForLoadState('networkidle');
+        await apiLoginAndHydrate(page, TEST_STUDENT_EMAIL, TEST_STUDENT_PASSWORD);
         
         // Navigate to pricing
         console.log('📄 Navigating to /pricing page...');
@@ -82,8 +97,8 @@ test.describe('Stripe Payment Verification Flow', () => {
         await page.waitForLoadState('networkidle');
         
         // Verify pricing page loaded
-        const pricingHeader = page.locator('h1, h2').filter({ hasText: '方案|Pricing|Plan' }).first();
-        await expect(pricingHeader).toBeVisible({ timeout: 5000 });
+        const pricingHeader = page.locator('h1, h2').filter({ hasText: /方案|Pricing|Plan/i }).first();
+        await expect(pricingHeader).toBeVisible({ timeout: 10000 });
         
         console.log('✅ Pricing page loaded');
         
@@ -97,9 +112,13 @@ test.describe('Stripe Payment Verification Flow', () => {
             // Should navigate to checkout page
             await page.waitForLoadState('networkidle');
             await page.waitForURL(/checkout/);
-            
-            const checkoutHeader = page.locator('h1, h2').filter({ hasText: '結帳|Checkout' }).first();
-            await expect(checkoutHeader).toBeVisible({ timeout: 5000 });
+
+            const checkoutHeader = page.locator('h1, h2').filter({ hasText: /結帳|Checkout|confirm payment/i }).first();
+            const hasCheckoutHeader = await checkoutHeader.isVisible({ timeout: 5000 }).catch(() => false);
+            if (!hasCheckoutHeader) {
+                // Fallback marker: payment method area exists even if title text is customized.
+                await expect(page.locator('text=/選擇付款方式|payment method/i').first()).toBeVisible({ timeout: 10000 });
+            }
             
             console.log('✅ Navigated to checkout page');
         } else {

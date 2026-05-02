@@ -29,15 +29,25 @@ import {
 
 dotenv.config({ path: path.resolve(__dirname, '..', '.env.local') });
 
+function requireEnv(...keys: string[]): string {
+  for (const key of keys) {
+    const value = process.env[key];
+    if (value && value.trim()) {
+      return value.trim();
+    }
+  }
+  throw new Error(`Missing required environment variable(s): ${keys.join(', ')}`);
+}
+
 const DURATION_MINUTES = Math.max(1, parseInt(process.env.COURSE_DURATION_MINUTES || '1', 10));
 const POINT_COST = Math.max(1, parseInt(process.env.POINT_COST || '3', 10));
 
 const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://www.jvtutorcorner.com';
 const studentEmail = process.env.QA_STUDENT_EMAIL || 'pro@test.com';
-const studentPassword = process.env.QA_STUDENT_PASSWORD || '123456';
+const studentPassword = requireEnv('QA_STUDENT_PASSWORD', 'TEST_STUDENT_PASSWORD');
 const teacherEmail = process.env.QA_TEACHER_EMAIL || 'lin@test.com';
-const teacherPassword = process.env.QA_TEACHER_PASSWORD || '123456';
-const bypassSecret = process.env.QA_CAPTCHA_BYPASS || 'jv_secret_bypass_2024';
+const teacherPassword = requireEnv('QA_TEACHER_PASSWORD', 'TEST_TEACHER_PASSWORD');
+const bypassSecret = requireEnv('QA_CAPTCHA_BYPASS', 'LOGIN_BYPASS_SECRET', 'NEXT_PUBLIC_LOGIN_BYPASS_SECRET');
 
 function localISO(timestamp) {
   return new Date(timestamp).toISOString().slice(0, 19);

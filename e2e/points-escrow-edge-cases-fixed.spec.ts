@@ -12,12 +12,30 @@
 
 import { test, expect, Page } from '@playwright/test';
 
+function requireEnv(...keys: string[]): string {
+    for (const key of keys) {
+        const value = process.env[key];
+        if (value && value.trim()) {
+            return value.trim();
+        }
+    }
+    throw new Error(`Missing required environment variable(s): ${keys.join(', ')}`);
+}
+
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+const DEFAULT_TEST_PASSWORD = requireEnv(
+    'TEST_TEACHER_PASSWORD',
+    'QA_TEACHER_PASSWORD',
+    'TEST_STUDENT_PASSWORD',
+    'QA_STUDENT_PASSWORD'
+);
 
 const config = {
-    teacherEmail: 'lin@test.com',
-    studentEmail: 'pro@test.com',
-    bypassCaptcha: 'jv_secret_bypass_2024',
+    teacherEmail: process.env.QA_TEACHER_EMAIL || process.env.TEST_TEACHER_EMAIL || 'lin@test.com',
+    studentEmail: process.env.QA_STUDENT_EMAIL || process.env.TEST_STUDENT_EMAIL || 'pro@test.com',
+    teacherPassword: process.env.QA_TEACHER_PASSWORD || process.env.TEST_TEACHER_PASSWORD || DEFAULT_TEST_PASSWORD,
+    studentPassword: process.env.QA_STUDENT_PASSWORD || process.env.TEST_STUDENT_PASSWORD || DEFAULT_TEST_PASSWORD,
+    bypassCaptcha: requireEnv('QA_CAPTCHA_BYPASS', 'LOGIN_BYPASS_SECRET', 'NEXT_PUBLIC_LOGIN_BYPASS_SECRET'),
 };
 
 // ─────────────────────────────────────────────────────────
@@ -41,7 +59,7 @@ async function apiLogin(page: Page, email: string, password: string): Promise<vo
 
         const loginData = await loginRes.json();
         const profile = loginData?.profile || loginData?.data || loginData;
-        const isTeacher = email === 'lin@test.com';
+        const isTeacher = email === config.teacherEmail;
         const role = isTeacher ? 'teacher' : 'student';
 
         // 設定 localStorage
@@ -72,6 +90,29 @@ async function apiLogin(page: Page, email: string, password: string): Promise<vo
     }
 }
 
+async function setUserPoints(page: Page, email: string, password: string, amount: number): Promise<number> {
+    await apiLogin(page, email, password);
+    const setRes = await page.request.post(`${BASE_URL}/api/points`, {
+        data: JSON.stringify({ userId: email, action: 'set', amount, reason: 'escrow edge test setup' }),
+        headers: { 'Content-Type': 'application/json' },
+    });
+    const setData = await setRes.json().catch(() => ({} as any));
+    if (!setRes.ok() || !setData?.ok || typeof setData?.balance !== 'number') {
+        throw new Error(`setUserPoints failed (${setRes.status()}): ${JSON.stringify(setData)}`);
+    }
+    return setData.balance;
+}
+
+async function getUserPoints(page: Page, email: string, password: string): Promise<number> {
+    await apiLogin(page, email, password);
+    const res = await page.request.get(`${BASE_URL}/api/points?userId=${encodeURIComponent(email)}`);
+    const data = await res.json().catch(() => ({} as any));
+    if (!res.ok() || !data?.ok || typeof data?.balance !== 'number') {
+        throw new Error(`getUserPoints failed (${res.status()}): ${JSON.stringify(data)}`);
+    }
+    return data.balance;
+}
+
 test.describe('Points Escrow Edge Cases (Fixed)', () => {
     // ─────────────────────────────────────
     // E1: 點數不足時直接報名失敗
@@ -82,7 +123,7 @@ test.describe('Points Escrow Edge Cases (Fixed)', () => {
         const courseId = `test-edge-e1-${Date.now()}`;
         
         // 1. 教師 API 登入並建立課程（需求 10 點）
-        await apiLogin(page, config.teacherEmail, '123456');
+        await apiLogin(page, config.teacherEmail, config.teacherPassword);
         
         const courseRes = await page.request.post(`${BASE_URL}/api/courses`, {
             data: {
@@ -99,8 +140,7 @@ test.describe('Points Escrow Edge Cases (Fixed)', () => {
         console.log(`   ✅ 課程建立：${courseId}`);
 
         // 2. 學生設定點數 = 5（不足）
-        const grantRes = await page.request.get(`${BASE_URL}/api/admin/grant-points?email=${config.studentEmail}&points=5`);
-        const balanceBefore = (await grantRes.json()).balance;
+        const balanceBefore = await setUserPoints(page, config.studentEmail, config.studentPassword, 5);
         console.log(`   ✅ 學生初始點數：${balanceBefore}`);
         expect(balanceBefore).toBe(5);
 
@@ -130,7 +170,7 @@ test.describe('Points Escrow Edge Cases (Fixed)', () => {
         const courseId = `test-edge-e2-${Date.now()}`;
         
         // 1. 教師 API 登入
-        await apiLogin(page, config.teacherEmail, '123456');
+        await apiLogin(page, config.teacherEmail, config.teacherPassword);
 
         // 2. 建立課程（10 點）
         await page.request.post(`${BASE_URL}/api/courses`, {
@@ -147,8 +187,7 @@ test.describe('Points Escrow Edge Cases (Fixed)', () => {
         console.log(`   ✅ 課程建立：${courseId}`);
 
         // 3. 學生設定點數 = 10（恰好）
-        const grantRes = await page.request.get(`${BASE_URL}/api/admin/grant-points?email=${config.studentEmail}&points=10`);
-        const balance = (await grantRes.json()).balance;
+        const balance = await setUserPoints(page, config.studentEmail, config.studentPassword, 10);
         expect(balance).toBe(10);
         console.log(`   ✅ 學生點數設定為：${balance}`);
 
@@ -166,11 +205,10 @@ test.describe('Points Escrow Edge Cases (Fixed)', () => {
         });
         expect(enrollRes.ok()).toBeTruthy();
         const enrollData = await enrollRes.json();
-        console.log(`   ✅ 報名成功，orderId: ${enrollData.orderId}`);
+        console.log(`   ✅ 報名成功，orderId: ${enrollData?.order?.orderId}`);
 
         // 5. 驗證點數轉為 0
-        const balanceAfter = await page.request.get(`${BASE_URL}/api/admin/grant-points?email=${config.studentEmail}`);
-        const newBalance = (await balanceAfter.json()).balance;
+        const newBalance = await getUserPoints(page, config.studentEmail, config.studentPassword);
         expect(newBalance).toBe(0);
         console.log(`   ✅ E2 通過：balance = ${newBalance}`);
     });
@@ -184,7 +222,7 @@ test.describe('Points Escrow Edge Cases (Fixed)', () => {
         const courseId = `test-edge-e3-${Date.now()}`;
 
         // 1. 教師 API 登入
-        await apiLogin(page, config.teacherEmail, '123456');
+        await apiLogin(page, config.teacherEmail, config.teacherPassword);
 
         // 2. 建立課程
         await page.request.post(`${BASE_URL}/api/courses`, {
@@ -200,8 +238,7 @@ test.describe('Points Escrow Edge Cases (Fixed)', () => {
         });
 
         // 3. 學生設定點數 = 0
-        const grantRes = await page.request.get(`${BASE_URL}/api/admin/grant-points?email=${config.studentEmail}&points=0&reset=true`);
-        const balance = (await grantRes.json()).balance || 0;
+        const balance = await setUserPoints(page, config.studentEmail, config.studentPassword, 0);
         expect(balance).toBe(0);
         console.log(`   ✅ 學生點數設定為：${balance}`);
 
@@ -228,10 +265,10 @@ test.describe('Points Escrow Edge Cases (Fixed)', () => {
         console.log('📝 E5: Escrow 釋放後查詢');
 
         const courseId = `test-edge-e5-${Date.now()}`;
-        const orderId = `order-e5-${Date.now()}`;
+        let orderId = '';
 
         // 1. 教師 API 登入
-        await apiLogin(page, config.teacherEmail, '123456');
+        await apiLogin(page, config.teacherEmail, config.teacherPassword);
 
         // 2. 建立課程
         await page.request.post(`${BASE_URL}/api/courses`, {
@@ -247,19 +284,21 @@ test.describe('Points Escrow Edge Cases (Fixed)', () => {
         });
 
         // 3. 學生設定點數 + 報名
-        await page.request.get(`${BASE_URL}/api/admin/grant-points?email=${config.studentEmail}&points=50`);
+        await setUserPoints(page, config.studentEmail, config.studentPassword, 50);
         
         const enrollRes = await page.request.post(`${BASE_URL}/api/orders`, {
             data: {
                 courseId,
-                orderId,
                 userId: config.studentEmail,
                 paymentMethod: 'points',
                 pointsUsed: 5,
                 status: 'PAID',
             }
         });
-        const escrowId = (await enrollRes.json()).pointsEscrowId;
+        const enrollData = await enrollRes.json();
+        orderId = enrollData?.order?.orderId || '';
+        const escrowId = enrollData?.order?.pointsEscrowId || '';
+        expect(escrowId).toBeTruthy();
         console.log(`   ✅ 報名成功，escrowId: ${escrowId}`);
 
         // 4. 手動釋放 Escrow
@@ -276,10 +315,10 @@ test.describe('Points Escrow Edge Cases (Fixed)', () => {
 
         // 5. 查詢並驗證
         const queryRes = await page.request.get(`${BASE_URL}/api/points-escrow?orderId=${orderId}`);
-        const escrows = (await queryRes.json()).data || [];
-        expect(escrows[0].status).toBe('RELEASED');
-        expect(escrows[0].releasedAt).toBeTruthy();
-        console.log(`   ✅ E5 通過：status=RELEASED, releasedAt=${escrows[0].releasedAt}`);
+        const escrowRecord = (await queryRes.json()).escrow;
+        expect(escrowRecord?.status).toBe('RELEASED');
+        expect(escrowRecord?.releasedAt).toBeTruthy();
+        console.log(`   ✅ E5 通過：status=RELEASED, releasedAt=${escrowRecord?.releasedAt}`);
     });
 
     // ─────────────────────────────────────
@@ -289,10 +328,10 @@ test.describe('Points Escrow Edge Cases (Fixed)', () => {
         console.log('📝 E6: Escrow 退款後查詢');
 
         const courseId = `test-edge-e6-${Date.now()}`;
-        const orderId = `order-e6-${Date.now()}`;
+        let orderId = '';
 
         // 1. 教師 API 登入
-        await apiLogin(page, config.teacherEmail, '123456');
+        await apiLogin(page, config.teacherEmail, config.teacherPassword);
 
         // 2. 建立課程
         await page.request.post(`${BASE_URL}/api/courses`, {
@@ -308,25 +347,24 @@ test.describe('Points Escrow Edge Cases (Fixed)', () => {
         });
 
         // 3. 學生設定點數 + 報名
-        await page.request.get(`${BASE_URL}/api/admin/grant-points?email=${config.studentEmail}&points=50`);
+        await setUserPoints(page, config.studentEmail, config.studentPassword, 50);
         
         const enrollRes = await page.request.post(`${BASE_URL}/api/orders`, {
             data: {
                 courseId,
-                orderId,
                 userId: config.studentEmail,
                 paymentMethod: 'points',
                 pointsUsed: 5,
                 status: 'PAID',
             }
         });
-        const escrowId = (await enrollRes.json()).pointsEscrowId;
+        const enrollData = await enrollRes.json();
+        orderId = enrollData?.order?.orderId || '';
+        const escrowId = enrollData?.order?.pointsEscrowId || '';
+        expect(escrowId).toBeTruthy();
 
         // 記錄報名後點數（應為 45）
-        const balanceAfterEnrollRes = await page.request.get(
-            `${BASE_URL}/api/admin/grant-points?email=${config.studentEmail}`
-        );
-        const balanceAfterEnroll = (await balanceAfterEnrollRes.json()).balance;
+        const balanceAfterEnroll = await getUserPoints(page, config.studentEmail, config.studentPassword);
         console.log(`   ✅ 報名後點數：${balanceAfterEnroll}`);
 
         // 4. 手動退款 Escrow
@@ -342,16 +380,13 @@ test.describe('Points Escrow Edge Cases (Fixed)', () => {
         console.log(`   ✅ Escrow 退款成功`);
 
         // 5. 驗證點數恢復
-        const balanceAfterRefundRes = await page.request.get(
-            `${BASE_URL}/api/admin/grant-points?email=${config.studentEmail}`
-        );
-        const balanceAfterRefund = (await balanceAfterRefundRes.json()).balance;
+        const balanceAfterRefund = await getUserPoints(page, config.studentEmail, config.studentPassword);
         console.log(`   ✅ 退款後點數：${balanceAfterRefund}`);
 
         // 6. 查詢 Escrow 狀態
         const queryRes = await page.request.get(`${BASE_URL}/api/points-escrow?orderId=${orderId}`);
-        const escrows = (await queryRes.json()).data || [];
-        expect(escrows[0].status).toBe('REFUNDED');
+        const escrowRecord = (await queryRes.json()).escrow;
+        expect(escrowRecord?.status).toBe('REFUNDED');
         console.log(`   ✅ E6 通過：status=REFUNDED, 點數已恢復`);
     });
 
@@ -362,10 +397,10 @@ test.describe('Points Escrow Edge Cases (Fixed)', () => {
         console.log('📝 E10: Escrow 重複釋放');
 
         const courseId = `test-edge-e10-${Date.now()}`;
-        const orderId = `order-e10-${Date.now()}`;
+        let orderId = '';
 
         // 1. 教師 API 登入
-        await apiLogin(page, config.teacherEmail, '123456');
+        await apiLogin(page, config.teacherEmail, config.teacherPassword);
 
         // 2. 建立課程
         await page.request.post(`${BASE_URL}/api/courses`, {
@@ -381,25 +416,24 @@ test.describe('Points Escrow Edge Cases (Fixed)', () => {
         });
 
         // 3. 學生設定點數 + 報名
-        await page.request.get(`${BASE_URL}/api/admin/grant-points?email=${config.studentEmail}&points=50`);
+        await setUserPoints(page, config.studentEmail, config.studentPassword, 50);
         
         const enrollRes = await page.request.post(`${BASE_URL}/api/orders`, {
             data: {
                 courseId,
-                orderId,
                 userId: config.studentEmail,
                 paymentMethod: 'points',
                 pointsUsed: 5,
                 status: 'PAID',
             }
         });
-        const escrowId = (await enrollRes.json()).pointsEscrowId;
+        const enrollData = await enrollRes.json();
+        orderId = enrollData?.order?.orderId || '';
+        const escrowId = enrollData?.order?.pointsEscrowId || '';
+        expect(escrowId).toBeTruthy();
 
         // 記錄教師初始點數
-        const balanceBeforeRes = await page.request.get(
-            `${BASE_URL}/api/admin/grant-points?email=${config.teacherEmail}`
-        );
-        const balanceBefore = (await balanceBeforeRes.json()).balance;
+        const balanceBefore = await getUserPoints(page, config.teacherEmail, config.teacherPassword);
 
         // 4. 第一次釋放
         const release1 = await page.request.post(`${BASE_URL}/api/points-escrow`, {
@@ -413,21 +447,16 @@ test.describe('Points Escrow Edge Cases (Fixed)', () => {
         expect(release1.ok()).toBeTruthy();
         console.log(`   ✅ 第 1 次釋放成功`);
 
-        const balanceAfter1Res = await page.request.get(
-            `${BASE_URL}/api/admin/grant-points?email=${config.teacherEmail}`
-        );
-        const balanceAfter1 = (await balanceAfter1Res.json()).balance;
+        const balanceAfter1 = await getUserPoints(page, config.teacherEmail, config.teacherPassword);
         console.log(`   ✅ 第 1 次釋放後教師點數：${balanceBefore} → ${balanceAfter1}`);
 
         // 5. 第二次釋放（應為 idempotent）
         const release2 = await page.request.post(`${BASE_URL}/api/points-escrow`, {
             data: { action: 'release', escrowId }
         });
+        expect(release2.ok()).toBeFalsy();
 
-        const balanceAfter2Res = await page.request.get(
-            `${BASE_URL}/api/admin/grant-points?email=${config.teacherEmail}`
-        );
-        const balanceAfter2 = (await balanceAfter2Res.json()).balance;
+        const balanceAfter2 = await getUserPoints(page, config.teacherEmail, config.teacherPassword);
         console.log(`   ✅ 第 2 次釋放後教師點數：${balanceAfter1} → ${balanceAfter2}`);
 
         if (balanceAfter2 === balanceAfter1) {

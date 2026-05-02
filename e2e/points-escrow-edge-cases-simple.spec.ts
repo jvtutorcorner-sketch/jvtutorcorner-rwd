@@ -16,13 +16,30 @@ import path from 'path';
 
 dotenv.config({ path: path.resolve(__dirname, '..', '.env.local') });
 
+function requireEnv(...keys: string[]): string {
+    for (const key of keys) {
+        const value = process.env[key];
+        if (value && value.trim()) {
+            return value.trim();
+        }
+    }
+    throw new Error(`Missing required environment variable(s): ${keys.join(', ')}`);
+}
+
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+const DEFAULT_TEST_PASSWORD = requireEnv(
+    'TEST_TEACHER_PASSWORD',
+    'QA_TEACHER_PASSWORD',
+    'TEST_STUDENT_PASSWORD',
+    'QA_STUDENT_PASSWORD'
+);
+const BYPASS_SECRET = requireEnv('QA_CAPTCHA_BYPASS', 'LOGIN_BYPASS_SECRET', 'NEXT_PUBLIC_LOGIN_BYPASS_SECRET');
 
 // ─────────────────────────────────────────────────────────
 // API-only 登入（繞開 UI 驗證碼）
 // ─────────────────────────────────────────────────────────
 async function apiLogin(page: Page, email: string, password: string): Promise<void> {
-    const bypassSecret = 'jv_secret_bypass_2024';
+    const bypassSecret = BYPASS_SECRET;
     
     try {
         const loginRes = await page.request.post(`${BASE_URL}/api/login`, {
@@ -79,7 +96,7 @@ test.describe('Points Escrow Edge Cases (Simplified)', () => {
         const studentEmail = 'pro@test.com';
         
         // 以學生身份登入
-        await apiLogin(page, studentEmail, '123456');
+        await apiLogin(page, studentEmail, DEFAULT_TEST_PASSWORD);
         
         // 初始化為 10000 點
         const resetRes = await page.request.post(`${BASE_URL}/api/points`, {
@@ -114,7 +131,7 @@ test.describe('Points Escrow Edge Cases (Simplified)', () => {
         const studentEmail = 'pro@test.com';
         
         // 1. 教師 API 登入並建立課程（10 點課程）
-        await apiLogin(page, teacherEmail, '123456');
+        await apiLogin(page, teacherEmail, DEFAULT_TEST_PASSWORD);
         
         const courseRes = await page.request.post(`${BASE_URL}/api/courses`, {
             data: JSON.stringify({
@@ -138,7 +155,7 @@ test.describe('Points Escrow Edge Cases (Simplified)', () => {
             console.log(`   ✅ 課程建立：${courseId} (pointCost=10)`);
 
         // 2. 學生 API 登入，查詢自己的點數
-        await apiLogin(page, studentEmail, '123456');
+        await apiLogin(page, studentEmail, DEFAULT_TEST_PASSWORD);
         
         // 2a. 對於 E1 測試，明確將學生點數設為 0（測試點數不足的情況）
         const resetPointsRes = await page.request.post(`${BASE_URL}/api/points`, {
@@ -230,7 +247,7 @@ test.describe('Points Escrow Edge Cases (Simplified)', () => {
         const studentEmail = 'pro@test.com';
         
         // 1. 教師 API 登入
-        await apiLogin(page, teacherEmail, '123456');
+        await apiLogin(page, teacherEmail, DEFAULT_TEST_PASSWORD);
 
         // 2. 建立課程（10 點）
         const courseRes = await page.request.post(`${BASE_URL}/api/courses`, {
@@ -249,7 +266,7 @@ test.describe('Points Escrow Edge Cases (Simplified)', () => {
         console.log(`   ✅ 課程建立：${courseId}`);
 
         // 3. 學生登入，設置點數恰好等於課程點數（10點）
-        await apiLogin(page, studentEmail, '123456');
+        await apiLogin(page, studentEmail, DEFAULT_TEST_PASSWORD);
         const setPointsRes = await page.request.post(`${BASE_URL}/api/points`, {
             data: JSON.stringify({
                 userId: studentEmail,
@@ -315,7 +332,7 @@ test.describe('Points Escrow Edge Cases (Simplified)', () => {
         const studentEmail = 'pro@test.com';
 
         // 1. 教師 API 登入
-        await apiLogin(page, teacherEmail, '123456');
+        await apiLogin(page, teacherEmail, DEFAULT_TEST_PASSWORD);
 
         // 2. 建立課程
         const courseRes = await page.request.post(`${BASE_URL}/api/courses`, {
@@ -334,7 +351,7 @@ test.describe('Points Escrow Edge Cases (Simplified)', () => {
         console.log(`   ✅ 課程建立：${courseId}`);
 
         // 3. 學生登入，設置點數為 0
-        await apiLogin(page, studentEmail, '123456');
+        await apiLogin(page, studentEmail, DEFAULT_TEST_PASSWORD);
         const setPointsRes = await page.request.post(`${BASE_URL}/api/points`, {
             data: JSON.stringify({
                 userId: studentEmail,
@@ -383,7 +400,7 @@ test.describe('Points Escrow Edge Cases (Simplified)', () => {
         const studentEmail = 'pro@test.com';
         
         // 1. 教師 API 登入，建立課程
-        await apiLogin(page, teacherEmail, '123456');
+        await apiLogin(page, teacherEmail, DEFAULT_TEST_PASSWORD);
         
         // 記錄教師初始點數
         const teacherInitRes = await page.request.get(
@@ -408,7 +425,7 @@ test.describe('Points Escrow Edge Cases (Simplified)', () => {
         console.log(`   ✅ 課程建立：${courseId}`);
 
         // 2. 學生登入，設置點數為 5
-        await apiLogin(page, studentEmail, '123456');
+        await apiLogin(page, studentEmail, DEFAULT_TEST_PASSWORD);
         const setPointsRes = await page.request.post(`${BASE_URL}/api/points`, {
             data: JSON.stringify({
                 userId: studentEmail,
@@ -496,7 +513,7 @@ test.describe('Points Escrow Edge Cases (Simplified)', () => {
         const studentEmail = 'pro@test.com';
 
         // 1. 教師 API 登入，建立課程
-        await apiLogin(page, teacherEmail, '123456');
+        await apiLogin(page, teacherEmail, DEFAULT_TEST_PASSWORD);
 
         const courseRes = await page.request.post(`${BASE_URL}/api/courses`, {
             data: JSON.stringify({
@@ -514,7 +531,7 @@ test.describe('Points Escrow Edge Cases (Simplified)', () => {
         console.log(`   ✅ 課程建立：${courseId}`);
 
         // 2. 學生登入，設置點數為 5
-        await apiLogin(page, studentEmail, '123456');
+        await apiLogin(page, studentEmail, DEFAULT_TEST_PASSWORD);
         const setPointsRes = await page.request.post(`${BASE_URL}/api/points`, {
             data: JSON.stringify({
                 userId: studentEmail,
@@ -605,7 +622,7 @@ test.describe('Points Escrow Edge Cases (Simplified)', () => {
         const studentEmail = 'pro@test.com';
 
         // 1. 教師 API 登入，建立課程
-        await apiLogin(page, teacherEmail, '123456');
+        await apiLogin(page, teacherEmail, DEFAULT_TEST_PASSWORD);
 
         // 記錄教師初始點數
         const teacherInitRes = await page.request.get(
@@ -630,7 +647,7 @@ test.describe('Points Escrow Edge Cases (Simplified)', () => {
         console.log(`   ✅ 課程建立：${courseId}`);
 
         // 2. 學生登入，設置點數為 5
-        await apiLogin(page, studentEmail, '123456');
+        await apiLogin(page, studentEmail, DEFAULT_TEST_PASSWORD);
         const setPointsRes = await page.request.post(`${BASE_URL}/api/points`, {
             data: JSON.stringify({
                 userId: studentEmail,

@@ -16,12 +16,28 @@
 
 import { test, expect, Browser, BrowserContext, Page } from '@playwright/test';
 
+function requireEnv(...keys: string[]): string {
+    for (const key of keys) {
+        const value = process.env[key];
+        if (value && value.trim()) {
+            return value.trim();
+        }
+    }
+    throw new Error(`Missing required environment variable(s): ${keys.join(', ')}`);
+}
+
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+const DEFAULT_TEST_PASSWORD = requireEnv(
+    'TEST_TEACHER_PASSWORD',
+    'QA_TEACHER_PASSWORD',
+    'TEST_STUDENT_PASSWORD',
+    'QA_STUDENT_PASSWORD'
+);
 
 const config = {
-    teacherEmail: 'lin@test.com',
-    studentEmail: 'pro@test.com',
-    bypassCaptcha: 'jv_secret_bypass_2024',
+    teacherEmail: process.env.QA_TEACHER_EMAIL || process.env.TEST_TEACHER_EMAIL || 'lin@test.com',
+    studentEmail: process.env.QA_STUDENT_EMAIL || process.env.TEST_STUDENT_EMAIL || 'pro@test.com',
+    bypassCaptcha: requireEnv('QA_CAPTCHA_BYPASS', 'LOGIN_BYPASS_SECRET', 'NEXT_PUBLIC_LOGIN_BYPASS_SECRET'),
 };
 
 // ─────────────────────────────────────────────────────────
@@ -45,7 +61,7 @@ async function apiLogin(page: Page, email: string, password: string): Promise<vo
 
         const loginData = await loginRes.json();
         const profile = loginData?.profile || loginData?.data || loginData;
-        const isTeacher = email === 'lin@test.com';
+        const isTeacher = email === config.teacherEmail;
         const role = isTeacher ? 'teacher' : 'student';
 
         // 設定 localStorage
@@ -84,7 +100,7 @@ test.describe('Points Escrow Edge Cases', () => {
         console.log('📝 E1: 點數不足時自動購點');
 
         // 1. 教師 API 登入並建立課程（需求 10 點）
-        await apiLogin(page, config.teacherEmail, '123456');
+        await apiLogin(page, config.teacherEmail, DEFAULT_TEST_PASSWORD);
         
         // 2. 建立課程
         const courseId = `test-edge-e1-${Date.now()}`;
@@ -106,7 +122,7 @@ test.describe('Points Escrow Edge Cases', () => {
         // 3. 學生 API 登入（新浏覽器 context）
         const studentContext = await context.browser()?.newContext();
         const studentPage = await studentContext!.newPage();
-        await apiLogin(studentPage, config.studentEmail, '123456');
+        await apiLogin(studentPage, config.studentEmail, DEFAULT_TEST_PASSWORD);
 
         // 設定學生點數 = 5（不足 10）
         const setPointsRes = await studentPage.request.get(`${BASE_URL}/api/admin/grant-points?email=${config.studentEmail}&points=5`);
@@ -147,7 +163,7 @@ test.describe('Points Escrow Edge Cases', () => {
         console.log('📝 E2: 點數餘額恰好等於課程點數');
 
         // 1. 教師 API 登入
-        await apiLogin(page, config.teacherEmail, '123456');
+        await apiLogin(page, config.teacherEmail, DEFAULT_TEST_PASSWORD);
 
         // 2. 建立課程（10 點）
         const courseId = `test-edge-e2-${Date.now()}`;
@@ -215,7 +231,7 @@ test.describe('Points Escrow Edge Cases', () => {
         const courseId = `test-edge-e3-${Date.now()}`;
 
         // 1. 教師 API 登入
-        await apiLogin(page, config.teacherEmail, '123456');
+        await apiLogin(page, config.teacherEmail, DEFAULT_TEST_PASSWORD);
 
         // 2. 建立課程
         await page.request.post(`${BASE_URL}/api/courses`, {
@@ -265,7 +281,7 @@ test.describe('Points Escrow Edge Cases', () => {
         const courseId = `test-edge-e4-${Date.now()}`;
 
         // 1. 教師 API 登入並建立課程
-        await apiLogin(page, config.teacherEmail, '123456');
+        await apiLogin(page, config.teacherEmail, DEFAULT_TEST_PASSWORD);
         
         await page.request.post(`${BASE_URL}/api/courses`, {
             data: {
@@ -291,8 +307,8 @@ test.describe('Points Escrow Edge Cases', () => {
         const student2Email = `e4-student-2-${Date.now()}@test.com`;
 
         // API 登入並設定點數
-        await apiLogin(student1Page, student1Email, '123456');
-        await apiLogin(student2Page, student2Email, '123456');
+        await apiLogin(student1Page, student1Email, DEFAULT_TEST_PASSWORD);
+        await apiLogin(student2Page, student2Email, DEFAULT_TEST_PASSWORD);
 
         await page.request.get(`${BASE_URL}/api/admin/grant-points?email=${student1Email}&points=50`);
         await page.request.get(`${BASE_URL}/api/admin/grant-points?email=${student2Email}&points=50`);
@@ -345,7 +361,7 @@ test.describe('Points Escrow Edge Cases', () => {
         // 1. 建立課程和報名
         await page.goto(`${BASE_URL}/login`);
         await page.fill('input[name="email"]', config.teacherEmail);
-        await page.fill('input[name="password"]', '123456');
+        await page.fill('input[name="password"]', DEFAULT_TEST_PASSWORD);
         await page.fill('input[name="captchaValue"]', config.bypassCaptcha);
         await page.click('button[type="submit"]');
 
@@ -403,7 +419,7 @@ test.describe('Points Escrow Edge Cases', () => {
         // 1. 建立課程和報名
         await page.goto(`${BASE_URL}/login`);
         await page.fill('input[name="email"]', config.teacherEmail);
-        await page.fill('input[name="password"]', '123456');
+        await page.fill('input[name="password"]', DEFAULT_TEST_PASSWORD);
         await page.fill('input[name="captchaValue"]', config.bypassCaptcha);
         await page.click('button[type="submit"]');
 
@@ -469,7 +485,7 @@ test.describe('Points Escrow Edge Cases', () => {
 
         await page.goto(`${BASE_URL}/login`);
         await page.fill('input[name="email"]', config.teacherEmail);
-        await page.fill('input[name="password"]', '123456');
+        await page.fill('input[name="password"]', DEFAULT_TEST_PASSWORD);
         await page.fill('input[name="captchaValue"]', config.bypassCaptcha);
         await page.click('button[type="submit"]');
 
@@ -502,7 +518,7 @@ test.describe('Points Escrow Edge Cases', () => {
 
         await page.goto(`${BASE_URL}/login`);
         await page.fill('input[name="email"]', config.studentEmail);
-        await page.fill('input[name="password"]', '123456');
+        await page.fill('input[name="password"]', DEFAULT_TEST_PASSWORD);
         await page.fill('input[name="captchaValue"]', config.bypassCaptcha);
         await page.click('button[type="submit"]');
 
@@ -555,7 +571,7 @@ test.describe('Points Escrow Edge Cases', () => {
 
         await page.goto(`${BASE_URL}/login`);
         await page.fill('input[name="email"]', config.teacherEmail);
-        await page.fill('input[name="password"]', '123456');
+        await page.fill('input[name="password"]', DEFAULT_TEST_PASSWORD);
         await page.fill('input[name="captchaValue"]', config.bypassCaptcha);
         await page.click('button[type="submit"]');
 
