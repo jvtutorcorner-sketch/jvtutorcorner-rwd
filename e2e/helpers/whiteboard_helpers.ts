@@ -120,7 +120,10 @@ export async function autoLogin(
 
   const loginRes = await page.request.post(`${baseUrl}/api/login`, {
     data: JSON.stringify({ email, password, captchaToken, captchaValue: bypassSecret }),
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 
+      'Content-Type': 'application/json',
+      'X-E2E-Secret': String(bypassSecret || '')
+    },
   });
   if (!loginRes.ok()) {
     throw new Error(`❌ Login failed (${loginRes.status()}): ${await loginRes.text()}`);
@@ -600,6 +603,11 @@ export async function registerOrLoginTeacher(
   await page.locator('select').filter({ hasText: /國家|Country|台灣/i }).first().selectOption('TW').catch(() => {});
   
   console.log(`   ✅ [${teacherEmail}] Checking terms and captcha...`);
+  // Wait for captcha to load to avoid race condition where loadCaptcha clears the field
+  await page.waitForSelector('img[alt="captcha"]', { state: 'visible', timeout: 10000 }).catch(() => {
+    console.warn(`   ⚠️ [${teacherEmail}] Captcha image not found, proceeding anyway...`);
+  });
+  
   // Terms checkbox - search for label text or name
   const termsCheckbox = page.locator('input[type="checkbox"]').filter({ has: page.locator('..', { hasText: /同意|terms|agree/i }) }).first();
   if (await termsCheckbox.count() > 0) {
@@ -702,7 +710,10 @@ export async function adminApproveCourse(
   // Try API first
   const res = await page.request.post(`${baseUrl}/api/admin/course-reviews/${courseId}`, {
     data: JSON.stringify({ action: 'approve' }),
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 
+      'Content-Type': 'application/json',
+      'X-E2E-Secret': String(bypassSecret || '')
+    },
   }).catch(() => null);
 
   if (res?.ok()) {

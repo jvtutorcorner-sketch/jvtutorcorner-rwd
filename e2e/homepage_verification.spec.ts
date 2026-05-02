@@ -2,7 +2,8 @@ import { test, expect } from '@playwright/test';
 import dotenv from 'dotenv';
 import path from 'path';
 
-dotenv.config({ path: path.resolve(__dirname, '..', '.env.local') });
+const APP_ENV = process.env.APP_ENV || 'local';
+dotenv.config({ path: path.resolve(__dirname, '..', `.env.${APP_ENV}`) });
 
 test.describe.configure({ timeout: 120000 });
 

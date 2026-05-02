@@ -1,4 +1,8 @@
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
+import dotenv from 'dotenv';
+import { headers } from 'next/headers';
 
 function randomString(len = 24) {
   const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -61,12 +65,53 @@ export function generateCaptcha(ttlMs = 5 * 60 * 1000) {
   return { token, image };
 }
 
-export function verifyCaptcha(token: string | undefined, value: string | undefined) {
+/**
+ * Gets the bypass secret from environment or .env.production file
+ */
+export function getBypassSecret(): string | undefined {
+  let secret = process.env.LOGIN_BYPASS_SECRET || process.env.NEXT_PUBLIC_LOGIN_BYPASS_SECRET || process.env.QA_CAPTCHA_BYPASS;
+
+  if (!secret) {
+    try {
+      const envProdPath = path.resolve(process.cwd(), '.env.production');
+      if (fs.existsSync(envProdPath)) {
+        const fileContent = fs.readFileSync(envProdPath, 'utf8');
+        const envConfig = dotenv.parse(fileContent);
+        secret = envConfig.LOGIN_BYPASS_SECRET || envConfig.NEXT_PUBLIC_LOGIN_BYPASS_SECRET || envConfig.QA_CAPTCHA_BYPASS;
+        if (secret) {
+          // Sync back to process.env so subsequent calls are faster
+          process.env.LOGIN_BYPASS_SECRET = secret;
+          console.log('[captcha] Loaded bypass secret from .env.production');
+        }
+      }
+    } catch (err) {
+      // Silently fail
+    }
+  }
+
+  return secret;
+}
+
+export async function verifyCaptcha(token: string | undefined, value: string | undefined) {
   // Common bypass code for automated testing
-  const bypassSecret = process.env.LOGIN_BYPASS_SECRET || process.env.NEXT_PUBLIC_LOGIN_BYPASS_SECRET;
+  const bypassSecret = getBypassSecret();
+
+  // 1. Check bypass via provided value (form field)
   if (bypassSecret && value === bypassSecret) {
-    console.log('[captcha] bypass code used');
+    console.log('[captcha] bypass code used via value');
     return true;
+  }
+
+  // 2. Check bypass via Request Header (X-E2E-Secret)
+  try {
+    const headerList = await headers();
+    const e2eHeader = headerList.get('X-E2E-Secret');
+    if (bypassSecret && e2eHeader === bypassSecret) {
+      console.log('[captcha] bypass code used via X-E2E-Secret header');
+      return true;
+    }
+  } catch (err) {
+    // headers() might throw if called outside of request context (e.g. build time)
   }
 
   if (!token || !value) {

@@ -13,7 +13,8 @@ import { getTestConfig, ADMIN_EMAIL, ADMIN_PASSWORD } from './test_data/whiteboa
 import dotenv from 'dotenv';
 import path from 'path';
 
-dotenv.config({ path: path.resolve(__dirname, '..', '.env.local') });
+const APP_ENV = process.env.APP_ENV || 'local';
+dotenv.config({ path: path.resolve(__dirname, '..', `.env.${APP_ENV}`) });
 
 const TEACHER_EMAIL = process.env.TEST_TEACHER_EMAIL || 'lin@test.com';
 const TEACHER_PASSWORD = process.env.TEST_TEACHER_PASSWORD || '<SECRET>';

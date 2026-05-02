@@ -3,7 +3,8 @@ import dotenv from 'dotenv';
 import path from 'path';
 
 import fs from 'fs';
-dotenv.config({ path: path.resolve(__dirname, '..', '.env.local') });
+const APP_ENV = process.env.APP_ENV || 'local';
+dotenv.config({ path: path.resolve(__dirname, '..', `.env.${APP_ENV}`) });
 
 // Helper to ensure .env.local matches if not in process.env (Alternative for various runners)
 const envLocalPath = path.resolve(__dirname, '..', '.env.local');
@@ -110,7 +111,7 @@ test('Student Enrollment Flow (Simulated Payment)', async ({ page }) => {
             // Use API to login as teacher to satisfy constraint
             const loginRes = await page.request.post(`${baseUrl}/api/login`, {
                 data: JSON.stringify({ email: teacherEmail, password: teacherPassword, captchaToken: '', captchaValue: bypassSecret }),
-                headers: { 'Content-Type': 'application/json' }
+                headers: { 'Content-Type': 'application/json', 'X-E2E-Secret': String(bypassSecret || '') }
             });
             
             // ✅ 修復：提取教師的 UUID (id) 作為 teacherId（長期規範，不用 email）
@@ -161,7 +162,7 @@ test('Student Enrollment Flow (Simulated Payment)', async ({ page }) => {
 
             const courseRes = await page.request.post(`${baseUrl}/api/courses`, {
                 data: JSON.stringify(coursePayload),
-                headers: { 'Content-Type': 'application/json' }
+                headers: { 'Content-Type': 'application/json', 'X-E2E-Secret': String(bypassSecret || '') }
             });
             const courseData = await courseRes.json();
             console.log(`Course creation response:`, courseData);
@@ -251,7 +252,7 @@ test('Student Enrollment Flow (Simulated Payment)', async ({ page }) => {
             captchaToken: captchaToken || '',
             captchaValue: bypassSecret
         }),
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json', 'X-E2E-Secret': String(bypassSecret || '') }
     });
 
     const loginData = await loginRes.json();

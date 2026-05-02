@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
+import { headers } from 'next/headers';
 import fs from 'fs/promises';
 import path from 'path';
 import resolveDataFile from '@/lib/localData';
 import { ddbDocClient } from '@/lib/dynamo';
 import { ScanCommand } from '@aws-sdk/lib-dynamodb';
-import { verifyCaptcha } from '@/lib/captcha';
+import { verifyCaptcha, getBypassSecret } from '@/lib/captcha';
 import { createSession } from '@/lib/auth/sessionManager';
 
 async function readProfiles() {
@@ -26,8 +27,12 @@ export async function POST(req: Request) {
 
     // 1. Check for bypass conditions (Environment-based test accounts + Secret)
     let skipCaptcha = false;
-    const bypassSecret = process.env.LOGIN_BYPASS_SECRET || process.env.NEXT_PUBLIC_LOGIN_BYPASS_SECRET;
-    const isBypassAttempt = Boolean(bypassSecret) && captchaValue === bypassSecret;
+    const bypassSecret = getBypassSecret();
+    
+    // Check bypass via value OR via header
+    const headerList = await headers();
+    const e2eHeader = headerList.get('X-E2E-Secret');
+    const isBypassAttempt = Boolean(bypassSecret) && (captchaValue === bypassSecret || e2eHeader === bypassSecret);
 
     if (isBypassAttempt) {
       const adminEmail = process.env.ADMIN_EMAIL;
@@ -58,7 +63,7 @@ export async function POST(req: Request) {
     }
 
     // 2. Validate captcha if not a test account
-    if (!skipCaptcha && !verifyCaptcha(captchaToken, captchaValue)) {
+    if (!skipCaptcha && !(await verifyCaptcha(captchaToken, captchaValue))) {
       console.log('[login] captcha fail', { skipCaptcha, token: !!captchaToken, hasCaptchaValue: Boolean(captchaValue) });
       return NextResponse.json({ message: 'captcha_incorrect' }, { status: 400 });
     }

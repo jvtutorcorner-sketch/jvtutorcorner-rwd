@@ -15,7 +15,8 @@ import {
 import { ADMIN_EMAIL, ADMIN_PASSWORD } from './test_data/whiteboard_test_data';
 import { measureSyncLatency } from './helpers/streaming_monitor';
 
-dotenv.config({ path: path.resolve(__dirname, '..', '.env.local') });
+const APP_ENV = process.env.APP_ENV || 'local';
+dotenv.config({ path: path.resolve(__dirname, '..', `.env.${APP_ENV}`) });
 
 function requireEnv(...keys: string[]): string {
   for (const key of keys) {

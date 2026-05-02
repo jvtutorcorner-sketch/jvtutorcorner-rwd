@@ -20,11 +20,13 @@ import {
   drawOnWhiteboard,
   hasDrawingContent,
   createCourseAsTeacher,
+  createCourseAsTeacherWithDuration,
   adminApproveCourse,
   cleanupTestData,
 } from './helpers/whiteboard_helpers';
 
-dotenv.config({ path: path.resolve(__dirname, '..', '.env.local') });
+const APP_ENV = process.env.APP_ENV || 'local';
+dotenv.config({ path: path.resolve(__dirname, '..', `.env.${APP_ENV}`) });
 
 // ─── smoke ──────────────────────────────────────────────────────────
 test.describe('[smoke] Whiteboard Quick Entry', () => {
@@ -400,6 +402,8 @@ test.describe('[stress] Concurrent Groups', () => {
 
     // ─── Group Configuration with Different Teachers ───
     const groupCount = parseInt(process.env.STRESS_GROUP_COUNT || '3', 10);
+    const durationMinutes = parseInt(process.env.STRESS_TEST_DURATION || '60', 10);
+    const staySeconds = parseInt(process.env.STRESS_STAY_SECONDS || '10', 10);
     const groupConfigs = getStressGroupConfigs(groupCount, timestamp);
 
     console.log(`\n🔴 STRESS TEST: ${groupCount} Concurrent Groups with Isolated Teachers & Students`);
@@ -417,13 +421,14 @@ test.describe('[stress] Concurrent Groups', () => {
         const teacherCtx = await browser.newContext({ permissions: ['camera', 'microphone'] });
         const teacherPage = await teacherCtx.newPage();
         
-        console.log(`\n   ⏳ [${group.groupId}] Teacher ${group.teacherEmail} creating course...`);
-        await createCourseAsTeacher(
+        console.log(`\n   ⏳ [${group.groupId}] Teacher ${group.teacherEmail} creating course (${durationMinutes}m)...`);
+        await createCourseAsTeacherWithDuration(
           teacherPage,
           group.courseId,
           group.teacherEmail,
           group.teacherPassword,
-          config.bypassSecret
+          config.bypassSecret,
+          durationMinutes
         );
         console.log(`   ✅ [${group.groupId}] Course "${group.courseId}" created by ${group.teacherEmail}`);
         
@@ -689,6 +694,14 @@ test.describe('[stress] Concurrent Groups', () => {
           throw e;
         }
       }));
+
+      // Step 8: Stay in classroom (optional long-term stability test)
+      if (staySeconds > 0) {
+        console.log(`\n📍 Step 8.5: Staying in classroom for ${staySeconds}s...`);
+        await Promise.all(sessions.map(async (session) => {
+          await session.teacherPage.waitForTimeout(staySeconds * 1000);
+        }));
+      }
 
       // Step 9: Verify Isolation - No Cross-group Contamination
       console.log('\n📍 Step 9: Verifying isolation (no cross-group interference)...');

@@ -2,8 +2,13 @@ import { defineConfig, devices } from '@playwright/test';
 import dotenv from 'dotenv';
 import path from 'path';
 
-// Load environment variables from .env.local
-dotenv.config({ path: path.resolve(__dirname, '.env.local') });
+// Determine environment and load corresponding .env file
+const APP_ENV = process.env.APP_ENV || 'local';
+const envPath = path.resolve(__dirname, `.env.${APP_ENV}`);
+dotenv.config({ path: envPath });
+
+console.log(`📡 E2E Environment: ${APP_ENV.toUpperCase()}`);
+console.log(`🔗 Base URL: ${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}`);
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
 
@@ -49,6 +54,14 @@ export default defineConfig({
         {
             name: 'chromium',
             use: { ...devices['Desktop Chrome'] },
+        },
+        {
+            name: 'firefox',
+            use: { ...devices['Desktop Firefox'] },
+        },
+        {
+            name: 'webkit',
+            use: { ...devices['Desktop Safari'] },
         },
         {
             name: 'chromium-headed',

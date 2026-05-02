@@ -17,7 +17,8 @@ import {
 import { measureSyncLatency } from './helpers/streaming_monitor';
 import { getTestConfig, ADMIN_EMAIL, ADMIN_PASSWORD } from './test_data/whiteboard_test_data';
 
-dotenv.config({ path: path.resolve(__dirname, '..', '.env.local') });
+const APP_ENV = process.env.APP_ENV || 'local';
+dotenv.config({ path: path.resolve(__dirname, '..', `.env.${APP_ENV}`) });
 
 /**
  * 完整教室流程測試

@@ -3,7 +3,8 @@ import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
 
-dotenv.config({ path: path.resolve(__dirname, '..', '.env.local') });
+const APP_ENV = process.env.APP_ENV || 'local';
+dotenv.config({ path: path.resolve(__dirname, '..', `.env.${APP_ENV}`) });
 
 // Helper to ensure .env.local matches
 const envLocalPath = path.resolve(__dirname, '..', '.env.local');
@@ -52,7 +53,7 @@ test('Point Purchase Flow (Simulated Payment)', async ({ page }) => {
         data: JSON.stringify({
             email, password, captchaToken: captchaToken || '', captchaValue: bypassSecret
         }),
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json', 'X-E2E-Secret': String(bypassSecret || '') }
     });
 
     const loginData = await loginRes.json();

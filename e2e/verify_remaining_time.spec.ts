@@ -17,7 +17,7 @@ import {
   waitAndEnterClassroom,
 } from './helpers/whiteboard_helpers';
 
-dotenv.config({ path: path.resolve(__dirname, '..', '.env.local') });
+// Environment variables are loaded in playwright.config.ts based on APP_ENV
 
 /**
  * This test specifically verifies that the "Remaining Time" (剩餘時間) 

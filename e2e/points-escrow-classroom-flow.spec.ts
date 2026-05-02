@@ -17,7 +17,8 @@ import {
 } from './helpers/whiteboard_helpers';
 import { getTestConfig } from './test_data/whiteboard_test_data';
 
-dotenv.config({ path: path.resolve(__dirname, '..', '.env.local') });
+const APP_ENV = process.env.APP_ENV || 'local';
+dotenv.config({ path: path.resolve(__dirname, '..', `.env.${APP_ENV}`) });
 
 function requireEnv(...keys: string[]): string {
   for (const key of keys) {

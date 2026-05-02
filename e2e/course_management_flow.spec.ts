@@ -3,7 +3,8 @@ import dotenv from 'dotenv';
 import path from 'path';
 
 // Load environment variables from .env.local
-dotenv.config({ path: path.resolve(__dirname, '..', '.env.local') });
+const APP_ENV = process.env.APP_ENV || 'local';
+dotenv.config({ path: path.resolve(__dirname, '..', `.env.${APP_ENV}`) });
 
 function requireEnv(...keys: string[]): string {
     for (const key of keys) {

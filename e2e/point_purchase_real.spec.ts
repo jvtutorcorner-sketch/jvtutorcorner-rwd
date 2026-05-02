@@ -3,7 +3,8 @@ import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
 
-dotenv.config({ path: path.resolve(__dirname, '..', '.env.local') });
+const APP_ENV = process.env.APP_ENV || 'local';
+dotenv.config({ path: path.resolve(__dirname, '..', `.env.${APP_ENV}`) });
 
 // Helper to ensure .env.local matches
 const envLocalPath = path.resolve(__dirname, '..', '.env.local');

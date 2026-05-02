@@ -20,7 +20,7 @@ export async function POST(req: Request) {
 
 
     // Validate captcha (supporting bypass secret)
-    if (!verifyCaptcha(captchaToken, captchaValue)) {
+    if (!(await verifyCaptcha(captchaToken, captchaValue))) {
       return NextResponse.json({ message: 'captcha_incorrect' }, { status: 400 });
     }
 
