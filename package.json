@@ -16,7 +16,12 @@
     "skills:update": "node scripts/update-skill-status.js",
     "test": "playwright test",
     "test:verify-skills": "playwright test --grep 'verification' && npm run skills:update",
-    "test:verify-skills:ci": "playwright test --grep 'verification' --reporter=html"
+    "test:verify-skills:ci": "playwright test --grep 'verification' --reporter=html",
+    "test:production:stress": "NEXT_PUBLIC_BASE_URL=https://www.jvtutorcorner.com npx playwright test e2e/classroom_room_whiteboard_sync.spec.ts -g 'Stress test' --project=chromium",
+    "test:production:stress:verbose": "NEXT_PUBLIC_BASE_URL=https://www.jvtutorcorner.com npx playwright test e2e/classroom_room_whiteboard_sync.spec.ts -g 'Stress test' --project=chromium --reporter=verbose",
+    "test:production:load": "k6 run -e BASE_URL=https://www.jvtutorcorner.com .agents/skills/classroom-room-whiteboard-sync/scripts/production_load_test.js",
+    "test:production:load:stress": "k6 run -e BASE_URL=https://www.jvtutorcorner.com -e TEST_TYPE=stress -e VUSER=20 .agents/skills/classroom-room-whiteboard-sync/scripts/production_load_test.js",
+    "test:production:load:spike": "k6 run -e BASE_URL=https://www.jvtutorcorner.com -e TEST_TYPE=spike -e VUSER=10 .agents/skills/classroom-room-whiteboard-sync/scripts/production_load_test.js"
   },
   "dependencies": {
     "@aws-amplify/ui-react": "^6.13.1",

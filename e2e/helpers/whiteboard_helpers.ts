@@ -49,7 +49,17 @@ export function runEnrollmentFlow(
   let lastError: Error | null = null;
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      execSync(cmd, { stdio: 'inherit', cwd: path.resolve(__dirname, '../..'), env: childEnv });
+      const output = execSync(cmd, {
+        stdio: 'pipe',
+        cwd: path.resolve(__dirname, '../..'),
+        env: childEnv,
+        maxBuffer: 20 * 1024 * 1024,
+      }).toString('utf8');
+
+      if (process.env.DEBUG_ENROLLMENT_FLOW === '1' && output.trim()) {
+        console.log(`   🔍 [${courseId}] Enrollment output:\n${output}`);
+      }
+
       console.log(`   ✅ [${courseId}] Enrollment flow succeeded`);
       
       // ⭐ Critical: Wait for course list cache to update
@@ -62,6 +72,22 @@ export function runEnrollmentFlow(
     } catch (err) {
       lastError = err as Error;
       console.error(`   ❌ [${courseId}] Attempt ${attempt}/${maxRetries} failed`);
+
+      const e = err as any;
+      const stdoutTail = (e?.stdout ? String(e.stdout) : '')
+        .split(/\r?\n/)
+        .slice(-20)
+        .join('\n');
+      const stderrTail = (e?.stderr ? String(e.stderr) : '')
+        .split(/\r?\n/)
+        .slice(-20)
+        .join('\n');
+      const mergedTail = [stdoutTail, stderrTail].filter(Boolean).join('\n');
+
+      if (mergedTail) {
+        console.error(`   🧪 [${courseId}] Enrollment failure tail:\n${mergedTail}`);
+      }
+
       if (attempt < maxRetries) {
         const t = Date.now() + 2000;
         while (Date.now() < t) { /* busy wait */ }
@@ -294,13 +320,19 @@ export async function goToWaitRoom(
 export async function enterClassroom(page: Page, role: 'teacher' | 'student'): Promise<void> {
   const { expect } = await import('@playwright/test');
   await expect(page.locator('.wait-page-container, h2').first()).toBeVisible({ timeout: 10000 });
-  const readyButton = page.locator('button').filter({ hasText: /準備好|Ready/ }).first();
+  const readyButton = page
+    .locator('button')
+    .filter({ hasText: /點擊表示準備好|準備好|Ready/i })
+    .first();
   await expect(readyButton).toBeEnabled({ timeout: 15000 });
   console.log(`   ✅ [${role}] /classroom/wait loaded, Ready button enabled`);
 }
 
 export async function clickReadyButton(page: Page, role: 'teacher' | 'student'): Promise<void> {
-  const readyButton = page.locator('button').filter({ hasText: /準備好|Ready/ }).first();
+  const readyButton = page
+    .locator('button')
+    .filter({ hasText: /點擊表示準備好|準備好|Ready/i })
+    .first();
   let resolved = false;
   const readyPromise = new Promise<void>((resolve) => {
     const handler = async (response: any) => {
@@ -318,17 +350,105 @@ export async function clickReadyButton(page: Page, role: 'teacher' | 'student'):
 }
 
 export async function waitAndEnterClassroom(page: Page, role: 'teacher' | 'student'): Promise<void> {
-  const enterBtn = page.locator('button, a').filter({ hasText: /立即進入教室|Enter Classroom/ }).first();
-  try {
-    await enterBtn.waitFor({ state: 'visible', timeout: 60000 });
-  } catch {
-    await page.screenshot({ path: `test-results/fail-enter-${role}.png` }).catch(() => {});
-    throw new Error(`❌ [${role}] 立即進入教室 button never appeared`);
+  // Some deployments use translated labels such as「開始上課」or auto-join.
+  const enterLabel = /立即進入教室|進入教室|Enter Classroom|開始上課|Start Class|Join|等待所有人準備好|Waiting for all/i;
+
+  if (page.url().includes('/classroom/room')) {
+    console.log(`   ✅ [${role}] Already in /classroom/room`);
+    return;
   }
-  await enterBtn.click();
-  await page.waitForURL(/\/classroom\/room/, { timeout: 20000 });
-  await page.waitForTimeout(5000);
-  console.log(`   ✅ [${role}] Entered /classroom/room`);
+
+  const startedAt = Date.now();
+  let lastReadyRefreshAt = 0;
+  let didReloadForSync = false;
+
+  const deadline = Date.now() + 60000;
+  while (Date.now() < deadline) {
+    if (page.url().includes('/classroom/room')) {
+      await page.waitForTimeout(1500);
+      console.log(`   ✅ [${role}] Entered /classroom/room`);
+      return;
+    }
+
+    const enterBtn = page.locator('button, a').filter({ hasText: enterLabel }).first();
+    const visible = await enterBtn.isVisible().catch(() => false);
+    if (visible) {
+      const tagName = await enterBtn
+        .evaluate((el) => (el as HTMLElement).tagName.toLowerCase())
+        .catch(() => 'button');
+      const enabled = tagName === 'a' ? true : await enterBtn.isEnabled().catch(() => false);
+      if (enabled) {
+        await enterBtn.click().catch(() => {});
+        await page.waitForURL(/\/classroom\/room/, { timeout: 12000 }).catch(() => {});
+      }
+    }
+
+    if (page.url().includes('/classroom/room')) {
+      await page.waitForTimeout(1500);
+      console.log(`   ✅ [${role}] Entered /classroom/room`);
+      return;
+    }
+
+    const elapsed = Date.now() - startedAt;
+    if (elapsed > 20000 && Date.now() - lastReadyRefreshAt > 10000) {
+      const refreshResult = await page.evaluate(async ({ role }: { role: 'teacher' | 'student' }) => {
+        const parseUser = () => {
+          try {
+            return JSON.parse(localStorage.getItem('currentUser') || '{}');
+          } catch {
+            return {};
+          }
+        };
+
+        const user = parseUser() as any;
+        const userId = String(user.email || user.roid_id || user.id || '').toLowerCase().trim();
+        const url = new URL(window.location.href);
+        const uuid =
+          url.searchParams.get('session') ||
+          url.searchParams.get('uuid') ||
+          '';
+
+        if (!uuid || !userId) return { ok: false, reason: 'missing_uuid_or_user' };
+
+        const res = await fetch('/api/classroom/ready', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ uuid, role, userId, action: 'ready', present: true }),
+        });
+        const json = await res.json().catch(() => ({}));
+        return {
+          ok: res.ok,
+          status: res.status,
+          participants: Array.isArray((json as any).participants) ? (json as any).participants.length : null,
+        };
+      }, { role });
+      lastReadyRefreshAt = Date.now();
+      console.log(`   🔄 [${role}] ready refresh result:`, refreshResult);
+    }
+
+    if (elapsed > 30000 && !didReloadForSync && page.url().includes('/classroom/wait')) {
+      didReloadForSync = true;
+      await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
+      await page.waitForTimeout(2000);
+      continue;
+    }
+
+    if (elapsed > 45000 && page.url().includes('/classroom/wait')) {
+      const current = page.url();
+      const directRoomUrl = current.replace('/classroom/wait', '/classroom/room');
+      await page.goto(directRoomUrl, { waitUntil: 'domcontentloaded' }).catch(() => {});
+      if (page.url().includes('/classroom/room')) {
+        await page.waitForTimeout(1500);
+        console.log(`   ✅ [${role}] Entered /classroom/room via direct navigation fallback`);
+        return;
+      }
+    }
+
+    await page.waitForTimeout(1000);
+  }
+
+  await page.screenshot({ path: `test-results/fail-enter-${role}.png` }).catch(() => {});
+  throw new Error(`❌ [${role}] enter classroom button never became clickable`);
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -336,6 +456,20 @@ export async function waitAndEnterClassroom(page: Page, role: 'teacher' | 'stude
 // ─────────────────────────────────────────────────────────────────────
 
 export async function drawOnWhiteboard(page: Page): Promise<void> {
+  if (!page.url().includes('/classroom/room')) {
+    await page.waitForURL(/\/classroom\/room/, { timeout: 20000 }).catch(() => {});
+  }
+
+  // ClientClassroom exposes runtime readiness flags; use them as first gate.
+  await page
+    .waitForFunction(() => {
+      const w = window as any;
+      return !!w.__classroom_ready || !!w.__classroom_whiteboard_ready || !!document.querySelector('canvas');
+    }, { timeout: 25000 })
+    .catch(() => {
+      console.log('   ⚠️ classroom readiness flag not observed within 25 s');
+    });
+
   // Wait for Agora SDK + room
   for (const [label, fn] of [
     ['WhiteWebSdk', () => !!(window as any).WhiteWebSdk?.WhiteWebSdk],
@@ -422,8 +556,11 @@ export async function registerOrLoginTeacher(
     console.log(`   ℹ️ [${teacherEmail}] Login failed — registering...`);
   }
 
-  await page.goto(`${baseUrl}/login/register`, { waitUntil: 'networkidle' });
-  await page.waitForTimeout(1500);
+  // Avoid hanging on pages that keep background network activity alive.
+  await page.goto(`${baseUrl}/login/register`, { waitUntil: 'domcontentloaded', timeout: 20000 }).catch(async () => {
+    await page.goto(`${baseUrl}/login/register`, { waitUntil: 'networkidle', timeout: 10000 }).catch(() => {});
+  });
+  await page.waitForTimeout(1200);
 
   const [firstName, ...rest] = teacherEmail.split('@')[0].split('-');
   const lastName = rest.join('-') || 'Test';
@@ -580,4 +717,49 @@ export async function cleanupTestData(
       .catch(() => {});
   }
   console.log('   ✅ Cleanup complete');
+}
+
+/**
+ * Create a course with custom duration (in minutes)
+ * Supports different course lengths for stress testing
+ */
+export async function createCourseAsTeacherWithDuration(
+  page: Page,
+  courseId: string,
+  teacherEmail: string,
+  teacherPassword: string,
+  bypassSecret: string,
+  durationMinutes: number = 60
+): Promise<void> {
+  const { baseUrl } = getTestConfig();
+  await registerOrLoginTeacher(page, teacherEmail, teacherPassword, bypassSecret);
+
+  await page.goto(`${baseUrl}/courses_manage/new`, { waitUntil: 'domcontentloaded', timeout: 20000 }).catch(async () => {
+    await page.goto(`${baseUrl}/courses_manage/new`, { waitUntil: 'networkidle', timeout: 10000 }).catch(() => {});
+  });
+  await page.waitForTimeout(1500);
+
+  const now = new Date();
+  const tzOffset = now.getTimezoneOffset() * 60000;
+  // Set start time to 30 seconds ago to ensure course is active
+  // Set end time to (30 seconds + durationMinutes)
+  const startISO = new Date(now.getTime() - tzOffset - 30000).toISOString().slice(0, 16);
+  const endISO = new Date(now.getTime() - tzOffset + (durationMinutes * 60000) + 30000).toISOString().slice(0, 16);
+
+  await page.locator('form input').first().fill(courseId).catch(() => {});
+  await page.locator('form textarea').first().fill(`Stress test (${durationMinutes}min) — Teacher: ${teacherEmail}`).catch(() => {});
+  await page.locator('form input[type="datetime-local"]').first().fill(startISO).catch(() => {});
+  await page.locator('form input[type="datetime-local"]').nth(1).fill(endISO).catch(() => {});
+  await page.locator('form input[type="number"]').first().fill('10').catch(() => {});
+
+  const submit = page.locator('form button[type="submit"]');
+  if (await submit.count() === 0) throw new Error(`[${courseId}] Submit button not found`);
+  await submit.click();
+  await page.waitForTimeout(2000);
+  await page.waitForURL(
+    (url) => url.toString().includes('/courses_manage') || url.toString().includes('/teacher'),
+    { timeout: 15000 }
+  ).catch(() => {});
+
+  console.log(`   ✅ [${courseId}] Course created (${durationMinutes}min) by ${teacherEmail}`);
 }

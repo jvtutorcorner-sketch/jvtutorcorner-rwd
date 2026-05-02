@@ -27,12 +27,22 @@ export interface StressGroupConfig {
   studentPassword: string;
 }
 
+function requireEnv(...keys: string[]): string {
+  for (const key of keys) {
+    const value = process.env[key];
+    if (value && value.trim()) {
+      return value.trim();
+    }
+  }
+  throw new Error(`Missing required environment variable(s): ${keys.join(', ')}`);
+}
+
 // ─────────────────────────────────────────────────────────────────────
 // Constants
 // ─────────────────────────────────────────────────────────────────────
 
-export const ADMIN_EMAIL = 'admin@jvtutorcorner.com';
-export const ADMIN_PASSWORD = '123456';
+export const ADMIN_EMAIL = process.env.ADMIN_EMAIL || process.env.QA_ADMIN_EMAIL || 'admin@example.com';
+export const ADMIN_PASSWORD = requireEnv('ADMIN_PASSWORD', 'QA_ADMIN_PASSWORD');
 export const DEFAULT_STRESS_GROUP_COUNT = 3;
 
 /** Course-ID prefixes per scenario — used by cleanup scripts too */
@@ -53,25 +63,28 @@ export const COURSE_ID_PREFIXES = {
  * Call this inside a test or beforeAll — never at module level.
  */
 export function getTestConfig(): TestConfig {
+  const bypassSecret = requireEnv('LOGIN_BYPASS_SECRET', 'NEXT_PUBLIC_LOGIN_BYPASS_SECRET', 'QA_CAPTCHA_BYPASS');
+
+  const teacherPassword = requireEnv('TEST_TEACHER_PASSWORD', 'QA_TEACHER_PASSWORD');
+
+  const studentPassword = requireEnv('TEST_STUDENT_PASSWORD', 'QA_STUDENT_PASSWORD');
+
   return {
     baseUrl:
       process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000',
-    bypassSecret:
-      process.env.NEXT_PUBLIC_LOGIN_BYPASS_SECRET ||
-      process.env.LOGIN_BYPASS_SECRET ||
-      'jv_secure_bypass_2024',
+    bypassSecret,
     teacherEmail: (
       process.env.QA_TEACHER_EMAIL ||
       process.env.TEST_TEACHER_EMAIL ||
-      'teacher@test.com'
+      'teacher@example.com'
     ).toLowerCase(),
-    teacherPassword: process.env.TEST_TEACHER_PASSWORD || '123456',
+    teacherPassword,
     studentEmail: (
       process.env.QA_STUDENT_EMAIL ||
       process.env.TEST_STUDENT_EMAIL ||
-      'student@test.com'
+      'student@example.com'
     ).toLowerCase(),
-    studentPassword: process.env.TEST_STUDENT_PASSWORD || '123456',
+    studentPassword,
   };
 }
 
@@ -86,12 +99,23 @@ export function getStressGroupConfigs(
   groupCount: number = DEFAULT_STRESS_GROUP_COUNT,
   timestamp: number = Date.now()
 ): StressGroupConfig[] {
+  const stressTeacherPassword = requireEnv(
+    'TEST_STRESS_TEACHER_PASSWORD',
+    'TEST_TEACHER_PASSWORD',
+    'QA_TEACHER_PASSWORD'
+  );
+  const stressStudentPassword = requireEnv(
+    'TEST_STRESS_STUDENT_PASSWORD',
+    'TEST_STUDENT_PASSWORD',
+    'QA_STUDENT_PASSWORD'
+  );
+
   return Array.from({ length: groupCount }).map((_, i) => ({
     groupId: `group-${i}`,
     courseId: `${COURSE_ID_PREFIXES.stress}${i}-${timestamp}`,
     teacherEmail: `group-${i}-teacher@test.com`,
-    teacherPassword: '123456',
+    teacherPassword: stressTeacherPassword,
     studentEmail: `group-${i}-student@test.com`,
-    studentPassword: '123456',
+    studentPassword: stressStudentPassword,
   }));
 }

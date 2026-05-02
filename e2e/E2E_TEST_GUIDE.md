@@ -1,0 +1,429 @@
+# JV Tutor Corner — E2E 測試完整指南
+
+## 環境需求 (Prerequisites)
+
+### 必要環境變數 (.env.local)
+```env
+NEXT_PUBLIC_BASE_URL=http://localhost:3000
+LOGIN_BYPASS_SECRET=your-bypass-secret
+TEST_TEACHER_EMAIL=lin@test.com
+TEST_TEACHER_PASSWORD=your-password
+TEST_STUDENT_EMAIL=pro@test.com
+TEST_STUDENT_PASSWORD=your-password
+ADMIN_EMAIL=admin@jvtutorcorner.com
+ADMIN_PASSWORD=your-admin-password
+QA_CAPTCHA_BYPASS=your-bypass-secret
+```
+
+### 啟動開發伺服器
+```bash
+npm run dev
+```
+
+---
+
+## Playwright 設定 (playwright.config.ts)
+
+| 設定項目 | 值 |
+|---|---|
+| 測試目錄 | `./e2e` |
+| 測試檔案 | `**/*.spec.ts` |
+| 預設 Timeout | 60,000 ms |
+| 平行執行 | 否 (fullyParallel: false) |
+| Workers | 1 |
+| 瀏覽器 | Chrome (Desktop) |
+| 報告格式 | HTML + JSON + List |
+| 失敗時截圖 | 是 |
+| 失敗時錄影 | 是 |
+| BASE_URL | `NEXT_PUBLIC_BASE_URL` 環境變數 |
+
+---
+
+## 測試檔案一覽與執行指令
+
+### 1. 課程剩餘時間驗證 — `verify_remaining_time.spec.ts`
+
+**目的：** 驗證教師結束課程後，剩餘時間正確更新於 DB 並同步至儀表板。
+
+**測試群組：** `Remaining Time Update Verification`  
+**Timeout：** 300,000 ms
+
+**流程：**
+1. 透過子程序執行 enrollment flow (60分鐘課程)
+2. 教師/學生雙重登入，繞過設備檢查
+3. 驗證初始剩餘時間顯示 60m
+4. 進入等待室 → 點擊準備 → 進入教室
+5. 教室內停留 65 秒觸發定期同步
+6. 教師點擊「結束課程」，確認 dialog
+7. 驗證兩端儀表板剩餘時間 < 60m
+
+```bash
+# 標準執行
+npx playwright test e2e/verify_remaining_time.spec.ts
+
+# 顯示瀏覽器
+npx playwright test e2e/verify_remaining_time.spec.ts --headed
+
+# UI 模式（除錯用）
+npx playwright test e2e/verify_remaining_time.spec.ts --ui
+
+# 保留測試資料 (Windows PowerShell)
+$env:SKIP_CLEANUP="true"; npx playwright test e2e/verify_remaining_time.spec.ts
+```
+
+---
+
+### 2. 白板同步測試 — `classroom_room_whiteboard_sync.spec.ts`
+
+**目的：** 驗證師生間白板繪圖同步、斷線重連後計時器同步，以及多組並發隔離性。
+
+**測試群組（4個）：**
+
+| 群組標籤 | 測試名稱 | Timeout |
+|---|---|---|
+| `[smoke]` | Quick classroom entry and canvas load | 120,000 ms |
+| `[standard]` | Teacher drawings sync to student | 300,000 ms |
+| `[standard]` | Simulate disconnection and reconnection | 300,000 ms |
+| `[stress]` | 3 concurrent teacher-student groups | 600,000 ms |
+| `[debug]` | Single group verbose whiteboard debug | 600,000 ms |
+
+```bash
+# 執行全部測試
+npx playwright test e2e/classroom_room_whiteboard_sync.spec.ts
+
+# 只執行 smoke
+npx playwright test e2e/classroom_room_whiteboard_sync.spec.ts -g "smoke"
+
+# 只執行 standard
+npx playwright test e2e/classroom_room_whiteboard_sync.spec.ts -g "standard"
+
+# 只執行 stress（並發測試，需時最長）
+npx playwright test e2e/classroom_room_whiteboard_sync.spec.ts -g "stress"
+
+# 自訂並發組數 (Windows PowerShell)
+$env:STRESS_GROUP_COUNT="5"; npx playwright test e2e/classroom_room_whiteboard_sync.spec.ts -g "stress"
+
+# 正式環境 stress 測試
+npm run test:production:stress
+```
+
+---
+
+### 3. 學生報名完整流程 — `student_enrollment_flow.spec.ts`
+
+**目的：** 模擬學生購買點數 → 報名課程 → 驗證點數扣除 → 進入教室的完整流程。
+
+**測試名稱：** `Student Enrollment Flow (Simulated Payment)`  
+**Timeout：** 300,000 ms
+
+**流程：**
+1. 嘗試尋找現有可用課程；找不到則建立測試課程
+2. 清除既有訂單（避免時間衝突）
+3. 學生登入 (API 直接登入，繞過 Captcha)
+4. 判斷點數是否充足，不足則購買最大點數套餐
+5. 記錄報名前點數餘額
+6. 點擊「立即報名課程」→「確認報名」
+7. 處理時間重疊衝突（自動 retry 至多 3 次）
+8. 驗證重定向至 `/student_courses`
+9. 驗證 API 點數正確扣除
+10. 至 `/pricing` 頁面確認 UI 點數更新
+11. 找到「進入教室」按鈕並點擊
+
+```bash
+# 標準執行
+npx playwright test e2e/student_enrollment_flow.spec.ts
+
+# 指定課程 ID
+$env:TEST_COURSE_ID="my-course-id"; npx playwright test e2e/student_enrollment_flow.spec.ts
+
+# 保留測試資料
+$env:SKIP_CLEANUP="true"; npx playwright test e2e/student_enrollment_flow.spec.ts
+```
+
+---
+
+### 4. 電子郵件服務驗證 — `email_service_verification.spec.ts`
+
+**目的：** 驗證 Gmail SMTP 及 Resend 郵件提供商的連線、白名單安全機制與設定解析。
+
+**測試群組：** `Email Service Integration`
+
+| 子群組 | 測試數 | 說明 |
+|---|---|---|
+| Gmail SMTP Provider | 4 | 成功發送、非白名單封鎖、verification 繞過、格式驗證 |
+| Resend Provider | 2 | 成功發送、非白名單封鎖 |
+| Configuration Resolution | 1 | 缺少憑證時應回 503 |
+
+```bash
+# 執行全部郵件測試
+npx playwright test e2e/email_service_verification.spec.ts
+
+# 只測 Gmail SMTP
+npx playwright test e2e/email_service_verification.spec.ts -g "Gmail"
+
+# 只測 Resend
+npx playwright test e2e/email_service_verification.spec.ts -g "Resend"
+```
+
+> **注意：** 若 Gmail 或 Resend 憑證未配置，相關測試會回傳 503 並自動跳過斷言。
+
+---
+
+### 5. 首頁驗證 — `homepage_verification.spec.ts`
+
+**目的：** 驗證首頁響應式設計、語言切換、行動版選單、Hero、How it Works、按鈕尺寸、效能。
+
+**測試裝置：** 手機 (375px) / 平板 (768px) / 桌面 (1920px)
+
+| 測試群組 | 測試數 |
+|---|---|
+| 0. 響應式設計驗證 | 3 |
+| 1. 語言切換驗證 | 5 |
+| 2. 行動版菜單驗證 | 4 |
+| 3. Hero 部分詳細驗證 | 4 |
+| 4. How it Works 部分驗證 | 3 |
+| 5. 按鈕尺寸 (WCAG 標準) | 1 |
+| 6. Carousel 響應式驗證 | 2 |
+| 7. 字體與文本視覺層級 | 1 |
+| 8. 圖片與媒體響應式 | 2 |
+| 9. 效能相關檢查 | 2 |
+
+```bash
+# 執行全部首頁測試
+npx playwright test e2e/homepage_verification.spec.ts
+
+# 只測行動版（有 @mobile tag 的）
+npx playwright test e2e/homepage_verification.spec.ts -g "行動版"
+
+# 只測語言切換
+npx playwright test e2e/homepage_verification.spec.ts -g "語言切換"
+
+# 只測效能
+npx playwright test e2e/homepage_verification.spec.ts -g "效能"
+```
+
+---
+
+### 6. 導覽列驗證 — `navbar_verification.spec.ts`
+
+**目的：** 驗證學生/教師註冊後自動登入、Navbar 顯示狀態、Product Tour 多頁面流程、下拉選單與登出功能。
+
+**測試數：** 2（學生角色 + 教師角色）
+
+```bash
+npx playwright test e2e/navbar_verification.spec.ts
+
+# 只測學生角色
+npx playwright test e2e/navbar_verification.spec.ts -g "Student"
+
+# 只測教師角色
+npx playwright test e2e/navbar_verification.spec.ts -g "Teacher"
+```
+
+---
+
+### 7. 點數 Escrow 邊界條件 — `points-escrow-edge-cases-simple.spec.ts`
+
+**目的：** 用 API 直接驗證點數暫存系統的各種邊界條件。
+
+| 測試 ID | 測試名稱 |
+|---|---|
+| 00-SETUP | 初始化學生點數為 10000 |
+| E1 | 點數不足時報名失敗（預期 HTTP 400）|
+| E2 | 點數恰好等於課程點數，報名後 balance=0 |
+| E3 | 點數=0 時報名失敗 |
+| E5 | Escrow 釋放後狀態應為 RELEASED |
+| E6 | Escrow 退款後點數恢復 |
+| E10 | 重複釋放應為 idempotent（點數不重複增加）|
+
+```bash
+# 執行全部邊界條件測試（依序執行！）
+npx playwright test e2e/points-escrow-edge-cases-simple.spec.ts
+
+# 只執行特定測試
+npx playwright test e2e/points-escrow-edge-cases-simple.spec.ts -g "E5"
+```
+
+---
+
+### 8. Stripe 支付驗證 — `stripe_payment_verification.spec.ts`
+
+**目的：** 驗證 Stripe 支付流程（Pricing → Checkout → 測試信用卡）與 Webhook 端點存活。
+
+**預設目標環境：** `QA_TEST_BASE_URL`（預設 `http://www.jvtutorcorner.com`）  
+**Stripe 測試卡號：** `4242 4242 4242 4242`
+
+| 測試名稱 | 說明 |
+|---|---|
+| Student Auto-Login Flow | 學生登入並到達 `/student_courses` |
+| Navigate to Pricing Page | 選擇點數套餐並到達結帳頁 |
+| Complete Stripe Payment | 填入測試卡號完成支付 |
+| Admin Stripe Connection Diagnostics | 管理員在 `/apps` 頁面測試 Stripe 連線 |
+| Verify Payment Status in Profile | 確認 `/settings/profile` 顯示點數 |
+| Verify webhook endpoint | Webhook 端點存在（預期 400/401/500，非 404）|
+
+```bash
+# 測試本地環境
+npx playwright test e2e/stripe_payment_verification.spec.ts
+
+# 測試正式環境 Stripe
+$env:QA_TEST_BASE_URL="https://www.jvtutorcorner.com"; npx playwright test e2e/stripe_payment_verification.spec.ts
+
+# 只測 Webhook
+npx playwright test e2e/stripe_payment_verification.spec.ts -g "Webhook"
+
+# 只測管理員診斷
+npx playwright test e2e/stripe_payment_verification.spec.ts -g "Admin"
+```
+
+---
+
+### 9. 課程對齊驗證 — `course_alignment_verification.spec.ts`
+```bash
+npx playwright test e2e/course_alignment_verification.spec.ts
+```
+
+### 10. 課程管理流程 — `course_management_flow.spec.ts`
+```bash
+npx playwright test e2e/course_management_flow.spec.ts
+```
+
+### 11. 推薦系統問卷 — `recommendation_onboarding.spec.ts`
+```bash
+npx playwright test e2e/recommendation_onboarding.spec.ts
+```
+
+### 12. 學生課程頁驗證 — `student_courses_verification.spec.ts`
+```bash
+npx playwright test e2e/student_courses_verification.spec.ts
+```
+
+### 13. 教師課程頁驗證 — `teacher_courses_verification.spec.ts`
+```bash
+npx playwright test e2e/teacher_courses_verification.spec.ts
+```
+
+### 14. 訂單退款驗證 — `order_refund.spec.ts`
+```bash
+npx playwright test e2e/order_refund.spec.ts
+```
+
+### 15. 點數購買（模擬）— `point_purchase_simulated.spec.ts`
+```bash
+npx playwright test e2e/point_purchase_simulated.spec.ts
+```
+
+### 16. 點數購買（真實）— `point_purchase_real.spec.ts`
+```bash
+npx playwright test e2e/point_purchase_real.spec.ts
+```
+
+### 17. LINE Pay 模擬 — `line_pay_simulated.spec.ts`
+```bash
+npx playwright test e2e/line_pay_simulated.spec.ts
+```
+
+### 18. 定價綜合測試 — `pricing_comprehensive.spec.ts`
+```bash
+npx playwright test e2e/pricing_comprehensive.spec.ts
+```
+
+### 19. 教室等待頁驗證 — `classroom_wait_verification.spec.ts`
+```bash
+npx playwright test e2e/classroom_wait_verification.spec.ts
+```
+
+### 20. 教室房間驗證 — `classroom_room_verification.spec.ts`
+```bash
+npx playwright test e2e/classroom_room_verification.spec.ts
+```
+
+### 21. 教室設備權限 — `classroom-wait-device-permissions.spec.ts`
+```bash
+npx playwright test e2e/classroom-wait-device-permissions.spec.ts
+```
+
+### 22. 點數 Escrow 教師流程 — `admin-teacher-escrow.spec.ts`
+```bash
+npx playwright test e2e/admin-teacher-escrow.spec.ts
+```
+
+### 23. 資料清理 — `cleanup-test-data.spec.ts`
+```bash
+npx playwright test e2e/cleanup-test-data.spec.ts
+```
+
+---
+
+## 批次執行指令
+
+### 執行全部測試
+```bash
+npm test
+# 或
+npx playwright test
+```
+
+### 依標籤篩選
+```bash
+# 只跑 smoke 標籤（快速驗證）
+npx playwright test -g "smoke"
+
+# 只跑 verification 標籤（用於 CI）
+npx playwright test --grep "verification"
+```
+
+### 正式環境完整測試
+```bash
+$env:NEXT_PUBLIC_BASE_URL="https://www.jvtutorcorner.com"; npx playwright test
+```
+
+### 查看 HTML 報告
+```bash
+npx playwright show-report test-results
+```
+
+---
+
+## 輔助工具 (Helpers)
+
+### `helpers/whiteboard_helpers.ts` 核心函數
+
+| 函數名稱 | 說明 |
+|---|---|
+| `runEnrollmentFlow(courseId)` | 執行子程序進行課程報名 |
+| `injectDeviceCheckBypass(page)` | 繞過設備（攝影機/麥克風）檢查 |
+| `autoLogin(page, email, pw, secret)` | API 直接登入並同步 localStorage |
+| `checkAndFindEnrollment(page, config)` | 查詢學生已有的報名訂單 |
+| `goToWaitRoom(page, courseId, role)` | 導覽至課程等待室（含重試機制） |
+| `enterClassroom(page, role)` | 等待 Ready 按鈕可用 |
+| `clickReadyButton(page, role)` | 點擊 Ready 並等待 API 回應 |
+| `waitAndEnterClassroom(page, role)` | 等待並點擊進入教室按鈕 |
+| `drawOnWhiteboard(page)` | 在白板 canvas 隨機繪製 3-5 條線 |
+| `hasDrawingContent(page)` | 偵測 canvas 是否有非透明像素 |
+| `adminApproveCourse(page, courseId, ...)` | 管理員審核課程 |
+| `cleanupTestData(page, courseIds, ...)` | 清除課程、訂單與測試帳號 |
+
+### `test_data/whiteboard_test_data.ts` 設定函數
+
+| 函數/常數 | 說明 |
+|---|---|
+| `getTestConfig()` | 從環境變數讀取教師/學生帳號設定 |
+| `getStressGroupConfigs(n)` | 產生 n 組並發測試設定 |
+| `COURSE_ID_PREFIXES` | 各場景課程 ID 前綴（smoke/sync/stress/debug）|
+| `ADMIN_EMAIL / ADMIN_PASSWORD` | 管理員帳號常數 |
+
+---
+
+## 常見問題排查
+
+| 問題 | 解法 |
+|---|---|
+| `Missing required environment variable` | 確認 `.env.local` 包含所有必要變數 |
+| 找不到「進入教室」按鈕 | 確認課程時間已開始（startTime < 現在）|
+| Enrollment flow 子程序失敗 | 加 `DEBUG_ENROLLMENT_FLOW=1` 查看子程序輸出 |
+| 白板 canvas 不可見 | Agora Whiteboard SDK 需要時間初始化，等待超過 60 秒 |
+| 點數扣除失敗 | 確認課程 `enrollmentType=points` 且 `pointCost > 0` |
+| DynamoDB 並發衝突 | stress 測試改用 Sequential Ready Click 避免 race condition |
+| Stripe 測試失敗 | 確認使用 Test 模式金鑰，卡號使用 `4242 4242 4242 4242` |
+| 郵件 503 | Gmail/Resend 憑證未配置，測試會自動 skip 斷言 |
