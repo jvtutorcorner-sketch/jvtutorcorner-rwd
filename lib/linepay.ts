@@ -1,12 +1,13 @@
 import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
+import { LINEPAY_SITE_URL as LINEPAY_SITE_URL_FROM_CONFIG } from '@/lib/envConfig';
 
 const LINEPAY_CHANNEL_ID = process.env.LINEPAY_CHANNEL_ID || '';
 const LINEPAY_CHANNEL_SECRET_KEY = process.env.LINEPAY_CHANNEL_SECRET_KEY || '';
 const LINEPAY_VERSION = process.env.LINEPAY_VERSION || 'v3';
-// 測試環境：https://sandbox-api-pay.line.me
-// 正式環境：https://api-pay.line.me
-const LINEPAY_SITE_URL = process.env.LINEPAY_SITE_URL || 'https://sandbox-api-pay.line.me';
+// URL 由 envConfig 根據 APP_ENV 決定（local → sandbox, production → live）
+// 仍允許透過 LINEPAY_SITE_URL 環境變數覆蓋（供特殊情境使用）
+const LINEPAY_SITE_URL = process.env.LINEPAY_SITE_URL || LINEPAY_SITE_URL_FROM_CONFIG;
 
 /**
  * Generate Line Pay V3 API Signature

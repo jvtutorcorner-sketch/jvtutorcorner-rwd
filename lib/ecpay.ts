@@ -5,10 +5,8 @@ const ECPAY_MERCHANT_ID = process.env.ECPAY_MERCHANT_ID || '2000132'; // Test Me
 const ECPAY_HASH_KEY = process.env.ECPAY_HASH_KEY || '5294y06JbISpM5x9'; // Test HashKey
 const ECPAY_HASH_IV = process.env.ECPAY_HASH_IV || 'v77hoKGq4kWxNNIS'; // Test HashIV
 
-// API URLs
-export const ECPAY_API_URL = process.env.NODE_ENV === 'production'
-    ? 'https://payment.ecpay.com.tw/Cashier/AioCheckOut/V5'
-    : 'https://payment-stage.ecpay.com.tw/Cashier/AioCheckOut/V5';
+// API URLs — 由 envConfig 根據 APP_ENV 決定（local → staging, production → live）
+export { ECPAY_API_URL } from '@/lib/envConfig';
 
 /**
  * Generate ECPay CheckMacValue

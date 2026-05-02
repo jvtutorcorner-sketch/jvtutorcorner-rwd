@@ -28,8 +28,25 @@ export default async function RootLayout({
   const appConfigs = await getAppPermissionsFromDynamoDB();
 
   return (
-    <html lang="zh-TW">
+    <html lang="zh-TW" suppressHydrationWarning>
       <body suppressHydrationWarning>
+        {/* 预加载脚本：在 React 加载前同步读取并设置语言，防止闪烁 */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                try {
+                  const locale = localStorage.getItem('locale') || 'zh-TW';
+                  document.documentElement.lang = locale;
+                  document.documentElement.setAttribute('data-locale', locale);
+                } catch (e) {
+                  // 如果 localStorage 访问失败，使用默认值
+                  document.documentElement.lang = 'zh-TW';
+                }
+              })();
+            `,
+          }}
+        />
         <ConfigureAmplify />
         <IntlProvider>
           {/* Session timer handles 30-minute expiry + 1-minute warning */}

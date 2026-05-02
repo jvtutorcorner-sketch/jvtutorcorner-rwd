@@ -61,11 +61,12 @@ export default function MenuBar() {
       }
     }
     if (typeof window !== 'undefined') {
-      document.addEventListener('mousedown', onDocClick);
+      // Use 'click' event with capture phase for more reliable handling
+      document.addEventListener('click', onDocClick, true);
     }
     return () => {
       if (typeof window !== 'undefined') {
-        document.removeEventListener('mousedown', onDocClick);
+        document.removeEventListener('click', onDocClick, true);
       }
     };
   }, []);

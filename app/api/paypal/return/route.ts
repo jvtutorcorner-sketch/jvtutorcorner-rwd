@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateAccessToken, PAYPAL_API } from '@/lib/paypal';
+import { handlePaymentSuccess } from '@/lib/paymentSuccessHandler';
 
 export async function GET(req: NextRequest) {
     const url = new URL(req.url);
@@ -98,6 +99,26 @@ export async function GET(req: NextRequest) {
                 }
             } else {
                 console.warn('[PayPal Return] No custom_id (orderId) found in PayPal response.');
+            }
+
+            // 🟢 Call the unified payment success handler (points, course activation, etc.)
+            if (orderId) {
+                try {
+                    const captureAmount = data.purchase_units?.[0]?.amount?.value;
+                    const result = await handlePaymentSuccess({
+                        orderId,
+                        paymentMethod: 'paypal',
+                        transactionId: data.id,
+                        amount: captureAmount ? Number(captureAmount) : undefined,
+                    });
+                    if (result.ok) {
+                        console.log(`[PayPal Return] Payment success handler completed. Points added: ${result.pointsAdded || 0}`);
+                    } else {
+                        console.warn(`[PayPal Return] Payment success handler failed: ${result.error}`);
+                    }
+                } catch (handlerErr) {
+                    console.error('[PayPal Return] Payment success handler error:', handlerErr);
+                }
             }
 
             return NextResponse.redirect(`${baseURL}/plans`, 302);

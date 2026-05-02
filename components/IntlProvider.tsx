@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useLayoutEffect, useEffect, useState } from 'react';
 
 type Messages = Record<string, string>;
 
@@ -13,15 +13,30 @@ type IntlContextValue = {
 
 const IntlContext = createContext<IntlContextValue | null>(null);
 
+// 初始化函数：同步读取 localStorage 以获取正确的初始语言
+function getInitialLocale(defaultLocale: string): string {
+  if (typeof window === 'undefined') {
+    return defaultLocale;
+  }
+  try {
+    return window.localStorage.getItem('locale') || defaultLocale;
+  } catch {
+    return defaultLocale;
+  }
+}
+
 export const IntlProvider: React.FC<{ children: React.ReactNode; defaultLocale?: string }> = ({ children, defaultLocale = 'zh-TW' }) => {
-  const [locale, setLocaleState] = useState<string>(defaultLocale);
+  const [locale, setLocaleState] = useState<string>(() => getInitialLocale(defaultLocale));
   const [messages, setMessages] = useState<Messages>({});
   const [ready, setReady] = useState(false);
 
-  useEffect(() => {
+  // 使用 useLayoutEffect 在浏览器绘制前同步处理语言初始化
+  useLayoutEffect(() => {
     const stored = typeof window !== 'undefined' ? window.localStorage.getItem('locale') : null;
-    if (stored) setLocaleState(stored);
-  }, []);
+    if (stored && stored !== locale) {
+      setLocaleState(stored);
+    }
+  }, [locale]);
 
   useEffect(() => {
     async function load() {

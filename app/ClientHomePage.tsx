@@ -11,7 +11,7 @@ import { TeacherCard } from '@/components/TeacherCard';
 import { CourseCard } from '@/components/CourseCard';
 import Tabs from '@/components/Tabs';
 import { getStoredUser, type StoredUser } from '@/lib/mockAuth';
-import { useT } from '@/components/IntlProvider'; // Client-side hook
+import { useT, useIntl } from '@/components/IntlProvider'; // Client-side hook
 import OnboardingQuestionnaire from '@/components/OnboardingQuestionnaire';
 import HowItWorks from '@/components/HowItWorks';
 import MedicineIdentificationFlow from '@/components/MedicineIdentificationFlow';
@@ -26,6 +26,7 @@ export default function ClientHomePage({
   initialCarouselImages: string[];
 }) {
   const t = useT();
+  const { ready } = useIntl();
   const router = useRouter();
   const [user, setUser] = useState<StoredUser | null>(null);
   const [showGuestQuestionnaire, setShowGuestQuestionnaire] = useState(false);
@@ -135,6 +136,11 @@ export default function ClientHomePage({
   // Use personalised recs if available, fall back to static courses
   const displayRecs: Course[] = recommendations.length > 0 ? (recommendations as unknown as Course[]) : COURSES.slice(0, 3);
 
+  // 等待翻译准备好，避免闪烁
+  if (!ready) {
+    return <div className="home" style={{ minHeight: '100vh' }} />;
+  }
+
   return (
     <div className="home">
       {/* Guest idle questionnaire – bottom drawer */}
@@ -168,13 +174,13 @@ export default function ClientHomePage({
             <div className="hero-premium-text">
               <h1 className="hero-premium-title">
                 {user 
-                  ? `歡迎回來！${user.firstName || user.email?.split('@')[0] || '學習者'}` 
-                  : '開啟您的智慧學習之旅'}
+                  ? `${t('hero_premium_title_user')}！${user.firstName || user.email?.split('@')[0] || '學習者'}` 
+                  : t('hero_premium_title_guest')}
               </h1>
               <p className="hero-premium-subtitle">
                 {user
-                  ? '繼續您的學習之旅，探索最新的精選課程和頂尖教師，為您的未來增值。'
-                  : '與全球頂尖教師即時互動，體驗沉浸式在線教室。我們為您量身定制學習路徑，讓進步看得見。'}
+                  ? t('hero_premium_subtitle_user')
+                  : t('hero_premium_subtitle_guest')}
               </p>
               <div className="hero-premium-cta">
                 {user ? (
@@ -332,19 +338,19 @@ export default function ClientHomePage({
       <section className="section-white">
         <div className="container">
           <div className="section-header-enhanced text-center" style={{ textAlign: 'center', marginBottom: '60px' }}>
-            <h2 className="section-title-large">簡單三步，開始學習</h2>
-            <p className="section-subtitle">您的進步從未如此輕鬆</p>
+            <h2 className="section-title-large">{t('how_it_works_title')}</h2>
+            <p className="section-subtitle">{t('how_it_works_subtitle')}</p>
           </div>
           <div className="how-it-works-grid">
             {[
-              { step: '01', title: '挑選老師與課程', desc: '瀏覽我們精選的教師背景與過往評價。', icon: '🔍' },
-              { step: '02', title: '預約上課時間', desc: '選擇適合您的時段，靈活安排學習計畫。', icon: '📅' },
-              { step: '03', title: '進入教室上課', desc: '透過視訊與白板工具，開啟高效互動學習。', icon: '🎓' },
+              { step: '01', titleKey: 'how_it_works_step1_title', descKey: 'how_it_works_step1_desc', icon: '🔍' },
+              { step: '02', titleKey: 'how_it_works_step2_title', descKey: 'how_it_works_step2_desc', icon: '📅' },
+              { step: '03', titleKey: 'how_it_works_step3_title', descKey: 'how_it_works_step3_desc', icon: '🎓' },
             ].map((step) => (
               <div key={step.step} className="how-it-works-card" style={{ padding: '40px', textAlign: 'center' }}>
                 <div className="how-it-works-number" style={{ marginBottom: '20px' }}>{step.step}</div>
-                <h3 style={{ fontSize: '1.5rem', marginBottom: '15px' }}>{step.title}</h3>
-                <p style={{ color: '#4b5563' }}>{step.desc}</p>
+                <h3 style={{ fontSize: '1.5rem', marginBottom: '15px' }}>{t(step.titleKey)}</h3>
+                <p style={{ color: '#4b5563' }}>{t(step.descKey)}</p>
               </div>
             ))}
           </div>

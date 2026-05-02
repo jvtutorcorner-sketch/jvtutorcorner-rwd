@@ -354,7 +354,12 @@ export default function AdminSettingsPage() {
     });
     const data = await res.json();
     if (res.ok && data.ok) {
-      setCreateMsg('建立成功：' + data.profile?.email);
+      const tempPassword = data.profile?.temporaryPassword;
+      if (tempPassword) {
+        setCreateMsg(`建立成功：${data.profile?.email}（臨時密碼：${tempPassword}）`);
+      } else {
+        setCreateMsg('建立成功：' + data.profile?.email);
+      }
       setNewUserEmail('');
     } else {
       setCreateMsg('錯誤：' + (data?.error || '建立失敗'));

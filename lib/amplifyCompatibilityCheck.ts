@@ -181,13 +181,6 @@ function checkJavaScriptExecution(): {
 /**
  * REQUIRED Environment Variables (for production on Amplify)
  * 
- * AWS Lambda (for Python execution):
- * - AWS_REGION                    Default: ap-northeast-1
- * - AWS_ACCESS_KEY_ID             Required if on Amplify
- * - AWS_SECRET_ACCESS_KEY         Required if on Amplify
- * - AWS_LAMBDA_FUNCTION_NAME      Default: RunPythonWorkflowNode
- * - LAMBDA_TIMEOUT_MS             Default: 30000 (30 seconds)
- * 
  * Script Execution (JavaScript):
  * - SCRIPT_EXECUTION_TIMEOUT_MS   Default: 3000 (3 seconds)
  * - SCRIPT_COMPILE_TIMEOUT_MS     Default: 1000 (1 second)
@@ -198,13 +191,6 @@ function checkJavaScriptExecution(): {
  */
 
 export const AMPLIFY_ENV_VARS = {
-  // AWS Lambda
-  AWS_REGION: 'ap-northeast-1',
-  AWS_ACCESS_KEY_ID: '<required for Amplify>',
-  AWS_SECRET_ACCESS_KEY: '<required for Amplify>',
-  AWS_LAMBDA_FUNCTION_NAME: 'RunPythonWorkflowNode',
-  LAMBDA_TIMEOUT_MS: '30000',
-  
   // Script Execution
   SCRIPT_EXECUTION_TIMEOUT_MS: '3000',
   SCRIPT_COMPILE_TIMEOUT_MS: '1000',

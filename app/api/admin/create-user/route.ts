@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs/promises';
 import path from 'path';
+import crypto from 'crypto';
 import resolveDataFile from '@/lib/localData';
 import { ddbDocClient } from '@/lib/dynamo';
 import { PutCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
@@ -20,10 +21,14 @@ async function writeProfiles(arr: any[]) {
   await fs.writeFile(DATA_FILE, JSON.stringify(arr, null, 2), 'utf8');
 }
 
+function createTemporaryPassword() {
+  return `tmp_${Date.now().toString(36)}_${crypto.randomBytes(6).toString('hex')}`;
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { email, plan } = body;
+    const { email, plan, password } = body;
     if (!email) return NextResponse.json({ ok: false, error: 'email required' }, { status: 400 });
     const PROFILES_TABLE = process.env.DYNAMODB_TABLE_PROFILES || process.env.PROFILES_TABLE || 'jvtutorcorner-profiles';
     const useDynamo = typeof PROFILES_TABLE === 'string' && PROFILES_TABLE.length > 0 &&
@@ -42,12 +47,22 @@ export async function POST(req: Request) {
     if (!useDynamo && profiles.find((p: any) => p.email === email)) return NextResponse.json({ ok: false, error: 'email exists' }, { status: 400 });
 
     const id = `u_${Date.now()}`;
-    const record = { id, email, password: '123456', plan: plan || 'basic', nickname: email.split('@')[0], role: 'student' };
+    const providedPassword = typeof password === 'string' ? password.trim() : '';
+    const defaultPassword = process.env.DEFAULT_NEW_USER_PASSWORD || '';
+    const generatedPassword = createTemporaryPassword();
+    const finalPassword = providedPassword || defaultPassword || generatedPassword;
+    const useTemporaryPassword = !providedPassword && !defaultPassword;
+
+    const record = { id, email, password: finalPassword, plan: plan || 'basic', nickname: email.split('@')[0], role: 'student' };
+    const responseProfile: any = { id: record.id, email: record.email, plan: record.plan };
+    if (useTemporaryPassword) {
+      responseProfile.temporaryPassword = finalPassword;
+    }
 
     if (useDynamo) {
       try {
         await ddbDocClient.send(new PutCommand({ TableName: PROFILES_TABLE, Item: record }));
-        return NextResponse.json({ ok: true, profile: { id: record.id, email: record.email, plan: record.plan } });
+        return NextResponse.json({ ok: true, profile: responseProfile });
       } catch (e: any) {
         console.error('[admin.create-user] Dynamo write failed', e?.message || e);
         return NextResponse.json({ ok: false, error: 'Dynamo write failed' }, { status: 500 });
@@ -56,7 +71,7 @@ export async function POST(req: Request) {
 
     profiles.push(record);
     await writeProfiles(profiles);
-    return NextResponse.json({ ok: true, profile: { id: record.id, email: record.email, plan: record.plan } });
+    return NextResponse.json({ ok: true, profile: responseProfile });
   } catch (err: any) {
     console.error(err);
     return NextResponse.json({ ok: false, error: err?.message || 'error' }, { status: 500 });

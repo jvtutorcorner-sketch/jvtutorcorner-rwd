@@ -127,6 +127,8 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   const [agoraRoomData, setAgoraRoomData] = useState<{ uuid: string; roomToken: string; appIdentifier: string; region: string; userId: string } | null>(null);
   const [whiteboardState, setWhiteboardState] = useState<any>(null);
   const [whiteboardError, setWhiteboardError] = useState<string | null>(null);
+  const [whiteboardInitTimeout, setWhiteboardInitTimeout] = useState(false);
+  const [whiteboardRetryCount, setWhiteboardRetryCount] = useState(0);
   const [joinAttemptCount, setJoinAttemptCount] = useState(0);
   const lastJoinTimeRef = useRef<number>(0);
 
@@ -689,7 +691,17 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     };
 
     initAgoraWhiteboard();
-  }, [useAgoraWhiteboard, mounted, userId, courseId, sessionReadyKey, computedRole, preestablishedWhiteboardUuid]); // Added preestablishedWhiteboardUuid to dependencies
+
+    // Timeout: if agoraRoomData is still null after 20 seconds, show retry UI
+    const timeoutId = setTimeout(() => {
+      setAgoraRoomData(prev => {
+        if (!prev) setWhiteboardInitTimeout(true);
+        return prev;
+      });
+    }, 20000);
+
+    return () => clearTimeout(timeoutId);
+  }, [useAgoraWhiteboard, mounted, userId, courseId, sessionReadyKey, computedRole, preestablishedWhiteboardUuid, whiteboardRetryCount]); // Added preestablishedWhiteboardUuid to dependencies
 
   // Load PDF from server if available (synced from wait page)
   // ★ Improved: Clear old PDF when sessionReadyKey changes, then check for new one
@@ -819,34 +831,59 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
 
   // ★★★ Auto-insert PDF into Agora Whiteboard when ready ★★★
   useEffect(() => {
-    // Only proceed if we are a teacher, have a file, room data, and the whiteboard reference
-    if (isTeacher && useAgoraWhiteboard && selectedPdf && agoraRoomData && agoraWhiteboardRef.current) {
-      // Avoid double insertion if same PDF and same session
-      const pdfIdentifier = `${sessionReadyKey}_${selectedPdf.name}_${selectedPdf.size}`;
-      if (pdfInsertedRef.current === pdfIdentifier) return;
+    // Only proceed if we are a teacher and have PDF + room data.
+    // Do not gate on ref.current here because ref changes do not trigger re-renders.
+    if (!isTeacher || !useAgoraWhiteboard || !selectedPdf || !agoraRoomData) return;
 
-      console.log('[ClientClassroom] PDF auto-insert condition met:', selectedPdf.name);
+    const pdfIdentifier = `${sessionReadyKey}_${selectedPdf.name}_${selectedPdf.size}`;
+    if (pdfInsertedRef.current === pdfIdentifier) return;
 
-      const insert = async () => {
-        // Second check inside async to handle race conditions
-        if (!agoraWhiteboardRef.current || pdfInsertedRef.current === pdfIdentifier) return;
+    console.log('[ClientClassroom] PDF auto-insert condition met:', selectedPdf.name);
+
+    let cancelled = false;
+    const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+    const insertWithRetry = async () => {
+      const maxAttempts = 30;
+
+      for (let attempt = 1; attempt <= maxAttempts && !cancelled; attempt++) {
+        const board = agoraWhiteboardRef.current;
+        if (!board) {
+          if (attempt === 1 || attempt % 5 === 0) {
+            console.log(`[ClientClassroom] Waiting for whiteboard ref before PDF insert (${attempt}/${maxAttempts})`);
+          }
+          await wait(500);
+          continue;
+        }
+
+        if (pdfInsertedRef.current === pdfIdentifier) return;
 
         try {
           const pdfUrl = `${window.location.origin}/api/whiteboard/pdf?uuid=${encodeURIComponent(sessionReadyKey)}&t=${Date.now()}`;
-
-          console.log('[ClientClassroom] Attempting to auto-insert PDF:', selectedPdf.name, 'URL:', pdfUrl);
-          await agoraWhiteboardRef.current.insertPDF(pdfUrl, selectedPdf.name);
+          console.log(`[ClientClassroom] Auto-insert attempt ${attempt}/${maxAttempts}:`, selectedPdf.name);
+          await board.insertPDF(pdfUrl, selectedPdf.name);
           console.log('[ClientClassroom] PDF auto-insert request sent');
           pdfInsertedRef.current = pdfIdentifier;
+          return;
         } catch (e) {
-          console.error('[ClientClassroom] Failed to auto-insert PDF:', e);
+          console.warn(`[ClientClassroom] PDF auto-insert attempt ${attempt}/${maxAttempts} failed:`, e);
+          await wait(Math.min(750 + attempt * 100, 2000));
         }
-      };
+      }
 
-      // Give board time to connect and become writable
-      const timer = setTimeout(insert, 3000);
-      return () => clearTimeout(timer);
-    }
+      if (!cancelled && pdfInsertedRef.current !== pdfIdentifier) {
+        console.error('[ClientClassroom] Failed to auto-insert PDF after retries');
+      }
+    };
+
+    const timer = setTimeout(() => {
+      void insertWithRetry();
+    }, 500);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [useAgoraWhiteboard, selectedPdf, agoraRoomData, sessionReadyKey, isTeacher]);
 
   // session countdown - default to 5 minutes
@@ -961,8 +998,6 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   }, [orderId, courseId, storedUser?.email, participants.some(p => p.role === 'student')]);
 
   const timerRef = useRef<number | null>(null);
-  // Delay before countdown starts (5 seconds)
-  const INITIAL_COUNTDOWN_DELAY_MS = 5 * 1000;
   const [fullyInitialized, setFullyInitialized] = useState(false);
   const [classFullyLoadedAt, setClassFullyLoadedAt] = useState<number | null>(null);
   const [bootSteps, setBootSteps] = useState<Array<{ name: string; done: boolean }>>([
@@ -1988,10 +2023,8 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
         // If no endTs, initialize one. Both teacher and student can initialize to ensure timer starts.
         if (!endTs) {
           const now = Date.now();
-          // The end time is calculated from the moment both joined+whiteboard are ready
-          // We add a small buffer for the initial delay
-          const bufferSecs = Math.ceil(INITIAL_COUNTDOWN_DELAY_MS / 1000);
-          endTs = now + (secs + bufferSecs) * 1000;
+          // Start from the exact configured order duration (no extra offset).
+          endTs = now + secs * 1000;
           endTsRef.current = endTs;
 
           console.log('[Timer] Initializing new authoritative endTs:', endTs);
@@ -2321,8 +2354,8 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
 
   return (
     <div className="classroom-page-wrapper">
-      {/* Error Display - Only show in development mode */}
-      {process.env.NODE_ENV !== 'production' && whiteboardError && (
+      {/* Error Display */}
+      {whiteboardError && (
         <div style={{
           background: '#fee2e2',
           color: '#dc2626',
@@ -2332,7 +2365,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           borderBottom: '1px solid #fecaca',
           fontWeight: '500'
         }}>
-          <strong>錯誤：</strong>{whiteboardError}
+          <strong>白板連線失敗：</strong>{process.env.NODE_ENV !== 'production' ? whiteboardError : '請重新整理頁面或聯繫支援人員'}
         </div>
       )}
 
@@ -2675,6 +2708,20 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                       <div style={{ fontWeight: 600, fontSize: 18, marginTop: 12, color: '#1e293b' }}>白板功能需要升級</div>
                       <div style={{ color: '#64748b', marginTop: 8, fontSize: 14 }}>Pro 或 Elite 方案才能使用互動白板</div>
                       <a href="/pricing" style={{ display: 'inline-block', marginTop: 16, background: '#2563eb', color: 'white', padding: '8px 24px', borderRadius: 8, textDecoration: 'none', fontWeight: 600, fontSize: 14 }}>查看方案</a>
+                    </div>
+                  </div>
+                ) : whiteboardInitTimeout && !agoraRoomData ? (
+                  <div className="w-full h-full flex items-center justify-center bg-slate-50">
+                    <div className="text-center" style={{ padding: 32 }}>
+                      <div style={{ fontSize: 40, marginBottom: 12 }}>⚠️</div>
+                      <div style={{ fontWeight: 600, fontSize: 16, color: '#dc2626', marginBottom: 8 }}>白板連線逾時</div>
+                      <div style={{ color: '#64748b', fontSize: 14, marginBottom: 16 }}>無法連線至白板服務，請重新整理頁面</div>
+                      <button
+                        onClick={() => { setWhiteboardInitTimeout(false); setAgoraRoomData(null); setWhiteboardRetryCount(c => c + 1); }}
+                        style={{ background: '#2563eb', color: 'white', padding: '8px 24px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: 14 }}
+                      >
+                        重試
+                      </button>
                     </div>
                   </div>
                 ) : agoraRoomData ? (

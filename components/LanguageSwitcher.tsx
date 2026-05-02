@@ -23,10 +23,13 @@ export const LanguageSwitcher: React.FC = () => {
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
       if (!ref.current) return;
-      if (e.target instanceof Node && !ref.current.contains(e.target)) setOpen(false);
+      if (e.target instanceof Node && !ref.current.contains(e.target)) {
+        setOpen(false);
+      }
     }
-    document.addEventListener('mousedown', onDocClick);
-    return () => document.removeEventListener('mousedown', onDocClick);
+    // Use 'click' instead of 'mousedown' for better event handling
+    document.addEventListener('click', onDocClick, true);
+    return () => document.removeEventListener('click', onDocClick, true);
   }, []);
 
   const current = LANGS.find((l) => l.code === locale) ?? LANGS[0];

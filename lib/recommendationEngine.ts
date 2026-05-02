@@ -78,9 +78,15 @@ function computeTagScores(
   }
 
   // Log smoothing: prevents single tag from dominating
+  // Handle negative weights (from dislike feedback) by preserving them
   const scores: Record<string, number> = {};
   for (const [tag, sum] of Object.entries(bucket)) {
-    scores[tag] = Math.log(1 + sum);
+    if (sum >= 0) {
+      scores[tag] = Math.log(1 + sum);
+    } else {
+      // Preserve negative weights from dislike feedback
+      scores[tag] = sum;
+    }
   }
   return scores;
 }

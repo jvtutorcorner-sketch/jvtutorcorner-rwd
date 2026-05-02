@@ -32,7 +32,10 @@ function makeSvg(text: string) {
   return `<?xml version="1.0" encoding="UTF-8"?><svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><rect width="100%" height="100%" fill="${bg}"/><g>${parts.join('')}</g></svg>`;
 }
 
-const SECRET = process.env.CAPTCHA_SECRET || process.env.AWS_SECRET_ACCESS_KEY || 'jvtutor-fallback-secret-key-2024';
+const SECRET = process.env.CAPTCHA_SECRET || process.env.SESSION_SECRET || process.env.API_HMAC_SECRET || randomString(48);
+if (!process.env.CAPTCHA_SECRET && !process.env.SESSION_SECRET && !process.env.API_HMAC_SECRET) {
+  console.warn('[captcha] No CAPTCHA_SECRET configured. Using ephemeral in-memory secret; tokens reset on restart.');
+}
 
 function sign(text: string): string {
   return crypto.createHmac('sha256', SECRET).update(text).digest('hex');
@@ -52,16 +55,16 @@ export function generateCaptcha(ttlMs = 5 * 60 * 1000) {
   const svg = makeSvg(value);
   const image = 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
 
-  // Debug log (can remove sensitive info in prod)
-  console.log('[captcha] generated stateless', { value, expires });
+  // Avoid logging CAPTCHA answer value.
+  console.log('[captcha] generated stateless', { expires });
 
   return { token, image };
 }
 
 export function verifyCaptcha(token: string | undefined, value: string | undefined) {
   // Common bypass code for automated testing
-  const bypassSecret = process.env.NEXT_PUBLIC_LOGIN_BYPASS_SECRET || process.env.LOGIN_BYPASS_SECRET || 'jv_secret_bypass_2024';
-  if (value === bypassSecret || value === 'jv_secret_bypass_2024' || value === 'jv_secure_bypass_2024') {
+  const bypassSecret = process.env.LOGIN_BYPASS_SECRET || process.env.NEXT_PUBLIC_LOGIN_BYPASS_SECRET;
+  if (bypassSecret && value === bypassSecret) {
     console.log('[captcha] bypass code used');
     return true;
   }

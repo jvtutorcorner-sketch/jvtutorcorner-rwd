@@ -467,85 +467,37 @@ function CanvasFlow({ initialWorkflow, onSave }: WorkflowCanvasProps) {
 // 版本: Node.js 18+
 // 超時: 3000ms (3 秒) — 支援通用計算
 // 記憶體: 128MB (可在配置調整)
-#
-# 輸入: data (dict) — 工作流程資料
-# 輸出: print() 會顯示在日誌，return 會作為結果
-# ═══════════════════════════════════════════════════════════
-
-import json
-from datetime import datetime
-
-# 📥 1️⃣ 存取輸入資料
-student_name = data.get("student_name", "Explorer")
-course_name = data.get("course_name", "Python 101")
-try_count = data.get("try_count", 0)
-
-# 🔄 2️⃣ 執行你的邏輯
-timestamp = datetime.now().isoformat()
-processed_try_count = try_count + 1
-
-# ✅ 3️⃣ 建立結果
-result = {
-    "status": "success",
-    "message": f"👋 Hello {student_name}! Welcome to {course_name}",
-    "course": course_name,
-    "timestamp": timestamp,
-    "processed": True,
-    "try_count": processed_try_count,
-    "python_version": "3.11"
-}
-
-# 📋 4️⃣ 列印日誌 (會顯示在執行跟蹤中)
-print(f"[Python] Processing {student_name}")
-print(f"[Python] Course: {course_name}")
-print(json.dumps(result))
-
-# 📤 5️⃣ 回傳結果 (自動轉換為 JSON，合併入工作流程資料)
-return result`
-                    }
-                    : false
-                    ? { 
-                        script: `// ═══════════════════════════════════════════════════════════
-// JavaScript Workflow Script — 初始化範例
-// ═══════════════════════════════════════════════════════════
-// 版本: Node.js 18+ | isolated-vm 6.0.2+
-// 超時: 3000ms (預設，可設定)
-// 記憶體: 128MB (可設定)
 //
-// 注意：此執行環境是沙箱隔離的
-// ❌ 不支援: fetch, setTimeout, 檔案系統
-// ✅ 支援: 標準 JS, JSON, 資料轉換
+// 輸入: data (object) — 工作流程資料
+// 輸出: console.log() 會顯示在日誌，return 會作為結果
 // ═══════════════════════════════════════════════════════════
 
-// 📥 1️⃣ 存取工作流程資料
+// 📥 1️⃣ 存取輸入資料
 const studentName = data?.student_name || 'Explorer';
 const courseName = data?.course_name || 'JavaScript 101';
-const processedCount = (data?.processed_count || 0) + 1;
+const tryCount = data?.try_count || 0;
 
-// 📝 2️⃣ 執行你的邏輯
-console.log('[JS] Starting workflow...');
-console.log('[JS] Student:', studentName);
-console.log('[JS] Course:', courseName);
-
+// 🔄 2️⃣ 執行你的邏輯
 const timestamp = new Date().toISOString();
+const processedTryCount = tryCount + 1;
 
-// ✅ 3️⃣ 建立結果物件
+// ✅ 3️⃣ 建立結果
 const result = {
   status: 'success',
-  message: \`👋 Hello \${studentName}! Processing \${courseName}\`,
+  message: \`👋 Hello \${studentName}! Welcome to \${courseName}\`,
   course: courseName,
   timestamp: timestamp,
   processed: true,
-  processed_count: processedCount,
-  from_javascript: true,
-  runtime: 'Node.js 18+'
+  try_count: processedTryCount,
+  javascript_version: 'ES6+'
 };
 
-// 📋 4️⃣ 列印日誌
-console.log('[JS] Result processed');
+// 📋 4️⃣ 列印日誌 (會顯示在執行跟蹤中)
+console.log(\`[JavaScript] Processing \${studentName}\`);
+console.log(\`[JavaScript] Course: \${courseName}\`);
 console.log(JSON.stringify(result, null, 2));
 
-// 📤 5️⃣ 回傳結果 (自動合併入工作流程資料)
+// 📤 5️⃣ 回傳結果 (自動轉換為 JSON，合併入工作流程資料)
 return result;`
                     }
                     : subtype === 'action_send_gmail'

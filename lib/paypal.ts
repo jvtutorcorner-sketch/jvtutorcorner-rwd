@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
+import { PAYPAL_API_BASE_URL } from '@/lib/envConfig';
 
 const PAYPAL_CLIENT_ID = process.env.PAYPAL_CLIENT_ID;
 const PAYPAL_APP_SECRET = process.env.PAYPAL_APP_SECRET;
-const PAYPAL_API_BASE = process.env.PAYPAL_API_BASE_URL || 'https://api-m.sandbox.paypal.com';
+// URL 由 envConfig 根據 APP_ENV 決定（local → sandbox, production → live）
+const PAYPAL_API_BASE = PAYPAL_API_BASE_URL;
 
 /**
  * Generate PayPal Access Token using OAuth 2.0 Client Credentials Flow
@@ -32,3 +34,6 @@ export async function generateAccessToken() {
 export const PAYPAL_API = {
     base: PAYPAL_API_BASE,
 };
+
+/** 目前使用中的 PayPal API Base URL（用於 log/debug） */
+export const ACTIVE_PAYPAL_ENV = PAYPAL_API_BASE;

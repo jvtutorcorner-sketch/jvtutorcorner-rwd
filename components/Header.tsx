@@ -146,8 +146,15 @@ export default function Header() {
       const insidePortal = portalContainerRef.current && target instanceof Node && portalContainerRef.current.contains(target);
       if (!insideMenu && !insidePortal) setMenuOpen(false);
     }
-    if (typeof window !== 'undefined') document.addEventListener('mousedown', onDocClick);
-    return () => { if (typeof window !== 'undefined') document.removeEventListener('mousedown', onDocClick); };
+    if (typeof window !== 'undefined') {
+      // Use 'click' event with capture phase for more reliable handling
+      document.addEventListener('click', onDocClick, true);
+    }
+    return () => { 
+      if (typeof window !== 'undefined') {
+        document.removeEventListener('click', onDocClick, true);
+      }
+    };
   }, []);
 
   // create portal container for avatar dropdown (client-only)
@@ -348,6 +355,12 @@ export default function Header() {
           aria-modal="true"
           className="mobile-menu-overlay"
           style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 60, display: 'flex', justifyContent: 'flex-end' }}
+          onClick={(e) => {
+            // Close menu if clicking on the overlay background (not on the menu itself)
+            if (e.target === e.currentTarget) {
+              setMobileMenuOpen(false);
+            }
+          }}
         >
           <div style={{ width: 280, background: '#fff', padding: 16, overflowY: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>

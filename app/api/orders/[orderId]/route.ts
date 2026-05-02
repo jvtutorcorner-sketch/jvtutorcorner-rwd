@@ -178,21 +178,14 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ or
       const host = request.headers.get('host') || 'localhost:3000';
       const base = process.env.NEXT_PUBLIC_BASE_URL || `${protocol}://${host}`;
       try {
-        // set PAID
+        // 只標記為 PAID。實際的課程激活 (ACTIVE) 和 點數加總 改由 paymentSuccessHandler 統一處理 以確保冪等性
         await fetch(`${base}/api/enroll`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ id: updated.enrollmentId, status: 'PAID' }),
         });
-
-        // activate course access
-        await fetch(`${base}/api/enroll`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: updated.enrollmentId, status: 'ACTIVE' }),
-        });
       } catch (err) {
-        console.error('Failed to update enrollment status after order paid:', err);
+        console.error('[PAID] Failed to update enrollment:', err);
       }
     }
 

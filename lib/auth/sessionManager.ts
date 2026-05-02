@@ -6,7 +6,11 @@ import { ddbDocClient } from '@/lib/dynamo';
 import { PutCommand, GetCommand, DeleteCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 
 const SESSIONS_TABLE = process.env.DYNAMODB_TABLE_SESSIONS || 'jvtutorcorner-sessions';
-const SESSION_SECRET = process.env.SESSION_SECRET || 'jv_session_fallback_secret_2024';
+const sessionSecretFromEnv = process.env.SESSION_SECRET || process.env.API_HMAC_SECRET;
+if (!sessionSecretFromEnv) {
+  console.warn('[sessionManager] SESSION_SECRET is not set. Using ephemeral in-memory secret; sessions reset on restart.');
+}
+const SESSION_SECRET = sessionSecretFromEnv || crypto.randomBytes(48).toString('hex');
 const SESSION_TTL_SECONDS = 60 * 60 * 24; // 24 hours
 
 export interface SessionPayload {

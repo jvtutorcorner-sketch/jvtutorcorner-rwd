@@ -16,12 +16,16 @@ import {
  * 生產環境應該添加認證機制
  */
 
-const ADMIN_SECRET = process.env.ADMIN_API_SECRET || 'dev-secret';
+const ADMIN_SECRET = process.env.ADMIN_API_SECRET;
 
 function validateAdminSecret(req: NextRequest): boolean {
+  if (!ADMIN_SECRET) {
+    return process.env.NODE_ENV === 'development';
+  }
+
   const authHeader = req.headers.get('Authorization');
   if (!authHeader) {
-    return process.env.NODE_ENV === 'development'; // 開發環境允許無認證
+    return false;
   }
   
   const token = authHeader.replace('Bearer ', '');
