@@ -138,7 +138,7 @@ export default function ClientHomePage({
 
   // 等待翻译准备好，避免闪烁
   if (!ready) {
-    return <div className="home" style={{ minHeight: '100vh' }} />;
+    return <div className="home home-loading-shell" />;
   }
 
   return (

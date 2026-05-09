@@ -174,6 +174,40 @@ export default function Header() {
 
   const [scrolled, setScrolled] = useState(false);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const syncViewportHeightVar = () => {
+      const vh = window.innerHeight * 0.01;
+      document.documentElement.style.setProperty('--vh', `${vh}px`);
+    };
+
+    syncViewportHeightVar();
+    window.addEventListener('resize', syncViewportHeightVar);
+    window.addEventListener('orientationchange', syncViewportHeightVar);
+
+    return () => {
+      window.removeEventListener('resize', syncViewportHeightVar);
+      window.removeEventListener('orientationchange', syncViewportHeightVar);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!mobileMenuOpen || typeof document === 'undefined') return;
+
+    const body = document.body;
+    const prevOverflow = body.style.overflow;
+    const prevOverscrollBehavior = body.style.overscrollBehavior;
+
+    body.style.overflow = 'hidden';
+    body.style.overscrollBehavior = 'contain';
+
+    return () => {
+      body.style.overflow = prevOverflow;
+      body.style.overscrollBehavior = prevOverscrollBehavior;
+    };
+  }, [mobileMenuOpen]);
+
   useLayoutEffect(() => {
     if (typeof window === 'undefined') return;
     const onScroll = () => {
@@ -354,7 +388,6 @@ export default function Header() {
           role="dialog"
           aria-modal="true"
           className="mobile-menu-overlay"
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 60, display: 'flex', justifyContent: 'flex-end' }}
           onClick={(e) => {
             // Close menu if clicking on the overlay background (not on the menu itself)
             if (e.target === e.currentTarget) {
@@ -362,7 +395,7 @@ export default function Header() {
             }
           }}
         >
-          <div style={{ width: 280, background: '#fff', padding: 16, overflowY: 'auto' }}>
+          <div className="mobile-menu-panel">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <div style={{ fontWeight: 700 }}>{t('menu_label')}</div>
               <Button aria-label="關閉選單" variant="ghost" className="p-1" onClick={() => setMobileMenuOpen(false)}>✕</Button>

@@ -12,6 +12,15 @@ metadata:
 
 此技能用於驗證學生看到的課程列表 (`/student_courses`) 與老師看到的課程列表 (`/teacher_courses`) 之間的資料是否一致。
 
+## Mobile Optimization Standard (iOS & Android)
+
+在設計或除錯移動端 UI 時，必須同時驗證 WebKit（iOS Safari）與 Blink（Android Chrome）的一致性：
+
+1. **高度適應**：禁止單純使用 `100vh` 定位全螢幕元素。必須優先考慮動態視窗單位（`dvh`/`svh`）或使用 JS 動態計算 `--vh`，避免 iOS/Android 瀏覽器工具列遮擋內容。
+2. **邊距緩衝**：所有 Fixed/Absolute 且貼齊邊緣的元素，必須使用 `env(safe-area-inset-top)`、`env(safe-area-inset-bottom)`、`env(safe-area-inset-left)`、`env(safe-area-inset-right)`。
+3. **寬度防禦**：避免在移動端使用 `vw` 定義主要容器寬度，改用 `%`、`max-width` 或 `calc(100% - padding)`，避免 Android 捲軸導致水平溢出。
+4. **渲染測試**：修復與驗證步驟必須同時覆蓋 Safari（iOS）與 Chrome（Android），不得僅在單一引擎驗收。
+
 ## 功能檢查清單
 
 ### 1. 跨角色資料一致性

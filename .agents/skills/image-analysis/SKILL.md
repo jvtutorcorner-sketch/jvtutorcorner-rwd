@@ -15,6 +15,15 @@ description: 使用 AI 視覺模型分析 UI 截圖，並根據指定的 Prompt 
 5. **批量分析 (Batch Processing)**: 支援同時傳送多張截圖或 PDF 頁面，大省 Token。
 6. **離線分析支援 (Offline Robustness)**: 搭配 `localforage`，即使課程中斷線也能將截圖與畫記存入本機 IndexedDB，待連線恢復後自動補齊分析。
 
+## Mobile Optimization Standard (iOS & Android)
+
+當此技能用於分析移動端 UI 截圖時，必須同時以 WebKit（iOS Safari）與 Blink（Android Chrome）視角檢查一致性：
+
+1. **高度適應**：禁止單純使用 `100vh` 定位全螢幕元素。必須優先考慮動態視窗單位（`dvh`/`svh`）或使用 JS 動態計算 `--vh`，避免 iOS/Android 瀏覽器工具列遮擋內容。
+2. **邊距緩衝**：所有 Fixed/Absolute 且貼齊邊緣的元素，必須使用 `env(safe-area-inset-top)`、`env(safe-area-inset-bottom)`、`env(safe-area-inset-left)`、`env(safe-area-inset-right)`。
+3. **寬度防禦**：避免在移動端使用 `vw` 定義主要容器寬度，改用 `%`、`max-width` 或 `calc(100% - padding)`，避免 Android 捲軸導致水平溢出。
+4. **渲染測試**：分析報告或修復建議必須同時覆蓋 Safari（iOS）與 Chrome（Android），不得僅在單一引擎驗收。
+
 ## 目錄結構
 - `SKILL.md`: 技能說明
 - `prompts/`: 存放各種分析用的 Prompt Markdown 檔案

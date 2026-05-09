@@ -1,5 +1,5 @@
 // app/layout.tsx
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import Script from 'next/script';
 import { GA_MEASUREMENT_ID } from '@/lib/gtag';
@@ -18,6 +18,12 @@ import ProductTour from '@/components/ProductTour';
 export const metadata: Metadata = {
   title: 'Tutor Platform',
   description: 'Online tutoring platform with video and whiteboard.',
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
 };
 
 export default async function RootLayout({
