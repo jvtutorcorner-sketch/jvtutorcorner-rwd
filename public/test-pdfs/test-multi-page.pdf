@@ -1,0 +1,915 @@
+%PDF-1.3
+%ºß¬à
+3 0 obj
+<</Type /Page
+/Parent 1 0 R
+/Resources 2 0 R
+/MediaBox [0 0 595.2799999999999727 841.8899999999999864]
+/Contents 4 0 R
+>>
+endobj
+4 0 obj
+<<
+/Length 3396
+>>
+stream
+0.200025 w
+0 G
+0.12 0.31 0.63 rg
+0. 841.8899999999999864 595.2799999999999727 -36. re
+f
+BT
+/F2 13 Tf
+14.9499999999999993 TL
+1. g
+50. 817.8899999999999864 Td
+(JV Tutor Corner — E2E Classroom Sync Test) Tj
+ET
+BT
+/F2 13 Tf
+14.9499999999999993 TL
+1. g
+485.6099999999999568 817.8899999999999864 Td
+(Page 1 / 5) Tj
+ET
+BT
+/F2 28 Tf
+32.1999999999999957 TL
+0.078 g
+50. 769.8899999999999864 Td
+([Page 1] Introduction & Learning Objectives) Tj
+ET
+0.12 0.31 0.63 RG
+2. w
+50. 753.8899999999999864 m
+545.2799999999999727 753.8899999999999864 l
+S
+BT
+/F2 15 Tf
+17.25 TL
+0. 0.392 0.235 rg
+50. 729.8899999999999864 Td
+(1. Lesson Overview) Tj
+ET
+0. 0.39 0.24 RG
+0.5 w
+50. 719.8899999999999864 m
+545.2799999999999727 719.8899999999999864 l
+S
+BT
+/F1 12 Tf
+13.7999999999999989 TL
+0.196 g
+50. 705.8899999999999864 Td
+(The flipped classroom model places new instruction at home through video lectures and) Tj
+T* (reserves in-class time for exercises, projects, and discussions. Research indicates that) Tj
+T* (students who engage actively with material through collaborative problem-solving) Tj
+T* (demonstrate significantly higher retention rates compared to passive listening. The teacher's) Tj
+T* (role shifts from lecturer to facilitator, providing targeted assistance while students work) Tj
+T* (through higher-order thinking tasks.) Tj
+ET
+BT
+/F2 15 Tf
+17.25 TL
+0.51 0.196 0. rg
+50. 640.8899999999999864 Td
+(2. Real-Time Sync Protocol) Tj
+ET
+0.51 0.2 0. RG
+0.5 w
+50. 630.8899999999999864 m
+545.2799999999999727 630.8899999999999864 l
+S
+BT
+/F1 12 Tf
+13.7999999999999989 TL
+0.196 g
+50. 616.8899999999999864 Td
+(Real-time whiteboard synchronisation relies on an event-driven WebSocket protocol. When a) Tj
+T* (teacher moves a page index, the SDK emits a scene-change event that propagates to all) Tj
+T* (participants in the room within milliseconds. Participants poll the shared scene state at) Tj
+T* (1-second intervals to handle reconnection scenarios. A PDF document uploaded before) Tj
+T* (session start is converted to a series of whiteboard scenes, each corresponding to one page,) Tj
+T* (enabling seamless teacher-controlled navigation.) Tj
+ET
+BT
+/F2 15 Tf
+17.25 TL
+0. 0.275 0.51 rg
+50. 551.8899999999999864 Td
+(3. Session Notes) Tj
+ET
+0. 0.27 0.51 RG
+0.5 w
+50. 541.8899999999999864 m
+545.2799999999999727 541.8899999999999864 l
+S
+BT
+/F1 12 Tf
+13.7999999999999989 TL
+0.196 g
+50. 527.8899999999999864 Td
+(Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut) Tj
+T* (labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco) Tj
+T* (laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in) Tj
+T* (voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat) Tj
+T* (non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.) Tj
+ET
+0.96 0.97 0.99 rg
+0.71 0.75 0.82 RG
+0.5 w
+50. 470.3899999999999864 495.2799999999999727 -70. re
+B
+BT
+/F3 10.5 Tf
+12.0749999999999993 TL
+0.392 0.431 0.51 rg
+60. 454.3899999999999864 Td
+(This page was generated automatically for whiteboard PDF synchronisation testing. Course ID is) Tj
+T* (embedded in session metadata.) Tj
+ET
+0.86 0.88 0.92 rg
+0. 28. 595.2799999999999727 -28. re
+f
+BT
+/F1 9 Tf
+10.3499999999999996 TL
+0.314 0.314 0.392 rg
+50. 10. Td
+(© JV Tutor Corner  ·  Whiteboard Sync Test Fixture  ·  Page 1 of 5) Tj
+ET
+endstream
+endobj
+5 0 obj
+<</Type /Page
+/Parent 1 0 R
+/Resources 2 0 R
+/MediaBox [0 0 595.2799999999999727 841.8899999999999864]
+/Contents 6 0 R
+>>
+endobj
+6 0 obj
+<<
+/Length 3402
+>>
+stream
+0.5 w
+0.71 0.75 0.82 RG
+0.12 0.31 0.63 rg
+0. 841.8899999999999864 595.2799999999999727 -36. re
+f
+BT
+/F2 13 Tf
+14.9499999999999993 TL
+1. g
+50. 817.8899999999999864 Td
+(JV Tutor Corner — E2E Classroom Sync Test) Tj
+ET
+BT
+/F2 13 Tf
+14.9499999999999993 TL
+1. g
+485.6099999999999568 817.8899999999999864 Td
+(Page 2 / 5) Tj
+ET
+BT
+/F2 28 Tf
+32.1999999999999957 TL
+0.078 g
+50. 769.8899999999999864 Td
+([Page 2] Core Concepts — Part 1) Tj
+ET
+0.12 0.31 0.63 RG
+2. w
+50. 753.8899999999999864 m
+545.2799999999999727 753.8899999999999864 l
+S
+BT
+/F2 15 Tf
+17.25 TL
+0. 0.392 0.235 rg
+50. 729.8899999999999864 Td
+(1. Conceptual Framework) Tj
+ET
+0. 0.39 0.24 RG
+0.5 w
+50. 719.8899999999999864 m
+545.2799999999999727 719.8899999999999864 l
+S
+BT
+/F1 12 Tf
+13.7999999999999989 TL
+0.196 g
+50. 705.8899999999999864 Td
+(Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut) Tj
+T* (labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco) Tj
+T* (laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in) Tj
+T* (voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat) Tj
+T* (non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.) Tj
+ET
+BT
+/F2 15 Tf
+17.25 TL
+0.51 0.196 0. rg
+50. 648.3899999999999864 Td
+(2. Pedagogical Approach) Tj
+ET
+0.51 0.2 0. RG
+0.5 w
+50. 638.3899999999999864 m
+545.2799999999999727 638.3899999999999864 l
+S
+BT
+/F1 12 Tf
+13.7999999999999989 TL
+0.196 g
+50. 624.3899999999999864 Td
+(The flipped classroom model places new instruction at home through video lectures and) Tj
+T* (reserves in-class time for exercises, projects, and discussions. Research indicates that) Tj
+T* (students who engage actively with material through collaborative problem-solving) Tj
+T* (demonstrate significantly higher retention rates compared to passive listening. The teacher's) Tj
+T* (role shifts from lecturer to facilitator, providing targeted assistance while students work) Tj
+T* (through higher-order thinking tasks.) Tj
+ET
+BT
+/F2 15 Tf
+17.25 TL
+0. 0.275 0.51 rg
+50. 559.3899999999999864 Td
+(3. Technical Background) Tj
+ET
+0. 0.27 0.51 RG
+0.5 w
+50. 549.3899999999999864 m
+545.2799999999999727 549.3899999999999864 l
+S
+BT
+/F1 12 Tf
+13.7999999999999989 TL
+0.196 g
+50. 535.3899999999999864 Td
+(Real-time whiteboard synchronisation relies on an event-driven WebSocket protocol. When a) Tj
+T* (teacher moves a page index, the SDK emits a scene-change event that propagates to all) Tj
+T* (participants in the room within milliseconds. Participants poll the shared scene state at) Tj
+T* (1-second intervals to handle reconnection scenarios. A PDF document uploaded before) Tj
+T* (session start is converted to a series of whiteboard scenes, each corresponding to one page,) Tj
+T* (enabling seamless teacher-controlled navigation.) Tj
+ET
+0.96 0.97 0.99 rg
+0.71 0.75 0.82 RG
+0.5 w
+50. 470.3899999999999864 495.2799999999999727 -70. re
+B
+BT
+/F3 10.5 Tf
+12.0749999999999993 TL
+0.392 0.431 0.51 rg
+60. 454.3899999999999864 Td
+(This page was generated automatically for whiteboard PDF synchronisation testing. Course ID is) Tj
+T* (embedded in session metadata.) Tj
+ET
+0.86 0.88 0.92 rg
+0. 28. 595.2799999999999727 -28. re
+f
+BT
+/F1 9 Tf
+10.3499999999999996 TL
+0.314 0.314 0.392 rg
+50. 10. Td
+(© JV Tutor Corner  ·  Whiteboard Sync Test Fixture  ·  Page 2 of 5) Tj
+ET
+endstream
+endobj
+7 0 obj
+<</Type /Page
+/Parent 1 0 R
+/Resources 2 0 R
+/MediaBox [0 0 595.2799999999999727 841.8899999999999864]
+/Contents 8 0 R
+>>
+endobj
+8 0 obj
+<<
+/Length 3254
+>>
+stream
+0.5 w
+0.71 0.75 0.82 RG
+0.12 0.31 0.63 rg
+0. 841.8899999999999864 595.2799999999999727 -36. re
+f
+BT
+/F2 13 Tf
+14.9499999999999993 TL
+1. g
+50. 817.8899999999999864 Td
+(JV Tutor Corner — E2E Classroom Sync Test) Tj
+ET
+BT
+/F2 13 Tf
+14.9499999999999993 TL
+1. g
+485.6099999999999568 817.8899999999999864 Td
+(Page 3 / 5) Tj
+ET
+BT
+/F2 28 Tf
+32.1999999999999957 TL
+0.078 g
+50. 769.8899999999999864 Td
+([Page 3] Core Concepts — Part 2) Tj
+ET
+0.12 0.31 0.63 RG
+2. w
+50. 753.8899999999999864 m
+545.2799999999999727 753.8899999999999864 l
+S
+BT
+/F2 15 Tf
+17.25 TL
+0. 0.392 0.235 rg
+50. 729.8899999999999864 Td
+(1. Deep Dive: WebSocket Events) Tj
+ET
+0. 0.39 0.24 RG
+0.5 w
+50. 719.8899999999999864 m
+545.2799999999999727 719.8899999999999864 l
+S
+BT
+/F1 12 Tf
+13.7999999999999989 TL
+0.196 g
+50. 705.8899999999999864 Td
+(Real-time whiteboard synchronisation relies on an event-driven WebSocket protocol. When a) Tj
+T* (teacher moves a page index, the SDK emits a scene-change event that propagates to all) Tj
+T* (participants in the room within milliseconds. Participants poll the shared scene state at) Tj
+T* (1-second intervals to handle reconnection scenarios. A PDF document uploaded before) Tj
+T* (session start is converted to a series of whiteboard scenes, each corresponding to one page,) Tj
+T* (enabling seamless teacher-controlled navigation.) Tj
+ET
+BT
+/F2 15 Tf
+17.25 TL
+0.51 0.196 0. rg
+50. 640.8899999999999864 Td
+(2. Classroom Isolation) Tj
+ET
+0.51 0.2 0. RG
+0.5 w
+50. 630.8899999999999864 m
+545.2799999999999727 630.8899999999999864 l
+S
+BT
+/F1 12 Tf
+13.7999999999999989 TL
+0.196 g
+50. 616.8899999999999864 Td
+(Each classroom session is identified by a unique UUID derived from the course ID and) Tj
+T* (timestamp. Session state is persisted in DynamoDB, ensuring that concurrent classroom) Tj
+T* (sessions — even those running on the same server — remain fully isolated. No participant) Tj
+T* (state, whiteboard content, or PDF attachment from one session can bleed into another.) Tj
+ET
+BT
+/F2 15 Tf
+17.25 TL
+0. 0.275 0.51 rg
+50. 566.8899999999999864 Td
+(3. Further Reading) Tj
+ET
+0. 0.27 0.51 RG
+0.5 w
+50. 556.8899999999999864 m
+545.2799999999999727 556.8899999999999864 l
+S
+BT
+/F1 12 Tf
+13.7999999999999989 TL
+0.196 g
+50. 542.8899999999999864 Td
+(Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut) Tj
+T* (labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco) Tj
+T* (laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in) Tj
+T* (voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat) Tj
+T* (non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.) Tj
+ET
+0.96 0.97 0.99 rg
+0.71 0.75 0.82 RG
+0.5 w
+50. 485.3899999999999864 495.2799999999999727 -70. re
+B
+BT
+/F3 10.5 Tf
+12.0749999999999993 TL
+0.392 0.431 0.51 rg
+60. 469.3899999999999864 Td
+(This page was generated automatically for whiteboard PDF synchronisation testing. Course ID is) Tj
+T* (embedded in session metadata.) Tj
+ET
+0.86 0.88 0.92 rg
+0. 28. 595.2799999999999727 -28. re
+f
+BT
+/F1 9 Tf
+10.3499999999999996 TL
+0.314 0.314 0.392 rg
+50. 10. Td
+(© JV Tutor Corner  ·  Whiteboard Sync Test Fixture  ·  Page 3 of 5) Tj
+ET
+endstream
+endobj
+9 0 obj
+<</Type /Page
+/Parent 1 0 R
+/Resources 2 0 R
+/MediaBox [0 0 595.2799999999999727 841.8899999999999864]
+/Contents 10 0 R
+>>
+endobj
+10 0 obj
+<<
+/Length 3012
+>>
+stream
+0.5 w
+0.71 0.75 0.82 RG
+0.12 0.31 0.63 rg
+0. 841.8899999999999864 595.2799999999999727 -36. re
+f
+BT
+/F2 13 Tf
+14.9499999999999993 TL
+1. g
+50. 817.8899999999999864 Td
+(JV Tutor Corner — E2E Classroom Sync Test) Tj
+ET
+BT
+/F2 13 Tf
+14.9499999999999993 TL
+1. g
+485.6099999999999568 817.8899999999999864 Td
+(Page 4 / 5) Tj
+ET
+BT
+/F2 28 Tf
+32.1999999999999957 TL
+0.078 g
+50. 769.8899999999999864 Td
+([Page 4] Practice Exercises) Tj
+ET
+0.12 0.31 0.63 RG
+2. w
+50. 753.8899999999999864 m
+545.2799999999999727 753.8899999999999864 l
+S
+BT
+/F2 15 Tf
+17.25 TL
+0. 0.392 0.235 rg
+50. 729.8899999999999864 Td
+(1. Exercise A — Concept Map) Tj
+ET
+0. 0.39 0.24 RG
+0.5 w
+50. 719.8899999999999864 m
+545.2799999999999727 719.8899999999999864 l
+S
+BT
+/F1 12 Tf
+13.7999999999999989 TL
+0.196 g
+50. 705.8899999999999864 Td
+(Draw a concept map connecting the following terms: WebSocket, DynamoDB, Scene Index,) Tj
+T* (PDF Upload, Session Key, Broadcast Channel. For each connection, annotate the direction) Tj
+T* (and nature of the data flow. Use the whiteboard tools to draw and annotate your map directly) Tj
+T* (on this page.) Tj
+ET
+BT
+/F2 15 Tf
+17.25 TL
+0.51 0.196 0. rg
+50. 655.8899999999999864 Td
+(2. Exercise B — Discussion Questions) Tj
+ET
+0.51 0.2 0. RG
+0.5 w
+50. 645.8899999999999864 m
+545.2799999999999727 645.8899999999999864 l
+S
+BT
+/F1 12 Tf
+13.7999999999999989 TL
+0.196 g
+50. 631.8899999999999864 Td
+(1. Why is it important to use a sequential ready-click pattern rather than a parallel one when) Tj
+T* (multiple groups are joining simultaneously?) Tj
+T* (2. How does the DynamoDB write model prevent race conditions during high-concurrency) Tj
+T* (classroom entry?) Tj
+T* (3. What fallback mechanisms exist when the Agora RTM channel is unavailable?) Tj
+ET
+BT
+/F2 15 Tf
+17.25 TL
+0. 0.275 0.51 rg
+50. 574.3899999999999864 Td
+(3. Group Activity) Tj
+ET
+0. 0.27 0.51 RG
+0.5 w
+50. 564.3899999999999864 m
+545.2799999999999727 564.3899999999999864 l
+S
+BT
+/F1 12 Tf
+13.7999999999999989 TL
+0.196 g
+50. 550.3899999999999864 Td
+(Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut) Tj
+T* (labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco) Tj
+T* (laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in) Tj
+T* (voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat) Tj
+T* (non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.) Tj
+ET
+0.96 0.97 0.99 rg
+0.71 0.75 0.82 RG
+0.5 w
+50. 492.8899999999999864 495.2799999999999727 -70. re
+B
+BT
+/F3 10.5 Tf
+12.0749999999999993 TL
+0.392 0.431 0.51 rg
+60. 476.8899999999999864 Td
+(This page was generated automatically for whiteboard PDF synchronisation testing. Course ID is) Tj
+T* (embedded in session metadata.) Tj
+ET
+0.86 0.88 0.92 rg
+0. 28. 595.2799999999999727 -28. re
+f
+BT
+/F1 9 Tf
+10.3499999999999996 TL
+0.314 0.314 0.392 rg
+50. 10. Td
+(© JV Tutor Corner  ·  Whiteboard Sync Test Fixture  ·  Page 4 of 5) Tj
+ET
+endstream
+endobj
+11 0 obj
+<</Type /Page
+/Parent 1 0 R
+/Resources 2 0 R
+/MediaBox [0 0 595.2799999999999727 841.8899999999999864]
+/Contents 12 0 R
+>>
+endobj
+12 0 obj
+<<
+/Length 3372
+>>
+stream
+0.5 w
+0.71 0.75 0.82 RG
+0.12 0.31 0.63 rg
+0. 841.8899999999999864 595.2799999999999727 -36. re
+f
+BT
+/F2 13 Tf
+14.9499999999999993 TL
+1. g
+50. 817.8899999999999864 Td
+(JV Tutor Corner — E2E Classroom Sync Test) Tj
+ET
+BT
+/F2 13 Tf
+14.9499999999999993 TL
+1. g
+485.6099999999999568 817.8899999999999864 Td
+(Page 5 / 5) Tj
+ET
+BT
+/F2 28 Tf
+32.1999999999999957 TL
+0.078 g
+50. 769.8899999999999864 Td
+([Page 5] Summary & Assessment) Tj
+ET
+0.12 0.31 0.63 RG
+2. w
+50. 753.8899999999999864 m
+545.2799999999999727 753.8899999999999864 l
+S
+BT
+/F2 15 Tf
+17.25 TL
+0. 0.392 0.235 rg
+50. 729.8899999999999864 Td
+(1. Key Takeaways) Tj
+ET
+0. 0.39 0.24 RG
+0.5 w
+50. 719.8899999999999864 m
+545.2799999999999727 719.8899999999999864 l
+S
+BT
+/F1 12 Tf
+13.7999999999999989 TL
+0.196 g
+50. 705.8899999999999864 Td
+(After completing this module, students should be able to: \(1\) explain the end-to-end flow of a) Tj
+T* (classroom PDF sync event; \(2\) describe how session isolation is achieved using unique UUID) Tj
+T* (keys; \(3\) identify potential failure points and apply the appropriate diagnostic sequence; \(4\)) Tj
+T* (configure SLO thresholds for whiteboard sync latency in a production environment.) Tj
+ET
+BT
+/F2 15 Tf
+17.25 TL
+0.51 0.196 0. rg
+50. 655.8899999999999864 Td
+(2. Self-Assessment Checklist) Tj
+ET
+0.51 0.2 0. RG
+0.5 w
+50. 645.8899999999999864 m
+545.2799999999999727 645.8899999999999864 l
+S
+BT
+/F1 12 Tf
+13.7999999999999989 TL
+0.196 g
+50. 631.8899999999999864 Td
+(%¡   I   c a n   e x p l a i n   t h e   r o l e   o f   s e s s i o n R e a d y K e y   i n   P D F   m e t a d a t a   s t o r a g e .) Tj
+T* (%¡   I   u n d e r s t a n d   w h y   P D F   u p l o a d   m u s t   h a p p e n   b e f o r e   e n t e r i n g   t h e   c l a s s r o o m   r o o m .) Tj
+T* (%¡   I   c a n   r e a d   t h e   A g o r a   w h i t e b o a r d   s c e n e   s t a t e   f r o m   t h e   b r o w s e r   c o n s o l e .) Tj
+T* (%¡   I   k n o w   h o w   t o   u s e   t h e   l o a d - e s c a l a t i o n   t e s t   s u i t e   t o   v e r i f y   c o n c u r r e n t   s e s s i o n   s t a b i l i t y .) Tj
+ET
+BT
+/F2 15 Tf
+17.25 TL
+0. 0.275 0.51 rg
+50. 581.8899999999999864 Td
+(3. References) Tj
+ET
+0. 0.27 0.51 RG
+0.5 w
+50. 571.8899999999999864 m
+545.2799999999999727 571.8899999999999864 l
+S
+BT
+/F1 12 Tf
+13.7999999999999989 TL
+0.196 g
+50. 557.8899999999999864 Td
+(Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut) Tj
+T* (labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco) Tj
+T* (laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in) Tj
+T* (voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat) Tj
+T* (non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.) Tj
+ET
+0.96 0.97 0.99 rg
+0.71 0.75 0.82 RG
+0.5 w
+50. 500.3899999999999864 495.2799999999999727 -70. re
+B
+BT
+/F3 10.5 Tf
+12.0749999999999993 TL
+0.392 0.431 0.51 rg
+60. 484.3899999999999864 Td
+(This page was generated automatically for whiteboard PDF synchronisation testing. Course ID is) Tj
+T* (embedded in session metadata.) Tj
+ET
+0.86 0.88 0.92 rg
+0. 28. 595.2799999999999727 -28. re
+f
+BT
+/F1 9 Tf
+10.3499999999999996 TL
+0.314 0.314 0.392 rg
+50. 10. Td
+(© JV Tutor Corner  ·  Whiteboard Sync Test Fixture  ·  Page 5 of 5) Tj
+ET
+endstream
+endobj
+1 0 obj
+<</Type /Pages
+/Kids [3 0 R 5 0 R 7 0 R 9 0 R 11 0 R ]
+/Count 5
+>>
+endobj
+13 0 obj
+<<
+/Type /Font
+/BaseFont /Helvetica
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+14 0 obj
+<<
+/Type /Font
+/BaseFont /Helvetica-Bold
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+15 0 obj
+<<
+/Type /Font
+/BaseFont /Helvetica-Oblique
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+16 0 obj
+<<
+/Type /Font
+/BaseFont /Helvetica-BoldOblique
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+17 0 obj
+<<
+/Type /Font
+/BaseFont /Courier
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+18 0 obj
+<<
+/Type /Font
+/BaseFont /Courier-Bold
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+19 0 obj
+<<
+/Type /Font
+/BaseFont /Courier-Oblique
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+20 0 obj
+<<
+/Type /Font
+/BaseFont /Courier-BoldOblique
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+21 0 obj
+<<
+/Type /Font
+/BaseFont /Times-Roman
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+22 0 obj
+<<
+/Type /Font
+/BaseFont /Times-Bold
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+23 0 obj
+<<
+/Type /Font
+/BaseFont /Times-Italic
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+24 0 obj
+<<
+/Type /Font
+/BaseFont /Times-BoldItalic
+/Subtype /Type1
+/Encoding /WinAnsiEncoding
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+25 0 obj
+<<
+/Type /Font
+/BaseFont /ZapfDingbats
+/Subtype /Type1
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+26 0 obj
+<<
+/Type /Font
+/BaseFont /Symbol
+/Subtype /Type1
+/FirstChar 32
+/LastChar 255
+>>
+endobj
+2 0 obj
+<<
+/ProcSet [/PDF /Text /ImageB /ImageC /ImageI]
+/Font <<
+/F1 13 0 R
+/F2 14 0 R
+/F3 15 0 R
+/F4 16 0 R
+/F5 17 0 R
+/F6 18 0 R
+/F7 19 0 R
+/F8 20 0 R
+/F9 21 0 R
+/F10 22 0 R
+/F11 23 0 R
+/F12 24 0 R
+/F13 25 0 R
+/F14 26 0 R
+>>
+/XObject <<
+>>
+>>
+endobj
+27 0 obj
+<<
+/Producer (jsPDF 4.0.0)
+/CreationDate (D:20260605203412+08'00')
+>>
+endobj
+28 0 obj
+<<
+/Type /Catalog
+/Pages 1 0 R
+/OpenAction [3 0 R /FitH null]
+/PageLayout /OneColumn
+>>
+endobj
+xref
+0 29
+0000000000 65535 f 
+0000017401 00000 n 
+0000019248 00000 n 
+0000000015 00000 n 
+0000000152 00000 n 
+0000003600 00000 n 
+0000003737 00000 n 
+0000007191 00000 n 
+0000007328 00000 n 
+0000010634 00000 n 
+0000010772 00000 n 
+0000013837 00000 n 
+0000013976 00000 n 
+0000017483 00000 n 
+0000017609 00000 n 
+0000017740 00000 n 
+0000017874 00000 n 
+0000018012 00000 n 
+0000018136 00000 n 
+0000018265 00000 n 
+0000018397 00000 n 
+0000018533 00000 n 
+0000018661 00000 n 
+0000018788 00000 n 
+0000018917 00000 n 
+0000019050 00000 n 
+0000019152 00000 n 
+0000019501 00000 n 
+0000019587 00000 n 
+trailer
+<<
+/Size 29
+/Root 28 0 R
+/Info 27 0 R
+/ID [ <4BBCBB5145779DAC1E9047E82B0C78E6> <4BBCBB5145779DAC1E9047E82B0C78E6> ]
+>>
+startxref
+19691
+%%EOF

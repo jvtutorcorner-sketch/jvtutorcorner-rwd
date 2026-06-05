@@ -1,0 +1,1 @@
+const { test } = require('@playwright/test'); test('print env', () => { console.log(Object.keys(process.env).filter(k => k.toLowerCase().includes('playwright') || k.toLowerCase().includes('grep'))); });

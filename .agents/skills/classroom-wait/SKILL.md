@@ -44,8 +44,8 @@ metadata:
 ### 3. 設備檢測 (Device Check)
 - **詳細指南**：請參閱 [.agents/skills/classroom-wait-device-permissions/SKILL.md](../classroom-wait-device-permissions/SKILL.md) 獲取完整的設備權限驗證流程與自動化測試指令。
 - **要求**：
-  - **核心限制**：用戶必須先點擊「🔐 授予麥克風、聲音和攝影機權限」按鈕，並允許瀏覽器權限後，才能解除三個測試按鈕的禁用狀態。
-  - **通過條件**：通過麥克風、攝影機與聲音測試後才能點擊「準備好」。
+  - **核心限制**：用戶必須先點擊「🔐 授予麥克風、聲音和攝影機權限」按鈕。
+  - **通過條件**：為提升 UX 並避免用戶卡住，**只要授權成功 (permissionGranted)**，系統就會自動認定裝置檢查通過並解鎖「準備好」按鈕。背景會自動啟動麥克風測試供視覺參考，不再強制要求每一項手動點擊測試。
 - **驗證方式**：
   - E2E 測試中可透過注入 `window.__E2E_BYPASS_DEVICE_CHECK__ = true` 繞過實體硬體請求。
   - 若在開發環境 (localhost) 遇到 `getUserMedia` 報錯，確保 `requestPermissions` 擁有 `localhost` 的安全上下文豁免邏輯。

@@ -5,12 +5,37 @@
 
 import { Page, Dialog } from '@playwright/test';
 import { execSync } from 'child_process';
+import fs from 'fs';
 import path from 'path';
 import { getTestConfig, TestConfig, ADMIN_EMAIL, ADMIN_PASSWORD } from '../test_data/whiteboard_test_data';
 
 export interface DrawingPoint {
   x: number;
   y: number;
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Static PDF Fixtures
+// Pre-built PDFs in public/test-pdfs/ — no dynamic generation needed.
+// ─────────────────────────────────────────────────────────────────────
+
+export const STATIC_PDFS = {
+  singlePage: 'test-single-page.pdf',
+  multiPage:  'test-multi-page.pdf',   // 5 pages
+  longDoc:    'test-long-doc.pdf',     // 10 pages
+  blank:      'test-blank.pdf',
+} as const;
+
+/**
+ * Load a static test PDF from public/test-pdfs/ as a Buffer.
+ * Usage: const buf = loadStaticPdf(STATIC_PDFS.multiPage);
+ */
+export function loadStaticPdf(filename: string): Buffer {
+  const filePath = path.resolve(process.cwd(), 'public', 'test-pdfs', filename);
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`Static PDF not found: ${filePath}. Run PDF generation script first.`);
+  }
+  return fs.readFileSync(filePath);
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -370,6 +395,30 @@ export async function waitAndEnterClassroom(page: Page, role: 'teacher' | 'stude
   const enterLabel = /立即進入教室|進入教室|Enter Classroom|開始上課|Start Class|Join|等待所有人準備好|Waiting for all/i;
 
   if (page.url().includes('/classroom/room')) {
+    await page.waitForTimeout(2000);
+    // Check for page errors
+    const errorText = await page.evaluate(() => {
+      const bodyText = document.body.innerText;
+      const errorKeywords = [
+        '白板連線失敗',
+        'Agora 連線失敗',
+        'failed to initialize',
+        'Join room failed',
+        '網址無效',
+        '你沒有權限',
+        'Error:',
+        'AgoraRTCError',
+        'INVALID_OPERATION'
+      ];
+      for (const keyword of errorKeywords) {
+        if (bodyText.includes(keyword)) return keyword;
+      }
+      return null;
+    });
+
+    if (errorText) {
+      throw new Error(`❌ [${role}] Already in /classroom/room but page is showing error: "${errorText}"`);
+    }
     console.log(`   ✅ [${role}] Already in /classroom/room`);
     return;
   }
@@ -381,7 +430,30 @@ export async function waitAndEnterClassroom(page: Page, role: 'teacher' | 'stude
   const deadline = Date.now() + 60000;
   while (Date.now() < deadline) {
     if (page.url().includes('/classroom/room')) {
-      await page.waitForTimeout(1500);
+      await page.waitForTimeout(2000);
+      // Check for page errors
+      const errorText = await page.evaluate(() => {
+        const bodyText = document.body.innerText;
+        const errorKeywords = [
+          '白板連線失敗',
+          'Agora 連線失敗',
+          'failed to initialize',
+          'Join room failed',
+          '網址無效',
+          '你沒有權限',
+          'Error:',
+          'AgoraRTCError',
+          'INVALID_OPERATION'
+        ];
+        for (const keyword of errorKeywords) {
+          if (bodyText.includes(keyword)) return keyword;
+        }
+        return null;
+      });
+
+      if (errorText) {
+        throw new Error(`❌ [${role}] Entered /classroom/room but page is showing error: "${errorText}"`);
+      }
       console.log(`   ✅ [${role}] Entered /classroom/room`);
       return;
     }
@@ -400,7 +472,30 @@ export async function waitAndEnterClassroom(page: Page, role: 'teacher' | 'stude
     }
 
     if (page.url().includes('/classroom/room')) {
-      await page.waitForTimeout(1500);
+      await page.waitForTimeout(2000);
+      // Check for page errors
+      const errorText = await page.evaluate(() => {
+        const bodyText = document.body.innerText;
+        const errorKeywords = [
+          '白板連線失敗',
+          'Agora 連線失敗',
+          'failed to initialize',
+          'Join room failed',
+          '網址無效',
+          '你沒有權限',
+          'Error:',
+          'AgoraRTCError',
+          'INVALID_OPERATION'
+        ];
+        for (const keyword of errorKeywords) {
+          if (bodyText.includes(keyword)) return keyword;
+        }
+        return null;
+      });
+
+      if (errorText) {
+        throw new Error(`❌ [${role}] Entered /classroom/room but page is showing error: "${errorText}"`);
+      }
       console.log(`   ✅ [${role}] Entered /classroom/room`);
       return;
     }
@@ -410,7 +505,8 @@ export async function waitAndEnterClassroom(page: Page, role: 'teacher' | 'stude
       const refreshResult = await page.evaluate(async ({ role }: { role: 'teacher' | 'student' }) => {
         const parseUser = () => {
           try {
-            return JSON.parse(localStorage.getItem('currentUser') || '{}');
+            // Must match autoLogin() which stores user in 'tutor_mock_user', NOT 'currentUser'
+            return JSON.parse(localStorage.getItem('tutor_mock_user') || '{}');
           } catch {
             return {};
           }
@@ -454,8 +550,31 @@ export async function waitAndEnterClassroom(page: Page, role: 'teacher' | 'stude
       const directRoomUrl = current.replace('/classroom/wait', '/classroom/room');
       await page.goto(directRoomUrl, { waitUntil: 'domcontentloaded' }).catch(() => {});
       if (page.url().includes('/classroom/room')) {
-        await page.waitForTimeout(1500);
-        console.log(`   ✅ [${role}] Entered /classroom/room via direct navigation fallback`);
+        await page.waitForTimeout(2000);
+        // Check for page errors
+        const errorText = await page.evaluate(() => {
+          const bodyText = document.body.innerText;
+          const errorKeywords = [
+            '白板連線失敗',
+            'Agora 連線失敗',
+            'failed to initialize',
+            'Join room failed',
+            '網址無效',
+            '你沒有權限',
+            'Error:',
+            'AgoraRTCError',
+            'INVALID_OPERATION'
+          ];
+          for (const keyword of errorKeywords) {
+            if (bodyText.includes(keyword)) return keyword;
+          }
+          return null;
+        });
+
+        if (errorText) {
+          throw new Error(`❌ [${role}] Entered /classroom/room via direct navigation fallback but page is showing error: "${errorText}"`);
+        }
+        console.warn(`   ⚠️ [${role}] FALLBACK: Entered /classroom/room via direct URL — normal canEnter flow did not trigger. Check DynamoDB sync / polling interval.`);
         return;
       }
     }
@@ -476,6 +595,30 @@ export async function drawOnWhiteboard(page: Page): Promise<void> {
     await page.waitForURL(/\/classroom\/room/, { timeout: 20000 }).catch(() => {});
   }
 
+  // Check for page errors first
+  const errorText = await page.evaluate(() => {
+    const bodyText = document.body.innerText;
+    const errorKeywords = [
+      '白板連線失敗',
+      'Agora 連線失敗',
+      'failed to initialize',
+      'Join room failed',
+      '網址無效',
+      '你沒有權限',
+      'Error:',
+      'AgoraRTCError',
+      'INVALID_OPERATION'
+    ];
+    for (const keyword of errorKeywords) {
+      if (bodyText.includes(keyword)) return keyword;
+    }
+    return null;
+  });
+
+  if (errorText) {
+    throw new Error(`❌ Cannot draw: page is showing error: "${errorText}"`);
+  }
+
   // ClientClassroom exposes runtime readiness flags; use them as first gate.
   await page
     .waitForFunction(() => {
@@ -486,14 +629,16 @@ export async function drawOnWhiteboard(page: Page): Promise<void> {
       console.log('   ⚠️ classroom readiness flag not observed within 25 s');
     });
 
-  // Wait for Agora SDK + room
+  // Wait for Agora SDK + room, and throw if not ready
   for (const [label, fn] of [
     ['WhiteWebSdk', () => !!(window as any).WhiteWebSdk?.WhiteWebSdk],
     ['agoraRoom', () => (window as any).agoraRoom !== undefined],
   ] as [string, () => boolean][]) {
-    await page.waitForFunction(fn, { timeout: 20000 }).catch(() => {
-      console.log(`   ⚠️ ${label} not ready within 20 s`);
-    });
+    try {
+      await page.waitForFunction(fn, { timeout: 20000 });
+    } catch (e) {
+      throw new Error(`❌ Agora whiteboard ${label} not ready within 20 s`);
+    }
   }
 
   // Wait for visible canvas (up to 60 s)

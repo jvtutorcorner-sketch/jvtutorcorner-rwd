@@ -5,21 +5,29 @@
  * 1) Teacher-uploaded PDF on /classroom/wait is rendered in /classroom/room.
  * 2) Multi-page PDF page switching is synchronized from teacher to student.
  * 3) Classroom countdown starts from the expected order duration (no +5s offset).
+ *
+ * Static PDF assets in public/test-pdfs/ are used when available.
+ * Falls back to jsPDF dynamic generation if static files are missing.
  */
 
 import { test, expect, type Browser, type Page } from '@playwright/test';
-import { jsPDF } from 'jspdf';
+import path from 'path';
+import fs from 'fs';
 import {
   autoLogin,
   injectDeviceCheckBypass,
   createCourseAsTeacherWithDuration,
   adminApproveCourse,
   runEnrollmentFlow,
+  goToWaitRoom,
   enterClassroom,
   clickReadyButton,
   waitAndEnterClassroom,
+  loadStaticPdf,
+  STATIC_PDFS,
 } from '../helpers/whiteboard_helpers';
 import { getTestConfig, ADMIN_EMAIL, ADMIN_PASSWORD } from '../test_data/whiteboard_test_data';
+
 
 type RoomSceneState = {
   scenePath: string;
@@ -27,18 +35,28 @@ type RoomSceneState = {
   sceneCount: number;
 };
 
-function buildPdfBuffer(pageCount: number, label: string): Buffer {
-  const doc = new jsPDF({ unit: 'pt', format: 'a4' });
-  for (let i = 1; i <= pageCount; i++) {
-    if (i > 1) doc.addPage();
-    doc.setFontSize(18);
-    doc.text(`E2E PDF ${label} - page ${i}`, 40, 64);
-    doc.setFontSize(11);
-    doc.text(`generated: ${new Date().toISOString()}`, 40, 86);
+/**
+ * Load a PDF buffer for upload.
+ * Priority: static fixture from public/test-pdfs/ → jsPDF dynamic fallback.
+ */
+function getPdfBuffer(staticFilename: string, pageCount: number, label: string): Buffer {
+  try {
+    return loadStaticPdf(staticFilename);
+  } catch {
+    // Fallback: generate dynamically with jsPDF
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { jsPDF } = require('jspdf');
+    console.warn(`[room-pdf] Static PDF not found (${staticFilename}), generating with jsPDF...`);
+    const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+    for (let i = 1; i <= pageCount; i++) {
+      if (i > 1) doc.addPage();
+      doc.setFontSize(18);
+      doc.text(`E2E PDF ${label} - page ${i}`, 40, 64);
+      doc.setFontSize(11);
+      doc.text(`generated: ${new Date().toISOString()}`, 40, 86);
+    }
+    return Buffer.from(doc.output('arraybuffer') as ArrayBuffer);
   }
-
-  const pdfArrayBuffer = doc.output('arraybuffer') as ArrayBuffer;
-  return Buffer.from(pdfArrayBuffer);
 }
 
 async function waitForPdfMetadata(
@@ -196,6 +214,59 @@ async function readLargestCountdownSeconds(page: Page): Promise<number> {
   return result;
 }
 
+async function readCountdownSecondsNearest(page: Page, targetSeconds: number): Promise<number> {
+  await page.waitForFunction(() => {
+    const isVisible = (el: Element): boolean => {
+      const win = window as any;
+      const style = win.getComputedStyle(el);
+      const rect = (el as HTMLElement).getBoundingClientRect();
+      return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
+    };
+
+    const all = Array.from(document.querySelectorAll('div, span, strong'));
+    return all.some((el) => {
+      if (!isVisible(el)) return false;
+      return /^(\d+):([0-5]\d)$/.test((el.textContent || '').trim());
+    });
+  }, { timeout: 45000 });
+
+  const candidates = await page.evaluate(() => {
+    const isVisible = (el: Element): boolean => {
+      const win = window as any;
+      const style = win.getComputedStyle(el);
+      const rect = (el as HTMLElement).getBoundingClientRect();
+      return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
+    };
+
+    const secs: number[] = [];
+    const all = Array.from(document.querySelectorAll('div, span, strong'));
+    for (const el of all) {
+      if (!isVisible(el)) continue;
+      const text = (el.textContent || '').trim();
+      const parsed = text.match(/^(\d+):([0-5]\d)$/);
+      if (!parsed) continue;
+      secs.push(Number(parsed[1]) * 60 + Number(parsed[2]));
+    }
+    return secs;
+  });
+
+  if (!Array.isArray(candidates) || candidates.length === 0) {
+    throw new Error('Could not read visible countdown candidate in room page');
+  }
+
+  let nearest = candidates[0];
+  let nearestDiff = Math.abs(candidates[0] - targetSeconds);
+  for (const sec of candidates) {
+    const diff = Math.abs(sec - targetSeconds);
+    if (diff < nearestDiff) {
+      nearest = sec;
+      nearestDiff = diff;
+    }
+  }
+
+  return nearest;
+}
+
 async function uploadPdfOnWaitPage(
   teacherPage: Page,
   fileName: string,
@@ -294,8 +365,8 @@ test.describe('[room-pdf] Room PDF Sync + Countdown Precision', () => {
     const durationMinutes = 5;
     const courseId = `room-pdf-single-${Date.now()}`;
     const sessionKey = `room_pdf_single_${Date.now()}`;
-    const pdfName = 'room-single-page.pdf';
-    const pdfBuffer = buildPdfBuffer(1, 'single');
+    const pdfName = 'test-single-page.pdf';
+    const pdfBuffer = getPdfBuffer(STATIC_PDFS.singlePage, 1, 'single');
 
     const teacherCtx = await browser.newContext({ permissions: ['camera', 'microphone'] });
     const teacherPage = await teacherCtx.newPage();
@@ -365,8 +436,8 @@ test.describe('[room-pdf] Room PDF Sync + Countdown Precision', () => {
     const config = getTestConfig();
     const courseId = `room-pdf-multi-${Date.now()}`;
     const sessionKey = `room_pdf_multi_${Date.now()}`;
-    const pdfName = 'room-multi-page.pdf';
-    const pdfBuffer = buildPdfBuffer(3, 'multi');
+    const pdfName = 'test-multi-page.pdf';
+    const pdfBuffer = getPdfBuffer(STATIC_PDFS.multiPage, 3, 'multi');
 
     const teacherCtx = await browser.newContext({ permissions: ['camera', 'microphone'] });
     const teacherPage = await teacherCtx.newPage();
@@ -424,6 +495,94 @@ test.describe('[room-pdf] Room PDF Sync + Countdown Precision', () => {
       await setTeacherSceneIndex(teacherPage, 0);
       await waitForSceneIndex(teacherPage, 0);
       await waitForSceneIndex(studentPage, 0);
+    } finally {
+      await cleanupCourse(browser, config.baseUrl, config.bypassSecret, courseId);
+      await teacherCtx.close();
+      await studentCtx.close();
+    }
+  });
+
+  test('room countdown decreases continuously and stays synchronized between teacher and student', async ({ browser }) => {
+    const config = getTestConfig();
+    const durationMinutes = 5;
+    const courseId = `room-countdown-${Date.now()}`;
+
+    const teacherCtx = await browser.newContext({ permissions: ['camera', 'microphone'] });
+    const teacherPage = await teacherCtx.newPage();
+
+    const studentCtx = await browser.newContext({ permissions: ['camera', 'microphone'] });
+    const studentPage = await studentCtx.newPage();
+
+    try {
+      await setupCourseAndEnrollment(browser, courseId, durationMinutes);
+
+      await injectDeviceCheckBypass(teacherPage);
+      await autoLogin(teacherPage, config.teacherEmail, config.teacherPassword, config.bypassSecret);
+      await goToWaitRoom(teacherPage, courseId, 'teacher');
+
+      await injectDeviceCheckBypass(studentPage);
+      await autoLogin(studentPage, config.studentEmail, config.studentPassword, config.bypassSecret);
+      await goToWaitRoom(studentPage, courseId, 'student');
+
+      await enterClassroom(teacherPage, 'teacher');
+      await clickReadyButton(teacherPage, 'teacher');
+      await enterClassroom(studentPage, 'student');
+      await clickReadyButton(studentPage, 'student');
+
+      await waitAndEnterClassroom(teacherPage, 'teacher');
+      await waitAndEnterClassroom(studentPage, 'student');
+
+      await expect(teacherPage).toHaveURL(/\/classroom\/room/, { timeout: 30000 });
+      await expect(studentPage).toHaveURL(/\/classroom\/room/, { timeout: 30000 });
+
+      const expectedStartSeconds = await fetchExpectedRemainingSeconds(
+        teacherPage,
+        config.baseUrl,
+        courseId,
+        durationMinutes * 60
+      );
+
+      const teacherT0 = await readCountdownSecondsNearest(teacherPage, expectedStartSeconds);
+      const studentT0 = await readCountdownSecondsNearest(studentPage, teacherT0);
+
+      console.log(`[room-countdown][T0] teacher=${teacherT0}s student=${studentT0}s expected=${expectedStartSeconds}s`);
+
+      // Teacher/student should display roughly the same remaining time right after entering.
+      expect(Math.abs(teacherT0 - studentT0)).toBeLessThanOrEqual(6);
+
+      await teacherPage.waitForTimeout(12000);
+
+      const teacherT1 = await readCountdownSecondsNearest(teacherPage, Math.max(teacherT0 - 12, 1));
+      const studentT1 = await readCountdownSecondsNearest(studentPage, Math.max(studentT0 - 12, 1));
+
+      const teacherDrop1 = teacherT0 - teacherT1;
+      const studentDrop1 = studentT0 - studentT1;
+
+      console.log(`[room-countdown][T1] teacher=${teacherT1}s student=${studentT1}s teacherDrop=${teacherDrop1}s studentDrop=${studentDrop1}s`);
+
+      expect(teacherT1).toBeLessThan(teacherT0);
+      expect(studentT1).toBeLessThan(studentT0);
+
+      // In 12 seconds of real time, countdown should noticeably decrement.
+      expect(teacherDrop1).toBeGreaterThanOrEqual(6);
+      expect(teacherDrop1).toBeLessThanOrEqual(25);
+      expect(studentDrop1).toBeGreaterThanOrEqual(6);
+      expect(studentDrop1).toBeLessThanOrEqual(25);
+
+      // Teacher/student should remain close during the run.
+      expect(Math.abs(teacherT1 - studentT1)).toBeLessThanOrEqual(6);
+
+      await teacherPage.waitForTimeout(6000);
+
+      const teacherT2 = await readCountdownSecondsNearest(teacherPage, Math.max(teacherT1 - 6, 1));
+      const studentT2 = await readCountdownSecondsNearest(studentPage, Math.max(studentT1 - 6, 1));
+
+      console.log(`[room-countdown][T2] teacher=${teacherT2}s student=${studentT2}s`);
+
+      // Keep monotonic decrease at later sample.
+      expect(teacherT2).toBeLessThanOrEqual(teacherT1);
+      expect(studentT2).toBeLessThanOrEqual(studentT1);
+      expect(Math.abs(teacherT2 - studentT2)).toBeLessThanOrEqual(6);
     } finally {
       await cleanupCourse(browser, config.baseUrl, config.bypassSecret, courseId);
       await teacherCtx.close();

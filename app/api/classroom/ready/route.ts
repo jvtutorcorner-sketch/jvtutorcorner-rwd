@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ddbDocClient } from '@/lib/dynamo';
-import { GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
+import { GetCommand, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 
 const TABLE_NAME = process.env.DYNAMODB_TABLE_WHITEBOARD || 'jvtutorcorner-whiteboard';
 
@@ -30,15 +30,20 @@ async function readList(uuid: string): Promise<Array<{ role: string; userId: str
 
 async function writeList(uuid: string, arr: Array<{ role: string; userId: string; present?: boolean }>) {
   try {
-    // UUID may already contain 'classroom_' prefix from frontend, use it as-is
     const id = uuid.includes('classroom_') ? uuid : `classroom_ready_${uuid}`;
-    await ddbDocClient.send(new PutCommand({
+    
+    // Use UpdateCommand to ONLY update participants, preserving other attributes like 'pdf' and 'strokes'
+    await ddbDocClient.send(new UpdateCommand({
       TableName: TABLE_NAME,
-      Item: {
-        id,
-        participants: arr,
-        updatedAt: new Date().toISOString(),
-        ttl: Math.floor(Date.now() / 1000) + 3600
+      Key: { id },
+      UpdateExpression: 'SET participants = :p, updatedAt = :u, #ttl = :t',
+      ExpressionAttributeNames: {
+        '#ttl': 'ttl'
+      },
+      ExpressionAttributeValues: {
+        ':p': arr,
+        ':u': new Date().toISOString(),
+        ':t': Math.floor(Date.now() / 1000) + 3600
       }
     }));
   } catch (e) {

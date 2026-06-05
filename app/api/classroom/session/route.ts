@@ -1,42 +1,46 @@
 import { NextRequest, NextResponse } from 'next/server';
-import resolveDataFile from '@/lib/localData';
-import fs from 'fs';
-import path from 'path';
+import { ddbDocClient } from '@/lib/dynamo';
+import { GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
 import { broadcast } from '@/lib/classroomSSE';
+import { clearRoomState } from '@/app/api/whiteboard/stream/route';
 
-async function dataPathFor(uuid: string) {
-  return await resolveDataFile(`classroom_session_${uuid}.json`);
-}
+const TABLE_NAME = process.env.DYNAMODB_TABLE_WHITEBOARD || 'jvtutorcorner-whiteboard';
+// Session items use 'session_' prefix so they never collide with whiteboard state or ready-list items
+const sessionKey = (uuid: string) => `session_${uuid}`;
 
-async function readSession(uuid: string) {
-  const p = await dataPathFor(uuid);
-  let fileExists = false;
+async function readSession(uuid: string): Promise<{ endTs?: number | null }> {
   try {
-    await fs.promises.access(p);
-    fileExists = true;
+    const res = await ddbDocClient.send(new GetCommand({
+      TableName: TABLE_NAME,
+      Key: { id: sessionKey(uuid) },
+    }));
+    if (res.Item) {
+      return { endTs: res.Item.endTs !== undefined ? (res.Item.endTs as number | null) : undefined };
+    }
+    // Item not found → session never written (treat as unknown, not cleared)
+    return {};
   } catch (e) {
-    // File doesn't exist
-  }
-
-  if (!fileExists) {
-    return {}; // Missing file (ephemeral storage loss) shouldn't be confused with "cleared" session
-  }
-
-  try {
-    const txt = await fs.promises.readFile(p, 'utf8');
-    return JSON.parse(txt) as { endTs?: number | null };
-  } catch (e) {
+    console.warn('[session] readSession DynamoDB failed', e);
     return {};
   }
 }
 
 async function writeSession(uuid: string, obj: { endTs?: number | null }) {
-  const p = await dataPathFor(uuid);
   try {
-    await fs.promises.mkdir(path.dirname(p), { recursive: true });
-    await fs.promises.writeFile(p, JSON.stringify(obj || { endTs: null }), 'utf8');
+    const nowSec = Math.floor(Date.now() / 1000);
+    // TTL: 2 hours after write so stale sessions auto-expire
+    const ttl = nowSec + 60 * 60 * 2;
+    await ddbDocClient.send(new PutCommand({
+      TableName: TABLE_NAME,
+      Item: {
+        id: sessionKey(uuid),
+        endTs: obj.endTs !== undefined ? obj.endTs : null,
+        updatedAt: new Date().toISOString(),
+        ttl,
+      },
+    }));
   } catch (e) {
-    console.warn('writeSession failed', e);
+    console.warn('[session] writeSession DynamoDB failed', e);
   }
 }
 
@@ -63,6 +67,8 @@ export async function POST(req: NextRequest) {
       await writeSession(uuid, { endTs: null });
       // Broadcast to all SSE listeners that the class has ended
       try { broadcast(uuid, { type: 'class_ended', timestamp: Date.now() }); } catch (e) { }
+      // Free in-memory whiteboard state so the server memory reclaimed immediately
+      try { clearRoomState(uuid); } catch (e) { }
       return NextResponse.json({ endTs: null });
     }
 

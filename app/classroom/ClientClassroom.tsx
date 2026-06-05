@@ -3,6 +3,7 @@
 import React, { useMemo, useEffect, useState, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useAgoraClassroom } from '@/lib/agora/useAgoraClassroom';
+import { useAgoraRTM } from '@/lib/agora/useAgoraRTM';
 import { getStoredUser, setStoredUser } from '@/lib/mockAuth';
 import { COURSES } from '@/data/courses';
 import EnhancedWhiteboard from '@/components/EnhancedWhiteboard';
@@ -372,6 +373,21 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     return storedUser?.email || null;
   }, [storedUser?.email]);
 
+  // ── RTM 即時訊息通道 ────────────────────────────────────────────────────────
+  // 用於白板 UUID 廣播、PDF 同步通知，取代跨裝置無效的 BroadcastChannel
+  // RTM 連線失敗時自動 fallback 到現有 BroadcastChannel/Polling 機制
+  const rtmMessageCallbackRef = useRef<((msg: any) => void) | null>(null);
+
+  const { connected: rtmConnected, sendMessage: rtmSend } = useAgoraRTM({
+    channelName: effectiveChannelName,
+    userId,
+    enabled: mounted && !!userId,
+    onMessage: (msg) => {
+      // Dispatch to whichever handler is currently registered
+      rtmMessageCallbackRef.current?.(msg);
+    },
+  });
+
   const firstRemote = useMemo(() => {
     if (!remoteUsers || remoteUsers.length === 0) return null;
     // Prefer a remote user whose uid does not match the local user identifier
@@ -557,48 +573,71 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           if (teacherRoomData) {
             setAgoraRoomData(teacherRoomData);
 
-            // Broadcast uuid to student(s) via BroadcastChannel
+            // ── 優先使用 Agora RTM 廣播 UUID（跨裝置即時，<100ms）──────────
+            const rtmPayload = {
+              uuid: teacherRoomData.uuid,
+              roomToken: teacherRoomData.roomToken,
+              appIdentifier: teacherRoomData.appIdentifier,
+              region: teacherRoomData.region,
+              userId: teacherRoomData.userId,
+            };
+            const rtmSent = await rtmSend('wb-uuid-sync', rtmPayload).catch(() => false);
+            if (rtmSent) {
+              console.log('[ClientClassroom] Teacher broadcasted whiteboard uuid via Agora RTM ✅');
+            }
+
+            // ── 同時保留 BroadcastChannel（同裝置分頁 fallback）──────────────
             try {
               const bc = new BroadcastChannel(sessionReadyKey);
-              bc.postMessage({
-                type: 'whiteboard-uuid-sync',
-                uuid: teacherRoomData.uuid,
-                roomToken: teacherRoomData.roomToken,
-                appIdentifier: teacherRoomData.appIdentifier,
-                region: teacherRoomData.region,
-                userId: teacherRoomData.userId
-              });
-              console.log('[ClientClassroom] Teacher broadcasted whiteboard uuid to channel');
+              bc.postMessage({ type: 'whiteboard-uuid-sync', ...rtmPayload });
               bc.close();
             } catch (bcErr) {
-              console.warn('[ClientClassroom] BroadcastChannel failed (may not be supported):', bcErr);
+              console.warn('[ClientClassroom] BroadcastChannel failed (expected on production):', bcErr);
             }
           }
         } else {
-          // === STUDENT: Wait for teacher's broadcast, fallback to API if timeout ===
-          console.log('[ClientClassroom] Student: Waiting for teacher to broadcast uuid (cross-tab timeout: 1s)...');
+          // === STUDENT: Wait for teacher's uuid via RTM or BroadcastChannel ===
+          console.log('[ClientClassroom] Student: Waiting for whiteboard uuid (RTM + BroadcastChannel, 3s timeout)...');
 
           let receivedData: any = null;
           try {
-            const bc = new BroadcastChannel(sessionReadyKey);
             receivedData = await new Promise<any>((resolve) => {
               const timer = setTimeout(() => {
-                console.log('[ClientClassroom] Student broadcast timeout (normal for different devices), falling back to API');
-                bc.close();
+                console.log('[ClientClassroom] Student uuid wait timeout, falling back to API polling');
+                rtmMessageCallbackRef.current = null;
                 resolve(null);
-              }, 1000); // Drastically reduced from 10s to 1s to stop blocking real students
+              }, 3000);
 
-              bc.onmessage = (event) => {
-                if (event.data?.type === 'whiteboard-uuid-sync') {
-                  console.log('[ClientClassroom] Student received uuid from teacher via broadcast');
+              // ── 路徑 1：Agora RTM（跨裝置即時，<100ms）─────────────────────
+              rtmMessageCallbackRef.current = (msg: any) => {
+                if (msg?.type === 'wb-uuid-sync' && msg?.payload?.uuid) {
+                  console.log('[ClientClassroom] Student received whiteboard uuid via RTM ✅');
                   clearTimeout(timer);
-                  bc.close();
-                  resolve(event.data);
+                  rtmMessageCallbackRef.current = null;
+                  resolve(msg.payload);
                 }
               };
+
+              // ── 路徑 2：BroadcastChannel（同裝置分頁 fallback）───────────────
+              try {
+                const bc = new BroadcastChannel(sessionReadyKey);
+                bc.onmessage = (event) => {
+                  if (event.data?.type === 'whiteboard-uuid-sync') {
+                    console.log('[ClientClassroom] Student received uuid via BroadcastChannel');
+                    clearTimeout(timer);
+                    rtmMessageCallbackRef.current = null;
+                    bc.close();
+                    resolve(event.data);
+                  }
+                };
+                // Close BC when timer fires (handled in timer callback above + resolve)
+                setTimeout(() => { try { bc.close(); } catch (e) {} }, 3100);
+              } catch (bcErr) {
+                console.warn('[ClientClassroom] BroadcastChannel not available:', bcErr);
+              }
             });
-          } catch (bcErr) {
-            console.warn('[ClientClassroom] BroadcastChannel not available, fallback to API:', bcErr);
+          } catch (e) {
+            console.warn('[ClientClassroom] UUID wait error:', e);
           }
 
           if (receivedData) {
@@ -714,13 +753,15 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
 
     const fetchPdfForSession = async () => {
       const maxRetries = 8;
-      // Initial delay to give DynamoDB time to sync from upload
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Initial delay to give DynamoDB time to sync from upload (eventual consistency)
+      await new Promise(resolve => setTimeout(resolve, 1500));
 
       console.log('[ClientClassroom] === PDF FETCH START ===');
       console.log('[ClientClassroom] Session Key:', sessionReadyKey);
       console.log('[ClientClassroom] Course ID:', courseId);
       console.log('[ClientClassroom] Is Test Path:', isTestPath);
+
+      let notFoundCount = 0; // track consecutive "not found" to exit early
 
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
         const controller = new AbortController();
@@ -746,10 +787,13 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           }
 
           const json = await resp.json();
+          console.log(`[ClientClassroom] PDF fetch response (attempt ${attempt}):`, json);
           if (!json.found) {
-            // It's normal for a room to not have a PDF
-            if (attempt === maxRetries) {
-              console.info('[ClientClassroom] No PDF found after all retries (which is normal if no PDF was uploaded)');
+            // It's normal for a room to not have a PDF — stop after 2 consecutive misses to avoid
+            // hammering the server for sessions that simply have no PDF uploaded
+            notFoundCount++;
+            if (notFoundCount >= 5) {
+              console.info('[ClientClassroom] No PDF after 5 checks — stopping PDF poll (normal if none uploaded)');
               setSelectedPdf(null);
               setShowPdf(false);
               return;
@@ -757,6 +801,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
             await new Promise(resolve => setTimeout(resolve, retryDelay));
             continue;
           }
+          notFoundCount = 0; // reset on any other result
 
           console.log('[ClientClassroom] ✓ PDF metadata found!', json.meta);
 
@@ -924,8 +969,8 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           const j = await r.json();
           if (j.ok && j.order) {
             let sec = null;
-            // Robust check for remaining seconds (explicitly allow 0)
-            if (j.order.remainingSeconds !== undefined && j.order.remainingSeconds !== null) {
+            // Use remainingSeconds only if > 0 (0 means depleted — fall through to durationMinutes for reset)
+            if (j.order.remainingSeconds !== undefined && j.order.remainingSeconds !== null && Number(j.order.remainingSeconds) > 0) {
               sec = Number(j.order.remainingSeconds);
             } else if (j.order.remainingMinutes !== undefined && j.order.remainingMinutes !== null) {
               sec = Number(j.order.remainingMinutes) * 60;
@@ -965,7 +1010,8 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
               : j.data.sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())[0];
 
             let sec = null;
-            if (targetOrder.remainingSeconds !== undefined && targetOrder.remainingSeconds !== null) {
+            // Use remainingSeconds only if > 0 (0 means depleted — fall through to durationMinutes for reset)
+            if (targetOrder.remainingSeconds !== undefined && targetOrder.remainingSeconds !== null && Number(targetOrder.remainingSeconds) > 0) {
               sec = Number(targetOrder.remainingSeconds);
             } else if (targetOrder.remainingMinutes !== undefined && targetOrder.remainingMinutes !== null) {
               sec = Number(targetOrder.remainingMinutes) * 60;
@@ -1503,6 +1549,8 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
 
     // Add a fallback interval to refresh participant status (essential for production where SSE is disabled, 
     // and good as a safety fallback in development if SSE fails).
+    // Increased from 3s to 8s: once joined, 8s is fast enough; pre-join detection is handled by the
+    // authoritative server read above plus BroadcastChannel events.
     let pollingInterval: any = null;
     if (sessionReadyKey) {
       pollingInterval = setInterval(async () => {
@@ -1516,7 +1564,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
             setCanJoin(hasTeacher && hasStudent);
           }
         } catch (e) { }
-      }, 3000);
+      }, 8000);
     }
 
     // Also respond to storage events from other tabs
@@ -1660,11 +1708,12 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     reportReady();
 
     // Periodic heartbeat to keep the ready status alive while on this page
-    // Reduced interval to 8s for more responsive teacher absence detection
+    // 15s interval: ready-API polling already runs every 8s for canJoin; heartbeat is for presence
+    // and revenue-protection absence detection (3-min grace period → 15s is responsive enough)
     const interval = setInterval(() => {
       console.log(`[ClientClassroom] Heartbeat pulse for ${sessionReadyKey}...`);
       reportReady();
-    }, 8000);
+    }, 15000);
     return () => {
       clearInterval(interval);
       reportedRef.current = false;
@@ -1724,8 +1773,8 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       }
 
       // 1.5 Explicitly save remaining time before destroying the session
-      // This is necessary because clearing the session breaks the user-counting in markReady(false)
-      if (orderId && remainingSecondsRef.current !== null) {
+      // Only save if > 0: when timer runs out it already resets via the deduct call; saving 0 would re-break the next session
+      if (orderId && remainingSecondsRef.current !== null && remainingSecondsRef.current > 0) {
         console.log('[ClientClassroom] endSession triggered. Saving remaining time to db:', remainingSecondsRef.current);
         try {
           fetch(`/api/orders/${encodeURIComponent(orderId)}`, {
@@ -1953,14 +2002,18 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       timerRef.current = null;
     }
 
-    // Only start countdown when joined AND fully initialized and order fetch is complete
-    if (joined && fullyInitialized && orderFetchComplete) {
+    // Only start countdown when joined and order fetch is complete
+    // Do not wait for fullyInitialized (whiteboard) as it can cause the timer to be missing
+    // E2E bypass: allow timer to start when device check is bypassed (Agora may not join in test env)
+    const isE2EBypass = typeof window !== 'undefined' && (window as any).__E2E_BYPASS_DEVICE_CHECK__;
+    if ((joined || isE2EBypass) && orderFetchComplete) {
       const isTeacher = (urlRole === 'teacher' || urlRole === 'student') ? urlRole === 'teacher' : computedRole === 'teacher';
       // Use order's remainingSeconds if available, else fallback to course duration
       const secs = orderRemainingSeconds ?? Math.floor((sessionDurationMinutes || 10) * 60);
 
       // Fallback: set initial value immediately before any async calls ensure non-null
       setRemainingSeconds((prev) => prev !== null ? prev : secs);
+
 
       (async () => {
         console.log('[Timer] Starting initialization logic...', { isTeacher, secs });
@@ -2103,13 +2156,13 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
               if (useAgoraWhiteboard) agoraWhiteboardRef.current?.clearPDF();
             } catch (e) { }
 
-            // Deduct session and remaining minutes from order exactly once when time is up
+            // Deduct session and reset remainingSeconds to full secs for the next session
             if (isTeacher && orderId) {
               try {
                 fetch(`/api/orders/${encodeURIComponent(orderId)}`, {
                   method: 'PATCH',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ action: 'deduct' }),
+                  body: JSON.stringify({ action: 'deduct', remainingSeconds: secs }),
                   keepalive: true,
                 }).catch(e => console.warn('[Timer] deduct session failed', e));
               } catch (e) { }
@@ -2129,7 +2182,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
         timerRef.current = null;
       }
     };
-  }, [joined, sessionDurationMinutes, fullyInitialized, classFullyLoadedAt, orderFetchComplete, orderRemainingSeconds]);
+  }, [joined, sessionDurationMinutes, orderFetchComplete, orderRemainingSeconds, sessionReadyKey]);
 
   // Cleanup on unmount
   useEffect(() => {

@@ -1,0 +1,1 @@
+import { test } from '@playwright/test'; test('smoke print', () => { console.log("PROCESS ARGV", process.argv); console.log("PROCESS ENV KEYS", Object.keys(process.env).filter(k => k.includes('PLAYWRIGHT') || k.includes('npm') || k.includes('grep') || k.includes('GREP'))); });

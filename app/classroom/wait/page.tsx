@@ -119,8 +119,8 @@ export default function ClassroomWaitPage() {
       });
 
     const sessionFromUrl = params.get('session');
-    // If no session key in URL, generate one that includes orderId to prevent course-level collisions
-    const key = sessionFromUrl ? sessionFromUrl : `classroom_session_ready_${courseFromUrl}${orderFromUrl ? `_${orderFromUrl}` : ''}`;
+    // Use the same key format as room/page.tsx setupParams to avoid key mismatch when teacher enters directly
+    const key = sessionFromUrl ? sessionFromUrl : `classroom_session_ready_${courseFromUrl}`;
     setSessionReadyKey(key);
     if (!sessionFromUrl) {
       params.set('session', key);
@@ -1469,11 +1469,15 @@ function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, vi
   // 通知父組件檢測狀態
   React.useEffect(() => {
     if (onStatusChange) {
-      // Require both microphone and speaker to be tested for audio readiness
-      const audioReady = audioTested && speakerTested;
-      onStatusChange(audioReady, videoTested);
+      // 只要授權成功，就允許進入教室，不再強制要求手動點擊每一項測試（提升 UX，避免卡住）
+      if (permissionGranted) {
+        onStatusChange(true, true);
+      } else {
+        const audioReady = audioTested && speakerTested;
+        onStatusChange(audioReady, videoTested);
+      }
     }
-  }, [audioTested, speakerTested, videoTested, onStatusChange]);
+  }, [audioTested, speakerTested, videoTested, permissionGranted, onStatusChange]);
 
   // Speaker test: play a short tone into selected output (or default)
   const testSpeaker = async () => {
@@ -1701,6 +1705,8 @@ function VideoSetup({ onStatusChange }: { onStatusChange?: (audioOk: boolean, vi
                 const ok = await requestPermissions();
                 if (ok) {
                   try { await startCameraPreview(); } catch (e) { console.warn('preview after grant failed', e); }
+                  try { await startMicTest(); } catch (e) { console.warn('mic test failed', e); }
+                  try { setSpeakerTested(true); } catch (e) {} // Auto mark speaker as tested
                 } else {
                   alert(t('wait.permissions_failed_notice'));
                 }

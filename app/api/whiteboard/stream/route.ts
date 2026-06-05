@@ -13,6 +13,31 @@ const clients: Map<string, Set<any>> = new Map();
 // state: { strokes: any[], pdf: any | null }
 export const roomStates: Map<string, { strokes: any[], pdf: any | null, updatedAt?: number, lastEvent?: any }> = new Map();
 
+// Max strokes per session to prevent unbounded memory growth across many concurrent sessions
+const MAX_STROKES_PER_SESSION = 500;
+// Sessions idle longer than 2 hours are evicted from the in-memory map
+const SESSION_IDLE_TTL_MS = 2 * 60 * 60 * 1000;
+
+// Evict sessions that have been idle for SESSION_IDLE_TTL_MS.
+// Called lazily on state writes to avoid a timer that holds references.
+function evictIdleSessions() {
+  const now = Date.now();
+  for (const [uuid, state] of roomStates) {
+    const updatedAt = state.updatedAt ?? 0;
+    if (now - updatedAt > SESSION_IDLE_TTL_MS) {
+      roomStates.delete(uuid);
+      console.log(`[WB SSE Server] Evicted idle session: ${uuid}`);
+    }
+  }
+}
+
+/** Remove a session from the in-memory state (call when class ends). */
+export function clearRoomState(uuid: string) {
+  const normalized = normalizeUuid(uuid);
+  roomStates.delete(normalized);
+  console.log(`[WB SSE Server] Cleared room state for: ${normalized}`);
+}
+
 // Initialize DynamoDB early to ensure credentials are ready
 import { ddbDocClient } from '@/lib/dynamo';
 const _init = ddbDocClient;
@@ -151,6 +176,8 @@ export function broadcastToUuid(uuid: string, payload: any): number {
   console.log(`[WB SSE Server] broadcastToUuid: raw uuid="${uuid}", normalized="${normalized}"`);
 
   // CRITICAL FIX: Update state FIRST (before broadcasting), so it persists across serverless invocations
+  // Also evict idle sessions on every write to bound memory usage across concurrent sessions
+  evictIdleSessions();
   try {
     console.log('[WB SSE Server] [STATE_UPDATE] normalized uuid:', normalized, 'roomStates map keys before:', Array.from(roomStates.keys()));
     let state = roomStates.get(normalized) as any;
@@ -166,6 +193,11 @@ export function broadcastToUuid(uuid: string, payload: any): number {
 
     if (payload.type === 'stroke-start') {
       state.strokes.push(payload.stroke);
+      // Cap strokes to MAX_STROKES_PER_SESSION to prevent unbounded memory growth
+      if (state.strokes.length > MAX_STROKES_PER_SESSION) {
+        state.strokes = state.strokes.slice(-MAX_STROKES_PER_SESSION);
+        console.log(`[WB SSE Server] [STROKE_CAP] Capped strokes at ${MAX_STROKES_PER_SESSION} for ${normalized}`);
+      }
       console.log('[WB SSE Server] [STROKE_START] Added stroke. Now state.strokes.length =', state.strokes.length, 'Verification check - roomStates.get(normalized).strokes.length:', roomStates.get(normalized)?.strokes?.length);
     } else if (payload.type === 'stroke-update') {
       const idx = state.strokes.findIndex((s: any) => s.id === payload.strokeId);

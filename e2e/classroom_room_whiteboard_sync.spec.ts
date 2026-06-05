@@ -734,6 +734,14 @@ test.describe('[stress] Concurrent Groups', () => {
         console.log(`\n❌ STRESS TEST PARTIAL FAILURE: ${allErrors.length} groups failed`);
       }
 
+      // Assert that all stages of setup completed successfully with no errors
+      expect(courseCreationErrors, "Course creation should have no errors").toEqual([]);
+      expect(approvalErrors, "Course approval should have no errors").toEqual([]);
+      expect(enrollmentErrors, "Student enrollment should have no errors").toEqual([]);
+
+      // Assert that all parallel sessions passed successfully
+      expect(allPassed, `All ${groupCount} concurrent groups should successfully enter classroom and sync drawing`).toBe(true);
+
     } finally {
       // Step 10: Cleanup - Closing all contexts and deleting test courses
       console.log('\n📍 Step 10: Cleanup - Deleting test courses, orders, and accounts...');
