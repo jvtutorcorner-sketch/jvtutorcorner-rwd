@@ -50,6 +50,14 @@ const nextConfig = {
     DYNAMODB_TABLE_WHITEBOARD_PERMISSIONS: process.env.DYNAMODB_TABLE_WHITEBOARD_PERMISSIONS || 'jvtutorcorner-whiteboard-permissions',
     DYNAMODB_TABLE_AGORA_LOGS: process.env.DYNAMODB_TABLE_AGORA_LOGS || 'jvtutorcorner-agora-logs',
     DYNAMODB_TABLE_CALENDAR_REMINDERS: process.env.DYNAMODB_TABLE_CALENDAR_REMINDERS || 'jvtutorcorner-calendar-reminders',
+    // Auth & HMAC Secrets
+    SESSION_SECRET: process.env.SESSION_SECRET || 'jv_session_secret_change_in_production_2024',
+    API_HMAC_SECRET: process.env.API_HMAC_SECRET || 'jv_hmac_secret_change_in_production_2024',
+    // Missing DynamoDB Tables
+    DYNAMODB_TABLE_SESSIONS: process.env.DYNAMODB_TABLE_SESSIONS || 'jvtutorcorner-sessions',
+    DYNAMODB_TABLE_PLAN_UPGRADES: process.env.DYNAMODB_TABLE_PLAN_UPGRADES || 'jvtutorcorner-plan-upgrades',
+    DYNAMODB_TABLE_USER_POINTS: process.env.DYNAMODB_TABLE_USER_POINTS || 'jvtutorcorner-user-points',
+    DYNAMODB_TABLE_PROFILES: process.env.DYNAMODB_TABLE_PROFILES || 'jvtutorcorner-profiles',
     AWS_REGION: process.env.AWS_REGION || process.env.CI_AWS_REGION || 'ap-northeast-1',
     AMPLIFY_REGION: process.env.AMPLIFY_REGION,
   },
