@@ -495,6 +495,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
               channelName: sessionReadyKey,
               courseId,
               orderId,
+              role: isTeacher ? 'teacher' : 'student',
               roomUuid: preestablishedWhiteboardUuid // Use the pre-established UUID
             })
           });
@@ -529,7 +530,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                 const tokenRes = await fetch('/api/whiteboard/room', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ userId, channelName: sessionReadyKey, courseId, orderId, roomUuid: lookupJson.uuid })
+                  body: JSON.stringify({ userId, channelName: sessionReadyKey, courseId, orderId, role: 'teacher', roomUuid: lookupJson.uuid })
                 });
                 if (tokenRes.ok) {
                   teacherRoomData = await tokenRes.json();
@@ -549,7 +550,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           // If no existing room found, create one
           if (!teacherRoomData) {
             console.log('[ClientClassroom] Teacher: Creating new whiteboard room...');
-            const createBody: any = { userId, channelName: sessionReadyKey, courseId, orderId };
+            const createBody: any = { userId, channelName: sessionReadyKey, courseId, orderId, role: 'teacher' };
 
             try {
               const createRes = await fetch('/api/whiteboard/room', {
@@ -661,7 +662,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                     const tokenRes = await fetch('/api/whiteboard/room', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ userId, channelName: sessionReadyKey, courseId, orderId, roomUuid: j.uuid })
+                      body: JSON.stringify({ userId, channelName: sessionReadyKey, courseId, orderId, role: 'student', roomUuid: j.uuid })
                     });
                     if (tokenRes.ok) {
                       lookupData = await tokenRes.json();
@@ -690,7 +691,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
             } else {
               // Still no room found after polling — create new room (teacher may be absent or hasn't started yet)
               console.log('[ClientClassroom] Student: no existing room found after polling, will create new room as host');
-              const requestBody: any = { userId, channelName: sessionReadyKey, courseId, orderId };
+              const requestBody: any = { userId, channelName: sessionReadyKey, courseId, orderId, role: 'student' };
               try {
                 const res = await fetch('/api/whiteboard/room', {
                   method: 'POST',

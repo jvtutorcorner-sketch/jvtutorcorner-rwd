@@ -86,6 +86,7 @@ export async function POST(req: NextRequest) {
     const requestedRoomUuid = body.roomUuid?.trim();
     const courseId = body.courseId?.trim();
     const lookupOnly = body.lookupOnly;
+    const requestedRole = body.role?.trim(); // 'teacher' | 'student' from client
 
     console.log('[WhiteboardAPI] Request received:', { userId: '[REDACTED]', channelName, requestedRoomUuid: '[REDACTED]', courseId });
 
@@ -140,18 +141,41 @@ export async function POST(req: NextRequest) {
     // 🔒 Security Check: Verify User Access
     // Only check if userId and courseId are present (skips anonymous/test flows if needed, but best to enforce)
     if (userId && courseId) {
-      // Lazy import to avoid circular dep issues if any, though verifyCourseAccess should be clean
-      const { verifyCourseAccess } = await import('@/lib/accessControl');
+      const { verifyCourseAccess, stripTabId } = await import('@/lib/accessControl');
+
+      const orderId = body.orderId?.trim();
+      const cleanUserId = stripTabId(userId);
 
       // Bypass for: teachers/admins identifiable by userId pattern, local test env,
       // or when orderId is provided (user already has a verified booking via orders table)
-      const orderId = body.orderId?.trim();
       const isTeacherOrAdmin = userId.startsWith('teacher') || userId.includes('admin') || userId.includes('t1@');
       const isLocalTest = process.env.NODE_ENV !== 'production' || !process.env.DYNAMODB_TABLE_ORDERS;
       const hasOrderId = !!orderId; // If orderId is passed, booking was already verified at order creation
 
-      if (isTeacherOrAdmin || isLocalTest || hasOrderId) {
-        console.log(`[WhiteboardAPI] ⚠️ Bypassing access control for ${userId} (Role bypass, Local Test, or orderId present)`);
+      // Verify teacher claim: check if cleanUserId matches the course's teacherId in DynamoDB
+      let isVerifiedTeacher = false;
+      if (requestedRole === 'teacher' && !isTeacherOrAdmin && !isLocalTest) {
+        const coursesTableName = process.env.DYNAMODB_TABLE_COURSES || 'jvtutorcorner-courses';
+        try {
+          const { GetCommand: CourseGetCmd } = await import('@aws-sdk/lib-dynamodb');
+          const courseResult = await docClient.send(new CourseGetCmd({
+            TableName: coursesTableName,
+            Key: { id: courseId }
+          }));
+          const courseTeacherId = courseResult.Item?.teacherId;
+          if (courseTeacherId && (cleanUserId === courseTeacherId || userId === courseTeacherId)) {
+            isVerifiedTeacher = true;
+            console.log(`[WhiteboardAPI] ✅ Teacher role verified via course record for ${cleanUserId}`);
+          } else {
+            console.warn(`[WhiteboardAPI] ⚠️ Teacher claim unverified for ${cleanUserId} on course ${courseId} (course teacherId: ${courseTeacherId})`);
+          }
+        } catch (e: any) {
+          console.warn('[WhiteboardAPI] Course teacher lookup failed, falling through to enrollment check:', e.message);
+        }
+      }
+
+      if (isTeacherOrAdmin || isLocalTest || hasOrderId || isVerifiedTeacher) {
+        console.log(`[WhiteboardAPI] ⚠️ Bypassing access control for ${cleanUserId} (Role bypass, Local Test, orderId, or verified teacher)`);
       } else {
         const access = await verifyCourseAccess(userId, courseId);
 

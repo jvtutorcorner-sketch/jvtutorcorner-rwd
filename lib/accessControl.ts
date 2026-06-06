@@ -13,6 +13,28 @@ export interface AccessResult {
 }
 
 /**
+ * Strips the tabId suffix appended by the client for cursor uniqueness.
+ * e.g. "email@domain.com_abc123" -> "email@domain.com"
+ *      "teacher_abc123" -> "teacher"
+ */
+export function stripTabId(userId: string): string {
+    const atIndex = userId.indexOf('@');
+    if (atIndex !== -1) {
+        const afterAt = userId.substring(atIndex);
+        const lastUnderscore = afterAt.lastIndexOf('_');
+        if (lastUnderscore !== -1) {
+            return userId.substring(0, atIndex + lastUnderscore);
+        }
+    } else {
+        const lastUnderscore = userId.lastIndexOf('_');
+        if (lastUnderscore !== -1) {
+            return userId.substring(0, lastUnderscore);
+        }
+    }
+    return userId;
+}
+
+/**
  * Verified if a user has access to a specific course.
  * Currently checks for active B2C enrollments.
  * Future-proofed for B2B logic.
@@ -22,21 +44,7 @@ export async function verifyCourseAccess(userId: string, courseId: string): Prom
         return { granted: false, reason: 'Missing userId or courseId' };
     }
 
-    // Clean tabId suffix if present (e.g. "email@domain.com_tabId" -> "email@domain.com", or "student_tabId" -> "student")
-    let cleanUserId = userId;
-    const atIndex = userId.indexOf('@');
-    if (atIndex !== -1) {
-        const afterAt = userId.substring(atIndex);
-        const lastUnderscore = afterAt.lastIndexOf('_');
-        if (lastUnderscore !== -1) {
-            cleanUserId = userId.substring(0, atIndex + lastUnderscore);
-        }
-    } else {
-        const lastUnderscore = userId.lastIndexOf('_');
-        if (lastUnderscore !== -1) {
-            cleanUserId = userId.substring(0, lastUnderscore);
-        }
-    }
+    const cleanUserId = stripTabId(userId);
 
     try {
         // 1. Check B2C Enrollments (Direct Purchase)
