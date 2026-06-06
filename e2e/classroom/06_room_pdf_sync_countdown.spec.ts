@@ -370,9 +370,11 @@ test.describe('[room-pdf] Room PDF Sync + Countdown Precision', () => {
 
     const teacherCtx = await browser.newContext({ permissions: ['camera', 'microphone'] });
     const teacherPage = await teacherCtx.newPage();
+    teacherPage.on('console', msg => console.log(`[Teacher Console] ${msg.type()}: ${msg.text()}`));
 
     const studentCtx = await browser.newContext({ permissions: ['camera', 'microphone'] });
     const studentPage = await studentCtx.newPage();
+    studentPage.on('console', msg => console.log(`[Student Console] ${msg.type()}: ${msg.text()}`));
 
     try {
       await setupCourseAndEnrollment(browser, courseId, durationMinutes);
