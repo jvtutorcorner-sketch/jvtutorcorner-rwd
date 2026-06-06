@@ -28,6 +28,9 @@ const nextConfig = {
     // 其他需要的後端變數...
     AGORA_APP_ID: process.env.AGORA_APP_ID,
     AGORA_APP_CERTIFICATE: process.env.AGORA_APP_CERTIFICATE,
+    LOGIN_BYPASS_SECRET: process.env.LOGIN_BYPASS_SECRET,
+    NEXT_PUBLIC_LOGIN_BYPASS_SECRET: process.env.NEXT_PUBLIC_LOGIN_BYPASS_SECRET || process.env.LOGIN_BYPASS_SECRET,
+    QA_CAPTCHA_BYPASS: process.env.QA_CAPTCHA_BYPASS,
     // Feature Flag default to true (Amplify might miss .env.local)
     NEXT_PUBLIC_USE_AGORA_WHITEBOARD: process.env.NEXT_PUBLIC_USE_AGORA_WHITEBOARD || 'true',
     // CI / AWS credentials (prefer CI_ prefixed variables)
