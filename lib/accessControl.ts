@@ -22,6 +22,22 @@ export async function verifyCourseAccess(userId: string, courseId: string): Prom
         return { granted: false, reason: 'Missing userId or courseId' };
     }
 
+    // Clean tabId suffix if present (e.g. "email@domain.com_tabId" -> "email@domain.com", or "student_tabId" -> "student")
+    let cleanUserId = userId;
+    const atIndex = userId.indexOf('@');
+    if (atIndex !== -1) {
+        const afterAt = userId.substring(atIndex);
+        const lastUnderscore = afterAt.lastIndexOf('_');
+        if (lastUnderscore !== -1) {
+            cleanUserId = userId.substring(0, atIndex + lastUnderscore);
+        }
+    } else {
+        const lastUnderscore = userId.lastIndexOf('_');
+        if (lastUnderscore !== -1) {
+            cleanUserId = userId.substring(0, lastUnderscore);
+        }
+    }
+
     try {
         // 1. Check B2C Enrollments (Direct Purchase)
         // optimizing with query if GSI exists, currently using Scan for safety based on loose schema knowledge
@@ -33,7 +49,7 @@ export async function verifyCourseAccess(userId: string, courseId: string): Prom
                 '#status': 'status'
             },
             ExpressionAttributeValues: {
-                ':uid': userId,
+                ':uid': cleanUserId,
                 ':cid': courseId,
                 ':s1': 'PAID',
                 ':s2': 'ACTIVE'
