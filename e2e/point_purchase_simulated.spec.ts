@@ -71,7 +71,9 @@ test('Point Purchase Flow (Simulated Payment)', async ({ page }) => {
     }, loginData);
 
     // 2. Fetch point balance before
-    const balanceBeforeRes = await page.request.get(`${baseUrl}/api/points?userId=${email}`);
+    const balanceBeforeRes = await page.request.get(`${baseUrl}/api/points?userId=${email}`, {
+        headers: { 'X-E2E-Secret': String(bypassSecret || '') }
+    });
     const balanceBefore = (await balanceBeforeRes.json()).balance;
     console.log(`Initial point balance: ${balanceBefore}`);
 
@@ -102,8 +104,12 @@ test('Point Purchase Flow (Simulated Payment)', async ({ page }) => {
     }
     
     console.log("Purchase verified in UI. Checking API for balance update...");
-    const balanceAfterRes = await page.request.get(`${baseUrl}/api/points?userId=${email}`);
-    const balanceAfter = (await balanceAfterRes.json()).balance;
+    const balanceAfterRes = await page.request.get(`${baseUrl}/api/points?userId=${email}`, {
+        headers: { 'X-E2E-Secret': String(bypassSecret || '') }
+    });
+    const balanceAfterData = await balanceAfterRes.json();
+    console.log(`balanceAfterRes status: ${balanceAfterRes.status()}`, balanceAfterData);
+    const balanceAfter = balanceAfterData.balance;
     console.log(`New point balance: ${balanceAfter}`);
 
     if (balanceAfter <= balanceBefore) {
