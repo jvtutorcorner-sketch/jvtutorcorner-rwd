@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
             } catch (e) {
                 console.error('[PayPal Return Mock] Error updating order status:', e);
             }
-            return NextResponse.redirect(`${baseURL}/plans`, 302);
+            return NextResponse.redirect(`${baseURL}/pricing?payment=success`, 302);
         }
 
         const accessToken = await generateAccessToken();
@@ -121,7 +121,7 @@ export async function GET(req: NextRequest) {
                 }
             }
 
-            return NextResponse.redirect(`${baseURL}/plans`, 302);
+            return NextResponse.redirect(`${baseURL}/pricing?payment=success`, 302);
         } else {
             console.error('[PayPal Return] Capture Failed:', data);
             return NextResponse.redirect(`${baseURL}/paypal/failure?reason=capture_failed`, 302);

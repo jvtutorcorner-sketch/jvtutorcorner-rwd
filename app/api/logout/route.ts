@@ -14,7 +14,7 @@ export async function POST(req: Request) {
   // 清除 session cookie
   res.headers.set(
     'Set-Cookie',
-    'session=; HttpOnly; Path=/; SameSite=Strict; Max-Age=0'
+    'session=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0'
   );
   return res;
 }

@@ -3,9 +3,9 @@
 export const dynamic = 'force-dynamic';
 
 
-import { useEffect, useState, Fragment } from 'react';
+import { useEffect, useState, Fragment, useCallback, Suspense } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useT } from '@/components/IntlProvider';
 import {
   PLAN_LABELS,
@@ -28,8 +28,9 @@ type PlanConfig = {
   target: string;
 };
 
-export default function PricingPage() {
+function PricingContent() {
   const t = useT();
+  const searchParams = useSearchParams();
   const [user, setUser] = useState<StoredUser | null>(null);
   const [plan, setPlan] = useState<PlanId | ''>('');
   const [loading, setLoading] = useState(true);
@@ -38,22 +39,48 @@ export default function PricingPage() {
   const [upgrades, setUpgrades] = useState<any[]>([]);
   const [loadingUpgrades, setLoadingUpgrades] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [pointsError, setPointsError] = useState<boolean>(false);
   const router = useRouter();
 
-  async function fetchUserPoints(email: string) {
+  // fetchUserPoints with retry on 401 (session may not be attached on first load after external redirect)
+  const fetchUserPoints = useCallback(async (email: string, retryCount = 0) => {
     try {
-      const res = await fetch(`/api/points?userId=${encodeURIComponent(email)}`, { cache: 'no-store' });
+      setPointsError(false);
+      const res = await fetch(`/api/points?userId=${encodeURIComponent(email)}`, {
+        cache: 'no-store',
+        credentials: 'include', // Explicitly include cookies
+      });
+
+      if (res.status === 401) {
+        if (retryCount < 2) {
+          // Session cookie may not be ready immediately after external payment redirect.
+          // Wait and retry (max 2 retries with exponential backoff).
+          const delay = (retryCount + 1) * 1000;
+          console.warn(`[pricing] /api/points returned 401 (retry ${retryCount + 1}/2 in ${delay}ms)`);
+          await new Promise(r => setTimeout(r, delay));
+          return fetchUserPoints(email, retryCount + 1);
+        }
+        // After retries exhausted, show graceful fallback
+        console.warn('[pricing] /api/points returned 401 after retries. Session may be missing.');
+        setPointsError(true);
+        setUserPoints(null);
+        return;
+      }
+
       const d = await res.json();
-      if (d?.ok) setUserPoints(d.balance);
+      if (d?.ok) {
+        setUserPoints(d.balance);
+        setPointsError(false);
+      }
     } catch (e) {
       console.error('Failed to fetch points:', e);
       setUserPoints(null);
     }
-  }
+  }, []);
 
   useEffect(() => {
-    setUser(getStoredUser());
     const u = getStoredUser();
+    setUser(u);
     if (u) {
       setPlan(u.plan);
       fetchUpgrades(u.email);
@@ -76,14 +103,41 @@ export default function PricingPage() {
       }
     };
 
+    // Handle tab visibility change — catches cases where user returns from external payment tab
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        const updatedUser = getStoredUser();
+        if (updatedUser?.email) fetchUserPoints(updatedUser.email);
+      }
+    };
+
     window.addEventListener('tutor:points-updated', handlePointsUpdate);
     window.addEventListener('pageshow', handlePageShow);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
     
     return () => {
       window.removeEventListener('tutor:points-updated', handlePointsUpdate);
       window.removeEventListener('pageshow', handlePageShow);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, []);
+  }, [fetchUserPoints]);
+
+  // Detect payment success from URL params (redirect from payment gateway)
+  // This is a separate effect to ensure it runs after user is loaded
+  useEffect(() => {
+    const paymentStatus = searchParams.get('payment');
+    if (paymentStatus === 'success') {
+      const u = getStoredUser();
+      if (u?.email) {
+        // Wait a brief moment to ensure the session cookie is fully available
+        // after the cross-site redirect, then force-refresh points
+        setTimeout(() => {
+          fetchUserPoints(u.email);
+          fetchUpgrades(u.email);
+        }, 800);
+      }
+    }
+  }, [searchParams, fetchUserPoints]);
 
   async function fetchSettings() {
     try {
@@ -280,9 +334,6 @@ export default function PricingPage() {
         <p>
           {settings?.pageDescription || t('pricing_description')}
         </p>
-
-
-        {/* Auth tag removed from Pricing page per request */}
       </header>
 
       <div className="mb-6 p-4 bg-white dark:bg-gray-800 rounded-lg border">
@@ -295,7 +346,11 @@ export default function PricingPage() {
             </div>
             <div className="text-right">
               <div className="text-sm text-gray-500">點數餘額</div>
-              <div className="text-2xl font-bold text-indigo-600">{userPoints !== null ? `${userPoints} 點` : '—'}</div>
+              <div className="text-2xl font-bold text-indigo-600">
+                {userPoints !== null ? `${userPoints} 點` : pointsError ? (
+                  <span className="text-sm text-orange-500">⚠️ 請<button onClick={() => fetchUserPoints(user.email)} className="underline ml-1">重新整理</button></span>
+                ) : '載入中...'}
+              </div>
             </div>
           </div>
         ) : (
@@ -521,5 +576,13 @@ export default function PricingPage() {
       )}
 
     </div>
+  );
+}
+
+export default function PricingPage() {
+  return (
+    <Suspense fallback={<div className="page section"><p>載入中...</p></div>}>
+      <PricingContent />
+    </Suspense>
   );
 }

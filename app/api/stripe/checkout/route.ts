@@ -70,8 +70,8 @@ export async function POST(req: NextRequest) {
             mode: priceId ? 'subscription' : 'payment',
             payment_method_types: ['card'],
             line_items: lineItems,
-            success_url: successUrl || `${process.env.NEXT_PUBLIC_BASE_URL}/settings/billing?success=true&orderId=${orderId}`,
-            cancel_url: cancelUrl || `${process.env.NEXT_PUBLIC_BASE_URL}/settings/billing?canceled=true`,
+            success_url: successUrl || `${process.env.NEXT_PUBLIC_BASE_URL}/pricing?payment=success&orderId=${orderId}`,
+            cancel_url: cancelUrl || `${process.env.NEXT_PUBLIC_BASE_URL}/pricing?payment=canceled`,
             metadata: {
                 userId: userId,
                 orderId: orderId,

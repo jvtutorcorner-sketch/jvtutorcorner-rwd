@@ -115,9 +115,12 @@ export async function POST(req: Request) {
     const res = NextResponse.json({ ok: true, profile: publicProfile });
     if (sessionToken) {
       const isProduction = process.env.NODE_ENV === 'production';
+      // SameSite=Lax (not Strict) is required to allow session cookies to be sent
+      // when users are redirected back from external payment gateways (Stripe, PayPal, LINE Pay).
+      // SameSite=Strict would block cookies on cross-site top-level navigations.
       res.headers.set(
         'Set-Cookie',
-        `session=${encodeURIComponent(sessionToken)}; HttpOnly; Path=/; SameSite=Strict; Max-Age=86400${isProduction ? '; Secure' : ''}`
+        `session=${encodeURIComponent(sessionToken)}; HttpOnly; Path=/; SameSite=Lax; Max-Age=86400${isProduction ? '; Secure' : ''}`
       );
     }
     return res;

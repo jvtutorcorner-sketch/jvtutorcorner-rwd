@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
         if (process.env.NEXT_PUBLIC_PAYMENT_MOCK_MODE === 'true' && transactionId.startsWith('MOCK_TX_')) {
             console.log(`[Line Pay Confirm] Mock Mode Active - Confirming ${orderId}`);
             const baseURL = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-            return NextResponse.redirect(`${baseURL}/settings/billing?success=true&orderId=${orderId}`);
+            return NextResponse.redirect(`${baseURL}/pricing?payment=success&orderId=${orderId}`);
         }
 
         // Fetch order from DB (server-authoritative amount)
@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
         const currentStatus = (orderItem.status || '').toUpperCase();
         if (['PAID', 'COMPLETED'].includes(currentStatus)) {
             const baseURL = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-            return NextResponse.redirect(`${baseURL}/settings/billing?success=true&orderId=${orderId}`);
+            return NextResponse.redirect(`${baseURL}/pricing?payment=success&orderId=${orderId}`);
         }
 
         const originalAmount = Number(orderItem.amount || 0);
@@ -96,16 +96,16 @@ export async function GET(req: NextRequest) {
             }
 
             const baseURL = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-            return NextResponse.redirect(`${baseURL}/settings/billing?success=true&orderId=${orderId}`);
+            return NextResponse.redirect(`${baseURL}/pricing?payment=success&orderId=${orderId}`);
         } else {
             console.error('Line Pay Capture Failed:', response);
             const baseURL = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-            return NextResponse.redirect(`${baseURL}/settings/billing?payment_error=${encodeURIComponent(response?.returnMessage || 'capture_failed')}`);
+            return NextResponse.redirect(`${baseURL}/pricing?payment=canceled&reason=${encodeURIComponent(response?.returnMessage || 'capture_failed')}`);
         }
 
     } catch (error: any) {
         console.error('Line Pay Confirm API Error:', error);
         const baseURL = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-        return NextResponse.redirect(`${baseURL}/settings/billing?payment_error=system_error`);
+        return NextResponse.redirect(`${baseURL}/pricing?payment=canceled&reason=system_error`);
     }
 }
