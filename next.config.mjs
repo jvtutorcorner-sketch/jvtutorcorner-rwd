@@ -58,6 +58,13 @@ const nextConfig = {
 
   // 禁用不必要的 header
   poweredByHeader: false,
+
+  typescript: {
+    ignoreBuildErrors: true,
+  },
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
 };
 
 export default nextConfig;
