@@ -651,8 +651,8 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
             let lookupData: any = null;
 
             // Try multiple times to allow teacher's write to propagate using the read-only endpoint
-            // Total wait: 8 * 500ms = 4s
-            for (let i = 0; i < 8; i++) {
+            // Total wait: 24 * 1000ms = 24s (teacher may need time to init room after entering /classroom/room)
+            for (let i = 0; i < 24; i++) {
               try {
                 const j = await fetchExistingWhiteboardUuid(courseId, sessionReadyKey);
                 if (j?.uuid) {
@@ -680,7 +680,8 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                 console.warn(`[ClientClassroom] Student lookup attempt ${i + 1} failed:`, e);
               }
               if (found) break;
-              await new Promise(r => setTimeout(r, 500));
+              if (i % 5 === 0) console.log(`[ClientClassroom] Student whiteboard lookup: attempt ${i + 1}/24, waiting for teacher room...`);
+              await new Promise(r => setTimeout(r, 1000));
             }
 
             if (found && lookupData) {
