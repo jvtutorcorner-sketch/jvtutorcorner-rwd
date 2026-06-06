@@ -40,7 +40,12 @@ export function withAuth(
     // 嘗試 E2E Bypass
     const e2eSecret = req.headers.get('x-e2e-secret');
     const bypassSecret = process.env.LOGIN_BYPASS_SECRET;
-    if (e2eSecret && bypassSecret && e2eSecret === bypassSecret) {
+    const host = req.headers.get('host') || '';
+    const isLocalHost = host.includes('localhost') || host.includes('127.0.0.1') || host.includes('3000') || host.includes('3001');
+    const isProdEnv = process.env.APP_ENV === 'production' || process.env.NODE_ENV === 'production';
+    const isHostedProd = (isProdEnv && !isLocalHost) || !!process.env.AWS_AMPLIFY;
+
+    if (e2eSecret && bypassSecret && e2eSecret === bypassSecret && !isHostedProd) {
       const systemSession: Session = {
         sessionId: 'e2e-bypass',
         userId: 'system',
@@ -160,7 +165,12 @@ export function withAnyAuth(
     // 嘗試 E2E Bypass
     const e2eSecret = req.headers.get('x-e2e-secret');
     const bypassSecret = process.env.LOGIN_BYPASS_SECRET;
-    if (e2eSecret && bypassSecret && e2eSecret === bypassSecret) {
+    const host = req.headers.get('host') || '';
+    const isLocalHost = host.includes('localhost') || host.includes('127.0.0.1') || host.includes('3000') || host.includes('3001');
+    const isProdEnv = process.env.APP_ENV === 'production' || process.env.NODE_ENV === 'production';
+    const isHostedProd = (isProdEnv && !isLocalHost) || !!process.env.AWS_AMPLIFY;
+
+    if (e2eSecret && bypassSecret && e2eSecret === bypassSecret && !isHostedProd) {
       const systemSession: Session = {
         sessionId: 'e2e-bypass',
         userId: 'system',

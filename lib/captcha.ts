@@ -92,9 +92,41 @@ export function getBypassSecret(): string | undefined {
   return secret;
 }
 
+/**
+ * Checks if the captcha bypass is allowed for the current request.
+ * Bypass is strictly disabled in the production environment (when APP_ENV is production and the request is not from localhost).
+ */
+export async function isBypassAllowed(): Promise<boolean> {
+  const isProdEnv = process.env.APP_ENV === 'production' || process.env.NODE_ENV === 'production';
+  
+  if (process.env.AWS_AMPLIFY) {
+    return false;
+  }
+
+  try {
+    const headerList = await headers();
+    const host = headerList.get('host') || '';
+    const isLocalHost = host.includes('localhost') || host.includes('127.0.0.1') || host.includes('3000') || host.includes('3001');
+    
+    // If we are in production and the host is not localhost, disable bypass
+    if (isProdEnv && !isLocalHost) {
+      console.log('[captcha] bypass disallowed: production mode on hosted domain', { host });
+      return false;
+    }
+  } catch (err) {
+    // Outside request context (e.g. static generation or initialization)
+    if (isProdEnv && !process.env.IS_OFFLINE) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 export async function verifyCaptcha(token: string | undefined, value: string | undefined) {
   // Common bypass code for automated testing
-  const bypassSecret = getBypassSecret();
+  const bypassAllowed = await isBypassAllowed();
+  const bypassSecret = bypassAllowed ? getBypassSecret() : undefined;
 
   // 1. Check bypass via provided value (form field)
   if (bypassSecret && value && value.trim() === bypassSecret.trim()) {

@@ -5,7 +5,7 @@ import path from 'path';
 import resolveDataFile from '@/lib/localData';
 import { ddbDocClient } from '@/lib/dynamo';
 import { ScanCommand } from '@aws-sdk/lib-dynamodb';
-import { verifyCaptcha, getBypassSecret } from '@/lib/captcha';
+import { verifyCaptcha, getBypassSecret, isBypassAllowed } from '@/lib/captcha';
 import { createSession } from '@/lib/auth/sessionManager';
 
 async function readProfiles() {
@@ -27,7 +27,8 @@ export async function POST(req: Request) {
 
     // 1. Check for bypass conditions (Environment-based test accounts + Secret)
     let skipCaptcha = false;
-    const bypassSecret = getBypassSecret();
+    const bypassAllowed = await isBypassAllowed();
+    const bypassSecret = bypassAllowed ? getBypassSecret() : undefined;
     
     // Check bypass via value OR via header
     const headerList = await headers();

@@ -4,7 +4,7 @@ import path from 'path';
 import resolveDataFile from '@/lib/localData';
 import { ddbDocClient } from '@/lib/dynamo';
 import { PutCommand, ScanCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
-import { verifyCaptcha, getBypassSecret } from '@/lib/captcha';
+import { verifyCaptcha, getBypassSecret, isBypassAllowed } from '@/lib/captcha';
 import { headers } from 'next/headers';
 
 
@@ -23,7 +23,8 @@ export async function POST(req: Request) {
     // Validate captcha (supporting bypass secret / header)
     const headerList = await headers();
     const e2eHeader = headerList.get('X-E2E-Secret');
-    const bypassSecret = getBypassSecret();
+    const bypassAllowed = await isBypassAllowed();
+    const bypassSecret = bypassAllowed ? getBypassSecret() : undefined;
     const isBypass = Boolean(bypassSecret) && (
       (captchaValue && bypassSecret && captchaValue.trim() === bypassSecret.trim()) || 
       (e2eHeader && bypassSecret && e2eHeader.trim() === bypassSecret.trim())
