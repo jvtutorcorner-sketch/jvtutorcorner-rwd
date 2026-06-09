@@ -610,17 +610,22 @@ async function testSMTP(config: Record<string, string>, emailTest?: { to: string
 
         // 2. 如果有提供 emailTest，則執行寄送
         if (emailTest && emailTest.to) {
-            console.log(`[testSMTP] Sending test email to: ${emailTest.to}`);
+            const { getBaseEmail } = await import('@/lib/email/whitelist');
+            const targetRecipient = getBaseEmail(emailTest.to);
+            if (targetRecipient !== emailTest.to) {
+                console.log(`[testSMTP] Redirecting test recipient from ${emailTest.to} to base email ${targetRecipient}`);
+            }
+            console.log(`[testSMTP] Sending test email to: ${targetRecipient}`);
             const sendInfo = await transporter.sendMail({
                 from: `"System Test" <${from}>`,
-                to: emailTest.to,
+                to: targetRecipient,
                 subject: emailTest.subject || '系統整合測試郵件',
                 html: emailTest.html || `<p>這是一封測試郵件，證明您的 <strong>${type}</strong> 設定已成功生效！</p>`,
                 bcc: emailTest.bcc,
             });
             return {
                 success: true,
-                message: `郵件已成功發送至 ${emailTest.to}`,
+                message: `郵件已成功發送至 ${targetRecipient}`,
                 details: { messageId: sendInfo.messageId, response: sendInfo.response }
             };
         }

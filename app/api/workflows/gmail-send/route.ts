@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
         }
 
         // --- Whitelist Check ---
-        const { isEmailWhitelisted } = await import('@/lib/email/whitelist');
+        const { isEmailWhitelisted, getBaseEmail } = await import('@/lib/email/whitelist');
         const isWhitelisted = await isEmailWhitelisted(to);
         
         // Allow bypass if it's a verification email (to let new users register and verify)
@@ -100,9 +100,14 @@ export async function POST(req: NextRequest) {
             ? buildHtmlEmail(subject, html || body || '')
             : undefined;
 
+        const targetRecipient = getBaseEmail(to);
+        if (targetRecipient !== to) {
+            console.log(`[gmail-send] Redirecting recipient from ${to} to base email ${targetRecipient}`);
+        }
+
         const info = await transporter.sendMail({
             from: `"${fromName}" <${smtpUser}>`,
-            to: to.trim(),
+            to: targetRecipient.trim(),
             subject,
             text: body || '',
             ...(htmlContent ? { html: htmlContent } : {}),

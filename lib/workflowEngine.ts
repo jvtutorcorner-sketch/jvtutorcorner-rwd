@@ -396,7 +396,7 @@ async function executeAction(actionNode: Node, payloadData: any, logs: any[]) {
                 const body = parseTemplate(config?.body, payloadData);
 
                 // --- Whitelist Check ---
-                const { isEmailWhitelisted } = await import('./email/whitelist');
+                const { isEmailWhitelisted, getBaseEmail } = await import('./email/whitelist');
                 if (!(await isEmailWhitelisted(to))) {
                     const blockMsg = `[Workflow Engine] Blocked sending to ${to} (not in whitelist)`;
                     console.warn(blockMsg);
@@ -405,11 +405,16 @@ async function executeAction(actionNode: Node, payloadData: any, logs: any[]) {
                 }
                 // -----------------------
 
+                const targetRecipient = getBaseEmail(to);
+                if (targetRecipient !== to) {
+                    console.log(`[Workflow Engine] Redirecting recipient from ${to} to base email ${targetRecipient}`);
+                }
+
                 const transporter = await getTransporter();
                 if (transporter) {
                     await transporter.sendMail({
                         from: `"JV Tutor AI Workflow" <${process.env.SMTP_USER}>`,
-                        to,
+                        to: targetRecipient,
                         subject,
                         html: body,
                     });

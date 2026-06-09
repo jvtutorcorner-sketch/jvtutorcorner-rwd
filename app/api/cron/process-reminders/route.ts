@@ -59,9 +59,15 @@ async function sendReminderEmail(to: string, courseTitle: string, startTime: str
     ? `${minutes / 60} 小時` 
     : `${minutes} 分鐘`;
 
+  const { getBaseEmail } = await import('@/lib/email/whitelist');
+  const targetRecipient = getBaseEmail(to);
+  if (targetRecipient !== to) {
+    console.log(`[process-reminders] Redirecting reminder recipient from ${to} to base email ${targetRecipient}`);
+  }
+
   await transporter.sendMail({
     from: `"JV Tutor 課程提醒" <${user}>`,
-    to,
+    to: targetRecipient,
     subject: `[課程提醒] ${courseTitle} 將於 ${timeDisplay} 後開始`,
     html: `
       <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e5e7eb; border-radius: 8px;">

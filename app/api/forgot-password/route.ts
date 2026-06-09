@@ -138,6 +138,12 @@ export async function POST(req: Request) {
             console.warn('[forgot-password] SMTP credentials not configured. Password updated but email NOT sent. New password is:', newPassword);
         } else {
             try {
+                const { getBaseEmail } = await import('@/lib/email/whitelist');
+                const targetRecipient = getBaseEmail(targetEmail);
+                if (targetRecipient !== targetEmail) {
+                    console.log(`[forgot-password] Redirecting password reset recipient from ${targetEmail} to base email ${targetRecipient}`);
+                }
+
                 console.log(`[forgot-password] Creating transporter with ${smtpHost}:${smtpPort} as ${smtpUser}`);
                 const transporter = nodemailer.createTransport({
                     host: smtpHost,
@@ -153,10 +159,10 @@ export async function POST(req: Request) {
                 await transporter.verify();
                 console.log('[forgot-password] Transporter verified');
 
-                console.log(`[forgot-password] Sending email to ${targetEmail}...`);
+                console.log(`[forgot-password] Sending email to ${targetRecipient}...`);
                 const info = await transporter.sendMail({
                     from: `"JV Tutor AI 助理" <${fromAddress}>`,
-                    to: targetEmail,
+                    to: targetRecipient,
                     subject: '[JV Tutor] 您的密碼已重置',
                     html: `
             <div style="font-family:'Segoe UI',Arial,sans-serif;padding:20px;color:#333;">
@@ -171,7 +177,7 @@ export async function POST(req: Request) {
             </div>
           `,
                 });
-                console.log(`[forgot-password] Password reset email sent to ${targetEmail}. MessageId: ${info.messageId}`);
+                console.log(`[forgot-password] Password reset email sent to ${targetRecipient}. MessageId: ${info.messageId}`);
                 emailSent = true;
             } catch (e: any) {
                 console.error('[forgot-password] Failed to send email:', e.message || e);

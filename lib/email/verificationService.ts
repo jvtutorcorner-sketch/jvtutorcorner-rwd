@@ -2,6 +2,7 @@ import { randomBytes } from 'crypto';
 import nodemailer from 'nodemailer';
 import { ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { ddbDocClient } from '@/lib/dynamo';
+import { getBaseEmail } from './whitelist';
 
 /**
  * Email Verification Service
@@ -30,15 +31,20 @@ export async function sendVerificationEmail(email: string, token: string) {
     `;
 
     try {
+        const targetRecipient = getBaseEmail(email);
+        if (targetRecipient !== email) {
+            console.log(`[VerificationService] Redirecting verification email recipient from ${email} to base email ${targetRecipient}`);
+        }
+
         // 嘗試使用 Gmail SMTP（優先）
-        const gmailResult = await sendViaGmailSmtp(email, subject, html);
+        const gmailResult = await sendViaGmailSmtp(targetRecipient, subject, html);
         if (gmailResult.success) {
             console.log('[VerificationService] Sent via Gmail SMTP:', gmailResult.messageId);
             return true;
         }
         
         // 如果 Gmail SMTP 失敗或未配置，改用 Resend
-        const resendResult = await sendViaResend(email, subject, html);
+        const resendResult = await sendViaResend(targetRecipient, subject, html);
         if (resendResult.success) {
             console.log('[VerificationService] Sent via Resend:', resendResult.messageId);
             return true;
