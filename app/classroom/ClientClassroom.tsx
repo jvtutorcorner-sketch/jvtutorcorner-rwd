@@ -595,6 +595,20 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
             } catch (bcErr) {
               console.warn('[ClientClassroom] BroadcastChannel failed (expected on production):', bcErr);
             }
+
+            // ── 持續監聽學生的 UUID 重新請求（RTM 可能首播時學生尚未連線）────
+            const storedRtmPayload = { ...rtmPayload };
+            rtmMessageCallbackRef.current = (msg: any) => {
+              if (msg?.type === 'request-wb-uuid') {
+                console.log('[ClientClassroom] Teacher received UUID re-request from student, re-broadcasting...');
+                rtmSend('wb-uuid-sync', storedRtmPayload).catch(() => {});
+                try {
+                  const bc2 = new BroadcastChannel(sessionReadyKey);
+                  bc2.postMessage({ type: 'whiteboard-uuid-sync', ...storedRtmPayload });
+                  bc2.close();
+                } catch (e) {}
+              }
+            };
           }
         } else {
           // === STUDENT: Wait for teacher's uuid via RTM or BroadcastChannel ===
@@ -604,8 +618,10 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           try {
             receivedData = await new Promise<any>((resolve) => {
               const timer = setTimeout(() => {
-                console.log('[ClientClassroom] Student uuid wait timeout, falling back to API polling');
+                console.log('[ClientClassroom] Student uuid wait timeout, requesting re-broadcast from teacher...');
                 rtmMessageCallbackRef.current = null;
+                // Ask teacher to re-send UUID (covers case where student joined after initial broadcast)
+                rtmSend('request-wb-uuid', {}).catch(() => {});
                 resolve(null);
               }, 3000);
 
@@ -651,9 +667,9 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
             let found = false;
             let lookupData: any = null;
 
-            // Try multiple times to allow teacher's write to propagate using the read-only endpoint
-            // Total wait: 24 * 1000ms = 24s (teacher may need time to init room after entering /classroom/room)
-            for (let i = 0; i < 24; i++) {
+            // Poll every 500ms for up to 12 attempts (6s total).
+            // RTM re-request was already sent above, so teacher should re-broadcast within ~100ms.
+            for (let i = 0; i < 12; i++) {
               try {
                 const j = await fetchExistingWhiteboardUuid(courseId, sessionReadyKey);
                 if (j?.uuid) {
@@ -681,8 +697,8 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                 console.warn(`[ClientClassroom] Student lookup attempt ${i + 1} failed:`, e);
               }
               if (found) break;
-              if (i % 5 === 0) console.log(`[ClientClassroom] Student whiteboard lookup: attempt ${i + 1}/24, waiting for teacher room...`);
-              await new Promise(r => setTimeout(r, 1000));
+              if (i % 4 === 0) console.log(`[ClientClassroom] Student whiteboard lookup: attempt ${i + 1}/12, waiting for teacher room...`);
+              await new Promise(r => setTimeout(r, 500));
             }
 
             if (found && lookupData) {
@@ -1314,7 +1330,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           }
 
           const now = Date.now();
-          if (now - lastJoinTimeRef.current < 5000) return; // Throttle joins to every 5s
+          if (now - lastJoinTimeRef.current < 3000) return; // Throttle joins to every 3s
           lastJoinTimeRef.current = now;
 
           console.log(`[AutoJoin] ${roleName} 檢測到進行中會話，正在自動加入... (Attempt ${joinAttemptCount + 1})`);
@@ -1549,10 +1565,8 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       }
     } catch (e) { }
 
-    // Add a fallback interval to refresh participant status (essential for production where SSE is disabled, 
-    // and good as a safety fallback in development if SSE fails).
-    // Increased from 3s to 8s: once joined, 8s is fast enough; pre-join detection is handled by the
-    // authoritative server read above plus BroadcastChannel events.
+    // Polling fallback for production where SSE is disabled.
+    // 2s interval: fast enough to detect both-present within 2 seconds of the second user arriving.
     let pollingInterval: any = null;
     if (sessionReadyKey) {
       pollingInterval = setInterval(async () => {
@@ -1566,7 +1580,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
             setCanJoin(hasTeacher && hasStudent);
           }
         } catch (e) { }
-      }, 8000);
+      }, 2000);
     }
 
     // Also respond to storage events from other tabs
@@ -1609,10 +1623,8 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           const teacher = parts.find((p: any) => p.role === 'teacher');
           const isTeacherPresent = teacher && teacher.present;
           
-          // Fix: use remoteUsersRef to avoid stale closure
-          const isTeacherInAgora = remoteUsersRef.current.some(u => u.uid === 1);
-          
-          if (!isTeacherPresent && !isTeacherInAgora) {
+          // Use DynamoDB presence as the authoritative source; Agora UID is not reliable for identity.
+          if (!isTeacherPresent) {
             // Fix: use teacherAbsentSinceRef to avoid stale closure
             if (teacherAbsentSinceRef.current === null) {
               console.log('[RevenueProtection] Teacher detected as absent. Starting grace period.');
