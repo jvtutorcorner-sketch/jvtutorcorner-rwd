@@ -120,4 +120,43 @@ export const SUBJECT_TO_TAGS: Record<string, string[]> = {
   設計: ['design', 'career', 'upskill'],
   音樂: ['music', 'hobby', 'explore'],
   繪畫: ['art', 'hobby', 'explore'],
+  // 問卷新增科目
+  '國文/語文': ['chinese', 'exam', '會考'],
+  自然科學: ['science', 'exam', '會考'],
+  物理: ['physics', 'exam', 'certification'],
+  化學: ['chemistry', 'exam', 'certification'],
+  生物: ['biology', 'exam', '會考'],
+  地球科學: ['earth-science', 'exam'],
+  歷史: ['history', 'exam', '會考'],
+  地理: ['geography', 'exam', '會考'],
+  公民: ['civics', 'exam', '會考'],
+  社會: ['social', 'exam', '會考'],
+  '資訊/程式設計': ['coding', 'career', 'upskill', 'certification'],
+  美術: ['art', 'hobby', 'explore'],
+  體育: ['sport', 'hobby'],
+  法文: ['french', 'language', 'travel'],
+  西班牙文: ['spanish', 'language', 'travel'],
 };
+
+const DIFFICULTY_WEIGHT: Record<string, number> = {
+  hard: 3.0,
+  medium: 2.0,
+  easy: 1.0,
+};
+
+/** Convert questionnaire subjects + difficulty levels to TagSeeds for the recommendation engine */
+export function questionnaireSubjectsToSeeds(
+  subjects: string[],
+  difficultyLevel: Record<string, string>
+): TagSeed[] {
+  const seeds: TagSeed[] = [];
+  for (const subject of subjects) {
+    const tags = SUBJECT_TO_TAGS[subject];
+    if (!tags) continue;
+    const weight = DIFFICULTY_WEIGHT[difficultyLevel[subject]] ?? 2.0;
+    for (const tag of tags) {
+      seeds.push({ tag, weight });
+    }
+  }
+  return seeds;
+}

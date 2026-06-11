@@ -33,6 +33,7 @@ export default function QuestionnairePage() {
   const [values, setValues] = useState<LearningQuestionnaireValues>(defaultValues);
   const [submitting, setSubmitting] = useState(false);
   const [submissionId, setSubmissionId] = useState<string | undefined>();
+  const [matchResult, setMatchResult] = useState<{ teachers: any[]; courses: any[] } | undefined>();
   const [error, setError] = useState<string | null>(null);
 
   const onChange = (patch: Partial<LearningQuestionnaireValues>) => {
@@ -60,6 +61,14 @@ export default function QuestionnairePage() {
     if (currentStep > 0) setCurrentStep(prev => prev - 1);
     setError(null);
   };
+
+  useEffect(() => {
+    if (!submissionId || values.subjects.length === 0) return;
+    fetch(`/api/questionnaire/match?subjects=${encodeURIComponent(values.subjects.join(','))}`)
+      .then(r => r.json())
+      .then(setMatchResult)
+      .catch(() => {});
+  }, [submissionId]);
 
   const handleSubmit = async () => {
     setSubmitting(true);
@@ -90,7 +99,7 @@ export default function QuestionnairePage() {
       case 4: return <StepS4 values={values} onChange={onChange} />;
       case 5: return <StepS5 values={values} onChange={onChange} />;
       case 6: return <StepS6 values={values} onChange={onChange} />;
-      case 7: return <StepS7 values={values} submissionId={submissionId} submitting={submitting} />;
+      case 7: return <StepS7 values={values} submissionId={submissionId} submitting={submitting} matchResult={matchResult} />;
       default: return null;
     }
   };
