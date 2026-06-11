@@ -163,7 +163,7 @@ export default function CalendarPage() {
       // student/other: fetch orders
       (async () => {
         try {
-          const url = `/api/orders?limit=50&userId=${encodeURIComponent(user.email || '')}`;
+          const url = `/api/orders?limit=50&userId=${encodeURIComponent(user.roid_id || user.id || user.email || '')}`;
           const res = await fetch(url);
           const data = await res.json();
           let rows: any[] = [];

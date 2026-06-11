@@ -1,5 +1,5 @@
 import { ddbDocClient } from './dynamo';
-import { ScanCommand, PutCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
+import { ScanCommand, PutCommand, GetCommand, QueryCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import resolveDataFile from './localData';
 import fs from 'fs/promises';
 import { LambdaClient, InvokeCommand } from '@aws-sdk/client-lambda';
@@ -63,6 +63,48 @@ async function callProfilesHttp(action: string, payload: any) {
   }
 }
 
+export async function findProfileByLineUid(lineUid: string) {
+  // 1) HTTP API if configured
+  if (PROFILES_API) {
+    try {
+      const r: any = await callProfilesHttp('findByLineUid', { lineUid });
+      return r?.item || null;
+    } catch (e) {
+      // fallthrough
+    }
+  }
+
+  // 2) Lambda invoke if configured
+  if (PROFILES_LAMBDA) {
+    try {
+      const r = await invokeProfilesLambda('findByLineUid', { lineUid });
+      return r?.item || null;
+    } catch (e) {
+      console.warn('[profilesService] lambda findByLineUid failed', (e as any)?.message || e);
+    }
+  }
+
+  // 3) Direct Dynamo query via LineUidIndex GSI
+  if (PROFILES_TABLE) {
+    try {
+      const queryRes: any = await ddbDocClient.send(new QueryCommand({
+        TableName: PROFILES_TABLE,
+        IndexName: 'LineUidIndex',
+        KeyConditionExpression: 'lineUid = :lineUid',
+        ExpressionAttributeValues: { ':lineUid': lineUid },
+        Limit: 1,
+      }));
+      if (queryRes?.Count > 0) return queryRes.Items[0];
+      return null;
+    } catch (e) {
+      console.warn('[profilesService] dynamo lineUid query failed', (e as any)?.message || e);
+    }
+  }
+
+  const profiles = await readProfilesFile();
+  return profiles.find((p: any) => p.lineUid === lineUid) || null;
+}
+
 export async function findProfileByEmail(email: string) {
   email = String(email).toLowerCase();
   // 1) HTTP API if configured
@@ -85,14 +127,20 @@ export async function findProfileByEmail(email: string) {
     }
   }
 
-  // 3) Direct Dynamo query if configured
+  // 3) Direct Dynamo query via EmailIndex GSI
   if (PROFILES_TABLE) {
     try {
-      const scanRes: any = await ddbDocClient.send(new ScanCommand({ TableName: PROFILES_TABLE, FilterExpression: 'email = :email', ExpressionAttributeValues: { ':email': email } }));
-      if (scanRes?.Count > 0) return scanRes.Items[0];
+      const queryRes: any = await ddbDocClient.send(new QueryCommand({
+        TableName: PROFILES_TABLE,
+        IndexName: 'EmailIndex',
+        KeyConditionExpression: 'email = :email',
+        ExpressionAttributeValues: { ':email': email },
+        Limit: 1,
+      }));
+      if (queryRes?.Count > 0) return queryRes.Items[0];
       return null;
     } catch (e) {
-      console.warn('[profilesService] dynamo scan failed', (e as any)?.message || e);
+      console.warn('[profilesService] dynamo email query failed', (e as any)?.message || e);
     }
   }
 
@@ -174,7 +222,6 @@ export async function putProfile(profile: any) {
 // B2B/B2C Extended Functions
 // ==========================================
 
-import { QueryCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import type { ProfileB2B } from './types/b2b';
 
 /**
@@ -326,6 +373,7 @@ export async function findProfileByStripeCustomerId(stripeCustomerId: string) {
 
 export default {
   // Original functions
+  findProfileByLineUid,
   findProfileByEmail,
   getProfileById,
   putProfile,

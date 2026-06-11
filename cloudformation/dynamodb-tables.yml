@@ -42,6 +42,16 @@ Parameters:
     Default: jvtutorcorner-subscriptions
     Description: DynamoDB table name for subscription plans and extensions
 
+  AgoraLogsTableName:
+    Type: String
+    Default: jvtutorcorner-agora-logs
+    Description: DynamoDB table name for Agora RTC/RTM logs
+
+  QuestionnairesTableName:
+    Type: String
+    Default: jvtutorcorner-questionnaires
+    Description: DynamoDB table name for learning needs questionnaire submissions
+
 Resources:
   TeachersTable:
     Type: AWS::DynamoDB::Table
@@ -263,6 +273,41 @@ Resources:
         - Key: Project
           Value: jvtutorcorner
 
+  QuestionnairesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref QuestionnairesTableName
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: lineUid
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+      GlobalSecondaryIndexes:
+        - IndexName: UserIdIndex
+          KeySchema:
+            - AttributeName: userId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        - IndexName: LineUidIndex
+          KeySchema:
+            - AttributeName: lineUid
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: false
+      Tags:
+        - Key: Project
+          Value: jvtutorcorner
+
   SubscriptionsTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -335,6 +380,13 @@ Outputs:
   AgoraLogsTableArn:
     Description: ARN of Agora logs DynamoDB table
     Value: !GetAtt AgoraLogsTable.Arn
+
+  QuestionnairesTableName:
+    Description: Name of questionnaires DynamoDB table
+    Value: !Ref QuestionnairesTableName
+  QuestionnairesTableArn:
+    Description: ARN of questionnaires DynamoDB table
+    Value: !GetAtt QuestionnairesTable.Arn
 
   SubscriptionsTableName:
     Description: Name of subscriptions DynamoDB table

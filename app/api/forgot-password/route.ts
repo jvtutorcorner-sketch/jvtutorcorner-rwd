@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs/promises';
 import { ddbDocClient } from '@/lib/dynamo';
-import { ScanCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { UpdateCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { findProfileByEmail } from '@/lib/profilesService';
 import nodemailer from 'nodemailer';
 import resolveDataFile from '@/lib/localData';
 
@@ -47,17 +48,10 @@ export async function POST(req: Request) {
 
         if (useDynamo) {
             try {
-                const scanRes: any = await ddbDocClient.send(new ScanCommand({
-                    TableName: PROFILES_TABLE,
-                    FilterExpression: 'email = :email',
-                    ExpressionAttributeValues: { ':email': targetEmail }
-                }));
-                if (scanRes?.Count > 0) {
-                    found = scanRes.Items[0];
-                    isDynamoRecord = true;
-                }
+                found = await findProfileByEmail(targetEmail);
+                isDynamoRecord = !!found;
             } catch (e) {
-                console.warn('[forgot-password] Dynamo scan failed, falling back to file', (e as any)?.message || e);
+                console.warn('[forgot-password] Profile lookup failed, falling back to file', (e as any)?.message || e);
             }
         }
 

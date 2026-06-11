@@ -37,7 +37,7 @@ const TABLE_NAME = process.env.DYNAMODB_TABLE_CALENDAR_REMINDERS || 'jvtutorcorn
 // 精簡結構：名稱欄位不存入DB，查詢時透過 courseId/orderId 動態 join
 interface CalendarReminder {
   id: string;
-  userId: string;          // 設定提醒的用戶（學生 email）
+  userId: string;          // Profile id (roid_id || id) of the user who set the reminder
   eventId: string;         // 日曆事件 ID
   eventStartTime: string;  // ISO8601，用於 GSI 排序
   reminderMinutes: string; // 提前幾分鐘提醒

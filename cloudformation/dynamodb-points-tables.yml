@@ -1,0 +1,71 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudFormation template for JV Tutor Corner points-related DynamoDB tables'
+
+Parameters:
+  UserPointsTableName:
+    Type: String
+    Default: jvtutorcorner-user-points
+    Description: DynamoDB table name for user point balances
+
+  PointsEscrowTableName:
+    Type: String
+    Default: jvtutorcorner-points-escrow
+    Description: DynamoDB table name for points held in escrow during courses
+
+Resources:
+  UserPointsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref UserPointsTableName
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+      Tags:
+        - Key: Project
+          Value: jvtutorcorner
+
+  PointsEscrowTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref PointsEscrowTableName
+      AttributeDefinitions:
+        - AttributeName: escrowId
+          AttributeType: S
+        - AttributeName: orderId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: escrowId
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+      GlobalSecondaryIndexes:
+        - IndexName: byOrderId
+          KeySchema:
+            - AttributeName: orderId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      Tags:
+        - Key: Project
+          Value: jvtutorcorner
+
+Outputs:
+  UserPointsTableName:
+    Description: Name of user-points DynamoDB table
+    Value: !Ref UserPointsTableName
+  UserPointsTableArn:
+    Description: ARN of user-points DynamoDB table
+    Value: !GetAtt UserPointsTable.Arn
+
+  PointsEscrowTableName:
+    Description: Name of points-escrow DynamoDB table
+    Value: !Ref PointsEscrowTableName
+  PointsEscrowTableArn:
+    Description: ARN of points-escrow DynamoDB table
+    Value: !GetAtt PointsEscrowTable.Arn
+  ByOrderIdIndexArn:
+    Description: ARN of the byOrderId GSI on points-escrow table
+    Value: !Sub '${PointsEscrowTable.Arn}/index/byOrderId'

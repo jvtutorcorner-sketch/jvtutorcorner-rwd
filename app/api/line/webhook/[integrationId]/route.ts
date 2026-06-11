@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, GetCommand, ScanCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, GetCommand, ScanCommand, PutCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
 import fs from 'fs';
 import resolveDataFile from '@/lib/localData';
 import { executeWebhookScript } from '@/lib/scriptExecutor';
@@ -188,15 +188,17 @@ async function findUserProfileByEmail(email: string) {
     }
 
     try {
-        const { Items } = await docClient.send(new ScanCommand({
+        const { Items } = await docClient.send(new QueryCommand({
             TableName: PROFILES_TABLE,
-            FilterExpression: 'email = :email',
-            ExpressionAttributeValues: { ':email': targetEmail }
+            IndexName: 'EmailIndex',
+            KeyConditionExpression: 'email = :email',
+            ExpressionAttributeValues: { ':email': targetEmail },
+            Limit: 1,
         }));
-        console.log('[LINE Webhook] DynamoDB scan result:', Items?.length || 0, 'items found');
+        console.log('[LINE Webhook] DynamoDB query result:', Items?.length || 0, 'items found');
         return Items && Items.length > 0 ? Items[0] : null;
     } catch (err) {
-        console.error('[LINE Webhook] DynamoDB scan error:', err);
+        console.error('[LINE Webhook] findUserProfileByEmail error:', err);
         return null;
     }
 }

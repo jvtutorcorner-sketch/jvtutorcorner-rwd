@@ -61,7 +61,7 @@ export default function RemindersPage() {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      params.set('userId', user.email || '');
+      params.set('userId', user.roid_id || user.id || user.email || '');
       params.set('isAdmin', String(user.role === 'admin'));
       params.set('limit', limitFilter);
       
@@ -107,7 +107,7 @@ export default function RemindersPage() {
     try {
       const params = new URLSearchParams();
       params.set('id', id);
-      params.set('userId', user?.email || '');
+      params.set('userId', user?.roid_id || user?.id || user?.email || '');
       params.set('isAdmin', String(user?.role === 'admin'));
       
       const res = await fetch(`/api/calendar/reminders?${params.toString()}`, {

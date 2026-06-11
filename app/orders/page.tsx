@@ -145,7 +145,7 @@ export default function OrdersPage() {
         }
       } else {
         // Regular user gets their own orders
-        q.set('userId', encodeURIComponent(current?.email || ''));
+        q.set('userId', encodeURIComponent(current?.roid_id || current?.id || current?.email || ''));
         const res = await fetch(`/api/orders?${q.toString()}`);
         const data = await res.json();
         if (!res.ok) throw new Error(data?.error || 'Failed to load orders');

@@ -1,0 +1,70 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudFormation template for the JV Tutor Corner Profiles DynamoDB table'
+
+Parameters:
+  ProfilesTableName:
+    Type: String
+    Default: jvtutorcorner-profiles
+    Description: DynamoDB table name for user profile records
+
+Resources:
+  ProfilesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref ProfilesTableName
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: email
+          AttributeType: S
+        - AttributeName: orgId
+          AttributeType: S
+        - AttributeName: lineUid
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+      GlobalSecondaryIndexes:
+        - IndexName: EmailIndex
+          KeySchema:
+            - AttributeName: email
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        - IndexName: byOrgId
+          KeySchema:
+            - AttributeName: orgId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        - IndexName: LineUidIndex
+          KeySchema:
+            - AttributeName: lineUid
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: Project
+          Value: jvtutorcorner
+
+Outputs:
+  ProfilesTableName:
+    Description: Name of profiles DynamoDB table
+    Value: !Ref ProfilesTableName
+  ProfilesTableArn:
+    Description: ARN of profiles DynamoDB table
+    Value: !GetAtt ProfilesTable.Arn
+  EmailIndexArn:
+    Description: ARN of the EmailIndex GSI
+    Value: !Sub '${ProfilesTable.Arn}/index/EmailIndex'
+  ByOrgIdIndexArn:
+    Description: ARN of the byOrgId GSI
+    Value: !Sub '${ProfilesTable.Arn}/index/byOrgId'
+  LineUidIndexArn:
+    Description: ARN of the LineUidIndex GSI
+    Value: !Sub '${ProfilesTable.Arn}/index/LineUidIndex'

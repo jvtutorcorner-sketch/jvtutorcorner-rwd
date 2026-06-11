@@ -242,7 +242,7 @@ export default function MigrateRemindersPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userId: user.email,
+          userId: user.roid_id || user.id || user.email,
           reminders: localStorageData,
           events: eventsMap,
         }),

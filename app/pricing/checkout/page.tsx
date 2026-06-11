@@ -196,7 +196,7 @@ function CheckoutContent() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    userId: user.email || user.roid_id || user.id,
+                    userId: user.roid_id || user.id || user.email,
                     planId: planId,
                     amount: price,
                     currency: 'TWD',
@@ -281,7 +281,7 @@ function CheckoutContent() {
                     currency: 'TWD',
                     itemName: itemName,
                     orderId: upgrade.upgradeId,
-                    userId: user.email || user.roid_id || user.id,
+                    userId: user.roid_id || user.id || user.email,
                 }),
             });
             const data = await res.json();
@@ -394,7 +394,7 @@ function CheckoutContent() {
                             'X-E2E-Secret': String(window.localStorage.getItem('LOGIN_BYPASS_SECRET') || '')
                         },
                         body: JSON.stringify({
-                            userId: user.email || user.roid_id || user.id,
+                            userId: user.roid_id || user.id || user.email,
                             amount: pointsToAdd,
                             action: 'add'
                         })

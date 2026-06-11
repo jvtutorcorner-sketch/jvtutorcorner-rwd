@@ -43,10 +43,10 @@ export async function POST(req: NextRequest) {
     const results: any[] = [];
 
     for (const p of profiles) {
-      // Prefer email as userId, fallback to id or roid_id
-      const userId = (p.email && String(p.email).toLowerCase()) || p.id || p.roid_id;
+      const userId = p.roid_id || p.id;
       if (!userId) {
-        console.log('[admin/grant-points] Skipping profile with no userId:', p);
+        console.log('[admin/grant-points] Skipping profile with no roid_id or id:', p.email);
+        results.push({ email: p.email, ok: false, error: 'no_proper_id', source: 'skipped' });
         continue;
       }
 

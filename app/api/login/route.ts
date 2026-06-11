@@ -3,8 +3,7 @@ import { headers } from 'next/headers';
 import fs from 'fs/promises';
 import path from 'path';
 import resolveDataFile from '@/lib/localData';
-import { ddbDocClient } from '@/lib/dynamo';
-import { ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { findProfileByEmail } from '@/lib/profilesService';
 import { verifyCaptcha, getBypassSecret, isBypassAllowed } from '@/lib/captcha';
 import { createSession } from '@/lib/auth/sessionManager';
 
@@ -49,29 +48,18 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: 'captcha_incorrect' }, { status: 400 });
     }
 
-    const PROFILES_TABLE = process.env.DYNAMODB_TABLE_PROFILES || process.env.PROFILES_TABLE || 'jvtutorcorner-profiles';
-    const useDynamo = typeof PROFILES_TABLE === 'string' && PROFILES_TABLE.length > 0 &&
-      (process.env.NODE_ENV === 'production' || !!(process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID));
-
     let found: any = null;
-    if (useDynamo) {
-      try {
-        const scanRes: any = await ddbDocClient.send(new ScanCommand({
-          TableName: PROFILES_TABLE,
-          FilterExpression: 'email = :email',
-          ExpressionAttributeValues: { ':email': String(email).toLowerCase() }
-        }));
-        if (scanRes?.Count > 0) {
-          const item = scanRes.Items[0];
-          if (item.password === password) {
-            found = item;
-          } else {
-            return NextResponse.json({ ok: false, message: 'login_password_wrong' }, { status: 401 });
-          }
+    try {
+      const profile = await findProfileByEmail(String(email).toLowerCase());
+      if (profile) {
+        if (profile.password === password) {
+          found = profile;
+        } else {
+          return NextResponse.json({ ok: false, message: 'login_password_wrong' }, { status: 401 });
         }
-      } catch (e) {
-        console.warn('[login] Dynamo scan failed, falling back to file', (e as any)?.message || e);
       }
+    } catch (e) {
+      console.warn('[login] Profile lookup failed, falling back to file', (e as any)?.message || e);
     }
 
     if (!found) {
@@ -99,10 +87,16 @@ export async function POST(req: Request) {
     if (found.lastName) publicProfile.lastName = found.lastName;
 
     // 建立 server-side session 並回傳 HttpOnly cookie
+    const canonicalId = found.roid_id || found.id;
+    if (!canonicalId) {
+      console.error('[login] CRITICAL: profile has no roid_id or id', { email: found.email });
+      return NextResponse.json({ ok: false, message: 'login_account_corrupted' }, { status: 500 });
+    }
+
     let sessionToken: string | null = null;
     try {
       sessionToken = await createSession({
-        userId: publicProfile.roid_id || publicProfile.id || found.email,
+        userId: canonicalId,
         email: found.email || email,
         role: found.role || 'user',
         plan: found.plan || 'viewer',

@@ -130,16 +130,17 @@ function StudentCoursesContent() {
         });
     } else {
       const baseUrl = '/api/orders?limit=500';
-      const url = `${baseUrl}&userId=${encodeURIComponent(current?.email || '')}`;
+      const currentUserId = current?.roid_id || current?.id || current?.email || '';
+      const url = `${baseUrl}&userId=${encodeURIComponent(currentUserId)}`;
       fetch(url)
         .then((r) => r.json())
         .then((data) => {
           let list: Order[] = [];
           if (data && data.ok) list = data.data || data || [];
           else if (data && data.data) list = data.data || [];
-          if (current?.email) {
-            const email = current.email.toLowerCase();
-            setOrders(list.filter(o => (o.userId || '').toLowerCase() === email));
+          if (currentUserId) {
+            const uid = currentUserId.toLowerCase();
+            setOrders(list.filter(o => (o.userId || '').toLowerCase() === uid));
           } else {
             setOrders([]);
           }

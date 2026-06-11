@@ -4,7 +4,8 @@ import path from 'path';
 import crypto from 'crypto';
 import resolveDataFile from '@/lib/localData';
 import { ddbDocClient } from '@/lib/dynamo';
-import { PutCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { PutCommand } from '@aws-sdk/lib-dynamodb';
+import { findProfileByEmail } from '@/lib/profilesService';
 
 async function readProfiles() {
   try {
@@ -36,10 +37,10 @@ export async function POST(req: Request) {
 
     if (useDynamo) {
       try {
-        const scanRes: any = await ddbDocClient.send(new ScanCommand({ TableName: PROFILES_TABLE, FilterExpression: 'email = :email', ExpressionAttributeValues: { ':email': email } }));
-        if (scanRes?.Count > 0) return NextResponse.json({ ok: false, error: 'email exists' }, { status: 400 });
+        const existing = await findProfileByEmail(email);
+        if (existing) return NextResponse.json({ ok: false, error: 'email exists' }, { status: 400 });
       } catch (e) {
-        console.warn('[admin.create-user] Dynamo scan failed', (e as any)?.message || e);
+        console.warn('[admin.create-user] Email check failed', (e as any)?.message || e);
       }
     }
 

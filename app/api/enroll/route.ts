@@ -1,6 +1,7 @@
 // app/api/enroll/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { PutCommand, ScanCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
+import { getSession, extractTokenFromRequest } from '@/lib/auth/sessionManager';
 import { ddbDocClient } from '@/lib/dynamo';
 import fs from 'fs';
 import path from 'path';
@@ -19,6 +20,7 @@ export type EnrollmentRecord = {
   id: string;
   name: string;
   email: string;
+  userId?: string;          // Profile id (roid_id || id). Optional for unauthenticated enrollments.
   courseId: string;
   courseTitle: string;
   status: EnrollmentStatus;
@@ -91,6 +93,11 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { name, email, courseId, courseTitle, startTime, endTime } = body || {};
 
+    // Resolve userId from session (undefined for unauthenticated enrollments)
+    const sessionToken = extractTokenFromRequest(request as any);
+    const session = sessionToken ? await getSession(sessionToken) : null;
+    const resolvedUserId = session?.userId;
+
     if (!name || !email || !courseId || !courseTitle) {
       return NextResponse.json(
         { ok: false, error: '缺少必要欄位（name, email, courseId, courseTitle）。' },
@@ -111,6 +118,7 @@ export async function POST(request: NextRequest) {
       id: generateId(),
       name: String(name).trim(),
       email: String(email).trim(),
+      userId: resolvedUserId,
       courseId: String(courseId),
       courseTitle: String(courseTitle),
       startTime: startTime ? String(startTime) : undefined,
@@ -233,14 +241,14 @@ export async function PATCH(request: NextRequest) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            userId: item.email,
+            userId: item.userId || item.email,
             eventId: `enroll_${item.id}`,
             courseId: item.courseId,
             eventStartTime: item.startTime,
             reminderMinutes: 180, // 3 hours before
           }),
         });
-        console.log(`[enroll API] Created 3h reminder for ${item.email} on course ${item.courseId}`);
+        console.log(`[enroll API] Created 3h reminder for userId=${item.userId || item.email} on course ${item.courseId}`);
       } catch (remErr) {
         console.error('[enroll API] Failed to create 3h reminder:', remErr);
       }

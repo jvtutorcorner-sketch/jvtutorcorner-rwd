@@ -3,7 +3,8 @@ import fs from 'fs/promises';
 import path from 'path';
 import resolveDataFile from '@/lib/localData';
 import { ddbDocClient } from '@/lib/dynamo';
-import { PutCommand, ScanCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
+import { PutCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
+import { findProfileByEmail } from '@/lib/profilesService';
 import { verifyCaptcha, getBypassSecret, isBypassAllowed } from '@/lib/captcha';
 import { headers } from 'next/headers';
 
@@ -42,18 +43,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: 'bio too long (max 500 chars)' }, { status: 400 });
     }
 
-    // Check existing by email
+    // Check existing by email via EmailIndex GSI
     try {
-      const scanRes: any = await ddbDocClient.send(new ScanCommand({
-        TableName: PROFILES_TABLE,
-        FilterExpression: 'email = :email',
-        ExpressionAttributeValues: { ':email': email }
-      }));
-      if (scanRes?.Count > 0) {
+      const existing = await findProfileByEmail(email);
+      if (existing) {
         return NextResponse.json({ message: 'Email already registered' }, { status: 409 });
       }
     } catch (e) {
-      console.warn('[register] Dynamo email check failed', (e as any)?.message || e);
+      console.warn('[register] Email duplicate check failed', (e as any)?.message || e);
     }
 
     // Note: For simplicity, password is stored as-is. In production, hash passwords.

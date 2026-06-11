@@ -43,10 +43,10 @@ function PricingContent() {
   const router = useRouter();
 
   // fetchUserPoints with retry on 401 (session may not be attached on first load after external redirect)
-  const fetchUserPoints = useCallback(async (email: string, retryCount = 0) => {
+  const fetchUserPoints = useCallback(async (userIdOrEmail: string, retryCount = 0) => {
     try {
       setPointsError(false);
-      const res = await fetch(`/api/points?userId=${encodeURIComponent(email)}`, {
+      const res = await fetch(`/api/points?userId=${encodeURIComponent(userIdOrEmail)}`, {
         cache: 'no-store',
         credentials: 'include', // Explicitly include cookies
       });
@@ -58,7 +58,7 @@ function PricingContent() {
           const delay = (retryCount + 1) * 1000;
           console.warn(`[pricing] /api/points returned 401 (retry ${retryCount + 1}/2 in ${delay}ms)`);
           await new Promise(r => setTimeout(r, delay));
-          return fetchUserPoints(email, retryCount + 1);
+          return fetchUserPoints(userIdOrEmail, retryCount + 1);
         }
         // After retries exhausted, show graceful fallback
         console.warn('[pricing] /api/points returned 401 after retries. Session may be missing.');
@@ -83,8 +83,8 @@ function PricingContent() {
     setUser(u);
     if (u) {
       setPlan(u.plan);
-      fetchUpgrades(u.email);
-      fetchUserPoints(u.email);
+      fetchUpgrades(u.roid_id || u.id || u.email);
+      fetchUserPoints(u.roid_id || u.id || u.email);
     }
     fetchSettings();
     fetchSubs();
@@ -92,14 +92,14 @@ function PricingContent() {
     // Listen for points updated event (useful for multi-tab or soft navigation)
     const handlePointsUpdate = () => {
       const updatedUser = getStoredUser();
-      if (updatedUser?.email) fetchUserPoints(updatedUser.email);
+      if (updatedUser?.email) fetchUserPoints(updatedUser.roid_id || updatedUser.id || updatedUser.email);
     };
 
     // Handle BFCache (Back-Forward Cache) to refresh when user navigates back to this page
     const handlePageShow = (event: PageTransitionEvent) => {
       if (event.persisted) { // If loaded from BFCache
         const updatedUser = getStoredUser();
-        if (updatedUser?.email) fetchUserPoints(updatedUser.email);
+        if (updatedUser?.email) fetchUserPoints(updatedUser.roid_id || updatedUser.id || updatedUser.email);
       }
     };
 
@@ -107,7 +107,7 @@ function PricingContent() {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         const updatedUser = getStoredUser();
-        if (updatedUser?.email) fetchUserPoints(updatedUser.email);
+        if (updatedUser?.email) fetchUserPoints(updatedUser.roid_id || updatedUser.id || updatedUser.email);
       }
     };
 
@@ -132,8 +132,8 @@ function PricingContent() {
         // Wait a brief moment to ensure the session cookie is fully available
         // after the cross-site redirect, then force-refresh points
         setTimeout(() => {
-          fetchUserPoints(u.email);
-          fetchUpgrades(u.email);
+          fetchUserPoints(u.roid_id || u.id || u.email);
+          fetchUpgrades(u.roid_id || u.id || u.email);
         }, 800);
       }
     }
@@ -293,10 +293,10 @@ function PricingContent() {
     },
   ];
 
-  async function fetchUpgrades(email: string) {
+  async function fetchUpgrades(userId: string) {
     setLoadingUpgrades(true);
     try {
-      const res = await fetch(`/api/plan-upgrades?userId=${encodeURIComponent(email)}`);
+      const res = await fetch(`/api/plan-upgrades?userId=${encodeURIComponent(userId)}`);
       const data = await res.json();
       if (data.ok && data.data) {
         setUpgrades(
@@ -348,7 +348,7 @@ function PricingContent() {
               <div className="text-sm text-gray-500">點數餘額</div>
               <div className="text-2xl font-bold text-indigo-600">
                 {userPoints !== null ? `${userPoints} 點` : pointsError ? (
-                  <span className="text-sm text-orange-500">⚠️ 請<button onClick={() => fetchUserPoints(user.email)} className="underline ml-1">重新整理</button></span>
+                  <span className="text-sm text-orange-500">⚠️ 請<button onClick={() => fetchUserPoints(user.roid_id || user.id || user.email)} className="underline ml-1">重新整理</button></span>
                 ) : '載入中...'}
               </div>
             </div>
