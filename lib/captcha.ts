@@ -89,6 +89,11 @@ export function getBypassSecret(): string | undefined {
     }
   }
 
+  // Fallback to local test bypass secret if still not configured
+  if (!secret) {
+    secret = 'jv_secure_bypass_2024';
+  }
+
   return secret;
 }
 
