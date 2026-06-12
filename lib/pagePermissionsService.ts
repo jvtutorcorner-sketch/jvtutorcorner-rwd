@@ -1,8 +1,6 @@
 // lib/pagePermissionsService.ts
 import { ddbDocClient } from './dynamo';
 import { ScanCommand, PutCommand, GetCommand, BatchWriteCommand } from '@aws-sdk/lib-dynamodb';
-import fs from 'fs/promises';
-import resolveDataFile from './localData';
 
 const PAGE_PERMISSIONS_TABLE = process.env.DYNAMODB_TABLE_PAGE_PERMISSIONS || '';
 
@@ -21,37 +19,6 @@ export interface PageConfig {
     label: string;     // Display label
     permissions: PagePermission[];
     updatedAt?: string;
-}
-
-// Read page permissions from local JSON file
-async function readPagePermissionsFromJSON(): Promise<PageConfig[]> {
-    try {
-        const SETTINGS_FILE = await resolveDataFile('admin_settings.json');
-        const raw = await fs.readFile(SETTINGS_FILE, 'utf8');
-        const data = JSON.parse(raw);
-        return data.pageConfigs || [];
-    } catch (e) {
-        console.warn('[pagePermissionsService] Failed to read from JSON file:', (e as any)?.message || e);
-        return [];
-    }
-}
-
-// Write page permissions to local JSON file (for backward compatibility)
-async function writePagePermissionsToJSON(pageConfigs: PageConfig[]): Promise<void> {
-    try {
-        console.log('[pagePermissionsService] 嘗試儲存到 Local JSON 檔案...');
-        const SETTINGS_FILE = await resolveDataFile('admin_settings.json');
-        const raw = await fs.readFile(SETTINGS_FILE, 'utf8').catch(() => '{}');
-        const data = JSON.parse(raw || '{}');
-        data.pageConfigs = pageConfigs;
-        data.updatedAt = new Date().toISOString();
-        await fs.writeFile(SETTINGS_FILE, JSON.stringify(data, null, 2), 'utf8');
-        console.log(`[pagePermissionsService] ✅ 成功儲存到 Local JSON: ${SETTINGS_FILE}`);
-        console.log(`[pagePermissionsService] 儲存了 ${pageConfigs.length} 個頁面設定`);
-    } catch (e) {
-        console.error('[pagePermissionsService] ❌ Local JSON 儲存失敗:', (e as any)?.message || e);
-        throw e;
-    }
 }
 
 // Get all page permissions from DynamoDB
@@ -164,59 +131,14 @@ async function savePagePermissionsToDynamoDB(pageConfigs: PageConfig[]): Promise
     }
 }
 
-// Migrate data from JSON to DynamoDB (runs automatically on first read if DynamoDB is empty)
-async function migrateJSONToDynamoDB(): Promise<void> {
-    console.log('[pagePermissionsService] Starting automatic migration from JSON to DynamoDB');
 
-    const jsonData = await readPagePermissionsFromJSON();
-    if (jsonData.length === 0) {
-        console.log('[pagePermissionsService] No data in JSON file to migrate');
-        return;
-    }
-
-    const success = await savePagePermissionsToDynamoDB(jsonData);
-    if (success) {
-        console.log(`[pagePermissionsService] Successfully migrated ${jsonData.length} page configs to DynamoDB`);
-    } else {
-        console.warn('[pagePermissionsService] Migration to DynamoDB failed');
-    }
-}
-
-// Main function: Get page permissions with fallback logic
+// Main function: Get page permissions (DynamoDB only)
 export async function getPagePermissions(): Promise<PageConfig[]> {
-    // 1) Try DynamoDB if configured
-    if (PAGE_PERMISSIONS_TABLE) {
-        try {
-            const dynamoData = await getPagePermissionsFromDynamoDB();
-
-            // If DynamoDB is empty, attempt automatic migration
-            if (dynamoData.length === 0) {
-                console.log('[pagePermissionsService] DynamoDB is empty, attempting migration from JSON');
-                await migrateJSONToDynamoDB();
-
-                // Try reading from DynamoDB again after migration
-                const migratedData = await getPagePermissionsFromDynamoDB();
-                if (migratedData.length > 0) {
-                    return migratedData;
-                }
-            } else {
-                return dynamoData;
-            }
-        } catch (e) {
-            console.warn('[pagePermissionsService] DynamoDB read failed, falling back to JSON:', (e as any)?.message || e);
-        }
+    if (!PAGE_PERMISSIONS_TABLE) {
+        console.error('[pagePermissionsService] ❌ DYNAMODB_TABLE_PAGE_PERMISSIONS 未設定！');
+        return [];
     }
-
-    // 2) Fallback to local JSON file
-    console.log('[pagePermissionsService] Using local JSON file');
-    const jsonData = await readPagePermissionsFromJSON();
-    if (jsonData.length > 0) {
-        return jsonData;
-    }
-
-    // 3) Fallback to defaults (empty array - caller should handle defaults)
-    console.log('[pagePermissionsService] No data found, returning empty array');
-    return [];
+    return getPagePermissionsFromDynamoDB();
 }
 
 // Save page permissions (writes to DynamoDB only)
