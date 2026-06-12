@@ -1,10 +1,6 @@
 import { NextResponse } from 'next/server';
-import fs from 'fs/promises';
-import path from 'path';
-import resolveDataFile from '@/lib/localData';
 import { ddbDocClient } from '@/lib/dynamo';
 import { ScanCommand, GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
-import { MOCK_USERS } from '@/lib/mockAuth';
 
 const PROFILES_TABLE = process.env.DYNAMODB_TABLE_PROFILES || process.env.PROFILES_TABLE || 'jvtutorcorner-profiles';
 
@@ -26,20 +22,6 @@ export async function GET(req: Request) {
 
         let profile = scanRes?.Items?.[0] || null;
 
-        if (!profile) {
-          // Fallback to MOCK_USERS for demo/test accounts
-          const mock = MOCK_USERS[emailLower];
-          if (mock) {
-            profile = {
-              ...mock,
-              email: emailLower,
-              id: mock.teacherId || `mock_${emailLower.replace(/[@.]/g, '_')}`,
-              roid_id: mock.teacherId || `mock_${emailLower.replace(/[@.]/g, '_')}`,
-              role: mock.teacherId ? 'teacher' : 'user'
-            };
-          }
-        }
-
         if (profile) return NextResponse.json({ ok: true, profile });
       } catch (e) {
         console.warn('[profile GET] Dynamo lookup failed', (e as any)?.message || e);
@@ -60,25 +42,6 @@ export async function GET(req: Request) {
             ExpressionAttributeValues: { ':rid': id }
           }));
           profile = scanRes?.Items?.[0] || null;
-        }
-
-        if (!profile) {
-          // Fallback to MOCK_USERS by teacherId or generated mock id
-          const mockEntry = Object.entries(MOCK_USERS).find(([mEmail, u]) => {
-            const mockId = (u as any).teacherId || `mock_${mEmail.toLowerCase().replace(/[@.]/g, '_')}`;
-            return mockId === id;
-          });
-          if (mockEntry) {
-            const [mEmail, mock] = mockEntry;
-            const emailLower = mEmail.toLowerCase();
-            profile = {
-              ...mock,
-              email: emailLower,
-              id: (mock as any).teacherId || `mock_${emailLower.replace(/[@.]/g, '_')}`,
-              roid_id: (mock as any).teacherId || `mock_${emailLower.replace(/[@.]/g, '_')}`,
-              role: (mock as any).teacherId ? 'teacher' : 'user'
-            };
-          }
         }
 
         if (profile) return NextResponse.json({ ok: true, profile });
@@ -132,38 +95,6 @@ export async function PATCH(req: Request) {
       }
     } catch (e) {
       console.warn('[profile PATCH] Existing lookup failed', (e as any)?.message || e);
-    }
-
-    // Fallback to MOCK_USERS if not in DB
-    if (!profile) {
-      if (email) {
-        const mock = MOCK_USERS[email];
-        if (mock) {
-          profile = {
-            ...mock,
-            email,
-            id: mock.teacherId || `mock_${email.replace(/[@.]/g, '_')}`,
-            roid_id: mock.teacherId || `mock_${email.replace(/[@.]/g, '_')}`,
-            role: mock.teacherId ? 'teacher' : 'user'
-          };
-        }
-      } else if (id) {
-        const mockEntry = Object.entries(MOCK_USERS).find(([mEmail, u]) => {
-          const mockId = (u as any).teacherId || `mock_${mEmail.toLowerCase().replace(/[@.]/g, '_')}`;
-          return mockId === id;
-        });
-        if (mockEntry) {
-          const [mEmail, mock] = mockEntry;
-          const emailLower = mEmail.toLowerCase();
-          profile = {
-            ...mock,
-            email: emailLower,
-            id: (mock as any).teacherId || `mock_${emailLower.replace(/[@.]/g, '_')}`,
-            roid_id: (mock as any).teacherId || `mock_${emailLower.replace(/[@.]/g, '_')}`,
-            role: (mock as any).teacherId ? 'teacher' : 'user'
-          };
-        }
-      }
     }
 
     if (!profile) {

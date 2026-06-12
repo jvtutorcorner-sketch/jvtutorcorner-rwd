@@ -1,26 +1,8 @@
 import { NextResponse } from 'next/server';
-import fs from 'fs/promises';
-import path from 'path';
 import crypto from 'crypto';
-import resolveDataFile from '@/lib/localData';
 import { ddbDocClient } from '@/lib/dynamo';
 import { PutCommand } from '@aws-sdk/lib-dynamodb';
 import { findProfileByEmail } from '@/lib/profilesService';
-
-async function readProfiles() {
-  try {
-    const DATA_FILE = await resolveDataFile('profiles.json');
-    const raw = await fs.readFile(DATA_FILE, 'utf8');
-    return JSON.parse(raw || '[]');
-  } catch (err) {
-    return [];
-  }
-}
-
-async function writeProfiles(arr: any[]) {
-  const DATA_FILE = await resolveDataFile('profiles.json');
-  await fs.writeFile(DATA_FILE, JSON.stringify(arr, null, 2), 'utf8');
-}
 
 function createTemporaryPassword() {
   return `tmp_${Date.now().toString(36)}_${crypto.randomBytes(6).toString('hex')}`;
@@ -32,20 +14,14 @@ export async function POST(req: Request) {
     const { email, plan, password } = body;
     if (!email) return NextResponse.json({ ok: false, error: 'email required' }, { status: 400 });
     const PROFILES_TABLE = process.env.DYNAMODB_TABLE_PROFILES || process.env.PROFILES_TABLE || 'jvtutorcorner-profiles';
-    const useDynamo = typeof PROFILES_TABLE === 'string' && PROFILES_TABLE.length > 0 &&
-      (process.env.NODE_ENV === 'production' || !!(process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID));
+    if (!PROFILES_TABLE) return NextResponse.json({ ok: false, error: 'DYNAMODB_TABLE_PROFILES 未設定' }, { status: 500 });
 
-    if (useDynamo) {
-      try {
-        const existing = await findProfileByEmail(email);
-        if (existing) return NextResponse.json({ ok: false, error: 'email exists' }, { status: 400 });
-      } catch (e) {
-        console.warn('[admin.create-user] Email check failed', (e as any)?.message || e);
-      }
+    try {
+      const existing = await findProfileByEmail(email);
+      if (existing) return NextResponse.json({ ok: false, error: 'email exists' }, { status: 400 });
+    } catch (e) {
+      console.warn('[admin.create-user] Email check failed', (e as any)?.message || e);
     }
-
-    const profiles = await readProfiles();
-    if (!useDynamo && profiles.find((p: any) => p.email === email)) return NextResponse.json({ ok: false, error: 'email exists' }, { status: 400 });
 
     const id = `u_${Date.now()}`;
     const providedPassword = typeof password === 'string' ? password.trim() : '';
@@ -60,19 +36,13 @@ export async function POST(req: Request) {
       responseProfile.temporaryPassword = finalPassword;
     }
 
-    if (useDynamo) {
-      try {
-        await ddbDocClient.send(new PutCommand({ TableName: PROFILES_TABLE, Item: record }));
-        return NextResponse.json({ ok: true, profile: responseProfile });
-      } catch (e: any) {
-        console.error('[admin.create-user] Dynamo write failed', e?.message || e);
-        return NextResponse.json({ ok: false, error: 'Dynamo write failed' }, { status: 500 });
-      }
+    try {
+      await ddbDocClient.send(new PutCommand({ TableName: PROFILES_TABLE, Item: record }));
+      return NextResponse.json({ ok: true, profile: responseProfile });
+    } catch (e: any) {
+      console.error('[admin.create-user] Dynamo write failed', e?.message || e);
+      return NextResponse.json({ ok: false, error: 'Dynamo write failed' }, { status: 500 });
     }
-
-    profiles.push(record);
-    await writeProfiles(profiles);
-    return NextResponse.json({ ok: true, profile: responseProfile });
   } catch (err: any) {
     console.error(err);
     return NextResponse.json({ ok: false, error: err?.message || 'error' }, { status: 500 });

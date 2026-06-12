@@ -1,21 +1,8 @@
 import { NextResponse } from 'next/server';
 import { headers } from 'next/headers';
-import fs from 'fs/promises';
-import path from 'path';
-import resolveDataFile from '@/lib/localData';
 import { findProfileByEmail } from '@/lib/profilesService';
 import { verifyCaptcha, getBypassSecret, isBypassAllowed } from '@/lib/captcha';
 import { createSession } from '@/lib/auth/sessionManager';
-
-async function readProfiles() {
-  try {
-    const DATA_FILE = await resolveDataFile('profiles.json');
-    const raw = await fs.readFile(DATA_FILE, 'utf8');
-    return JSON.parse(raw || '[]');
-  } catch (err) {
-    return [];
-  }
-}
 
 export async function POST(req: Request) {
   try {
@@ -59,19 +46,8 @@ export async function POST(req: Request) {
         }
       }
     } catch (e) {
-      console.warn('[login] Profile lookup failed, falling back to file', (e as any)?.message || e);
-    }
-
-    if (!found) {
-      const profiles = await readProfiles();
-      const user = profiles.find((p: any) => p.email === String(email).toLowerCase());
-      if (user) {
-        if (user.password === password) {
-          found = user;
-        } else {
-          return NextResponse.json({ ok: false, message: 'login_password_wrong' }, { status: 401 });
-        }
-      }
+      console.error('[login] Profile lookup failed:', (e as any)?.message || e);
+      return NextResponse.json({ message: 'login_service_error' }, { status: 500 });
     }
 
     if (!found) {

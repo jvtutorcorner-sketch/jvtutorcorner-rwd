@@ -1,20 +1,8 @@
 import { NextResponse } from 'next/server';
-import fs from 'fs/promises';
 import { ddbDocClient } from '@/lib/dynamo';
 import { UpdateCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { findProfileByEmail } from '@/lib/profilesService';
 import nodemailer from 'nodemailer';
-import resolveDataFile from '@/lib/localData';
-
-async function readProfiles() {
-    try {
-        const DATA_FILE = await resolveDataFile('profiles.json');
-        const raw = await fs.readFile(DATA_FILE, 'utf8');
-        return JSON.parse(raw || '[]');
-    } catch (err) {
-        return [];
-    }
-}
 
 function generateRandomPassword(length = 8) {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -40,27 +28,17 @@ export async function POST(req: Request) {
         }
 
         const PROFILES_TABLE = process.env.DYNAMODB_TABLE_PROFILES || process.env.PROFILES_TABLE || 'jvtutorcorner-profiles';
-        const useDynamo = typeof PROFILES_TABLE === 'string' && PROFILES_TABLE.length > 0 &&
-            (process.env.NODE_ENV === 'production' || !!(process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID));
-
-        let found: any = null;
-        let isDynamoRecord = false;
-
-        if (useDynamo) {
-            try {
-                found = await findProfileByEmail(targetEmail);
-                isDynamoRecord = !!found;
-            } catch (e) {
-                console.warn('[forgot-password] Profile lookup failed, falling back to file', (e as any)?.message || e);
-            }
+        if (!PROFILES_TABLE) {
+            return NextResponse.json({ ok: false, message: '伺服器未設定 Profiles 資料表' }, { status: 500 });
         }
 
-        if (!found) {
-            const profiles = await readProfiles();
-            const user = profiles.find((p: any) => p.email === targetEmail);
-            if (user) {
-                found = user;
-            }
+        let found: any = null;
+
+        try {
+            found = await findProfileByEmail(targetEmail);
+        } catch (e) {
+            console.error('[forgot-password] Profile lookup failed:', (e as any)?.message || e);
+            return NextResponse.json({ ok: false, message: '查詢帳號失敗，請稍後再試' }, { status: 500 });
         }
 
         if (!found) {
@@ -70,10 +48,9 @@ export async function POST(req: Request) {
         // Generate new random password
         const newPassword = generateRandomPassword(8);
 
-        // Update in DynamoDB if applicable
-        if (isDynamoRecord) {
-            try {
-                console.log(`[forgot-password] Updating password for ${targetEmail} in DynamoDB`);
+        // Update in DynamoDB
+        try {
+            console.log(`[forgot-password] Updating password for ${targetEmail} in DynamoDB`);
                 await ddbDocClient.send(new UpdateCommand({
                     TableName: PROFILES_TABLE,
                     Key: { id: found.id },
@@ -82,13 +59,9 @@ export async function POST(req: Request) {
                         ':password': newPassword
                     }
                 }));
-            } catch (e) {
-                console.error('[forgot-password] Failed to update password in DynamoDB', e);
-                return NextResponse.json({ ok: false, message: '密碼更新失敗' }, { status: 500 });
-            }
-        } else {
-            console.warn(`[forgot-password] User ${targetEmail} found in local JSON but updating JSON is currently not supported for password reset.`);
-            // For real implementation, consider updating JSON if it's strictly local, but DynamoDB is our main target.
+        } catch (e) {
+            console.error('[forgot-password] Failed to update password in DynamoDB', e);
+            return NextResponse.json({ ok: false, message: '密碼更新失敗' }, { status: 500 });
         }
 
         // Send email with new password
