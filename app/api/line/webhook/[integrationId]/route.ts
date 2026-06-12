@@ -2,8 +2,6 @@ import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, GetCommand, ScanCommand, PutCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
-import fs from 'fs';
-import resolveDataFile from '@/lib/localData';
 import { executeWebhookScript } from '@/lib/scriptExecutor';
 
 const ddbRegion = process.env.CI_AWS_REGION || process.env.AWS_REGION;
@@ -91,44 +89,32 @@ async function logToWebhook(log: WebhookLog) {
 
 // Helpers to get App Integration config
 async function getAppIntegration(integrationId: string) {
-    if (useDynamoForApps) {
-        const { Items } = await docClient.send(new ScanCommand({
-            TableName: APPS_TABLE,
-            FilterExpression: 'integrationId = :id',
-            ExpressionAttributeValues: { ':id': integrationId }
-        }));
-        return Items && Items.length > 0 ? Items[0] : null;
-    } else {
-        const FILE = await resolveDataFile('app-integrations.json');
-        if (fs.existsSync(FILE)) {
-            const data = JSON.parse(fs.readFileSync(FILE, 'utf8'));
-            return data.find((i: any) => i.integrationId === integrationId);
-        }
+    if (!useDynamoForApps) {
+        console.warn('[LINE Webhook] DynamoDB not configured for app integrations.');
+        return null;
     }
-    return null;
+    const { Items } = await docClient.send(new ScanCommand({
+        TableName: APPS_TABLE,
+        FilterExpression: 'integrationId = :id',
+        ExpressionAttributeValues: { ':id': integrationId }
+    }));
+    return Items && Items.length > 0 ? Items[0] : null;
 }
 
 // Helper to find active AI service (priority: OPENAI > ANTHROPIC > GEMINI)
 async function findActiveAIService() {
-    if (useDynamoForApps) {
-        for (const type of ['OPENAI', 'ANTHROPIC', 'GEMINI']) {
-            const { Items } = await docClient.send(new ScanCommand({
-                TableName: APPS_TABLE,
-                FilterExpression: '#typ = :type AND #sts = :status',
-                ExpressionAttributeNames: { '#typ': 'type', '#sts': 'status' },
-                ExpressionAttributeValues: { ':type': type, ':status': 'ACTIVE' }
-            }));
-            if (Items && Items.length > 0) return Items[0];
-        }
-    } else {
-        const FILE = await resolveDataFile('app-integrations.json');
-        if (fs.existsSync(FILE)) {
-            const data = JSON.parse(fs.readFileSync(FILE, 'utf8'));
-            for (const type of ['OPENAI', 'ANTHROPIC', 'GEMINI']) {
-                const found = data.find((i: any) => i.type === type && i.status === 'ACTIVE');
-                if (found) return found;
-            }
-        }
+    if (!useDynamoForApps) {
+        console.warn('[LINE Webhook] DynamoDB not configured for app integrations.');
+        return null;
+    }
+    for (const type of ['OPENAI', 'ANTHROPIC', 'GEMINI']) {
+        const { Items } = await docClient.send(new ScanCommand({
+            TableName: APPS_TABLE,
+            FilterExpression: '#typ = :type AND #sts = :status',
+            ExpressionAttributeNames: { '#typ': 'type', '#sts': 'status' },
+            ExpressionAttributeValues: { ':type': type, ':status': 'ACTIVE' }
+        }));
+        if (Items && Items.length > 0) return Items[0];
     }
     return null;
 }
@@ -146,12 +132,6 @@ async function getAIIntegrationByLinkedId(linkedServiceId?: string) {
                 ExpressionAttributeValues: { ':id': linkedServiceId }
             }));
             linkedIntegration = Items && Items.length > 0 ? Items[0] : null;
-        } else {
-            const FILE = await resolveDataFile('app-integrations.json');
-            if (fs.existsSync(FILE)) {
-                const data = JSON.parse(fs.readFileSync(FILE, 'utf8'));
-                linkedIntegration = data.find((i: any) => i.integrationId === linkedServiceId);
-            }
         }
 
         // Validate that linkedIntegration is a valid AI service and is active
@@ -598,21 +578,9 @@ export async function POST(request: Request, context: { params: Promise<{ integr
         const signature = request.headers.get('x-line-signature') || '';
         const isSimulation = request.headers.get('x-simulation') === 'true';
 
-        // In simulation mode, if DynamoDB-backed lookup failed earlier, try local .local_data file
+        // In simulation mode, skip local file fallback (DynamoDB is required)
         if (isSimulation && (!appInfo || appInfo.type !== 'LINE' || !appInfo.config)) {
-            try {
-                const FILE = await resolveDataFile('app-integrations.json');
-                if (fs.existsSync(FILE)) {
-                    const data = JSON.parse(fs.readFileSync(FILE, 'utf8'));
-                    const found = data.find((i: any) => i.integrationId === integrationId);
-                    if (found) {
-                        appInfo = found;
-                        console.log('[LINE Webhook] Loaded appInfo from local app-integrations.json for simulation:', integrationId);
-                    }
-                }
-            } catch (e) {
-                console.error('[LINE Webhook] Simulation local app-integrations lookup failed:', e);
-            }
+            console.warn('[LINE Webhook] Simulation mode: appInfo not found in DynamoDB for integrationId:', integrationId);
         }
 
         console.log(`[LINE Webhook] Body length: ${rawBody.length}, Signature present: ${!!signature}`);
