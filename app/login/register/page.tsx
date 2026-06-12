@@ -13,6 +13,8 @@ import {
 import { PLAN_PRICES, PLAN_FEATURES } from "@/lib/mockAuth";
 import OnboardingQuestionnaire from "@/components/OnboardingQuestionnaire";
 
+const ONBOARDING_ENABLED = process.env.NEXT_PUBLIC_ENABLE_ONBOARDING_QUESTIONNAIRE === 'true';
+
 function simpleMarkdownToHtml(md: string) {
   if (!md) return "";
   // very small converter: headings, bold, italics, line breaks
@@ -593,7 +595,7 @@ export default function RegisterPage() {
       </section>
 
       {/* Onboarding questionnaire – shown inline after registration */}
-      {showQuestionnaire && (
+      {ONBOARDING_ENABLED && showQuestionnaire && (
         <section className="section" style={{ marginTop: 0 }}>
           <OnboardingQuestionnaire
             mode="full"
