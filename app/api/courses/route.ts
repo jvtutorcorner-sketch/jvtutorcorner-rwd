@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import fs from 'fs/promises';
 import path from 'path';
 import { randomUUID } from 'crypto';
-import resolveDataFile from '@/lib/localData';
 import { COURSES as BUNDLED_COURSES } from '@/data/courses';
 import { PutCommand, ScanCommand, GetCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
 import { ddbDocClient } from '@/lib/dynamo';
