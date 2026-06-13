@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { stripe } from '@/lib/stripe';
-import { getStoredUser } from '@/lib/mockAuth'; // Replace with real auth in prod
 import profilesService from '@/lib/profilesService';
 
 export async function POST(req: NextRequest) {

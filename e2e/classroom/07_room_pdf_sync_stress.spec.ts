@@ -27,6 +27,8 @@ import {
   waitAndEnterClassroom,
   loadStaticPdf,
   STATIC_PDFS,
+  registerStudentIfNeeded,
+  grantPointsViaAdmin,
 } from '../helpers/whiteboard_helpers';
 import { getTestConfig, getStressGroupConfigs, ADMIN_EMAIL, ADMIN_PASSWORD } from '../test_data/whiteboard_test_data';
 
@@ -259,6 +261,26 @@ test.describe(`[stress-pdf-${GROUP_COUNT}x] Concurrent PDF Sync — ${GROUP_COUN
     console.log(`${'═'.repeat(75)}`);
     groupConfigs.forEach(g => console.log(`  [${g.groupId}] teacher=${g.teacherEmail} course=${g.courseId}`));
 
+    // ── Phase 0: Pre-register students + grant points ────────────────
+    // Runs before any course creation so all accounts have sufficient
+    // points when the enrollment subprocess later checks balance.
+    console.log('\n📍 Phase 0: Register student accounts and pre-grant points');
+    const preSetupCtx = await browser.newContext();
+    const preSetupPage = await preSetupCtx.newPage();
+    for (const g of groupConfigs) {
+      await registerStudentIfNeeded(preSetupPage, g.studentEmail, config.studentPassword, config.bypassSecret);
+    }
+    await preSetupCtx.close();
+
+    const preAdminCtx = await browser.newContext();
+    const preAdminPage = await preAdminCtx.newPage();
+    await injectDeviceCheckBypass(preAdminPage);
+    await autoLogin(preAdminPage, ADMIN_EMAIL, ADMIN_PASSWORD, config.bypassSecret);
+    for (const g of groupConfigs) {
+      await grantPointsViaAdmin(preAdminPage, g.studentEmail, 9999, config.bypassSecret);
+    }
+    await preAdminCtx.close();
+
     // ── Phase 1: Course Creation (sequential) ────────────────────────
     console.log('\n📍 Phase 1: Course Creation (sequential)');
     for (let i = 0; i < groupConfigs.length; i++) {
@@ -276,6 +298,16 @@ test.describe(`[stress-pdf-${GROUP_COUNT}x] Concurrent PDF Sync — ${GROUP_COUN
         console.error(`   ❌ [${g.groupId}] ${r.error}`);
       }
     }
+
+    // Grant points to teacher accounts now that they exist (created during Phase 1)
+    const teacherPointsCtx = await browser.newContext();
+    const teacherPointsPage = await teacherPointsCtx.newPage();
+    await injectDeviceCheckBypass(teacherPointsPage);
+    await autoLogin(teacherPointsPage, ADMIN_EMAIL, ADMIN_PASSWORD, config.bypassSecret);
+    for (const g of groupConfigs) {
+      await grantPointsViaAdmin(teacherPointsPage, g.teacherEmail, 9999, config.bypassSecret);
+    }
+    await teacherPointsCtx.close();
 
     // ── Phase 2: Admin Approval (sequential admin session) ───────────
     console.log('\n📍 Phase 2: Admin Approval');

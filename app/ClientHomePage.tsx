@@ -19,6 +19,7 @@ import MedicineIdentificationFlow from '@/components/MedicineIdentificationFlow'
 const GUEST_STORAGE_KEY = 'jv_survey_seeds';
 const GUEST_ANSWERS_KEY = 'jv_survey_answers';
 const IDLE_THRESHOLD_MS = 3 * 60 * 1000; // 3 minutes
+const ONBOARDING_ENABLED = process.env.NEXT_PUBLIC_ENABLE_ONBOARDING_QUESTIONNAIRE === 'true';
 
 export default function ClientHomePage({
   initialCarouselImages
@@ -56,7 +57,7 @@ export default function ClientHomePage({
     }
 
     // Check if user just registered to show onboarding questionnaire
-    if (u && localStorage.getItem('jv_just_registered') === 'true') {
+    if (ONBOARDING_ENABLED && u && localStorage.getItem('jv_just_registered') === 'true') {
       localStorage.removeItem('jv_just_registered');
       setShowUserQuestionnaire(true);
     }
@@ -65,7 +66,7 @@ export default function ClientHomePage({
     fetchRecommendations(u?.id);
 
     // ── Guest idle detection (3 min) ──────────────────────────────────────────
-    if (!u) {
+    if (ONBOARDING_ENABLED && !u) {
       // Check if guest already completed a survey
       try {
         const existingSeeds = localStorage.getItem(GUEST_STORAGE_KEY);

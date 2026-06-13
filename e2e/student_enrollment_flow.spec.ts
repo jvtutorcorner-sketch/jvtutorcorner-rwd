@@ -332,77 +332,125 @@ test('Student Enrollment Flow (Simulated Payment)', async ({ page }) => {
     if (needsPoints) {
         console.log("   🚀 Proceeding to purchase points...");
         console.log(`\n📍 Step 3: Purchasing points for ${email}...`);
-        await page.goto(`${baseUrl}/pricing`);
-        await page.waitForLoadState('networkidle');
-        
-        // ✅ Select LARGEST point package to ensure sufficient balance
-        console.log("   ⏳ Finding all point packages and selecting the largest one...");
-        
-        // Get all "購買點數" links/buttons and their parent cards
-        // Wait for point package buttons to appear
-        const pointBtnLocator = page.locator('a:has-text("購買點數"), button:has-text("購買點數"), [data-testid*="points-package"]');
-        try {
-            await pointBtnLocator.first().waitFor({ state: 'visible', timeout: 15000 });
-        } catch (e) {
-            console.warn("⚠️ Point purchase buttons did not appear within 15s. Checking auth state...");
-            const loginLink = page.locator('a:has-text("登入"), a[href="/login"]').first();
-            if (await loginLink.isVisible()) {
-                console.error("❌ User not logged in on pricing page. Attempting to re-sync auth...");
-                await page.evaluate((data) => {
-                    localStorage.setItem('tutor_mock_user', JSON.stringify(data));
-                    window.dispatchEvent(new Event('tutor:auth-changed'));
-                }, loginData);
-                await page.reload({ waitUntil: 'networkidle' });
-                await pointBtnLocator.first().waitFor({ state: 'visible', timeout: 10000 }).catch(() => {});
+
+        // ── Path A: Admin API grant (production / no mock payment) ────────
+        // When ADMIN_EMAIL + ADMIN_PASSWORD are available, grant points directly
+        // via the API instead of going through the UI purchase flow. This avoids
+        // the dependency on mock payment buttons that don't exist in production.
+        const adminEmail = process.env.ADMIN_EMAIL || process.env.QA_ADMIN_EMAIL;
+        const adminPassword = process.env.ADMIN_PASSWORD || process.env.QA_ADMIN_PASSWORD;
+        let grantedViaAdmin = false;
+
+        if (adminEmail && adminPassword) {
+            console.log("   🔑 Admin credentials found — granting points via API (bypasses payment UI)...");
+            try {
+                // 1. Get student profile UUID (no auth required)
+                const profileRes = await page.request.get(
+                    `${baseUrl}/api/profile?email=${encodeURIComponent(email || '')}`
+                );
+                const profileData = profileRes.ok() ? await profileRes.json().catch(() => ({})) : {};
+                const studentUserId = (profileData as any).profile?.id || (profileData as any).profile?.roid_id;
+
+                if (studentUserId) {
+                    // 2. Login as admin (replaces student session on this page temporarily)
+                    const adminLoginRes = await page.request.post(`${baseUrl}/api/login`, {
+                        data: JSON.stringify({ email: adminEmail, password: adminPassword, captchaToken: '', captchaValue: bypassSecret }),
+                        headers: { 'Content-Type': 'application/json', 'X-E2E-Secret': String(bypassSecret || '') }
+                    });
+
+                    if (adminLoginRes.ok()) {
+                        // 3. Grant 9999 points with admin session + bypass header as fallback
+                        const grantRes = await page.request.post(`${baseUrl}/api/points`, {
+                            data: JSON.stringify({ userId: studentUserId, action: 'set', amount: 9999, reason: 'e2e-enrollment-setup' }),
+                            headers: { 'Content-Type': 'application/json', 'X-E2E-Secret': String(bypassSecret || '') }
+                        });
+
+                        if (grantRes.ok()) {
+                            console.log(`   ✅ Granted 9999 points to ${email} (userId: ${studentUserId})`);
+
+                            // 4. Re-login as student to restore session
+                            await page.request.post(`${baseUrl}/api/login`, {
+                                data: JSON.stringify({ email, password, captchaToken: '', captchaValue: bypassSecret }),
+                                headers: { 'Content-Type': 'application/json', 'X-E2E-Secret': String(bypassSecret || '') }
+                            });
+                            grantedViaAdmin = true;
+                        } else {
+                            const grantErr = await grantRes.json().catch(() => ({}));
+                            console.warn(`   ⚠️ Admin points grant failed: ${JSON.stringify(grantErr)}`);
+                            // Restore student session even on failure
+                            await page.request.post(`${baseUrl}/api/login`, {
+                                data: JSON.stringify({ email, password, captchaToken: '', captchaValue: bypassSecret }),
+                                headers: { 'Content-Type': 'application/json', 'X-E2E-Secret': String(bypassSecret || '') }
+                            });
+                        }
+                    } else {
+                        console.warn(`   ⚠️ Admin login failed (${adminLoginRes.status()}), falling back to UI flow`);
+                    }
+                } else {
+                    console.warn(`   ⚠️ Could not find student profile for ${email}, falling back to UI flow`);
+                }
+            } catch (e) {
+                console.warn("   ⚠️ Admin grant error, falling back to UI flow:", (e as Error).message);
             }
         }
-        const pointPackageLinks = await pointBtnLocator.all();
-        console.log(`📊 Found ${pointPackageLinks.length} point package options`);
-        
-        if (pointPackageLinks.length > 0) {
-            // Select the LAST package (typically the largest/most expensive one)
-            const lastLink = pointPackageLinks[pointPackageLinks.length - 1];
-            const linkText = await lastLink.textContent() || 'Unknown';
-            const href = await lastLink.getAttribute('href') || '';
-            
-            console.log(`✅ Selecting largest package: ${linkText.substring(0, 50)}`);
-            console.log(`   Href: ${href}`);
-            
-            // If it's a link, navigate directly; if button, click it
-            if (href.includes('/pricing/checkout')) {
-                await page.goto(`${baseUrl}${href}`);
+
+        if (!grantedViaAdmin) {
+            // ── Path B: UI-based purchase flow (local / mock payment mode) ─
+            await page.goto(`${baseUrl}/pricing`);
+            await page.waitForLoadState('networkidle');
+
+            console.log("   ⏳ Finding all point packages and selecting the largest one...");
+            const pointBtnLocator = page.locator('a:has-text("購買點數"), button:has-text("購買點數"), [data-testid*="points-package"]');
+            try {
+                await pointBtnLocator.first().waitFor({ state: 'visible', timeout: 15000 });
+            } catch (e) {
+                console.warn("⚠️ Point purchase buttons did not appear within 15s. Checking auth state...");
+                const loginLink = page.locator('a:has-text("登入"), a[href="/login"]').first();
+                if (await loginLink.isVisible()) {
+                    console.error("❌ User not logged in on pricing page. Attempting to re-sync auth...");
+                    await page.evaluate((data) => {
+                        localStorage.setItem('tutor_mock_user', JSON.stringify(data));
+                        window.dispatchEvent(new Event('tutor:auth-changed'));
+                    }, loginData);
+                    await page.reload({ waitUntil: 'networkidle' });
+                    await pointBtnLocator.first().waitFor({ state: 'visible', timeout: 10000 }).catch(() => {});
+                }
+            }
+            const pointPackageLinks = await pointBtnLocator.all();
+            console.log(`📊 Found ${pointPackageLinks.length} point package options`);
+
+            if (pointPackageLinks.length > 0) {
+                const lastLink = pointPackageLinks[pointPackageLinks.length - 1];
+                const linkText = await lastLink.textContent() || 'Unknown';
+                const href = await lastLink.getAttribute('href') || '';
+                console.log(`✅ Selecting largest package: ${linkText.substring(0, 50)}`);
+                if (href.includes('/pricing/checkout')) {
+                    await page.goto(`${baseUrl}${href}`);
+                } else {
+                    await lastLink.click();
+                    await page.waitForURL(/\/pricing\/checkout/, { timeout: 10000 });
+                }
             } else {
-                await lastLink.click();
+                console.warn("⚠️ No point package links found, trying fallback button");
+                const buyBtn = page.locator('a:has-text("購買點數"), button:has-text("購買點數")').last();
+                await buyBtn.click();
                 await page.waitForURL(/\/pricing\/checkout/, { timeout: 10000 });
             }
-        } else {
-            console.warn("⚠️ No point package links found, trying fallback button");
-            // Fallback: look for any "購買點數" text and click  
-            const buyBtn = page.locator('a:has-text("購買點數"), button:has-text("購買點數")').last();
-            await buyBtn.click();
-            await page.waitForURL(/\/pricing\/checkout/, { timeout: 10000 });
-        }
-        
-        // Verify at checkout - should have the highest point package selected
-        console.log("✅ At checkout page - highest point package should be pre-selected");
-        await page.waitForLoadState('networkidle');
-        
-        // Verify we have point details displayed
-        const pointsInfo = await page.locator('text=/點|points/i').first().textContent().catch(() => 'Unknown');
-        console.log(`📊 Points package info: ${pointsInfo}`);
-        
-        // Click payment button
-        console.log("⏳ Selecting payment method...");
-        const paymentBtn = page.locator('button:has-text("模擬支付"), button:has-text("Demo"), button:has-text("支付")').first();
-        await paymentBtn.click();
 
-        // Wait for redirection back to /plans or /pricing or /student_courses
-        console.log("Waiting for redirection after purchase...");
-        await page.waitForURL(
-            url => url.pathname === '/plans' || url.pathname === '/pricing' || url.pathname === '/student_courses',
-            { timeout: 30000 }
-        );
-        console.log("✅ Point purchase completed.");
+            await page.waitForLoadState('networkidle');
+            console.log("⏳ Selecting payment method (simulated)...");
+            // Button text: "模擬支付 (Demo)" — include all expected variants
+            const paymentBtn = page.locator(
+                'button:has-text("模擬支付 (Demo)"), button:has-text("模擬支付"), button:has-text("Demo"), button:has-text("支付")'
+            ).first();
+            await paymentBtn.click();
+
+            await page.waitForURL(
+                url => url.pathname === '/plans' || url.pathname === '/pricing' || url.pathname === '/student_courses',
+                { timeout: 30000 }
+            );
+            console.log("✅ Point purchase completed.");
+        }
 
         // Return to course
         console.log(`Returning to course after purchase: ${testCourseId}`);

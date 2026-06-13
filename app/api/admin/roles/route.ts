@@ -1,23 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getRoles, saveRoles, type Role } from '@/lib/rolesService';
 import { savePagePermissions, getPagePermissions } from '@/lib/pagePermissionsService';
-import fs from 'fs/promises';
-import resolveDataFile from '@/lib/localData';
-
-async function readSettingsFile() {
-  try {
-    const SETTINGS_FILE = await resolveDataFile('admin_settings.json');
-    const raw = await fs.readFile(SETTINGS_FILE, 'utf8');
-    return JSON.parse(raw);
-  } catch (err) {
-    return null;
-  }
-}
-
-async function writeSettingsFile(obj: any) {
-  const SETTINGS_FILE = await resolveDataFile('admin_settings.json');
-  await fs.writeFile(SETTINGS_FILE, JSON.stringify(obj, null, 2), 'utf8');
-}
 
 export async function GET() {
   try {
@@ -85,37 +68,6 @@ export async function POST(req: Request) {
       }
     } catch (syncErr) {
       console.error('[Roles API] ⚠️  Failed to sync to page permissions:', syncErr);
-      // Don't fail the request if sync fails
-    }
-
-    // Sync roles into admin_settings.json for backward compatibility
-    try {
-      const settings = await readSettingsFile();
-      if (settings) {
-        settings.roles = roles;
-
-        // Ensure pageConfigs permissions include an entry for each role
-        if (Array.isArray(settings.pageConfigs)) {
-          settings.pageConfigs = settings.pageConfigs.map((pc: any) => {
-            const perms = pc.permissions || [];
-            const existingRoleIds = perms.map((p: any) => p.roleId);
-            const missing = roles.filter((r: Role) => !existingRoleIds.includes(r.id));
-            const added = missing.map(m => ({
-              roleId: m.id,
-              roleName: m.name,
-              menuVisible: false,
-              dropdownVisible: false,
-              pageVisible: true
-            }));
-            return { ...pc, permissions: [...perms, ...added] };
-          });
-        }
-
-        await writeSettingsFile(settings);
-        console.log('[Roles API] ✅ Synced roles to admin_settings.json');
-      }
-    } catch (syncErr) {
-      console.error('[Roles API] ⚠️  Failed to sync settings:', syncErr);
       // Don't fail the request if sync fails
     }
 

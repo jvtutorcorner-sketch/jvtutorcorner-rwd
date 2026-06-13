@@ -38,7 +38,7 @@ export default defineConfig({
         trace: 'on-first-retry',
         screenshot: 'only-on-failure',
         video: 'retain-on-failure',
-        headless: false,
+        headless: process.env.HEADLESS !== 'false',
         launchOptions: {
             args: [
                 '--start-maximized',
@@ -65,9 +65,16 @@ export default defineConfig({
         },
         {
             name: 'chromium-headed',
-            use: { 
+            use: {
                 ...devices['Desktop Chrome'],
                 headless: false,
+            },
+        },
+        {
+            name: 'chromium-headless',
+            use: {
+                ...devices['Desktop Chrome'],
+                headless: true,
             },
         },
     ],

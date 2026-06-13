@@ -1,7 +1,5 @@
 import { ddbDocClient } from './dynamo';
 import { ScanCommand, PutCommand, GetCommand, QueryCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
-import resolveDataFile from './localData';
-import fs from 'fs/promises';
 import { LambdaClient, InvokeCommand } from '@aws-sdk/client-lambda';
 
 const PROFILES_TABLE = process.env.DYNAMODB_TABLE_PROFILES || process.env.PROFILES_TABLE || '';
@@ -10,19 +8,8 @@ const PROFILES_API = process.env.PROFILES_API_URL || process.env.PROFILES_ENDPOI
 
 const lambdaClient = PROFILES_LAMBDA ? new LambdaClient({ region: process.env.AWS_REGION || process.env.CI_AWS_REGION || process.env.AWS_DEFAULT_REGION || process.env.CI_AWS_DEFAULT_REGION || 'ap-northeast-1' }) : null;
 
-async function readProfilesFile() {
-  try {
-    const DATA_FILE = await resolveDataFile('profiles.json');
-    const raw = await fs.readFile(DATA_FILE, 'utf8');
-    return JSON.parse(raw || '[]');
-  } catch (e) {
-    return [];
-  }
-}
-
-async function writeProfilesFile(profiles: any[]) {
-  const DATA_FILE = await resolveDataFile('profiles.json');
-  await fs.writeFile(DATA_FILE, JSON.stringify(profiles, null, 2), 'utf8');
+function requireTable() {
+  if (!PROFILES_TABLE) throw new Error('[profilesService] DYNAMODB_TABLE_PROFILES 環境變數未設定，無法存取資料庫。');
 }
 
 async function invokeProfilesLambda(action: string, payload: any) {
@@ -95,14 +82,23 @@ export async function findProfileByLineUid(lineUid: string) {
         Limit: 1,
       }));
       if (queryRes?.Count > 0) return queryRes.Items[0];
-      return null;
     } catch (e) {
-      console.warn('[profilesService] dynamo lineUid query failed', (e as any)?.message || e);
+      console.warn('[profilesService] dynamo lineUid query failed, trying scan fallback...', (e as any)?.message || e);
+      try {
+        const scanRes: any = await ddbDocClient.send(new ScanCommand({
+          TableName: PROFILES_TABLE,
+          FilterExpression: 'lineUid = :lineUid',
+          ExpressionAttributeValues: { ':lineUid': lineUid }
+        }));
+        if (scanRes?.Count > 0) return scanRes.Items[0];
+      } catch (scanErr) {
+        console.error('[profilesService] dynamo lineUid scan fallback failed', (scanErr as any)?.message || scanErr);
+      }
     }
   }
 
-  const profiles = await readProfilesFile();
-  return profiles.find((p: any) => p.lineUid === lineUid) || null;
+  requireTable();
+  throw new Error('[profilesService] findProfileByLineUid: DynamoDB 查詢失敗，且無 JSON fallback。');
 }
 
 export async function findProfileByEmail(email: string) {
@@ -138,14 +134,23 @@ export async function findProfileByEmail(email: string) {
         Limit: 1,
       }));
       if (queryRes?.Count > 0) return queryRes.Items[0];
-      return null;
     } catch (e) {
-      console.warn('[profilesService] dynamo email query failed', (e as any)?.message || e);
+      console.warn('[profilesService] dynamo email query failed, trying scan fallback...', (e as any)?.message || e);
+      try {
+        const scanRes: any = await ddbDocClient.send(new ScanCommand({
+          TableName: PROFILES_TABLE,
+          FilterExpression: 'email = :email',
+          ExpressionAttributeValues: { ':email': email }
+        }));
+        if (scanRes?.Count > 0) return scanRes.Items[0];
+      } catch (scanErr) {
+        console.error('[profilesService] dynamo email scan fallback failed', (scanErr as any)?.message || scanErr);
+      }
     }
   }
 
-  const profiles = await readProfilesFile();
-  return profiles.find((p: any) => p.email === email) || null;
+  requireTable();
+  throw new Error('[profilesService] findProfileByEmail: DynamoDB 查詢失敗，且無 JSON fallback。');
 }
 
 export async function getProfileById(id: string) {
@@ -174,8 +179,8 @@ export async function getProfileById(id: string) {
     }
   }
 
-  const profiles = await readProfilesFile();
-  return profiles.find((p: any) => p.id === id || p.roid_id === id) || null;
+  requireTable();
+  throw new Error('[profilesService] getProfileById: DynamoDB 查詢失敗，且無 JSON fallback。');
 }
 
 export async function putProfile(profile: any) {
@@ -210,12 +215,8 @@ export async function putProfile(profile: any) {
     }
   }
 
-  // fallback to local file
-  const profiles = await readProfilesFile();
-  const idx = profiles.findIndex((p: any) => (p.id || p.roid_id) === (profile.id || profile.roid_id));
-  if (idx >= 0) profiles[idx] = profile; else profiles.push(profile);
-  await writeProfilesFile(profiles);
-  return profile;
+  requireTable();
+  throw new Error('[profilesService] putProfile: PROFILES_TABLE 未設定，且 Lambda/API 皆不可用。');
 }
 
 // ==========================================
@@ -367,8 +368,8 @@ export async function findProfileByStripeCustomerId(stripeCustomerId: string) {
     }
   }
 
-  const profiles = await readProfilesFile();
-  return profiles.find((p: any) => p.stripeCustomerId === stripeCustomerId) || null;
+  requireTable();
+  throw new Error('[profilesService] findProfileByStripeCustomerId: DynamoDB 查詢失敗，且無 JSON fallback。');
 }
 
 export default {

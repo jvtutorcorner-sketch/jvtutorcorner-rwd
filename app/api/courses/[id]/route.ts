@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs/promises';
 import path from 'path';
-import resolveDataFile from '@/lib/localData';
 import { COURSES as BUNDLED_COURSES } from '@/data/courses';
 import { PutCommand, GetCommand, UpdateCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
 import { ddbDocClient } from '@/lib/dynamo';

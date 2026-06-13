@@ -907,6 +907,108 @@ export async function adminApproveCourse(
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// Student Setup (stress test)
+// ─────────────────────────────────────────────────────────────────────
+
+/**
+ * Register a student account via API if it doesn't already exist.
+ * Uses the bypass secret to skip captcha.
+ */
+export async function registerStudentIfNeeded(
+  page: Page,
+  studentEmail: string,
+  studentPassword: string,
+  bypassSecret: string
+): Promise<void> {
+  const { baseUrl } = getTestConfig();
+
+  // Try login first
+  const loginRes = await page.request.post(`${baseUrl}/api/login`, {
+    data: JSON.stringify({ email: studentEmail, password: studentPassword, captchaToken: '', captchaValue: bypassSecret }),
+    headers: { 'Content-Type': 'application/json', 'X-E2E-Secret': bypassSecret },
+  });
+
+  if (loginRes.ok()) {
+    console.log(`   ✅ [${studentEmail}] Student account exists`);
+    return;
+  }
+
+  // Register new student account
+  const registerRes = await page.request.post(`${baseUrl}/api/register`, {
+    data: JSON.stringify({
+      email: studentEmail,
+      password: studentPassword,
+      firstName: 'Test',
+      lastName: 'Student',
+      captchaValue: bypassSecret,
+    }),
+    headers: { 'Content-Type': 'application/json', 'X-E2E-Secret': bypassSecret },
+  });
+
+  const registerData = await registerRes.json().catch(() => ({}));
+  if (!registerRes.ok() && (registerData as any).message !== 'Email already registered') {
+    console.warn(`   ⚠️ [${studentEmail}] Registration failed: ${JSON.stringify(registerData)}`);
+  } else {
+    console.log(`   ✅ [${studentEmail}] Student registered`);
+  }
+}
+
+/**
+ * Grant points to a test account via admin privileges.
+ * Safety: only @test.com accounts are allowed to prevent polluting real production data.
+ * Pass bypassSecret to use the X-E2E-Secret header as a reliable fallback when the
+ * admin session cookie is not available or has not propagated correctly.
+ */
+export async function grantPointsViaAdmin(
+  adminPage: Page,
+  studentEmail: string,
+  amount: number,
+  bypassSecret?: string
+): Promise<boolean> {
+  const { baseUrl } = getTestConfig();
+
+  // Safety guard: only test accounts (@test.com) may be targeted
+  if (!studentEmail.toLowerCase().endsWith('@test.com')) {
+    console.error(`   ❌ [grantPointsViaAdmin] Blocked: "${studentEmail}" is not a @test.com account. Refusing to modify real user points.`);
+    return false;
+  }
+
+  const profileRes = await adminPage.request.get(
+    `${baseUrl}/api/profile?email=${encodeURIComponent(studentEmail)}`
+  );
+  if (!profileRes.ok()) {
+    console.warn(`   ⚠️ [${studentEmail}] Profile not found, cannot grant points`);
+    return false;
+  }
+
+  const profileData = await profileRes.json().catch(() => ({}));
+  const userId = (profileData as any).profile?.id || (profileData as any).profile?.roid_id;
+  if (!userId) {
+    console.warn(`   ⚠️ [${studentEmail}] No userId in profile, cannot grant points`);
+    return false;
+  }
+
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (bypassSecret) {
+    headers['X-E2E-Secret'] = bypassSecret;
+  }
+
+  const grantRes = await adminPage.request.post(`${baseUrl}/api/points`, {
+    data: JSON.stringify({ userId, action: 'set', amount, reason: 'stress-test-setup' }),
+    headers,
+  });
+
+  if (grantRes.ok()) {
+    console.log(`   ✅ [${studentEmail}] Granted ${amount} points (userId: ${userId})`);
+    return true;
+  }
+
+  const err = await grantRes.json().catch(() => ({}));
+  console.warn(`   ⚠️ [${studentEmail}] Grant failed: ${JSON.stringify(err)}`);
+  return false;
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // Cleanup
 // ─────────────────────────────────────────────────────────────────────
 

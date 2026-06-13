@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs/promises';
 import path from 'path';
-import resolveDataFile from '@/lib/localData';
 import { ddbDocClient } from '@/lib/dynamo';
 import { PutCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
 import { findProfileByEmail } from '@/lib/profilesService';
