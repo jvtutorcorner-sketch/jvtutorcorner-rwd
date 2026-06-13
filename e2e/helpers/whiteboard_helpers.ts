@@ -1053,34 +1053,49 @@ export async function createCourseAsTeacherWithDuration(
   durationMinutes: number = 60
 ): Promise<void> {
   const { baseUrl } = getTestConfig();
+
+  // Ensure teacher account exists
   await registerOrLoginTeacher(page, teacherEmail, teacherPassword, bypassSecret);
 
-  await page.goto(`${baseUrl}/courses_manage/new`, { waitUntil: 'domcontentloaded', timeout: 20000 }).catch(async () => {
-    await page.goto(`${baseUrl}/courses_manage/new`, { waitUntil: 'networkidle', timeout: 10000 }).catch(() => {});
+  // Get teacher UUID via login API so we can store it as teacherId
+  const loginRes = await page.request.post(`${baseUrl}/api/login`, {
+    data: JSON.stringify({ email: teacherEmail, password: teacherPassword, captchaToken: '', captchaValue: bypassSecret }),
+    headers: { 'Content-Type': 'application/json', 'X-E2E-Secret': String(bypassSecret || '') },
   });
-  await page.waitForTimeout(1500);
+  const loginData = await loginRes.json().catch(() => ({}));
+  const teacherId = loginData?.profile?.id || loginData?.profile?.roid_id || teacherEmail;
 
   const now = new Date();
-  const tzOffset = now.getTimezoneOffset() * 60000;
-  // Set start time to 30 seconds ago to ensure course is active
-  // Set end time to (30 seconds + durationMinutes)
-  const startISO = new Date(now.getTime() - tzOffset - 30000).toISOString().slice(0, 16);
-  const endISO = new Date(now.getTime() - tzOffset + (durationMinutes * 60000) + 30000).toISOString().slice(0, 16);
+  const startISO = new Date(now.getTime() - 30000).toISOString();
+  const endISO = new Date(now.getTime() + durationMinutes * 60000 + 30000).toISOString();
 
-  await page.locator('form input').first().fill(courseId).catch(() => {});
-  await page.locator('form textarea').first().fill(`Stress test (${durationMinutes}min) — Teacher: ${teacherEmail}`).catch(() => {});
-  await page.locator('form input[type="datetime-local"]').first().fill(startISO).catch(() => {});
-  await page.locator('form input[type="datetime-local"]').nth(1).fill(endISO).catch(() => {});
-  await page.locator('form input[type="number"]').first().fill('10').catch(() => {});
+  // Create course via API with explicit id so it can be looked up by courseId later
+  const res = await page.request.post(`${baseUrl}/api/courses`, {
+    data: JSON.stringify({
+      id: courseId,
+      title: courseId,
+      description: `Stress test (${durationMinutes}min) — Teacher: ${teacherEmail}`,
+      teacherId,
+      teacherName: teacherEmail,
+      teacherEmail,
+      enrollmentType: 'points',
+      pointCost: 10,
+      nextStartDate: startISO,
+      startDate: startISO,
+      endDate: endISO,
+      durationMinutes,
+      status: '上架',
+    }),
+    headers: {
+      'Content-Type': 'application/json',
+      'X-E2E-Secret': String(bypassSecret || ''),
+    },
+  });
 
-  const submit = page.locator('form button[type="submit"]');
-  if (await submit.count() === 0) throw new Error(`[${courseId}] Submit button not found`);
-  await submit.click();
-  await page.waitForTimeout(2000);
-  await page.waitForURL(
-    (url) => url.toString().includes('/courses_manage') || url.toString().includes('/teacher'),
-    { timeout: 15000 }
-  ).catch(() => {});
+  if (!res.ok()) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(`[${courseId}] Course creation failed (${res.status()}): ${body?.message || 'unknown'}`);
+  }
 
   console.log(`   ✅ [${courseId}] Course created (${durationMinutes}min) by ${teacherEmail}`);
 }
