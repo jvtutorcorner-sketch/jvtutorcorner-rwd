@@ -52,11 +52,16 @@ test('Student Enrollment Flow (Simulated Payment)', async ({ page }) => {
     let expectedDeduction = 10;
     let isExistingCourse = false;
 
-    // 📌 2026-04-08 修復：當 TEST_COURSE_ID 設定時，強制建立新課程而不是搜索已存在課程
-    // 這確保 whiteboard-sync 以及其他測試能為每次執行獲得獨立的課程
-    const shouldCreateNewCourse = !!process.env.TEST_COURSE_ID;
+    // When TEST_COURSE_ID is provided (e.g. from stress test), use that already-approved course directly.
+    // Avoid re-creating it (which would overwrite with status 待審核 and break the course page).
+    if (process.env.TEST_COURSE_ID) {
+        testCourseId = process.env.TEST_COURSE_ID;
+        testCourseTitle = `課程 ${testCourseId}`;
+        isExistingCourse = true;
+        console.log(`✓ Using pre-approved course from TEST_COURSE_ID: ${testCourseId}`);
+    }
 
-    if (!shouldCreateNewCourse) {
+    if (!testCourseId) {
         console.log("Fetching existing courses to see if one is available...");
         try {
             const coursesRes = await page.request.get(`${baseUrl}/api/courses`);
