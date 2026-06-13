@@ -272,6 +272,8 @@ test('Student Enrollment Flow (Simulated Payment)', async ({ page }) => {
             email: data.profile.email,
             plan: data.profile.plan || 'basic',
             role: data.profile.role,
+            roid_id: data.profile.roid_id,
+            id: data.profile.id,
             firstName: data.profile.firstName,
             lastName: data.profile.lastName
         };

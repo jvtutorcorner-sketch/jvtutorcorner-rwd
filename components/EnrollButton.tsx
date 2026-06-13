@@ -79,7 +79,7 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
     if (enrollmentType === 'plan' && (!pointCost || pointCost <= 0)) return;  // 純方案制且無點數需求時不需要查點數
     
     setIsLoadingPoints(true);
-    fetch(`/api/points?userId=${encodeURIComponent(storedUser.email)}`, { cache: 'no-store' })
+    fetch(`/api/points?userId=${encodeURIComponent(storedUser.roid_id || storedUser.id || storedUser.email)}`, { cache: 'no-store' })
       .then(r => r.json())
       .then(d => { 
         if (d.ok) {
@@ -142,7 +142,7 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
       const selectedStart = new Date(selectedStartTime).getTime();
       const selectedEnd = endTime ? new Date(endTime).getTime() : selectedStart + 60 * 60000;
 
-      const checkRes = await fetch(`/api/orders?limit=100&userId=${encodeURIComponent(storedUser.email)}`);
+      const checkRes = await fetch(`/api/orders?limit=100&userId=${encodeURIComponent(storedUser.roid_id || storedUser.id || storedUser.email)}`);
       if (checkRes.ok) {
         const checkData = await checkRes.json();
         const existingOrders: any[] = checkData?.data || [];
@@ -201,7 +201,7 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
         enrollmentId,
         amount: payMethod === 'points' ? 0 : price,
         currency,
-        userId: storedUser.email,
+        userId: storedUser.roid_id || storedUser.id || storedUser.email,
         startTime: selectedStartTime,
         endTime: endTime || undefined,
         paymentMethod: payMethod === 'points' ? 'points' : undefined,

@@ -55,6 +55,8 @@ export default function LoginPage() {
             email: trimmedEmail,
             plan,
             role,
+            roid_id: data.profile?.roid_id,
+            id: data.profile?.id,
             firstName: data.profile?.firstName,
             lastName: data.profile?.lastName,
           };
