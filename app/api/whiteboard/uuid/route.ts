@@ -35,21 +35,28 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing courseId or channelName' }, { status: 400 });
     }
 
-    const tableName = process.env.DYNAMODB_TABLE_COURSES;
     const dbKey = normalizeUuid(channelName ? channelName : (courseId || 'default'));
 
-    console.log(`[WhiteboardUUIDAPI] Using table: ${tableName}, key: ${dbKey}`);
+    // Mirror the table-routing logic from /api/whiteboard/room so the lookup
+    // hits the same table and key that the teacher wrote when creating the room.
+    const isSessionKey = dbKey.startsWith('session_') || dbKey.startsWith('classroom_') || dbKey.includes('session_ready');
+    const coursesTableName = process.env.DYNAMODB_TABLE_COURSES || 'jvtutorcorner-courses';
+    const whiteboardTableName = process.env.WHITEBOARD_TABLE || 'jvtutorcorner-whiteboard';
+    const tableName = isSessionKey ? whiteboardTableName : coursesTableName;
+    const ddbKeyId  = isSessionKey ? `mapping_${dbKey}` : dbKey;
+
+    console.log(`[WhiteboardUUIDAPI] Using table: ${tableName}, key: ${ddbKeyId}, isSessionKey: ${isSessionKey}`);
 
     try {
-      const getCmd = new GetCommand({ TableName: tableName, Key: { id: dbKey }, ConsistentRead: true });
+      const getCmd = new GetCommand({ TableName: tableName, Key: { id: ddbKeyId }, ConsistentRead: true });
       console.log('[WhiteboardUUIDAPI] Sending GetCommand to DynamoDB...');
       const res = await docClient.send(getCmd);
 
       if (res.Item && res.Item.whiteboardUuid) {
-        console.log(`[WhiteboardUUIDAPI] ✅ Found uuid ${res.Item.whiteboardUuid} for key ${dbKey}`);
+        console.log(`[WhiteboardUUIDAPI] ✅ Found uuid ${res.Item.whiteboardUuid} for key ${ddbKeyId}`);
         return NextResponse.json({ found: true, uuid: res.Item.whiteboardUuid }, { status: 200 });
       }
-      console.log(`[WhiteboardUUIDAPI] ℹ️ No uuid found for key ${dbKey} (item exists: ${!!res.Item})`);
+      console.log(`[WhiteboardUUIDAPI] ℹ️ No uuid found for key ${ddbKeyId} (item exists: ${!!res.Item})`);
       return NextResponse.json({ found: false }, { status: 200 });
     } catch (ddbErr: any) {
       console.error('[WhiteboardUUIDAPI] ❌ DynamoDB GetCommand failed:');
