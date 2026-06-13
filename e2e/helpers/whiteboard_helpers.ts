@@ -42,12 +42,12 @@ export function loadStaticPdf(filename: string): Buffer {
 // Enrollment
 // ─────────────────────────────────────────────────────────────────────
 
-export function runEnrollmentFlow(
+export async function runEnrollmentFlow(
   courseId: string,
   teacherEmail?: string,
   studentEmail?: string,
   maxRetries = 2
-): void {
+): Promise<void> {
   const config = getTestConfig();
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
   
@@ -78,6 +78,138 @@ export function runEnrollmentFlow(
   console.log(`\n   🚀 [Enrollment] Starting subprocess for course: ${courseId}`);
   console.log(`      - Teacher: ${childEnv.TEST_TEACHER_EMAIL}`);
   console.log(`      - Student: ${childEnv.TEST_STUDENT_EMAIL}`);
+
+  const buildLocalIsoMinutes = (date: Date) => {
+    const tzOffset = date.getTimezoneOffset() * 60000;
+    return new Date(date.getTime() - tzOffset).toISOString().slice(0, 16);
+  };
+
+  const loginStudentProfile = async () => {
+    const captchaRes = await fetch(`${baseUrl}/api/captcha`, {
+      headers: { 'X-E2E-Secret': String(config.bypassSecret || '') }
+    });
+    const captchaJson = await captchaRes.json().catch(() => ({} as any));
+    const loginRes = await fetch(`${baseUrl}/api/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-E2E-Secret': String(config.bypassSecret || '')
+      },
+      body: JSON.stringify({
+        email: childEnv.TEST_STUDENT_EMAIL,
+        password: childEnv.TEST_STUDENT_PASSWORD,
+        captchaToken: captchaJson?.token || '',
+        captchaValue: config.bypassSecret,
+      }),
+    });
+    const loginJson = await loginRes.json().catch(() => ({} as any));
+    if (!loginRes.ok || !loginJson?.profile) {
+      throw new Error(`Student login failed: ${loginRes.status} ${JSON.stringify(loginJson)}`);
+    }
+    return loginJson.profile;
+  };
+
+  const fetchCourseDetail = async () => {
+    const res = await fetch(`${baseUrl}/api/courses?id=${encodeURIComponent(courseId)}`, {
+      headers: { 'X-E2E-Secret': String(config.bypassSecret || '') }
+    });
+    const json = await res.json().catch(() => ({} as any));
+    const course = json?.course || json?.data?.[0] || json?.data || null;
+    if (!res.ok || !course) {
+      throw new Error(`Course lookup failed for ${courseId}: ${res.status} ${JSON.stringify(json)}`);
+    }
+    return course;
+  };
+
+  const runEnrollmentViaApi = async () => {
+    const studentProfile = await loginStudentProfile();
+    const studentUserId = studentProfile?.roid_id || studentProfile?.id || childEnv.TEST_STUDENT_EMAIL;
+    const course = await fetchCourseDetail();
+
+    const grantRes = await fetch(`${baseUrl}/api/admin/grant-points`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-E2E-Secret': String(config.bypassSecret || '')
+      },
+      body: JSON.stringify({
+        email: childEnv.TEST_STUDENT_EMAIL,
+        amount: 9999,
+      }),
+    });
+    if (!grantRes.ok) {
+      const grantJson = await grantRes.json().catch(() => ({} as any));
+      throw new Error(`Grant points failed: ${grantRes.status} ${JSON.stringify(grantJson)}`);
+    }
+
+    const durationMinutes = Number(course?.durationMinutes) || 5;
+    const pointCost = Number(course?.pointCost) || 10;
+    const start = new Date();
+    const end = new Date(start.getTime() + durationMinutes * 60 * 1000);
+    const startTime = buildLocalIsoMinutes(start);
+    const endTime = buildLocalIsoMinutes(end);
+
+    const enrollRes = await fetch(`${baseUrl}/api/enroll`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-E2E-Secret': String(config.bypassSecret || '')
+      },
+      body: JSON.stringify({
+        name: String(studentProfile?.firstName || 'E2E Student'),
+        email: childEnv.TEST_STUDENT_EMAIL,
+        courseId,
+        courseTitle: course?.title || courseId,
+        startTime,
+        endTime,
+      }),
+    });
+    const enrollJson = await enrollRes.json().catch(() => ({} as any));
+    if (!enrollRes.ok || !enrollJson?.enrollment?.id) {
+      throw new Error(`Enroll failed: ${enrollRes.status} ${JSON.stringify(enrollJson)}`);
+    }
+
+    const orderRes = await fetch(`${baseUrl}/api/orders`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-E2E-Secret': String(config.bypassSecret || '')
+      },
+      body: JSON.stringify({
+        courseId,
+        enrollmentId: enrollJson.enrollment.id,
+        amount: 0,
+        currency: 'TWD',
+        userId: studentUserId,
+        startTime,
+        endTime,
+        paymentMethod: 'points',
+        pointsUsed: pointCost,
+        status: 'PAID',
+      }),
+    });
+    const orderJson = await orderRes.json().catch(() => ({} as any));
+    if (!orderRes.ok || !orderJson?.ok) {
+      throw new Error(`Order creation failed: ${orderRes.status} ${JSON.stringify(orderJson)}`);
+    }
+
+    await fetch(`${baseUrl}/api/enroll`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-E2E-Secret': String(config.bypassSecret || '')
+      },
+      body: JSON.stringify({
+        id: enrollJson.enrollment.id,
+        status: 'PAID',
+      }),
+    }).catch(() => null);
+
+    console.log(`   ✅ [Enrollment] API flow succeeded for course: ${courseId}`);
+    console.log(`      - userId: ${studentUserId}`);
+    console.log(`      - orderId: ${orderJson?.order?.orderId}`);
+    console.log(`      - time: ${startTime} → ${endTime}`);
+  };
   
   let lastError: Error | null = null;
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -85,16 +217,20 @@ export function runEnrollmentFlow(
       if (attempt > 1) {
           console.log(`   🔄 [Enrollment] Retry attempt ${attempt}/${maxRetries}...`);
       }
-      
-      const output = execSync(cmd, {
-        stdio: 'pipe',
-        cwd: path.resolve(__dirname, '../..'),
-        env: childEnv,
-        maxBuffer: 20 * 1024 * 1024,
-      }).toString('utf8');
+      try {
+        await runEnrollmentViaApi();
+      } catch (apiErr) {
+        console.warn(`   ⚠️ [Enrollment] API flow failed, falling back to subprocess: ${(apiErr as Error).message}`);
+        const output = execSync(cmd, {
+          stdio: 'pipe',
+          cwd: path.resolve(__dirname, '../..'),
+          env: childEnv,
+          maxBuffer: 20 * 1024 * 1024,
+        }).toString('utf8');
 
-      if (process.env.DEBUG_ENROLLMENT_FLOW === '1' && output.trim()) {
-        console.log(`   🔍 [${courseId}] Enrollment output:\n${output}`);
+        if (process.env.DEBUG_ENROLLMENT_FLOW === '1' && output.trim()) {
+          console.log(`   🔍 [${courseId}] Enrollment output:\n${output}`);
+        }
       }
 
       console.log(`   ✅ [Enrollment] Flow succeeded for course: ${courseId}`);
@@ -954,10 +1090,10 @@ export async function registerStudentIfNeeded(
 }
 
 /**
- * Grant points to a test account via admin privileges.
- * Safety: only @test.com accounts are allowed to prevent polluting real production data.
- * Pass bypassSecret to use the X-E2E-Secret header as a reliable fallback when the
- * admin session cookie is not available or has not propagated correctly.
+ * Grant points to a test account via /api/admin/grant-points.
+ * Safety: only @test.com accounts are allowed — enforced on both client and server side.
+ * Uses X-E2E-Secret bypass so no admin session cookie is required.
+ * This is the recommended path for all E2E / stress-test point top-ups.
  */
 export async function grantPointsViaAdmin(
   adminPage: Page,
@@ -973,38 +1109,28 @@ export async function grantPointsViaAdmin(
     return false;
   }
 
-  const profileRes = await adminPage.request.get(
-    `${baseUrl}/api/profile?email=${encodeURIComponent(studentEmail)}`
-  );
-  if (!profileRes.ok()) {
-    console.warn(`   ⚠️ [${studentEmail}] Profile not found, cannot grant points`);
+  if (!bypassSecret) {
+    console.warn(`   ⚠️ [${studentEmail}] No bypassSecret provided — cannot authenticate against /api/admin/grant-points`);
     return false;
   }
 
-  const profileData = await profileRes.json().catch(() => ({}));
-  const userId = (profileData as any).profile?.id || (profileData as any).profile?.roid_id;
-  if (!userId) {
-    console.warn(`   ⚠️ [${studentEmail}] No userId in profile, cannot grant points`);
-    return false;
-  }
-
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (bypassSecret) {
-    headers['X-E2E-Secret'] = bypassSecret;
-  }
-
-  const grantRes = await adminPage.request.post(`${baseUrl}/api/points`, {
-    data: JSON.stringify({ userId, action: 'set', amount, reason: 'stress-test-setup' }),
-    headers,
+  // /api/admin/grant-points accepts email directly + X-E2E-Secret bypass (no session cookie needed).
+  const grantRes = await adminPage.request.post(`${baseUrl}/api/admin/grant-points`, {
+    data: JSON.stringify({ email: studentEmail, amount }),
+    headers: {
+      'Content-Type': 'application/json',
+      'X-E2E-Secret': bypassSecret,
+    },
   });
 
   if (grantRes.ok()) {
-    console.log(`   ✅ [${studentEmail}] Granted ${amount} points (userId: ${userId})`);
+    const data = await grantRes.json().catch(() => ({}));
+    console.log(`   ✅ [${studentEmail}] Granted ${(data as any).amount ?? amount} points via /api/admin/grant-points`);
     return true;
   }
 
   const err = await grantRes.json().catch(() => ({}));
-  console.warn(`   ⚠️ [${studentEmail}] Grant failed: ${JSON.stringify(err)}`);
+  console.warn(`   ⚠️ [${studentEmail}] /api/admin/grant-points failed (${grantRes.status()}): ${JSON.stringify(err)}`);
   return false;
 }
 

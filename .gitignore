@@ -86,3 +86,8 @@ __pycache__/
 # test results
 test-results/
 playwright-report/
+
+# debug copy and headed run directories
+.debugcopy/
+.debugheaded/
+.claude/

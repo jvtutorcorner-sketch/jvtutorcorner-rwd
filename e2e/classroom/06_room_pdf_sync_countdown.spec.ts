@@ -340,7 +340,7 @@ async function setupCourseAndEnrollment(
     await adminCtx.close();
   }
 
-  runEnrollmentFlow(courseId, config.teacherEmail, config.studentEmail);
+  await runEnrollmentFlow(courseId, config.teacherEmail, config.studentEmail);
 }
 
 async function cleanupCourse(browser: Browser, baseUrl: string, bypassSecret: string, courseId: string): Promise<void> {

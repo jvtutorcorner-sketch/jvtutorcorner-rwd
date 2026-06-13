@@ -335,7 +335,7 @@ test.describe(`[stress-pdf-${GROUP_COUNT}x] Concurrent PDF Sync — ${GROUP_COUN
       const r = results[i];
       if (r.phase) continue;
       try {
-        runEnrollmentFlow(g.courseId, g.teacherEmail, g.studentEmail);
+        await runEnrollmentFlow(g.courseId, g.teacherEmail, g.studentEmail);
         r.enrolled = true;
         console.log(`   ✅ [${g.groupId}] Enrolled`);
       } catch (err) {

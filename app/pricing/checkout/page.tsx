@@ -367,42 +367,20 @@ function CheckoutContent() {
         }
 
         try {
-            // Simulate backend updating the upgrade status to PAID
-            const patchRes = await fetch(`/api/plan-upgrades/${encodeURIComponent(upgrade.upgradeId)}`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ status: 'PAID' }),
+            const simulateRes = await fetch(`/api/plan-upgrades/${encodeURIComponent(upgrade.upgradeId)}`, {
+                method: 'POST',
             });
-            
-            const data = await patchRes.json();
-            
-            if (!patchRes.ok) {
-                throw new Error(data.error || 'Failed to update payment status');
-            }
-            
-            // If it's a plan upgrade or points purchase, sync locally for immediate UI feedback (simulation only)
-            if (itemType === 'PLAN') {
-                syncPlanLocally();
-            } else if (itemType === 'POINTS' && points > 0) {
-                const pointsToAdd = Math.max(0, points - (itemData?.prePurchasePointsCost || 0));
-                if (pointsToAdd > 0) {
-                    // For simulation, we attempt to call a point-adding API with bypass
-                    await fetch('/api/points', {
-                        method: 'POST',
-                        headers: { 
-                            'Content-Type': 'application/json',
-                            'X-E2E-Secret': String(window.localStorage.getItem('LOGIN_BYPASS_SECRET') || '')
-                        },
-                        body: JSON.stringify({
-                            userId: user.roid_id || user.id || user.email,
-                            amount: pointsToAdd,
-                            action: 'add'
-                        })
-                    }).catch(err => console.error('Point sync failed:', err));
-                }
+
+            const data = await simulateRes.json();
+
+            if (!simulateRes.ok) {
+                throw new Error(data.error || 'Failed to complete simulated payment');
             }
 
-            // Small delay to ensure DB updates and analytics are processed
+            if (itemType === 'PLAN') {
+                syncPlanLocally();
+            }
+
             setTimeout(() => {
                 router.push('/plans');
             }, 500);

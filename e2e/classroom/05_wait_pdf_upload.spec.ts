@@ -82,7 +82,7 @@ test.describe('[wait-pdf] Teacher PDF Upload Verification', () => {
       await adminApproveCourse(adminPage, courseId, ADMIN_EMAIL, ADMIN_PASSWORD, config.bypassSecret);
       await adminCtx.close();
 
-      runEnrollmentFlow(courseId, config.teacherEmail, config.studentEmail);
+      await runEnrollmentFlow(courseId, config.teacherEmail, config.studentEmail);
 
       console.log('📍 Navigate teacher to /classroom/wait and upload PDF');
       await injectDeviceCheckBypass(teacherPage);

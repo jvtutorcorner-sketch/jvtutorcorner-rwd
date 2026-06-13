@@ -249,9 +249,9 @@ function PlansPageContent() {
     const paginatedUpgrades = sortedUpgrades.slice(startIndex, startIndex + limitParam);
 
     const StatusBadge = ({ status }: { status: string }) => (
-        <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${status === 'PAID' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+        <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${['PAID', 'COMPLETED'].includes(status) ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
             }`}>
-            {status === 'PAID' ? '已付款' : '處理中'}
+            {['PAID', 'COMPLETED'].includes(status) ? '已付款' : '處理中'}
         </span>
     );
 
