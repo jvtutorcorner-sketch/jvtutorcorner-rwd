@@ -27,9 +27,11 @@ export default function LoginPage() {
   const [isForgotMode, setIsForgotMode] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotLoading, setForgotLoading] = useState(false);
-  const [currentUser, setCurrentUser] = useState<StoredUser | null>(
-    typeof window !== 'undefined' ? getStoredUser() : null,
-  );
+  const [currentUser, setCurrentUser] = useState<StoredUser | null>(null);
+
+  useEffect(() => {
+    setCurrentUser(getStoredUser());
+  }, []);
 
 
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {

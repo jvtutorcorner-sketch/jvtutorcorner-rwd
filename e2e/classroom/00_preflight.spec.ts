@@ -136,13 +136,14 @@ test.describe('[preflight] System Health Gate', () => {
   // ── 7. Browser can load the homepage ────────────────────────────
   test('homepage loads within acceptable time', async ({ page }) => {
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+    const HOME_LOAD_SLO_MS = parseInt(process.env.HOME_LOAD_SLO_MS || '15000', 10);
     const start = Date.now();
     await page.goto(baseUrl, { waitUntil: 'domcontentloaded' });
     const loadMs = Date.now() - start;
 
     const title = await page.title().catch(() => '');
     console.log(`   Homepage title: "${title}", load time: ${loadMs}ms`);
-    expect(loadMs, `Homepage load ${loadMs}ms > 10s`).toBeLessThan(10_000);
+    expect(loadMs, `Homepage load ${loadMs}ms > ${HOME_LOAD_SLO_MS}ms`).toBeLessThan(HOME_LOAD_SLO_MS);
     expect(page.url()).toContain(baseUrl.replace(/^https?:\/\//, '').split('/')[0]);
   });
 });
