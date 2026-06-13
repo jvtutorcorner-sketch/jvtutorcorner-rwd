@@ -43,7 +43,9 @@ function requireEnv(...keys: string[]): string {
 
 export const ADMIN_EMAIL = process.env.ADMIN_EMAIL || process.env.QA_ADMIN_EMAIL || 'admin@example.com';
 export const ADMIN_PASSWORD = requireEnv('ADMIN_PASSWORD', 'QA_ADMIN_PASSWORD');
-export const DEFAULT_STRESS_GROUP_COUNT = 3;
+// Increased from 3 → 5 to match the expanded subscribe retry tolerance in useAgoraClassroom.ts.
+// Use CONCURRENT_GROUPS env var to override (e.g. 10 for large-class load tests).
+export const DEFAULT_STRESS_GROUP_COUNT = 5;
 
 /** Course-ID prefixes per scenario — used by cleanup scripts too */
 export const COURSE_ID_PREFIXES = {

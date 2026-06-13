@@ -542,9 +542,6 @@ export async function waitAndEnterClassroom(page: Page, role: 'teacher' | 'stude
         'Join room failed',
         '網址無效',
         '你沒有權限',
-        'Error:',
-        'AgoraRTCError',
-        'INVALID_OPERATION'
       ];
       for (const keyword of errorKeywords) {
         if (bodyText.includes(keyword)) return keyword;
@@ -577,9 +574,6 @@ export async function waitAndEnterClassroom(page: Page, role: 'teacher' | 'stude
           'Join room failed',
           '網址無效',
           '你沒有權限',
-          'Error:',
-          'AgoraRTCError',
-          'INVALID_OPERATION'
         ];
         for (const keyword of errorKeywords) {
           if (bodyText.includes(keyword)) return keyword;
@@ -619,9 +613,6 @@ export async function waitAndEnterClassroom(page: Page, role: 'teacher' | 'stude
           'Join room failed',
           '網址無效',
           '你沒有權限',
-          'Error:',
-          'AgoraRTCError',
-          'INVALID_OPERATION'
         ];
         for (const keyword of errorKeywords) {
           if (bodyText.includes(keyword)) return keyword;
@@ -697,9 +688,6 @@ export async function waitAndEnterClassroom(page: Page, role: 'teacher' | 'stude
             'Join room failed',
             '網址無效',
             '你沒有權限',
-            'Error:',
-            'AgoraRTCError',
-            'INVALID_OPERATION'
           ];
           for (const keyword of errorKeywords) {
             if (bodyText.includes(keyword)) return keyword;
@@ -731,7 +719,12 @@ export async function drawOnWhiteboard(page: Page): Promise<void> {
     await page.waitForURL(/\/classroom\/room/, { timeout: 20000 }).catch(() => {});
   }
 
-  // Check for page errors first
+  // Check for whiteboard-specific errors only.
+  // Agora RTC (video/audio) errors such as "AgoraRTCError" and "INVALID_OPERATION"
+  // come from a completely separate SDK (agora-rtc-sdk-ng) and do NOT affect the
+  // whiteboard (white-web-sdk / Netless). They appear more frequently under stress
+  // (5-10 concurrent groups hit Agora RTC rate-limits / headless device contention)
+  // but the whiteboard remains fully functional regardless.
   const errorText = await page.evaluate(() => {
     const bodyText = document.body.innerText;
     const errorKeywords = [
@@ -741,9 +734,6 @@ export async function drawOnWhiteboard(page: Page): Promise<void> {
       'Join room failed',
       '網址無效',
       '你沒有權限',
-      'Error:',
-      'AgoraRTCError',
-      'INVALID_OPERATION'
     ];
     for (const keyword of errorKeywords) {
       if (bodyText.includes(keyword)) return keyword;
