@@ -12,6 +12,7 @@
     "lint": "eslint",
     "setup-agora": "node scripts/setup-agora-credentials.js",
     "setup-s3": "node scripts/setup-s3-storage.js",
+    "sync:amplify:env": "node scripts/sync-amplify-env-to-dotenv.mjs",
     "skills:validate": "node scripts/validate-skill-frontmatter.js",
     "skills:update": "node scripts/update-skill-status.js",
     "test": "playwright test",

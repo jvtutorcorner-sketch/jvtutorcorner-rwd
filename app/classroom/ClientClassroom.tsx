@@ -126,6 +126,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
 
   const agoraWhiteboardRef = useRef<AgoraWhiteboardRef>(null);
   const [agoraRoomData, setAgoraRoomData] = useState<{ uuid: string; roomToken: string; appIdentifier: string; region: string; userId: string } | null>(null);
+  const [agoraWhiteboardMounted, setAgoraWhiteboardMounted] = useState(false);
   const [whiteboardState, setWhiteboardState] = useState<any>(null);
   const [whiteboardError, setWhiteboardError] = useState<string | null>(null);
   const [whiteboardInitTimeout, setWhiteboardInitTimeout] = useState(false);
@@ -139,6 +140,9 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   useEffect(() => {
     const interval = setInterval(() => {
       try {
+        const mounted = !!agoraWhiteboardRef.current;
+        setAgoraWhiteboardMounted((prev) => (prev === mounted ? prev : mounted));
+
         if (agoraWhiteboardRef.current) {
           const state = agoraWhiteboardRef.current.getState();
           if (state) setWhiteboardState(state);
@@ -1167,7 +1171,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
         if (s.name === 'Initializing Agora connection') {
           done = !!agoraRoomData;
         } else if (s.name === 'Preparing whiteboard') {
-          done = useAgoraWhiteboard ? !!agoraRoomData && !!agoraWhiteboardRef.current : !!whiteboardMeta;
+          done = useAgoraWhiteboard ? !!agoraRoomData && agoraWhiteboardMounted : !!whiteboardMeta;
         } else if (s.name === 'Syncing session state') {
           done = !!sessionReadyKey;
         }
@@ -1182,7 +1186,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       return changed ? next : prev;
     });
 
-    const agoraReady = useAgoraWhiteboard ? !!agoraRoomData && !!agoraWhiteboardRef.current : !!whiteboardMeta;
+    const agoraReady = useAgoraWhiteboard ? !!agoraRoomData && agoraWhiteboardMounted : !!whiteboardMeta;
     const allDone = agoraReady && !!sessionReadyKey;
     if (allDone && joined && !fullyInitialized) {
       setFullyInitialized(true);
@@ -1193,25 +1197,32 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       setFullyInitialized(false);
       setClassFullyLoadedAt(null);
     }
-  }, [agoraRoomData, whiteboardMeta, sessionReadyKey, joined, whiteboardState]);
+  }, [agoraRoomData, agoraWhiteboardMounted, whiteboardMeta, sessionReadyKey, joined, whiteboardState]);
 
   // Debug whiteboard state
   useEffect(() => {
+    const agoraWindowRoomReady = typeof window !== 'undefined' && !!(window as any).agoraRoom;
+    const agoraRuntimeReady = !!agoraRoomData && agoraWhiteboardMounted && agoraWindowRoomReady;
+
     console.log('Whiteboard state:', {
       useAgoraWhiteboard,
       hasAgoraRoomData: !!agoraRoomData,
+      hasAgoraWhiteboardRef: agoraWhiteboardMounted,
       hasWhiteboardRef: !!whiteboardRef,
       whiteboardMeta,
-      joined
+      joined,
+      agoraWindowRoomReady,
     });
 
     // 為 E2E 測試暴露狀態
     if (typeof window !== 'undefined') {
       (window as any).__classroom_joined = joined;
-      (window as any).__classroom_whiteboard_ready = useAgoraWhiteboard ? !!agoraRoomData : !!whiteboardMeta;
-      (window as any).__classroom_ready = joined && (useAgoraWhiteboard ? !!agoraRoomData : !!whiteboardMeta);
+      (window as any).__agora_whiteboard_ref_ready = agoraWhiteboardMounted;
+      (window as any).__agora_whiteboard_room_ready = agoraWindowRoomReady;
+      (window as any).__classroom_whiteboard_ready = useAgoraWhiteboard ? agoraRuntimeReady : !!whiteboardMeta;
+      (window as any).__classroom_ready = joined && (useAgoraWhiteboard ? agoraRuntimeReady : !!whiteboardMeta);
     }
-  }, [whiteboardRef, whiteboardMeta, joined, useAgoraWhiteboard, agoraRoomData]);
+  }, [whiteboardRef, whiteboardMeta, joined, useAgoraWhiteboard, agoraRoomData, agoraWhiteboardMounted]);
 
   // 跨标签页同步：老師開始上課時通知學生
   useEffect(() => {

@@ -619,6 +619,7 @@ export default function ClassroomWaitPage() {
 
   const enterClassroom = React.useCallback(async () => {
     console.log('enterClassroom triggered');
+    let targetRoomUuid = roomUuid;
 
     // **NEW**: Pre-establish whiteboard room UUID before entering classroom
     // This ensures both teacher and student enter with the same room already created
@@ -643,6 +644,7 @@ export default function ClassroomWaitPage() {
           const roomData = await createRes.json();
           if (roomData?.uuid) {
             console.log(`[WaitPage] ✅ Room created successfully: ${roomData.uuid}`);
+            targetRoomUuid = roomData.uuid;
             setRoomUuid(roomData.uuid);
             
             // Store UUID in sessionStorage for quick access in ClientClassroom
@@ -669,7 +671,7 @@ export default function ClassroomWaitPage() {
     // We'll navigate first and let the classroom page / server decide
     // when to clear the session-ready list after users have joined.
 
-    const target = `/classroom/room?courseId=${encodeURIComponent(courseId)}${orderId ? `&orderId=${encodeURIComponent(orderId)}` : ''}${role ? `&role=${encodeURIComponent(role)}` : ''}${sessionReadyKey ? `&session=${encodeURIComponent(sessionReadyKey)}` : ''}${roomUuid ? `&whiteboardUuid=${encodeURIComponent(roomUuid)}` : ''}`;
+    const target = `/classroom/room?courseId=${encodeURIComponent(courseId)}${orderId ? `&orderId=${encodeURIComponent(orderId)}` : ''}${role ? `&role=${encodeURIComponent(role)}` : ''}${sessionReadyKey ? `&session=${encodeURIComponent(sessionReadyKey)}` : ''}${targetRoomUuid ? `&whiteboardUuid=${encodeURIComponent(targetRoomUuid)}` : ''}`;
     console.log('Redirecting to:', target);
     router.push(target);
   }, [courseId, orderId, role, sessionReadyKey, router, roomUuid, localPresenceId]);

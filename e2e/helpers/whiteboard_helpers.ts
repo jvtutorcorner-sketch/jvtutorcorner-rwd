@@ -749,16 +749,18 @@ export async function drawOnWhiteboard(page: Page): Promise<void> {
   await page
     .waitForFunction(() => {
       const w = window as any;
-      return !!w.__classroom_ready || !!w.__classroom_whiteboard_ready || !!document.querySelector('canvas');
-    }, { timeout: 25000 })
+      const sdkLoaded = !!w.WhiteWebSdk?.WhiteWebSdk;
+      const agoraRoomReady = !!w.agoraRoom;
+      return !!w.__classroom_whiteboard_ready || (!!w.__classroom_ready && sdkLoaded && agoraRoomReady) || (sdkLoaded && agoraRoomReady && !!document.querySelector('canvas'));
+    }, { timeout: 45000 })
     .catch(() => {
-      console.log('   ⚠️ classroom readiness flag not observed within 25 s');
+      console.log('   ⚠️ classroom readiness flag not observed within 45 s');
     });
 
   // Wait for Agora SDK + room, and throw if not ready
   for (const [label, fn] of [
     ['WhiteWebSdk', () => !!(window as any).WhiteWebSdk?.WhiteWebSdk],
-    ['agoraRoom', () => (window as any).agoraRoom !== undefined],
+    ['agoraRoom', () => !!(window as any).agoraRoom],
   ] as [string, () => boolean][]) {
     try {
       await page.waitForFunction(fn, { timeout: 20000 });
