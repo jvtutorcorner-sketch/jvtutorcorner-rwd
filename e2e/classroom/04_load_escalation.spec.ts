@@ -55,6 +55,7 @@ import { getTestConfig, getStressGroupConfigs, ADMIN_EMAIL, ADMIN_PASSWORD } fro
 const GROUP_COUNT = parseInt(process.env.CONCURRENT_GROUPS || '3', 10);
 const SUCCESS_THRESHOLD = parseFloat(process.env.SUCCESS_THRESHOLD || '0.75');
 const TEST_TIMEOUT_MS = Math.max(600_000, GROUP_COUNT * 120_000 + 300_000);
+const GROUP_STAGGER_MS = 5_000; // stagger Phase 5 SDK init to avoid 12-tab resource contention
 
 // ─────────────────────────────────────────────────────────────────────
 // Helpers
@@ -271,10 +272,15 @@ test.describe(`[load-${GROUP_COUNT}x] Concurrent Load — ${GROUP_COUNT} Groups`
     // ── Phase 5: Whiteboard Draw + Sync Verification (parallel) ───
     console.log('\n📍 Phase 5: Whiteboard Draw + Sync Verification (parallel)');
 
-    await Promise.allSettled(sessions.map(async s => {
+    await Promise.allSettled(sessions.map(async (s, groupIdx) => {
       const g = groupConfigs[s.idx];
       const r = results[s.idx];
       if (!r.entered) return;
+
+      // Stagger SDK init to avoid all groups competing for Netless/Agora connections simultaneously
+      if (groupIdx > 0) {
+        await s.teacherPage.waitForTimeout(groupIdx * GROUP_STAGGER_MS).catch(() => {});
+      }
 
       try {
         await drawOnWhiteboard(s.teacherPage);
