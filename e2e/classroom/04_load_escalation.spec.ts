@@ -297,26 +297,7 @@ test.describe(`[load-${GROUP_COUNT}x] Concurrent Load — ${GROUP_COUNT} Groups`
       }
     }));
 
-    // ── Cleanup ───────────────────────────────────────────────────
-    for (const s of sessions) {
-      await s.teacherCtx.close().catch(() => {});
-      await s.studentCtx.close().catch(() => {});
-    }
-
-    if (!process.env.SKIP_CLEANUP) {
-      const cleanAdminCtx = await browser.newContext();
-      const cleanAdminPage = await cleanAdminCtx.newPage();
-      await injectDeviceCheckBypass(cleanAdminPage);
-      await autoLogin(cleanAdminPage, ADMIN_EMAIL, ADMIN_PASSWORD, config.bypassSecret);
-      for (const g of groupConfigs) {
-        await cleanAdminPage.request.delete(`${config.baseUrl}/api/courses?id=${g.courseId}`).catch(() => {});
-        await cleanAdminPage.request.delete(`${config.baseUrl}/api/orders?courseId=${g.courseId}`).catch(() => {});
-      }
-      await cleanAdminCtx.close();
-      console.log(`\n   🧹 Cleanup complete for ${GROUP_COUNT} groups`);
-    }
-
-    // ── Results Summary + Assert ──────────────────────────────────
+    // ── Results Summary + Assert (before cleanup so results always print) ──
     printLoadSummary(results, GROUP_COUNT);
 
     const syncedCount = results.filter(r => r.synced).length;
@@ -326,7 +307,6 @@ test.describe(`[load-${GROUP_COUNT}x] Concurrent Load — ${GROUP_COUNT} Groups`
     console.log(`   Achieved success rate: ${Math.round(achievedRate * 100)}%`);
 
     if (achievedRate < SUCCESS_THRESHOLD) {
-      // Identify the most common failure phase
       const phaseCounts: Record<string, number> = {};
       for (const r of results.filter(r => r.phase)) {
         phaseCounts[r.phase!] = (phaseCounts[r.phase!] || 0) + 1;
@@ -339,5 +319,33 @@ test.describe(`[load-${GROUP_COUNT}x] Concurrent Load — ${GROUP_COUNT} Groups`
       achievedRate,
       `Load test (${GROUP_COUNT}x) failed: ${syncedCount}/${GROUP_COUNT} groups synced (need ${Math.round(SUCCESS_THRESHOLD * 100)}%)`
     ).toBeGreaterThanOrEqual(SUCCESS_THRESHOLD);
+
+    // ── Cleanup (best-effort, capped at 60 s to prevent connection-hang) ──
+    await Promise.race([
+      (async () => {
+        for (const s of sessions) {
+          // Close pages first to terminate Agora RTC / Netless WebSocket connections
+          // before closing the context, preventing context.close() from hanging.
+          await s.teacherPage.close().catch(() => {});
+          await s.studentPage.close().catch(() => {});
+          await s.teacherCtx.close().catch(() => {});
+          await s.studentCtx.close().catch(() => {});
+        }
+
+        if (!process.env.SKIP_CLEANUP) {
+          const cleanAdminCtx = await browser.newContext();
+          const cleanAdminPage = await cleanAdminCtx.newPage();
+          await injectDeviceCheckBypass(cleanAdminPage);
+          await autoLogin(cleanAdminPage, ADMIN_EMAIL, ADMIN_PASSWORD, config.bypassSecret);
+          for (const g of groupConfigs) {
+            await cleanAdminPage.request.delete(`${config.baseUrl}/api/courses?id=${g.courseId}`).catch(() => {});
+            await cleanAdminPage.request.delete(`${config.baseUrl}/api/orders?courseId=${g.courseId}`).catch(() => {});
+          }
+          await cleanAdminCtx.close();
+          console.log(`\n   🧹 Cleanup complete for ${GROUP_COUNT} groups`);
+        }
+      })(),
+      new Promise<void>(resolve => setTimeout(resolve, 60_000)),
+    ]).catch(() => {});
   });
 });

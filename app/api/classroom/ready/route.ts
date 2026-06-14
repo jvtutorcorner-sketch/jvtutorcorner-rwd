@@ -22,7 +22,8 @@ async function readReadyItem(uuid: string): Promise<ReadyItem> {
     const id = getReadyItemId(uuid);
     const res = await ddbDocClient.send(new GetCommand({
       TableName: TABLE_NAME,
-      Key: { id }
+      Key: { id },
+      ConsistentRead: true,
     }));
     if (res.Item) {
       return {

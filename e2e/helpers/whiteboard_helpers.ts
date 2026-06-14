@@ -674,7 +674,16 @@ export async function waitAndEnterClassroom(page: Page, role: 'teacher' | 'stude
 
     if (elapsed > 45000 && page.url().includes('/classroom/wait')) {
       const current = page.url();
-      const directRoomUrl = current.replace('/classroom/wait', '/classroom/room');
+      // Read whiteboardUuid from sessionStorage (stored by wait page enterClassroom callback)
+      // so ClientClassroom can use the fast-path initialization instead of full discovery.
+      const sessionParam = new URL(current).searchParams.get('session') || '';
+      const storedUuid = sessionParam
+        ? await page.evaluate((key) => sessionStorage.getItem(`whiteboard_room_${key}`) || '', sessionParam).catch(() => '')
+        : '';
+      let directRoomUrl = current.replace('/classroom/wait', '/classroom/room');
+      if (storedUuid && !directRoomUrl.includes('whiteboardUuid')) {
+        directRoomUrl += `&whiteboardUuid=${encodeURIComponent(storedUuid)}`;
+      }
       await page.goto(directRoomUrl, { waitUntil: 'domcontentloaded' }).catch(() => {});
       if (page.url().includes('/classroom/room')) {
         await page.waitForTimeout(2000);
@@ -746,15 +755,16 @@ export async function drawOnWhiteboard(page: Page): Promise<void> {
   }
 
   // ClientClassroom exposes runtime readiness flags; use them as first gate.
+  // Timeout raised to 90 s to accommodate concurrent 6–10 group Netless SDK init.
   await page
     .waitForFunction(() => {
       const w = window as any;
       const sdkLoaded = !!w.WhiteWebSdk?.WhiteWebSdk;
       const agoraRoomReady = !!w.agoraRoom;
       return !!w.__classroom_whiteboard_ready || (!!w.__classroom_ready && sdkLoaded && agoraRoomReady) || (sdkLoaded && agoraRoomReady && !!document.querySelector('canvas'));
-    }, { timeout: 45000 })
+    }, { timeout: 90000 })
     .catch(() => {
-      console.log('   ⚠️ classroom readiness flag not observed within 45 s');
+      console.log('   ⚠️ classroom readiness flag not observed within 90 s');
     });
 
   // Wait for Agora SDK + room, and throw if not ready
@@ -763,23 +773,23 @@ export async function drawOnWhiteboard(page: Page): Promise<void> {
     ['agoraRoom', () => !!(window as any).agoraRoom],
   ] as [string, () => boolean][]) {
     try {
-      await page.waitForFunction(fn, { timeout: 20000 });
+      await page.waitForFunction(fn, { timeout: 30000 });
     } catch (e) {
-      throw new Error(`❌ Agora whiteboard ${label} not ready within 20 s`);
+      throw new Error(`❌ Agora whiteboard ${label} not ready within 30 s`);
     }
   }
 
-  // Wait for visible canvas (up to 60 s)
+  // Wait for visible canvas (up to 90 s)
   const canvas = page.locator('canvas:visible').first();
   let canvasVisible = false;
-  for (let i = 0; i < 60 && !canvasVisible; i++) {
+  for (let i = 0; i < 90 && !canvasVisible; i++) {
     canvasVisible = await canvas.isVisible({ timeout: 1000 }).catch(() => false);
     if (!canvasVisible) {
       if (i % 10 === 0) console.log(`   ⏳ [${i}s] Waiting for canvas...`);
       await page.waitForTimeout(1000);
     }
   }
-  if (!canvasVisible) throw new Error('❌ Canvas not visible after 60 s');
+  if (!canvasVisible) throw new Error('❌ Canvas not visible after 90 s');
 
   const box = await canvas.boundingBox();
   if (!box) throw new Error('Canvas bounding box null');

@@ -68,11 +68,15 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   const courseId = params?.get('courseId') ?? params?.get('courseid') ?? 'c1';
   const orderId = params?.get('orderId') ?? params?.get('orderid') ?? null;
   const sessionParam = params?.get('session');
-  const preestablishedWhiteboardUuid = params?.get('whiteboardUuid'); // **NEW**: Accept pre-established room UUID from wait page
+  const _urlWhiteboardUuid = params?.get('whiteboardUuid'); // Accept pre-established room UUID from wait page
   const sessionReadyKey = useMemo(() =>
     sessionParam || channelName || `classroom_session_ready_${courseId}`,
     [sessionParam, channelName, courseId]
   );
+  const effectiveWhiteboardUuid = _urlWhiteboardUuid ||
+    (typeof window !== 'undefined' && sessionReadyKey
+      ? sessionStorage.getItem(`whiteboard_room_${sessionReadyKey}`)
+      : null);
   const t = useT();
 
   const [courseTitle, setCourseTitle] = useState('課程');
@@ -486,9 +490,9 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     const initAgoraWhiteboard = async () => {
       console.log('[ClientClassroom] initAgoraWhiteboard function called');
       
-      // **NEW**: Check if UUID was pre-established in wait page and passed via URL
-      if (preestablishedWhiteboardUuid) {
-        console.log(`[ClientClassroom] Using pre-established whiteboard UUID from URL: ${preestablishedWhiteboardUuid}`);
+      // Check if UUID was pre-established in wait page (via URL param or sessionStorage)
+      if (effectiveWhiteboardUuid) {
+        console.log(`[ClientClassroom] Using pre-established whiteboard UUID: ${effectiveWhiteboardUuid}`);
         try {
           // Fetch room credentials for the pre-established UUID
           const tokenRes = await fetch('/api/whiteboard/room', {
@@ -500,7 +504,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
               courseId,
               orderId,
               role: isTeacher ? 'teacher' : 'student',
-              roomUuid: preestablishedWhiteboardUuid // Use the pre-established UUID
+              roomUuid: effectiveWhiteboardUuid // Use the pre-established UUID
             })
           });
           if (tokenRes.ok) {
@@ -762,7 +766,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     }, 20000);
 
     return () => clearTimeout(timeoutId);
-  }, [useAgoraWhiteboard, mounted, userId, courseId, sessionReadyKey, computedRole, preestablishedWhiteboardUuid, whiteboardRetryCount]); // Added preestablishedWhiteboardUuid to dependencies
+  }, [useAgoraWhiteboard, mounted, userId, courseId, sessionReadyKey, computedRole, effectiveWhiteboardUuid, whiteboardRetryCount]);
 
   // Load PDF from server if available (synced from wait page)
   // ★ Improved: Clear old PDF when sessionReadyKey changes, then check for new one
