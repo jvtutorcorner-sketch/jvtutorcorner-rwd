@@ -131,6 +131,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   const agoraWhiteboardRef = useRef<AgoraWhiteboardRef>(null);
   const [agoraRoomData, setAgoraRoomData] = useState<{ uuid: string; roomToken: string; appIdentifier: string; region: string; userId: string } | null>(null);
   const [agoraWhiteboardMounted, setAgoraWhiteboardMounted] = useState(false);
+  const [agoraWindowRoomReady, setAgoraWindowRoomReady] = useState(false);
   const [whiteboardState, setWhiteboardState] = useState<any>(null);
   const [whiteboardError, setWhiteboardError] = useState<string | null>(null);
   const [whiteboardInitTimeout, setWhiteboardInitTimeout] = useState(false);
@@ -146,6 +147,9 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       try {
         const mounted = !!agoraWhiteboardRef.current;
         setAgoraWhiteboardMounted((prev) => (prev === mounted ? prev : mounted));
+
+        const roomReady = typeof window !== 'undefined' && !!(window as any).agoraRoom;
+        setAgoraWindowRoomReady((prev) => (prev === roomReady ? prev : roomReady));
 
         if (agoraWhiteboardRef.current) {
           const state = agoraWhiteboardRef.current.getState();
@@ -675,9 +679,9 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
             let found = false;
             let lookupData: any = null;
 
-            // Poll every 500ms for up to 12 attempts (6s total).
+            // Poll every 500ms for up to 60 attempts (30s total).
             // RTM re-request was already sent above, so teacher should re-broadcast within ~100ms.
-            for (let i = 0; i < 12; i++) {
+            for (let i = 0; i < 60; i++) {
               try {
                 const j = await fetchExistingWhiteboardUuid(courseId, sessionReadyKey);
                 if (j?.uuid) {
@@ -713,14 +717,10 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
               console.log('[ClientClassroom] Student found existing room via lookup, using it');
               setAgoraRoomData(lookupData);
             } else {
-              // No room found after all retries — redirect student to wait page so the
-              // teacher can establish the session properly before the student joins.
-              console.warn('[ClientClassroom] Student: whiteboard UUID not found after all polling attempts. Redirecting to wait page.');
-              const waitParams = new URLSearchParams();
-              waitParams.set('courseId', courseId || 'c1');
-              if (orderId) waitParams.set('orderId', orderId);
-              if (sessionReadyKey) waitParams.set('session', sessionReadyKey);
-              window.location.replace(`/classroom/wait?${waitParams.toString()}`);
+              // No room found after extended polling — keep student on page and retry via RTM
+              // so BoardImpl can mount once the teacher's room becomes available.
+              console.warn('[ClientClassroom] Student: whiteboard UUID not found after extended polling. Sending re-broadcast request; outer timeout will show retry UI.');
+              rtmSend('request-wb-uuid', {}).catch(() => {});
             }
           }
         }
@@ -734,13 +734,14 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
 
     initAgoraWhiteboard();
 
-    // Timeout: if agoraRoomData is still null after 20 seconds, show retry UI
+    // Timeout: if agoraRoomData is still null after 50 seconds, show retry UI
+    // (3 s RTM wait + 30 s polling = 33 s max; 50 s gives buffer before surfacing retry UI)
     const timeoutId = setTimeout(() => {
       setAgoraRoomData(prev => {
         if (!prev) setWhiteboardInitTimeout(true);
         return prev;
       });
-    }, 20000);
+    }, 50000);
 
     return () => clearTimeout(timeoutId);
   }, [useAgoraWhiteboard, mounted, userId, courseId, sessionReadyKey, computedRole, effectiveWhiteboardUuid, whiteboardRetryCount]);
@@ -1181,8 +1182,9 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   }, [agoraRoomData, agoraWhiteboardMounted, whiteboardMeta, sessionReadyKey, joined, whiteboardState]);
 
   // Debug whiteboard state
+  // agoraWindowRoomReady is tracked as state via the 1s polling interval so this effect
+  // re-runs when window.agoraRoom is set (after BoardImpl's joinRoom resolves).
   useEffect(() => {
-    const agoraWindowRoomReady = typeof window !== 'undefined' && !!(window as any).agoraRoom;
     const agoraRuntimeReady = !!agoraRoomData && agoraWhiteboardMounted && agoraWindowRoomReady;
 
     console.log('Whiteboard state:', {
@@ -1203,7 +1205,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       (window as any).__classroom_whiteboard_ready = useAgoraWhiteboard ? agoraRuntimeReady : !!whiteboardMeta;
       (window as any).__classroom_ready = joined && (useAgoraWhiteboard ? agoraRuntimeReady : !!whiteboardMeta);
     }
-  }, [whiteboardRef, whiteboardMeta, joined, useAgoraWhiteboard, agoraRoomData, agoraWhiteboardMounted]);
+  }, [whiteboardRef, whiteboardMeta, joined, useAgoraWhiteboard, agoraRoomData, agoraWhiteboardMounted, agoraWindowRoomReady]);
 
   // 跨标签页同步：老師開始上課時通知學生
   useEffect(() => {

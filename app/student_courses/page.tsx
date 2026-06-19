@@ -429,6 +429,12 @@ function StudentCoursesContent() {
 
   // Filter orders
   let filteredOrders = orders || [];
+  // Sort newest-first so the current batch order lands on page 1 regardless of DynamoDB return order
+  filteredOrders = [...filteredOrders].sort((a, b) => {
+    const aTime = a.createdAt || '';
+    const bTime = b.createdAt || '';
+    return bTime < aTime ? -1 : bTime > aTime ? 1 : 0;
+  });
   if (filteredOrders.length > 0) {
     if (qCourse) {
       const lowerQ = qCourse.toLowerCase();
