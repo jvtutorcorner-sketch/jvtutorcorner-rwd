@@ -52,7 +52,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ ok: false, message: 'Course not found' }, { status: 404 });
     }
 
-    const params: any = { TableName: COURSES_TABLE };
+    const params: any = { TableName: COURSES_TABLE, ConsistentRead: true };
     if (teacherId) {
       // ✅ 修復：同時支援查詢 teacherId 和 teacherEmail（以支援舊課程記錄）
       params.FilterExpression = 'teacherId = :tid OR teacherEmail = :temail';

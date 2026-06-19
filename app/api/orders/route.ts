@@ -1,6 +1,6 @@
 ﻿import { NextResponse } from 'next/server';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, PutCommand, ScanCommand, GetCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, PutCommand, ScanCommand, QueryCommand, GetCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
 import { randomUUID } from 'crypto';
 import { COURSES } from '@/data/courses';
 import { deductUserPoints } from '@/lib/pointsStorage';
@@ -208,9 +208,6 @@ export async function GET(request: Request) {
       }
     }
 
-    const filters: string[] = [];
-    const ExpressionAttributeValues: Record<string, any> = {};
-
     const status = params.get('status');
     const enrollmentId = params.get('enrollmentId');
     const userId = params.get('userId');
@@ -219,56 +216,109 @@ export async function GET(request: Request) {
     const startDate = params.get('startDate');
     const endDate = params.get('endDate');
 
-    if (status) {
-      filters.push('#status = :status');
-      ExpressionAttributeValues[':status'] = status;
-    }
-    if (enrollmentId) {
-      filters.push('enrollmentId = :enrollmentId');
-      ExpressionAttributeValues[':enrollmentId'] = enrollmentId;
-    }
+    let items: any[];
+    let lastEvaluatedKey: any = undefined;
+
     if (userId) {
-      filters.push('userId = :userId');
-      ExpressionAttributeValues[':userId'] = userId;
-    }
-    if (courseId) {
-      filters.push('courseId = :courseId');
-      ExpressionAttributeValues[':courseId'] = courseId;
-    }
-    if (orderIdFilter) {
-      filters.push('orderId = :orderId');
-      ExpressionAttributeValues[':orderId'] = orderIdFilter;
-    }
-    if (startDate || endDate) {
-      if (startDate && endDate) {
-        filters.push('#createdAt BETWEEN :startDate AND :endDate');
-        ExpressionAttributeValues[':startDate'] = startDate;
-        ExpressionAttributeValues[':endDate'] = endDate;
-      } else if (startDate) {
-        filters.push('#createdAt >= :startDate');
-        ExpressionAttributeValues[':startDate'] = startDate;
-      } else if (endDate) {
-        filters.push('#createdAt <= :endDate');
-        ExpressionAttributeValues[':endDate'] = endDate;
+      // Use UserIdIndex GSI + full pagination so ALL orders for this user are returned.
+      // ScanCommand with Limit only evaluates N items before filtering, causing newly-created
+      // orders to be invisible when the table has grown beyond the scan window.
+      const allItems: any[] = [];
+      let pageKey: any = undefined;
+      do {
+        const qRes = await docClient.send(new QueryCommand({
+          TableName,
+          IndexName: 'UserIdIndex',
+          KeyConditionExpression: 'userId = :userId',
+          ExpressionAttributeValues: { ':userId': userId },
+          ...(pageKey ? { ExclusiveStartKey: pageKey } : {}),
+        }));
+        allItems.push(...(qRes.Items || []));
+        pageKey = qRes.LastEvaluatedKey;
+      } while (pageKey);
+
+      // Apply remaining filters in-memory
+      items = allItems.filter(o => {
+        if (status && o.status !== status) return false;
+        if (enrollmentId && o.enrollmentId !== enrollmentId) return false;
+        if (courseId && o.courseId !== courseId) return false;
+        if (orderIdFilter && o.orderId !== orderIdFilter) return false;
+        if (startDate && o.createdAt < startDate) return false;
+        if (endDate && o.createdAt > endDate) return false;
+        return true;
+      });
+    } else if (courseId) {
+      // Use CourseIdIndex GSI for teacher/admin views querying a specific course
+      const allItems: any[] = [];
+      let pageKey: any = undefined;
+      do {
+        const qRes = await docClient.send(new QueryCommand({
+          TableName,
+          IndexName: 'CourseIdIndex',
+          KeyConditionExpression: 'courseId = :courseId',
+          ExpressionAttributeValues: { ':courseId': courseId },
+          ...(pageKey ? { ExclusiveStartKey: pageKey } : {}),
+        }));
+        allItems.push(...(qRes.Items || []));
+        pageKey = qRes.LastEvaluatedKey;
+      } while (pageKey);
+
+      // Apply remaining filters in-memory
+      items = allItems.filter(o => {
+        if (status && o.status !== status) return false;
+        if (enrollmentId && o.enrollmentId !== enrollmentId) return false;
+        if (orderIdFilter && o.orderId !== orderIdFilter) return false;
+        if (startDate && o.createdAt < startDate) return false;
+        if (endDate && o.createdAt > endDate) return false;
+        return true;
+      });
+    } else {
+      // Admin view: no userId/courseId — full table scan with pagination
+      const scanFilters: string[] = [];
+      const scanEAV: Record<string, any> = {};
+
+      if (status) {
+        scanFilters.push('#status = :status');
+        scanEAV[':status'] = status;
       }
+      if (enrollmentId) {
+        scanFilters.push('enrollmentId = :enrollmentId');
+        scanEAV[':enrollmentId'] = enrollmentId;
+      }
+      if (orderIdFilter) {
+        scanFilters.push('orderId = :orderId');
+        scanEAV[':orderId'] = orderIdFilter;
+      }
+      if (startDate || endDate) {
+        if (startDate && endDate) {
+          scanFilters.push('#createdAt BETWEEN :startDate AND :endDate');
+          scanEAV[':startDate'] = startDate;
+          scanEAV[':endDate'] = endDate;
+        } else if (startDate) {
+          scanFilters.push('#createdAt >= :startDate');
+          scanEAV[':startDate'] = startDate;
+        } else {
+          scanFilters.push('#createdAt <= :endDate');
+          scanEAV[':endDate'] = endDate;
+        }
+      }
+
+      const scanInput: any = { TableName, Limit: limit };
+      if (Object.keys(scanEAV).length > 0) {
+        scanInput.FilterExpression = scanFilters.join(' AND ');
+        scanInput.ExpressionAttributeValues = scanEAV;
+        const names: Record<string, string> = {};
+        if (scanFilters.some((f) => f.includes('#status'))) names['#status'] = 'status';
+        if (scanFilters.some((f) => f.includes('#createdAt'))) names['#createdAt'] = 'createdAt';
+        if (Object.keys(names).length > 0) scanInput.ExpressionAttributeNames = names;
+      }
+      if (exclusiveStartKey) scanInput.ExclusiveStartKey = exclusiveStartKey;
+
+      const res = await docClient.send(new ScanCommand(scanInput));
+      items = (res.Items || []) as any[];
+      lastEvaluatedKey = (res as any).LastEvaluatedKey;
     }
 
-    const scanInput: any = { TableName, Limit: limit };
-    if (Object.keys(ExpressionAttributeValues).length > 0) {
-      scanInput.FilterExpression = filters.join(' AND ');
-      scanInput.ExpressionAttributeValues = ExpressionAttributeValues;
-      const names: Record<string, string> = {};
-      if (filters.some((f) => f.includes('#status'))) names['#status'] = 'status';
-      if (filters.some((f) => f.includes('#createdAt'))) names['#createdAt'] = 'createdAt';
-      if (Object.keys(names).length > 0) scanInput.ExpressionAttributeNames = names;
-    }
-    if (exclusiveStartKey) scanInput.ExclusiveStartKey = exclusiveStartKey;
-
-    const res = await docClient.send(new ScanCommand(scanInput));
-    const items = (res.Items || []) as any[];
-
-    // Determine the very final encoded key for pagination returning
-    const lastEvaluatedKey = (res as any).LastEvaluatedKey;
     let encodedLastKey: string | null = null;
     if (lastEvaluatedKey) {
       try {

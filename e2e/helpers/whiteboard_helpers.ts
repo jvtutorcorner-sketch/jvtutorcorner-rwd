@@ -235,10 +235,10 @@ export async function runEnrollmentFlow(
 
       console.log(`   ✅ [Enrollment] Flow succeeded for course: ${courseId}`);
       
-      // ⭐ Critical: Wait for data to propagate in DB/Cache
-      console.log(`   ⏳ [Enrollment] Waiting 3s for system sync...`);
-      const startWait = Date.now();
-      while (Date.now() - startWait < 3000) { /* wait */ }
+      // ⭐ Critical: Wait for DynamoDB GSI (UserIdIndex) to propagate the new order.
+      // Under high concurrent load the GSI replication can lag; 8 s covers the p99 window.
+      console.log(`   ⏳ [Enrollment] Waiting 8s for GSI propagation...`);
+      await new Promise(resolve => setTimeout(resolve, 8000));
       
       return;
     } catch (err) {
@@ -395,9 +395,9 @@ export async function goToWaitRoom(
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
   const listPath = role === 'teacher' ? 'teacher_courses?includeTests=true' : 'student_courses';
 
-  // Retry logic: Poll for course up to 5 times (stress tests may need extra time)
+  // Retry logic: Poll for course up to 8 times (stress tests need extra time for GSI propagation)
   let found = false;
-  const maxRetries = 5;
+  const maxRetries = 8;
   
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     console.log(`   🔄 [${role}] Attempt ${attempt}/${maxRetries} to find course ${courseId}...`);
@@ -411,9 +411,10 @@ export async function goToWaitRoom(
     const allRows = await page.locator('tr, div[class*="course"], [data-testid*="course"]').count();
     console.log(`   📊 [${role}] Found ${allRows} course rows/cards on page`);
 
-    // Strategy 1: Find by exact courseId attribute
-    // Note: Playwright's :has-text() with regex should be :has-text("/regex/") but usually "text" is safer
-    const exactBtn = page.locator(`[data-course-id="${courseId}"] button`, { hasText: /進入教室|enter|Enter/i }).first();
+    // Strategy 1: Find by exact courseId attribute — match <a> (Next.js Link) OR <button>
+    const exactBtn = page.locator(
+      `[data-course-id="${courseId}"] a, [data-course-id="${courseId}"] button`
+    ).filter({ hasText: /進入教室|enter|Enter/i }).first();
     if (await exactBtn.isVisible().catch(() => false)) {
       console.log(`   ✅ [${role}] Found course via exact data-course-id match`);
       await exactBtn.click();
@@ -469,7 +470,7 @@ export async function goToWaitRoom(
     // If not found and not last attempt, refresh and retry
     if (attempt < maxRetries) {
       console.log(`   ⏳ Course not found, waiting before retry...`);
-      await page.waitForTimeout(2000);
+      await page.waitForTimeout(3000);
     } else {
       // Last attempt: take screenshot and show available courses
       const courseList = await page.locator('tr, div[class*="course"]').evaluateAll(rows => {
