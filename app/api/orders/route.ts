@@ -220,22 +220,37 @@ export async function GET(request: Request) {
     let lastEvaluatedKey: any = undefined;
 
     if (userId) {
-      // Use UserIdIndex GSI + full pagination so ALL orders for this user are returned.
-      // ScanCommand with Limit only evaluates N items before filtering, causing newly-created
-      // orders to be invisible when the table has grown beyond the scan window.
+      // Prefer UserIdIndex GSI for efficiency; fall back to scan if the GSI is not yet provisioned.
       const allItems: any[] = [];
-      let pageKey: any = undefined;
-      do {
-        const qRes = await docClient.send(new QueryCommand({
-          TableName,
-          IndexName: 'UserIdIndex',
-          KeyConditionExpression: 'userId = :userId',
-          ExpressionAttributeValues: { ':userId': userId },
-          ...(pageKey ? { ExclusiveStartKey: pageKey } : {}),
-        }));
-        allItems.push(...(qRes.Items || []));
-        pageKey = qRes.LastEvaluatedKey;
-      } while (pageKey);
+      try {
+        let pageKey: any = undefined;
+        do {
+          const qRes = await docClient.send(new QueryCommand({
+            TableName,
+            IndexName: 'UserIdIndex',
+            KeyConditionExpression: 'userId = :userId',
+            ExpressionAttributeValues: { ':userId': userId },
+            ...(pageKey ? { ExclusiveStartKey: pageKey } : {}),
+          }));
+          allItems.push(...(qRes.Items || []));
+          pageKey = qRes.LastEvaluatedKey;
+        } while (pageKey);
+      } catch (gsiErr: any) {
+        // UserIdIndex GSI may not be provisioned yet — fall back to full-table scan
+        console.warn('[orders GET] UserIdIndex unavailable, falling back to scan:', gsiErr?.message);
+        allItems.length = 0;
+        let scanKey: any = undefined;
+        do {
+          const scanRes = await docClient.send(new ScanCommand({
+            TableName,
+            FilterExpression: 'userId = :userId',
+            ExpressionAttributeValues: { ':userId': userId },
+            ...(scanKey ? { ExclusiveStartKey: scanKey } : {}),
+          }));
+          allItems.push(...(scanRes.Items || []));
+          scanKey = scanRes.LastEvaluatedKey;
+        } while (scanKey);
+      }
 
       // Apply remaining filters in-memory
       items = allItems.filter(o => {
