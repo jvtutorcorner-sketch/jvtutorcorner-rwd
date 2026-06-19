@@ -182,9 +182,21 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   useEffect(() => {
     if (!useAgoraWhiteboard || typeof document === 'undefined') return;
     if (document.querySelector('script[src*="white-web-sdk"]')) return;
+    const SDK_URL = 'https://sdk.netless.link/white-web-sdk/2.16.44.js';
     const script = document.createElement('script');
-    script.src = 'https://sdk.netless.link/white-web-sdk/2.16.44.js';
+    script.src = SDK_URL;
     script.async = true;
+    // Retry once on transient CDN failure (same URL, in case of temporary network blip).
+    script.onerror = () => {
+      console.warn('[ClientClassroom] SDK preload failed, retrying in 2 s...');
+      setTimeout(() => {
+        if ((window as any).WhiteWebSdk?.WhiteWebSdk) return; // already loaded by BoardImpl
+        const retry = document.createElement('script');
+        retry.src = SDK_URL + '?retry=1';
+        retry.async = true;
+        document.head.appendChild(retry);
+      }, 2000);
+    };
     document.head.appendChild(script);
   }, [useAgoraWhiteboard]);
 
@@ -635,18 +647,20 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           }
         } else {
           // === STUDENT: Wait for teacher's uuid via RTM or BroadcastChannel ===
-          console.log('[ClientClassroom] Student: Waiting for whiteboard uuid (RTM + BroadcastChannel, 3s timeout)...');
+          // Wait up to 8 s for RTM (teacher may take 4-6 s to create room + broadcast).
+          console.log('[ClientClassroom] Student: Waiting for whiteboard uuid (RTM + BroadcastChannel, 8s timeout)...');
 
           let receivedData: any = null;
           try {
             receivedData = await new Promise<any>((resolve) => {
               const timer = setTimeout(() => {
                 console.log('[ClientClassroom] Student uuid wait timeout, requesting re-broadcast from teacher...');
-                rtmMessageCallbackRef.current = null;
-                // Ask teacher to re-send UUID (covers case where student joined after initial broadcast)
+                // Do NOT null out rtmMessageCallbackRef here — teacher may re-broadcast a few
+                // seconds later (after its own slow API call). Keep the callback alive so the
+                // late message is caught during the polling phase below.
                 rtmSend('request-wb-uuid', {}).catch(() => {});
                 resolve(null);
-              }, 3000);
+              }, 8000);
 
               // ── 路徑 1：Agora RTM（跨裝置即時，<100ms）─────────────────────
               rtmMessageCallbackRef.current = (msg: any) => {
@@ -671,7 +685,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                   }
                 };
                 // Close BC when timer fires (handled in timer callback above + resolve)
-                setTimeout(() => { try { bc.close(); } catch (e) {} }, 3100);
+                setTimeout(() => { try { bc.close(); } catch (e) {} }, 8100);
               } catch (bcErr) {
                 console.warn('[ClientClassroom] BroadcastChannel not available:', bcErr);
               }
@@ -685,14 +699,33 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
             console.log('[ClientClassroom] Student using teacher\'s room uuid');
             setAgoraRoomData(receivedData);
           } else {
-            // Fallback: poll for existing room with lookup-only to avoid creating duplicate
+            // Fallback: poll for existing room with lookup-only to avoid creating duplicate.
+            // Also keep an RTM listener active during polling so a late teacher re-broadcast
+            // (arriving after the 8 s timeout) resolves immediately without waiting for a poll.
             console.log('[ClientClassroom] Student fallback: polling for existing room via lookupOnly...');
             let found = false;
             let lookupData: any = null;
+            let lateRtmData: any = null;
+
+            // Re-register RTM callback to catch teacher re-broadcasts that arrive during polling.
+            // (If the initial callback already fired and cleared itself, this re-arms it.)
+            if (!rtmMessageCallbackRef.current) {
+              rtmMessageCallbackRef.current = (msg: any) => {
+                if (msg?.type === 'wb-uuid-sync' && msg?.payload?.uuid) {
+                  console.log('[ClientClassroom] Student received late RTM uuid during polling ✅');
+                  lateRtmData = msg.payload;
+                  rtmMessageCallbackRef.current = null;
+                }
+              };
+            }
 
             // Poll every 500ms for up to 60 attempts (30s total).
-            // RTM re-request was already sent above, so teacher should re-broadcast within ~100ms.
             for (let i = 0; i < 60; i++) {
+              // Short-circuit if late RTM message arrived
+              if (lateRtmData) {
+                console.log('[ClientClassroom] Student using late RTM uuid, stopping poll');
+                break;
+              }
               try {
                 const j = await fetchExistingWhiteboardUuid(courseId, sessionReadyKey);
                 if (j?.uuid) {
@@ -720,11 +753,17 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                 console.warn(`[ClientClassroom] Student lookup attempt ${i + 1} failed:`, e);
               }
               if (found) break;
-              if (i % 4 === 0) console.log(`[ClientClassroom] Student whiteboard lookup: attempt ${i + 1}/12, waiting for teacher room...`);
+              if (i % 4 === 0) console.log(`[ClientClassroom] Student whiteboard lookup: attempt ${i + 1}/60, waiting for teacher room...`);
               await new Promise(r => setTimeout(r, 500));
             }
 
-            if (found && lookupData) {
+            // Clear the polling-phase RTM listener
+            rtmMessageCallbackRef.current = null;
+
+            if (lateRtmData) {
+              console.log('[ClientClassroom] Student using late RTM uuid');
+              setAgoraRoomData(lateRtmData);
+            } else if (found && lookupData) {
               console.log('[ClientClassroom] Student found existing room via lookup, using it');
               setAgoraRoomData(lookupData);
             } else {
@@ -745,14 +784,14 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
 
     initAgoraWhiteboard();
 
-    // Timeout: if agoraRoomData is still null after 50 seconds, show retry UI
-    // (3 s RTM wait + 30 s polling = 33 s max; 50 s gives buffer before surfacing retry UI)
+    // Timeout: if agoraRoomData is still null after 55 seconds, show retry UI
+    // (8 s RTM wait + 30 s polling = 38 s max; 55 s gives buffer before surfacing retry UI)
     const timeoutId = setTimeout(() => {
       setAgoraRoomData(prev => {
         if (!prev) setWhiteboardInitTimeout(true);
         return prev;
       });
-    }, 50000);
+    }, 55000);
 
     return () => clearTimeout(timeoutId);
   }, [useAgoraWhiteboard, mounted, userId, courseId, sessionReadyKey, computedRole, effectiveWhiteboardUuid, whiteboardRetryCount]);

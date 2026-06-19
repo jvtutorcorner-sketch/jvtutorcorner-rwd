@@ -109,16 +109,27 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
             };
         }
 
+        const SDK_URL = "https://sdk.netless.link/white-web-sdk/2.16.44.js";
         console.log("[CoreSDK] Loading script...");
         const script = document.createElement('script');
-        script.src = "https://sdk.netless.link/white-web-sdk/2.16.44.js";
+        script.src = SDK_URL;
         script.async = true;
         script.onload = () => {
             console.log("[CoreSDK] Script loaded");
             if (mounted) setTimeout(checkSdkLoaded, 100);
         };
         script.onerror = () => {
-            if (mounted) setStatus("載入 SDK 失敗");
+            console.warn("[CoreSDK] Script load failed, retrying in 2 s...");
+            setTimeout(() => {
+                if (!mounted) return;
+                if (checkSdkLoaded()) return;
+                const retry = document.createElement('script');
+                retry.src = SDK_URL + '?retry=1';
+                retry.async = true;
+                retry.onload = () => { if (mounted) setTimeout(checkSdkLoaded, 100); };
+                retry.onerror = () => { if (mounted) setStatus("載入 SDK 失敗"); };
+                document.head.appendChild(retry);
+            }, 2000);
         };
         document.head.appendChild(script);
 
@@ -165,15 +176,22 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
                 const canWrite = isTeacher || isAssistant || (role === 'student' && canDraw === true);
                 console.log(`[CoreSDK] Joining as ${role}, canWrite=${canWrite}, Region: ${region}, UUID: ...${roomUuid.slice(-6)}`);
 
-                const room = await whiteWebSdk.joinRoom({
-                    uuid: roomUuid,
-                    roomToken,
-                    region: region as any,
-                    uid: userId,
-                    // ★★★ 關鍵：永遠設為 false，解鎖 SDK 內部同步機制 ★★★
-                    disableCameraTransform: false,
-                    isWritable: canWrite,
-                });
+                // Race joinRoom against a 25 s deadline so a hung Netless WebSocket
+                // surfaces an error quickly and lets the retry UI in ClientClassroom activate.
+                const room = await Promise.race([
+                    whiteWebSdk.joinRoom({
+                        uuid: roomUuid,
+                        roomToken,
+                        region: region as any,
+                        uid: userId,
+                        // ★★★ 關鍵：永遠設為 false，解鎖 SDK 內部同步機制 ★★★
+                        disableCameraTransform: false,
+                        isWritable: canWrite,
+                    }),
+                    new Promise<never>((_, reject) =>
+                        setTimeout(() => reject(new Error('joinRoom timeout — Netless unreachable after 25 s')), 25000)
+                    ),
+                ]);
 
                 if (isAborted) {
                     room.disconnect();

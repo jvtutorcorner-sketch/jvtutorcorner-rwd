@@ -19,6 +19,9 @@ export default function ClassroomWaitPage() {
   const [isClient, setIsClient] = useState(false);
   useEffect(() => { setIsClient(true); }, []);
 
+  // Prevent double-click on "enter classroom": disabled once clicked until navigation completes.
+  const [isEntering, setIsEntering] = useState(false);
+
   const [courseId, setCourseId] = useState('c1');
   const [courseTitle, setCourseTitle] = useState('課程');
   const [orderId, setOrderId] = useState<string | null>(null);
@@ -618,19 +621,23 @@ export default function ClassroomWaitPage() {
   const canEnter = hasTeacher && hasStudent;
 
   const enterClassroom = React.useCallback(async () => {
+    if (isEntering) return;
+    setIsEntering(true);
     console.log('enterClassroom triggered');
     let targetRoomUuid = roomUuid;
 
-    // **NEW**: Pre-establish whiteboard room UUID before entering classroom
-    // This ensures both teacher and student enter with the same room already created
-    // Avoids BroadcastChannel isolation issues in Playwright E2E tests
-    try {
-      if (!sessionReadyKey || !courseId) {
-        console.warn('Missing sessionReadyKey or courseId, proceeding without room pre-creation');
-      } else {
+    // Pre-establish whiteboard room UUID before entering classroom.
+    // 5 s AbortController timeout prevents this fetch from blocking navigation
+    // when the whiteboard API is slow (>6 s in production). On abort or error,
+    // targetRoomUuid stays null and ClientClassroom handles credential fetching.
+    if (sessionReadyKey && courseId) {
+      const abortCtrl = new AbortController();
+      const abortTimer = setTimeout(() => abortCtrl.abort(), 5000);
+      try {
         console.log(`[WaitPage] Creating whiteboard room for session: ${sessionReadyKey}`);
         const createRes = await fetch('/api/whiteboard/room', {
           method: 'POST',
+          signal: abortCtrl.signal,
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             userId: localPresenceId || role || 'anonymous',
@@ -646,8 +653,6 @@ export default function ClassroomWaitPage() {
             console.log(`[WaitPage] ✅ Room created successfully: ${roomData.uuid}`);
             targetRoomUuid = roomData.uuid;
             setRoomUuid(roomData.uuid);
-            
-            // Store UUID in sessionStorage for quick access in ClientClassroom
             try {
               sessionStorage.setItem(`whiteboard_room_${sessionReadyKey}`, roomData.uuid);
             } catch (e) {
@@ -657,12 +662,15 @@ export default function ClassroomWaitPage() {
         } else {
           const errorText = await createRes.text();
           console.warn(`[WaitPage] ⚠️ Failed to create room: ${createRes.status} ${errorText}`);
-          // Continue anyway - ClientClassroom will create room if needed
         }
+      } catch (error) {
+        // AbortError = timeout; other errors = API failure — both are non-fatal.
+        console.warn('[WaitPage] Room pre-creation error/timeout, proceeding without UUID:', (error as Error)?.message);
+      } finally {
+        clearTimeout(abortTimer);
       }
-    } catch (error) {
-      console.error('[WaitPage] Error creating whiteboard room:', error);
-      // Continue anyway - ClientClassroom will create room if needed
+    } else {
+      console.warn('Missing sessionReadyKey or courseId, proceeding without room pre-creation');
     }
 
     // NOTE: do NOT clear the server/local "ready" state here.
@@ -674,7 +682,7 @@ export default function ClassroomWaitPage() {
     const target = `/classroom/room?courseId=${encodeURIComponent(courseId)}${orderId ? `&orderId=${encodeURIComponent(orderId)}` : ''}${role ? `&role=${encodeURIComponent(role)}` : ''}${sessionReadyKey ? `&session=${encodeURIComponent(sessionReadyKey)}` : ''}${targetRoomUuid ? `&whiteboardUuid=${encodeURIComponent(targetRoomUuid)}` : ''}`;
     console.log('Redirecting to:', target);
     router.push(target);
-  }, [courseId, orderId, role, sessionReadyKey, router, roomUuid, localPresenceId]);
+  }, [isEntering, courseId, orderId, role, sessionReadyKey, router, roomUuid, localPresenceId]);
 
   // Auto-enter classroom is disabled. Users must click the button.
   useEffect(() => {
@@ -1072,18 +1080,18 @@ export default function ClassroomWaitPage() {
       <div style={{ marginTop: 24 }}>
         <button
           onClick={enterClassroom}
-          disabled={!canEnter}
+          disabled={!canEnter || isEntering}
           style={{
             padding: '14px 28px',
-            background: canEnter ? '#1976d2' : '#9ca3af',
+            background: canEnter && !isEntering ? '#1976d2' : '#9ca3af',
             color: 'white',
             border: 'none',
             borderRadius: 8,
             fontSize: 16,
             fontWeight: 600,
-            cursor: canEnter ? 'pointer' : 'not-allowed'
+            cursor: canEnter && !isEntering ? 'pointer' : 'not-allowed'
           }}>
-          {canEnter ? `✓ ${t('wait.enter_now')}` : t('wait.waiting_all_ready')}
+          {isEntering ? '進入中...' : canEnter ? `✓ ${t('wait.enter_now')}` : t('wait.waiting_all_ready')}
         </button>
         <div style={{ display: 'inline-flex', gap: 8, marginLeft: 16 }}>
           <button
