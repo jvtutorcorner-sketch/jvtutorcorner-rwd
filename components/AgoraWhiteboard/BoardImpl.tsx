@@ -198,6 +198,8 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
                     console.log("[CoreSDK] Binding HTML Element (Delayed)");
                     try {
                         room.bindHtmlElement(targetDiv);
+                        // Signal ready only after the canvas is actually bound to the DOM.
+                        (window as any).__fastboard_ready = true;
                     } catch(e) {
                          console.error("[CoreSDK] Bind failed:", e);
                     }
@@ -317,8 +319,6 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
                     setTotalPages(room.state.sceneState.scenes.length);
                     setCurrentPage(room.state.sceneState.index + 1);
                 }
-
-                (window as any).__fastboard_ready = true;
 
             } catch (error: any) {
                 console.error("[CoreSDK] Error:", error);

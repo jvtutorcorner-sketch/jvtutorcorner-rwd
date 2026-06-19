@@ -177,6 +177,17 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     console.log('[ClientClassroom] setMounted called');
   }, []);
 
+  // Preload the whiteboard SDK script as soon as we mount so CDN download overlaps
+  // with credential fetching instead of being serialised after it.
+  useEffect(() => {
+    if (!useAgoraWhiteboard || typeof document === 'undefined') return;
+    if (document.querySelector('script[src*="white-web-sdk"]')) return;
+    const script = document.createElement('script');
+    script.src = 'https://sdk.netless.link/white-web-sdk/2.16.44.js';
+    script.async = true;
+    document.head.appendChild(script);
+  }, [useAgoraWhiteboard]);
+
   // Track mobile viewport to adjust whiteboard container height for small screens
   const [isMobileViewport, setIsMobileViewport] = useState<boolean>(false);
   useEffect(() => {

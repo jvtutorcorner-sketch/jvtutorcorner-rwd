@@ -382,7 +382,11 @@ function StudentCoursesContent() {
         }
       }
 
-      if (!startTs || !endTs) return false;
+      if (!startTs || !endTs) {
+        // If the courseMap entry hasn't loaded yet, optimistically show the button.
+        // If the entry IS present but has no valid timestamps, treat as out-of-range.
+        return o.courseId ? courseMap[o.courseId] === undefined : false;
+      }
       // Allow 10 minutes early entry
       return now >= (startTs - 10 * 60 * 1000) && now <= endTs;
     } catch (e) {
@@ -528,12 +532,6 @@ function StudentCoursesContent() {
               <Link href="/login">{t('go_login')}</Link>
             </p>
           </>
-        ) : loading ? (
-          <p>{t('loading')}</p>
-        ) : error ? (
-          <p>{t('load_error')}: {error}</p>
-        ) : paginatedOrders.length === 0 ? (
-          <p>目前沒有符合條件的訂單。</p>
         ) : (
           <>
             <table className="orders-table" style={{ borderCollapse: 'collapse', border: '2px solid #ccc', width: '100%' }}>
@@ -551,7 +549,13 @@ function StudentCoursesContent() {
                 </tr>
               </thead>
               <tbody>
-                {paginatedOrders.map((o) => (
+                {loading ? (
+                  <tr><td colSpan={9} style={{ textAlign: 'center', padding: '16px', color: '#666' }}>{t('loading')}</td></tr>
+                ) : error ? (
+                  <tr><td colSpan={9} style={{ textAlign: 'center', padding: '16px', color: '#d32f2f' }}>{t('load_error')}: {error}</td></tr>
+                ) : paginatedOrders.length === 0 ? (
+                  <tr><td colSpan={9} style={{ textAlign: 'center', padding: '16px', color: '#666' }}>目前沒有符合條件的訂單。</td></tr>
+                ) : paginatedOrders.map((o) => (
                   <tr key={o.orderId} data-course-id={o.courseId}>
                     <td data-label={t('student_courses_student')} style={{ border: '2px solid #ccc', padding: '6px' }}>{o.userId ? (userMap[o.userId]?.firstName && userMap[o.userId]?.lastName ? `${userMap[o.userId].firstName} ${userMap[o.userId].lastName}` : o.userId) : '-'}</td>
                     <td data-label={t('student_courses_course_name')} style={{ border: '2px solid #ccc', padding: '6px' }}>
@@ -655,7 +659,7 @@ function StudentCoursesContent() {
                       {o.courseId ? (
                         isCurrentTimeInClassRange(o) ? (
                           <Link
-                            href={getSecureUrl(`/classroom/wait?courseId=${encodeURIComponent(o.courseId)}&orderId=${encodeURIComponent(o.orderId || (o as any).id || '')}&orderid=${encodeURIComponent(o.orderId || (o as any).id || '')}`)}
+                            href={`/classroom/wait?courseId=${encodeURIComponent(o.courseId)}&orderId=${encodeURIComponent(o.orderId || (o as any).id || '')}&orderid=${encodeURIComponent(o.orderId || (o as any).id || '')}`}
                             className="btn btn-primary"
                             style={{ padding: '4px 8px', fontSize: '12px' }}
                           >
