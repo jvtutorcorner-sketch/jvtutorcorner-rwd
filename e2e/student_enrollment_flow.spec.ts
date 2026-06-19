@@ -59,13 +59,52 @@ test('Student Enrollment Flow (Simulated Payment)', async ({ page }) => {
     let expectedDeduction = 10;
     let isExistingCourse = false;
 
-    // When TEST_COURSE_ID is provided (e.g. from stress test), use that already-approved course directly.
-    // Avoid re-creating it (which would overwrite with status 待審核 and break the course page).
+    // When TEST_COURSE_ID is provided, first verify it actually exists. Some
+    // callers pass a freshly generated ID and expect this flow to create it.
     if (process.env.TEST_COURSE_ID) {
-        testCourseId = process.env.TEST_COURSE_ID;
-        testCourseTitle = `課程 ${testCourseId}`;
-        isExistingCourse = true;
-        console.log(`✓ Using pre-approved course from TEST_COURSE_ID: ${testCourseId}`);
+        const forcedCourseId = process.env.TEST_COURSE_ID;
+        console.log(`Checking TEST_COURSE_ID exists before reuse: ${forcedCourseId}`);
+        try {
+            const existingRes = await page.request.get(`${baseUrl}/api/courses?id=${encodeURIComponent(forcedCourseId)}`, {
+                headers: { 'X-E2E-Secret': String(bypassSecret || '') },
+            });
+
+            if (existingRes.ok()) {
+                const existingData = await existingRes.json();
+                const existingCourse = existingData?.course || existingData?.data;
+                testCourseId = forcedCourseId;
+                testCourseTitle = existingCourse?.title || `課程 ${testCourseId}`;
+                expectedDeduction = Number(existingCourse?.pointCost) || expectedDeduction;
+                isExistingCourse = true;
+                console.log(`✓ Using existing course from TEST_COURSE_ID: ${testCourseTitle} (${testCourseId})`);
+
+                if (existingCourse?.status && existingCourse.status !== '上架') {
+                    console.log(`   ℹ️ Existing course status is ${existingCourse.status}; approving before enrollment...`);
+                    const approveRes = await page.request.post(`${baseUrl}/api/admin/course-reviews/${encodeURIComponent(testCourseId)}`, {
+                        data: JSON.stringify({ action: 'approve' }),
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-E2E-Secret': String(bypassSecret || ''),
+                        },
+                    });
+                    if (!approveRes.ok()) {
+                        const approveErr = await approveRes.json().catch(() => ({}));
+                        throw new Error(`Failed to approve TEST_COURSE_ID ${testCourseId}: ${approveRes.status()} ${JSON.stringify(approveErr)}`);
+                    }
+                    console.log(`   ✅ Approved existing TEST_COURSE_ID: ${testCourseId}`);
+                }
+            } else if (existingRes.status() === 404) {
+                console.log(`   ℹ️ TEST_COURSE_ID ${forcedCourseId} does not exist yet; this flow will create it.`);
+            } else {
+                const errData = await existingRes.json().catch(() => ({}));
+                throw new Error(`Failed to verify TEST_COURSE_ID ${forcedCourseId}: ${existingRes.status()} ${JSON.stringify(errData)}`);
+            }
+        } catch (e) {
+            if ((e as Error).message.includes('Failed to verify') || (e as Error).message.includes('Failed to approve')) {
+                throw e;
+            }
+            console.warn(`Failed to check TEST_COURSE_ID ${forcedCourseId}; will try to create it:`, e);
+        }
     }
 
     if (!testCourseId) {
@@ -183,6 +222,19 @@ test('Student Enrollment Flow (Simulated Payment)', async ({ page }) => {
             console.log(`Course creation response:`, courseData);
             if (courseRes.ok()) {
                 console.log(`✅ 測試課程建立成功: ${testCourseTitle} (ID: ${testCourseId}, teacherId: ${teacherId})`);
+                const approveRes = await page.request.post(`${baseUrl}/api/admin/course-reviews/${encodeURIComponent(testCourseId)}`, {
+                    data: JSON.stringify({ action: 'approve' }),
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-E2E-Secret': String(bypassSecret || ''),
+                    },
+                });
+                if (approveRes.ok()) {
+                    console.log(`✅ 測試課程已核准上架: ${testCourseId}`);
+                } else {
+                    const approveErr = await approveRes.json().catch(() => ({}));
+                    throw new Error(`❌ 測試課程核准失敗: ${approveRes.status()} ${JSON.stringify(approveErr)}`);
+                }
             } else {
                 console.error(`❌ 課程建立失敗: ${courseData.error}`);
             }

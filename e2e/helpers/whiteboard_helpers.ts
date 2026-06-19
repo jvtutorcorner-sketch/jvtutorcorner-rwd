@@ -469,6 +469,34 @@ export async function goToWaitRoom(
     }
     
     if (found) break;
+
+    // Strategy 3: In production the student dashboard can render before the
+    // current order is visible/enabled. If an active order exists for this
+    // course, navigate directly to the same wait-room URL the dashboard link
+    // would use.
+    if (role === 'student') {
+      const orderRes = await page.request
+        .get(`${baseUrl}/api/orders?courseId=${encodeURIComponent(courseId)}&limit=50`)
+        .catch(() => null);
+      if (orderRes?.ok()) {
+        const data = await orderRes.json().catch(() => ({} as any));
+        const orders: any[] = Array.isArray(data?.data) ? data.data : [];
+        const activeOrder = orders.find((o: any) => {
+          const status = String(o?.status || '').toUpperCase();
+          return o?.courseId === courseId && status !== 'CANCELLED' && status !== 'FAILED';
+        });
+        const orderId = activeOrder?.orderId || activeOrder?.id || '';
+        if (orderId) {
+          console.log(`   ✅ [${role}] Found order via API fallback; navigating directly to wait room`);
+          await page.goto(
+            `${baseUrl}/classroom/wait?courseId=${encodeURIComponent(courseId)}&orderId=${encodeURIComponent(orderId)}&orderid=${encodeURIComponent(orderId)}`,
+            { waitUntil: 'domcontentloaded' }
+          );
+          found = true;
+          break;
+        }
+      }
+    }
     
     // If not found and not last attempt, refresh and retry
     if (attempt < maxRetries) {
