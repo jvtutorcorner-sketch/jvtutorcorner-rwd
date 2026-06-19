@@ -114,6 +114,28 @@ function TeacherCoursesContent() {
     }
   }
 
+  function getOrderSortTimestamp(order: Order): number {
+    const candidates = [
+      order.startTime,
+      order.createdAt,
+      order.orderDate,
+      order.endTime,
+    ];
+    for (const value of candidates) {
+      if (!value) continue;
+      const normalized = String(value).includes('T')
+        ? String(value)
+        : `${String(value).split(' ')[0]}T${String(value).split(' ')[1] || '00:00:00'}`;
+      const ts = new Date(normalized).getTime();
+      if (!Number.isNaN(ts)) return ts;
+    }
+    return 0;
+  }
+
+  function sortOrdersNewestFirst(list: Order[]): Order[] {
+    return [...list].sort((a, b) => getOrderSortTimestamp(b) - getOrderSortTimestamp(a));
+  }
+
   // Helper to clean and validate time string
   function cleanTimeString(timeStr: any): string {
     if (!timeStr) return '';
@@ -166,7 +188,7 @@ function TeacherCoursesContent() {
           else if (data && data.data) list = data.data || [];
           const uniqueOrders = list.filter((order, index, self) => index === self.findIndex((o) => o.orderId === order.orderId))
             .filter(order => order.status !== 'FAILED');
-          setOrders(uniqueOrders);
+          setOrders(sortOrdersNewestFirst(uniqueOrders));
 
           // build courseId -> title map
           const ids = Array.from(new Set(uniqueOrders.map((o) => o.courseId).filter(Boolean)));
@@ -263,7 +285,7 @@ function TeacherCoursesContent() {
             const allOrders = orderArrays.flat();
             const uniqueOrders = allOrders.filter((order, index, self) => index === self.findIndex((o) => o.orderId === order.orderId))
               .filter(order => order.status !== 'FAILED');
-            setOrders(uniqueOrders);
+            setOrders(sortOrdersNewestFirst(uniqueOrders));
             // build courseId -> title map
             const ids = Array.from(new Set(uniqueOrders.map((o) => o.courseId).filter(Boolean)));
             fetchCourseNames(ids);
@@ -422,6 +444,7 @@ function TeacherCoursesContent() {
       const toMs = new Date(qTimeTo).getTime();
       filteredOrders = filteredOrders.filter(o => getOrderStartTimestamp(o) <= toMs);
     }
+    filteredOrders = sortOrdersNewestFirst(filteredOrders);
   }
 
   // Paginate

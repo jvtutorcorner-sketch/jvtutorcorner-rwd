@@ -46,7 +46,8 @@ export async function runEnrollmentFlow(
   courseId: string,
   teacherEmail?: string,
   studentEmail?: string,
-  maxRetries = 2
+  maxRetries = 2,
+  propagationWaitMs = 8000
 ): Promise<void> {
   const config = getTestConfig();
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
@@ -235,11 +236,11 @@ export async function runEnrollmentFlow(
 
       console.log(`   ✅ [Enrollment] Flow succeeded for course: ${courseId}`);
       
-      // ⭐ Critical: Wait for DynamoDB GSI (UserIdIndex) to propagate the new order.
-      // Under high concurrent load the GSI replication can lag; 8 s covers the p99 window.
-      console.log(`   ⏳ [Enrollment] Waiting 8s for GSI propagation...`);
-      await new Promise(resolve => setTimeout(resolve, 8000));
-      
+      if (propagationWaitMs > 0) {
+        console.log(`   ⏳ [Enrollment] Waiting ${Math.round(propagationWaitMs / 1000)}s for GSI propagation...`);
+        await new Promise(resolve => setTimeout(resolve, propagationWaitMs));
+      }
+
       return;
     } catch (err) {
       lastError = err as Error;
@@ -393,7 +394,9 @@ export async function goToWaitRoom(
   role: 'teacher' | 'student'
 ): Promise<void> {
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-  const listPath = role === 'teacher' ? 'teacher_courses?includeTests=true' : 'student_courses';
+  const listPath = role === 'teacher'
+    ? `teacher_courses?includeTests=true&course=${encodeURIComponent(courseId)}`
+    : 'student_courses';
 
   // Retry logic: Poll for course up to 8 times (stress tests need extra time for GSI propagation)
   let found = false;

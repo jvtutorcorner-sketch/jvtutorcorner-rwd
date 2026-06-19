@@ -56,6 +56,7 @@ const GROUP_COUNT = parseInt(process.env.CONCURRENT_GROUPS || '3', 10);
 const SUCCESS_THRESHOLD = parseFloat(process.env.SUCCESS_THRESHOLD || '0.75');
 const TEST_TIMEOUT_MS = Math.max(600_000, GROUP_COUNT * 120_000 + 300_000);
 const GROUP_STAGGER_MS = 5_000; // stagger Phase 5 SDK init to avoid 12-tab resource contention
+const ENROLLMENT_PROPAGATION_WAIT_MS = parseInt(process.env.ENROLLMENT_PROPAGATION_WAIT_MS || '8000', 10);
 
 // ─────────────────────────────────────────────────────────────────────
 // Helpers
@@ -172,8 +173,12 @@ test.describe(`[load-${GROUP_COUNT}x] Concurrent Load — ${GROUP_COUNT} Groups`
       if (r.phase) continue;
       try {
         await checkpoint(`enroll_${g.groupId}`, () =>
-          Promise.resolve(runEnrollmentFlow(g.courseId, g.teacherEmail, g.studentEmail))
+          Promise.resolve(runEnrollmentFlow(g.courseId, g.teacherEmail, g.studentEmail, 2, 0))
         );
+        if (ENROLLMENT_PROPAGATION_WAIT_MS > 0) {
+          console.log(`   ⏳ [${g.groupId}] Waiting ${Math.round(ENROLLMENT_PROPAGATION_WAIT_MS / 1000)}s for post-enrollment visibility...`);
+          await new Promise(resolve => setTimeout(resolve, ENROLLMENT_PROPAGATION_WAIT_MS));
+        }
         r.enrolled = true;
         console.log(`   ✅ [${g.groupId}] Enrolled`);
       } catch (err) {

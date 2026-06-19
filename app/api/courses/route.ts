@@ -9,6 +9,25 @@ import { ddbDocClient } from '@/lib/dynamo';
 const COURSES_TABLE = process.env.DYNAMODB_TABLE_COURSES || 'jvtutorcorner-courses';
 const TEACHERS_TABLE = process.env.DYNAMODB_TABLE_TEACHERS || 'jvtutorcorner-teachers';
 
+function getCourseSortTime(item: any): number {
+  const candidates = [
+    item?.updatedAt,
+    item?.createdAt,
+    item?.nextStartDate,
+    item?.startDate,
+  ];
+  for (const value of candidates) {
+    if (!value) continue;
+    const ts = new Date(value).getTime();
+    if (!Number.isNaN(ts)) return ts;
+  }
+  return 0;
+}
+
+function sortCoursesNewestFirst(items: any[]): any[] {
+  return [...items].sort((a, b) => getCourseSortTime(b) - getCourseSortTime(a));
+}
+
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
@@ -62,9 +81,16 @@ export async function GET(req: Request) {
       params.ExpressionAttributeValues = { ':tname': teacher };
     }
 
-    const scanCmd = new ScanCommand(params);
-    const result = await ddbDocClient.send(scanCmd);
-    let items = result.Items || [];
+    let items: any[] = [];
+    let exclusiveStartKey: any = undefined;
+    do {
+      const result = await ddbDocClient.send(new ScanCommand({
+        ...params,
+        ...(exclusiveStartKey ? { ExclusiveStartKey: exclusiveStartKey } : {}),
+      }));
+      items.push(...(result.Items || []));
+      exclusiveStartKey = result.LastEvaluatedKey;
+    } while (exclusiveStartKey);
 
     // If DynamoDB is empty and we're not filtering for a specific teacher, 
     // fallback to bundled sample data to ensure the UI isn't blank on first run.
@@ -80,6 +106,8 @@ export async function GET(req: Request) {
         return !id.startsWith('test-course-') && !title.includes('測試') && !title.toLowerCase().includes('e2e');
       });
     }
+
+    items = sortCoursesNewestFirst(items);
 
     // Batch lookup teacher names for all unique teacherIds in the items
     const uniqueTids = Array.from(new Set(items.map((i: any) => i.teacherId).filter(Boolean)));
@@ -193,4 +221,3 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ ok: false, message: 'Failed to delete course' }, { status: 500 });
   }
 }
-
