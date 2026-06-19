@@ -336,20 +336,20 @@ export default function ClassroomWaitPage() {
     }
 
     const syncUuid = sessionReadyKey;
-    const userId = localPresenceId || role || 'anonymous';
 
     if (!syncUuid || !role) {
       console.error('toggleReady: missing syncUuid or role');
       return;
     }
 
-    // 🚨 CRITICAL: Warn if userId is just a role (indicates bug in localPresenceId computation)
-    if (userId === 'teacher' || userId === 'student') {
-      console.error(`🚨 CRITICAL BUG: userId should NOT be just a role! userId='${userId}', role='${role}'. This will cause state sync failures with other users.`);
-      console.error(`   - localPresenceId: ${localPresenceId}`);
-      console.error(`   - storedUserState: ${JSON.stringify(storedUserState)}`);
-      // Still attempt to sync, but with warning logged
+    // Guard: if localPresenceId is still null (email not resolved), retry once after 1s
+    if (!localPresenceId) {
+      console.warn('[WaitPage] toggleReady: localPresenceId is null, retrying in 1s...');
+      setTimeout(() => toggleReady(), 1000);
+      return;
     }
+
+    const userId = localPresenceId;
 
     const nextReadyState = !ready;
 

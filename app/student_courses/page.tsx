@@ -5,7 +5,6 @@ import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { getStoredUser, setStoredUser, type StoredUser } from '@/lib/mockAuth';
 import Link from 'next/link';
 import { useT } from '@/components/IntlProvider';
-import { COURSE_RECORDS } from '@/data/courseRecords';
 import Pagination from '@/components/Pagination';
 
 type Order = {
@@ -585,12 +584,7 @@ function StudentCoursesContent() {
                         if (typeof (o as any).remainingSessions === 'number') {
                           return `${(o as any).remainingSessions}`;
                         }
-                        if (!o.courseId) return '-';
-                        const c = courseMap[o.courseId];
-                        if (!c) return '-';
-                        const total = c.totalSessions || 0;
-                        const attended = COURSE_RECORDS.filter(r => r.courseId === o.courseId && r.status === 'attended').length;
-                        return `${Math.max(0, total - attended)}`;
+                        return '--';
                       })()}
                     </td>
                     <td data-label="剩餘時間 (分)" style={{ border: '2px solid #ccc', padding: '6px' }}>
@@ -602,14 +596,7 @@ function StudentCoursesContent() {
                         if (typeof (o as any).remainingMinutes === 'number') {
                           return `${(o as any).remainingMinutes} m`;
                         }
-                        if (!o.courseId) return '-';
-                        const c = courseMap[o.courseId];
-                        if (!c) return '-';
-                        const total = c.totalSessions || 0;
-                        const attended = COURSE_RECORDS.filter(r => r.courseId === o.courseId && r.status === 'attended').length;
-                        const duration = o.durationMinutes || c.durationMinutes || 0;
-                        const remaining = Math.max(0, total - attended) * duration;
-                        return `${remaining} m`;
+                        return '--';
                       })()}
                     </td>
                     <td data-label={t('start_time_label')} style={{ border: '2px solid #ccc', padding: '6px' }}>

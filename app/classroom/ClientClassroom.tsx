@@ -713,37 +713,14 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
               console.log('[ClientClassroom] Student found existing room via lookup, using it');
               setAgoraRoomData(lookupData);
             } else {
-              // Still no room found after polling — create new room (teacher may be absent or hasn't started yet)
-              console.log('[ClientClassroom] Student: no existing room found after polling, will create new room as host');
-              const requestBody: any = { userId, channelName: sessionReadyKey, courseId, orderId, role: 'student' };
-              try {
-                const res = await fetch('/api/whiteboard/room', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify(requestBody)
-                });
-                if (res.ok) {
-                  const data = await res.json();
-                  console.log('[ClientClassroom] Student created new room via API');
-                  setAgoraRoomData(data);
-                } else {
-                  const errorText = await res.text();
-                  console.error('[ClientClassroom] Student failed to create room:', res.status, errorText);
-                  if (process.env.NODE_ENV !== 'production') {
-                    try {
-                      const errorData = JSON.parse(errorText);
-                      setWhiteboardError(errorData.error || errorData.message || 'Failed to create whiteboard room');
-                    } catch {
-                      setWhiteboardError(`Failed to create whiteboard room: ${errorText}`);
-                    }
-                  }
-                }
-              } catch (e) {
-                console.error('[ClientClassroom] Student API create failed:', e);
-                if (process.env.NODE_ENV !== 'production') {
-                  setWhiteboardError(`Failed to create whiteboard room: ${e instanceof Error ? e.message : 'Unknown error'}`);
-                }
-              }
+              // No room found after all retries — redirect student to wait page so the
+              // teacher can establish the session properly before the student joins.
+              console.warn('[ClientClassroom] Student: whiteboard UUID not found after all polling attempts. Redirecting to wait page.');
+              const waitParams = new URLSearchParams();
+              waitParams.set('courseId', courseId || 'c1');
+              if (orderId) waitParams.set('orderId', orderId);
+              if (sessionReadyKey) waitParams.set('session', sessionReadyKey);
+              window.location.replace(`/classroom/wait?${waitParams.toString()}`);
             }
           }
         }
@@ -1592,6 +1569,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
             const parts = j.participants || [];
             const hasTeacher = parts.some((p: any) => p.role === 'teacher' && p.present);
             const hasStudent = parts.some((p: any) => p.role === 'student' && p.present);
+            setParticipants(parts);
             setCanJoin(hasTeacher && hasStudent);
           }
         } catch (e) { }
@@ -1615,10 +1593,19 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   // This ensures cross-device synchronization works even if localStorage is not shared.
   const reportedRef = useRef(false);
 
+  const reportReadyRetryRef = useRef(0);
+
   useEffect(() => {
     if (!mounted || !sessionReadyKey) return;
 
     const reportReady = async () => {
+      // Guard: if presenceId is not yet resolved, retry up to 3× with 500ms delay
+      if (!presenceId && !storedUser && reportReadyRetryRef.current < 3) {
+        reportReadyRetryRef.current += 1;
+        setTimeout(() => { if (!reportedRef.current) reportReady(); }, 500);
+        return;
+      }
+
       const roleName = (urlRole === 'teacher' || computedRole === 'teacher') ? 'teacher' : 'student';
       const localUserId = presenceId || roleName;
       const roleIsTeacher = roleName === 'teacher';

@@ -20,30 +20,19 @@ const ddbExplicitCreds = ddbExplicitAccessKey && ddbExplicitSecretKey ? {
 const client = new DynamoDBClient({ region: ddbRegion, credentials: ddbExplicitCreds });
 const docClient = DynamoDBDocumentClient.from(client);
 
-// Placeholder for real user session check
-const getUserId = async (): Promise<string | null> => {
-  return 'mock-user-123';
-};
-
 const ORDERS_TABLE = process.env.DYNAMODB_TABLE_ORDERS || 'jvtutorcorner-orders';
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { 
-      courseId, enrollmentId, amount, currency, userId: clientUserId, 
-      startTime, endTime, paymentMethod, pointsUsed, status: clientStatus 
+    const {
+      courseId, enrollmentId, amount, currency, userId: clientUserId,
+      startTime, endTime, paymentMethod, pointsUsed, status: clientStatus
     } = body;
-    let userId = await getUserId();
+    const userId = clientUserId || null;
 
     if (!courseId) {
       return NextResponse.json({ error: 'Course ID is required. For plan subscriptions, use /api/plan-upgrades instead.' }, { status: 400 });
-    }
-
-    if (!userId || String(userId).startsWith('mock-user')) {
-      if (clientUserId) {
-        userId = clientUserId;
-      }
     }
 
     if (!userId) {
