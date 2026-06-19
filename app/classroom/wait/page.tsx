@@ -681,6 +681,10 @@ export default function ClassroomWaitPage() {
 
     const target = `/classroom/room?courseId=${encodeURIComponent(courseId)}${orderId ? `&orderId=${encodeURIComponent(orderId)}` : ''}${role ? `&role=${encodeURIComponent(role)}` : ''}${sessionReadyKey ? `&session=${encodeURIComponent(sessionReadyKey)}` : ''}${targetRoomUuid ? `&whiteboardUuid=${encodeURIComponent(targetRoomUuid)}` : ''}`;
     console.log('Redirecting to:', target);
+    if (typeof window !== 'undefined') {
+      window.location.assign(target);
+      return;
+    }
     router.push(target);
   }, [isEntering, courseId, orderId, role, sessionReadyKey, router, roomUuid, localPresenceId]);
 

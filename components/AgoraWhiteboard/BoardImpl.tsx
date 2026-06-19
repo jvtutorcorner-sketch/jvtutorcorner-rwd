@@ -70,6 +70,16 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
         if (typeof window !== 'undefined') setIsMounted(true);
     }, []);
 
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        (window as any).__fastboard_sdk_loaded = sdkLoaded;
+    }, [sdkLoaded]);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        (window as any).__fastboard_phase = phase;
+    }, [phase]);
+
     // 2. Load SDK
     useEffect(() => {
         if (!isMounted) return;
@@ -218,8 +228,10 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
                         room.bindHtmlElement(targetDiv);
                         // Signal ready only after the canvas is actually bound to the DOM.
                         (window as any).__fastboard_ready = true;
+                        (window as any).__fastboard_bound = true;
                     } catch(e) {
                          console.error("[CoreSDK] Bind failed:", e);
+                         (window as any).__fastboard_bound = false;
                     }
                     
                     // ★★★ 視覺除錯：將背景設為淺藍色 (只限有寫權限者) ★★★
@@ -369,7 +381,12 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
                 roomRef.current.disconnect();
                 roomRef.current = null;
             }
-            if (typeof window !== 'undefined') (window as any).agoraRoom = null;
+            if (typeof window !== 'undefined') {
+                (window as any).agoraRoom = null;
+                (window as any).__fastboard_ready = false;
+                (window as any).__fastboard_bound = false;
+                (window as any).__fastboard_phase = 'Disposed';
+            }
         };
     }, [isMounted, sdkLoaded, appIdentifier, roomUuid, roomToken, userId, role, region]);
 

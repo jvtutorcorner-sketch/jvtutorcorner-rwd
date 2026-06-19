@@ -145,10 +145,16 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   useEffect(() => {
     const interval = setInterval(() => {
       try {
-        const mounted = !!agoraWhiteboardRef.current;
+        const boardState = agoraWhiteboardRef.current?.getState?.();
+        const boardPhase = String(boardState?.phase || '');
+        const boardBound = typeof window !== 'undefined' && !!(window as any).__fastboard_bound;
+        const mounted = !!agoraWhiteboardRef.current && boardBound && /connected/i.test(boardPhase);
         setAgoraWhiteboardMounted((prev) => (prev === mounted ? prev : mounted));
 
-        const roomReady = typeof window !== 'undefined' && !!(window as any).agoraRoom;
+        const roomReady =
+          typeof window !== 'undefined' &&
+          !!(window as any).agoraRoom &&
+          !!(window as any).__fastboard_ready;
         setAgoraWindowRoomReady((prev) => (prev === roomReady ? prev : roomReady));
 
         if (agoraWhiteboardRef.current) {
@@ -1203,7 +1209,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
         if (s.name === 'Initializing Agora connection') {
           done = !!agoraRoomData;
         } else if (s.name === 'Preparing whiteboard') {
-          done = useAgoraWhiteboard ? !!agoraRoomData && agoraWhiteboardMounted : !!whiteboardMeta;
+          done = useAgoraWhiteboard ? !!agoraRoomData && agoraWhiteboardMounted && agoraWindowRoomReady : !!whiteboardMeta;
         } else if (s.name === 'Syncing session state') {
           done = !!sessionReadyKey;
         }
@@ -1218,7 +1224,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       return changed ? next : prev;
     });
 
-    const agoraReady = useAgoraWhiteboard ? !!agoraRoomData && agoraWhiteboardMounted : !!whiteboardMeta;
+    const agoraReady = useAgoraWhiteboard ? !!agoraRoomData && agoraWhiteboardMounted && agoraWindowRoomReady : !!whiteboardMeta;
     const allDone = agoraReady && !!sessionReadyKey;
     if (allDone && joined && !fullyInitialized) {
       setFullyInitialized(true);
@@ -1229,7 +1235,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       setFullyInitialized(false);
       setClassFullyLoadedAt(null);
     }
-  }, [agoraRoomData, agoraWhiteboardMounted, whiteboardMeta, sessionReadyKey, joined, whiteboardState]);
+  }, [agoraRoomData, agoraWhiteboardMounted, agoraWindowRoomReady, whiteboardMeta, sessionReadyKey, joined, whiteboardState]);
 
   // Debug whiteboard state
   // agoraWindowRoomReady is tracked as state via the 1s polling interval so this effect

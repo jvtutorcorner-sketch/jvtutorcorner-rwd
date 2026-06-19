@@ -658,13 +658,13 @@ function StudentCoursesContent() {
                     <td data-label={t('enter_classroom')} style={{ border: '2px solid #ccc', padding: '6px' }}>
                       {o.courseId ? (
                         isCurrentTimeInClassRange(o) ? (
-                          <Link
+                          <a
                             href={`/classroom/wait?courseId=${encodeURIComponent(o.courseId)}&orderId=${encodeURIComponent(o.orderId || (o as any).id || '')}&orderid=${encodeURIComponent(o.orderId || (o as any).id || '')}`}
                             className="btn btn-primary"
                             style={{ padding: '4px 8px', fontSize: '12px' }}
                           >
                             {t('enter_classroom')}
-                          </Link>
+                          </a>
                         ) : (
                           <span title={`分類外課堂時間。開始時間: ${courseMap[o.courseId]?.startTime || 'N/A'}, 結束時間: ${courseMap[o.courseId]?.endTime || 'N/A'}`}>-</span>
                         )
