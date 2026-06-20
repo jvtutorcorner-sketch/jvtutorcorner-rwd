@@ -1,4 +1,4 @@
-import { test, expect, Dialog } from '@playwright/test';
+import { test, expect, Dialog, Page, chromium } from '@playwright/test';
 import dotenv from 'dotenv';
 import path from 'path';
 import {
@@ -29,6 +29,74 @@ import {
 
 const APP_ENV = process.env.APP_ENV || 'local';
 dotenv.config({ path: path.resolve(__dirname, '..', `.env.${APP_ENV}`) });
+
+async function getWhiteboardRuntimeSnapshot(page: Page) {
+  return page.evaluate(() => {
+    const w = window as any;
+    const canvases = Array.from(document.querySelectorAll('canvas')).map((canvas) => {
+      const el = canvas as HTMLCanvasElement;
+      const style = getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      let alphaPixels = -1;
+      try {
+        const ctx = el.getContext('2d');
+        if (ctx) {
+          const data = ctx.getImageData(0, 0, el.width, el.height).data;
+          alphaPixels = 0;
+          for (let i = 3; i < data.length; i += 4) {
+            if (data[i] > 10) alphaPixels++;
+          }
+        }
+      } catch {
+        alphaPixels = -2;
+      }
+      return {
+        width: el.width,
+        height: el.height,
+        visible: style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0,
+        rect: {
+          x: Math.round(rect.x),
+          y: Math.round(rect.y),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+        },
+        alphaPixels,
+      };
+    });
+
+    const room = w.agoraRoom;
+    const sceneState = room?.state?.sceneState;
+    return {
+      url: location.href,
+      header: document.body.innerText.match(/(TEACHER|STUDENT).{0,120}/)?.[0] || '',
+      whiteboardReady: !!w.__classroom_whiteboard_ready,
+      classroomReady: !!w.__classroom_ready,
+      sdkLoaded: !!w.WhiteWebSdk?.WhiteWebSdk,
+      roomReady: !!room,
+      roomUuid: room?.uuid || room?.roomUuid || room?.state?.uuid || null,
+      scenePath: sceneState?.scenePath || null,
+      sceneIndex: typeof sceneState?.index === 'number' ? sceneState.index : null,
+      sceneCount: Array.isArray(sceneState?.scenes) ? sceneState.scenes.length : null,
+      canvases,
+    };
+  }).catch((error) => ({ error: String((error as Error).message || error) }));
+}
+
+async function waitForDrawingContent(page: Page, label: string, timeoutMs = 15000): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  let attempt = 0;
+  while (Date.now() < deadline) {
+    attempt++;
+    if (await hasDrawingContent(page)) {
+      if (attempt > 1) {
+        console.log(`   ✅ [${label}] Drawing appeared after ${attempt} checks`);
+      }
+      return true;
+    }
+    await page.waitForTimeout(1000);
+  }
+  return false;
+}
 
 // ─── smoke ──────────────────────────────────────────────────────────
 test.describe('[smoke] Whiteboard Quick Entry', () => {
@@ -397,7 +465,22 @@ test.describe('[standard] Whiteboard Sync', () => {
 test.describe('[stress] Concurrent Groups', () => {
   test.setTimeout(600000);
 
-  test('3 concurrent teacher-student groups with isolation verification', async ({ browser }) => {
+  test('3 concurrent teacher-student groups with isolation verification', async () => {
+    const groupCount = parseInt(process.env.STRESS_GROUP_COUNT || '3', 10);
+    const isHeadless = groupCount >= 5;
+    console.log(`🤖 Launching browser in ${isHeadless ? 'HEADLESS' : 'HEADED'} mode (groupCount: ${groupCount})`);
+    const browser = await chromium.launch({
+      headless: isHeadless,
+      args: [
+        '--disable-blink-features=AutomationControlled',
+        '--disable-gpu',
+        '--no-first-run',
+        '--use-fake-ui-for-media-stream',
+        '--use-fake-device-for-media-stream'
+      ]
+    });
+
+    try {
     const config = getTestConfig();
     const baseUrl = config.baseUrl;
     const timestamp = Date.now();
@@ -678,12 +761,31 @@ test.describe('[stress] Concurrent Groups', () => {
       console.log('\n📍 Step 8: Verifying drawing sync (all groups parallel)...');
       await Promise.all(sessions.map(async (session) => {
         try {
-          await session.teacherPage.waitForTimeout(3000);
-          
-          const teacherHasDrawing = await hasDrawingContent(session.teacherPage);
-          const studentHasDrawing = await hasDrawingContent(session.studentPage);
+          const teacherHasDrawing = await waitForDrawingContent(
+            session.teacherPage,
+            `${session.groupId} teacher`,
+            15000
+          );
+          const studentHasDrawing = await waitForDrawingContent(
+            session.studentPage,
+            `${session.groupId} student`,
+            Number(process.env.WHITEBOARD_SYNC_VERIFY_TIMEOUT_MS || 15000)
+          );
           
           console.log(`   📊 [${session.groupId}] Teacher canvas: ${teacherHasDrawing}, Student canvas: ${studentHasDrawing}`);
+
+          if (!teacherHasDrawing || !studentHasDrawing) {
+            const [teacherSnapshot, studentSnapshot] = await Promise.all([
+              getWhiteboardRuntimeSnapshot(session.teacherPage),
+              getWhiteboardRuntimeSnapshot(session.studentPage),
+            ]);
+            console.log(`   🔎 [${session.groupId}] Teacher snapshot: ${JSON.stringify(teacherSnapshot)}`);
+            console.log(`   🔎 [${session.groupId}] Student snapshot: ${JSON.stringify(studentSnapshot)}`);
+            await Promise.all([
+              session.teacherPage.screenshot({ path: `test-results/${session.groupId}-teacher-sync-fail.png`, fullPage: true }).catch(() => {}),
+              session.studentPage.screenshot({ path: `test-results/${session.groupId}-student-sync-fail.png`, fullPage: true }).catch(() => {}),
+            ]);
+          }
           
           expect(teacherHasDrawing).toBe(true);
           expect(studentHasDrawing).toBe(true);
@@ -779,6 +881,9 @@ test.describe('[stress] Concurrent Groups', () => {
       } else {
         console.log('   ℹ️ SKIP_CLEANUP=true - Test data NOT deleted');
       }
+    }
+    } finally {
+      await browser.close().catch(() => {});
     }
   });
 

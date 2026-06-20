@@ -151,6 +151,7 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
         if (!isMounted || !containerRef.current || roomRef.current || !sdkLoaded) return;
 
         let isAborted = false;
+        const timerIds = new Set<ReturnType<typeof setTimeout>>();
         const targetDiv = containerRef.current;
         let resizeObserver: ResizeObserver | null = null;
         let resizeHandler: (() => void) | null = null;
@@ -186,10 +187,17 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
                 const canWrite = isTeacher || isAssistant || (role === 'student' && canDraw === true);
                 console.log(`[CoreSDK] Joining as ${role}, canWrite=${canWrite}, Region: ${region}, UUID: ...${roomUuid.slice(-6)}`);
 
-                // Race joinRoom against a 25 s deadline so a hung Netless WebSocket
-                // surfaces an error quickly and lets the retry UI in ClientClassroom activate.
-                const room = await Promise.race([
-                    whiteWebSdk.joinRoom({
+                // Join Netless room with timeout + automatic retry.
+                // Under 5+ concurrent groups, 10+ WebSocket handshakes fire at once;
+                // Netless queues them and late groups exceed the deadline. We:
+                //   1. Raise the deadline to 35 s (was 25 s) to absorb queue delay.
+                //   2. Disconnect any orphaned connection that resolves after timeout.
+                //   3. Retry once after 3 s if the first attempt times out.
+                let room: any = null;
+                const MAX_JOIN_ATTEMPTS = 2;
+                for (let joinAttempt = 0; joinAttempt < MAX_JOIN_ATTEMPTS && !isAborted; joinAttempt++) {
+                    let timeoutFired = false;
+                    const joinRoomPromise = whiteWebSdk.joinRoom({
                         uuid: roomUuid,
                         roomToken,
                         region: region as any,
@@ -197,11 +205,43 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
                         // ★★★ 關鍵：永遠設為 false，解鎖 SDK 內部同步機制 ★★★
                         disableCameraTransform: false,
                         isWritable: canWrite,
-                    }),
-                    new Promise<never>((_, reject) =>
-                        setTimeout(() => reject(new Error('joinRoom timeout — Netless unreachable after 25 s')), 25000)
-                    ),
-                ]);
+                    });
+                    // If timeout fires before joinRoom resolves, disconnect the orphaned
+                    // connection when it eventually comes in to free Netless slots.
+                    joinRoomPromise.then((orphan: any) => {
+                        if (timeoutFired || isAborted) {
+                            try { orphan.disconnect(); } catch (_) {}
+                        }
+                    }).catch(() => {});
+
+                    try {
+                        room = await Promise.race([
+                            joinRoomPromise,
+                            new Promise<never>((_, reject) => {
+                                timerIds.add(setTimeout(() => {
+                                    timeoutFired = true;
+                                    reject(new Error('joinRoom timeout — Netless unreachable after 35 s'));
+                                }, 35000));
+                            }),
+                        ]);
+                        break; // connected — exit retry loop
+                    } catch (joinErr: any) {
+                        if (isAborted) return;
+                        const isTimeout = (joinErr as Error).message?.includes('joinRoom timeout');
+                        if (isTimeout && joinAttempt < MAX_JOIN_ATTEMPTS - 1) {
+                            console.log(`[CoreSDK] joinRoom timeout, retrying in 3 s (attempt ${joinAttempt + 1}/${MAX_JOIN_ATTEMPTS})...`);
+                            setStatus('重連中...');
+                            await new Promise<void>(r => { timerIds.add(setTimeout(r, 3000)); });
+                            continue;
+                        }
+                        throw joinErr; // surface on final attempt
+                    }
+                }
+
+                if (!room || isAborted) {
+                    if (isAborted) return;
+                    throw new Error('joinRoom: all attempts exhausted');
+                }
 
                 if (isAborted) {
                     room.disconnect();
@@ -214,9 +254,9 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
                 setPhase("Connected");
 
                 // Improvement: Delayed initialization to ensure DOM is painted
-                setTimeout(() => {
+                timerIds.add(setTimeout(() => {
                     if (isAborted || !targetDiv) return;
-                    
+
                     // Check if element is still in DOM
                     if (!targetDiv.isConnected) {
                         console.warn("[CoreSDK] Target div detached from DOM, aborting bind");
@@ -233,7 +273,7 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
                          console.error("[CoreSDK] Bind failed:", e);
                          (window as any).__fastboard_bound = false;
                     }
-                    
+
                     // ★★★ 視覺除錯：將背景設為淺藍色 (只限有寫權限者) ★★★
                     // 如果畫面變藍，代表渲染成功；如果還是白，代表高度是 0
                     if (canWrite) {
@@ -247,14 +287,13 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
                     // --- 解決白屏的關鍵：暴力重繪 ---
                     // 在不同的時間點強制更新視窗大小，確保 DOM 長出來後 SDK 能抓到
                     const forceRefresh = () => {
-                        if (room && room.refreshViewSize) {
-                            room.refreshViewSize();
-                            console.log("[CoreSDK] Force Refresh View Size");
-                        }
+                        if (isAborted || !room || !room.refreshViewSize) return;
+                        room.refreshViewSize();
+                        console.log("[CoreSDK] Force Refresh View Size");
                     };
                     forceRefresh();
-                    setTimeout(forceRefresh, 500);
-                    setTimeout(forceRefresh, 1000);
+                    timerIds.add(setTimeout(forceRefresh, 500));
+                    timerIds.add(setTimeout(forceRefresh, 1000));
 
                     // Pointer/Tap Fix: on mobile browsers the viewport/layout
                     // can change between paint and the first touch event which
@@ -285,7 +324,7 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
                             targetDiv.addEventListener('pointermove', pointerFixHandler as any);
                         } catch (ee) { /* ignore */ }
                     }
-                }, 100);
+                }, 100));
 
                 setStatus("連線成功");
 
@@ -294,9 +333,9 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
                     room.setViewMode("broadcaster");
                     setViewMode("Broadcaster");
                     // 有寫權限者加入後，重置到中心點，建立基準
-                    setTimeout(() => {
-                        room.moveCamera({ centerX: 0, centerY: 0, scale: 1 });
-                    }, 600);
+                    timerIds.add(setTimeout(() => {
+                        if (!isAborted) room.moveCamera({ centerX: 0, centerY: 0, scale: 1 });
+                    }, 600));
                     
                     room.setMemberState({
                         currentApplianceName: "pencil",
@@ -307,9 +346,9 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
                     room.setViewMode("follower");
                     setViewMode("Follower");
                     // 學生/旁聽者加入後也先強制回正一次
-                    setTimeout(() => {
-                         room.moveCamera({ centerX: 0, centerY: 0, scale: 1 });
-                    }, 600);
+                    timerIds.add(setTimeout(() => {
+                        if (!isAborted) room.moveCamera({ centerX: 0, centerY: 0, scale: 1 });
+                    }, 600));
                 }
 
                 /*
@@ -356,11 +395,12 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
             }
         };
 
-        const timer = setTimeout(initSdk, 0);
+        timerIds.add(setTimeout(initSdk, 0));
 
         return () => {
-            clearTimeout(timer);
             isAborted = true;
+            timerIds.forEach(id => clearTimeout(id));
+            timerIds.clear();
             if (resizeHandler) window.removeEventListener('resize', resizeHandler);
             if (resizeObserver) resizeObserver.disconnect();
             if (pointerFixHandler && containerRef.current) {

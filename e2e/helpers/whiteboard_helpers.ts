@@ -47,7 +47,7 @@ export async function runEnrollmentFlow(
   teacherEmail?: string,
   studentEmail?: string,
   maxRetries = 2,
-  propagationWaitMs = 8000
+  propagationWaitMs = Number(process.env.ENROLLMENT_PROPAGATION_WAIT_MS ?? 8000)
 ): Promise<void> {
   const config = getTestConfig();
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
@@ -398,6 +398,41 @@ export async function goToWaitRoom(
     ? `teacher_courses?includeTests=true&course=${encodeURIComponent(courseId)}`
     : 'student_courses';
 
+  const findActiveOrderId = async (): Promise<string> => {
+    const orderRes = await page.request
+      .get(`${baseUrl}/api/orders?courseId=${encodeURIComponent(courseId)}&limit=50`)
+      .catch(() => null);
+    if (!orderRes?.ok()) return '';
+
+    const data = await orderRes.json().catch(() => ({} as any));
+    const orders: any[] = Array.isArray(data?.data) ? data.data : [];
+    const activeOrder = orders.find((o: any) => {
+      const status = String(o?.status || '').toUpperCase();
+      return o?.courseId === courseId && status !== 'CANCELLED' && status !== 'FAILED';
+    });
+    return activeOrder?.orderId || activeOrder?.id || '';
+  };
+
+  const gotoDirectWaitRoom = async (): Promise<boolean> => {
+    if (role === 'student') {
+      const orderId = await findActiveOrderId();
+      if (!orderId) return false;
+      console.log(`   ✅ [${role}] Found order via API fallback; navigating directly to target wait room`);
+      await page.goto(
+        `${baseUrl}/classroom/wait?courseId=${encodeURIComponent(courseId)}&orderId=${encodeURIComponent(orderId)}&orderid=${encodeURIComponent(orderId)}&role=student`,
+        { waitUntil: 'domcontentloaded' }
+      );
+      return true;
+    }
+
+    console.log(`   ✅ [${role}] Navigating directly to target wait room`);
+    await page.goto(
+      `${baseUrl}/classroom/wait?courseId=${encodeURIComponent(courseId)}&role=teacher`,
+      { waitUntil: 'domcontentloaded' }
+    );
+    return true;
+  };
+
   // Retry logic: Poll for course up to 8 times (stress tests need extra time for GSI propagation)
   let found = false;
   const maxRetries = 8;
@@ -421,11 +456,19 @@ export async function goToWaitRoom(
     if (await exactBtn.isVisible().catch(() => false)) {
       console.log(`   ✅ [${role}] Found course via exact data-course-id match`);
       await exactBtn.click();
+      await page.waitForURL(/\/classroom\/wait/, { timeout: 15000 });
+      const targetMatched = new URL(page.url()).searchParams.get('courseId') === courseId;
+      if (!targetMatched) {
+        console.warn(`   ⚠️ [${role}] Exact match navigated to unexpected wait room: ${page.url()}`);
+        await gotoDirectWaitRoom();
+      }
       found = true;
       break;
     }
 
-    // Strategy 2: Search all "進入教室" buttons and check their parent row
+    // Strategy 2: Search all "進入教室" buttons and check a nearby row/card only.
+    // Do not match against broad sections; stress-test pages can contain many
+    // historical test courses and a broad text match can click the wrong room.
     const allEnterBtns = page.locator('button, a').filter({ hasText: /進入教室|enter|Enter/i });
     const btnCount = await allEnterBtns.count();
     console.log(`   🔍 [${role}] Found ${btnCount} "進入教室" buttons`);
@@ -442,7 +485,7 @@ export async function goToWaitRoom(
       
       // Check if courseId is in the row text or attribute
       const isMatch = await btn.evaluate((el, cid) => {
-        const row = el.closest('tr, div[class*="row"], div[class*="card"], section, [role="row"]');
+        const row = el.closest('[data-course-id], tr, div[class*="row"], div[class*="card"], [role="row"]');
         if (!row) return false;
         
         const rowText = row.textContent || '';
@@ -455,7 +498,7 @@ export async function goToWaitRoom(
           rowId === cid || 
           rowId.includes(cid) ||
           href.includes(cid) ||
-          href.includes(`/classroom/wait?course=${cid}`) ||
+          href.includes(`/classroom/wait?courseId=${cid}`) ||
           href.includes(`course=${cid}`)
         );
       }, courseId);
@@ -463,6 +506,12 @@ export async function goToWaitRoom(
       if (isMatch) {
         console.log(`   ✅ [${role}] Found matching row at button ${i}`);
         await btn.click();
+        await page.waitForURL(/\/classroom\/wait/, { timeout: 15000 });
+        const targetMatched = new URL(page.url()).searchParams.get('courseId') === courseId;
+        if (!targetMatched) {
+          console.warn(`   ⚠️ [${role}] Row match navigated to unexpected wait room: ${page.url()}`);
+          await gotoDirectWaitRoom();
+        }
         found = true;
         break;
       }
@@ -470,32 +519,11 @@ export async function goToWaitRoom(
     
     if (found) break;
 
-    // Strategy 3: In production the student dashboard can render before the
-    // current order is visible/enabled. If an active order exists for this
-    // course, navigate directly to the same wait-room URL the dashboard link
-    // would use.
-    if (role === 'student') {
-      const orderRes = await page.request
-        .get(`${baseUrl}/api/orders?courseId=${encodeURIComponent(courseId)}&limit=50`)
-        .catch(() => null);
-      if (orderRes?.ok()) {
-        const data = await orderRes.json().catch(() => ({} as any));
-        const orders: any[] = Array.isArray(data?.data) ? data.data : [];
-        const activeOrder = orders.find((o: any) => {
-          const status = String(o?.status || '').toUpperCase();
-          return o?.courseId === courseId && status !== 'CANCELLED' && status !== 'FAILED';
-        });
-        const orderId = activeOrder?.orderId || activeOrder?.id || '';
-        if (orderId) {
-          console.log(`   ✅ [${role}] Found order via API fallback; navigating directly to wait room`);
-          await page.goto(
-            `${baseUrl}/classroom/wait?courseId=${encodeURIComponent(courseId)}&orderId=${encodeURIComponent(orderId)}&orderid=${encodeURIComponent(orderId)}`,
-            { waitUntil: 'domcontentloaded' }
-          );
-          found = true;
-          break;
-        }
-      }
+    // Strategy 3: Direct target wait-room fallback. This avoids stale or
+    // unrelated course buttons on production dashboards.
+    if (await gotoDirectWaitRoom()) {
+      found = true;
+      break;
     }
     
     // If not found and not last attempt, refresh and retry

@@ -12,9 +12,22 @@
  *
  * Usage:
  *   $env:CONCURRENT_GROUPS="3"; npx playwright test e2e/classroom/07_room_pdf_sync_stress.spec.ts --project=chromium
+ *
+ * Faster reusable runs:
+ *   # First run keeps generated courses/orders/PDFs for reuse.
+ *   $env:CONCURRENT_GROUPS="10"; $env:STRESS_RUN_TS="1781889000000"; $env:SKIP_CLEANUP="1"; npx playwright test e2e/classroom/07_room_pdf_sync_stress.spec.ts --project=chromium
+ *
+ *   # Later runs reuse the same course ids, active enrollments, and PDF metadata.
+ *   $env:CONCURRENT_GROUPS="10"; $env:STRESS_RUN_TS="1781889000000"; $env:REUSE_STRESS_SETUP="1"; $env:SKIP_CLEANUP="1"; $env:ENROLLMENT_PROPAGATION_WAIT_MS="0"; npx playwright test e2e/classroom/07_room_pdf_sync_stress.spec.ts --project=chromium
  */
 
-import { test, expect, type Page, type Browser } from '@playwright/test';
+import { test, expect, type Page, type Browser, chromium } from '@playwright/test';
+import {
+  createRecordedContext,
+  printRecordingSummary,
+  buildRunDir,
+  RECORDINGS_ROOT,
+} from '../helpers/recording_helper';
 import {
   autoLogin,
   injectDeviceCheckBypass,
@@ -34,7 +47,32 @@ import { getTestConfig, getStressGroupConfigs, ADMIN_EMAIL, ADMIN_PASSWORD } fro
 
 const GROUP_COUNT = parseInt(process.env.CONCURRENT_GROUPS || '3', 10);
 const SUCCESS_THRESHOLD = parseFloat(process.env.SUCCESS_THRESHOLD || '0.75');
+const STRESS_COURSE_DURATION_MINUTES = parseInt(process.env.STRESS_COURSE_DURATION_MINUTES || '10', 10);
 const TEST_TIMEOUT_MS = Math.max(600_000, GROUP_COUNT * 120_000 + 300_000);
+const REUSE_STRESS_SETUP = process.env.REUSE_STRESS_SETUP === '1';
+const REUSE_ACCOUNTS = REUSE_STRESS_SETUP || process.env.REUSE_ACCOUNTS === '1';
+const REUSE_POINTS = REUSE_STRESS_SETUP || process.env.REUSE_POINTS === '1';
+const REUSE_COURSES = REUSE_STRESS_SETUP || process.env.REUSE_COURSES === '1';
+const REUSE_APPROVALS = REUSE_STRESS_SETUP || process.env.REUSE_APPROVALS === '1';
+const REUSE_ENROLLMENTS = REUSE_STRESS_SETUP || process.env.REUSE_ENROLLMENTS === '1';
+const REUSE_PDF_UPLOADS = REUSE_STRESS_SETUP || process.env.REUSE_PDF_UPLOADS === '1';
+
+function resolveHeadless(defaultValue: boolean): boolean {
+  const raw = process.env.HEADLESS;
+  if (!raw) return defaultValue;
+  if (/^(1|true|yes)$/i.test(raw)) return true;
+  if (/^(0|false|no)$/i.test(raw)) return false;
+  throw new Error(`HEADLESS must be true/false/1/0/yes/no. Received: "${raw}"`);
+}
+
+function getStressTimestamp(): number {
+  const raw = process.env.STRESS_RUN_TS || process.env.STRESS_RUN_ID || '';
+  if (!raw) return Date.now();
+  if (!/^\d+$/.test(raw)) {
+    throw new Error(`STRESS_RUN_TS/STRESS_RUN_ID must be numeric for reusable course ids. Received: "${raw}"`);
+  }
+  return Number(raw);
+}
 
 type RoomSceneState = {
   scenePath: string;
@@ -110,6 +148,28 @@ async function waitForPdfMetadata(
   return null;
 }
 
+async function fetchCourseById(page: Page, baseUrl: string, courseId: string): Promise<any | null> {
+  const res = await page.request
+    .get(`${baseUrl}/api/courses?id=${encodeURIComponent(courseId)}`)
+    .catch(() => null);
+  if (!res?.ok()) return null;
+  const json = await res.json().catch(() => null);
+  return json?.course || json?.data || null;
+}
+
+async function findActiveOrderForCourse(page: Page, baseUrl: string, courseId: string): Promise<any | null> {
+  const res = await page.request
+    .get(`${baseUrl}/api/orders?courseId=${encodeURIComponent(courseId)}&limit=50`)
+    .catch(() => null);
+  if (!res?.ok()) return null;
+  const json = await res.json().catch(() => null);
+  const orders = Array.isArray(json?.data) ? json.data : [];
+  return orders.find((order: any) => {
+    const status = String(order?.status || '').toUpperCase();
+    return order?.courseId === courseId && status !== 'CANCELLED' && status !== 'FAILED';
+  }) || null;
+}
+
 async function getRoomSceneState(page: Page): Promise<RoomSceneState | null> {
   return page.evaluate(() => {
     const room = (window as any).agoraRoom;
@@ -122,6 +182,47 @@ async function getRoomSceneState(page: Page): Promise<RoomSceneState | null> {
       sceneCount: Array.isArray(sceneState.scenes) ? sceneState.scenes.length : 0,
     };
   });
+}
+
+async function getPdfRuntimeSnapshot(page: Page): Promise<any> {
+  return page.evaluate(() => {
+    const w = window as any;
+    const room = w.agoraRoom;
+    const sceneState = room?.state?.sceneState;
+    const canvases = Array.from(document.querySelectorAll('canvas')).map((canvas) => {
+      const el = canvas as HTMLCanvasElement;
+      const style = getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return {
+        width: el.width,
+        height: el.height,
+        visible: style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0,
+        rect: {
+          x: Math.round(rect.x),
+          y: Math.round(rect.y),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+        },
+      };
+    });
+
+    return {
+      url: location.href,
+      header: document.body.innerText.match(/(TEACHER|STUDENT).{0,140}/)?.[0] || '',
+      whiteboardReady: !!w.__classroom_whiteboard_ready,
+      classroomReady: !!w.__classroom_ready,
+      sdkLoaded: !!w.WhiteWebSdk?.WhiteWebSdk,
+      roomReady: !!room,
+      roomUuid: room?.uuid || room?.roomUuid || room?.state?.uuid || null,
+      scenePath: String(sceneState?.scenePath || ''),
+      sceneIndex: typeof sceneState?.index === 'number' ? sceneState.index : null,
+      sceneCount: Array.isArray(sceneState?.scenes) ? sceneState.scenes.length : null,
+      sceneNames: Array.isArray(sceneState?.scenes)
+        ? sceneState.scenes.slice(0, 8).map((scene: any) => scene?.name || scene?.ppt?.src || '')
+        : [],
+      canvases,
+    };
+  }).catch((error) => ({ error: String((error as Error).message || error) }));
 }
 
 /**
@@ -190,12 +291,17 @@ async function setTeacherSceneIndex(page: Page, targetIndex: number): Promise<vo
 }
 
 async function waitForSceneIndex(page: Page, expectedIndex: number, timeoutMs = 30000): Promise<void> {
+  let checks = 0;
   await expect
     .poll(async () => {
+      checks++;
       const state = await getRoomSceneState(page);
       return state?.index ?? -1;
     }, { timeout: timeoutMs, intervals: [500, 1000] })
     .toBe(expectedIndex);
+  if (checks > 3) {
+    console.log(`   ✅ Scene index ${expectedIndex} observed after ${checks} checks`);
+  }
 }
 
 interface GroupResult {
@@ -239,9 +345,28 @@ function printStressSummary(results: GroupResult[], groupCount: number): void {
 test.describe(`[stress-pdf-${GROUP_COUNT}x] Concurrent PDF Sync — ${GROUP_COUNT} Groups`, () => {
   test.setTimeout(TEST_TIMEOUT_MS);
 
-  test(`${GROUP_COUNT} concurrent groups: enrollment → PDF upload → classroom entry → PDF sync`, async ({ browser }) => {
+  test(`${GROUP_COUNT} concurrent groups: enrollment → PDF upload → classroom entry → PDF sync`, async () => {
+    const isHeadless = resolveHeadless(GROUP_COUNT >= 5);
+    const runId = `pdf-stress-${GROUP_COUNT}x-${Date.now()}`;
+    console.log(`🤖 Launching browser in ${isHeadless ? 'HEADLESS + 🎬 Recording' : 'HEADED'} mode (HEADLESS=${process.env.HEADLESS ?? 'auto'}, GROUP_COUNT=${GROUP_COUNT})`);
+    if (isHeadless) {
+      console.log(`   📹 Recordings → ${RECORDINGS_ROOT}\\${runId}`);
+      console.log(`   ℹ️  View trace after test: npx playwright show-trace "<path>.zip"`);
+    }
+    const browser = await chromium.launch({
+      headless: isHeadless,
+      args: [
+        '--disable-blink-features=AutomationControlled',
+        '--disable-gpu',
+        '--no-first-run',
+        '--use-fake-ui-for-media-stream',
+        '--use-fake-device-for-media-stream'
+      ]
+    });
+
+    try {
     const config = getTestConfig();
-    const timestamp = Date.now();
+    const timestamp = getStressTimestamp();
     const groupConfigs = getStressGroupConfigs(GROUP_COUNT, timestamp);
     const pdfBuffer = loadStaticPdf(STATIC_PDFS.multiPage);
     const pdfName = 'test-multi-page.pdf';
@@ -258,6 +383,19 @@ test.describe(`[stress-pdf-${GROUP_COUNT}x] Concurrent PDF Sync — ${GROUP_COUN
     console.log(`\n${'═'.repeat(75)}`);
     console.log(`  PDF Sync Stress Test — ${GROUP_COUNT} Concurrent Groups`);
     console.log(`  Success threshold: ${Math.round(SUCCESS_THRESHOLD * 100)}%`);
+    console.log(`  Course duration: ${STRESS_COURSE_DURATION_MINUTES} minutes`);
+    console.log(`  Run timestamp: ${timestamp}`);
+    console.log(`  Reuse setup: ${REUSE_STRESS_SETUP ? 'yes' : 'no'}`);
+    console.log(`  Reuse accounts: ${REUSE_ACCOUNTS ? 'yes' : 'no'}`);
+    console.log(`  Reuse points: ${REUSE_POINTS ? 'yes' : 'no'}`);
+    console.log(`  Reuse courses: ${REUSE_COURSES ? 'yes' : 'no'}`);
+    console.log(`  Reuse approvals: ${REUSE_APPROVALS ? 'yes' : 'no'}`);
+    console.log(`  Reuse enrollments: ${REUSE_ENROLLMENTS ? 'yes' : 'no'}`);
+    console.log(`  Reuse PDF uploads: ${REUSE_PDF_UPLOADS ? 'yes' : 'no'}`);
+    console.log(`  Enrollment propagation wait: ${process.env.ENROLLMENT_PROPAGATION_WAIT_MS ?? '8000'}ms`);
+    if ((REUSE_STRESS_SETUP || process.env.STRESS_RUN_TS) && !process.env.SKIP_CLEANUP) {
+      console.warn('  ⚠️ Reusable setup requested without SKIP_CLEANUP=1; generated data will be deleted at cleanup.');
+    }
     console.log(`${'═'.repeat(75)}`);
     groupConfigs.forEach(g => console.log(`  [${g.groupId}] teacher=${g.teacherEmail} course=${g.courseId}`));
 
@@ -265,21 +403,29 @@ test.describe(`[stress-pdf-${GROUP_COUNT}x] Concurrent PDF Sync — ${GROUP_COUN
     // Runs before any course creation so all accounts have sufficient
     // points when the enrollment subprocess later checks balance.
     console.log('\n📍 Phase 0: Register student accounts and pre-grant points');
-    const preSetupCtx = await browser.newContext();
-    const preSetupPage = await preSetupCtx.newPage();
-    for (const g of groupConfigs) {
-      await registerStudentIfNeeded(preSetupPage, g.studentEmail, config.studentPassword, config.bypassSecret);
+    if (REUSE_ACCOUNTS) {
+      console.log('   ♻️ Reusing existing student accounts (REUSE_ACCOUNTS=1)');
+    } else {
+      const preSetupCtx = await browser.newContext();
+      const preSetupPage = await preSetupCtx.newPage();
+      for (const g of groupConfigs) {
+        await registerStudentIfNeeded(preSetupPage, g.studentEmail, config.studentPassword, config.bypassSecret);
+      }
+      await preSetupCtx.close();
     }
-    await preSetupCtx.close();
 
-    const preAdminCtx = await browser.newContext();
-    const preAdminPage = await preAdminCtx.newPage();
-    await injectDeviceCheckBypass(preAdminPage);
-    await autoLogin(preAdminPage, ADMIN_EMAIL, ADMIN_PASSWORD, config.bypassSecret);
-    for (const g of groupConfigs) {
-      await grantPointsViaAdmin(preAdminPage, g.studentEmail, 9999, config.bypassSecret);
+    if (REUSE_POINTS) {
+      console.log('   ♻️ Reusing existing point balances (REUSE_POINTS=1)');
+    } else {
+      const preAdminCtx = await browser.newContext();
+      const preAdminPage = await preAdminCtx.newPage();
+      await injectDeviceCheckBypass(preAdminPage);
+      await autoLogin(preAdminPage, ADMIN_EMAIL, ADMIN_PASSWORD, config.bypassSecret);
+      for (const g of groupConfigs) {
+        await grantPointsViaAdmin(preAdminPage, g.studentEmail, 9999, config.bypassSecret);
+      }
+      await preAdminCtx.close();
     }
-    await preAdminCtx.close();
 
     // ── Phase 1: Course Creation (sequential) ────────────────────────
     console.log('\n📍 Phase 1: Course Creation (sequential)');
@@ -289,9 +435,16 @@ test.describe(`[stress-pdf-${GROUP_COUNT}x] Concurrent PDF Sync — ${GROUP_COUN
       try {
         const ctx = await browser.newContext();
         const page = await ctx.newPage();
-        await createCourseAsTeacherWithDuration(page, g.courseId, g.teacherEmail, g.teacherPassword, config.bypassSecret, 10);
+        const existingCourse = REUSE_COURSES
+          ? await fetchCourseById(page, config.baseUrl, g.courseId)
+          : null;
+        if (existingCourse) {
+          console.log(`   ♻️ [${g.groupId}] Reusing existing course ${g.courseId} (status=${existingCourse.status || 'unknown'})`);
+        } else {
+          await createCourseAsTeacherWithDuration(page, g.courseId, g.teacherEmail, g.teacherPassword, config.bypassSecret, STRESS_COURSE_DURATION_MINUTES);
+        }
         await ctx.close();
-        console.log(`   ✅ [${g.groupId}] Course created`);
+        console.log(`   ✅ [${g.groupId}] Course ready`);
       } catch (err) {
         r.error = `Course creation: ${(err as Error).message}`;
         r.phase = 'course_creation';
@@ -300,14 +453,18 @@ test.describe(`[stress-pdf-${GROUP_COUNT}x] Concurrent PDF Sync — ${GROUP_COUN
     }
 
     // Grant points to teacher accounts now that they exist (created during Phase 1)
-    const teacherPointsCtx = await browser.newContext();
-    const teacherPointsPage = await teacherPointsCtx.newPage();
-    await injectDeviceCheckBypass(teacherPointsPage);
-    await autoLogin(teacherPointsPage, ADMIN_EMAIL, ADMIN_PASSWORD, config.bypassSecret);
-    for (const g of groupConfigs) {
-      await grantPointsViaAdmin(teacherPointsPage, g.teacherEmail, 9999, config.bypassSecret);
+    if (REUSE_POINTS) {
+      console.log('   ♻️ Reusing existing teacher point balances (REUSE_POINTS=1)');
+    } else {
+      const teacherPointsCtx = await browser.newContext();
+      const teacherPointsPage = await teacherPointsCtx.newPage();
+      await injectDeviceCheckBypass(teacherPointsPage);
+      await autoLogin(teacherPointsPage, ADMIN_EMAIL, ADMIN_PASSWORD, config.bypassSecret);
+      for (const g of groupConfigs) {
+        await grantPointsViaAdmin(teacherPointsPage, g.teacherEmail, 9999, config.bypassSecret);
+      }
+      await teacherPointsCtx.close();
     }
-    await teacherPointsCtx.close();
 
     // ── Phase 2: Admin Approval (sequential admin session) ───────────
     console.log('\n📍 Phase 2: Admin Approval');
@@ -318,6 +475,20 @@ test.describe(`[stress-pdf-${GROUP_COUNT}x] Concurrent PDF Sync — ${GROUP_COUN
       const r = results[i];
       if (r.phase) continue;
       try {
+        if (REUSE_APPROVALS) {
+          const existingCourse = await fetchCourseById(adminPage, config.baseUrl, g.courseId);
+          const status = String(existingCourse?.status || '').toLowerCase();
+          const stillPending =
+            status.includes('pending') ||
+            status.includes('draft') ||
+            status.includes('review') ||
+            status.includes('待') ||
+            status.includes('審');
+          if (existingCourse && !stillPending) {
+            console.log(`   ♻️ [${g.groupId}] Reusing existing approval status (${existingCourse.status || 'unknown'})`);
+            continue;
+          }
+        }
         await adminApproveCourse(adminPage, g.courseId, ADMIN_EMAIL, ADMIN_PASSWORD, config.bypassSecret);
         console.log(`   ✅ [${g.groupId}] Approved`);
       } catch (err) {
@@ -330,12 +501,21 @@ test.describe(`[stress-pdf-${GROUP_COUNT}x] Concurrent PDF Sync — ${GROUP_COUN
 
     // ── Phase 3: Student Enrollment (sequential) ─────────────────────
     console.log('\n📍 Phase 3: Student Enrollment (sequential)');
+    const enrollmentCheckCtx = await browser.newContext();
+    const enrollmentCheckPage = await enrollmentCheckCtx.newPage();
     for (let i = 0; i < groupConfigs.length; i++) {
       const g = groupConfigs[i];
       const r = results[i];
       if (r.phase) continue;
       try {
-        await runEnrollmentFlow(g.courseId, g.teacherEmail, g.studentEmail);
+        const existingOrder = REUSE_ENROLLMENTS
+          ? await findActiveOrderForCourse(enrollmentCheckPage, config.baseUrl, g.courseId)
+          : null;
+        if (existingOrder) {
+          console.log(`   ♻️ [${g.groupId}] Reusing existing active order ${existingOrder.orderId || existingOrder.id || '(unknown)'}`);
+        } else {
+          await runEnrollmentFlow(g.courseId, g.teacherEmail, g.studentEmail);
+        }
         r.enrolled = true;
         console.log(`   ✅ [${g.groupId}] Enrolled`);
       } catch (err) {
@@ -344,6 +524,7 @@ test.describe(`[stress-pdf-${GROUP_COUNT}x] Concurrent PDF Sync — ${GROUP_COUN
         console.error(`   ❌ [${g.groupId}] ${r.error}`);
       }
     }
+    await enrollmentCheckCtx.close();
 
     // ── Phase 4: Parallel Login and Navigation ───────────────────────
     console.log('\n📍 Phase 4: Parallel Login and Navigation');
@@ -356,14 +537,24 @@ test.describe(`[stress-pdf-${GROUP_COUNT}x] Concurrent PDF Sync — ${GROUP_COUN
     }
 
     const sessions: GroupSession[] = [];
+    // Track recording finalisers (teacher + student per group)
+    const sessionFinalisers: Array<{
+      idx: number;
+      finaliseTeacher: (passed: boolean) => Promise<void>;
+      finaliseStudent: (passed: boolean) => Promise<void>;
+    }> = [];
+
     for (let i = 0; i < groupConfigs.length; i++) {
       if (!results[i].enrolled) continue;
-      const teacherCtx = await browser.newContext({ permissions: ['camera', 'microphone'] });
-      const studentCtx = await browser.newContext({ permissions: ['camera', 'microphone'] });
-      
-      const teacherPage = await teacherCtx.newPage();
-      const studentPage = await studentCtx.newPage();
-      
+      const g = groupConfigs[i];
+      const runDir = buildRunDir(runId, g.groupId);
+
+      const teacherRec = await createRecordedContext(browser, runDir, 'teacher', isHeadless, { permissions: ['camera', 'microphone'] });
+      const studentRec = await createRecordedContext(browser, runDir, 'student', isHeadless, { permissions: ['camera', 'microphone'] });
+
+      const teacherPage = teacherRec.page;
+      const studentPage = studentRec.page;
+
       // Capture browser logs for diagnostic
       teacherPage.on('console', msg => {
         if (msg.text().includes('[ClientClassroom]') || msg.text().includes('[BoardImpl]') || msg.type() === 'error') {
@@ -378,10 +569,15 @@ test.describe(`[stress-pdf-${GROUP_COUNT}x] Concurrent PDF Sync — ${GROUP_COUN
 
       sessions.push({
         idx: i,
-        teacherCtx,
+        teacherCtx: teacherRec.ctx,
         teacherPage,
-        studentCtx,
+        studentCtx: studentRec.ctx,
         studentPage,
+      });
+      sessionFinalisers.push({
+        idx: i,
+        finaliseTeacher: teacherRec.finalise,
+        finaliseStudent: studentRec.finalise,
       });
     }
 
@@ -416,6 +612,16 @@ test.describe(`[stress-pdf-${GROUP_COUNT}x] Concurrent PDF Sync — ${GROUP_COUN
       if (r.phase) return;
 
       try {
+        const reusableSessionKey = `classroom_session_ready_${g.courseId}`;
+        if (REUSE_PDF_UPLOADS) {
+          const existingMetadata = await waitForPdfMetadata(s.teacherPage, config.baseUrl, reusableSessionKey, 1);
+          if (existingMetadata?.found) {
+            r.uploaded = true;
+            console.log(`   ♻️ [${g.groupId}] Reusing existing PDF metadata (${reusableSessionKey})`);
+            return;
+          }
+          console.log(`   ℹ️ [${g.groupId}] No reusable PDF metadata found; uploading PDF`);
+        }
         const sessionKey = await uploadPdfOnWaitPage(s.teacherPage, pdfName, pdfBuffer);
         const metadata = await waitForPdfMetadata(s.teacherPage, config.baseUrl, sessionKey);
         expect(metadata?.found).toBe(true);
@@ -503,6 +709,16 @@ test.describe(`[stress-pdf-${GROUP_COUNT}x] Concurrent PDF Sync — ${GROUP_COUN
         r.synced = true;
         console.log(`   ✅ [${g.groupId}] PDF Synchronization verified successfully`);
       } catch (err) {
+        const [teacherSnapshot, studentSnapshot] = await Promise.all([
+          getPdfRuntimeSnapshot(s.teacherPage),
+          getPdfRuntimeSnapshot(s.studentPage),
+        ]);
+        console.log(`   🔎 [${g.groupId}] Teacher PDF snapshot: ${JSON.stringify(teacherSnapshot)}`);
+        console.log(`   🔎 [${g.groupId}] Student PDF snapshot: ${JSON.stringify(studentSnapshot)}`);
+        await Promise.all([
+          s.teacherPage.screenshot({ path: `test-results/${g.groupId}-teacher-pdf-sync-fail.png`, fullPage: true }).catch(() => {}),
+          s.studentPage.screenshot({ path: `test-results/${g.groupId}-student-pdf-sync-fail.png`, fullPage: true }).catch(() => {}),
+        ]);
         r.error = `PDF Sync verification: ${(err as Error).message}`;
         r.phase = 'pdf_sync_verify';
         console.error(`   ❌ [${g.groupId}] ${r.error}`);
@@ -512,9 +728,17 @@ test.describe(`[stress-pdf-${GROUP_COUNT}x] Concurrent PDF Sync — ${GROUP_COUN
     // ── Cleanup ──────────────────────────────────────────────────────
     console.log('\n📍 Cleanup: Closing browser sessions');
     for (const s of sessions) {
-      await s.teacherCtx.close().catch(() => {});
-      await s.studentCtx.close().catch(() => {});
+      await s.teacherPage.close().catch(() => {});
+      await s.studentPage.close().catch(() => {});
     }
+    // Finalise recordings (saves trace zip + webm video) — no-op when headed
+    const finalAssertPassed = results.filter(r => r.synced).length / GROUP_COUNT >= SUCCESS_THRESHOLD;
+    await Promise.allSettled(
+      sessionFinalisers.map(({ idx, finaliseTeacher, finaliseStudent }) => {
+        const passed = finalAssertPassed && results[idx].synced;
+        return Promise.all([finaliseTeacher(passed), finaliseStudent(passed)]);
+      })
+    );
 
     if (!process.env.SKIP_CLEANUP) {
       console.log('📍 Cleanup: Deleting courses and orders');
@@ -543,5 +767,13 @@ test.describe(`[stress-pdf-${GROUP_COUNT}x] Concurrent PDF Sync — ${GROUP_COUN
       achievedRate,
       `PDF Sync stress test failed: ${syncedCount}/${GROUP_COUNT} groups synced (need ${Math.round(SUCCESS_THRESHOLD * 100)}%)`
     ).toBeGreaterThanOrEqual(SUCCESS_THRESHOLD);
+
+    // Print recording paths summary (only meaningful in headless mode)
+    if (isHeadless) {
+      printRecordingSummary(runId, groupConfigs.map(g => g.groupId));
+    }
+    } finally {
+      await browser.close().catch(() => {});
+    }
   });
 });
