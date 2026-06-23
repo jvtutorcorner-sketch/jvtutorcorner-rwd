@@ -222,9 +222,14 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
                 // Join Netless room with timeout + automatic retry.
                 // Under 5+ concurrent groups, 10+ WebSocket handshakes fire at once;
                 // Netless queues them and late groups exceed the deadline. We:
-                //   1. Raise the deadline to 35 s (was 25 s) to absorb queue delay.
-                //   2. Disconnect any orphaned connection that resolves after timeout.
-                //   3. Retry once after 3 s if the first attempt times out.
+                //   1. Stagger join attempts with random 0–3 s jitter to avoid thundering-herd
+                //      rate-limit ("login too frequent") at Agora/Netless.
+                //   2. Raise the deadline to 35 s (was 25 s) to absorb queue delay.
+                //   3. Disconnect any orphaned connection that resolves after timeout.
+                //   4. Retry once after 3 s if the first attempt times out.
+                const joinJitterMs = Math.random() * 3000;
+                await new Promise<void>(r => { timerIds.add(setTimeout(r, joinJitterMs)); });
+                if (isAborted) return;
                 let room: any = null;
                 const MAX_JOIN_ATTEMPTS = 2;
                 for (let joinAttempt = 0; joinAttempt < MAX_JOIN_ATTEMPTS && !isAborted; joinAttempt++) {

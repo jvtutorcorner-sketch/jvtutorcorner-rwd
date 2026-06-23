@@ -68,7 +68,7 @@ export const SYNC_LATENCY_SLO_MS = parseInt(process.env.SYNC_LATENCY_SLO_MS || '
 export const API_LATENCY_SLO_MS = parseInt(process.env.API_LATENCY_SLO_MS || '3000', 10);
 
 /** Heartbeat poll interval (ms) during long sessions */
-export const HEARTBEAT_INTERVAL_MS = parseInt(process.env.HEARTBEAT_INTERVAL_MS || '30000', 10);
+export const HEARTBEAT_INTERVAL_MS = parseInt(process.env.HEARTBEAT_INTERVAL_MS || '90000', 10);
 
 // ─────────────────────────────────────────────────────────────────────
 // 1. Pre-flight API Health Check
