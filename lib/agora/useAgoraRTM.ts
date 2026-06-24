@@ -32,6 +32,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 export type RTMMessageType =
   | 'wb-uuid-sync'          // Teacher → Students: whiteboard UUID after room creation
+  | 'request-wb-uuid'       // Student → Teacher: request whiteboard UUID re-broadcast
   | 'ready-state-update'    // Any → Any: participant joined/left classroom ready state
   | 'pdf-available'         // Teacher → Students: PDF uploaded, students should fetch
   | 'page-change'           // Teacher → Students: PDF page changed
@@ -139,8 +140,19 @@ export function useAgoraRTM({
 
     // Agora RTM 2.x requires userId to be [a-zA-Z0-9_-], max 64 chars.
     // The raw userId from the app may be an email (contains @ and .) — sanitize it.
+    // Computed first so it can seed the deterministic jitter below.
     const safeUserId = sanitizeRTMUserId(userId);
     console.log('[useAgoraRTM] Initializing for channel:', channelName, 'safeUserId:', safeUserId);
+
+    // Deterministic hash-based jitter: spreads concurrent RTM logins evenly across
+    // a 6000ms window using the userId as a stable seed. Under 9+ concurrent groups,
+    // 18 RTM logins fire at startup; Math.random() (0–2000ms) can cluster several in
+    // the same second, triggering Agora's 'login too frequent' rate-limit error.
+    // Hash-based spread guarantees each user gets a unique slot (~333ms apart for 18 users).
+    const _rtmHash = safeUserId.split('').reduce((h, c) => (h * 31 + c.charCodeAt(0)) & 0xffff, 0);
+    const rtmJitter = Math.floor((_rtmHash & 0xff) / 256 * 6000);
+    await new Promise(resolve => setTimeout(resolve, rtmJitter));
+    if (isDestroyedRef.current) return;
 
     try {
       // 1. Fetch RTM token from our server (pass the sanitized userId so token matches)

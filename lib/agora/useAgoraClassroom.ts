@@ -195,6 +195,10 @@ export function useAgoraClassroom({
       setLoading(true);
       setError(null);
 
+      // Add a randomized jitter (0 - 1500ms) to stagger concurrent token API requests and Agora WebSocket logins
+      const joinJitter = Math.floor(Math.random() * 1500);
+      await new Promise(resolve => setTimeout(resolve, joinJitter));
+
       // 老師固定 uid=1；學生使用大範圍隨機值，降低 5-10 組並發時的 UID 碰撞機率
       // 範圍 10000-999999 讓碰撞概率從 1/9000 降低到 1/990000
 

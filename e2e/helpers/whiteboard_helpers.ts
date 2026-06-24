@@ -833,9 +833,9 @@ export async function drawOnWhiteboard(page: Page): Promise<void> {
     ['agoraRoom', () => !!(window as any).agoraRoom],
   ] as [string, () => boolean][]) {
     try {
-      await page.waitForFunction(fn, { timeout: 30000 });
+      await page.waitForFunction(fn, { timeout: 60000 });
     } catch (e) {
-      throw new Error(`❌ Agora whiteboard ${label} not ready within 30 s`);
+      throw new Error(`❌ Agora whiteboard ${label} not ready within 60 s`);
     }
   }
 

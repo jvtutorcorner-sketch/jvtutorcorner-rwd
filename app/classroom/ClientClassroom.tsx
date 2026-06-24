@@ -1618,7 +1618,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     // Polling fallback for production where SSE is disabled.
     // 2s interval: fast enough to detect both-present within 2 seconds of the second user arriving.
     let pollingInterval: any = null;
-    if (sessionReadyKey) {
+    if (sessionReadyKey && !joined) {
       pollingInterval = setInterval(async () => {
         try {
           const r = await fetch(`/api/classroom/ready?uuid=${encodeURIComponent(sessionReadyKey)}`, { cache: 'no-store' });
@@ -1645,7 +1645,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       if (pollingInterval) clearInterval(pollingInterval);
       try { es?.close(); } catch (e) { }
     };
-  }, [sessionReadyKey]);
+  }, [sessionReadyKey, joined]);
 
   // Report current user as ready to the server when entering the classroom page
   // This ensures cross-device synchronization works even if localStorage is not shared.
@@ -1779,17 +1779,21 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       }
     };
 
-    reportReady();
+    let interval: any = null;
+    let jitterTimeout: any = null;
 
-    // Periodic heartbeat to keep the ready status alive while on this page
-    // 15s interval: ready-API polling already runs every 8s for canJoin; heartbeat is for presence
-    // and revenue-protection absence detection (3-min grace period → 15s is responsive enough)
-    const interval = setInterval(() => {
-      console.log(`[ClientClassroom] Heartbeat pulse for ${sessionReadyKey}...`);
+    // Add a randomized initial jitter (0 to 3000ms) to stagger API requests from multiple concurrent users
+    const jitter = Math.floor(Math.random() * 3000);
+    jitterTimeout = setTimeout(() => {
       reportReady();
-    }, 15000);
+      interval = setInterval(() => {
+        console.log(`[ClientClassroom] Heartbeat pulse for ${sessionReadyKey}...`);
+        reportReady();
+      }, 15000);
+    }, jitter);
     return () => {
-      clearInterval(interval);
+      if (jitterTimeout) clearTimeout(jitterTimeout);
+      if (interval) clearInterval(interval);
       reportedRef.current = false;
       // Optional: Mark as not present when leaving the page (best-effort)
       const roleName = (urlRole === 'teacher' || computedRole === 'teacher') ? 'teacher' : 'student';

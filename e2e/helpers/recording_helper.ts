@@ -5,8 +5,8 @@
  * when running classroom stress tests in headless mode.
  *
  * Storage Strategy:
- *   - Primary  : D:\playwright-recordings\<runId>\
- *   - Fallback : C:\playwright-recordings\<runId>\
+ *   - Env override: PLAYWRIGHT_RECORDINGS_ROOT
+ *   - Default     : <repo>/test-results/playwright-recordings/<runId>/
  *
  * Usage (in a test):
  *   const rec = await RecordingSession.create(browser, groupId, runId, isHeadless);
@@ -23,16 +23,9 @@ import type { Browser, BrowserContext, Page } from '@playwright/test';
 // ─────────────────────────────────────────────────────────────────────────────
 
 function getRecordingsRoot(): string {
-  const dPath = 'D:\\playwright-recordings';
-  const cPath = 'C:\\playwright-recordings';
-
-  try {
-    // Check D:\ is accessible by testing the root
-    fs.accessSync('D:\\', fs.constants.F_OK);
-    return dPath;
-  } catch {
-    return cPath;
-  }
+  return process.env.PLAYWRIGHT_RECORDINGS_ROOT
+    ? path.resolve(process.env.PLAYWRIGHT_RECORDINGS_ROOT)
+    : path.resolve(process.cwd(), 'test-results', 'playwright-recordings');
 }
 
 export const RECORDINGS_ROOT = getRecordingsRoot();

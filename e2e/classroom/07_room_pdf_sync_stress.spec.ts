@@ -42,6 +42,8 @@ import {
   STATIC_PDFS,
   registerStudentIfNeeded,
   grantPointsViaAdmin,
+  drawOnWhiteboard,
+  hasDrawingContent,
 } from '../helpers/whiteboard_helpers';
 import { getTestConfig, getStressGroupConfigs, ADMIN_EMAIL, ADMIN_PASSWORD } from '../test_data/whiteboard_test_data';
 
@@ -56,6 +58,8 @@ const REUSE_COURSES = REUSE_STRESS_SETUP || process.env.REUSE_COURSES === '1';
 const REUSE_APPROVALS = REUSE_STRESS_SETUP || process.env.REUSE_APPROVALS === '1';
 const REUSE_ENROLLMENTS = REUSE_STRESS_SETUP || process.env.REUSE_ENROLLMENTS === '1';
 const REUSE_PDF_UPLOADS = REUSE_STRESS_SETUP || process.env.REUSE_PDF_UPLOADS === '1';
+const NO_PDF_MODE = process.env.NO_PDF_MODE === '1';
+const NO_PDF_STABILITY_MS = parseInt(process.env.NO_PDF_STABILITY_MS || '60000', 10);
 
 function resolveHeadless(defaultValue: boolean): boolean {
   const raw = process.env.HEADLESS;
@@ -315,39 +319,127 @@ interface GroupResult {
   phase?: string;
 }
 
-function printStressSummary(results: GroupResult[], groupCount: number): void {
+function printStressSummary(results: GroupResult[], groupCount: number, noPdfMode = false): void {
   const enrolled = results.filter(r => r.enrolled).length;
   const uploaded = results.filter(r => r.uploaded).length;
   const entered = results.filter(r => r.entered).length;
   const synced = results.filter(r => r.synced).length;
 
   console.log(`\n${'─'.repeat(75)}`);
-  console.log(`📊 PDF Sync Stress Results — ${groupCount} Concurrent Groups`);
+  console.log(`📊 ${noPdfMode ? 'No-PDF Classroom Stress Results' : 'PDF Sync Stress Results'} — ${groupCount} Concurrent Groups`);
   console.log(`${'─'.repeat(75)}`);
   console.log(`  Enrolled:     ${enrolled}/${groupCount} (${Math.round(enrolled / groupCount * 100)}%)`);
-  console.log(`  PDF Uploaded: ${uploaded}/${groupCount} (${Math.round(uploaded / groupCount * 100)}%)`);
+  if (!noPdfMode) {
+    console.log(`  PDF Uploaded: ${uploaded}/${groupCount} (${Math.round(uploaded / groupCount * 100)}%)`);
+  }
   console.log(`  Entered:      ${entered}/${groupCount} (${Math.round(entered / groupCount * 100)}%)`);
-  console.log(`  PDF Synced:   ${synced}/${groupCount} (${Math.round(synced / groupCount * 100)}%)`);
+  console.log(`  ${noPdfMode ? 'Stable' : 'PDF Synced'}:   ${synced}/${groupCount} (${Math.round(synced / groupCount * 100)}%)`);
   console.log(`${'─'.repeat(75)}`);
   for (const r of results) {
     const statusIcon = r.synced ? '✅' : (r.entered ? '⚠️' : '❌');
     const failPhase = r.phase ? ` [failed at: ${r.phase}]` : '';
-    console.log(`  ${statusIcon} [${r.groupId}] enrolled=${r.enrolled} uploaded=${r.uploaded} entered=${r.entered} sync=${r.synced}${failPhase}`);
+    const uploadPart = noPdfMode ? '' : ` uploaded=${r.uploaded}`;
+    const syncLabel = noPdfMode ? 'stable' : 'sync';
+    console.log(`  ${statusIcon} [${r.groupId}] enrolled=${r.enrolled}${uploadPart} entered=${r.entered} ${syncLabel}=${r.synced}${failPhase}`);
     if (r.error) console.log(`       ↳ ${r.error}`);
   }
   console.log(`${'─'.repeat(75)}\n`);
+}
+
+async function verifyNoPdfRoomStability(
+  sessions: Array<{ idx: number; teacherPage: Page; studentPage: Page }>,
+  results: GroupResult[],
+): Promise<void> {
+  console.log(`\n📍 Phase 7: No-PDF Room Stability (${NO_PDF_STABILITY_MS}ms)`);
+
+  await Promise.allSettled(sessions.map(async s => {
+    const r = results[s.idx];
+    if (!r.entered || r.phase) return;
+
+    try {
+      await Promise.all([
+        s.teacherPage.waitForFunction(() => location.pathname.includes('/classroom/room') && document.readyState === 'complete', { timeout: 30000 }),
+        s.studentPage.waitForFunction(() => location.pathname.includes('/classroom/room') && document.readyState === 'complete', { timeout: 30000 }),
+      ]);
+    } catch (err) {
+      r.error = `No-PDF room pre-stability: ${(err as Error).message}`;
+      r.phase = 'no_pdf_stability';
+      r.synced = false;
+      console.error(`   ❌ [${r.groupId}] ${r.error}`);
+    }
+  }));
+
+  await new Promise(resolve => setTimeout(resolve, NO_PDF_STABILITY_MS));
+
+  await Promise.allSettled(sessions.map(async s => {
+    const r = results[s.idx];
+    if (!r.entered || r.phase) return;
+
+    try {
+      if (s.teacherPage.isClosed()) throw new Error(`teacher page closed for ${r.groupId}`);
+      if (s.studentPage.isClosed()) throw new Error(`student page closed for ${r.groupId}`);
+      await Promise.all([
+        expect(s.teacherPage).toHaveURL(/\/classroom\/room/, { timeout: 10000 }),
+        expect(s.studentPage).toHaveURL(/\/classroom\/room/, { timeout: 10000 }),
+      ]);
+      console.log(`   ✅ [${r.groupId}] No-PDF room stayed open`);
+    } catch (err) {
+      r.error = `No-PDF room stability: ${(err as Error).message}`;
+      r.phase = 'no_pdf_stability';
+      r.synced = false;
+      console.error(`   ❌ [${r.groupId}] ${r.error}`);
+    }
+  }));
+}
+
+async function verifyNoPdfDrawSync(
+  sessions: Array<{ idx: number; teacherPage: Page; studentPage: Page }>,
+  results: GroupResult[],
+): Promise<void> {
+  console.log('\n📍 Phase 8: No-PDF Whiteboard Draw Sync');
+
+  await Promise.allSettled(sessions.map(async s => {
+    const r = results[s.idx];
+    if (!r.entered || r.phase) return;
+
+    try {
+      await drawOnWhiteboard(s.teacherPage);
+
+      const teacherHasContent = await hasDrawingContent(s.teacherPage);
+      expect(teacherHasContent, `Teacher canvas empty after drawing for ${r.groupId}`).toBe(true);
+
+      await expect
+        .poll(async () => hasDrawingContent(s.studentPage), {
+          timeout: 45000,
+          intervals: [500, 1000, 2000],
+          message: `Student canvas did not receive drawing for ${r.groupId}`,
+        })
+        .toBe(true);
+
+      r.synced = true;
+      console.log(`   ✅ [${r.groupId}] No-PDF drawing synchronized`);
+    } catch (err) {
+      r.error = `No-PDF draw sync: ${(err as Error).message}`;
+      r.phase = 'no_pdf_draw_sync';
+      console.error(`   ❌ [${r.groupId}] ${r.error}`);
+      await Promise.all([
+        s.teacherPage.screenshot({ path: `test-results/${r.groupId}-teacher-no-pdf-draw-fail.png`, fullPage: true }).catch(() => {}),
+        s.studentPage.screenshot({ path: `test-results/${r.groupId}-student-no-pdf-draw-fail.png`, fullPage: true }).catch(() => {}),
+      ]);
+    }
+  }));
 }
 
 // ─────────────────────────────────────────────────────────────────────
 // Test Suite
 // ─────────────────────────────────────────────────────────────────────
 
-test.describe(`[stress-pdf-${GROUP_COUNT}x] Concurrent PDF Sync — ${GROUP_COUNT} Groups`, () => {
+test.describe(`[stress-${NO_PDF_MODE ? 'no-pdf' : 'pdf'}-${GROUP_COUNT}x] Concurrent Classroom — ${GROUP_COUNT} Groups`, () => {
   test.setTimeout(TEST_TIMEOUT_MS);
 
-  test(`${GROUP_COUNT} concurrent groups: enrollment → PDF upload → classroom entry → PDF sync`, async () => {
+  test(`${GROUP_COUNT} concurrent groups: enrollment → ${NO_PDF_MODE ? 'classroom entry → no-PDF stability' : 'PDF upload → classroom entry → PDF sync'}`, async () => {
     const isHeadless = resolveHeadless(GROUP_COUNT >= 5);
-    const runId = `pdf-stress-${GROUP_COUNT}x-${Date.now()}`;
+    const runId = `${NO_PDF_MODE ? 'no-pdf-stress' : 'pdf-stress'}-${GROUP_COUNT}x-${Date.now()}`;
     console.log(`🤖 Launching browser in ${isHeadless ? 'HEADLESS + 🎬 Recording' : 'HEADED'} mode (HEADLESS=${process.env.HEADLESS ?? 'auto'}, GROUP_COUNT=${GROUP_COUNT})`);
     if (isHeadless) {
       console.log(`   📹 Recordings → ${RECORDINGS_ROOT}\\${runId}`);
@@ -381,9 +473,11 @@ test.describe(`[stress-pdf-${GROUP_COUNT}x] Concurrent PDF Sync — ${GROUP_COUN
     }));
 
     console.log(`\n${'═'.repeat(75)}`);
-    console.log(`  PDF Sync Stress Test — ${GROUP_COUNT} Concurrent Groups`);
+    console.log(`  ${NO_PDF_MODE ? 'No-PDF Classroom Stress Test' : 'PDF Sync Stress Test'} — ${GROUP_COUNT} Concurrent Groups`);
     console.log(`  Success threshold: ${Math.round(SUCCESS_THRESHOLD * 100)}%`);
     console.log(`  Course duration: ${STRESS_COURSE_DURATION_MINUTES} minutes`);
+    console.log(`  No-PDF mode: ${NO_PDF_MODE ? 'yes' : 'no'}`);
+    if (NO_PDF_MODE) console.log(`  No-PDF stability wait: ${NO_PDF_STABILITY_MS}ms`);
     console.log(`  Run timestamp: ${timestamp}`);
     console.log(`  Reuse setup: ${REUSE_STRESS_SETUP ? 'yes' : 'no'}`);
     console.log(`  Reuse accounts: ${REUSE_ACCOUNTS ? 'yes' : 'no'}`);
@@ -604,35 +698,39 @@ test.describe(`[stress-pdf-${GROUP_COUNT}x] Concurrent PDF Sync — ${GROUP_COUN
       }
     }));
 
-    // ── Phase 5: PDF Upload on Wait Page (Parallel) ──────────────────
-    console.log('\n📍 Phase 5: Parallel PDF Upload on Wait Page');
-    await Promise.allSettled(sessions.map(async s => {
-      const g = groupConfigs[s.idx];
-      const r = results[s.idx];
-      if (r.phase) return;
+    if (NO_PDF_MODE) {
+      console.log('\n📍 Phase 5: Skipped PDF Upload (NO_PDF_MODE=1)');
+    } else {
+      // ── Phase 5: PDF Upload on Wait Page (Parallel) ──────────────────
+      console.log('\n📍 Phase 5: Parallel PDF Upload on Wait Page');
+      await Promise.allSettled(sessions.map(async s => {
+        const g = groupConfigs[s.idx];
+        const r = results[s.idx];
+        if (r.phase) return;
 
-      try {
-        const reusableSessionKey = `classroom_session_ready_${g.courseId}`;
-        if (REUSE_PDF_UPLOADS) {
-          const existingMetadata = await waitForPdfMetadata(s.teacherPage, config.baseUrl, reusableSessionKey, 1);
-          if (existingMetadata?.found) {
-            r.uploaded = true;
-            console.log(`   ♻️ [${g.groupId}] Reusing existing PDF metadata (${reusableSessionKey})`);
-            return;
+        try {
+          const reusableSessionKey = `classroom_session_ready_${g.courseId}`;
+          if (REUSE_PDF_UPLOADS) {
+            const existingMetadata = await waitForPdfMetadata(s.teacherPage, config.baseUrl, reusableSessionKey, 1);
+            if (existingMetadata?.found) {
+              r.uploaded = true;
+              console.log(`   ♻️ [${g.groupId}] Reusing existing PDF metadata (${reusableSessionKey})`);
+              return;
+            }
+            console.log(`   ℹ️ [${g.groupId}] No reusable PDF metadata found; uploading PDF`);
           }
-          console.log(`   ℹ️ [${g.groupId}] No reusable PDF metadata found; uploading PDF`);
+          const sessionKey = await uploadPdfOnWaitPage(s.teacherPage, pdfName, pdfBuffer);
+          const metadata = await waitForPdfMetadata(s.teacherPage, config.baseUrl, sessionKey);
+          expect(metadata?.found).toBe(true);
+          r.uploaded = true;
+          console.log(`   ✅ [${g.groupId}] PDF Uploaded and registered`);
+        } catch (err) {
+          r.error = `PDF Upload: ${(err as Error).message}`;
+          r.phase = 'pdf_upload';
+          console.error(`   ❌ [${g.groupId}] ${r.error}`);
         }
-        const sessionKey = await uploadPdfOnWaitPage(s.teacherPage, pdfName, pdfBuffer);
-        const metadata = await waitForPdfMetadata(s.teacherPage, config.baseUrl, sessionKey);
-        expect(metadata?.found).toBe(true);
-        r.uploaded = true;
-        console.log(`   ✅ [${g.groupId}] PDF Uploaded and registered`);
-      } catch (err) {
-        r.error = `PDF Upload: ${(err as Error).message}`;
-        r.phase = 'pdf_upload';
-        console.error(`   ❌ [${g.groupId}] ${r.error}`);
-      }
-    }));
+      }));
+    }
 
     // ── Phase 6: Enter Classroom (Sequential Ready, Parallel Wait) ────
     console.log('\n📍 Phase 6: Classroom Entry');
@@ -673,57 +771,63 @@ test.describe(`[stress-pdf-${GROUP_COUNT}x] Concurrent PDF Sync — ${GROUP_COUN
       }
     }));
 
-    // ── Phase 7: PDF Sync Verification (Parallel) ────────────────────
-    console.log('\n📍 Phase 7: Parallel PDF Scene Render and Sync Verification');
-    await Promise.allSettled(sessions.map(async s => {
-      const g = groupConfigs[s.idx];
-      const r = results[s.idx];
-      if (!r.entered) return;
+    if (NO_PDF_MODE) {
+      await verifyNoPdfDrawSync(sessions.filter(s => results[s.idx].entered), results);
+      await verifyNoPdfRoomStability(sessions.filter(s => results[s.idx].entered && results[s.idx].synced), results);
+      console.log('   ✅ No-PDF draw sync and room stability checks completed');
+    } else {
+      // ── Phase 7: PDF Sync Verification (Parallel) ────────────────────
+      console.log('\n📍 Phase 7: Parallel PDF Scene Render and Sync Verification');
+      await Promise.allSettled(sessions.map(async s => {
+        const g = groupConfigs[s.idx];
+        const r = results[s.idx];
+        if (!r.entered) return;
 
-      try {
-        const teacherState = await waitForPdfSceneLoaded(s.teacherPage);
-        const studentState = await waitForPdfSceneLoaded(s.studentPage);
+        try {
+          const teacherState = await waitForPdfSceneLoaded(s.teacherPage);
+          const studentState = await waitForPdfSceneLoaded(s.studentPage);
 
-        expect(teacherState.scenePath).toContain('/pdf/');
-        expect(studentState.scenePath).toContain('/pdf/');
-        expect(teacherState.index).toBe(0);
-        expect(studentState.index).toBe(0);
-        expect(teacherState.sceneCount).toBeGreaterThanOrEqual(3);
-        expect(studentState.sceneCount).toBeGreaterThanOrEqual(3);
+          expect(teacherState.scenePath).toContain('/pdf/');
+          expect(studentState.scenePath).toContain('/pdf/');
+          expect(teacherState.index).toBe(0);
+          expect(studentState.index).toBe(0);
+          expect(teacherState.sceneCount).toBeGreaterThanOrEqual(3);
+          expect(studentState.sceneCount).toBeGreaterThanOrEqual(3);
 
-        // Teacher switches to Page 2 (index 1)
-        await setTeacherSceneIndex(s.teacherPage, 1);
-        await waitForSceneIndex(s.teacherPage, 1);
-        await waitForSceneIndex(s.studentPage, 1);
+          // Teacher switches to Page 2 (index 1)
+          await setTeacherSceneIndex(s.teacherPage, 1);
+          await waitForSceneIndex(s.teacherPage, 1);
+          await waitForSceneIndex(s.studentPage, 1);
 
-        // Teacher switches to Page 3 (index 2)
-        await setTeacherSceneIndex(s.teacherPage, 2);
-        await waitForSceneIndex(s.teacherPage, 2);
-        await waitForSceneIndex(s.studentPage, 2);
+          // Teacher switches to Page 3 (index 2)
+          await setTeacherSceneIndex(s.teacherPage, 2);
+          await waitForSceneIndex(s.teacherPage, 2);
+          await waitForSceneIndex(s.studentPage, 2);
 
-        // Teacher switches back to Page 1 (index 0)
-        await setTeacherSceneIndex(s.teacherPage, 0);
-        await waitForSceneIndex(s.teacherPage, 0);
-        await waitForSceneIndex(s.studentPage, 0);
+          // Teacher switches back to Page 1 (index 0)
+          await setTeacherSceneIndex(s.teacherPage, 0);
+          await waitForSceneIndex(s.teacherPage, 0);
+          await waitForSceneIndex(s.studentPage, 0);
 
-        r.synced = true;
-        console.log(`   ✅ [${g.groupId}] PDF Synchronization verified successfully`);
-      } catch (err) {
-        const [teacherSnapshot, studentSnapshot] = await Promise.all([
-          getPdfRuntimeSnapshot(s.teacherPage),
-          getPdfRuntimeSnapshot(s.studentPage),
-        ]);
-        console.log(`   🔎 [${g.groupId}] Teacher PDF snapshot: ${JSON.stringify(teacherSnapshot)}`);
-        console.log(`   🔎 [${g.groupId}] Student PDF snapshot: ${JSON.stringify(studentSnapshot)}`);
-        await Promise.all([
-          s.teacherPage.screenshot({ path: `test-results/${g.groupId}-teacher-pdf-sync-fail.png`, fullPage: true }).catch(() => {}),
-          s.studentPage.screenshot({ path: `test-results/${g.groupId}-student-pdf-sync-fail.png`, fullPage: true }).catch(() => {}),
-        ]);
-        r.error = `PDF Sync verification: ${(err as Error).message}`;
-        r.phase = 'pdf_sync_verify';
-        console.error(`   ❌ [${g.groupId}] ${r.error}`);
-      }
-    }));
+          r.synced = true;
+          console.log(`   ✅ [${g.groupId}] PDF Synchronization verified successfully`);
+        } catch (err) {
+          const [teacherSnapshot, studentSnapshot] = await Promise.all([
+            getPdfRuntimeSnapshot(s.teacherPage),
+            getPdfRuntimeSnapshot(s.studentPage),
+          ]);
+          console.log(`   🔎 [${g.groupId}] Teacher PDF snapshot: ${JSON.stringify(teacherSnapshot)}`);
+          console.log(`   🔎 [${g.groupId}] Student PDF snapshot: ${JSON.stringify(studentSnapshot)}`);
+          await Promise.all([
+            s.teacherPage.screenshot({ path: `test-results/${g.groupId}-teacher-pdf-sync-fail.png`, fullPage: true }).catch(() => {}),
+            s.studentPage.screenshot({ path: `test-results/${g.groupId}-student-pdf-sync-fail.png`, fullPage: true }).catch(() => {}),
+          ]);
+          r.error = `PDF Sync verification: ${(err as Error).message}`;
+          r.phase = 'pdf_sync_verify';
+          console.error(`   ❌ [${g.groupId}] ${r.error}`);
+        }
+      }));
+    }
 
     // ── Cleanup ──────────────────────────────────────────────────────
     console.log('\n📍 Cleanup: Closing browser sessions');
@@ -755,7 +859,7 @@ test.describe(`[stress-pdf-${GROUP_COUNT}x] Concurrent PDF Sync — ${GROUP_COUN
     }
 
     // ── Assertions ───────────────────────────────────────────────────
-    printStressSummary(results, GROUP_COUNT);
+    printStressSummary(results, GROUP_COUNT, NO_PDF_MODE);
 
     const syncedCount = results.filter(r => r.synced).length;
     const achievedRate = syncedCount / GROUP_COUNT;
@@ -765,7 +869,7 @@ test.describe(`[stress-pdf-${GROUP_COUNT}x] Concurrent PDF Sync — ${GROUP_COUN
 
     expect(
       achievedRate,
-      `PDF Sync stress test failed: ${syncedCount}/${GROUP_COUNT} groups synced (need ${Math.round(SUCCESS_THRESHOLD * 100)}%)`
+      `${NO_PDF_MODE ? 'No-PDF room stress' : 'PDF Sync stress'} test failed: ${syncedCount}/${GROUP_COUNT} groups passed (need ${Math.round(SUCCESS_THRESHOLD * 100)}%)`
     ).toBeGreaterThanOrEqual(SUCCESS_THRESHOLD);
 
     // Print recording paths summary (only meaningful in headless mode)
