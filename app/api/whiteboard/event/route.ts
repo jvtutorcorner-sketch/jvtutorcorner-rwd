@@ -1,6 +1,5 @@
 import { NextRequest } from 'next/server';
-import { broadcastToUuid, normalizeUuid } from '../stream/route';
-import { getWhiteboardState, saveWhiteboardState } from '@/lib/whiteboardService';
+import { getWhiteboardState, saveWhiteboardState, normalizeUuid } from '@/lib/whiteboardService';
 
 export async function POST(req: NextRequest) {
   try {
@@ -36,14 +35,7 @@ export async function POST(req: NextRequest) {
       return new Response(JSON.stringify({ ok: false, error: 'no event' }), { status: 400 });
     }
     
-    // 1. IMPORTANT: Broadcast FIRST (this updates in-memory roomStates for THIS instance)
-    try {
-      broadcastToUuid(uuid, event);
-    } catch (e) {
-      console.warn('[WB Event Server] Broadcast failed:', e);
-    }
-
-    // 2. Update DynamoDB using Atomic Operations to prevent race conditions in Lambda
+    // Update DynamoDB using Atomic Operations to prevent race conditions in Lambda
     try {
       if (event.type === 'stroke-start') {
         if (event.stroke && event.stroke.id) {
