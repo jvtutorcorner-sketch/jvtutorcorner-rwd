@@ -562,25 +562,42 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           console.log('[ClientClassroom] Teacher: Looking up existing whiteboard room (read-only)...');
           let teacherRoomData: any = null;
 
+          // Retry helper — /api/whiteboard/room may 500 during Lambda burst on concurrent classroom entry.
+          // Retries up to maxAttempts times with linear backoff before giving up.
+          const postWhiteboardRoom = async (body: object, maxAttempts = 3): Promise<any | null> => {
+            for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+              try {
+                const res = await fetch('/api/whiteboard/room', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(body),
+                });
+                if (res.ok) return await res.json();
+                const errText = await res.text().catch(() => '');
+                if (attempt < maxAttempts) {
+                  console.warn(`[ClientClassroom] /api/whiteboard/room attempt ${attempt}/${maxAttempts} failed (${res.status}), retrying in ${attempt * 2}s...`);
+                  await new Promise(r => setTimeout(r, attempt * 2000));
+                } else {
+                  console.error(`[ClientClassroom] /api/whiteboard/room failed after ${maxAttempts} attempts (${res.status}):`, errText);
+                }
+              } catch (e) {
+                if (attempt < maxAttempts) {
+                  console.warn(`[ClientClassroom] /api/whiteboard/room attempt ${attempt}/${maxAttempts} threw, retrying in ${attempt * 2}s...`, e);
+                  await new Promise(r => setTimeout(r, attempt * 2000));
+                } else {
+                  console.error(`[ClientClassroom] /api/whiteboard/room threw after ${maxAttempts} attempts:`, e);
+                }
+              }
+            }
+            return null;
+          };
+
           try {
             const lookupJson = await fetchExistingWhiteboardUuid(courseId, sessionReadyKey);
             if (lookupJson?.uuid) {
               console.log('[ClientClassroom] Teacher found existing room uuid via read-only API');
-              // Request full room credentials (roomToken, etc.) using the canonical uuid
-              try {
-                const tokenRes = await fetch('/api/whiteboard/room', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ userId, channelName: sessionReadyKey, courseId, orderId, role: 'teacher', roomUuid: lookupJson.uuid })
-                });
-                if (tokenRes.ok) {
-                  teacherRoomData = await tokenRes.json();
-                } else {
-                  console.warn('[ClientClassroom] Teacher: failed to fetch room credentials for existing uuid');
-                }
-              } catch (e) {
-                console.warn('[ClientClassroom] Teacher token fetch failed:', e);
-              }
+              teacherRoomData = await postWhiteboardRoom({ userId, channelName: sessionReadyKey, courseId, orderId, role: 'teacher', roomUuid: lookupJson.uuid });
+              if (!teacherRoomData) console.warn('[ClientClassroom] Teacher: failed to fetch room credentials for existing uuid after retries');
             } else if (lookupJson && lookupJson.found === false) {
               console.log('[ClientClassroom] Teacher: No existing room, will create new one');
             }
@@ -588,27 +605,12 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
             console.warn('[ClientClassroom] Teacher lookup failed, will try to create:', e);
           }
 
-          // If no existing room found, create one
+          // If no existing room found (or credential fetch failed), create one
           if (!teacherRoomData) {
             console.log('[ClientClassroom] Teacher: Creating new whiteboard room...');
-            const createBody: any = { userId, channelName: sessionReadyKey, courseId, orderId, role: 'teacher' };
-
-            try {
-              const createRes = await fetch('/api/whiteboard/room', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(createBody)
-              });
-
-              if (createRes.ok) {
-                teacherRoomData = await createRes.json();
-                console.log('[ClientClassroom] Teacher created new room');
-              } else {
-                const errorText = await createRes.text();
-                console.error('[ClientClassroom] Teacher failed to create room:', createRes.status, errorText);
-              }
-            } catch (e) {
-              console.error('[ClientClassroom] Teacher create API failed:', e);
+            teacherRoomData = await postWhiteboardRoom({ userId, channelName: sessionReadyKey, courseId, orderId, role: 'teacher' });
+            if (teacherRoomData) {
+              console.log('[ClientClassroom] Teacher created new room');
             }
           }
 
@@ -909,7 +911,14 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       es.onmessage = (ev) => {
         try {
           const data = JSON.parse(ev.data || '{}');
-          if (data?.type === 'pdf-uploaded' || data?.type === 'pdf-set') {
+          if (data?.type === 'connected') {
+            // Production: server sends one "connected" ping then closes the stream.
+            // Close the EventSource immediately to prevent the browser's automatic
+            // 3-second reconnect loop, which adds ~4 extra API requests/second
+            // across 12 concurrent browsers under load.
+            try { es?.close(); } catch (e) { }
+            es = null;
+          } else if (data?.type === 'pdf-uploaded' || data?.type === 'pdf-set') {
             console.log('[ClientClassroom] Received pdf-upload event, refetching PDF for session');
             fetchPdfForSession();
           } else if (data?.type === 'class_ended') {

@@ -2,12 +2,13 @@
 
 import dynamic from 'next/dynamic';
 import React from 'react';
+import { WhiteboardErrorBoundary } from './WhiteboardErrorBoundary';
 
 export type { AgoraWhiteboardRef } from './BoardImpl';
 
 const AgoraWhiteboardComponent = dynamic(
-    () => import('./BoardImpl'), 
-    { 
+    () => import('./BoardImpl'),
+    {
         ssr: false,
         loading: () => (
             <div className="w-full h-full flex items-center justify-center bg-slate-50">
@@ -18,8 +19,11 @@ const AgoraWhiteboardComponent = dynamic(
 );
 
 const AgoraWhiteboard = React.forwardRef((props: any, ref) => {
-    // 確保這裡接收到了 role
-    return <AgoraWhiteboardComponent {...props} ref={ref} />;
+    return (
+        <WhiteboardErrorBoundary>
+            <AgoraWhiteboardComponent {...props} ref={ref} />
+        </WhiteboardErrorBoundary>
+    );
 });
 
 AgoraWhiteboard.displayName = 'AgoraWhiteboardLoader';

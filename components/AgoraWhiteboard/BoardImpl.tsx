@@ -202,9 +202,11 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
                     // a 4000ms window using the userId as a stable seed. Under 9+ concurrent groups,
                     // Math.random() can still cluster multiple connections in the same millisecond window,
                     // causing Netless to queue 16+ simultaneous WebSocket handshakes and timeout.
-                    // Hash-based spread guarantees each user gets a unique slot (~220ms apart for 18 users).
+                    // Use full 16-bit hash (÷65536) instead of low-8-bit (& 0xff ÷256): with sequential
+                    // test emails differing only in one digit, the low-8-bit version repeats every 4 groups
+                    // (31^16 mod 256 = 193 → group-1 and group-5 land only ~62ms apart).
                     const _wbHash = userId.split('').reduce((h, c) => (h * 31 + c.charCodeAt(0)) & 0xffff, 0);
-                    const whiteboardJitter = Math.floor((_wbHash & 0xff) / 256 * 4000);
+                    const whiteboardJitter = Math.floor((_wbHash / 65536) * 4000);
                     await new Promise(resolve => setTimeout(resolve, whiteboardJitter));
                     if (isAborted) return;
                     const joinRoomPromise = whiteWebSdk.joinRoom({

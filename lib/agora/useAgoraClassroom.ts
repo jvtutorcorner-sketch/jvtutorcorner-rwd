@@ -204,14 +204,22 @@ export function useAgoraClassroom({
 
       const uid = role === 'teacher' ? 1 : Math.floor(10000 + Math.random() * 990000);
 
-      const res = await fetch(`/api/agora/token?channelName=${encodeURIComponent(channelName)}&uid=${uid}`);
+      // Retry token fetch up to 2 extra times with backoff to survive Lambda cold-start 500s
+      // under high concurrency (6+ groups simultaneously entering the classroom).
+      let res = await fetch(`/api/agora/token?channelName=${encodeURIComponent(channelName)}&uid=${uid}`);
+      for (let attempt = 1; !res.ok && attempt <= 2; attempt++) {
+        const retryDelay = attempt * 1500;
+        console.warn(`[Agora] Token fetch failed (status ${res.status}), retrying in ${retryDelay}ms (attempt ${attempt}/2)`);
+        await new Promise(r => setTimeout(r, retryDelay));
+        res = await fetch(`/api/agora/token?channelName=${encodeURIComponent(channelName)}&uid=${uid}`);
+      }
 
       if (!res.ok) {
         let bodyText = '';
         try { bodyText = await res.text(); } catch (e) { bodyText = String(e); }
-        console.error('[Agora] Token fetch failed', { status: res.status, bodyText, channelName, uid });
-        const { error } = await res.json().catch(() => ({ error: bodyText }));
-        throw new Error(error || 'Failed to fetch token');
+        console.error('[Agora] Token fetch failed after retries', { status: res.status, bodyText, channelName, uid });
+        const { error } = JSON.parse(bodyText || '{}');
+        throw new Error(error || `Token fetch failed (${res.status})`);
       }
 
       const data = (await res.json()) as AgoraJoinResponse;
