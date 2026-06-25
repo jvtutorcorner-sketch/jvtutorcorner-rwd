@@ -143,6 +143,13 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   const [joinAttemptCount, setJoinAttemptCount] = useState(0);
   const lastJoinTimeRef = useRef<number>(0);
   const pendingPageChangeRef = useRef<{ index: number; scenePath: string; timestamp: number } | null>(null);
+  // Tracks the highest seq seen for 'page-change' RTM messages so we can reject stale
+  // duplicates that arrive after a reconnect (out-of-order delivery).
+  const lastPageChangeSeqRef = useRef(0);
+  // Teacher: last page-change payload sent, used to re-broadcast on 'request-page-state'.
+  const lastSentPageRef = useRef<{ index: number; scenePath: string; sceneCount: number } | null>(null);
+  // Student: tracks previous whiteboard phase to detect reconnecting → connected transitions.
+  const prevBoardPhaseRef = useRef<string>('');
 
   const applyPendingPageChange = useCallback(() => {
     const pending = pendingPageChangeRef.current;
@@ -197,6 +204,14 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           if (state) setWhiteboardState(state);
         }
         applyPendingPageChange();
+
+        // Student: when recovering from reconnecting, ask the teacher to re-broadcast
+        // the current page so we sync even if we missed the page-change RTM message.
+        if (!isTeacher && prevBoardPhaseRef.current === 'reconnecting' && /connected/i.test(boardPhase)) {
+          void rtmSendRef.current?.('request-page-state', {});
+          console.log('[ClientClassroom] Sent request-page-state after reconnect');
+        }
+        prevBoardPhaseRef.current = boardPhase;
       } catch (e) {
         // Silently ignore errors during polling
       }
@@ -454,6 +469,8 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   // 用於白板 UUID 廣播、PDF 同步通知，取代跨裝置無效的 BroadcastChannel
   // RTM 連線失敗時自動 fallback 到現有 BroadcastChannel/Polling 機制
   const rtmMessageCallbackRef = useRef<((msg: any) => void) | null>(null);
+  // Stable ref to rtmSend so it can be called from inside onMessage without stale closure.
+  const rtmSendRef = useRef<((type: any, payload: any) => Promise<boolean>) | null>(null);
 
   const { connected: rtmConnected, sendMessage: rtmSend } = useAgoraRTM({
     channelName: effectiveChannelName,
@@ -461,6 +478,11 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     enabled: mounted && !!userId,
     onMessage: (msg) => {
       if (msg?.type === 'page-change' && !isTeacher) {
+        const incomingSeq = typeof msg.seq === 'number' ? msg.seq : null;
+        // Reject stale messages: if seq is present and not newer than last seen, drop.
+        if (incomingSeq !== null && incomingSeq <= lastPageChangeSeqRef.current) return;
+        if (incomingSeq !== null) lastPageChangeSeqRef.current = incomingSeq;
+
         const index = Number(msg.payload?.index);
         const scenePath = String(msg.payload?.scenePath || '');
         if (Number.isInteger(index) && index >= 0 && scenePath.includes('/pdf/')) {
@@ -472,10 +494,20 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           applyPendingPageChange();
         }
       }
+      // Teacher: student reconnected and is requesting the current page state.
+      if (msg?.type === 'request-page-state' && isTeacher) {
+        const last = lastSentPageRef.current;
+        if (last) {
+          void rtmSendRef.current?.('page-change', last);
+        }
+      }
       // Dispatch to whichever handler is currently registered
       rtmMessageCallbackRef.current?.(msg);
     },
   });
+  // Keep ref in sync so onMessage (which captures the ref, not the function) can call rtmSend
+  // without a stale closure.
+  rtmSendRef.current = rtmSend;
 
   const firstRemote = useMemo(() => {
     if (!remoteUsers || remoteUsers.length === 0) return null;
@@ -2956,6 +2988,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                     courseId={courseId}
                     className="w-full h-full"
                     onPageChange={({ index, scenePath, sceneCount }: { index: number; scenePath: string; sceneCount: number }) => {
+                      lastSentPageRef.current = { index, scenePath, sceneCount };
                       void rtmSend('page-change', { index, scenePath, sceneCount });
                     }}
 

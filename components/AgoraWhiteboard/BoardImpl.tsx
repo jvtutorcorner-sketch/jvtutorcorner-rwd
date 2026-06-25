@@ -295,6 +295,7 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
                 roomRef.current = room;
                 // 掛載到 window 方便您在 Console 除錯 (window.agoraRoom)
                 (window as any).agoraRoom = room;
+                (window as any).__whiteboard_phase = 'connected';
                 setPhase("Connected");
 
                 // Improvement: Delayed initialization to ensure DOM is painted
@@ -424,7 +425,23 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
                     }
                 });
                 
+                let _prevPhase = 'connected';
                 room.callbacks.on("onPhaseChanged", (p: string) => {
+                    (window as any).__whiteboard_phase = p.toLowerCase();
+                    if (p === 'reconnecting') {
+                        (window as any).__whiteboard_reconnect_count =
+                            ((window as any).__whiteboard_reconnect_count ?? 0) + 1;
+                    }
+                    // When a student/observer room recovers from reconnecting, re-attach
+                    // follower mode so the SDK immediately syncs to the broadcaster's page.
+                    if (_prevPhase === 'reconnecting' && p === 'connected' && !canWrite) {
+                        try {
+                            room.setViewMode('freedom');
+                            room.setViewMode('follower');
+                            console.log('[BoardImpl] Re-attached follower mode after reconnect');
+                        } catch (_) {}
+                    }
+                    _prevPhase = p;
                     setPhase(p);
                 });
 
@@ -736,15 +753,17 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
     const isColorActive = (c: number[]) => activeColor[0] === c[0] && activeColor[1] === c[1] && activeColor[2] === c[2];
 
     const prevPage = () => {
-        if (!roomRef.current) return;
-        const { index } = roomRef.current.state.sceneState;
-        if (index > 0) roomRef.current.setSceneIndex(index - 1);
+        const room = roomRef.current;
+        if (!room || room.phase !== 'connected') return;
+        const { index } = room.state.sceneState;
+        if (index > 0) room.setSceneIndex(index - 1);
     };
 
     const nextPage = () => {
-        if (!roomRef.current) return;
-        const { index, scenes } = roomRef.current.state.sceneState;
-        if (index < scenes.length - 1) roomRef.current.setSceneIndex(index + 1);
+        const room = roomRef.current;
+        if (!room || room.phase !== 'connected') return;
+        const { index, scenes } = room.state.sceneState;
+        if (index < scenes.length - 1) room.setSceneIndex(index + 1);
     };
 
     // Loading

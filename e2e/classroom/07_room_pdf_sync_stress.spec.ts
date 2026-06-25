@@ -228,6 +228,9 @@ async function getPdfRuntimeSnapshot(page: Page): Promise<any> {
       sdkLoaded: !!w.WhiteWebSdk?.WhiteWebSdk,
       roomReady: !!room,
       roomUuid: room?.uuid || room?.roomUuid || room?.state?.uuid || null,
+      roomPhase: String(room?.phase || ''),
+      reconnectCount: Number(w.__whiteboard_reconnect_count ?? 0),
+      followerMode: String(room?.state?.broadcastState?.mode || ''),
       scenePath: String(sceneState?.scenePath || ''),
       sceneIndex: typeof sceneState?.index === 'number' ? sceneState.index : null,
       sceneCount: Array.isArray(sceneState?.scenes) ? sceneState.scenes.length : null,
@@ -246,13 +249,18 @@ async function getPdfRuntimeSnapshot(page: Page): Promise<any> {
 async function waitForAgoraRoomReady(page: Page, timeoutMs = 90000): Promise<boolean> {
   try {
     await page.waitForFunction(() => {
-      return !!(window as any).agoraRoom && !!(window as any).agoraRoom.state;
+      const room = (window as any).agoraRoom;
+      // Require phase === 'connected', not just room existence.
+      // window.__whiteboard_phase is set by BoardImpl.tsx's onPhaseChanged callback.
+      return !!room && !!room.state && room.phase === 'connected';
     }, { timeout: timeoutMs });
     return true;
   } catch {
     const info = await page.evaluate(() => ({
       hasRoom: !!(window as any).agoraRoom,
       hasState: !!(window as any).agoraRoom?.state,
+      phase: String((window as any).agoraRoom?.phase || ''),
+      whiteboardPhase: String((window as any).__whiteboard_phase || ''),
       url: window.location.href,
     }));
     console.warn(`   ⚠️ waitForAgoraRoomReady timed out.`, info);
@@ -291,17 +299,36 @@ async function waitForPdfSceneLoaded(page: Page, timeoutMs = 150000): Promise<Ro
   return state;
 }
 
-async function setTeacherSceneIndex(page: Page, targetIndex: number): Promise<void> {
-  const ok = await page.evaluate((idx) => {
-    const room = (window as any).agoraRoom;
-    const scenes = room?.state?.sceneState?.scenes;
-    if (!room || !room.setSceneIndex || !Array.isArray(scenes)) return false;
-    if (idx < 0 || idx >= scenes.length) return false;
-    room.setSceneIndex(idx);
-    return true;
-  }, targetIndex);
+async function setTeacherSceneIndex(
+  page: Page,
+  targetIndex: number,
+  timeoutMs = 15000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const result = await page.evaluate((idx) => {
+      const room = (window as any).agoraRoom;
+      const phase = String(room?.phase || '');
+      const scenes = room?.state?.sceneState?.scenes;
+      if (!room || !room.setSceneIndex || !Array.isArray(scenes)) return 'no_room';
+      if (phase !== 'connected') return `not_connected:${phase}`;
+      if (idx < 0 || idx >= scenes.length) return 'out_of_range';
+      try {
+        room.setSceneIndex(idx);
+        return 'ok';
+      } catch (e: any) {
+        return `error:${String(e?.message || e)}`;
+      }
+    }, targetIndex);
 
-  expect(ok).toBe(true);
+    if (result === 'ok') return;
+    if (result === 'out_of_range' || result === 'no_room') {
+      throw new Error(`setTeacherSceneIndex failed permanently: ${result}`);
+    }
+    // Room is reconnecting or threw transiently — wait 500ms and retry
+    await page.waitForTimeout(500);
+  }
+  throw new Error(`setTeacherSceneIndex timeout: room did not return to connected within ${timeoutMs}ms`);
 }
 
 async function waitForSceneIndex(page: Page, expectedIndex: number, timeoutMs = 30000): Promise<void> {
@@ -460,6 +487,7 @@ test.describe(`[stress-${NO_PDF_MODE ? 'no-pdf' : 'pdf'}-${GROUP_COUNT}x] Concur
     const isHeadless = resolveHeadless(GROUP_COUNT >= 5);
     const runId = `${NO_PDF_MODE ? 'no-pdf-stress' : 'pdf-stress'}-${GROUP_COUNT}x-${Date.now()}`;
     console.log(`🤖 Launching browser in ${isHeadless ? 'HEADLESS + 🎬 Recording' : 'HEADED'} mode (HEADLESS=${process.env.HEADLESS ?? 'auto'}, GROUP_COUNT=${GROUP_COUNT})`);
+    console.log(`   🖥️  GPU mode: ${isHeadless ? 'headless (--disable-gpu, software render)' : 'headed (hardware GPU)'}`);
     if (isHeadless) {
       console.log(`   📹 Recordings → ${RECORDINGS_ROOT}\\${runId}`);
       console.log(`   ℹ️  View trace after test: npx playwright show-trace "<path>.zip"`);
@@ -468,10 +496,14 @@ test.describe(`[stress-${NO_PDF_MODE ? 'no-pdf' : 'pdf'}-${GROUP_COUNT}x] Concur
       headless: isHeadless,
       args: [
         '--disable-blink-features=AutomationControlled',
-        '--disable-gpu',
+        // --disable-gpu must NOT be used in headed mode: it forces Swiftshader software
+        // rasterization, which saturates CPU at ~7 concurrent groups (14 browser windows)
+        // and causes Netless WebSocket heartbeats to time out → room enters 'reconnecting'.
+        // Keep it only in headless where there is no display server.
+        ...(isHeadless ? ['--disable-gpu'] : []),
         '--no-first-run',
         '--use-fake-ui-for-media-stream',
-        '--use-fake-device-for-media-stream'
+        '--use-fake-device-for-media-stream',
       ]
     });
 
@@ -489,6 +521,7 @@ test.describe(`[stress-${NO_PDF_MODE ? 'no-pdf' : 'pdf'}-${GROUP_COUNT}x] Concur
       uploaded: false,
       entered: false,
       synced: false,
+      timings: {},
     }));
 
     console.log(`\n${'═'.repeat(75)}`);

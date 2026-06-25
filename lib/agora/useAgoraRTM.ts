@@ -36,6 +36,7 @@ export type RTMMessageType =
   | 'ready-state-update'    // Any → Any: participant joined/left classroom ready state
   | 'pdf-available'         // Teacher → Students: PDF uploaded, students should fetch
   | 'page-change'           // Teacher → Students: PDF page changed
+  | 'request-page-state'    // Student → Teacher: request re-broadcast of current page after reconnect
   | 'ping'                  // keepalive
   | 'custom';               // extensible
 
@@ -44,6 +45,8 @@ export interface RTMMessage {
   payload: Record<string, any>;
   senderId: string;
   timestamp: number;
+  /** Monotonic sequence number scoped to the sender's session. Used to reject stale page-change messages delivered after a reconnect. */
+  seq?: number;
 }
 
 export type RTMMessageHandler = (msg: RTMMessage) => void;
@@ -120,6 +123,9 @@ export function useAgoraRTM({
   const isDestroyedRef = useRef(false);
   const onMessageRef = useRef<RTMMessageHandler | undefined>(onMessage);
   const onConnectionChangeRef = useRef(onConnectionChange);
+  // Monotonic counter for outbound messages — lets receivers reject stale page-change
+  // messages that arrive after a reconnect out of order.
+  const sendSeqRef = useRef(0);
 
   // Keep handler refs up-to-date without triggering re-initialisation
   useEffect(() => { onMessageRef.current = onMessage; }, [onMessage]);
@@ -276,6 +282,7 @@ export function useAgoraRTM({
       payload,
       senderId: userId,
       timestamp: Date.now(),
+      seq: ++sendSeqRef.current,
     };
 
     try {
