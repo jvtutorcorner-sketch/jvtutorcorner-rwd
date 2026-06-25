@@ -54,6 +54,10 @@ import { getTestConfig, getStressGroupConfigs, ADMIN_EMAIL, ADMIN_PASSWORD } fro
 
 const GROUP_COUNT = parseInt(process.env.CONCURRENT_GROUPS || '3', 10);
 const SUCCESS_THRESHOLD = parseFloat(process.env.SUCCESS_THRESHOLD || '0.75');
+// Unix timestamp (seconds) at which Phase 4 (parallel classroom entry) should start.
+// Set the same value on all distributed machines so they enter the load phase together.
+// 0 = no sync wait (default for single-machine runs).
+const SYNC_START_TIME = parseInt(process.env.SYNC_START_TIME || '0', 10);
 const STRESS_COURSE_DURATION_MINUTES = parseInt(process.env.STRESS_COURSE_DURATION_MINUTES || '10', 10);
 const TEST_TIMEOUT_MS = Math.max(600_000, GROUP_COUNT * 120_000 + 300_000);
 // Per-group force-close timeout: if PDF sync takes longer than this, navigate away from the
@@ -273,7 +277,7 @@ async function waitForAgoraRoomReady(page: Page, timeoutMs = 90000): Promise<boo
  * First polls for the PDF in DynamoDB to confirm it's there, then waits for the
  * Agora whiteboard to load the PDF into scenes.
  */
-async function waitForPdfSceneLoaded(page: Page, timeoutMs = 150000): Promise<RoomSceneState> {
+async function waitForPdfSceneLoaded(page: Page, timeoutMs = 300000): Promise<RoomSceneState> {
   // Step 1: Wait for Agora whiteboard SDK to initialise
   console.log(`   🎯 Waiting for Agora whiteboard room to initialise...`);
   const roomReady = await waitForAgoraRoomReady(page, 90000);
@@ -531,6 +535,9 @@ test.describe(`[stress-${NO_PDF_MODE ? 'no-pdf' : 'pdf'}-${GROUP_COUNT}x] Concur
     console.log(`  No-PDF mode: ${NO_PDF_MODE ? 'yes' : 'no'}`);
     if (NO_PDF_MODE) console.log(`  No-PDF stability wait: ${NO_PDF_STABILITY_MS}ms`);
     console.log(`  Run timestamp: ${timestamp}`);
+    const groupOffset = parseInt(process.env.GROUP_OFFSET || '0', 10);
+    if (groupOffset > 0) console.log(`  Group offset: ${groupOffset} (groups ${groupOffset}–${groupOffset + GROUP_COUNT - 1})`);
+    if (SYNC_START_TIME > 0) console.log(`  Sync start time: ${SYNC_START_TIME} (${new Date(SYNC_START_TIME * 1000).toISOString()})`);
     console.log(`  Reuse setup: ${REUSE_STRESS_SETUP ? 'yes' : 'no'}`);
     console.log(`  Reuse accounts: ${REUSE_ACCOUNTS ? 'yes' : 'no'}`);
     console.log(`  Reuse points: ${REUSE_POINTS ? 'yes' : 'no'}`);
@@ -672,6 +679,20 @@ test.describe(`[stress-${NO_PDF_MODE ? 'no-pdf' : 'pdf'}-${GROUP_COUNT}x] Concur
     }
     await enrollmentCheckCtx.close();
 
+    // ── Distributed sync gate ────────────────────────────────────────
+    // When SYNC_START_TIME is set, all machines wait until that Unix timestamp
+    // before entering Phase 4. This ensures parallel load is truly concurrent
+    // across machines rather than staggered by how long Phases 1–3 took.
+    if (SYNC_START_TIME > 0) {
+      const waitMs = SYNC_START_TIME * 1000 - Date.now();
+      if (waitMs > 0 && waitMs < 300000) {
+        console.log(`\n⏳ [SYNC] Waiting ${Math.round(waitMs / 1000)}s for distributed sync start (SYNC_START_TIME=${SYNC_START_TIME})...`);
+        await new Promise(resolve => setTimeout(resolve, waitMs));
+      } else if (waitMs <= 0) {
+        console.log(`\n⏳ [SYNC] SYNC_START_TIME already passed by ${Math.round(-waitMs / 1000)}s — proceeding immediately`);
+      }
+    }
+
     // ── Phase 4: Parallel Login and Navigation ───────────────────────
     console.log('\n📍 Phase 4: Parallel Login and Navigation');
     interface GroupSession {
@@ -761,6 +782,15 @@ test.describe(`[stress-${NO_PDF_MODE ? 'no-pdf' : 'pdf'}-${GROUP_COUNT}x] Concur
         if (r.phase) return;
 
         try {
+          // Stagger PDF uploads so they reach Netless PCW one at a time.
+          // With 1 PCW (default), 10 simultaneous jobs would queue for ~500s;
+          // 8s spacing ensures each job starts ~10s after the previous finishes.
+          const uploadStaggerMs = (s.idx % 5) * 8000;
+          if (uploadStaggerMs > 0) {
+            console.log(`   ⏱️ [${g.groupId}] PDF upload stagger ${uploadStaggerMs}ms...`);
+            await s.teacherPage.waitForTimeout(uploadStaggerMs);
+          }
+
           const reusableSessionKey = `classroom_session_ready_${g.courseId}`;
           if (REUSE_PDF_UPLOADS) {
             const existingMetadata = await waitForPdfMetadata(s.teacherPage, config.baseUrl, reusableSessionKey, 1);
@@ -973,6 +1003,14 @@ test.describe(`[stress-${NO_PDF_MODE ? 'no-pdf' : 'pdf'}-${GROUP_COUNT}x] Concur
       }
       await cleanAdminCtx.close();
       console.log('   🧹 Cleanup complete');
+    }
+
+    // ── Optional JSON result output (for distributed merge) ──────────
+    const resultOutputFile = process.env.RESULT_OUTPUT_FILE;
+    if (resultOutputFile) {
+      const fs = await import('fs');
+      fs.writeFileSync(resultOutputFile, JSON.stringify(results, null, 2), 'utf-8');
+      console.log(`📄 Machine results written to: ${resultOutputFile}`);
     }
 
     // ── Assertions ───────────────────────────────────────────────────

@@ -146,6 +146,11 @@ export function getTestConfig(): TestConfig {
  *
  * @param groupCount  Number of concurrent groups (default: DEFAULT_STRESS_GROUP_COUNT)
  * @param timestamp   Unique run timestamp to avoid courseId collisions across runs
+ *
+ * Environment variables:
+ *   GROUP_OFFSET  — shift all group indices by this amount (default: 0).
+ *                   Use when running distributed: Machine A sets GROUP_OFFSET=0,
+ *                   Machine B sets GROUP_OFFSET=5, so their group IDs never collide.
  */
 export function getStressGroupConfigs(
   groupCount: number = DEFAULT_STRESS_GROUP_COUNT,
@@ -162,12 +167,17 @@ export function getStressGroupConfigs(
     'QA_STUDENT_PASSWORD'
   );
 
-  return Array.from({ length: groupCount }).map((_, i) => ({
-    groupId: `group-${i}`,
-    courseId: `${COURSE_ID_PREFIXES.stress}${i}-${timestamp}`,
-    teacherEmail: `group-${i}-teacher@test.com`,
-    teacherPassword: stressTeacherPassword,
-    studentEmail: `group-${i}-student@test.com`,
-    studentPassword: stressStudentPassword,
-  }));
+  const GROUP_OFFSET = parseInt(process.env.GROUP_OFFSET || '0', 10);
+
+  return Array.from({ length: groupCount }).map((_, i) => {
+    const groupIndex = GROUP_OFFSET + i;
+    return {
+      groupId: `group-${groupIndex}`,
+      courseId: `${COURSE_ID_PREFIXES.stress}${groupIndex}-${timestamp}`,
+      teacherEmail: `group-${groupIndex}-teacher@test.com`,
+      teacherPassword: stressTeacherPassword,
+      studentEmail: `group-${groupIndex}-student@test.com`,
+      studentPassword: stressStudentPassword,
+    };
+  });
 }
