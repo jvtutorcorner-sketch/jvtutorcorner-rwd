@@ -11,7 +11,11 @@ import dynamic from 'next/dynamic';
 import { useT } from '@/components/IntlProvider';
 
 // 1. 修改 Import: 指向資料夾 (會自動抓 index.tsx)
-import AgoraWhiteboard, { AgoraWhiteboardRef } from '@/components/AgoraWhiteboard';
+import AgoraWhiteboard, {
+  AgoraWhiteboardRef,
+  PdfInsertError,
+  PdfInsertErrorCode,
+} from '@/components/AgoraWhiteboard';
 
 const PdfViewer = dynamic(() => import('@/components/PdfViewer'), { ssr: false });
 const ConsoleLogViewer = dynamic(() => import('@/components/ConsoleLogViewer'), { ssr: false });
@@ -942,6 +946,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
 
   // Track if PDF has been auto-inserted to avoid duplicates
   const pdfInsertedRef = useRef<string | null>(null);
+  const pdfInsertInFlightRef = useRef<string | null>(null);
 
   // ★★★ Auto-insert PDF into Agora Whiteboard when ready ★★★
   useEffect(() => {
@@ -958,30 +963,59 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
     const insertWithRetry = async () => {
-      const maxAttempts = 30;
+      const maxAttempts = 40;
+      const retryableCodes = new Set<PdfInsertErrorCode>([
+        'ROOM_NOT_READY',
+        'SCENE_COMMIT_TIMEOUT',
+      ]);
 
       for (let attempt = 1; attempt <= maxAttempts && !cancelled; attempt++) {
         const board = agoraWhiteboardRef.current;
-        if (!board) {
+        const room = typeof window !== 'undefined' ? (window as any).agoraRoom : null;
+        const boardState = board?.getState?.();
+        const phaseConnected = /connected/i.test(String(boardState?.phase || ''));
+        const roomWritable = !!room?.isWritable;
+
+        if (!board || !room || !phaseConnected || !roomWritable) {
           if (attempt === 1 || attempt % 5 === 0) {
-            console.log(`[ClientClassroom] Waiting for whiteboard ref before PDF insert (${attempt}/${maxAttempts})`);
+            console.log(`[ClientClassroom] Waiting for writable connected room before PDF insert (${attempt}/${maxAttempts})`, {
+              hasBoard: !!board,
+              hasRoom: !!room,
+              phase: boardState?.phase,
+              writable: roomWritable,
+            });
           }
-          await wait(500);
+          await wait(Math.min(500 + attempt * 100, 2000));
           continue;
         }
 
         if (pdfInsertedRef.current === pdfIdentifier) return;
+        if (pdfInsertInFlightRef.current && pdfInsertInFlightRef.current !== pdfIdentifier) {
+          await wait(500);
+          continue;
+        }
 
         try {
+          pdfInsertInFlightRef.current = pdfIdentifier;
           const pdfUrl = `${window.location.origin}/api/whiteboard/pdf?uuid=${encodeURIComponent(sessionReadyKey)}&t=${Date.now()}`;
           console.log(`[ClientClassroom] Auto-insert attempt ${attempt}/${maxAttempts}:`, selectedPdf.name);
-          await board.insertPDF(pdfUrl, selectedPdf.name);
-          console.log('[ClientClassroom] PDF auto-insert request sent');
+          const result = await board.insertPDF(pdfUrl, selectedPdf.name);
+          if (cancelled) return;
+          console.log('[ClientClassroom] PDF auto-insert committed', result);
           pdfInsertedRef.current = pdfIdentifier;
           return;
-        } catch (e) {
+        } catch (e: any) {
+          const code = e instanceof PdfInsertError ? e.code : e?.code;
           console.warn(`[ClientClassroom] PDF auto-insert attempt ${attempt}/${maxAttempts} failed:`, e);
+          if (code === 'ROOM_READ_ONLY' || (code && !retryableCodes.has(code))) {
+            console.error(`[ClientClassroom] PDF auto-insert stopped on non-retryable error: ${code}`);
+            return;
+          }
           await wait(Math.min(750 + attempt * 100, 2000));
+        } finally {
+          if (pdfInsertInFlightRef.current === pdfIdentifier) {
+            pdfInsertInFlightRef.current = null;
+          }
         }
       }
 
@@ -997,6 +1031,8 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     return () => {
       cancelled = true;
       clearTimeout(timer);
+      // Do not clear the in-flight marker here. insertPDF cannot be cancelled safely;
+      // its finally block releases the marker after the SDK operation actually settles.
     };
   }, [useAgoraWhiteboard, selectedPdf, agoraRoomData, sessionReadyKey, isTeacher]);
 

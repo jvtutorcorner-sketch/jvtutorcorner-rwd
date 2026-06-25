@@ -4,8 +4,33 @@ import React, { useImperativeHandle, forwardRef, useEffect, useRef, useState } f
 import { v4 as uuidv4 } from 'uuid';
 import { getPdfLib } from '@/lib/pdfUtils';
 
+export type PdfInsertErrorCode =
+    | 'ROOM_NOT_READY'
+    | 'ROOM_READ_ONLY'
+    | 'PDF_RENDER_FAILED'
+    | 'SCENE_COMMIT_TIMEOUT';
+
+export interface PdfInsertResult {
+    scenePath: string;
+    pageCount: number;
+    durationMs: number;
+}
+
+export class PdfInsertError extends Error {
+    code: PdfInsertErrorCode;
+
+    constructor(code: PdfInsertErrorCode, message: string, cause?: unknown) {
+        super(message);
+        this.name = 'PdfInsertError';
+        this.code = code;
+        if (cause !== undefined) {
+            (this as Error & { cause?: unknown }).cause = cause;
+        }
+    }
+}
+
 export interface AgoraWhiteboardRef {
-    insertPDF: (url: string, title?: string) => Promise<void>;
+    insertPDF: (url: string, title?: string) => Promise<PdfInsertResult>;
     leave: () => Promise<void>;
     getState: () => {
         activeTool: string;
@@ -494,27 +519,18 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
         prevPage,
         nextPage,
         insertPDF: async (url, title) => {
+            const startedAt = Date.now();
+            let createdSceneDir: string | null = null;
             console.log("[BoardImpl] insertPDF requested:", { url, title, hasRoom: !!roomRef.current, phase });
-            
-            // If room is not ready yet, wait up to 5 seconds
-            if (!roomRef.current) {
-                console.log("[BoardImpl] Room not ready, waiting for connection...");
-                let waitAttempts = 0;
-                while (!roomRef.current && waitAttempts < 10) {
-                    await new Promise(r => setTimeout(r, 500));
-                    waitAttempts++;
-                    if (roomRef.current) break;
-                }
-            }
 
             if (!roomRef.current) {
-                console.warn("[BoardImpl] Cannot insert PDF: Room still not connected after waiting");
-                return;
+                throw new PdfInsertError('ROOM_NOT_READY', 'Whiteboard room is not connected');
             }
             if (!roomRef.current.isWritable) {
-                console.warn("[BoardImpl] Cannot insert PDF: Room is read-only for current user. Role:", role);
-                return;
+                throw new PdfInsertError('ROOM_READ_ONLY', `Whiteboard room is read-only for role ${role}`);
             }
+
+            const room = roomRef.current;
             try {
                 console.log("[BoardImpl] Converting PDF to Scenes:", url);
                 setStatus("處理 PDF 中...");
@@ -528,6 +544,7 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
 
                 // 2. Render pages to images (Scenes) - Sequential & Compressed to avoid socket crash
                 const dir = `/pdf/${uuidv4()}`;
+                createdSceneDir = dir;
                 
                 for (let i = 1; i <= pageCount; i++) {
                     const page = await pdf.getPage(i);
@@ -554,7 +571,10 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
                     };
                     
                     // Insert scenes ONE BY ONE to avoid large payload
-                    roomRef.current.putScenes(dir, [scene]);
+                    if (!roomRef.current || roomRef.current !== room) {
+                        throw new PdfInsertError('ROOM_NOT_READY', 'Whiteboard room disconnected while inserting PDF');
+                    }
+                    room.putScenes(dir, [scene]);
                     
                     // Update status for UX
                     if (i % 2 === 0 || i === pageCount) setStatus(`轉換中: ${i}/${pageCount}`);
@@ -563,55 +583,81 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
                 // Switch to the first page of the new doc
                 // IMPORTANT: Ensure directory exists and switched correctly
                 console.log("[BoardImpl] Switching to scene path:", `${dir}/1`);
-                roomRef.current.setScenePath(`${dir}/1`);
-                
-                // Force camera reset to center and fit the new slide
+                const scenePath = `${dir}/1`;
+                room.setScenePath(scenePath);
+
+                // Preserve the existing auto-fit behavior after switching scenes.
                 setTimeout(() => {
-                    if (!roomRef.current) return;
-                    
-                    // Get current scene to calculate optimal scale
-                    const sceneState = roomRef.current.state.sceneState;
+                    if (!roomRef.current || roomRef.current !== room) return;
+
+                    const sceneState = room.state?.sceneState;
                     if (sceneState && sceneState.scenes && sceneState.scenes.length > 0) {
                         const currentScene = sceneState.scenes[sceneState.index];
                         if (currentScene?.ppt) {
                             const pptWidth = currentScene.ppt.width;
                             const pptHeight = currentScene.ppt.height;
-                            
-                            // Get container dimensions
+
                             if (containerRef.current) {
                                 const containerWidth = containerRef.current.clientWidth;
                                 const containerHeight = containerRef.current.clientHeight;
-                                
-                                // Calculate scale to fit (with padding based on screen size)
-                                // Mobile/small screens: 95% to maximize space
-                                // Desktop: 90% for comfortable viewing
-                                const isMobile = containerWidth < 768;
-                                const padding = isMobile ? 0.95 : 0.9;
-                                
+                                const padding = containerWidth < 768 ? 0.95 : 0.9;
                                 const scaleX = (containerWidth * padding) / pptWidth;
                                 const scaleY = (containerHeight * padding) / pptHeight;
-                                
-                                // Use the smaller scale to ensure entire PDF fits
-                                // No upper limit cap - allow scaling up for small PDFs on large screens
-                                // But set minimum to prevent too small display on mobile
                                 const optimalScale = Math.max(Math.min(scaleX, scaleY), 0.2);
-                                
-                                console.log("[BoardImpl] Auto-fit scale:", optimalScale, "Container:", containerWidth, "x", containerHeight, "PPT:", pptWidth, "x", pptHeight, "Mobile:", isMobile);
-                                roomRef.current.moveCamera({ centerX: 0, centerY: 0, scale: optimalScale });
+
+                                console.log("[BoardImpl] Auto-fit scale:", optimalScale, "Container:", containerWidth, "x", containerHeight, "PPT:", pptWidth, "x", pptHeight);
+                                room.moveCamera({ centerX: 0, centerY: 0, scale: optimalScale });
                             } else {
-                                roomRef.current.moveCamera({ centerX: 0, centerY: 0, scale: 0.8 });
+                                room.moveCamera({ centerX: 0, centerY: 0, scale: 0.8 });
                             }
                         }
                     }
-                    roomRef.current?.refreshViewSize();
+                    room.refreshViewSize();
                 }, 500);
 
-                setStatus(`PDF 已載入 (${pageCount} 頁)`);
-                setTimeout(() => setStatus(""), 3000);
+                const commitDeadline = Date.now() + 15000;
+                while (Date.now() < commitDeadline) {
+                    const state = room.state?.sceneState;
+                    if (
+                        String(state?.scenePath || '') === scenePath &&
+                        Array.isArray(state?.scenes) &&
+                        state.scenes.length >= pageCount
+                    ) {
+                        const result = {
+                            scenePath,
+                            pageCount,
+                            durationMs: Date.now() - startedAt,
+                        };
+                        console.log("[BoardImpl] PDF scene committed:", result);
+                        setStatus(`PDF 已載入 (${pageCount} 頁)`);
+                        setTimeout(() => setStatus(""), 3000);
+                        return result;
+                    }
+                    await new Promise(resolve => setTimeout(resolve, 250));
+                }
 
-            } catch (e: any) { 
+                throw new PdfInsertError(
+                    'SCENE_COMMIT_TIMEOUT',
+                    `PDF scene did not commit within 15s: ${scenePath}`
+                );
+
+            } catch (e: any) {
                 console.error("[BoardImpl] insertPDF Error:", e);
                 setStatus(`PDF 錯誤: ${e.message}`);
+                if (createdSceneDir && roomRef.current === room && typeof room.removeScenes === 'function') {
+                    try {
+                        room.removeScenes(createdSceneDir);
+                        console.log("[BoardImpl] Removed incomplete PDF scenes:", createdSceneDir);
+                    } catch (cleanupError) {
+                        console.warn("[BoardImpl] Failed to remove incomplete PDF scenes:", cleanupError);
+                    }
+                }
+                if (e instanceof PdfInsertError) throw e;
+                throw new PdfInsertError(
+                    'PDF_RENDER_FAILED',
+                    `Failed to render or insert PDF: ${e?.message || String(e)}`,
+                    e
+                );
             }
         },
         leave: async () => { if (roomRef.current) await roomRef.current.disconnect(); }

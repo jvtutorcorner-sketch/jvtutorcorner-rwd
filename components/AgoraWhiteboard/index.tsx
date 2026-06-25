@@ -4,7 +4,12 @@ import dynamic from 'next/dynamic';
 import React from 'react';
 import { WhiteboardErrorBoundary } from './WhiteboardErrorBoundary';
 
-export type { AgoraWhiteboardRef } from './BoardImpl';
+export type {
+    AgoraWhiteboardRef,
+    PdfInsertErrorCode,
+    PdfInsertResult,
+} from './BoardImpl';
+export { PdfInsertError } from './BoardImpl';
 
 const AgoraWhiteboardComponent = dynamic(
     () => import('./BoardImpl'),

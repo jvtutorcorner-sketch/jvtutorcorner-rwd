@@ -11,7 +11,12 @@
  *   6) Parallel resource cleanup.
  *
  * Usage:
- *   $env:CONCURRENT_GROUPS="3"; npx playwright test e2e/classroom/07_room_pdf_sync_stress.spec.ts --project=chromium
+ *   $env:CONCURRENT_GROUPS="3"; npx playwright test e2e/classroom/07_room_pdf_sync_stress.spec.ts --project=chromium --headed
+ *
+ * Force-close timeout (default 5 min): if a group's PDF sync hangs past this deadline,
+ * the browser pages are navigated away to break stuck waitForFunction calls, the group is
+ * marked as failed with phase="force_closed", and the test continues to produce a result.
+ *   $env:FORCE_CLOSE_MS="300000"  # 5 min default; set lower (e.g. 120000) for faster CI
  *
  * Faster reusable runs:
  *   # First run keeps generated courses/orders/PDFs for reuse.
@@ -51,6 +56,11 @@ const GROUP_COUNT = parseInt(process.env.CONCURRENT_GROUPS || '3', 10);
 const SUCCESS_THRESHOLD = parseFloat(process.env.SUCCESS_THRESHOLD || '0.75');
 const STRESS_COURSE_DURATION_MINUTES = parseInt(process.env.STRESS_COURSE_DURATION_MINUTES || '10', 10);
 const TEST_TIMEOUT_MS = Math.max(600_000, GROUP_COUNT * 120_000 + 300_000);
+// Per-group force-close timeout: if PDF sync takes longer than this, navigate away from the
+// classroom to break any stuck waitForFunction, then mark the group as failed. Defaults to
+// 5 minutes so a hung page never blocks the entire test from producing results.
+const FORCE_CLOSE_MS = parseInt(process.env.FORCE_CLOSE_MS || '300000', 10);
+const FORCE_CLOSE_MIN = Math.round(FORCE_CLOSE_MS / 60000);
 const REUSE_STRESS_SETUP = process.env.REUSE_STRESS_SETUP === '1';
 const REUSE_ACCOUNTS = REUSE_STRESS_SETUP || process.env.REUSE_ACCOUNTS === '1';
 const REUSE_POINTS = REUSE_STRESS_SETUP || process.env.REUSE_POINTS === '1';
@@ -317,6 +327,11 @@ interface GroupResult {
   synced: boolean;
   error?: string;
   phase?: string;
+  timings?: {
+    roomReadyMs?: number;
+    pdfSceneCreatedMs?: number;
+    studentSyncedMs?: number;
+  };
 }
 
 function printStressSummary(results: GroupResult[], groupCount: number, noPdfMode = false): void {
@@ -336,11 +351,15 @@ function printStressSummary(results: GroupResult[], groupCount: number, noPdfMod
   console.log(`  ${noPdfMode ? 'Stable' : 'PDF Synced'}:   ${synced}/${groupCount} (${Math.round(synced / groupCount * 100)}%)`);
   console.log(`${'─'.repeat(75)}`);
   for (const r of results) {
-    const statusIcon = r.synced ? '✅' : (r.entered ? '⚠️' : '❌');
+    const forceClosedIcon = r.phase === 'force_closed' ? '⏰' : null;
+    const statusIcon = forceClosedIcon ?? (r.synced ? '✅' : (r.entered ? '⚠️' : '❌'));
     const failPhase = r.phase ? ` [failed at: ${r.phase}]` : '';
     const uploadPart = noPdfMode ? '' : ` uploaded=${r.uploaded}`;
     const syncLabel = noPdfMode ? 'stable' : 'sync';
     console.log(`  ${statusIcon} [${r.groupId}] enrolled=${r.enrolled}${uploadPart} entered=${r.entered} ${syncLabel}=${r.synced}${failPhase}`);
+    if (r.timings) {
+      console.log(`       timings: roomReady=${r.timings.roomReadyMs ?? '?'}ms sceneCreated=${r.timings.pdfSceneCreatedMs ?? '?'}ms studentSynced=${r.timings.studentSyncedMs ?? '?'}ms`);
+    }
     if (r.error) console.log(`       ↳ ${r.error}`);
   }
   console.log(`${'─'.repeat(75)}\n`);
@@ -777,44 +796,99 @@ test.describe(`[stress-${NO_PDF_MODE ? 'no-pdf' : 'pdf'}-${GROUP_COUNT}x] Concur
       console.log('   ✅ No-PDF draw sync and room stability checks completed');
     } else {
       // ── Phase 7: PDF Sync Verification (Parallel) ────────────────────
-      console.log('\n📍 Phase 7: Parallel PDF Scene Render and Sync Verification');
+      console.log(`\n📍 Phase 7: Parallel PDF Scene Render and Sync Verification (force-close after ${FORCE_CLOSE_MIN}min)`);
       await Promise.allSettled(sessions.map(async s => {
         const g = groupConfigs[s.idx];
         const r = results[s.idx];
         if (!r.entered) return;
+        const verificationStartedAt = Date.now();
+        r.timings = {};
+
+        // Force-close safety net: if this group is still stuck after FORCE_CLOSE_MS,
+        // capture the live state first, then navigate away to break hung waits.
+        let forceCloseTimer: ReturnType<typeof setTimeout> | null = null;
+        const forceClosePromise = new Promise<never>((_, reject) => {
+          forceCloseTimer = setTimeout(async () => {
+            console.warn(`   ⏰ [${g.groupId}] Force-close triggered after ${FORCE_CLOSE_MIN}min — navigating away to unblock`);
+            const [teacherSnapshot, studentSnapshot] = await Promise.all([
+              getPdfRuntimeSnapshot(s.teacherPage).catch(() => null),
+              getPdfRuntimeSnapshot(s.studentPage).catch(() => null),
+            ]);
+            console.log(`   🔎 [${g.groupId}] Force-close teacher snapshot: ${JSON.stringify(teacherSnapshot)}`);
+            console.log(`   🔎 [${g.groupId}] Force-close student snapshot: ${JSON.stringify(studentSnapshot)}`);
+            await Promise.all([
+              s.teacherPage.screenshot({ path: `test-results/${g.groupId}-teacher-force-close.png`, fullPage: true }).catch(() => {}),
+              s.studentPage.screenshot({ path: `test-results/${g.groupId}-student-force-close.png`, fullPage: true }).catch(() => {}),
+            ]);
+
+            let failurePhase = 'student_pdf_sync';
+            if (!teacherSnapshot?.roomReady || !studentSnapshot?.roomReady) {
+              failurePhase = 'room_not_ready';
+            } else if (!String(teacherSnapshot?.scenePath || '').includes('/pdf/')) {
+              failurePhase = 'teacher_pdf_not_inserted';
+            }
+
+            await Promise.allSettled([
+              s.teacherPage.goto(`${config.baseUrl}/classroom/wait`, { timeout: 5000 }).catch(() => {}),
+              s.studentPage.goto(`${config.baseUrl}/classroom/wait`, { timeout: 5000 }).catch(() => {}),
+            ]);
+            reject(new Error(`Force-closed after ${FORCE_CLOSE_MIN}min [${failurePhase}]: PDF sync did not complete`));
+          }, FORCE_CLOSE_MS);
+        });
 
         try {
-          const teacherState = await waitForPdfSceneLoaded(s.teacherPage);
-          const studentState = await waitForPdfSceneLoaded(s.studentPage);
+          await Promise.race([
+            (async () => {
+              const roomReadyStartedAt = Date.now();
+              const [teacherRoomReady, studentRoomReady] = await Promise.all([
+                waitForAgoraRoomReady(s.teacherPage, 90000),
+                waitForAgoraRoomReady(s.studentPage, 90000),
+              ]);
+              if (!teacherRoomReady || !studentRoomReady) {
+                throw new Error(`ROOM_NOT_READY: teacher=${teacherRoomReady} student=${studentRoomReady}`);
+              }
+              r.timings!.roomReadyMs = Date.now() - roomReadyStartedAt;
 
-          expect(teacherState.scenePath).toContain('/pdf/');
-          expect(studentState.scenePath).toContain('/pdf/');
-          expect(teacherState.index).toBe(0);
-          expect(studentState.index).toBe(0);
-          expect(teacherState.sceneCount).toBeGreaterThanOrEqual(3);
-          expect(studentState.sceneCount).toBeGreaterThanOrEqual(3);
+              const [teacherState, studentState] = await Promise.all([
+                waitForPdfSceneLoaded(s.teacherPage),
+                waitForPdfSceneLoaded(s.studentPage),
+              ]);
+              r.timings!.pdfSceneCreatedMs = Date.now() - verificationStartedAt;
 
-          // Teacher switches to Page 2 (index 1)
-          await setTeacherSceneIndex(s.teacherPage, 1);
-          await waitForSceneIndex(s.teacherPage, 1);
-          await waitForSceneIndex(s.studentPage, 1);
+              expect(teacherState.scenePath).toContain('/pdf/');
+              expect(studentState.scenePath).toContain('/pdf/');
+              expect(teacherState.index).toBe(0);
+              expect(studentState.index).toBe(0);
+              expect(teacherState.sceneCount).toBeGreaterThanOrEqual(3);
+              expect(studentState.sceneCount).toBeGreaterThanOrEqual(3);
 
-          // Teacher switches to Page 3 (index 2)
-          await setTeacherSceneIndex(s.teacherPage, 2);
-          await waitForSceneIndex(s.teacherPage, 2);
-          await waitForSceneIndex(s.studentPage, 2);
+              // Teacher switches to Page 2 (index 1)
+              await setTeacherSceneIndex(s.teacherPage, 1);
+              await waitForSceneIndex(s.teacherPage, 1);
+              await waitForSceneIndex(s.studentPage, 1);
 
-          // Teacher switches back to Page 1 (index 0)
-          await setTeacherSceneIndex(s.teacherPage, 0);
-          await waitForSceneIndex(s.teacherPage, 0);
-          await waitForSceneIndex(s.studentPage, 0);
+              // Teacher switches to Page 3 (index 2)
+              await setTeacherSceneIndex(s.teacherPage, 2);
+              await waitForSceneIndex(s.teacherPage, 2);
+              await waitForSceneIndex(s.studentPage, 2);
 
-          r.synced = true;
-          console.log(`   ✅ [${g.groupId}] PDF Synchronization verified successfully`);
+              // Teacher switches back to Page 1 (index 0)
+              await setTeacherSceneIndex(s.teacherPage, 0);
+              await waitForSceneIndex(s.teacherPage, 0);
+              await waitForSceneIndex(s.studentPage, 0);
+
+              r.timings!.studentSyncedMs = Date.now() - verificationStartedAt;
+              r.synced = true;
+              console.log(`   ✅ [${g.groupId}] PDF Synchronization verified successfully`);
+            })(),
+            forceClosePromise,
+          ]);
         } catch (err) {
+          const errMsg = (err as Error).message;
+          const isForceClose = errMsg.startsWith('Force-closed');
           const [teacherSnapshot, studentSnapshot] = await Promise.all([
-            getPdfRuntimeSnapshot(s.teacherPage),
-            getPdfRuntimeSnapshot(s.studentPage),
+            getPdfRuntimeSnapshot(s.teacherPage).catch(() => null),
+            getPdfRuntimeSnapshot(s.studentPage).catch(() => null),
           ]);
           console.log(`   🔎 [${g.groupId}] Teacher PDF snapshot: ${JSON.stringify(teacherSnapshot)}`);
           console.log(`   🔎 [${g.groupId}] Student PDF snapshot: ${JSON.stringify(studentSnapshot)}`);
@@ -822,9 +896,19 @@ test.describe(`[stress-${NO_PDF_MODE ? 'no-pdf' : 'pdf'}-${GROUP_COUNT}x] Concur
             s.teacherPage.screenshot({ path: `test-results/${g.groupId}-teacher-pdf-sync-fail.png`, fullPage: true }).catch(() => {}),
             s.studentPage.screenshot({ path: `test-results/${g.groupId}-student-pdf-sync-fail.png`, fullPage: true }).catch(() => {}),
           ]);
-          r.error = `PDF Sync verification: ${(err as Error).message}`;
-          r.phase = 'pdf_sync_verify';
-          console.error(`   ❌ [${g.groupId}] ${r.error}`);
+          r.error = `PDF Sync verification: ${errMsg}`;
+          if (errMsg.includes('ROOM_NOT_READY') || (!teacherSnapshot?.roomReady || !studentSnapshot?.roomReady)) {
+            r.phase = 'room_not_ready';
+          } else if (!String(teacherSnapshot?.scenePath || '').includes('/pdf/')) {
+            r.phase = 'teacher_pdf_not_inserted';
+          } else if (!String(studentSnapshot?.scenePath || '').includes('/pdf/')) {
+            r.phase = 'student_pdf_sync';
+          } else {
+            r.phase = isForceClose ? 'force_closed' : 'pdf_sync_verify';
+          }
+          console.error(`   ${isForceClose ? '⏰' : '❌'} [${g.groupId}] ${r.error}`);
+        } finally {
+          if (forceCloseTimer !== null) clearTimeout(forceCloseTimer);
         }
       }));
     }
