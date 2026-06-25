@@ -61,13 +61,14 @@ interface AgoraWhiteboardProps {
     /** 老師可動態授予/收回學生畫筆 */
     canDraw?: boolean;
     courseId?: string;
+    onPageChange?: (change: { index: number; scenePath: string; sceneCount: number }) => void;
 }
 
 type ToolType = "pencil" | "eraser" | "selector";
 
 const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, ref) => {
     // 1. 使用動態 Region，預設為 sg
-    const { roomUuid, roomToken, appIdentifier, userId, className, role = 'student', region = 'sg', courseId, canDraw } = props;
+    const { roomUuid, roomToken, appIdentifier, userId, className, role = 'student', region = 'sg', courseId, canDraw, onPageChange } = props;
 
     // Hooks
     const containerRef = useRef<HTMLDivElement>(null);
@@ -89,6 +90,12 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
     
     // 防护标志：确保清除只在倒计时结束或手动触发时发生
     const roomInitializedRef = useRef(false);
+    const onPageChangeRef = useRef(onPageChange);
+    const lastReportedPageRef = useRef<string>('');
+
+    useEffect(() => {
+        onPageChangeRef.current = onPageChange;
+    }, [onPageChange]);
 
     // 1. Mount Check
     useEffect(() => {
@@ -398,8 +405,22 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
                 // 監聽頁面變換
                 room.callbacks.on("onRoomStateChanged", (modifyState: any) => {
                     if (modifyState.sceneState) {
-                         setTotalPages(modifyState.sceneState.scenes.length);
-                         setCurrentPage(modifyState.sceneState.index + 1);
+                         const sceneState = modifyState.sceneState;
+                         setTotalPages(sceneState.scenes.length);
+                         setCurrentPage(sceneState.index + 1);
+
+                         if (role === 'teacher') {
+                             const scenePath = String(sceneState.scenePath || room.state?.sceneState?.scenePath || '');
+                             const dedupeKey = `${scenePath}:${sceneState.index}`;
+                             if (scenePath.includes('/pdf/') && lastReportedPageRef.current !== dedupeKey) {
+                                 lastReportedPageRef.current = dedupeKey;
+                                 onPageChangeRef.current?.({
+                                     index: sceneState.index,
+                                     scenePath,
+                                     sceneCount: sceneState.scenes.length,
+                                 });
+                             }
+                         }
                     }
                 });
                 

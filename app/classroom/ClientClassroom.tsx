@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useEffect, useState, useRef } from 'react';
+import React, { useCallback, useMemo, useEffect, useState, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useAgoraClassroom } from '@/lib/agora/useAgoraClassroom';
 import { useAgoraRTM } from '@/lib/agora/useAgoraRTM';
@@ -142,6 +142,37 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   const [whiteboardRetryCount, setWhiteboardRetryCount] = useState(0);
   const [joinAttemptCount, setJoinAttemptCount] = useState(0);
   const lastJoinTimeRef = useRef<number>(0);
+  const pendingPageChangeRef = useRef<{ index: number; scenePath: string; timestamp: number } | null>(null);
+
+  const applyPendingPageChange = useCallback(() => {
+    const pending = pendingPageChangeRef.current;
+    if (!pending || typeof window === 'undefined') return false;
+
+    const room = (window as any).agoraRoom;
+    const state = room?.state?.sceneState;
+    const phase = String(room?.phase || '');
+    if (!room || !state || !/connected/i.test(phase)) return false;
+    if (!String(state.scenePath || '').startsWith(pending.scenePath.replace(/\/\d+$/, ''))) return false;
+    if (!Array.isArray(state.scenes) || pending.index < 0 || pending.index >= state.scenes.length) return false;
+
+    if (state.index !== pending.index) {
+      try {
+        // Students are intentionally read-only and cannot call setSceneIndex.
+        // Re-attaching follower mode asks Netless to replay the broadcaster's
+        // latest scene/camera state without granting write permission.
+        room.setViewMode('freedom');
+        room.setViewMode('follower');
+        console.log('[ClientClassroom] Requested follower resync for RTM page-change:', pending);
+      } catch (error) {
+        console.warn('[ClientClassroom] RTM page-change fallback deferred:', error);
+        return false;
+      }
+      return false;
+    }
+
+    pendingPageChangeRef.current = null;
+    return true;
+  }, []);
 
   // Poll whiteboard state for toolbar display
   // Reduced from 300ms to 1000ms since this is only used for UI display (tool buttons, page info)
@@ -165,12 +196,13 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           const state = agoraWhiteboardRef.current.getState();
           if (state) setWhiteboardState(state);
         }
+        applyPendingPageChange();
       } catch (e) {
         // Silently ignore errors during polling
       }
     }, 1000); // Poll every 1s - sufficient for UI updates, tool state tracking
     return () => clearInterval(interval);
-  }, []); // Run continuously, not dependent on agoraRoomData
+  }, [applyPendingPageChange]); // Run continuously, not dependent on agoraRoomData
 
   // determine courseId from query string (e.g. ?courseId=c1)
   const course = COURSES.find((c) => c.id === courseId) || null;
@@ -428,6 +460,18 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     userId,
     enabled: mounted && !!userId,
     onMessage: (msg) => {
+      if (msg?.type === 'page-change' && !isTeacher) {
+        const index = Number(msg.payload?.index);
+        const scenePath = String(msg.payload?.scenePath || '');
+        if (Number.isInteger(index) && index >= 0 && scenePath.includes('/pdf/')) {
+          pendingPageChangeRef.current = {
+            index,
+            scenePath,
+            timestamp: Number(msg.timestamp || Date.now()),
+          };
+          applyPendingPageChange();
+        }
+      }
       // Dispatch to whichever handler is currently registered
       rtmMessageCallbackRef.current?.(msg);
     },
@@ -2911,6 +2955,9 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                     region={agoraRoomData.region}
                     courseId={courseId}
                     className="w-full h-full"
+                    onPageChange={({ index, scenePath, sceneCount }: { index: number; scenePath: string; sceneCount: number }) => {
+                      void rtmSend('page-change', { index, scenePath, sceneCount });
+                    }}
 
                     role={(urlRole === 'teacher' || computedRole === 'teacher') ? 'teacher'
                       : isObserver ? 'observer'

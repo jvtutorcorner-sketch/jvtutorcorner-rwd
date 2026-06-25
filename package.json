@@ -25,7 +25,12 @@
     "test:production:stress:verbose": "cross-env APP_ENV=production npx playwright test e2e/classroom_room_whiteboard_sync.spec.ts -g 'Stress test' --project=chromium --reporter=verbose",
     "test:production:load": "k6 run -e BASE_URL=https://www.jvtutorcorner.com .agents/skills/classroom-room-whiteboard-sync/scripts/production_load_test.js",
     "test:production:load:stress": "k6 run -e BASE_URL=https://www.jvtutorcorner.com -e TEST_TYPE=stress -e VUSER=20 .agents/skills/classroom-room-whiteboard-sync/scripts/production_load_test.js",
-    "test:production:load:spike": "k6 run -e BASE_URL=https://www.jvtutorcorner.com -e TEST_TYPE=spike -e VUSER=10 .agents/skills/classroom-room-whiteboard-sync/scripts/production_load_test.js"
+    "test:production:load:spike": "k6 run -e BASE_URL=https://www.jvtutorcorner.com -e TEST_TYPE=spike -e VUSER=10 .agents/skills/classroom-room-whiteboard-sync/scripts/production_load_test.js",
+    "test:stress": "powershell -ExecutionPolicy Bypass -File e2e/scripts/run-stress-test.ps1",
+    "test:stress:3": "powershell -ExecutionPolicy Bypass -File e2e/scripts/run-stress-test.ps1 -Groups 3",
+    "test:stress:5": "powershell -ExecutionPolicy Bypass -File e2e/scripts/run-stress-test.ps1 -Groups 5",
+    "test:stress:6": "powershell -ExecutionPolicy Bypass -File e2e/scripts/run-stress-test.ps1 -Groups 6",
+    "test:stress:escalation": "powershell -ExecutionPolicy Bypass -File e2e/scripts/run-escalation-test.ps1"
   },
   "dependencies": {
     "@aws-amplify/ui-react": "^6.13.1",
