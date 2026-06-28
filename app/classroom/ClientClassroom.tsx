@@ -2,8 +2,8 @@
 
 import React, { useCallback, useMemo, useEffect, useState, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { useAgoraClassroom } from '@/lib/agora/useAgoraClassroom';
-import { useAgoraRTM } from '@/lib/agora/useAgoraRTM';
+import { useRTC } from '@/lib/providers/rtc/useRTC';
+import { useSignaling } from '@/lib/providers/signaling/useSignaling';
 import { getStoredUser, setStoredUser } from '@/lib/mockAuth';
 import { COURSES } from '@/data/courses';
 import EnhancedWhiteboard from '@/components/EnhancedWhiteboard';
@@ -351,7 +351,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
     // Troubleshoot helpers
     fixStatus,
     triggerFix,
-  } = useAgoraClassroom(agoraConfig);
+  } = useRTC(agoraConfig);
 
   useEffect(() => {
     if (isRoleOccupied && joined && typeof leave === 'function') {
@@ -472,7 +472,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   // Stable ref to rtmSend so it can be called from inside onMessage without stale closure.
   const rtmSendRef = useRef<((type: any, payload: any) => Promise<boolean>) | null>(null);
 
-  const { connected: rtmConnected, sendMessage: rtmSend } = useAgoraRTM({
+  const { connected: rtmConnected, sendMessage: rtmSend } = useSignaling({
     channelName: effectiveChannelName,
     userId,
     enabled: mounted && !!userId,

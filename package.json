@@ -30,7 +30,8 @@
     "test:stress:3": "powershell -ExecutionPolicy Bypass -File e2e/scripts/run-stress-test.ps1 -Groups 3",
     "test:stress:5": "powershell -ExecutionPolicy Bypass -File e2e/scripts/run-stress-test.ps1 -Groups 5",
     "test:stress:6": "powershell -ExecutionPolicy Bypass -File e2e/scripts/run-stress-test.ps1 -Groups 6",
-    "test:stress:escalation": "powershell -ExecutionPolicy Bypass -File e2e/scripts/run-escalation-test.ps1"
+    "test:stress:escalation": "powershell -ExecutionPolicy Bypass -File e2e/scripts/run-escalation-test.ps1",
+    "test:phase1": "playwright test --config playwright.phase1.config.ts e2e/signaling/ --project=chromium"
   },
   "dependencies": {
     "@aws-amplify/ui-react": "^6.13.1",
