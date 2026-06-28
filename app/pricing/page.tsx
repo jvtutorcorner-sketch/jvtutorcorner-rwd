@@ -196,6 +196,7 @@ function PricingContent() {
     label: p.label,
     badge: p.badge,
     priceHint: p.priceHint,
+    price: p.price,
     target: p.targetAudience,
     features: p.features || (p.includedFeatures ? p.includedFeatures.split('、') : []),
     description: p.includedFeatures,
