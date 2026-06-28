@@ -102,10 +102,10 @@ jobs:
         run: npm ci
 
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install --with-deps chromium webkit
 
       - name: Run verification tests
-        run: npx playwright test --grep "verification" --reporter=html
+        run: npx playwright test --grep "verification" --project=chromium --project=mobile-chrome --project=mobile-safari --reporter=html
 
       - name: Upload test report
         if: always()

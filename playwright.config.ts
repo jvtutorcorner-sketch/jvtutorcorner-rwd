@@ -51,6 +51,7 @@ export default defineConfig({
     },
 
     projects: [
+        // Desktop browsers
         {
             name: 'chromium',
             use: { ...devices['Desktop Chrome'] },
@@ -63,6 +64,22 @@ export default defineConfig({
             name: 'webkit',
             use: { ...devices['Desktop Safari'] },
         },
+
+        // Mobile devices — real viewport, touch events, mobile UA
+        {
+            name: 'mobile-chrome',
+            use: { ...devices['Pixel 7'] },
+        },
+        {
+            name: 'mobile-safari',
+            use: { ...devices['iPhone 14'] },
+        },
+        {
+            name: 'tablet-safari',
+            use: { ...devices['iPad Pro 11'] },
+        },
+
+        // Local development helpers
         {
             name: 'chromium-headed',
             use: {
