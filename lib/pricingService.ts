@@ -9,12 +9,18 @@ export type PlanConfig = {
   id: string;
   label: string;
   priceHint?: string;
+  price?: number;
+  currency?: string;
+  interval?: 'month' | 'year' | 'one-time';
   badge?: string;
   targetAudience: string;
   includedFeatures: string;
   features: string[];
   isActive: boolean;
   order: number;
+  discountPlanId?: string;
+  durationDays?: number;
+  appPlanIds?: string[];
 };
 
 export type DiscountPlan = {

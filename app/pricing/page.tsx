@@ -142,7 +142,7 @@ function PricingContent() {
   async function fetchSettings() {
     try {
       setLoading(true);
-      const res = await fetch('/api/admin/pricing');
+      const res = await fetch('/api/shared/pricing');
       const data = await res.json();
       if (data.ok && data.settings) {
         setSettings(data.settings);
@@ -387,14 +387,24 @@ function PricingContent() {
                   <div className="pricing-price">
                     {(() => {
                       const discountPlan = settings?.discountPlans?.find((dp: any) => dp.id === plan.discountPlanId && dp.isActive);
-                      // In the current implementation, plan.price is the final price saved in DB. 
-                      // However, if we want to show "Original vs Discounted", we might need the original price.
-                      // For now, let's assume we show the price as is, but if there's a discountPlan, we can add a note.
-                      return (
-                        <>
-                          <p>{plan.priceHint}</p>
-                        </>
-                      );
+                      if (discountPlan && plan.price != null) {
+                        let originalPrice: number | null = null;
+                        if (discountPlan.type === 'percentage') {
+                          originalPrice = Math.round(plan.price / (1 - discountPlan.value / 100));
+                        } else {
+                          originalPrice = plan.price + discountPlan.value;
+                        }
+                        return (
+                          <div className="flex flex-col">
+                            <span className="text-sm text-gray-400 line-through">NT$ {originalPrice}</span>
+                            <p className="text-green-600 font-bold">{plan.priceHint}</p>
+                            <span className="text-xs text-green-500 mt-0.5">
+                              {discountPlan.type === 'percentage' ? `${discountPlan.value}% 折扣` : `省 NT$ ${discountPlan.value}`}
+                            </span>
+                          </div>
+                        );
+                      }
+                      return <p>{plan.priceHint}</p>;
                     })()}
                     <small>{t('pricing_price_note')}</small>
                   </div>

@@ -128,6 +128,8 @@ export default function PricingSettingsPage() {
           // Ensure all items have isActive flag (default to true if missing) for robust state
           loadedSettings = {
             ...rawSettings,
+            plans: (rawSettings.plans || []).map(p => ({ ...p, isActive: p.isActive ?? true })),
+            extensions: (rawSettings.extensions || []).map(e => ({ ...e, isActive: e.isActive ?? true })),
             pointPackages: (rawSettings.pointPackages || []).map(p => ({ ...p, isActive: p.isActive ?? true })),
             discountPlans: (rawSettings.discountPlans || []).map(p => ({ ...p, isActive: p.isActive ?? true })),
             appPlans: (rawSettings.appPlans || []).map(p => ({ ...p, isActive: p.isActive ?? true })),
@@ -338,10 +340,26 @@ export default function PricingSettingsPage() {
     return false;
   };
 
-  const updateSubscription = (id: string, field: keyof SubscriptionConfig, value: any) => {
-    setSubscriptions(prev => prev.map(sub =>
-      sub.id === id ? { ...sub, [field]: value } : sub
-    ));
+  const updateSubscription = (id: string, field: keyof SubscriptionConfig | string, value: any) => {
+    setSubscriptions(prev => prev.map(sub => {
+      if (sub.id !== id) return sub;
+      const updated = { ...sub, [field]: value } as any;
+
+      // When discount plan changes, recalculate price from current base price
+      if (field === 'discountPlanId' && value) {
+        const basePrice = (sub as any).price || 0;
+        const plan = settings.discountPlans?.find(p => p.id === value && p.isActive);
+        if (plan) {
+          if (plan.type === 'percentage') {
+            updated.price = Math.round(basePrice * (1 - plan.value / 100));
+          } else {
+            updated.price = Math.max(0, basePrice - plan.value);
+          }
+        }
+      }
+
+      return updated;
+    }));
   };
 
   const addSubscription = (type: SubscriptionType) => {
@@ -516,7 +534,7 @@ export default function PricingSettingsPage() {
       pointPackages: [...(prev.pointPackages || []), ...mockPackages]
     }));
 
-    setMessage('已新增 4 個模擬點數套餐');
+    setMessage('已新增 3 個模擬點數套餐');
     setTimeout(() => setMessage(''), 3000);
 
     setTimeout(() => {
@@ -1088,6 +1106,17 @@ export default function PricingSettingsPage() {
                         </div>
 
                         <div className="space-y-1">
+                          <label className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">徽章文字 (Badge)</label>
+                          <input
+                            type="text"
+                            value={(plan as any).badge ?? ''}
+                            onChange={(e) => updateSubscription(plan.id, 'badge' as any, e.target.value)}
+                            disabled={editingPlanId !== plan.id}
+                            placeholder="例如：推薦、熱門"
+                            className={`w-full px-3 py-2 rounded-lg text-sm transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 border ${editingPlanId === plan.id ? 'bg-white border-gray-300' : 'bg-transparent border-transparent text-indigo-600 font-semibold px-0'}`}
+                          />
+                        </div>
+                        <div className="space-y-1">
                           <label className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">適合對象 (Target Audience)</label>
                           <input
                             type="text"
@@ -1106,6 +1135,54 @@ export default function PricingSettingsPage() {
                             disabled={editingPlanId !== plan.id}
                             className={`w-full px-3 py-2 rounded-lg text-sm transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 border ${editingPlanId === plan.id ? 'bg-white border-gray-300' : 'bg-transparent border-transparent text-gray-900 font-medium px-0'}`}
                           />
+                        </div>
+
+                        {/* Features 清單 */}
+                        <div className="space-y-2 sm:col-span-2">
+                          <label className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">功能特色清單 (Features)</label>
+                          <div className="space-y-2">
+                            {((plan as any).features || []).map((feat: string, fi: number) => (
+                              <div key={fi} className="flex items-center gap-2">
+                                <input
+                                  type="text"
+                                  value={feat}
+                                  onChange={(e) => {
+                                    const newFeats = [...((plan as any).features || [])];
+                                    newFeats[fi] = e.target.value;
+                                    updateSubscription(plan.id, 'features' as any, newFeats);
+                                  }}
+                                  disabled={editingPlanId !== plan.id}
+                                  className={`flex-1 px-3 py-2 rounded-lg text-sm transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 border ${editingPlanId === plan.id ? 'bg-white border-gray-300' : 'bg-transparent border-transparent text-gray-700 px-0'}`}
+                                />
+                                {editingPlanId === plan.id && (
+                                  <button
+                                    onClick={() => {
+                                      const newFeats = ((plan as any).features || []).filter((_: any, i: number) => i !== fi);
+                                      updateSubscription(plan.id, 'features' as any, newFeats);
+                                    }}
+                                    className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
+                                  >
+                                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                                  </button>
+                                )}
+                              </div>
+                            ))}
+                            {editingPlanId === plan.id && (
+                              <button
+                                onClick={() => {
+                                  const newFeats = [...((plan as any).features || []), ''];
+                                  updateSubscription(plan.id, 'features' as any, newFeats);
+                                }}
+                                className="text-xs text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1 mt-1"
+                              >
+                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                                新增功能項目
+                              </button>
+                            )}
+                            {((plan as any).features || []).length === 0 && editingPlanId !== plan.id && (
+                              <p className="text-xs text-gray-400 italic">尚未設定功能項目</p>
+                            )}
+                          </div>
                         </div>
                       </div>
 
@@ -1532,20 +1609,10 @@ export default function PricingSettingsPage() {
                           />
                         </div>
                         <div className="space-y-1 sm:col-span-2 lg:col-span-3">
-                          <label className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">徽章文字 (例如：熱銷、最划算)</label>
+                          <label className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">促銷推廣徽章 (例如：熱銷、最划算)</label>
                           <input
                             type="text"
                             value={pkg.badge ?? ''}
-                            onChange={(e) => updatePointPackage(pkg.id, 'badge', e.target.value)}
-                            disabled={editingPlanId !== pkg.id}
-                            className={`w-full px-3 py-2 rounded-lg text-sm transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500 border ${editingPlanId === pkg.id ? 'bg-white border-gray-300' : 'bg-transparent border-transparent text-gray-600 px-0'}`}
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">促銷推廣徽章</label>
-                          <input
-                            type="text"
-                            value={pkg.badge || ''}
                             onChange={(e) => updatePointPackage(pkg.id, 'badge', e.target.value)}
                             disabled={editingPlanId !== pkg.id}
                             placeholder="如：熱銷、最划算"
