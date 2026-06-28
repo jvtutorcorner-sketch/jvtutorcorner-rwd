@@ -174,8 +174,9 @@ test.describe('Pricing Fixes Verification', () => {
     await editBtns.first().click();
     await page.waitForTimeout(500);
 
-    // Count badge-related labels visible for point packages
-    const badgeLabels = page.locator('label:has-text("徽章"), label:has-text("Badge"), label:has-text("促銷推廣")');
+    // Count badge-related labels ONLY inside the currently-editing card (has ring-4 highlight)
+    const editingCard = page.locator('[class*="ring-4"]').first();
+    const badgeLabels = editingCard.locator('label:has-text("徽章"), label:has-text("Badge"), label:has-text("促銷推廣")');
     const badgeCount = await badgeLabels.count();
     console.log(`  Badge-related labels found: ${badgeCount}`);
     expect(badgeCount, 'Should have exactly one badge label in point packages form').toBe(1);
@@ -213,7 +214,8 @@ test.describe('Pricing Fixes Verification', () => {
     await adminLogin(page);
     await goToPricingSettings(page);
 
-    // Should be on subscription tab by default
+    // DB may persist a different active tab — always click subscription explicitly
+    await page.click('button:has-text("訂閱方案")');
     await page.waitForSelector('h3:has-text("訂閱方案管理")', { timeout: 10000 });
 
     // Open edit mode for first plan
@@ -242,6 +244,7 @@ test.describe('Pricing Fixes Verification', () => {
     await adminLogin(page);
     await goToPricingSettings(page);
 
+    await page.click('button:has-text("訂閱方案")');
     await page.waitForSelector('h3:has-text("訂閱方案管理")', { timeout: 10000 });
 
     // Open edit mode
@@ -278,6 +281,7 @@ test.describe('Pricing Fixes Verification', () => {
     await adminLogin(page);
     await goToPricingSettings(page);
 
+    await page.click('button:has-text("訂閱方案")');
     await page.waitForSelector('h3:has-text("訂閱方案管理")', { timeout: 10000 });
 
     // First check if there are discount plans
