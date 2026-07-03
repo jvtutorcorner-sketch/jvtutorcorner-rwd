@@ -161,10 +161,10 @@ export default function EnhancedWhiteboard({
     if (typeof window === 'undefined') return null;
     const params = new URLSearchParams(window.location.search);
     const urlRole = params.get('role');
-    if (urlRole) return urlRole === 'user' ? 'student' : urlRole;
+    if (urlRole) return urlRole;
     try {
       const u = getStoredUser();
-      return u?.role === 'user' ? 'student' : (u?.role || null);
+      return u?.role || null;
     } catch (e) {
       return null;
     }

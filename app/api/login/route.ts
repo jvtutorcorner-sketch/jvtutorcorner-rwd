@@ -74,7 +74,7 @@ export async function POST(req: Request) {
       sessionToken = await createSession({
         userId: canonicalId,
         email: found.email || email,
-        role: found.role || 'user',
+        role: found.role || 'student',
         plan: found.plan || 'viewer',
       });
     } catch (sessionErr) {

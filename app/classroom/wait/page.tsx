@@ -934,7 +934,7 @@ export default function ClassroomWaitPage() {
           {storedUserState && (
             <div style={{ marginLeft: 12, padding: '6px 10px', borderRadius: 8, background: '#f8fafc', display: 'flex', alignItems: 'center', gap: 8 }}>
               <div style={{ fontSize: 13, color: '#111', fontWeight: 600 }}>{((storedUserState.lastName || '') + ' ' + (storedUserState.firstName || '')).trim() || storedUserState.displayName || 'No Set Name'}</div>
-              <div style={{ fontSize: 12, color: '#666' }}>({storedUserState.role || 'user'})</div>
+              <div style={{ fontSize: 12, color: '#666' }}>({storedUserState.role || 'student'})</div>
             </div>
           )}
         </div>

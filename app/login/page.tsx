@@ -144,7 +144,7 @@ export default function LoginPage() {
           plan: 'viewer',
           firstName: 'Google',
           lastName: 'User',
-          role: 'user',
+          role: 'student',
         };
 
         setStoredUser(user);

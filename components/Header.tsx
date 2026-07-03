@@ -38,9 +38,7 @@ export default function Header() {
     const pc = adminSettings.pageConfigs.find((x: any) => x.path === path);
     if (!pc) return type === 'menu'; // If not in config: visible for Main Menu items (legacy), hidden for Dropdown (dynamic)
 
-    let roleKey = user?.role || 'student';
-    // Map legacy 'user' role to 'student' to match settings
-    if (roleKey === 'user') roleKey = 'student';
+    const roleKey = user?.role || 'student';
 
     // Admin always sees everything? Or should we respect settings even for admin?
     // Let's respect settings, but usually admins have all true.
@@ -287,16 +285,14 @@ export default function Header() {
                       <div style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>
                         {(() => {
                           const r = user.role || 'student';
-                          // map 'user' to 'student' for legacy lookup
-                          const lookupId = r === 'user' ? 'student' : r;
-                          const roleObj = roles.find((x: any) => x.id === lookupId);
+                          const roleObj = roles.find((x: any) => x.id === r);
                           if (roleObj) {
-                            return roleObj.description || roleObj.name || lookupId;
+                            return roleObj.description || roleObj.name || r;
                           }
                           // Fallback labels for well-known roles
                           if (r === 'admin') return '管理者';
                           if (r === 'teacher') return '教師';
-                          if (r === 'student' || r === 'user') return '使用者';
+                          if (r === 'student') return '使用者';
                           return r; // return raw ID as last resort
                         })()}
                       </div>

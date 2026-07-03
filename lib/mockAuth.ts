@@ -95,8 +95,8 @@ export const MOCK_USERS: Record<
 export type StoredUser = {
   email: string;
   plan: PlanId;
-  // optional role for admin/teacher demo
-  role?: 'admin' | 'user' | 'teacher' | string;
+  // optional role for admin/teacher/student accounts
+  role?: 'admin' | 'teacher' | 'student' | string;
   // optional teacher id for demo teacher accounts
   teacherId?: string;
   // roid_id is used for DynamoDB primary key matching

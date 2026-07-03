@@ -95,7 +95,7 @@ export async function GET(req: Request) {
       lastName: '',
       pictureUrl: pictureUrl || '',
       email: `line_${lineUid}@line.local`,
-      role: 'user',
+      role: 'student',
       plan: 'free',
       emailVerified: false,
       createdAt: new Date().toISOString(),
@@ -114,7 +114,7 @@ export async function GET(req: Request) {
     sessionToken = await createSession({
       userId: profile.roid_id || profile.id,
       email: profile.email,
-      role: profile.role || 'user',
+      role: profile.role || 'student',
       plan: profile.plan || 'free',
     });
   } catch (e) {

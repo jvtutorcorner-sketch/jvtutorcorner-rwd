@@ -131,9 +131,8 @@ export default function TestPage() {
       const urlRole = params.get('role');
       const currentSu = getStoredUser(); // Use fresh user data
       if (urlRole && currentSu?.role && currentSu.role !== 'admin') {
-        const isStudentMatch = urlRole === 'student' && currentSu.role === 'user';
         const isExactMatch = currentSu.role === urlRole;
-        if (!isStudentMatch && !isExactMatch) {
+        if (!isExactMatch) {
           console.warn('[AuthCheck][test] Role mismatch detected:', { urlRole, userRole: currentSu.role });
           // Note: setupParams already auto-corrected the URL and dispatched router.replace
           // We no longer kick them blindly to `/` so they can successfully join with their true identity.
@@ -157,7 +156,7 @@ export default function TestPage() {
         {mounted && storedUser ? (
           <div style={{ padding: '6px 10px', borderRadius: 8, background: '#f8fafc', display: 'flex', alignItems: 'center', gap: 8 }}>
             <div style={{ fontSize: 13, color: '#111', fontWeight: 600 }}>{`${storedUser.lastName || ''} ${storedUser.firstName || ''}`.trim() || storedUser.displayName || 'No Set Name'}</div>
-            <div style={{ fontSize: 12, color: '#666' }}>({storedUser.role === 'user' ? 'student' : (storedUser.role || 'user')})</div>
+            <div style={{ fontSize: 12, color: '#666' }}>({storedUser.role || 'student'})</div>
           </div>
         ) : null}
       </div>

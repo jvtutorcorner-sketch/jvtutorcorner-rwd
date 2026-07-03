@@ -272,7 +272,7 @@ test('Classroom Whiteboard Sync - Teacher to Student', async ({ page }) => {
       const user = {
         email: r === 'teacher' ? 'teacher@test.com' : 'student@test.com',
         plan: 'pro',
-        role: r === 'teacher' ? 'teacher' : 'user',
+        role: r === 'teacher' ? 'teacher' : 'student',
         displayName: r === 'teacher' ? '測試老師' : '測試學生'
       };
       localStorage.setItem('tutor_mock_user', JSON.stringify(user));
