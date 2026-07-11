@@ -16,9 +16,21 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+export CI=1
+export npm_config_progress=false
+export npm_config_audit=false
+export npm_config_fund=false
 
 log() {
   printf '%s\n' "$*"
+}
+
+step_start() {
+  log ">>> START: $*"
+}
+
+step_done() {
+  log ">>> DONE: $*"
 }
 
 die() {
@@ -60,9 +72,10 @@ install_missing_apt_packages() {
     return 0
   fi
 
-  log ">>> Installing system packages: ${missing[*]}"
+  step_start "Installing system packages: ${missing[*]}"
   sudo apt-get update
   DEBIAN_FRONTEND=noninteractive sudo apt-get install -y "${missing[@]}"
+  step_done "System packages installed"
 }
 
 ensure_node_22() {
@@ -71,9 +84,10 @@ ensure_node_22() {
   current_major="$(node_major_version)"
 
   if [[ "$current_major" -lt 22 ]]; then
-    log ">>> Installing Node.js 22..."
+    step_start "Installing Node.js 22"
     curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
     DEBIAN_FRONTEND=noninteractive sudo apt-get install -y nodejs
+    step_done "Node.js 22 installed"
   fi
 
   log "Node: $(node -v)  npm: $(npm -v)"
@@ -85,13 +99,14 @@ ensure_npm_toolchain() {
     return 0
   fi
 
-  log ">>> npm/npx not found; installing the npm toolchain..."
+  step_start "Installing npm toolchain"
   DEBIAN_FRONTEND=noninteractive sudo apt-get install -y npm
 
   have_cmd npm || die "npm is still missing after installation."
   have_cmd npx || die "npx is still missing after installation."
 
   log "npm: $(npm -v)  npx: $(npx --version)"
+  step_done "npm toolchain installed"
 }
 
 ensure_optional_k6() {
@@ -105,15 +120,17 @@ ensure_optional_k6() {
     return 0
   fi
 
-  log ">>> INSTALL_K6=1 detected; installing k6..."
+  step_start "Installing k6"
   if have_cmd brew; then
     brew install k6
+    step_done "k6 installed"
     return 0
   fi
 
   if have_cmd apt-get; then
     sudo apt-get update
     sudo apt-get install -y k6
+    step_done "k6 installed"
     return 0
   fi
 
@@ -252,7 +269,7 @@ ensure_playwright_dependency() {
     return 0
   fi
 
-  log ">>> @playwright/test is missing; reinstalling project dependencies..."
+  step_start "@playwright/test is missing; reinstalling project dependencies"
   if [[ -f package-lock.json ]]; then
     npm ci --ignore-scripts
   else
@@ -261,21 +278,28 @@ ensure_playwright_dependency() {
 
   node -e "require.resolve('@playwright/test')" >/dev/null 2>&1 \
     || die "@playwright/test is still missing after reinstalling dependencies."
+  step_done "@playwright/test restored"
 }
 
 install_project_deps() {
   if [[ -f package-lock.json ]]; then
-    log ">>> Installing project dependencies with npm ci..."
+    step_start "Installing project dependencies with npm ci"
     npm ci --ignore-scripts
+    log ">>> npm ci completed"
+    step_done "Project dependencies installed"
   else
-    log ">>> package-lock.json not found; falling back to npm install..."
+    step_start "package-lock.json not found; falling back to npm install"
     npm install --ignore-scripts
+    log ">>> npm install completed"
+    step_done "Project dependencies installed"
   fi
 }
 
 install_playwright_chromium() {
-  log ">>> Installing Playwright Chromium browser..."
+  step_start "Installing Playwright Chromium browser"
   npx playwright install --with-deps chromium
+  log ">>> playwright install completed"
+  step_done "Playwright Chromium browser installed"
 }
 
 run_command_if_provided() {
