@@ -137,6 +137,45 @@ ensure_optional_k6() {
   die "k6 installation requested, but no supported package manager was found."
 }
 
+check_host_resources() {
+  local cpu_count mem_total_mb mem_available_mb swap_total_mb swap_free_mb load_1m
+  local warn=0
+
+  cpu_count="$(nproc 2>/dev/null || echo 1)"
+  mem_total_mb="$(awk '/MemTotal/ {printf "%.0f", $2/1024}' /proc/meminfo 2>/dev/null || echo 0)"
+  mem_available_mb="$(awk '/MemAvailable/ {printf "%.0f", $2/1024}' /proc/meminfo 2>/dev/null || echo 0)"
+  swap_total_mb="$(awk '/SwapTotal/ {printf "%.0f", $2/1024}' /proc/meminfo 2>/dev/null || echo 0)"
+  swap_free_mb="$(awk '/SwapFree/ {printf "%.0f", $2/1024}' /proc/meminfo 2>/dev/null || echo 0)"
+  load_1m="$(awk '{print $1}' /proc/loadavg 2>/dev/null || echo 0)"
+
+  log ""
+  log "=== EC2 Host Resources ==="
+  log "CPU cores       : ${cpu_count}"
+  log "RAM total       : ${mem_total_mb} MB"
+  log "RAM available   : ${mem_available_mb} MB"
+  log "Swap total      : ${swap_total_mb} MB"
+  log "Swap free       : ${swap_free_mb} MB"
+  log "Load average 1m : ${load_1m}"
+
+  if [[ "$cpu_count" -lt 2 ]]; then
+    warn=1
+  fi
+  if [[ "$mem_total_mb" -lt 4096 || "$mem_available_mb" -lt 1024 ]]; then
+    warn=1
+  fi
+  if [[ "$swap_total_mb" -eq 0 ]]; then
+    warn=1
+  fi
+
+  if [[ "$warn" -eq 1 ]]; then
+    log "⚠ 建議升規：目前 CPU / RAM / swap 對 npm ci + Playwright 偏緊。"
+    log "  建議至少 2 vCPU / 4 GB RAM；若要穩定跑 Playwright，建議 4 vCPU / 8 GB RAM。"
+  else
+    log "✓ Host resources look reasonable for bootstrap and test runs."
+  fi
+  log "============================"
+}
+
 repair_environment_from_diagnostics() {
   log ""
   log "=== EC2 Auto-Fix Mode ==="
@@ -167,6 +206,7 @@ diagnose_environment() {
 
   log ""
   log "=== EC2 Environment Diagnostics ==="
+  check_host_resources
 
   if have_cmd node; then
     log "node: $(node -v)"
