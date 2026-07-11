@@ -71,6 +71,47 @@ ensure_node_20() {
   log "Node: $(node -v)  npm: $(npm -v)"
 }
 
+ensure_npm_toolchain() {
+  if have_cmd npm && have_cmd npx; then
+    log ">>> npm/npx already available."
+    return 0
+  fi
+
+  log ">>> npm/npx not found; installing the npm toolchain..."
+  DEBIAN_FRONTEND=noninteractive sudo apt-get install -y npm
+
+  have_cmd npm || die "npm is still missing after installation."
+  have_cmd npx || die "npx is still missing after installation."
+
+  log "npm: $(npm -v)  npx: $(npx --version)"
+}
+
+ensure_optional_k6() {
+  if have_cmd k6; then
+    log ">>> k6 already available."
+    return 0
+  fi
+
+  if [[ "${INSTALL_K6:-0}" != "1" ]]; then
+    log ">>> k6 not installed (optional). Set INSTALL_K6=1 to install it."
+    return 0
+  fi
+
+  log ">>> INSTALL_K6=1 detected; installing k6..."
+  if have_cmd brew; then
+    brew install k6
+    return 0
+  fi
+
+  if have_cmd apt-get; then
+    sudo apt-get update
+    sudo apt-get install -y k6
+    return 0
+  fi
+
+  die "k6 installation requested, but no supported package manager was found."
+}
+
 install_project_deps() {
   if [[ -f package-lock.json ]]; then
     log ">>> Installing project dependencies with npm ci..."
@@ -127,8 +168,10 @@ main() {
     xvfb fonts-noto-cjk
 
   ensure_node_20
+  ensure_npm_toolchain
   install_project_deps
   install_playwright_chromium
+  ensure_optional_k6
   run_command_if_provided "$@"
 }
 
