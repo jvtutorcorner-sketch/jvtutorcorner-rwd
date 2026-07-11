@@ -113,6 +113,22 @@ ensure_optional_k6() {
   die "k6 installation requested, but no supported package manager was found."
 }
 
+repair_environment_from_diagnostics() {
+  log ""
+  log "=== EC2 Auto-Fix Mode ==="
+  log "Applying bootstrap repairs in dependency order..."
+
+  ensure_node_20
+  ensure_npm_toolchain
+  install_project_deps
+  ensure_playwright_dependency
+  install_playwright_chromium
+  ensure_optional_k6
+
+  log "=== Auto-Fix Complete ==="
+  log ""
+}
+
 diagnose_environment() {
   local failures=0
   local -a fixes=()
@@ -271,6 +287,8 @@ run_command_if_provided() {
 
 main() {
   cd "$PROJECT_ROOT"
+  local diagnose_mode=0
+  local fix_mode=0
 
   if [[ -r /etc/os-release ]]; then
     # shellcheck disable=SC1091
@@ -280,13 +298,35 @@ main() {
 
   require_root_tools
 
-  if [[ "${1:-}" == "--diagnose" ]]; then
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --diagnose)
+        diagnose_mode=1
+        shift
+        ;;
+      --fix)
+        fix_mode=1
+        shift
+        ;;
+      --)
+        shift
+        break
+        ;;
+      *)
+        break
+        ;;
+    esac
+  done
+
+  if [[ "$diagnose_mode" -eq 1 ]]; then
     diagnose_environment
     diag_exit=$?
-    if [[ "$diag_exit" -ne 0 ]]; then
-      exit "$diag_exit"
+    if [[ "$fix_mode" -eq 1 ]]; then
+      repair_environment_from_diagnostics
+      diagnose_environment
+      diag_exit=$?
     fi
-    shift
+    exit "$diag_exit"
   fi
 
   install_missing_apt_packages \
