@@ -386,8 +386,32 @@ run_command_if_provided() {
 
   [[ $# -gt 0 ]] || die "No command provided after --."
 
-  log ">>> Running command: $*"
-  exec "$@"
+  local -a env_prefix=()
+  local -a cmd=()
+  local arg
+  local saw_command=0
+
+  for arg in "$@"; do
+    if [[ "$saw_command" -eq 0 && "$arg" == *=* && "$arg" != *=*' '* ]]; then
+      env_prefix+=("$arg")
+    else
+      saw_command=1
+      cmd+=("$arg")
+    fi
+  done
+
+  [[ ${#cmd[@]} -gt 0 ]] || die "No executable command found after environment assignments."
+
+  if [[ ${#env_prefix[@]} -gt 0 ]]; then
+    log ">>> Env prefix: ${env_prefix[*]}"
+  fi
+  log ">>> Running command: ${cmd[*]}"
+
+  if [[ ${#env_prefix[@]} -gt 0 ]]; then
+    exec env "${env_prefix[@]}" "${cmd[@]}"
+  else
+    exec "${cmd[@]}"
+  fi
 }
 
 main() {
