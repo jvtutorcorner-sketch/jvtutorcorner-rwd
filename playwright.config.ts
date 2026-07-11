@@ -7,10 +7,14 @@ const APP_ENV = process.env.APP_ENV || 'local';
 const envPath = path.resolve(__dirname, `.env.${APP_ENV}`);
 dotenv.config({ path: envPath });
 
-console.log(`📡 E2E Environment: ${APP_ENV.toUpperCase()}`);
-console.log(`🔗 Base URL: ${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}`);
-
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+const IS_REMOTE_BASE_URL = /^https?:\/\/(?!localhost|127\.0\.0\.1)/i.test(BASE_URL);
+
+console.log(`📡 E2E Environment: ${APP_ENV.toUpperCase()}`);
+console.log(`🔗 Base URL: ${BASE_URL}`);
+if (IS_REMOTE_BASE_URL) {
+    console.log(`🌐 Remote base URL detected; local webServer will be skipped.`);
+}
 
 export default defineConfig({
     testDir: './e2e',
@@ -20,13 +24,6 @@ export default defineConfig({
     forbidOnly: !!process.env.CI,
     retries: process.env.CI ? 2 : 0,
     workers: process.env.CI ? 1 : 1,
-
-    webServer: {
-        command: 'npm run dev',
-        url: BASE_URL,
-        reuseExistingServer: !process.env.CI,
-        timeout: 120000,
-    },
 
     reporter: [
         ['html', { outputFolder: 'playwright-report' }],
@@ -49,6 +46,15 @@ export default defineConfig({
             ],
         }
     },
+
+    webServer: IS_REMOTE_BASE_URL
+        ? undefined
+        : {
+              command: 'npm run dev',
+              url: BASE_URL,
+              reuseExistingServer: !process.env.CI,
+              timeout: 120000,
+          },
 
     projects: [
         // Desktop browsers
