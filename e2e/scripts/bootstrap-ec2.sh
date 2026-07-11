@@ -65,14 +65,14 @@ install_missing_apt_packages() {
   DEBIAN_FRONTEND=noninteractive sudo apt-get install -y "${missing[@]}"
 }
 
-ensure_node_20() {
+ensure_node_22() {
   local current_major="0"
 
   current_major="$(node_major_version)"
 
-  if [[ "$current_major" -lt 20 ]]; then
-    log ">>> Installing Node.js 20..."
-    curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+  if [[ "$current_major" -lt 22 ]]; then
+    log ">>> Installing Node.js 22..."
+    curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
     DEBIAN_FRONTEND=noninteractive sudo apt-get install -y nodejs
   fi
 
@@ -125,7 +125,7 @@ repair_environment_from_diagnostics() {
   log "=== EC2 Auto-Fix Mode ==="
   log "Applying bootstrap repairs in dependency order..."
 
-  ensure_node_20
+  ensure_node_22
   ensure_npm_toolchain
   install_project_deps
   ensure_playwright_dependency
@@ -153,17 +153,17 @@ diagnose_environment() {
 
   if have_cmd node; then
     log "node: $(node -v)"
-    if [[ "$(node_major_version)" -lt 20 ]]; then
-      log "node major: BELOW 20"
+    if [[ "$(node_major_version)" -lt 22 ]]; then
+      log "node major: BELOW 22"
       mark_fail
-      add_fix "Upgrade Node.js to 20+: curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && sudo apt-get install -y nodejs"
+      add_fix "Upgrade Node.js to 22+: curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt-get install -y nodejs"
     else
       log "node major: OK"
     fi
   else
     log "node: MISSING"
     mark_fail
-    add_fix "Install Node.js 20: curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && sudo apt-get install -y nodejs"
+    add_fix "Install Node.js 22: curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt-get install -y nodejs"
   fi
 
   if have_cmd npm; then
@@ -353,7 +353,7 @@ main() {
     libpango-1.0-0 libcairo2 libasound2 libatspi2.0-0 libwayland-client0 \
     xvfb fonts-noto-cjk
 
-  ensure_node_20
+  ensure_node_22
   ensure_npm_toolchain
   install_project_deps
   ensure_playwright_dependency
