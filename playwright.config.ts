@@ -8,12 +8,16 @@ const envPath = path.resolve(__dirname, `.env.${APP_ENV}`);
 dotenv.config({ path: envPath });
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-const IS_REMOTE_BASE_URL = /^https?:\/\/(?!localhost|127\.0\.0\.1)/i.test(BASE_URL);
+const IS_PRODUCTION_ENV = APP_ENV === 'production';
+const IS_LOCAL_ENV = APP_ENV === 'local';
+const SHOULD_START_WEB_SERVER = IS_LOCAL_ENV;
 
 console.log(`📡 E2E Environment: ${APP_ENV.toUpperCase()}`);
 console.log(`🔗 Base URL: ${BASE_URL}`);
-if (IS_REMOTE_BASE_URL) {
-    console.log(`🌐 Remote base URL detected; local webServer will be skipped.`);
+if (IS_PRODUCTION_ENV) {
+    console.log(`🌐 Production mode detected; local webServer will be skipped.`);
+} else if (IS_LOCAL_ENV) {
+    console.log(`🏠 Local mode detected; webServer may be started.`);
 }
 
 export default defineConfig({
@@ -47,14 +51,14 @@ export default defineConfig({
         }
     },
 
-    webServer: IS_REMOTE_BASE_URL
-        ? undefined
-        : {
+    webServer: SHOULD_START_WEB_SERVER
+        ? {
               command: 'npm run dev',
               url: BASE_URL,
               reuseExistingServer: !process.env.CI,
               timeout: 120000,
-          },
+          }
+        : undefined,
 
     projects: [
         // Desktop browsers
