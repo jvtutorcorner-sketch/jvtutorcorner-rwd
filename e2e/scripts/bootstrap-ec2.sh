@@ -8,6 +8,7 @@
 #
 # Usage:
 #   bash e2e/scripts/bootstrap-ec2.sh
+#   bash e2e/scripts/bootstrap-ec2.sh --diagnose
 #   bash e2e/scripts/bootstrap-ec2.sh -- npx playwright test e2e/classroom_room_whiteboard_sync.spec.ts --project=chromium
 #   bash e2e/scripts/bootstrap-ec2.sh -- bash -lc 'STRESS_GROUP_COUNT=1 npx playwright test e2e/classroom_room_whiteboard_sync.spec.ts -g "Stress test" --project=chromium'
 
@@ -112,6 +113,67 @@ ensure_optional_k6() {
   die "k6 installation requested, but no supported package manager was found."
 }
 
+diagnose_environment() {
+  log ""
+  log "=== EC2 Environment Diagnostics ==="
+
+  if have_cmd node; then
+    log "node: $(node -v)"
+  else
+    log "node: MISSING"
+  fi
+
+  if have_cmd npm; then
+    log "npm: $(npm -v)"
+  else
+    log "npm: MISSING"
+  fi
+
+  if have_cmd npx; then
+    log "npx: $(npx --version)"
+  else
+    log "npx: MISSING"
+  fi
+
+  if node -e "require.resolve('@playwright/test')" >/dev/null 2>&1; then
+    log "@playwright/test: OK"
+  else
+    log "@playwright/test: MISSING"
+  fi
+
+  if [[ -f playwright.config.ts ]]; then
+    log "playwright.config.ts: FOUND"
+    if npx playwright test --config=playwright.config.ts --list >/dev/null 2>&1; then
+      log "playwright.config.ts load: OK"
+    else
+      log "playwright.config.ts load: FAILED"
+    fi
+  else
+    log "playwright.config.ts: MISSING"
+  fi
+
+  if have_cmd npx && npx playwright --version >/dev/null 2>&1; then
+    log "playwright cli: OK ($(npx playwright --version 2>/dev/null | tr -d '\r'))"
+  else
+    log "playwright cli: MISSING"
+  fi
+
+  if have_cmd npx && npx playwright install --dry-run chromium >/dev/null 2>&1; then
+    log "chromium browser: OK or installable"
+  else
+    log "chromium browser: MISSING or not yet installable"
+  fi
+
+  if have_cmd k6; then
+    log "k6: $(k6 version 2>/dev/null | tr -d '\r')"
+  else
+    log "k6: MISSING (optional)"
+  fi
+
+  log "=================================="
+  log ""
+}
+
 ensure_playwright_dependency() {
   if node -e "require.resolve('@playwright/test')" >/dev/null 2>&1; then
     log ">>> @playwright/test is available."
@@ -175,6 +237,11 @@ main() {
   fi
 
   require_root_tools
+
+  if [[ "${1:-}" == "--diagnose" ]]; then
+    diagnose_environment
+    shift
+  fi
 
   install_missing_apt_packages \
     git curl ca-certificates unzip \
