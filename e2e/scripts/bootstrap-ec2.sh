@@ -56,6 +56,22 @@ require_root_tools() {
   have_cmd apt-get || die "apt-get is required. This bootstrap script targets Ubuntu/Debian EC2 images."
 }
 
+apt_package_exists() {
+  apt-cache show "$1" >/dev/null 2>&1
+}
+
+pick_apt_package() {
+  local preferred="$1"
+  local fallback="$2"
+
+  if apt_package_exists "$preferred"; then
+    echo "$preferred"
+    return 0
+  fi
+
+  echo "$fallback"
+}
+
 install_missing_apt_packages() {
   local -a packages=("$@")
   local -a missing=()
@@ -76,6 +92,17 @@ install_missing_apt_packages() {
   sudo apt-get update
   DEBIAN_FRONTEND=noninteractive sudo apt-get install -y "${missing[@]}"
   step_done "System packages installed"
+}
+
+install_playwright_system_deps() {
+  local asound_pkg
+  asound_pkg="$(pick_apt_package libasound2t64 libasound2)"
+
+  install_missing_apt_packages \
+    libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libxkbcommon0 \
+    libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 \
+    libpango-1.0-0 libcairo2 "${asound_pkg}" libatspi2.0-0 libwayland-client0 \
+    xvfb fonts-noto-cjk
 }
 
 ensure_node_22() {
@@ -411,11 +438,8 @@ main() {
 
   install_missing_apt_packages \
     git curl ca-certificates unzip \
-    build-essential python3 python3-pip pkg-config \
-    libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libxkbcommon0 \
-    libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 \
-    libpango-1.0-0 libcairo2 libasound2 libatspi2.0-0 libwayland-client0 \
-    xvfb fonts-noto-cjk
+    build-essential python3 python3-pip pkg-config
+  install_playwright_system_deps
 
   ensure_node_22
   ensure_npm_toolchain
