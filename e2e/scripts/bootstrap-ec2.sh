@@ -30,6 +30,15 @@ have_cmd() {
   command -v "$1" >/dev/null 2>&1
 }
 
+node_major_version() {
+  if ! have_cmd node; then
+    echo 0
+    return 0
+  fi
+
+  node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0
+}
+
 require_root_tools() {
   have_cmd sudo || die "sudo is required on this EC2 host."
   have_cmd apt-get || die "apt-get is required. This bootstrap script targets Ubuntu/Debian EC2 images."
@@ -59,9 +68,7 @@ install_missing_apt_packages() {
 ensure_node_20() {
   local current_major="0"
 
-  if have_cmd node; then
-    current_major="$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)"
-  fi
+  current_major="$(node_major_version)"
 
   if [[ "$current_major" -lt 20 ]]; then
     log ">>> Installing Node.js 20..."
@@ -146,6 +153,13 @@ diagnose_environment() {
 
   if have_cmd node; then
     log "node: $(node -v)"
+    if [[ "$(node_major_version)" -lt 20 ]]; then
+      log "node major: BELOW 20"
+      mark_fail
+      add_fix "Upgrade Node.js to 20+: curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && sudo apt-get install -y nodejs"
+    else
+      log "node major: OK"
+    fi
   else
     log "node: MISSING"
     mark_fail
@@ -319,6 +333,7 @@ main() {
   done
 
   if [[ "$diagnose_mode" -eq 1 ]]; then
+    set +e
     diagnose_environment
     diag_exit=$?
     if [[ "$fix_mode" -eq 1 ]]; then
@@ -326,6 +341,7 @@ main() {
       diagnose_environment
       diag_exit=$?
     fi
+    set -e
     exit "$diag_exit"
   fi
 
