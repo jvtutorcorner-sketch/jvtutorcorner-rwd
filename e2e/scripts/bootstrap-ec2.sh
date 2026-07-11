@@ -114,6 +114,17 @@ ensure_optional_k6() {
 }
 
 diagnose_environment() {
+  local failures=0
+  local -a fixes=()
+
+  add_fix() {
+    fixes+=("$1")
+  }
+
+  mark_fail() {
+    failures=$((failures + 1))
+  }
+
   log ""
   log "=== EC2 Environment Diagnostics ==="
 
@@ -121,24 +132,32 @@ diagnose_environment() {
     log "node: $(node -v)"
   else
     log "node: MISSING"
+    mark_fail
+    add_fix "Install Node.js 20: curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && sudo apt-get install -y nodejs"
   fi
 
   if have_cmd npm; then
     log "npm: $(npm -v)"
   else
     log "npm: MISSING"
+    mark_fail
+    add_fix "If node is installed but npm is missing, run: sudo apt-get install -y npm"
   fi
 
   if have_cmd npx; then
     log "npx: $(npx --version)"
   else
     log "npx: MISSING"
+    mark_fail
+    add_fix "Reinstall npm toolchain: sudo apt-get install -y npm"
   fi
 
   if node -e "require.resolve('@playwright/test')" >/dev/null 2>&1; then
     log "@playwright/test: OK"
   else
     log "@playwright/test: MISSING"
+    mark_fail
+    add_fix "Run project dependency install: npm ci --ignore-scripts"
   fi
 
   if [[ -f playwright.config.ts ]]; then
@@ -147,21 +166,29 @@ diagnose_environment() {
       log "playwright.config.ts load: OK"
     else
       log "playwright.config.ts load: FAILED"
+      mark_fail
+      add_fix "Reinstall Playwright project deps, then validate config: npm ci --ignore-scripts && npx playwright test --config=playwright.config.ts --list"
     fi
   else
     log "playwright.config.ts: MISSING"
+    mark_fail
+    add_fix "Ensure you are inside the repo root before running the script."
   fi
 
   if have_cmd npx && npx playwright --version >/dev/null 2>&1; then
     log "playwright cli: OK ($(npx playwright --version 2>/dev/null | tr -d '\r'))"
   else
     log "playwright cli: MISSING"
+    mark_fail
+    add_fix "Install project deps first: npm ci --ignore-scripts"
   fi
 
   if have_cmd npx && npx playwright install --dry-run chromium >/dev/null 2>&1; then
     log "chromium browser: OK or installable"
   else
     log "chromium browser: MISSING or not yet installable"
+    mark_fail
+    add_fix "Install Chromium and system deps: npx playwright install --with-deps chromium"
   fi
 
   if have_cmd k6; then
@@ -170,8 +197,23 @@ diagnose_environment() {
     log "k6: MISSING (optional)"
   fi
 
+  log ""
+  log "--- Suggested Fixes ---"
+  if [[ ${#fixes[@]} -eq 0 ]]; then
+    log "No blocking issues detected."
+  else
+    local fix
+    for fix in "${fixes[@]}"; do
+      log "- $fix"
+    done
+  fi
+
+  log ""
+  log "Exit status suggestion: ${failures} blocking issue(s) detected."
   log "=================================="
   log ""
+
+  return "$failures"
 }
 
 ensure_playwright_dependency() {
@@ -240,6 +282,10 @@ main() {
 
   if [[ "${1:-}" == "--diagnose" ]]; then
     diagnose_environment
+    diag_exit=$?
+    if [[ "$diag_exit" -ne 0 ]]; then
+      exit "$diag_exit"
+    fi
     shift
   fi
 
