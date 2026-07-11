@@ -112,6 +112,23 @@ ensure_optional_k6() {
   die "k6 installation requested, but no supported package manager was found."
 }
 
+ensure_playwright_dependency() {
+  if node -e "require.resolve('@playwright/test')" >/dev/null 2>&1; then
+    log ">>> @playwright/test is available."
+    return 0
+  fi
+
+  log ">>> @playwright/test is missing; reinstalling project dependencies..."
+  if [[ -f package-lock.json ]]; then
+    npm ci --ignore-scripts
+  else
+    npm install --ignore-scripts
+  fi
+
+  node -e "require.resolve('@playwright/test')" >/dev/null 2>&1 \
+    || die "@playwright/test is still missing after reinstalling dependencies."
+}
+
 install_project_deps() {
   if [[ -f package-lock.json ]]; then
     log ">>> Installing project dependencies with npm ci..."
@@ -170,6 +187,7 @@ main() {
   ensure_node_20
   ensure_npm_toolchain
   install_project_deps
+  ensure_playwright_dependency
   install_playwright_chromium
   ensure_optional_k6
   run_command_if_provided "$@"
