@@ -418,7 +418,7 @@ run_command_if_provided() {
 
   if [[ "$use_xvfb" -eq 1 && -z "${DISPLAY:-}" ]]; then
     if have_cmd xvfb-run; then
-      log ">>> DISPLAY is empty; wrapping command with xvfb-run"
+      log ">>> DISPLAY is empty; using xvfb-run for headed Chromium"
       if [[ ${#env_prefix[@]} -gt 0 ]]; then
         exec env "${env_prefix[@]}" xvfb-run -a "${cmd[@]}"
       else
