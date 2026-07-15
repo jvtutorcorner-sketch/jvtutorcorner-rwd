@@ -40,44 +40,51 @@ elif [ "$AVAIL_RAM" -ge 512  ]; then wn "RAM 可用：${AVAIL_RAM}MB / ${TOTAL_R
 else                                  er "RAM 可用：${AVAIL_RAM}MB / ${TOTAL_RAM}MB（嚴重不足）"
 fi
 
-# Swap
-TOTAL_SWAP=$(free -m | awk '/^Swap:/{print $2}')
-if [ "$TOTAL_SWAP" -ge 2048 ]; then
-  ok "Swap：${TOTAL_SWAP}MB"
-else
-  wn "Swap：${TOTAL_SWAP}MB → OOM 高風險"
-  doing "建立 2GB Swap 檔案..."
-  sudo swapoff /swapfile 2>/dev/null
-  sudo rm -f /swapfile
-  if sudo fallocate -l 2G /swapfile 2>/dev/null; then
-    sudo chmod 600 /swapfile \
-      && sudo mkswap /swapfile \
-      && sudo swapon /swapfile \
-      && (grep -q '/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab > /dev/null)
-  else
-    # fallocate 失敗時立即清除，避免殘留佔用磁碟
-    sudo rm -f /swapfile
-  fi
-  NEW_SWAP=$(free -m | awk '/^Swap:/{print $2}')
-  if [ "$NEW_SWAP" -ge 2048 ]; then pass_fix "Swap 已啟用：${NEW_SWAP}MB"
-  else                               fail_fix "磁碟空間不足，無法建立 Swap（目前 ${NEW_SWAP}MB）"
-  fi
-fi
-
-# 磁碟
+# 磁碟（先清理，再建 Swap，避免空間不夠）
 ROOT_AVAIL=$(df -BG / | awk 'NR==2{gsub("G","",$4); print $4}')
 ROOT_PCT=$(df / | awk 'NR==2{print $5}')
-if [ "$ROOT_AVAIL" -ge 5 ]; then
-  ok "磁碟可用：${ROOT_AVAIL}GB（使用率 ${ROOT_PCT}）"
-else
+if [ "$ROOT_AVAIL" -lt 5 ]; then
   wn "磁碟可用：${ROOT_AVAIL}GB（使用率 ${ROOT_PCT}）→ 自動清理 apt 快取"
   doing "清理 apt 快取、孤立套件與舊 journal..."
   sudo apt-get clean -y 2>/dev/null
   sudo apt-get autoremove -y 2>/dev/null
   sudo journalctl --vacuum-size=100M 2>/dev/null
-  NEW_AVAIL=$(df -BG / | awk 'NR==2{gsub("G","",$4); print $4}')
-  if [ "$NEW_AVAIL" -ge 2 ]; then pass_fix "清理完成，磁碟可用：${NEW_AVAIL}GB"
-  else                             fail_fix "空間仍嚴重不足（${NEW_AVAIL}GB），請在 AWS Console 擴充 EBS"
+  ROOT_AVAIL=$(df -BG / | awk 'NR==2{gsub("G","",$4); print $4}')
+  ROOT_PCT=$(df / | awk 'NR==2{print $5}')
+  if [ "$ROOT_AVAIL" -ge 2 ]; then pass_fix "清理完成，磁碟可用：${ROOT_AVAIL}GB"
+  else                             fail_fix "空間仍嚴重不足（${ROOT_AVAIL}GB），請在 AWS Console 擴充 EBS"
+  fi
+else
+  ok "磁碟可用：${ROOT_AVAIL}GB（使用率 ${ROOT_PCT}）"
+fi
+
+# Swap（依可用磁碟動態決定大小，至少保留 512MB 餘裕）
+TOTAL_SWAP=$(free -m | awk '/^Swap:/{print $2}')
+if [ "$TOTAL_SWAP" -ge 1024 ]; then
+  ok "Swap：${TOTAL_SWAP}MB"
+else
+  wn "Swap：${TOTAL_SWAP}MB → OOM 高風險"
+  DISK_FREE_MB=$(df -BM / | awk 'NR==2{gsub("M","",$4); print $4}')
+  SWAP_SIZE_MB=$(( DISK_FREE_MB - 512 ))
+  [ "$SWAP_SIZE_MB" -lt 512 ] && SWAP_SIZE_MB=0
+  if [ "$SWAP_SIZE_MB" -gt 0 ]; then
+    doing "建立 ${SWAP_SIZE_MB}MB Swap 檔案（磁碟可用 ${DISK_FREE_MB}MB）..."
+    sudo swapoff /swapfile 2>/dev/null
+    sudo rm -f /swapfile
+    if sudo fallocate -l "${SWAP_SIZE_MB}M" /swapfile 2>/dev/null; then
+      sudo chmod 600 /swapfile \
+        && sudo mkswap /swapfile \
+        && sudo swapon /swapfile \
+        && (grep -q '/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab > /dev/null)
+    else
+      sudo rm -f /swapfile
+    fi
+    NEW_SWAP=$(free -m | awk '/^Swap:/{print $2}')
+    if [ "$NEW_SWAP" -ge 512 ]; then pass_fix "Swap 已啟用：${NEW_SWAP}MB"
+    else                             fail_fix "Swap 建立失敗，請擴充 EBS 後重試"
+    fi
+  else
+    fail_fix "磁碟空間不足以建立 Swap（可用 ${DISK_FREE_MB}MB），請擴充 EBS"
   fi
 fi
 
