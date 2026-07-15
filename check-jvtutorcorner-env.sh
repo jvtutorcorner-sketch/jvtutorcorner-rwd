@@ -167,16 +167,17 @@ if [ -n "$CB" ]; then
   fi
 else
   er "Chromium：未找到"
-  doing "安裝 Chromium（Ubuntu 24.04 使用 snap）..."
+  doing "安裝 Google Chrome（繞過 snap，避免 EC2 卡頓）..."
   sudo apt-get update -qq 2>/dev/null
-  if command -v snap &>/dev/null; then
-    sudo snap install chromium 2>/dev/null
-  else
-    sudo apt-get install -y chromium-browser 2>/dev/null
-  fi
-  CB=$(which chromium-browser 2>/dev/null || which chromium 2>/dev/null)
-  if [ -n "$CB" ]; then pass_fix "Chromium 已安裝：$($CB --version 2>/dev/null)"
-  else                  fail_fix "Chromium 安裝失敗（請手動執行：sudo snap install chromium）"
+  # 下載 Google Chrome 穩定版 deb（snap-free，EC2 友善）
+  wget -q -O /tmp/google-chrome.deb \
+    https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb \
+    && sudo dpkg -i /tmp/google-chrome.deb 2>/dev/null \
+    && sudo apt-get install -f -y 2>/dev/null \
+    && rm -f /tmp/google-chrome.deb
+  CB=$(which google-chrome 2>/dev/null || which google-chrome-stable 2>/dev/null)
+  if [ -n "$CB" ]; then pass_fix "Google Chrome 已安裝：$($CB --version 2>/dev/null)"
+  else                  fail_fix "Chrome 安裝失敗（請手動執行：sudo dpkg -i google-chrome-stable_current_amd64.deb）"
   fi
 fi
 
