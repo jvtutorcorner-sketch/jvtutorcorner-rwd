@@ -407,6 +407,28 @@ run_command_if_provided() {
   fi
   log ">>> Running command: ${cmd[*]}"
 
+  local use_xvfb=0
+  local arg
+  for arg in "${cmd[@]}"; do
+    if [[ "$arg" == "--project=chromium-headed" ]]; then
+      use_xvfb=1
+      break
+    fi
+  done
+
+  if [[ "$use_xvfb" -eq 1 && -z "${DISPLAY:-}" ]]; then
+    if have_cmd xvfb-run; then
+      log ">>> DISPLAY is empty; wrapping command with xvfb-run"
+      if [[ ${#env_prefix[@]} -gt 0 ]]; then
+        exec env "${env_prefix[@]}" xvfb-run -a "${cmd[@]}"
+      else
+        exec xvfb-run -a "${cmd[@]}"
+      fi
+    else
+      die "DISPLAY is empty and xvfb-run is not installed. Please run this from an Xfce desktop terminal or install xvfb."
+    fi
+  fi
+
   if [[ ${#env_prefix[@]} -gt 0 ]]; then
     exec env "${env_prefix[@]}" "${cmd[@]}"
   else
