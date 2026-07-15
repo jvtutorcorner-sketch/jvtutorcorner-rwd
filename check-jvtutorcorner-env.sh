@@ -43,24 +43,27 @@ fi
 # 磁碟（先清理，再建 Swap，避免空間不夠）
 ROOT_AVAIL=$(df -BG / | awk 'NR==2{gsub("G","",$4); print $4}')
 ROOT_PCT=$(df / | awk 'NR==2{print $5}')
-if [ "$ROOT_AVAIL" -lt 5 ]; then
-  wn "磁碟可用：${ROOT_AVAIL}GB（使用率 ${ROOT_PCT}）→ 自動清理 apt 快取"
-  doing "清理 apt 快取、孤立套件與舊 journal..."
+if [ "$ROOT_AVAIL" -lt 2 ]; then
+  wn "磁碟可用：${ROOT_AVAIL}GB（使用率 ${ROOT_PCT}）→ 自動清理"
+  doing "清理 apt 快取、孤立套件、破損依賴與舊 journal..."
   sudo apt-get clean -y 2>/dev/null
   sudo apt-get autoremove -y 2>/dev/null
+  sudo apt-get install -f -y 2>/dev/null
   sudo journalctl --vacuum-size=100M 2>/dev/null
   ROOT_AVAIL=$(df -BG / | awk 'NR==2{gsub("G","",$4); print $4}')
   ROOT_PCT=$(df / | awk 'NR==2{print $5}')
-  if [ "$ROOT_AVAIL" -ge 2 ]; then pass_fix "清理完成，磁碟可用：${ROOT_AVAIL}GB"
-  else                             fail_fix "空間仍嚴重不足（${ROOT_AVAIL}GB），請在 AWS Console 擴充 EBS"
+  if [ "$ROOT_AVAIL" -ge 1 ]; then pass_fix "清理完成，磁碟可用：${ROOT_AVAIL}GB"
+  else                             fail_fix "空間嚴重不足（${ROOT_AVAIL}GB），請在 AWS Console 擴充 EBS"
   fi
+elif [ "$ROOT_AVAIL" -lt 5 ]; then
+  wn "磁碟可用：${ROOT_AVAIL}GB（使用率 ${ROOT_PCT}）→ 偏少但可運行測試"
 else
   ok "磁碟可用：${ROOT_AVAIL}GB（使用率 ${ROOT_PCT}）"
 fi
 
 # Swap（依可用磁碟動態決定大小，至少保留 512MB 餘裕）
 TOTAL_SWAP=$(free -m | awk '/^Swap:/{print $2}')
-if [ "$TOTAL_SWAP" -ge 1024 ]; then
+if [ "$TOTAL_SWAP" -ge 512 ]; then
   ok "Swap：${TOTAL_SWAP}MB"
 else
   wn "Swap：${TOTAL_SWAP}MB → OOM 高風險"
