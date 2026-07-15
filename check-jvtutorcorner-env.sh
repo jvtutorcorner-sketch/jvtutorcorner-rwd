@@ -47,18 +47,20 @@ if [ "$TOTAL_SWAP" -ge 2048 ]; then
 else
   wn "Swap：${TOTAL_SWAP}MB → OOM 高風險"
   doing "建立 2GB Swap 檔案..."
-  if [ -f /swapfile ]; then
-    sudo swapoff /swapfile 2>/dev/null
+  sudo swapoff /swapfile 2>/dev/null
+  sudo rm -f /swapfile
+  if sudo fallocate -l 2G /swapfile 2>/dev/null; then
+    sudo chmod 600 /swapfile \
+      && sudo mkswap /swapfile \
+      && sudo swapon /swapfile \
+      && (grep -q '/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab > /dev/null)
+  else
+    # fallocate 失敗時立即清除，避免殘留佔用磁碟
     sudo rm -f /swapfile
   fi
-  sudo fallocate -l 2G /swapfile \
-    && sudo chmod 600 /swapfile \
-    && sudo mkswap /swapfile \
-    && sudo swapon /swapfile \
-    && (grep -q '/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab > /dev/null)
   NEW_SWAP=$(free -m | awk '/^Swap:/{print $2}')
   if [ "$NEW_SWAP" -ge 2048 ]; then pass_fix "Swap 已啟用：${NEW_SWAP}MB"
-  else                               fail_fix "Swap 建立失敗（目前 ${NEW_SWAP}MB）"
+  else                               fail_fix "磁碟空間不足，無法建立 Swap（目前 ${NEW_SWAP}MB）"
   fi
 fi
 
@@ -139,8 +141,9 @@ fi
 # ═══════════════════════════════════════════════════════════
 section "Chromium 與自動化環境"
 
-# Chromium
-CB=$(which chromium-browser 2>/dev/null || which chromium 2>/dev/null || which google-chrome 2>/dev/null)
+# Chromium（含 Playwright 快取路徑）
+PLAYWRIGHT_CHROME=$(find /home/ubuntu/.cache/ms-playwright -name "chrome" -type f 2>/dev/null | head -1)
+CB=$(which chromium-browser 2>/dev/null || which chromium 2>/dev/null || which google-chrome 2>/dev/null || echo "$PLAYWRIGHT_CHROME")
 if [ -n "$CB" ]; then
   ok "Chromium：$($CB --version 2>/dev/null)（路徑：$CB）"
 
