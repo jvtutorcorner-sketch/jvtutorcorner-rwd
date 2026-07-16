@@ -91,6 +91,53 @@ ensure_xfce_packages() {
     at-spi2-core 2>/dev/null || true
 }
 
+write_low_load_xfce_profile() {
+  local xfce_conf_dir="/home/ubuntu/.config/xfce4/xfconf/xfce-perchannel-xml"
+  local gtk3_dir="/home/ubuntu/.config/gtk-3.0"
+  local gtk4_dir="/home/ubuntu/.config/gtk-4.0"
+  local autostart_dir="/home/ubuntu/.config/autostart"
+
+  sudo mkdir -p "$xfce_conf_dir" "$gtk3_dir" "$gtk4_dir" "$autostart_dir"
+
+  cat <<'EOF' | sudo tee "$gtk3_dir/settings.ini" > /dev/null
+[Settings]
+gtk-enable-animations=0
+gtk-enable-event-sounds=0
+gtk-enable-input-feedback-sounds=0
+EOF
+
+  cat <<'EOF' | sudo tee "$gtk4_dir/settings.ini" > /dev/null
+[Settings]
+gtk-enable-animations=0
+gtk-enable-event-sounds=0
+gtk-enable-input-feedback-sounds=0
+EOF
+
+  cat <<'XMLEOF' | sudo tee "$xfce_conf_dir/xfce4-notifyd.xml" > /dev/null
+<?xml version="1.0" encoding="UTF-8"?>
+<channel name="xfce4-notifyd" version="1.0">
+  <property name="applications" type="empty"/>
+  <property name="theme" type="empty"/>
+  <property name="do-not-disturb" type="bool" value="true"/>
+</channel>
+XMLEOF
+
+  cat <<'XMLEOF' | sudo tee "$xfce_conf_dir/xfce4-desktop.xml" > /dev/null
+<?xml version="1.0" encoding="UTF-8"?>
+<channel name="xfce4-desktop" version="1.0">
+  <property name="desktop-icons" type="empty">
+    <property name="style" type="int" value="0"/>
+  </property>
+  <property name="backdrop" type="empty"/>
+</channel>
+XMLEOF
+
+  printf '[Desktop Entry]\nHidden=true\n' | sudo tee "$autostart_dir/xfce4-notifyd.desktop" > /dev/null
+  printf '[Desktop Entry]\nHidden=true\n' | sudo tee "$autostart_dir/xfce4-power-manager.desktop" > /dev/null
+
+  sudo chown -R ubuntu:ubuntu /home/ubuntu/.config/xfce4 /home/ubuntu/.config/gtk-3.0 /home/ubuntu/.config/gtk-4.0 /home/ubuntu/.config/autostart
+}
+
 write_xfce_session_files() {
   local launcher="$1"
   local xs="/home/ubuntu/.xsession"
@@ -173,6 +220,7 @@ XMLEOF
 </channel>
 XMLEOF
   sudo chown -R ubuntu:ubuntu "/home/ubuntu/.config/xfce4"
+  write_low_load_xfce_profile
 
   # Disable light-locker — requires LightDM; always crashes under XRDP
   sudo mkdir -p "$autostart_dir"
@@ -200,6 +248,9 @@ xfconf-query -c xfce4-screensaver -p /saver/enabled -s false 2>/dev/null || true
 xfconf-query -c xfce4-screensaver -p /lock/enabled -s false 2>/dev/null || true
 xfconf-query -c xfce4-power-manager -p /xfce4-power-manager/dpms-enabled -s false 2>/dev/null || true
 xfconf-query -c xfce4-power-manager -p /xfce4-power-manager/blank-on-ac -s 0 2>/dev/null || true
+# Disable notifications and event sounds in the live session
+xfconf-query -c xfce4-notifyd -p /do-not-disturb -s true 2>/dev/null || true
+xfconf-query -c xfce4-desktop -p /desktop-icons/style -s 0 2>/dev/null || true
 # Restart xfwm4 to clear any compositor conflict
 pkill -x xfwm4 2>/dev/null || true
 nohup xfwm4 --display="$DISPLAY" --replace --compositor=off >/dev/null 2>&1 &
@@ -574,7 +625,6 @@ fi
 if ! ss -tlnp 2>/dev/null | grep -q ':3389'; then
   sudo systemctl restart xrdp 2>/dev/null
   sudo ufw allow 3389/tcp 2>/dev/null || true
-  sleep 2
 fi
 
 if ss -tlnp 2>/dev/null | grep -q ':3389'; then
