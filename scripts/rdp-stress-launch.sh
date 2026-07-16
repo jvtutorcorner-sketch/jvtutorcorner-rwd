@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-URL="${1:-http://localhost:3000}"
+URL="${1:-https://www.jvtutorcorner.com}"
 CMD="${2:-}"
 
 detect_display() {

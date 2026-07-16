@@ -38,10 +38,10 @@ bash scripts/classroom_stress_test.sh
 
 或是你自己的 `playwright` / `k6` 指令。
 
-### 3. 讓 RDP 自動開網頁與終端機
+### 3. 讓 RDP 自動開正式環境網頁與終端機
 
 ```bash
-bash scripts/rdp-stress-launch.sh http://localhost:3000 "cd ~/jvtutorcorner-rwd && bash scripts/classroom_stress_test.sh"
+bash scripts/rdp-stress-launch.sh https://www.jvtutorcorner.com "cd ~/jvtutorcorner-rwd && bash scripts/classroom_stress_test.sh"
 ```
 
 第二個參數是要在遠端桌面終端機執行的指令。
@@ -57,13 +57,13 @@ bash scripts/rdp-stress-launch.sh https://www.jvtutorcorner.com
 ### 開網頁並在終端機執行測試
 
 ```bash
-bash scripts/rdp-stress-launch.sh http://localhost:3000 "cd ~/jvtutorcorner-rwd && npm run test:stress"
+bash scripts/rdp-stress-launch.sh https://www.jvtutorcorner.com "cd ~/jvtutorcorner-rwd && npm run test:stress"
 ```
 
-### 開本機測試頁並執行壓測
+### 用正式環境網址並執行壓測
 
 ```bash
-bash scripts/rdp-stress-launch.sh http://localhost:3000 "cd ~/jvtutorcorner-rwd && bash scripts/classroom_stress_test.sh"
+bash scripts/rdp-stress-launch.sh https://www.jvtutorcorner.com "cd ~/jvtutorcorner-rwd && bash scripts/classroom_stress_test.sh"
 ```
 
 ## 前置條件
@@ -87,4 +87,3 @@ which firefox
 ```
 
 如果沒有 active display，這支 launcher 不會硬開視窗，因為那樣會開到錯誤的 session。
-
