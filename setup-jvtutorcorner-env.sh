@@ -27,6 +27,16 @@ done_() { echo -e "  ${DONE}$*"; }
 fail_() { echo -e "  ${FAIL}$*"; ((FAILED++)); }
 run()   { echo -e "  ${BLUE}→${RESET} $*"; eval "$*"; }
 
+detect_xfce_launcher() {
+  if command -v startxfce4 >/dev/null 2>&1; then
+    echo "startxfce4"
+  elif command -v xfce4-session >/dev/null 2>&1; then
+    echo "xfce4-session"
+  else
+    echo ""
+  fi
+}
+
 collect_rdp_debug_logs() {
   local xs="/home/ubuntu/.xsession"
   local xinitrc="/home/ubuntu/.xinitrc"
@@ -76,6 +86,9 @@ collect_rdp_debug_logs() {
 repair_xfce_desktop() {
   local xfce_conf="/home/ubuntu/.config/xfce4"
   local session_cache="/home/ubuntu/.cache/sessions"
+  local launcher
+
+  launcher="$(sudo -u ubuntu bash -lc 'command -v startxfce4 >/dev/null 2>&1 && echo startxfce4 || (command -v xfce4-session >/dev/null 2>&1 && echo xfce4-session || true)')"
 
   echo -e "  ${BLUE}→${RESET} 修復 XFCE 桌面元件..."
   sudo apt-get update -qq 2>/dev/null || true
@@ -88,9 +101,9 @@ repair_xfce_desktop() {
     dbus-x11 \
     xorgxrdp 2>/dev/null || true
 
-  sudo -u ubuntu bash -lc 'command -v xfce4-panel >/dev/null 2>&1 && command -v xfdesktop >/dev/null 2>&1 && command -v startxfce4 >/dev/null 2>&1'
+  sudo -u ubuntu bash -lc 'command -v xfce4-panel >/dev/null 2>&1 && command -v xfdesktop >/dev/null 2>&1 && (command -v startxfce4 >/dev/null 2>&1 || command -v xfce4-session >/dev/null 2>&1)'
   if [ $? -eq 0 ]; then
-    ok "XFCE 元件：xfce4-panel / xfdesktop / startxfce4 可用"
+    ok "XFCE 元件：xfce4-panel / xfdesktop / launcher 可用"
   else
     fail_ "XFCE 元件：缺少 xfce4-panel 或 xfdesktop"
   fi
@@ -102,6 +115,16 @@ repair_xfce_desktop() {
     wn "若登入後仍為藍屏，可考慮重置 XFCE 設定："
     wn "mv /home/ubuntu/.config/xfce4 /home/ubuntu/.config/xfce4.bak"
     wn "mv /home/ubuntu/.cache/sessions /home/ubuntu/.cache/sessions.bak"
+  fi
+
+  if [ -n "$launcher" ]; then
+    echo "$launcher" | sudo tee "$xs" > /dev/null
+    sudo chmod 755 "$xs"
+    sudo chown ubuntu:ubuntu "$xs"
+    echo "#!/bin/sh" | sudo tee "$xinitrc" > /dev/null
+    echo "$launcher" | sudo tee -a "$xinitrc" > /dev/null
+    sudo chmod 755 "$xinitrc"
+    sudo chown ubuntu:ubuntu "$xinitrc"
   fi
 
   sudo -u ubuntu bash -lc 'nohup xfce4-panel >/dev/null 2>&1 & disown || true; nohup xfdesktop >/dev/null 2>&1 & disown || true' || true
@@ -122,14 +145,21 @@ ensure_rdp_session() {
     dbus-x11 \
     x11-xserver-utils 2>/dev/null || true
 
-  echo 'startxfce4' | sudo tee "$xs" > /dev/null
-  sudo chmod 755 "$xs"
-  sudo chown ubuntu:ubuntu "$xs"
+  launcher="$(detect_xfce_launcher)"
+  if [ -n "$launcher" ]; then
+    echo "$launcher" | sudo tee "$xs" > /dev/null
+    sudo chmod 755 "$xs"
+    sudo chown ubuntu:ubuntu "$xs"
+  fi
 
-  if [ ! -f "$xinitrc" ] || ! grep -q "startxfce4" "$xinitrc" 2>/dev/null; then
-    cat <<'EOF' | sudo tee "$xinitrc" > /dev/null
+  if [ -z "$launcher" ]; then
+    launcher="xfce4-session"
+  fi
+
+  if [ ! -f "$xinitrc" ] || ! grep -Eq "startxfce4|xfce4-session" "$xinitrc" 2>/dev/null; then
+    cat <<EOF | sudo tee "$xinitrc" > /dev/null
 #!/bin/sh
-startxfce4
+exec $launcher
 EOF
     sudo chmod 755 "$xinitrc"
     sudo chown ubuntu:ubuntu "$xinitrc"
@@ -142,10 +172,10 @@ EOF
 
   sudo systemctl restart xrdp xrdp-sesman 2>/dev/null || true
 
-  if command -v startxfce4 >/dev/null 2>&1; then
-    ok "XFCE session：startxfce4 已可用"
+  if [ -n "$launcher" ]; then
+    ok "XFCE session：$launcher 已可用"
   else
-    fail_ "XFCE session：找不到 startxfce4"
+    fail_ "XFCE session：找不到 startxfce4 / xfce4-session"
   fi
 }
 
@@ -278,7 +308,7 @@ if [ -f /home/ubuntu/.xinitrc ]; then
   ok "~/.xinitrc：已建立"
 fi
 
-sudo -u ubuntu bash -lc 'test -x ~/.xsession && test -f ~/.xsession && grep -q startxfce4 ~/.xsession' \
+sudo -u ubuntu bash -lc 'test -x ~/.xsession && test -f ~/.xsession && grep -Eq "startxfce4|xfce4-session" ~/.xsession' \
   && ok "RDP session：使用者啟動檔案檢查通過" \
   || fail_ "RDP session：使用者啟動檔案檢查失敗"
 
