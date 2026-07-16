@@ -31,7 +31,52 @@ pass_fix(){ echo -e "  ${DONE} $*"; ((FIXED++)); }
 fail_fix(){ echo -e "  ${FAIL} 修復失敗：$* （請手動處理）"; ((FAILED++)); }
 
 detect_xfce_launcher() {
-  sudo -u ubuntu bash -lc 'command -v startxfce4 >/dev/null 2>&1 && echo startxfce4 || (command -v xfce4-session >/dev/null 2>&1 && echo xfce4-session || true)'
+  sudo -u ubuntu bash -lc 'command -v startxfce4 >/dev/null 2>&1 && command -v startxfce4 || (command -v xfce4-session >/dev/null 2>&1 && command -v xfce4-session || true)'
+}
+
+fix_broken_apt() {
+  doing "修復 broken apt 依賴..."
+  sudo apt --fix-broken install -y 2>/dev/null || sudo apt-get -f install -y 2>/dev/null || true
+}
+
+ensure_xfce_packages() {
+  doing "補齊 XFCE / XRDP 套件..."
+  sudo apt-get update -qq 2>/dev/null || true
+  sudo apt-get install -y \
+    xrdp \
+    xorgxrdp \
+    xfce4 \
+    xfce4-session \
+    xfce4-panel \
+    xfdesktop4 \
+    xfce4-settings \
+    thunar \
+    dbus-x11 \
+    x11-xserver-utils 2>/dev/null || true
+}
+
+write_xfce_session_files() {
+  local launcher="$1"
+  local xs="/home/ubuntu/.xsession"
+  local xinitrc="/home/ubuntu/.xinitrc"
+
+  if [ -z "$launcher" ]; then
+    launcher="/usr/bin/xfce4-session"
+  fi
+
+  cat <<EOF | sudo tee "$xs" > /dev/null
+#!/bin/sh
+exec $launcher
+EOF
+  sudo chmod 755 "$xs"
+  sudo chown ubuntu:ubuntu "$xs"
+
+  cat <<EOF | sudo tee "$xinitrc" > /dev/null
+#!/bin/sh
+exec $launcher
+EOF
+  sudo chmod 755 "$xinitrc"
+  sudo chown ubuntu:ubuntu "$xinitrc"
 }
 
 collect_rdp_debug_logs() {
@@ -90,15 +135,7 @@ repair_xfce_desktop() {
   local xinitrc="/home/ubuntu/.xinitrc"
   local launcher
   launcher="$(detect_xfce_launcher)"
-  sudo apt-get update -qq 2>/dev/null || true
-  sudo apt-get install -y \
-    xfce4-panel \
-    xfdesktop4 \
-    xfce4-session \
-    xfce4-settings \
-    thunar \
-    dbus-x11 \
-    xorgxrdp 2>/dev/null || true
+  ensure_xfce_packages
 
   sudo -u ubuntu bash -lc 'command -v xfce4-panel >/dev/null 2>&1 && command -v xfdesktop >/dev/null 2>&1 && (command -v startxfce4 >/dev/null 2>&1 || command -v xfce4-session >/dev/null 2>&1)'
   if [ $? -eq 0 ]; then
@@ -109,21 +146,7 @@ repair_xfce_desktop() {
 
   sudo mkdir -p /home/ubuntu/.config /home/ubuntu/.cache
   sudo chown -R ubuntu:ubuntu /home/ubuntu/.config /home/ubuntu/.cache
-  if [ -z "$launcher" ]; then
-    launcher="xfce4-session"
-  fi
-  cat <<EOF | sudo tee "$xinitrc" > /dev/null
-#!/bin/sh
-exec $launcher
-EOF
-  sudo chmod 755 "$xinitrc"
-  sudo chown ubuntu:ubuntu "$xinitrc"
-  cat <<EOF | sudo tee "$xs" > /dev/null
-#!/bin/sh
-exec $launcher
-EOF
-  sudo chmod 755 "$xs"
-  sudo chown ubuntu:ubuntu "$xs"
+  write_xfce_session_files "$launcher"
   sudo -u ubuntu bash -lc 'nohup xfce4-panel >/dev/null 2>&1 & disown || true; nohup xfdesktop >/dev/null 2>&1 & disown || true' || true
   sudo systemctl restart xrdp xrdp-sesman 2>/dev/null || true
 }
@@ -133,27 +156,10 @@ ensure_rdp_session() {
   local xinitrc="/home/ubuntu/.xinitrc"
 
   doing "安裝 / 修復 xrdp + XFCE session..."
-  sudo apt-get update -qq 2>/dev/null || true
-  sudo apt-get install -y \
-    xrdp \
-    xorgxrdp \
-    xfce4 \
-    xfce4-goodies \
-    dbus-x11 \
-    x11-xserver-utils 2>/dev/null || true
-
-  echo 'startxfce4' | sudo tee "$xs" > /dev/null
-  sudo chmod 755 "$xs"
-  sudo chown ubuntu:ubuntu "$xs"
-
-  if [ ! -f "$xinitrc" ] || ! grep -q "startxfce4" "$xinitrc" 2>/dev/null; then
-    cat <<'EOF' | sudo tee "$xinitrc" > /dev/null
-#!/bin/sh
-startxfce4
-EOF
-    sudo chmod 755 "$xinitrc"
-    sudo chown ubuntu:ubuntu "$xinitrc"
-  fi
+  fix_broken_apt
+  ensure_xfce_packages
+  launcher="$(detect_xfce_launcher)"
+  write_xfce_session_files "$launcher"
 
   sudo systemctl restart xrdp xrdp-sesman 2>/dev/null || true
 }
@@ -264,19 +270,15 @@ fi
 repair_xfce_desktop
 
 XS="/home/ubuntu/.xsession"
-if [ -f "$XS" ] && grep -Eq "startxfce4|xfce4-session" "$XS" 2>/dev/null; then
+if [ -f "$XS" ] && grep -Eq "startxfce4|xfce4-session|/usr/bin/xfce4-session|/usr/bin/startxfce4" "$XS" 2>/dev/null; then
   ok "~/.xsession：已設定（$(head -1 "$XS")）"
 else
   [ -f "$XS" ] && er "~/.xsession：內容可疑 → $(head -1 "$XS")" \
                || er "~/.xsession：不存在 → RDP 登入後將出現黑畫面"
   doing "建立 ~/.xsession（XFCE launcher）..."
   launcher="$(detect_xfce_launcher)"
-  [ -z "$launcher" ] && launcher="xfce4-session"
-  cat <<EOF | sudo tee "$XS" > /dev/null
-#!/bin/sh
-exec $launcher
-EOF
-  sudo chmod 755 "$XS" && sudo chown ubuntu:ubuntu "$XS"
+  [ -z "$launcher" ] && launcher="/usr/bin/xfce4-session"
+  write_xfce_session_files "$launcher"
   sudo systemctl restart xrdp xrdp-sesman 2>/dev/null || true
   if [ -f "$XS" ]; then pass_fix "~/.xsession 已建立（startxfce4），xrdp 已重啟"
   else                  fail_fix "~/.xsession 建立失敗"
@@ -288,7 +290,7 @@ if [ -f /var/log/xrdp-sesman.log ]; then
   tail -n 10 /var/log/xrdp-sesman.log 2>/dev/null | sed 's/^/          /'
 fi
 
-sudo -u ubuntu bash -lc 'test -x ~/.xsession && test -f ~/.xsession && grep -Eq "startxfce4|xfce4-session" ~/.xsession' \
+sudo -u ubuntu bash -lc 'test -x ~/.xsession && test -f ~/.xsession && grep -Eq "startxfce4|xfce4-session|/usr/bin/xfce4-session|/usr/bin/startxfce4" ~/.xsession' \
   && pass_fix "使用者 session 啟動檔案檢查通過" \
   || fail_fix "使用者 session 啟動檔案檢查失敗"
 

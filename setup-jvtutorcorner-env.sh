@@ -29,12 +29,57 @@ run()   { echo -e "  ${BLUE}→${RESET} $*"; eval "$*"; }
 
 detect_xfce_launcher() {
   if command -v startxfce4 >/dev/null 2>&1; then
-    echo "startxfce4"
+    command -v startxfce4
   elif command -v xfce4-session >/dev/null 2>&1; then
-    echo "xfce4-session"
+    command -v xfce4-session
   else
     echo ""
   fi
+}
+
+fix_broken_apt() {
+  echo -e "  ${BLUE}→${RESET} 修復 broken apt 依賴..."
+  sudo apt --fix-broken install -y 2>/dev/null || sudo apt-get -f install -y 2>/dev/null || true
+}
+
+ensure_xfce_packages() {
+  echo -e "  ${BLUE}→${RESET} 補齊 XFCE / XRDP 套件..."
+  sudo apt-get update -qq 2>/dev/null || true
+  sudo apt-get install -y \
+    xrdp \
+    xorgxrdp \
+    xfce4 \
+    xfce4-session \
+    xfce4-panel \
+    xfdesktop4 \
+    xfce4-settings \
+    thunar \
+    dbus-x11 \
+    x11-xserver-utils 2>/dev/null || true
+}
+
+write_xfce_session_files() {
+  local launcher="$1"
+  local xs="/home/ubuntu/.xsession"
+  local xinitrc="/home/ubuntu/.xinitrc"
+
+  if [ -z "$launcher" ]; then
+    launcher="/usr/bin/xfce4-session"
+  fi
+
+  cat <<EOF | sudo tee "$xs" > /dev/null
+#!/bin/sh
+exec $launcher
+EOF
+  sudo chmod 755 "$xs"
+  sudo chown ubuntu:ubuntu "$xs"
+
+  cat <<EOF | sudo tee "$xinitrc" > /dev/null
+#!/bin/sh
+exec $launcher
+EOF
+  sudo chmod 755 "$xinitrc"
+  sudo chown ubuntu:ubuntu "$xinitrc"
 }
 
 collect_rdp_debug_logs() {
@@ -90,18 +135,11 @@ repair_xfce_desktop() {
   local session_cache="/home/ubuntu/.cache/sessions"
   local launcher
 
-  launcher="$(sudo -u ubuntu bash -lc 'command -v startxfce4 >/dev/null 2>&1 && echo startxfce4 || (command -v xfce4-session >/dev/null 2>&1 && echo xfce4-session || true)')"
+  launcher="$(sudo -u ubuntu bash -lc 'command -v startxfce4 >/dev/null 2>&1 && command -v startxfce4 || (command -v xfce4-session >/dev/null 2>&1 && command -v xfce4-session || true)')"
 
   echo -e "  ${BLUE}→${RESET} 修復 XFCE 桌面元件..."
-  sudo apt-get update -qq 2>/dev/null || true
-  sudo apt-get install -y \
-    xfce4-panel \
-    xfdesktop4 \
-    xfce4-session \
-    xfce4-settings \
-    thunar \
-    dbus-x11 \
-    xorgxrdp 2>/dev/null || true
+  fix_broken_apt
+  ensure_xfce_packages
 
   sudo -u ubuntu bash -lc 'command -v xfce4-panel >/dev/null 2>&1 && command -v xfdesktop >/dev/null 2>&1 && (command -v startxfce4 >/dev/null 2>&1 || command -v xfce4-session >/dev/null 2>&1)'
   if [ $? -eq 0 ]; then
@@ -119,20 +157,7 @@ repair_xfce_desktop() {
     wn "mv /home/ubuntu/.cache/sessions /home/ubuntu/.cache/sessions.bak"
   fi
 
-  if [ -n "$launcher" ]; then
-    cat <<EOF | sudo tee "$xs" > /dev/null
-#!/bin/sh
-exec $launcher
-EOF
-    sudo chmod 755 "$xs"
-    sudo chown ubuntu:ubuntu "$xs"
-    cat <<EOF | sudo tee "$xinitrc" > /dev/null
-#!/bin/sh
-exec $launcher
-EOF
-    sudo chmod 755 "$xinitrc"
-    sudo chown ubuntu:ubuntu "$xinitrc"
-  fi
+  write_xfce_session_files "$launcher"
 
   sudo -u ubuntu bash -lc 'nohup xfce4-panel >/dev/null 2>&1 & disown || true; nohup xfdesktop >/dev/null 2>&1 & disown || true' || true
   sudo systemctl restart xrdp xrdp-sesman 2>/dev/null || true
@@ -143,37 +168,13 @@ ensure_rdp_session() {
   local xinitrc="/home/ubuntu/.xinitrc"
 
   echo -e "  ${BLUE}→${RESET} 安裝 xrdp / XFCE session 依賴..."
-  sudo apt-get update -qq 2>/dev/null || true
-  sudo apt-get install -y \
-    xrdp \
-    xorgxrdp \
-    xfce4 \
-    xfce4-goodies \
-    dbus-x11 \
-    x11-xserver-utils 2>/dev/null || true
+  fix_broken_apt
+  ensure_xfce_packages
 
   launcher="$(detect_xfce_launcher)"
-  if [ -n "$launcher" ]; then
-    echo "$launcher" | sudo tee "$xs" > /dev/null
-    sudo chmod 755 "$xs"
-    sudo chown ubuntu:ubuntu "$xs"
-  fi
-
-  if [ -z "$launcher" ]; then
-    launcher="xfce4-session"
-  fi
-
-  if [ ! -f "$xinitrc" ] || ! grep -Eq "startxfce4|xfce4-session" "$xinitrc" 2>/dev/null; then
-    cat <<EOF | sudo tee "$xinitrc" > /dev/null
-#!/bin/sh
-exec $launcher
-EOF
-    sudo chmod 755 "$xinitrc"
-    sudo chown ubuntu:ubuntu "$xinitrc"
-  fi
-
-  sudo mkdir -p /home/ubuntu/.config
-  sudo chown -R ubuntu:ubuntu /home/ubuntu/.config
+  write_xfce_session_files "$launcher"
+  sudo mkdir -p /home/ubuntu/.config /home/ubuntu/.cache
+  sudo chown -R ubuntu:ubuntu /home/ubuntu/.config /home/ubuntu/.cache
 
   repair_xfce_desktop
 
