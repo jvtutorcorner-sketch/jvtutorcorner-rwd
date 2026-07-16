@@ -86,6 +86,8 @@ collect_rdp_debug_logs() {
 
 repair_xfce_desktop() {
   doing "修復 XFCE 桌面元件..."
+  local xs="/home/ubuntu/.xsession"
+  local xinitrc="/home/ubuntu/.xinitrc"
   local launcher
   launcher="$(detect_xfce_launcher)"
   sudo apt-get update -qq 2>/dev/null || true
@@ -110,13 +112,18 @@ repair_xfce_desktop() {
   if [ -z "$launcher" ]; then
     launcher="xfce4-session"
   fi
-  echo "#!/bin/sh" | sudo tee /home/ubuntu/.xinitrc > /dev/null
-  echo "exec $launcher" | sudo tee -a /home/ubuntu/.xinitrc > /dev/null
-  sudo chmod 755 /home/ubuntu/.xinitrc
-  sudo chown ubuntu:ubuntu /home/ubuntu/.xinitrc
-  echo "$launcher" | sudo tee /home/ubuntu/.xsession > /dev/null
-  sudo chmod 755 /home/ubuntu/.xsession
-  sudo chown ubuntu:ubuntu /home/ubuntu/.xsession
+  cat <<EOF | sudo tee "$xinitrc" > /dev/null
+#!/bin/sh
+exec $launcher
+EOF
+  sudo chmod 755 "$xinitrc"
+  sudo chown ubuntu:ubuntu "$xinitrc"
+  cat <<EOF | sudo tee "$xs" > /dev/null
+#!/bin/sh
+exec $launcher
+EOF
+  sudo chmod 755 "$xs"
+  sudo chown ubuntu:ubuntu "$xs"
   sudo -u ubuntu bash -lc 'nohup xfce4-panel >/dev/null 2>&1 & disown || true; nohup xfdesktop >/dev/null 2>&1 & disown || true' || true
   sudo systemctl restart xrdp xrdp-sesman 2>/dev/null || true
 }
@@ -265,7 +272,10 @@ else
   doing "建立 ~/.xsession（XFCE launcher）..."
   launcher="$(detect_xfce_launcher)"
   [ -z "$launcher" ] && launcher="xfce4-session"
-  echo "$launcher" | sudo tee "$XS" > /dev/null
+  cat <<EOF | sudo tee "$XS" > /dev/null
+#!/bin/sh
+exec $launcher
+EOF
   sudo chmod 755 "$XS" && sudo chown ubuntu:ubuntu "$XS"
   sudo systemctl restart xrdp xrdp-sesman 2>/dev/null || true
   if [ -f "$XS" ]; then pass_fix "~/.xsession 已建立（startxfce4），xrdp 已重啟"

@@ -84,6 +84,8 @@ collect_rdp_debug_logs() {
 }
 
 repair_xfce_desktop() {
+  local xs="/home/ubuntu/.xsession"
+  local xinitrc="/home/ubuntu/.xinitrc"
   local xfce_conf="/home/ubuntu/.config/xfce4"
   local session_cache="/home/ubuntu/.cache/sessions"
   local launcher
@@ -118,11 +120,16 @@ repair_xfce_desktop() {
   fi
 
   if [ -n "$launcher" ]; then
-    echo "$launcher" | sudo tee "$xs" > /dev/null
+    cat <<EOF | sudo tee "$xs" > /dev/null
+#!/bin/sh
+exec $launcher
+EOF
     sudo chmod 755 "$xs"
     sudo chown ubuntu:ubuntu "$xs"
-    echo "#!/bin/sh" | sudo tee "$xinitrc" > /dev/null
-    echo "$launcher" | sudo tee -a "$xinitrc" > /dev/null
+    cat <<EOF | sudo tee "$xinitrc" > /dev/null
+#!/bin/sh
+exec $launcher
+EOF
     sudo chmod 755 "$xinitrc"
     sudo chown ubuntu:ubuntu "$xinitrc"
   fi
