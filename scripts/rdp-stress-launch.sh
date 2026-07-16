@@ -5,9 +5,16 @@ URL="${1:-https://www.jvtutorcorner.com}"
 CMD="${2:-}"
 
 detect_display() {
-  ps -eo args= 2>/dev/null | awk '/(^|[[:space:]])Xorg[[:space:]]+:[0-9]+/ {
-    for (i = 1; i <= NF; i++) if ($i ~ /^:[0-9]+$/) { print $i ".0"; exit }
-  }'
+  ps -eo args= 2>/dev/null | awk '
+    /(^|[[:space:]])Xorg[[:space:]]+:[0-9]+/ {
+      for (i = 1; i <= NF; i++) {
+        if ($i ~ /^:[0-9]+$/) {
+          d = $i ".0"
+        }
+      }
+    }
+    END { print d }
+  '
 }
 
 DISPLAY_VALUE="${DISPLAY:-$(detect_display)}"

@@ -20,6 +20,12 @@ scripts/rdp-stress-launch.sh
 - 以目前的 RDP session 開啟瀏覽器
 - 以目前的 RDP session 開啟終端機
 
+如果你要手動指定 session，可以先設定：
+
+```bash
+DISPLAY=:10.0 bash scripts/rdp-stress-launch.sh
+```
+
 ## 使用方式
 
 ### 1. 先透過 SSH 登入 EC2
