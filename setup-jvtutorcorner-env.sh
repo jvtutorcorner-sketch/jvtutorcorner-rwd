@@ -31,6 +31,8 @@ collect_rdp_debug_logs() {
   local xs="/home/ubuntu/.xsession"
   local xinitrc="/home/ubuntu/.xinitrc"
   local xsession_errors="/home/ubuntu/.xsession-errors"
+  local xfce_conf="/home/ubuntu/.config/xfce4"
+  local session_cache="/home/ubuntu/.cache/sessions"
 
   echo -e "\n${BOLD}╔══════════════════════════════════════════╗${RESET}"
   echo -e "${BOLD}║  XRDP / Xsession 排錯資訊                ║${RESET}"
@@ -59,6 +61,51 @@ collect_rdp_debug_logs() {
     echo -e "  ${BLUE}[INFO]${RESET} ~/.xinitrc"
     sed -n '1,20p' "$xinitrc" 2>/dev/null | sed 's/^/    /' || true
   fi
+
+  if [ -d "$xfce_conf" ]; then
+    echo -e "  ${BLUE}[INFO]${RESET} ~/.config/xfce4"
+    find "$xfce_conf" -maxdepth 2 -type f 2>/dev/null | head -n 20 | sed 's/^/    /' || true
+  fi
+
+  if [ -d "$session_cache" ]; then
+    echo -e "  ${BLUE}[INFO]${RESET} ~/.cache/sessions"
+    find "$session_cache" -maxdepth 1 -type f 2>/dev/null | sed 's/^/    /' || true
+  fi
+}
+
+repair_xfce_desktop() {
+  local xfce_conf="/home/ubuntu/.config/xfce4"
+  local session_cache="/home/ubuntu/.cache/sessions"
+
+  echo -e "  ${BLUE}→${RESET} 修復 XFCE 桌面元件..."
+  sudo apt-get update -qq 2>/dev/null || true
+  sudo apt-get install -y \
+    xfce4-panel \
+    xfdesktop4 \
+    xfce4-session \
+    xfce4-settings \
+    thunar \
+    dbus-x11 \
+    xorgxrdp 2>/dev/null || true
+
+  sudo -u ubuntu bash -lc 'command -v xfce4-panel >/dev/null 2>&1 && command -v xfdesktop >/dev/null 2>&1 && command -v startxfce4 >/dev/null 2>&1'
+  if [ $? -eq 0 ]; then
+    ok "XFCE 元件：xfce4-panel / xfdesktop / startxfce4 可用"
+  else
+    fail_ "XFCE 元件：缺少 xfce4-panel 或 xfdesktop"
+  fi
+
+  sudo mkdir -p /home/ubuntu/.config /home/ubuntu/.cache
+  sudo chown -R ubuntu:ubuntu /home/ubuntu/.config /home/ubuntu/.cache
+
+  if [ -d "$xfce_conf" ] || [ -d "$session_cache" ]; then
+    wn "若登入後仍為藍屏，可考慮重置 XFCE 設定："
+    wn "mv /home/ubuntu/.config/xfce4 /home/ubuntu/.config/xfce4.bak"
+    wn "mv /home/ubuntu/.cache/sessions /home/ubuntu/.cache/sessions.bak"
+  fi
+
+  sudo -u ubuntu bash -lc 'nohup xfce4-panel >/dev/null 2>&1 & disown || true; nohup xfdesktop >/dev/null 2>&1 & disown || true' || true
+  sudo systemctl restart xrdp xrdp-sesman 2>/dev/null || true
 }
 
 ensure_rdp_session() {
@@ -90,6 +137,8 @@ EOF
 
   sudo mkdir -p /home/ubuntu/.config
   sudo chown -R ubuntu:ubuntu /home/ubuntu/.config
+
+  repair_xfce_desktop
 
   sudo systemctl restart xrdp xrdp-sesman 2>/dev/null || true
 
