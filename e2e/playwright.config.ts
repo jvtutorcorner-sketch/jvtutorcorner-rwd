@@ -44,7 +44,7 @@ try {
 export default defineConfig({
   testDir: './e2e',
   testMatch: '**/*.spec.ts',
-  timeout: 60000,
+  timeout: 180000,
 
   fullyParallel: false, // 禁用並行以避免端口衝突
   forbidOnly: process.env.CI ? true : false,
@@ -64,7 +64,11 @@ export default defineConfig({
     video: 'retain-on-failure',
     // 修正：launchOptions 包含 args
     launchOptions: {
-      args: ['--start-maximized'],
+      args: [
+        '--start-maximized',
+        '--disable-dev-shm-usage', // EC2 /dev/shm is only 64MB; use /tmp instead to prevent canvas crashes
+        '--no-sandbox',
+      ],
     }
   },
 

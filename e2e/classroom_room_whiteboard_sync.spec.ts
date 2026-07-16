@@ -152,6 +152,7 @@ test.describe('[standard] Whiteboard Sync', () => {
   test.setTimeout(300000);
 
   test('Teacher drawings sync to student', async ({ browser }) => {
+    test.setTimeout(180000); // 61s classroom wait + enrollment + room setup
     const config = getTestConfig();
     const _runTs = Date.now();
     
