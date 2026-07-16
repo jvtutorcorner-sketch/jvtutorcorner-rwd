@@ -135,6 +135,25 @@ XMLEOF
   sudo chown -R ubuntu:ubuntu /home/ubuntu/.config/xfce4 /home/ubuntu/.config/gtk-3.0 /home/ubuntu/.config/gtk-4.0 /home/ubuntu/.config/autostart
 }
 
+write_fast_rdp_profile() {
+  local autostart_dir="/home/ubuntu/.config/autostart"
+  local fast_panel_desktop="$autostart_dir/xrdp-fast-panel.desktop"
+
+  sudo mkdir -p "$autostart_dir"
+  cat <<'EOF' | sudo tee "$fast_panel_desktop" > /dev/null
+[Desktop Entry]
+Type=Application
+Name=XRDP Fast Panel
+Exec=/bin/sh -lc 'pkill -x xfce4-panel 2>/dev/null || true; nohup xfce4-panel >/dev/null 2>&1 &'
+Hidden=false
+NoDisplay=true
+X-GNOME-Autostart-enabled=true
+OnlyShowIn=XFCE;
+EOF
+
+  sudo chown -R ubuntu:ubuntu "$autostart_dir"
+}
+
 write_xfce_session_files() {
   local launcher="$1"
   local xs="/home/ubuntu/.xsession"
@@ -218,11 +237,13 @@ XMLEOF
 XMLEOF
   sudo chown -R ubuntu:ubuntu "/home/ubuntu/.config/xfce4"
   write_low_load_xfce_profile
+  write_fast_rdp_profile
 
   # Disable light-locker — requires LightDM; always crashes under XRDP
   sudo mkdir -p "$autostart_dir"
   printf '[Desktop Entry]\nHidden=true\n' | sudo tee "$autostart_dir/light-locker.desktop" > /dev/null
   printf '[Desktop Entry]\nHidden=true\n' | sudo tee "$autostart_dir/xfce4-screensaver.desktop" > /dev/null
+  printf '[Desktop Entry]\nHidden=true\n' | sudo tee "$autostart_dir/xfce4-panel.desktop" > /dev/null
   cat <<'EOF' | sudo tee "$autostart_sh" > /dev/null
 #!/bin/sh
 set -u
@@ -250,6 +271,9 @@ xfconf-query -c xfce4-desktop -p /desktop-icons/style -s 0 2>/dev/null || true
 # Restart xfwm4 to clear any compositor conflict
 pkill -x xfwm4 2>/dev/null || true
 nohup xfwm4 --display="$DISPLAY" --replace --compositor=off >/dev/null 2>&1 &
+# Start panel after the desktop is already visible to reduce first-paint delay
+pkill -x xfce4-panel 2>/dev/null || true
+nohup sh -lc 'xfce4-panel >/dev/null 2>&1' >/dev/null 2>&1 &
 EOF
   sudo chmod 755 "$autostart_sh"
   cat <<EOF | sudo tee "$autostart_desktop" > /dev/null
