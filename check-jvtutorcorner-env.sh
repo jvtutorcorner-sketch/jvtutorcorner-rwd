@@ -403,6 +403,33 @@ repair_xfce_desktop() {
   sudo systemctl restart xrdp xrdp-sesman 2>/dev/null || true
 }
 
+optimize_xrdp_config() {
+  local ini="/etc/xrdp/xrdp.ini"
+  if [ ! -f "$ini" ]; then
+    wn "xrdp.ini 不存在，跳過效能優化"
+    return 0
+  fi
+
+  doing "優化 xrdp.ini（降色彩深度 16-bit → 大幅減少滑鼠移動延遲）..."
+
+  # Reduce from 32-bit to 16-bit — single biggest improvement for cursor movement lag
+  if grep -q '^max_bpp=' "$ini"; then
+    sudo sed -i 's/^max_bpp=.*/max_bpp=16/' "$ini"
+  else
+    sudo sed -i '/^\[Globals\]/a max_bpp=16' "$ini"
+  fi
+
+  # Bulk compression for WAN connections
+  if ! grep -q '^bulk_compression=' "$ini"; then
+    sudo sed -i '/^\[Globals\]/a bulk_compression=yes' "$ini"
+  else
+    sudo sed -i 's/^bulk_compression=.*/bulk_compression=yes/' "$ini"
+  fi
+
+  pass_fix "xrdp.ini 優化完成（max_bpp=16、bulk_compression=yes）"
+  wn "重要：RDP 客戶端連線時也需選 16-bit 色彩深度，否則設定不完全生效"
+}
+
 ensure_rdp_session() {
   local xs="/home/ubuntu/.xsession"
   local xinitrc="/home/ubuntu/.xinitrc"
@@ -410,6 +437,7 @@ ensure_rdp_session() {
   doing "安裝 / 修復 xrdp + XFCE session..."
   fix_broken_apt
   ensure_xfce_packages
+  optimize_xrdp_config
   launcher="$(detect_xfce_launcher)"
   write_xfce_session_files "$launcher"
 
