@@ -34,6 +34,35 @@ detect_xfce_launcher() {
   sudo -u ubuntu bash -lc 'command -v startxfce4 >/dev/null 2>&1 && command -v startxfce4 || (command -v xfce4-session >/dev/null 2>&1 && command -v xfce4-session || true)'
 }
 
+detect_active_x_display() {
+  local display
+  display="$(ps -eo args= 2>/dev/null \
+    | awk '/(^|[[:space:]])Xorg[[:space:]]+:[0-9]+/ {
+        for (i = 1; i <= NF; i++) {
+          if ($i ~ /^:[0-9]+$/) { print $i ".0"; exit }
+        }
+      }')"
+  if [ -n "$display" ]; then
+    echo "$display"
+    return 0
+  fi
+  display="$(ps -eo args= 2>/dev/null \
+    | awk '/(^|[[:space:]])Xvnc[[:space:]]+:[0-9]+/ {
+        for (i = 1; i <= NF; i++) {
+          if ($i ~ /^:[0-9]+$/) { print $i ".0"; exit }
+        }
+      }')"
+  echo "$display"
+}
+
+detect_active_xauthority() {
+  if [ -f /home/ubuntu/.Xauthority ]; then
+    echo /home/ubuntu/.Xauthority
+  else
+    echo ""
+  fi
+}
+
 fix_broken_apt() {
   doing "修復 broken apt 依賴..."
   sudo apt --fix-broken install -y 2>/dev/null || sudo apt-get -f install -y 2>/dev/null || true
@@ -116,8 +145,11 @@ XMLEOF
   cat <<'EOF' | sudo tee "$autostart_sh" > /dev/null
 #!/bin/sh
 set -u
-export DISPLAY="${DISPLAY:-:10.0}"
+export DISPLAY="${DISPLAY:-}"
 export XAUTHORITY="${XAUTHORITY:-/home/ubuntu/.Xauthority}"
+if [ -z "$DISPLAY" ]; then
+  exit 0
+fi
 pkill -x xfwm4 2>/dev/null || true
 pkill -x xfce4-panel 2>/dev/null || true
 pkill -x xfdesktop 2>/dev/null || true
@@ -195,8 +227,12 @@ collect_rdp_debug_logs() {
 }
 
 diagnose_xrdp_input() {
-  local display=":10.0"
-  local xauth="/home/ubuntu/.Xauthority"
+  local display
+  local xauth
+  display="$(detect_active_x_display)"
+  xauth="$(detect_active_xauthority)"
+  [ -z "$display" ] && display="${DISPLAY:-}"
+  [ -z "$xauth" ] && xauth="/home/ubuntu/.Xauthority"
 
   echo -e "\n  ${BLUE}[INFO]${RESET} ── X11 輸入診斷（點擊失效排查）──"
 
@@ -205,33 +241,61 @@ diagnose_xrdp_input() {
     | grep -v grep | sed 's/^/    /' || echo "    （無匹配程序）"
 
   echo -e "  ${BLUE}[INFO]${RESET} 活動視窗管理員 (_NET_WM_NAME)"
-  sudo -u ubuntu DISPLAY="$display" XAUTHORITY="$xauth" \
-    xprop -root _NET_WM_NAME 2>/dev/null | sed 's/^/    /' || echo "    （無法取得，X session 可能未運行）"
+  if [ -n "$display" ]; then
+    sudo -u ubuntu DISPLAY="$display" XAUTHORITY="$xauth" \
+      xprop -root _NET_WM_NAME 2>/dev/null | sed 's/^/    /' || echo "    （無法取得，X session 可能未運行）"
+  else
+    echo "    （無法偵測 active display）"
+  fi
 
   echo -e "  ${BLUE}[INFO]${RESET} 目前聚焦視窗名稱"
-  sudo -u ubuntu DISPLAY="$display" XAUTHORITY="$xauth" \
-    xdotool getactivewindow getwindowname 2>/dev/null | sed 's/^/    /' || echo "    （無法取得）"
+  if [ -n "$display" ]; then
+    sudo -u ubuntu DISPLAY="$display" XAUTHORITY="$xauth" \
+      xdotool getactivewindow getwindowname 2>/dev/null | sed 's/^/    /' || echo "    （無法取得）"
+  else
+    echo "    （無法偵測 active display）"
+  fi
 
   echo -e "  ${BLUE}[INFO]${RESET} X clients（top 20）"
-  sudo -u ubuntu DISPLAY="$display" XAUTHORITY="$xauth" \
-    xlsclients 2>/dev/null | head -20 | sed 's/^/    /' || echo "    （無法取得）"
+  if [ -n "$display" ]; then
+    sudo -u ubuntu DISPLAY="$display" XAUTHORITY="$xauth" \
+      xlsclients 2>/dev/null | head -20 | sed 's/^/    /' || echo "    （無法取得）"
+  else
+    echo "    （無法偵測 active display）"
+  fi
 
   echo -e "  ${BLUE}[INFO]${RESET} xfce4-screensaver 狀態"
-  sudo -u ubuntu DISPLAY="$display" XAUTHORITY="$xauth" \
-    xfce4-screensaver-command --query 2>/dev/null | sed 's/^/    /' \
-  || sudo -u ubuntu DISPLAY="$display" XAUTHORITY="$xauth" \
-    xscreensaver-command -info 2>/dev/null | head -5 | sed 's/^/    /' \
-  || echo "    （無 screensaver 執行或工具未安裝）"
+  if [ -n "$display" ]; then
+    sudo -u ubuntu DISPLAY="$display" XAUTHORITY="$xauth" \
+      xfce4-screensaver-command --query 2>/dev/null | sed 's/^/    /' \
+    || sudo -u ubuntu DISPLAY="$display" XAUTHORITY="$xauth" \
+      xscreensaver-command -info 2>/dev/null | head -5 | sed 's/^/    /' \
+    || echo "    （無 screensaver 執行或工具未安裝）"
+  else
+    echo "    （無法偵測 active display）"
+  fi
 
   echo -e "  ${BLUE}[INFO]${RESET} XTest / xorgxrdp 擴充功能"
-  sudo -u ubuntu DISPLAY="$display" XAUTHORITY="$xauth" \
-    xdpyinfo 2>/dev/null | grep -Ei 'XTEST|XInputExtension|XRDP|xorgxrdp' \
-    | sed 's/^/    /' || echo "    （無法取得 xdpyinfo）"
+  if [ -n "$display" ]; then
+    sudo -u ubuntu DISPLAY="$display" XAUTHORITY="$xauth" \
+      xdpyinfo 2>/dev/null | grep -Ei 'XTEST|XInputExtension|XRDP|xorgxrdp' \
+      | sed 's/^/    /' || echo "    （無法取得 xdpyinfo）"
+  else
+    echo "    （無法偵測 active display）"
+  fi
 }
 
 repair_xfce_input() {
-  local display=":10.0"
-  local xauth="/home/ubuntu/.Xauthority"
+  local display
+  local xauth
+
+  display="$(detect_active_x_display)"
+  xauth="$(detect_active_xauthority)"
+  [ -z "$xauth" ] && xauth="/home/ubuntu/.Xauthority"
+  if [ -z "$display" ]; then
+    wn "未偵測到 active display，跳過即時 session 修復（下次登入時 autostart 仍會生效）"
+    return 0
+  fi
 
   doing "終止螢幕保護程式 / 鎖定畫面..."
   pkill -u ubuntu -x xfce4-screensaver 2>/dev/null && pass_fix "xfce4-screensaver 已終止" || true
@@ -249,7 +313,7 @@ repair_xfce_input() {
   pkill -u ubuntu -x xfwm4 2>/dev/null || true
   sleep 1
   sudo -u ubuntu bash -c \
-    "DISPLAY=$display XAUTHORITY=$xauth nohup xfwm4 --replace >/dev/null 2>&1 & disown" || true
+    "DISPLAY=$display XAUTHORITY=$xauth nohup xfwm4 --replace --compositor=off >/dev/null 2>&1 & disown" || true
   sleep 2
   if pgrep -u ubuntu -x xfwm4 > /dev/null 2>&1; then
     pass_fix "xfwm4 已重新啟動"
