@@ -14,7 +14,12 @@
 scripts/rdp-stress-launch.sh
 ```
 
-它會：
+它會提供兩種模式：
+
+- `--ssh-only`：只在 SSH 裡執行壓測命令，不開任何 GUI
+- `--rdp-open`：等到偵測到 active display 後，才在遠端桌面開瀏覽器與終端機
+
+`--rdp-open` 會：
 
 - 自動偵測目前 active X display
 - 以目前的 RDP session 開啟瀏覽器
@@ -23,7 +28,7 @@ scripts/rdp-stress-launch.sh
 如果你要手動指定 session，可以先設定：
 
 ```bash
-DISPLAY=:10.0 bash scripts/rdp-stress-launch.sh
+DISPLAY=:10.0 bash scripts/rdp-stress-launch.sh --rdp-open
 ```
 
 ## 使用方式
@@ -47,36 +52,36 @@ bash scripts/classroom_stress_test.sh
 ### 3. 讓 RDP 自動開正式環境網頁與終端機
 
 ```bash
-bash scripts/rdp-stress-launch.sh https://www.jvtutorcorner.com "cd ~/jvtutorcorner-rwd && bash scripts/classroom_stress_test.sh"
+bash scripts/rdp-stress-launch.sh --ssh-only "cd ~/jvtutorcorner-rwd && bash scripts/classroom_stress_test.sh"
 ```
 
-第二個參數是要在遠端桌面終端機執行的指令。
+這個模式只跑壓測，不會開 RDP 視窗。
 
 ## 典型搭配
 
 ### 只開網頁
 
 ```bash
-bash scripts/rdp-stress-launch.sh https://www.jvtutorcorner.com
+bash scripts/rdp-stress-launch.sh --rdp-open https://www.jvtutorcorner.com
 ```
 
 ### 開網頁並在終端機執行測試
 
 ```bash
-bash scripts/rdp-stress-launch.sh https://www.jvtutorcorner.com "cd ~/jvtutorcorner-rwd && npm run test:stress"
+bash scripts/rdp-stress-launch.sh --rdp-open https://www.jvtutorcorner.com "cd ~/jvtutorcorner-rwd && npm run test:stress"
 ```
 
 ### 用正式環境網址並執行壓測
 
 ```bash
-bash scripts/rdp-stress-launch.sh https://www.jvtutorcorner.com "cd ~/jvtutorcorner-rwd && bash scripts/classroom_stress_test.sh"
+bash scripts/rdp-stress-launch.sh --rdp-open https://www.jvtutorcorner.com "cd ~/jvtutorcorner-rwd && bash scripts/classroom_stress_test.sh"
 ```
 
 ## 前置條件
 
 - EC2 上已經有可用的 XRDP session
 - `xfce4-terminal`、`xdg-open` 或 `chromium` / `google-chrome` / `firefox` 至少有一個可用
-- 你已經先登入 RDP，讓 active display 存在
+- `--rdp-open` 模式下，你已經先登入 RDP，讓 active display 存在，或等腳本在 `WAIT_SECONDS` 內偵測到
 
 ## 如果沒有跳出視窗
 
@@ -92,4 +97,10 @@ which google-chrome
 which firefox
 ```
 
-如果沒有 active display，這支 launcher 不會硬開視窗，因為那樣會開到錯誤的 session。
+如果沒有 active display，`--rdp-open` 會等待一段時間後才失敗。
+
+你也可以調整等待秒數：
+
+```bash
+WAIT_SECONDS=90 bash scripts/rdp-stress-launch.sh --rdp-open
+```

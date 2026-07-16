@@ -1,8 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-URL="${1:-https://www.jvtutorcorner.com}"
-CMD="${2:-}"
+DEFAULT_URL="https://www.jvtutorcorner.com"
+DEFAULT_WAIT_SECONDS=45
+
+MODE="${1:-}"
+shift || true
+
+ARG1="${1:-}"
+shift || true
+
+ARG2="${1:-}"
+WAIT_SECONDS="${WAIT_SECONDS:-$DEFAULT_WAIT_SECONDS}"
 
 detect_display() {
   ps -eo args= 2>/dev/null | awk '
@@ -17,35 +26,41 @@ detect_display() {
   '
 }
 
-DISPLAY_VALUE="${DISPLAY:-$(detect_display)}"
-XAUTHORITY_VALUE="${XAUTHORITY:-/home/ubuntu/.Xauthority}"
-
-if [ -z "$DISPLAY_VALUE" ]; then
-  echo "No active X display found."
-  exit 1
-fi
-
-export DISPLAY="$DISPLAY_VALUE"
-export XAUTHORITY="$XAUTHORITY_VALUE"
+wait_for_display() {
+  local i display
+  for i in $(seq 1 "$WAIT_SECONDS"); do
+    display="${DISPLAY:-$(detect_display)}"
+    if [ -n "$display" ]; then
+      echo "$display"
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
 
 open_browser() {
+  local url="$1"
   if command -v xdg-open >/dev/null 2>&1; then
-    nohup xdg-open "$URL" >/dev/null 2>&1 &
+    nohup xdg-open "$url" >/dev/null 2>&1 &
   elif command -v chromium >/dev/null 2>&1; then
-    nohup chromium --new-window "$URL" >/dev/null 2>&1 &
+    nohup chromium --new-window "$url" >/dev/null 2>&1 &
   elif command -v google-chrome >/dev/null 2>&1; then
-    nohup google-chrome --new-window "$URL" >/dev/null 2>&1 &
+    nohup google-chrome --new-window "$url" >/dev/null 2>&1 &
   elif command -v firefox >/dev/null 2>&1; then
-    nohup firefox "$URL" >/dev/null 2>&1 &
+    nohup firefox "$url" >/dev/null 2>&1 &
   else
-    echo "No browser found to open: $URL"
+    echo "No browser found to open: $url"
+    return 1
   fi
 }
 
 open_terminal() {
+  local cmd="$1"
   local term_cmd
-  if [ -n "$CMD" ]; then
-    term_cmd="$CMD; echo; echo '[DONE] Press Enter to close'; read -r"
+
+  if [ -n "$cmd" ]; then
+    term_cmd="$cmd; echo; echo '[DONE] Press Enter to close'; read -r"
   else
     term_cmd='echo "[INFO] Terminal opened from SSH launcher"; exec bash'
   fi
@@ -58,17 +73,59 @@ open_terminal() {
     nohup xterm -e bash -lc "$term_cmd" >/dev/null 2>&1 &
   else
     echo "No terminal emulator found."
-    if [ -n "$CMD" ]; then
-      bash -lc "$CMD"
+    if [ -n "$cmd" ]; then
+      bash -lc "$cmd"
     fi
+    return 1
   fi
 }
 
-open_browser
-open_terminal
+usage() {
+  cat <<'EOF'
+Usage:
+  rdp-stress-launch.sh --ssh-only [command]
+  rdp-stress-launch.sh --rdp-open [url] [command]
 
-echo "Launched on DISPLAY=$DISPLAY"
-echo "Browser URL: $URL"
-if [ -n "$CMD" ]; then
-  echo "Terminal command: $CMD"
-fi
+Examples:
+  rdp-stress-launch.sh --ssh-only "cd ~/jvtutorcorner-rwd && bash scripts/classroom_stress_test.sh"
+  rdp-stress-launch.sh --rdp-open https://www.jvtutorcorner.com "cd ~/jvtutorcorner-rwd && bash scripts/classroom_stress_test.sh"
+EOF
+}
+
+case "$MODE" in
+  --ssh-only)
+    if [ -n "$ARG1" ]; then
+      bash -lc "$ARG1"
+    else
+      usage
+      exit 1
+    fi
+    ;;
+  --rdp-open)
+    URL="${ARG1:-$DEFAULT_URL}"
+    CMD="${ARG2:-}"
+    DISPLAY_VALUE="${DISPLAY:-$(wait_for_display || true)}"
+    XAUTHORITY_VALUE="${XAUTHORITY:-/home/ubuntu/.Xauthority}"
+    if [ -z "$DISPLAY_VALUE" ]; then
+      echo "No active X display found after waiting ${WAIT_SECONDS}s."
+      exit 1
+    fi
+    export DISPLAY="$DISPLAY_VALUE"
+    export XAUTHORITY="$XAUTHORITY_VALUE"
+    open_browser "$URL"
+    open_terminal "$CMD"
+    echo "Launched on DISPLAY=$DISPLAY"
+    echo "Browser URL: $URL"
+    if [ -n "$CMD" ]; then
+      echo "Terminal command: $CMD"
+    fi
+    ;;
+  "")
+    usage
+    exit 1
+    ;;
+  *)
+    usage
+    exit 1
+    ;;
+esac
