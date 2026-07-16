@@ -84,7 +84,8 @@ ensure_xfce_packages() {
     dbus-x11 \
     x11-xserver-utils \
     x11-utils \
-    xdotool 2>/dev/null || true
+    xdotool \
+    at-spi2-core 2>/dev/null || true
 }
 
 write_xfce_session_files() {
@@ -108,6 +109,8 @@ write_xfce_session_files() {
 
   cat <<EOF | sudo tee "$xs" > /dev/null
 #!/bin/sh
+# Suppress AT-SPI accessibility bus lookups — prevents 3-5s click delay under XRDP
+export NO_AT_BRIDGE=1
 # Kill stale compositing managers left from crashed sessions
 pkill -x compton  2>/dev/null || true
 pkill -x picom    2>/dev/null || true
@@ -354,7 +357,11 @@ repair_xfce_input() {
   sudo -u ubuntu DISPLAY="$display" XAUTHORITY="$xauth" \
     xfconf-query -c xfce4-power-manager -p /xfce4-power-manager/blank-on-ac -s 0 2>/dev/null || true
 
-  doing "即時關閉 xfwm4 compositing（xfconf-query）..."
+  doing "即時關閉 xfwm4 compositing（點擊延遲的次要原因）..."
+  local comp_state
+  comp_state="$(sudo -u ubuntu DISPLAY="$display" XAUTHORITY="$xauth" \
+    xfconf-query -c xfwm4 -p /general/use_compositing 2>/dev/null || echo unknown)"
+  wn "compositing 目前狀態：$comp_state"
   sudo -u ubuntu DISPLAY="$display" XAUTHORITY="$xauth" \
     xfconf-query -c xfwm4 -p /general/use_compositing -s false 2>/dev/null \
   && pass_fix "xfwm4 compositing 已即時關閉" \
