@@ -127,8 +127,11 @@ EOF
   sudo chmod 755 "$xinitrc"
   sudo chown ubuntu:ubuntu "$xinitrc"
 
+  # Write all xfconf XML overrides
+  local xfce_conf_dir="/home/ubuntu/.config/xfce4/xfconf/xfce-perchannel-xml"
+  sudo mkdir -p "$xfce_conf_dir"
+
   # Disable xfwm4 compositing — prevents "another compositor running" black screen under XRDP
-  sudo mkdir -p "$(dirname "$xfwm4_xml")"
   cat <<'XMLEOF' | sudo tee "$xfwm4_xml" > /dev/null
 <?xml version="1.0" encoding="UTF-8"?>
 <channel name="xfwm4" version="1.0">
@@ -137,28 +140,63 @@ EOF
   </property>
 </channel>
 XMLEOF
+
+  # Disable xfce4-screensaver — it activates under XRDP and swallows all mouse input
+  cat <<'XMLEOF' | sudo tee "$xfce_conf_dir/xfce4-screensaver.xml" > /dev/null
+<?xml version="1.0" encoding="UTF-8"?>
+<channel name="xfce4-screensaver" version="1.0">
+  <property name="saver" type="empty">
+    <property name="enabled" type="bool" value="false"/>
+  </property>
+  <property name="lock" type="empty">
+    <property name="enabled" type="bool" value="false"/>
+  </property>
+</channel>
+XMLEOF
+
+  # Disable DPMS / screen-blank via power-manager (secondary source of screen blanking)
+  cat <<'XMLEOF' | sudo tee "$xfce_conf_dir/xfce4-power-manager.xml" > /dev/null
+<?xml version="1.0" encoding="UTF-8"?>
+<channel name="xfce4-power-manager" version="1.0">
+  <property name="xfce4-power-manager" type="empty">
+    <property name="dpms-enabled" type="bool" value="false"/>
+    <property name="blank-on-ac" type="int" value="0"/>
+    <property name="dpms-on-ac-sleep" type="uint" value="0"/>
+    <property name="dpms-on-ac-off" type="uint" value="0"/>
+  </property>
+</channel>
+XMLEOF
   sudo chown -R ubuntu:ubuntu "/home/ubuntu/.config/xfce4"
 
   # Disable light-locker — requires LightDM; always crashes under XRDP
   sudo mkdir -p "$autostart_dir"
   printf '[Desktop Entry]\nHidden=true\n' | sudo tee "$autostart_dir/light-locker.desktop" > /dev/null
+  printf '[Desktop Entry]\nHidden=true\n' | sudo tee "$autostart_dir/xfce4-screensaver.desktop" > /dev/null
   cat <<'EOF' | sudo tee "$autostart_sh" > /dev/null
 #!/bin/sh
 set -u
-export DISPLAY="${DISPLAY:-}"
+detect_display() {
+  ps -eo args= 2>/dev/null | awk '/(^|[[:space:]])Xorg[[:space:]]+:[0-9]+/ {
+    for (i = 1; i <= NF; i++) if ($i ~ /^:[0-9]+$/) { print $i ".0"; exit }
+  }'
+}
+export DISPLAY="${DISPLAY:-$(detect_display)}"
 export XAUTHORITY="${XAUTHORITY:-/home/ubuntu/.Xauthority}"
 if [ -z "$DISPLAY" ]; then
   exit 0
 fi
+# Kill screensaver first — it activates under XRDP and blocks all input
+xfce4-screensaver-command --deactivate 2>/dev/null || true
+pkill -x xfce4-screensaver 2>/dev/null || true
+pkill -x light-locker 2>/dev/null || true
+# Disable screensaver + DPMS via xfconf
+xfconf-query -c xfce4-screensaver -p /saver/enabled -s false 2>/dev/null || true
+xfconf-query -c xfce4-screensaver -p /lock/enabled -s false 2>/dev/null || true
+xfconf-query -c xfce4-power-manager -p /xfce4-power-manager/dpms-enabled -s false 2>/dev/null || true
+xfconf-query -c xfce4-power-manager -p /xfce4-power-manager/blank-on-ac -s 0 2>/dev/null || true
+# Restart xfwm4 to clear any compositor conflict
 pkill -x xfwm4 2>/dev/null || true
-pkill -x xfce4-panel 2>/dev/null || true
-pkill -x xfdesktop 2>/dev/null || true
-pkill -x xfsettingsd 2>/dev/null || true
-sleep 1
-nohup xfwm4 --replace --compositor=off >/dev/null 2>&1 &
-nohup xfce4-panel >/dev/null 2>&1 &
-nohup xfdesktop >/dev/null 2>&1 &
-nohup xfsettingsd >/dev/null 2>&1 &
+nohup xfwm4 --display="$DISPLAY" --replace --compositor=off >/dev/null 2>&1 &
 EOF
   sudo chmod 755 "$autostart_sh"
   cat <<EOF | sudo tee "$autostart_desktop" > /dev/null
@@ -298,10 +336,23 @@ repair_xfce_input() {
   fi
 
   doing "終止螢幕保護程式 / 鎖定畫面..."
+  # First try graceful deactivate, then force-kill
+  sudo -u ubuntu DISPLAY="$display" XAUTHORITY="$xauth" \
+    xfce4-screensaver-command --deactivate 2>/dev/null || true
   pkill -u ubuntu -x xfce4-screensaver 2>/dev/null && pass_fix "xfce4-screensaver 已終止" || true
   pkill -u ubuntu -x xscreensaver      2>/dev/null && pass_fix "xscreensaver 已終止"      || true
   pkill -u ubuntu -x light-locker      2>/dev/null && pass_fix "light-locker 已終止"      || true
   pkill -u ubuntu -x xflock4           2>/dev/null && pass_fix "xflock4 已終止"           || true
+
+  # Disable screensaver + DPMS via xfconf in the live session
+  sudo -u ubuntu DISPLAY="$display" XAUTHORITY="$xauth" \
+    xfconf-query -c xfce4-screensaver -p /saver/enabled -s false 2>/dev/null || true
+  sudo -u ubuntu DISPLAY="$display" XAUTHORITY="$xauth" \
+    xfconf-query -c xfce4-screensaver -p /lock/enabled -s false 2>/dev/null || true
+  sudo -u ubuntu DISPLAY="$display" XAUTHORITY="$xauth" \
+    xfconf-query -c xfce4-power-manager -p /xfce4-power-manager/dpms-enabled -s false 2>/dev/null || true
+  sudo -u ubuntu DISPLAY="$display" XAUTHORITY="$xauth" \
+    xfconf-query -c xfce4-power-manager -p /xfce4-power-manager/blank-on-ac -s 0 2>/dev/null || true
 
   doing "即時關閉 xfwm4 compositing（xfconf-query）..."
   sudo -u ubuntu DISPLAY="$display" XAUTHORITY="$xauth" \
