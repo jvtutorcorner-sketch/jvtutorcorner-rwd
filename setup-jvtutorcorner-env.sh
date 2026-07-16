@@ -50,36 +50,99 @@ ensure_xfce_packages() {
     xorgxrdp \
     xfce4 \
     xfce4-session \
+    xfwm4 \
     xfce4-panel \
     xfdesktop4 \
     xfce4-settings \
     thunar \
     dbus-x11 \
-    x11-xserver-utils 2>/dev/null || true
+    x11-xserver-utils \
+    x11-utils \
+    xdotool 2>/dev/null || true
 }
 
 write_xfce_session_files() {
   local launcher="$1"
   local xs="/home/ubuntu/.xsession"
   local xinitrc="/home/ubuntu/.xinitrc"
+  local session_cmd
+  local xfwm4_xml="/home/ubuntu/.config/xfce4/xfconf/xfce-perchannel-xml/xfwm4.xml"
+  local autostart_dir="/home/ubuntu/.config/autostart"
+  local autostart_sh="$autostart_dir/xrdp-xfce-recovery.sh"
+  local autostart_desktop="$autostart_dir/xrdp-xfce-recovery.desktop"
 
   if [ -z "$launcher" ]; then
     launcher="/usr/bin/xfce4-session"
   fi
 
+  session_cmd="exec $launcher"
+  if command -v dbus-launch >/dev/null 2>&1; then
+    session_cmd="exec dbus-launch --exit-with-session $launcher"
+  fi
+
   cat <<EOF | sudo tee "$xs" > /dev/null
 #!/bin/sh
-exec $launcher
+# Kill stale compositing managers left from crashed sessions
+pkill -x compton  2>/dev/null || true
+pkill -x picom    2>/dev/null || true
+pkill -x xcompmgr 2>/dev/null || true
+$session_cmd
 EOF
   sudo chmod 755 "$xs"
   sudo chown ubuntu:ubuntu "$xs"
 
   cat <<EOF | sudo tee "$xinitrc" > /dev/null
 #!/bin/sh
-exec $launcher
+pkill -x compton  2>/dev/null || true
+pkill -x picom    2>/dev/null || true
+pkill -x xcompmgr 2>/dev/null || true
+$session_cmd
 EOF
   sudo chmod 755 "$xinitrc"
   sudo chown ubuntu:ubuntu "$xinitrc"
+
+  # Disable xfwm4 compositing — prevents "another compositor running" black screen under XRDP
+  sudo mkdir -p "$(dirname "$xfwm4_xml")"
+  cat <<'XMLEOF' | sudo tee "$xfwm4_xml" > /dev/null
+<?xml version="1.0" encoding="UTF-8"?>
+<channel name="xfwm4" version="1.0">
+  <property name="general" type="empty">
+    <property name="use_compositing" type="bool" value="false"/>
+  </property>
+</channel>
+XMLEOF
+  sudo chown -R ubuntu:ubuntu "/home/ubuntu/.config/xfce4"
+
+  # Disable light-locker — requires LightDM; always crashes under XRDP
+  sudo mkdir -p "$autostart_dir"
+  printf '[Desktop Entry]\nHidden=true\n' | sudo tee "$autostart_dir/light-locker.desktop" > /dev/null
+  cat <<'EOF' | sudo tee "$autostart_sh" > /dev/null
+#!/bin/sh
+set -u
+export DISPLAY="${DISPLAY:-:10.0}"
+export XAUTHORITY="${XAUTHORITY:-/home/ubuntu/.Xauthority}"
+pkill -x xfwm4 2>/dev/null || true
+pkill -x xfce4-panel 2>/dev/null || true
+pkill -x xfdesktop 2>/dev/null || true
+pkill -x xfsettingsd 2>/dev/null || true
+sleep 1
+nohup xfwm4 --replace --compositor=off >/dev/null 2>&1 &
+nohup xfce4-panel >/dev/null 2>&1 &
+nohup xfdesktop >/dev/null 2>&1 &
+nohup xfsettingsd >/dev/null 2>&1 &
+EOF
+  sudo chmod 755 "$autostart_sh"
+  cat <<EOF | sudo tee "$autostart_desktop" > /dev/null
+[Desktop Entry]
+Type=Application
+Name=XRDP XFCE Recovery
+Exec=/bin/sh $autostart_sh
+Hidden=false
+NoDisplay=true
+X-GNOME-Autostart-enabled=true
+OnlyShowIn=XFCE;
+EOF
+  sudo chown -R ubuntu:ubuntu "$autostart_dir"
 }
 
 collect_rdp_debug_logs() {
@@ -126,6 +189,72 @@ collect_rdp_debug_logs() {
     echo -e "  ${BLUE}[INFO]${RESET} ~/.cache/sessions"
     find "$session_cache" -maxdepth 1 -type f 2>/dev/null | sed 's/^/    /' || true
   fi
+
+  diagnose_xrdp_input
+}
+
+diagnose_xrdp_input() {
+  local display=":10.0"
+  local xauth="/home/ubuntu/.Xauthority"
+
+  echo -e "\n  ${BLUE}[INFO]${RESET} ── X11 輸入診斷（點擊失效排查）──"
+
+  echo -e "  ${BLUE}[INFO]${RESET} 關鍵 X session 程序"
+  ps aux | grep -E 'xfwm4|xfce4-screensaver|light-locker|xscreensaver|xflock' \
+    | grep -v grep | sed 's/^/    /' || echo "    （無匹配程序）"
+
+  echo -e "  ${BLUE}[INFO]${RESET} 活動視窗管理員 (_NET_WM_NAME)"
+  sudo -u ubuntu DISPLAY="$display" XAUTHORITY="$xauth" \
+    xprop -root _NET_WM_NAME 2>/dev/null | sed 's/^/    /' || echo "    （無法取得，X session 可能未運行）"
+
+  echo -e "  ${BLUE}[INFO]${RESET} 目前聚焦視窗名稱"
+  sudo -u ubuntu DISPLAY="$display" XAUTHORITY="$xauth" \
+    xdotool getactivewindow getwindowname 2>/dev/null | sed 's/^/    /' || echo "    （無法取得）"
+
+  echo -e "  ${BLUE}[INFO]${RESET} X clients（top 20）"
+  sudo -u ubuntu DISPLAY="$display" XAUTHORITY="$xauth" \
+    xlsclients 2>/dev/null | head -20 | sed 's/^/    /' || echo "    （無法取得）"
+
+  echo -e "  ${BLUE}[INFO]${RESET} xfce4-screensaver 狀態"
+  sudo -u ubuntu DISPLAY="$display" XAUTHORITY="$xauth" \
+    xfce4-screensaver-command --query 2>/dev/null | sed 's/^/    /' \
+  || sudo -u ubuntu DISPLAY="$display" XAUTHORITY="$xauth" \
+    xscreensaver-command -info 2>/dev/null | head -5 | sed 's/^/    /' \
+  || echo "    （無 screensaver 執行或工具未安裝）"
+
+  echo -e "  ${BLUE}[INFO]${RESET} XTest / xorgxrdp 擴充功能"
+  sudo -u ubuntu DISPLAY="$display" XAUTHORITY="$xauth" \
+    xdpyinfo 2>/dev/null | grep -Ei 'XTEST|XInputExtension|XRDP|xorgxrdp' \
+    | sed 's/^/    /' || echo "    （無法取得 xdpyinfo）"
+}
+
+repair_xfce_input() {
+  local display=":10.0"
+  local xauth="/home/ubuntu/.Xauthority"
+
+  echo -e "  ${BLUE}→${RESET} 終止螢幕保護程式 / 鎖定畫面..."
+  pkill -u ubuntu -x xfce4-screensaver 2>/dev/null && wn "xfce4-screensaver 已終止" || true
+  pkill -u ubuntu -x xscreensaver      2>/dev/null && wn "xscreensaver 已終止"      || true
+  pkill -u ubuntu -x light-locker      2>/dev/null && wn "light-locker 已終止"      || true
+  pkill -u ubuntu -x xflock4           2>/dev/null && wn "xflock4 已終止"           || true
+
+  echo -e "  ${BLUE}→${RESET} 即時關閉 xfwm4 compositing（xfconf-query）..."
+  sudo -u ubuntu DISPLAY="$display" XAUTHORITY="$xauth" \
+    xfconf-query -c xfwm4 -p /general/use_compositing -s false 2>/dev/null \
+  && ok "xfwm4 compositing 已即時關閉" \
+  || wn "xfconf-query 無法執行（X session 可能未運行，將由 xfwm4.xml 在下次登入生效）"
+
+  echo -e "  ${BLUE}→${RESET} 重啟 xfwm4（--replace 強制接管輸入焦點）..."
+  pkill -u ubuntu -x xfwm4 2>/dev/null || true
+  sleep 1
+  sudo -u ubuntu bash -c \
+    "DISPLAY=$display XAUTHORITY=$xauth nohup xfwm4 --replace >/dev/null 2>&1 & disown" || true
+  sleep 2
+  if pgrep -u ubuntu -x xfwm4 > /dev/null 2>&1; then
+    ok "xfwm4 已重新啟動"
+  else
+    wn "xfwm4 未能啟動（X session 可能未運行）"
+  fi
 }
 
 repair_xfce_desktop() {
@@ -158,6 +287,7 @@ repair_xfce_desktop() {
   fi
 
   write_xfce_session_files "$launcher"
+  repair_xfce_input
 
   sudo -u ubuntu bash -lc 'nohup xfce4-panel >/dev/null 2>&1 & disown || true; nohup xfdesktop >/dev/null 2>&1 & disown || true' || true
   sudo systemctl restart xrdp xrdp-sesman 2>/dev/null || true
