@@ -6,6 +6,13 @@
 
 set -euo pipefail
 
+DEBUG_LOGS=0
+for arg in "${@:-}"; do
+  case "$arg" in
+    --debug-logs|--diagnose|--troubleshoot) DEBUG_LOGS=1 ;;
+  esac
+done
+
 GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'
 CYAN='\033[0;36m';  BLUE='\033[0;34m';   BOLD='\033[1m'; RESET='\033[0m'
 OK="${GREEN}[OK]${RESET}   "; WARN="${YELLOW}[WARN]${RESET} "; ERR="${RED}[ERROR]${RESET}"
@@ -19,6 +26,79 @@ step()  { echo -e "\n${CYAN}${BOLD}━━ $* ━━━━━━━━━━━�
 done_() { echo -e "  ${DONE}$*"; }
 fail_() { echo -e "  ${FAIL}$*"; ((FAILED++)); }
 run()   { echo -e "  ${BLUE}→${RESET} $*"; eval "$*"; }
+
+collect_rdp_debug_logs() {
+  local xs="/home/ubuntu/.xsession"
+  local xinitrc="/home/ubuntu/.xinitrc"
+  local xsession_errors="/home/ubuntu/.xsession-errors"
+
+  echo -e "\n${BOLD}╔══════════════════════════════════════════╗${RESET}"
+  echo -e "${BOLD}║  XRDP / Xsession 排錯資訊                ║${RESET}"
+  echo -e "${BOLD}╚══════════════════════════════════════════╝${RESET}"
+
+  echo -e "  ${BLUE}[INFO]${RESET} systemctl status xrdp"
+  systemctl --no-pager -l status xrdp 2>/dev/null | tail -n 40 | sed 's/^/    /' || true
+
+  echo -e "  ${BLUE}[INFO]${RESET} systemctl status xrdp-sesman"
+  systemctl --no-pager -l status xrdp-sesman 2>/dev/null | tail -n 40 | sed 's/^/    /' || true
+
+  echo -e "  ${BLUE}[INFO]${RESET} journalctl -u xrdp -u xrdp-sesman"
+  journalctl -u xrdp -u xrdp-sesman -n 80 --no-pager 2>/dev/null | sed 's/^/    /' || true
+
+  if [ -f "$xsession_errors" ]; then
+    echo -e "  ${BLUE}[INFO]${RESET} ~/.xsession-errors"
+    tail -n 80 "$xsession_errors" 2>/dev/null | sed 's/^/    /' || true
+  fi
+
+  if [ -f "$xs" ]; then
+    echo -e "  ${BLUE}[INFO]${RESET} ~/.xsession"
+    sed -n '1,20p' "$xs" 2>/dev/null | sed 's/^/    /' || true
+  fi
+
+  if [ -f "$xinitrc" ]; then
+    echo -e "  ${BLUE}[INFO]${RESET} ~/.xinitrc"
+    sed -n '1,20p' "$xinitrc" 2>/dev/null | sed 's/^/    /' || true
+  fi
+}
+
+ensure_rdp_session() {
+  local xs="/home/ubuntu/.xsession"
+  local xinitrc="/home/ubuntu/.xinitrc"
+
+  echo -e "  ${BLUE}→${RESET} 安裝 xrdp / XFCE session 依賴..."
+  sudo apt-get update -qq 2>/dev/null || true
+  sudo apt-get install -y \
+    xrdp \
+    xorgxrdp \
+    xfce4 \
+    xfce4-goodies \
+    dbus-x11 \
+    x11-xserver-utils 2>/dev/null || true
+
+  echo 'startxfce4' | sudo tee "$xs" > /dev/null
+  sudo chmod 755 "$xs"
+  sudo chown ubuntu:ubuntu "$xs"
+
+  if [ ! -f "$xinitrc" ] || ! grep -q "startxfce4" "$xinitrc" 2>/dev/null; then
+    cat <<'EOF' | sudo tee "$xinitrc" > /dev/null
+#!/bin/sh
+startxfce4
+EOF
+    sudo chmod 755 "$xinitrc"
+    sudo chown ubuntu:ubuntu "$xinitrc"
+  fi
+
+  sudo mkdir -p /home/ubuntu/.config
+  sudo chown -R ubuntu:ubuntu /home/ubuntu/.config
+
+  sudo systemctl restart xrdp xrdp-sesman 2>/dev/null || true
+
+  if command -v startxfce4 >/dev/null 2>&1; then
+    ok "XFCE session：startxfce4 已可用"
+  else
+    fail_ "XFCE session：找不到 startxfce4"
+  fi
+}
 
 echo -e "\n${CYAN}${BOLD}╔══════════════════════════════════════════╗${RESET}"
 echo -e "${CYAN}${BOLD}║  JV Tutor Corner — EC2 一鍵環境建置     ║${RESET}"
@@ -117,13 +197,7 @@ fi
 # ═══════════════════════════════════════════════════════════
 step "STEP 3／5  XRDP 遠端桌面"
 
-# xrdp 服務
-if ! systemctl is-active --quiet xrdp 2>/dev/null; then
-  echo -e "  ${BLUE}→${RESET} 啟動 xrdp..."
-  sudo systemctl enable xrdp 2>/dev/null
-  sudo systemctl start xrdp 2>/dev/null
-  sleep 2
-fi
+ensure_rdp_session
 
 if systemctl is-active --quiet xrdp 2>/dev/null; then
   ok "xrdp 服務：active (running)"
@@ -144,16 +218,24 @@ else
   fail_ "Port 3389 未監聽 → 請確認 EC2 Security Group 已開放 TCP 3389 Inbound"
 fi
 
-# ~/.xsession
 XS="/home/ubuntu/.xsession"
-if [ ! -f "$XS" ] || ! grep -qiE "xfce|startx" "$XS" 2>/dev/null; then
-  echo 'startxfce4' | sudo tee "$XS" > /dev/null
-  sudo chmod +x "$XS"
-  sudo chown ubuntu:ubuntu "$XS"
-  sudo systemctl restart xrdp 2>/dev/null
-  ok "~/.xsession：已建立（startxfce4），xrdp 已重啟"
+if [ -f "$XS" ]; then
+  ok "~/.xsession：已設定（$(head -1 "$XS")）"
 else
-  ok "~/.xsession：已設定（$(head -1 $XS)）"
+  fail_ "~/.xsession：不存在"
+fi
+
+if [ -f /home/ubuntu/.xinitrc ]; then
+  ok "~/.xinitrc：已建立"
+fi
+
+sudo -u ubuntu bash -lc 'test -x ~/.xsession && test -f ~/.xsession && grep -q startxfce4 ~/.xsession' \
+  && ok "RDP session：使用者啟動檔案檢查通過" \
+  || fail_ "RDP session：使用者啟動檔案檢查失敗"
+
+if [ -f /var/log/xrdp-sesman.log ]; then
+  echo -e "  ${BLUE}→${RESET} 最近的 xrdp-sesman 錯誤摘要："
+  tail -n 8 /var/log/xrdp-sesman.log 2>/dev/null | sed 's/^/    /'
 fi
 
 # ═══════════════════════════════════════════════════════════
@@ -229,6 +311,9 @@ if [ "$FAILED" -eq 0 ]; then
   echo -e "  Port：3389  ／  使用者：ubuntu"
 else
   echo -e "\n  ${YELLOW}⚠ 有 ${FAILED} 項失敗，請查看上方 [FAIL] 訊息${RESET}"
+  if [ "$DEBUG_LOGS" -eq 1 ]; then
+    collect_rdp_debug_logs
+  fi
 fi
 
 echo ""

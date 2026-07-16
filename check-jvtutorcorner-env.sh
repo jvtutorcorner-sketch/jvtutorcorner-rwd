@@ -12,6 +12,14 @@ FIX="${BLUE}[FIX]${RESET}  "
 DONE="${GREEN}[DONE]${RESET}"
 FAIL="${RED}[FAIL]${RESET}"
 
+DEBUG_LOGS=1
+for arg in "${@:-}"; do
+  case "$arg" in
+    --no-debug-logs) DEBUG_LOGS=0 ;;
+    --debug-logs|--diagnose|--troubleshoot) DEBUG_LOGS=1 ;;
+  esac
+done
+
 FIXED=0; FAILED=0
 
 section() { echo -e "\n${CYAN}${BOLD}▶ $1${RESET}"; echo -e "  ${CYAN}─────────────────────────────────${RESET}"; }
@@ -21,6 +29,70 @@ er()      { echo -e "  ${ERR} $*"; }
 doing()   { echo -e "\n  ${FIX}  ${BLUE}自動修復：$*${RESET}"; }
 pass_fix(){ echo -e "  ${DONE} $*"; ((FIXED++)); }
 fail_fix(){ echo -e "  ${FAIL} 修復失敗：$* （請手動處理）"; ((FAILED++)); }
+
+collect_rdp_debug_logs() {
+  local xs="/home/ubuntu/.xsession"
+  local xinitrc="/home/ubuntu/.xinitrc"
+  local xsession_errors="/home/ubuntu/.xsession-errors"
+
+  echo -e "\n${BOLD}╔══════════════════════════════════════════╗${RESET}"
+  echo -e "${BOLD}║  XRDP / Xsession 排錯資訊                ║${RESET}"
+  echo -e "${BOLD}╚══════════════════════════════════════════╝${RESET}"
+
+  echo -e "  ${BLUE}[INFO]${RESET} systemctl status xrdp"
+  systemctl --no-pager -l status xrdp 2>/dev/null | tail -n 40 | sed 's/^/    /' || true
+
+  echo -e "  ${BLUE}[INFO]${RESET} systemctl status xrdp-sesman"
+  systemctl --no-pager -l status xrdp-sesman 2>/dev/null | tail -n 40 | sed 's/^/    /' || true
+
+  echo -e "  ${BLUE}[INFO]${RESET} journalctl -u xrdp -u xrdp-sesman"
+  journalctl -u xrdp -u xrdp-sesman -n 80 --no-pager 2>/dev/null | sed 's/^/    /' || true
+
+  if [ -f "$xsession_errors" ]; then
+    echo -e "  ${BLUE}[INFO]${RESET} ~/.xsession-errors"
+    tail -n 80 "$xsession_errors" 2>/dev/null | sed 's/^/    /' || true
+  fi
+
+  if [ -f "$xs" ]; then
+    echo -e "  ${BLUE}[INFO]${RESET} ~/.xsession"
+    sed -n '1,20p' "$xs" 2>/dev/null | sed 's/^/    /' || true
+  fi
+
+  if [ -f "$xinitrc" ]; then
+    echo -e "  ${BLUE}[INFO]${RESET} ~/.xinitrc"
+    sed -n '1,20p' "$xinitrc" 2>/dev/null | sed 's/^/    /' || true
+  fi
+}
+
+ensure_rdp_session() {
+  local xs="/home/ubuntu/.xsession"
+  local xinitrc="/home/ubuntu/.xinitrc"
+
+  doing "安裝 / 修復 xrdp + XFCE session..."
+  sudo apt-get update -qq 2>/dev/null || true
+  sudo apt-get install -y \
+    xrdp \
+    xorgxrdp \
+    xfce4 \
+    xfce4-goodies \
+    dbus-x11 \
+    x11-xserver-utils 2>/dev/null || true
+
+  echo 'startxfce4' | sudo tee "$xs" > /dev/null
+  sudo chmod 755 "$xs"
+  sudo chown ubuntu:ubuntu "$xs"
+
+  if [ ! -f "$xinitrc" ] || ! grep -q "startxfce4" "$xinitrc" 2>/dev/null; then
+    cat <<'EOF' | sudo tee "$xinitrc" > /dev/null
+#!/bin/sh
+startxfce4
+EOF
+    sudo chmod 755 "$xinitrc"
+    sudo chown ubuntu:ubuntu "$xinitrc"
+  fi
+
+  sudo systemctl restart xrdp xrdp-sesman 2>/dev/null || true
+}
 
 echo -e "\n${CYAN}${BOLD}╔══════════════════════════════════════════╗${RESET}"
 echo -e "${CYAN}${BOLD}║  JV Tutor Corner — EC2 診斷＋自動修復   ║${RESET}"
@@ -96,7 +168,8 @@ fi
 # ═══════════════════════════════════════════════════════════
 section "遠端連線 (RDP)"
 
-# xrdp 服務
+ensure_rdp_session
+
 if systemctl is-active --quiet xrdp 2>/dev/null; then
   ok "xrdp 服務：active (running)"
 else
@@ -105,12 +178,6 @@ else
   sudo systemctl enable xrdp 2>/dev/null
   sudo systemctl start xrdp 2>/dev/null
   sleep 2
-  if ! systemctl is-active --quiet xrdp; then
-    doing "xrdp 未安裝，正在安裝..."
-    sudo apt-get update -qq && sudo apt-get install -y xrdp 2>/dev/null
-    sudo systemctl enable xrdp && sudo systemctl start xrdp
-    sleep 2
-  fi
   if systemctl is-active --quiet xrdp; then pass_fix "xrdp 已啟動"
   else                                       fail_fix "xrdp 啟動失敗（執行 journalctl -xe -u xrdp 排查）"
   fi
@@ -130,21 +197,29 @@ else
   fi
 fi
 
-# ~/.xsession
 XS="/home/ubuntu/.xsession"
-if [ -f "$XS" ] && grep -qiE "xfce|startx" "$XS" 2>/dev/null; then
-  ok "~/.xsession：已設定（$(head -1 $XS)）"
+if [ -f "$XS" ] && grep -qx "startxfce4" "$XS" 2>/dev/null; then
+  ok "~/.xsession：已設定（$(head -1 "$XS")）"
 else
-  [ -f "$XS" ] && er "~/.xsession：內容可疑 → $(head -1 $XS)" \
+  [ -f "$XS" ] && er "~/.xsession：內容可疑 → $(head -1 "$XS")" \
                || er "~/.xsession：不存在 → RDP 登入後將出現黑畫面"
   doing "建立 ~/.xsession（startxfce4）..."
   echo 'startxfce4' | sudo tee "$XS" > /dev/null
-  sudo chmod +x "$XS" && sudo chown ubuntu:ubuntu "$XS"
-  sudo systemctl restart xrdp 2>/dev/null
+  sudo chmod 755 "$XS" && sudo chown ubuntu:ubuntu "$XS"
+  sudo systemctl restart xrdp xrdp-sesman 2>/dev/null || true
   if [ -f "$XS" ]; then pass_fix "~/.xsession 已建立（startxfce4），xrdp 已重啟"
   else                  fail_fix "~/.xsession 建立失敗"
   fi
 fi
+
+if [ -f /var/log/xrdp-sesman.log ]; then
+  echo -e "  ${BLUE}[INFO]${RESET} 最近的 xrdp-sesman 錯誤摘要："
+  tail -n 10 /var/log/xrdp-sesman.log 2>/dev/null | sed 's/^/          /'
+fi
+
+sudo -u ubuntu bash -lc 'test -x ~/.xsession && test -f ~/.xsession && grep -qx startxfce4 ~/.xsession' \
+  && pass_fix "使用者 session 啟動檔案檢查通過" \
+  || fail_fix "使用者 session 啟動檔案檢查失敗"
 
 # ═══════════════════════════════════════════════════════════
 # 3. Chromium 與自動化環境
@@ -219,6 +294,10 @@ if [ "$FAILED" -eq 0 ]; then
   echo -e "\n  ${GREEN}${BOLD}✓ 環境就緒，可執行 Selenium / Chromium 壓測！${RESET}"
 else
   echo -e "\n  ${YELLOW}⚠ 有 ${FAILED} 項需要手動介入，請查看上方 [FAIL] 訊息${RESET}"
+fi
+
+if [ "$FAILED" -gt 0 ] && [ "$DEBUG_LOGS" -eq 1 ]; then
+  collect_rdp_debug_logs
 fi
 
 echo ""
