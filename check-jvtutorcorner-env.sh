@@ -469,10 +469,54 @@ repair_xfce_desktop() {
 
   sudo mkdir -p /home/ubuntu/.config /home/ubuntu/.cache
   sudo chown -R ubuntu:ubuntu /home/ubuntu/.config /home/ubuntu/.cache
+  repair_xfce_panel_config
   write_xfce_session_files "$launcher"
   repair_xfce_input
   sudo -u ubuntu bash -lc 'nohup xfce4-panel >/dev/null 2>&1 & disown || true; nohup xfdesktop >/dev/null 2>&1 & disown || true' || true
   sudo systemctl restart xrdp xrdp-sesman 2>/dev/null || true
+}
+
+repair_xrdp_log() {
+  # Root cause: disk-full corrupts /var/log/xrdp.log on EBS; after EC2 stop/start
+  # the /run/xrdp/ tmpfs is wiped but the corrupted log file persists → xrdp refuses to start.
+  local log_file="/var/log/xrdp.log"
+  local log_ok=1
+
+  if [ ! -f "$log_file" ]; then
+    log_ok=0
+  elif ! sudo -u xrdp test -w "$log_file" 2>/dev/null; then
+    log_ok=0
+  fi
+
+  if [ "$log_ok" -eq 0 ]; then
+    doing "修復 xrdp 日誌檔案（磁碟滿後殘留損壞狀態）..."
+    sudo rm -f /var/log/xrdp.log /var/log/xrdp-*.log 2>/dev/null
+    sudo touch /var/log/xrdp.log
+    sudo chown xrdp:xrdp /var/log/xrdp.log
+    sudo chmod 644 /var/log/xrdp.log
+    pass_fix "xrdp.log 已重建（xrdp:xrdp 644）"
+  fi
+}
+
+repair_xfce_panel_config() {
+  # Root cause: xfce4-panel stores plugin references in ~/.config/xfce4/panel/
+  # After instance type change or package removal, orphan plugins cause panel to
+  # silently fail — desktop appears empty (no taskbar, no icons).
+  local panel_conf="/home/ubuntu/.config/xfce4/panel"
+  if [ -d "$panel_conf" ]; then
+    # Check for orphan plugin entries (plugin-NaN or plugin-N referencing missing packages)
+    local has_orphan=0
+    if grep -rl 'plugin-[0-9]' "$panel_conf" 2>/dev/null | xargs grep -l 'power-manager-plugin\|xfce4-volumed\|(null)' 2>/dev/null | grep -q .; then
+      has_orphan=1
+    fi
+    if [ "$has_orphan" -eq 1 ]; then
+      doing "重置 xfce4-panel 設定（移除孤兒插件，避免桌面元件消失）..."
+      sudo rm -rf "$panel_conf"
+      sudo mkdir -p "$panel_conf"
+      sudo chown -R ubuntu:ubuntu /home/ubuntu/.config/xfce4
+      pass_fix "xfce4-panel 設定已重置，下次 RDP 登入將重建預設面板"
+    fi
+  fi
 }
 
 optimize_xrdp_config() {
@@ -509,6 +553,7 @@ ensure_rdp_session() {
   doing "安裝 / 修復 xrdp + XFCE session..."
   fix_broken_apt
   ensure_xfce_packages
+  repair_xrdp_log
   optimize_xrdp_config
   launcher="$(detect_xfce_launcher)"
   write_xfce_session_files "$launcher"
