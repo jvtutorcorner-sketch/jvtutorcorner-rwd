@@ -468,7 +468,7 @@ test.describe('[stress] Concurrent Groups', () => {
 
   test('3 concurrent teacher-student groups with isolation verification', async () => {
     const groupCount = parseInt(process.env.STRESS_GROUP_COUNT || '3', 10);
-    const isHeadless = groupCount >= 5;
+    const isHeadless = process.env.HEADLESS === 'true';
     console.log(`🤖 Launching browser in ${isHeadless ? 'HEADLESS' : 'HEADED'} mode (groupCount: ${groupCount})`);
     const browser = await chromium.launch({
       headless: isHeadless,
