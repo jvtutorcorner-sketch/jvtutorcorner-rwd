@@ -243,7 +243,7 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
                     // test emails differing only in one digit, the low-8-bit version repeats every 4 groups
                     // (31^16 mod 256 = 193 → group-1 and group-5 land only ~62ms apart).
                     const _wbHash = userId.split('').reduce((h, c) => (h * 31 + c.charCodeAt(0)) & 0xffff, 0);
-                    const whiteboardJitter = Math.floor((_wbHash / 65536) * 4000);
+                    const whiteboardJitter = Math.floor((_wbHash / 65536) * 10000);
                     await new Promise(resolve => setTimeout(resolve, whiteboardJitter));
                     if (isAborted) return;
                     const joinRoomPromise = whiteWebSdk.joinRoom({

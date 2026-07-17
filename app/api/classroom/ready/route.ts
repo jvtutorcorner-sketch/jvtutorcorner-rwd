@@ -3,7 +3,7 @@ import { ddbDocClient } from '@/lib/dynamo';
 import { GetCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 
 const TABLE_NAME = process.env.DYNAMODB_TABLE_WHITEBOARD || 'jvtutorcorner-whiteboard';
-const MAX_UPDATE_RETRIES = 8;
+const MAX_UPDATE_RETRIES = 5;
 
 type Participant = { role: string; userId: string; present?: boolean };
 type ReadyItem = { participants: Participant[]; version: number };
@@ -42,6 +42,20 @@ async function readList(uuid: string): Promise<Participant[]> {
   return item.participants;
 }
 
+// 1.5s server-side cache: 10 browsers polling every 2s = 5 req/sec per room.
+// All hit the same UUID, so serve burst reads from memory instead of DynamoDB.
+const readCache = new Map<string, { data: Participant[]; expiresAt: number }>();
+const READ_CACHE_TTL_MS = 1500;
+
+async function readListCached(uuid: string): Promise<Participant[]> {
+  const now = Date.now();
+  const cached = readCache.get(uuid);
+  if (cached && now < cached.expiresAt) return cached.data;
+  const data = await readList(uuid);
+  readCache.set(uuid, { data, expiresAt: now + READ_CACHE_TTL_MS });
+  return data;
+}
+
 async function writeList(uuid: string, arr: Participant[], expectedVersion: number) {
   const id = getReadyItemId(uuid);
   const nextVersion = expectedVersion + 1;
@@ -77,7 +91,8 @@ async function updateList(uuid: string, updater: (arr: Participant[]) => Partici
       return updated;
     } catch (e) {
       if (isConditionalWriteError(e) && attempt < MAX_UPDATE_RETRIES) {
-        await new Promise((resolve) => setTimeout(resolve, attempt * 25));
+        const base = Math.min(attempt * attempt * 20, 200);
+        await new Promise((resolve) => setTimeout(resolve, base + Math.floor(Math.random() * base)));
         continue;
       }
       console.warn('/api/classroom/ready writeList failed (DynamoDB)', e);
@@ -93,7 +108,7 @@ export async function GET(req: NextRequest) {
     const url = new URL(req.url);
     const uuid = url.searchParams.get('uuid');
     if (!uuid) return NextResponse.json({ error: 'uuid required' }, { status: 400 });
-    const arr = await readList(uuid);
+    const arr = await readListCached(uuid);
     return NextResponse.json({ participants: arr });
   } catch {
     return NextResponse.json({ error: 'unexpected' }, { status: 500 });

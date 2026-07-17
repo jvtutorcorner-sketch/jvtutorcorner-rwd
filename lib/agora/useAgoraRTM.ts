@@ -158,7 +158,7 @@ export function useAgoraRTM({
     // test emails differing only in one digit, the low-8-bit version repeats every 4 groups
     // (31^16 mod 256 = 193 → group-1 and group-5 land only ~140ms apart on 6000ms window).
     const _rtmHash = safeUserId.split('').reduce((h, c) => (h * 31 + c.charCodeAt(0)) & 0xffff, 0);
-    const rtmJitter = Math.floor((_rtmHash / 65536) * 6000);
+    const rtmJitter = Math.floor((_rtmHash / 65536) * 15000);
     await new Promise(resolve => setTimeout(resolve, rtmJitter));
     if (isDestroyedRef.current) return;
 

@@ -1749,7 +1749,12 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
             const hasTeacher = parts.some((p: any) => p.role === 'teacher' && p.present);
             const hasStudent = parts.some((p: any) => p.role === 'student' && p.present);
             setParticipants(parts);
-            setCanJoin(hasTeacher && hasStudent);
+            const bothPresent = hasTeacher && hasStudent;
+            setCanJoin(bothPresent);
+            if (bothPresent && pollingInterval) {
+              clearInterval(pollingInterval);
+              pollingInterval = null;
+            }
           }
         } catch (e) { }
       }, 2000);
