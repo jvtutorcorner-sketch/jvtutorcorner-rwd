@@ -42,6 +42,37 @@ have_cmd() {
   command -v "$1" >/dev/null 2>&1
 }
 
+print_observation_snapshot() {
+  local display="${DISPLAY:-}"
+  local desktop="${XDG_CURRENT_DESKTOP:-unknown}"
+  local session_type="${XDG_SESSION_TYPE:-unknown}"
+
+  log ""
+  log "=== Desktop Observation Snapshot ==="
+  log "DISPLAY         : ${display:-<empty>}"
+  log "XDG_SESSION_TYPE: ${session_type}"
+  log "XDG_CURRENT_DESKTOP: ${desktop}"
+
+  if have_cmd wmctrl; then
+    log "--- wmctrl windows ---"
+    wmctrl -l 2>/dev/null | sed 's/^/  /' || log "  <no windows / wmctrl unavailable>"
+  else
+    log "--- wmctrl windows ---"
+    log "  wmctrl not installed"
+  fi
+
+  if have_cmd xdotool && [[ -n "${display}" ]]; then
+    log "--- active window ---"
+    DISPLAY="$display" xdotool getactivewindow getwindowname 2>/dev/null | sed 's/^/  /' || log "  <unable to read active window>"
+  fi
+
+  log "--- chromium/chrome processes ---"
+  ps -eo pid,ppid,cmd 2>/dev/null | grep -E 'chromium|chrome|playwright' | grep -v grep | sed 's/^/  /' || log "  <no browser processes>"
+
+  log "====================================="
+  log ""
+}
+
 node_major_version() {
   if ! have_cmd node; then
     echo 0
@@ -426,6 +457,16 @@ run_command_if_provided() {
       fi
     else
       die "DISPLAY is empty and xvfb-run is not installed. Please run this from an Xfce desktop terminal or install xvfb."
+    fi
+  fi
+
+  if [[ "$use_xvfb" -eq 0 ]]; then
+    if [[ -n "${DISPLAY:-}" ]]; then
+      log ">>> DISPLAY detected; headed browser should appear on the Xfce desktop"
+      print_observation_snapshot
+    else
+      log ">>> DISPLAY is empty; headed browser will not appear on the Xfce desktop"
+      log ">>> Tip: run this from an Xfce desktop terminal if you want visible browser windows"
     fi
   fi
 
