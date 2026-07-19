@@ -169,7 +169,9 @@ write_xfce_session_files() {
   fi
 
   session_cmd="exec $launcher"
-  if command -v dbus-launch >/dev/null 2>&1; then
+  if command -v dbus-run-session >/dev/null 2>&1; then
+    session_cmd="exec dbus-run-session -- $launcher"
+  elif command -v dbus-launch >/dev/null 2>&1; then
     session_cmd="exec dbus-launch --exit-with-session $launcher"
   fi
 
@@ -322,6 +324,24 @@ collect_rdp_debug_logs() {
   if [ -f "$xinitrc" ]; then
     echo -e "  ${BLUE}[INFO]${RESET} ~/.xinitrc"
     sed -n '1,20p' "$xinitrc" 2>/dev/null | sed 's/^/    /' || true
+  fi
+
+  local sesman="/etc/xrdp/sesman.ini"
+  echo -e "  ${BLUE}[INFO]${RESET} /etc/xrdp/sesman.ini — 斷線保留設定"
+  if [ -f "$sesman" ]; then
+    grep -E '^(KillDisconnected|IdleTimeLimit|DisconnectedTimeLimit|MaxSessions)=' \
+      "$sesman" 2>/dev/null | sed 's/^/    /' \
+      || echo "    （未找到 session 保留相關設定，使用 xrdp 預設值）"
+  else
+    echo "    （sesman.ini 不存在）"
+  fi
+
+  local xrdp_ini="/etc/xrdp/xrdp.ini"
+  echo -e "  ${BLUE}[INFO]${RESET} /etc/xrdp/xrdp.ini — TCP keepalive 設定"
+  if [ -f "$xrdp_ini" ]; then
+    grep -E '^(tcp_keepalive|tcp_send_buffer_bytes|tcp_recv_buffer_bytes)=' \
+      "$xrdp_ini" 2>/dev/null | sed 's/^/    /' \
+      || echo "    （未找到 TCP keepalive 設定）"
   fi
 
   if [ -d "$xfce_conf" ]; then
@@ -542,8 +562,67 @@ optimize_xrdp_config() {
     sudo sed -i 's/^bulk_compression=.*/bulk_compression=yes/' "$ini"
   fi
 
-  pass_fix "xrdp.ini 優化完成（max_bpp=16、bulk_compression=yes）"
+  # TCP keepalive — prevents AWS NAT/SG from silently dropping idle connections
+  if grep -q '^tcp_keepalive=' "$ini"; then
+    sudo sed -i 's/^tcp_keepalive=.*/tcp_keepalive=yes/' "$ini"
+  else
+    sudo sed -i '/^\[Globals\]/a tcp_keepalive=yes' "$ini"
+  fi
+
+  if grep -q '^tcp_send_buffer_bytes=' "$ini"; then
+    sudo sed -i 's/^tcp_send_buffer_bytes=.*/tcp_send_buffer_bytes=32768/' "$ini"
+  else
+    sudo sed -i '/^\[Globals\]/a tcp_send_buffer_bytes=32768' "$ini"
+  fi
+
+  if grep -q '^tcp_recv_buffer_bytes=' "$ini"; then
+    sudo sed -i 's/^tcp_recv_buffer_bytes=.*/tcp_recv_buffer_bytes=32768/' "$ini"
+  else
+    sudo sed -i '/^\[Globals\]/a tcp_recv_buffer_bytes=32768' "$ini"
+  fi
+
+  pass_fix "xrdp.ini 優化完成（max_bpp=16、bulk_compression=yes、tcp_keepalive=yes）"
   wn "重要：RDP 客戶端連線時也需選 16-bit 色彩深度，否則設定不完全生效"
+}
+
+optimize_sesman_config() {
+  local sesman="/etc/xrdp/sesman.ini"
+  if [ ! -f "$sesman" ]; then
+    wn "sesman.ini 不存在，跳過 session 保留設定"
+    return 0
+  fi
+
+  doing "修復 sesman.ini（防止斷線後 session 被殺死）..."
+
+  # KillDisconnected=false — preserve session on TCP disconnect (most critical fix)
+  if grep -q '^KillDisconnected=' "$sesman"; then
+    sudo sed -i 's/^KillDisconnected=.*/KillDisconnected=false/' "$sesman"
+  else
+    sudo sed -i '/^\[Sessions\]/a KillDisconnected=false' "$sesman"
+  fi
+
+  # IdleTimeLimit=0 — disable idle timeout (0 = no limit)
+  if grep -q '^IdleTimeLimit=' "$sesman"; then
+    sudo sed -i 's/^IdleTimeLimit=.*/IdleTimeLimit=0/' "$sesman"
+  else
+    sudo sed -i '/^\[Sessions\]/a IdleTimeLimit=0' "$sesman"
+  fi
+
+  # DisconnectedTimeLimit=0 — keep disconnected session indefinitely (0 = no limit)
+  if grep -q '^DisconnectedTimeLimit=' "$sesman"; then
+    sudo sed -i 's/^DisconnectedTimeLimit=.*/DisconnectedTimeLimit=0/' "$sesman"
+  else
+    sudo sed -i '/^\[Sessions\]/a DisconnectedTimeLimit=0' "$sesman"
+  fi
+
+  # MaxSessions=50 — prevent connection refusal due to session cap
+  if grep -q '^MaxSessions=' "$sesman"; then
+    sudo sed -i 's/^MaxSessions=.*/MaxSessions=50/' "$sesman"
+  else
+    sudo sed -i '/^\[Sessions\]/a MaxSessions=50' "$sesman"
+  fi
+
+  pass_fix "sesman.ini 已設定（KillDisconnected=false、IdleTimeLimit=0、DisconnectedTimeLimit=0、MaxSessions=50）"
 }
 
 ensure_rdp_session() {
@@ -555,6 +634,7 @@ ensure_rdp_session() {
   ensure_xfce_packages
   repair_xrdp_log
   optimize_xrdp_config
+  optimize_sesman_config
   launcher="$(detect_xfce_launcher)"
   write_xfce_session_files "$launcher"
 
