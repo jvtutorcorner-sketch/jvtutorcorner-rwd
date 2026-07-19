@@ -7,10 +7,6 @@ DEFAULT_WAIT_SECONDS=45
 MODE="${1:-}"
 shift || true
 
-ARG1="${1:-}"
-shift || true
-
-ARG2="${1:-}"
 WAIT_SECONDS="${WAIT_SECONDS:-$DEFAULT_WAIT_SECONDS}"
 
 detect_display() {
@@ -113,15 +109,15 @@ EOF
 
 case "$MODE" in
   --ssh-only)
-    if [ -n "$ARG1" ]; then
-      bash -lc "$ARG1"
+    if [ "$#" -gt 0 ]; then
+      bash -lc "$*"
     else
       usage
       exit 1
     fi
     ;;
   --rdp-open)
-    URL="${ARG1:-$DEFAULT_URL}"
+    URL="${1:-$DEFAULT_URL}"
     shift || true
     if [ "${1:-}" = "--" ]; then
       shift || true
