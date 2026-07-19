@@ -41,14 +41,28 @@ wait_for_display() {
 
 open_browser() {
   local url="$1"
+  local win_w=960
+  local win_h=1080
+  local win_x=0
+  local win_y=0
+
+  # Get screen dimensions to split window
+  if command -v xdpyinfo >/dev/null 2>&1; then
+    local screen_w screen_h
+    screen_w=$(xdpyinfo 2>/dev/null | grep "dimensions:" | awk '{print $2}' | cut -d'x' -f1) || screen_w=1920
+    screen_h=$(xdpyinfo 2>/dev/null | grep "dimensions:" | awk '{print $2}' | cut -d'x' -f2 | cut -d' ' -f1) || screen_h=1080
+    win_w=$((screen_w / 2 - 5))
+    win_h=$screen_h
+  fi
+
   if command -v xdg-open >/dev/null 2>&1; then
     nohup xdg-open "$url" >/dev/null 2>&1 &
   elif command -v chromium >/dev/null 2>&1; then
-    nohup chromium --new-window "$url" >/dev/null 2>&1 &
+    nohup chromium --new-window --window-size=$win_w,$win_h --window-position=$win_x,$win_y "$url" >/dev/null 2>&1 &
   elif command -v google-chrome >/dev/null 2>&1; then
-    nohup google-chrome --new-window "$url" >/dev/null 2>&1 &
+    nohup google-chrome --new-window --window-size=$win_w,$win_h --window-position=$win_x,$win_y "$url" >/dev/null 2>&1 &
   elif command -v firefox >/dev/null 2>&1; then
-    nohup firefox "$url" >/dev/null 2>&1 &
+    nohup firefox -new-window "$url" >/dev/null 2>&1 &
   else
     echo "No browser found to open: $url"
     return 1
