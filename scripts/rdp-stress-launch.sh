@@ -122,11 +122,11 @@ case "$MODE" in
     ;;
   --rdp-open)
     URL="${ARG1:-$DEFAULT_URL}"
-    if [ "${ARG2:-}" = "--" ]; then
-      CMD="${*:2}"
-    else
-      CMD="${*:-}"
+    shift || true
+    if [ "${1:-}" = "--" ]; then
+      shift || true
     fi
+    CMD="${*:-}"
     DISPLAY_VALUE="${DISPLAY:-$(wait_for_display || true)}"
     XAUTHORITY_VALUE="${XAUTHORITY:-/home/ubuntu/.Xauthority}"
     if [ -z "$DISPLAY_VALUE" ]; then
