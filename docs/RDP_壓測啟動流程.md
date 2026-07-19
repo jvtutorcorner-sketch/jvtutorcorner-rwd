@@ -68,13 +68,13 @@ bash scripts/rdp-stress-launch.sh --rdp-open https://www.jvtutorcorner.com
 ### 開網頁並在終端機執行測試
 
 ```bash
-bash scripts/rdp-stress-launch.sh --rdp-open https://www.jvtutorcorner.com "cd ~/jvtutorcorner-rwd && npm run test:stress"
+bash scripts/rdp-stress-launch.sh --rdp-open https://www.jvtutorcorner.com -- "cd ~/jvtutorcorner-rwd && npm run test:stress"
 ```
 
 ### 用正式環境網址並執行壓測
 
 ```bash
-bash scripts/rdp-stress-launch.sh --rdp-open https://www.jvtutorcorner.com "cd ~/jvtutorcorner-rwd && bash scripts/classroom_stress_test.sh"
+bash scripts/rdp-stress-launch.sh --rdp-open https://www.jvtutorcorner.com -- "cd ~/jvtutorcorner-rwd && bash scripts/classroom_stress_test.sh"
 ```
 
 ## 前置條件

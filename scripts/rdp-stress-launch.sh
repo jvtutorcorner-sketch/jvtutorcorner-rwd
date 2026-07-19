@@ -45,6 +45,7 @@ open_browser() {
   local win_h=1080
   local win_x=0
   local win_y=0
+  local -a browser_cmd=()
 
   # Get screen dimensions to split window
   if command -v xdpyinfo >/dev/null 2>&1; then
@@ -55,18 +56,22 @@ open_browser() {
     win_h=$screen_h
   fi
 
-  if command -v xdg-open >/dev/null 2>&1; then
-    nohup xdg-open "$url" >/dev/null 2>&1 &
-  elif command -v chromium >/dev/null 2>&1; then
-    nohup chromium --new-window --window-size=$win_w,$win_h --window-position=$win_x,$win_y "$url" >/dev/null 2>&1 &
+  if command -v chromium >/dev/null 2>&1; then
+    browser_cmd=(chromium --new-window --window-size="$win_w,$win_h" --window-position="$win_x,$win_y" "$url")
   elif command -v google-chrome >/dev/null 2>&1; then
-    nohup google-chrome --new-window --window-size=$win_w,$win_h --window-position=$win_x,$win_y "$url" >/dev/null 2>&1 &
+    browser_cmd=(google-chrome --new-window --window-size="$win_w,$win_h" --window-position="$win_x,$win_y" "$url")
   elif command -v firefox >/dev/null 2>&1; then
-    nohup firefox -new-window "$url" >/dev/null 2>&1 &
+    browser_cmd=(firefox -new-window "$url")
+  elif command -v xdg-open >/dev/null 2>&1; then
+    # Fallback only: xdg-open can exist without a default browser association,
+    # which produces "Failed to execute default Web Browser".
+    browser_cmd=(xdg-open "$url")
   else
     echo "No browser found to open: $url"
     return 1
   fi
+
+  nohup "${browser_cmd[@]}" >/dev/null 2>&1 &
 }
 
 open_terminal() {
@@ -117,7 +122,11 @@ case "$MODE" in
     ;;
   --rdp-open)
     URL="${ARG1:-$DEFAULT_URL}"
-    CMD="${ARG2:-}"
+    if [ "${ARG2:-}" = "--" ]; then
+      CMD="${*:2}"
+    else
+      CMD="${*:-}"
+    fi
     DISPLAY_VALUE="${DISPLAY:-$(wait_for_display || true)}"
     XAUTHORITY_VALUE="${XAUTHORITY:-/home/ubuntu/.Xauthority}"
     if [ -z "$DISPLAY_VALUE" ]; then
