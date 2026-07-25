@@ -1,13 +1,15 @@
 import { NextResponse } from 'next/server';
 import { ddbDocClient } from '@/lib/dynamo';
 import { ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { withAdmin } from '@/lib/auth/apiGuard';
 
 const COURSES_TABLE = process.env.DYNAMODB_TABLE_COURSES || 'jvtutorcorner-courses';
 
-export async function GET() {
+const getCourseReviews = async () => {
     try {
-        const scanCmd = new ScanCommand({
+        const params = {
             TableName: COURSES_TABLE,
+            ConsistentRead: true,
             FilterExpression: '#status = :pendingStatus OR reviewStatus = :reviewStatus',
             ExpressionAttributeNames: {
                 '#status': 'status'
@@ -16,17 +18,31 @@ export async function GET() {
                 ':pendingStatus': '待審核',
                 ':reviewStatus': 'pending'
             }
-        });
+        };
 
-        const res = await ddbDocClient.send(scanCmd);
+        // Scan's ~1MB-per-call limit applies before the FilterExpression runs,
+        // so a single call can miss matching items once the table grows —
+        // page through LastEvaluatedKey to collect every match.
+        let items: any[] = [];
+        let exclusiveStartKey: any = undefined;
+        do {
+            const res = await ddbDocClient.send(new ScanCommand({
+                ...params,
+                ...(exclusiveStartKey ? { ExclusiveStartKey: exclusiveStartKey } : {}),
+            }));
+            items.push(...(res.Items || []));
+            exclusiveStartKey = res.LastEvaluatedKey;
+        } while (exclusiveStartKey);
 
         return NextResponse.json({
             ok: true,
-            reviews: res.Items || [],
-            count: res.Count || 0
+            reviews: items,
+            count: items.length
         });
     } catch (err: any) {
         console.error('[admin/course-reviews GET] error:', err);
         return NextResponse.json({ ok: false, message: err?.message || 'Failed to fetch reviews' }, { status: 500 });
     }
-}
+};
+
+export const GET = withAdmin(getCourseReviews);

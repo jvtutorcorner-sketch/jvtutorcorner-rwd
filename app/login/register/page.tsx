@@ -47,6 +47,10 @@ export default function RegisterPage() {
   // credit card fields moved to post-login settings; do not collect on registration
   const [saved, setSaved] = useState(false);
   const [registeredUserId, setRegisteredUserId] = useState<string | null>(null);
+  const [emailSendFailed, setEmailSendFailed] = useState(false);
+  const [resendLoading, setResendLoading] = useState(false);
+  const [resendMsg, setResendMsg] = useState<string | null>(null);
+  const [resendError, setResendError] = useState<string | null>(null);
   const [showQuestionnaire, setShowQuestionnaire] = useState(false);
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const [captchaImage, setCaptchaImage] = useState<string | null>(null);
@@ -327,7 +331,8 @@ export default function RegisterPage() {
       setSaved(true);
       const newUserId = data?.profile?.roid_id || data?.profile?.id || payload.roid_id;
       setRegisteredUserId(newUserId);
-      
+      setEmailSendFailed(data?.emailSent === false);
+
       // We no longer auto-login immediately for security/verification reasons
       // instead we show a success message asking them to check their email.
       
@@ -359,18 +364,73 @@ export default function RegisterPage() {
           <h2>基本資料</h2>
             {saved ? (
               <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-                <div style={{ fontSize: '64px', marginBottom: '20px' }}>📧</div>
-                <h2 style={{ color: '#059669', marginBottom: '16px' }}>註冊成功！請驗證您的電子郵件</h2>
-                <p style={{ fontSize: '18px', color: '#4b5563', lineHeight: '1.6', marginBottom: '24px' }}>
-                  我們已發送一封驗證信至 <strong>{email}</strong>。<br />
-                  請前往您的信箱並點擊驗證連結以啟用帳戶。
-                </p>
-                <div style={{ padding: '16px', backgroundColor: '#ecfdf5', borderRadius: '8px', border: '1px solid #d1fae5', color: '#065f46', fontSize: '14px', marginBottom: '32px' }}>
-                  提示：驗證後您的電子郵件將自動加入平台白名單，即可接收課程通知。
-                </div>
-                <Link href="/login" className="modal-button primary" style={{ display: 'inline-block', width: 'auto', padding: '12px 32px' }}>
-                  返回登入
-                </Link>
+                <div style={{ fontSize: '64px', marginBottom: '20px' }}>{emailSendFailed ? '⚠️' : '📧'}</div>
+                <h2 style={{ color: emailSendFailed ? '#b45309' : '#059669', marginBottom: '16px' }}>
+                  {emailSendFailed ? '註冊成功！但驗證信發送失敗' : '註冊成功！請驗證您的電子郵件'}
+                </h2>
+                {emailSendFailed ? (
+                  <>
+                    <p style={{ fontSize: '18px', color: '#4b5563', lineHeight: '1.6', marginBottom: '24px' }}>
+                      您的帳戶已建立，但驗證信寄送至 <strong>{email}</strong> 時發生問題。<br />
+                      請點擊下方按鈕重新發送驗證信。
+                    </p>
+                    <div style={{ padding: '16px', backgroundColor: '#fffbeb', borderRadius: '8px', border: '1px solid #fde68a', color: '#92400e', fontSize: '14px', marginBottom: '24px' }}>
+                      提示：驗證後您的電子郵件將自動加入平台白名單，即可接收課程通知。
+                    </div>
+                    <button
+                      type="button"
+                      disabled={resendLoading}
+                      onClick={async () => {
+                        setResendLoading(true);
+                        setResendMsg(null);
+                        setResendError(null);
+                        try {
+                          const res = await fetch('/api/auth/resend-verification', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ email }),
+                          });
+                          const data = await res.json();
+                          if (res.ok && data.success) {
+                            setResendMsg(data.message || '驗證信已重新發送，請檢查您的信箱');
+                          } else if (res.status === 429 && data.retryAfter) {
+                            setResendError(`請等待 ${data.retryAfter} 秒後再試`);
+                          } else {
+                            setResendError(data?.message || '重新發送失敗，請稍後再試');
+                          }
+                        } catch (e: any) {
+                          setResendError(e?.message || '重新發送失敗，請稍後再試');
+                        } finally {
+                          setResendLoading(false);
+                        }
+                      }}
+                      className="modal-button primary"
+                      style={{ display: 'inline-block', width: 'auto', padding: '12px 32px', marginBottom: '16px', cursor: resendLoading ? 'not-allowed' : 'pointer' }}
+                    >
+                      {resendLoading ? '發送中...' : '重新發送驗證信'}
+                    </button>
+                    {resendMsg && <p style={{ color: '#059669', marginBottom: '16px' }}>{resendMsg}</p>}
+                    {resendError && <p style={{ color: '#dc2626', marginBottom: '16px' }}>{resendError}</p>}
+                    <div>
+                      <Link href="/login" className="modal-button" style={{ display: 'inline-block', width: 'auto', padding: '12px 32px' }}>
+                        返回登入
+                      </Link>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p style={{ fontSize: '18px', color: '#4b5563', lineHeight: '1.6', marginBottom: '24px' }}>
+                      我們已發送一封驗證信至 <strong>{email}</strong>。<br />
+                      請前往您的信箱並點擊驗證連結以啟用帳戶。
+                    </p>
+                    <div style={{ padding: '16px', backgroundColor: '#ecfdf5', borderRadius: '8px', border: '1px solid #d1fae5', color: '#065f46', fontSize: '14px', marginBottom: '32px' }}>
+                      提示：驗證後您的電子郵件將自動加入平台白名單，即可接收課程通知。
+                    </div>
+                    <Link href="/login" className="modal-button primary" style={{ display: 'inline-block', width: 'auto', padding: '12px 32px' }}>
+                      返回登入
+                    </Link>
+                  </>
+                )}
               </div>
             ) : (
               <form onSubmit={handleSubmit} className="modal-form">

@@ -87,15 +87,22 @@ export async function POST(req: Request) {
     try {
       await ddbDocClient.send(new PutCommand({ TableName: PROFILES_TABLE, Item: profile }));
 
-      // Initialize verification status and log the SENT event
-      initializeVerificationStatus(id, email, verificationToken, verificationExpires).catch(err => {
+      // Initialize verification status and log the SENT event.
+      // Must be awaited (not fire-and-forget): on serverless compute the
+      // execution context can be frozen once the response is sent, killing
+      // any pending SMTP handshake before it completes.
+      let emailSent = false;
+      try {
+        await initializeVerificationStatus(id, email, verificationToken, verificationExpires);
+      } catch (err) {
         console.error('[register] Failed to initialize verification status', err);
-      });
+      }
 
-      // Send verification email (non-blocking)
-      sendVerificationEmail(email, verificationToken).catch(err => {
+      try {
+        emailSent = await sendVerificationEmail(email, verificationToken);
+      } catch (err) {
         console.error('[register] Failed to send verification email', err);
-      });
+      }
 
       // If role is teacher, also create a teacher record
       if (body.role === 'teacher') {
@@ -118,7 +125,7 @@ export async function POST(req: Request) {
         }
       }
 
-      return NextResponse.json({ ok: true, profile }, { status: 201 });
+      return NextResponse.json({ ok: true, profile, emailSent }, { status: 201 });
     } catch (e: any) {
       console.error('[register] DynamoDB Profile write failed', e?.message || e);
       return NextResponse.json({ message: 'Failed to write to DB' }, { status: 500 });
