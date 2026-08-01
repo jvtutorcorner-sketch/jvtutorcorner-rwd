@@ -88,7 +88,9 @@ function generateMarkdown(apis) {
     
     for (const api of sortedApis) {
         for (const method of api.methods) {
-            md += `| ${api.type} | **${method}** | \`${api.path}\` | [${api.file}](file:///${path.join(projectRoot, api.file).replace(/\\/g, '/')}) |\n`;
+            // Repo-relative link: an absolute path would bake in whichever
+            // machine ran the generator and churn on every contributor's run.
+            md += `| ${api.type} | **${method}** | \`${api.path}\` | [${api.file}](${api.file.replace(/\\/g, '/')}) |\n`;
         }
     }
     
