@@ -55,6 +55,18 @@ export default function ProductTour() {
     const timer = setTimeout(() => {
       let steps: any[] = [];
 
+      // nav.main-nav 在 <=768px 是 display:none。display:none 的元素仍留在 DOM 裡，
+      // 所以只用 querySelector 判斷是不夠的——driver.js 會去高亮一個尺寸為 0 的元素，
+      // 結果是遮罩蓋住整頁卻沒有任何高亮，使用者看不出該點哪裡。
+      // 必須實際量測可見性，手機上才會退回必定可見的漢堡鈕 / logo。
+      const isVisible = (s: string) => {
+        const el = document.querySelector(s);
+        if (!el) return false;
+        const r = el.getBoundingClientRect();
+        return r.width > 0 && r.height > 0;
+      };
+      const pickTarget = (...sels: string[]) => sels.find(isVisible) ?? null;
+
       if (currentPhase === 'home') {
         const btnStyle = 'display: block; width: 100%; text-align: left; padding: 10px 14px; margin-bottom: 6px; border: 1.5px solid #e5e7eb; border-radius: 8px; background: #fff; cursor: pointer; font-size: 13px; color: #374151; transition: all 0.2s;';
         steps = [
@@ -102,7 +114,7 @@ export default function ProductTour() {
             }
           },
           {
-            element: '.main-nav a[href="/teachers"]',
+            element: pickTarget('.main-nav a[href="/teachers"]', '.menu-icon-btn', 'a.logo'),
             popover: {
               title: '即將前往：師資專區 👩‍🏫',
               description: '點擊下一步，我們將帶您深入了解如何挑選最合適的老師。',
@@ -138,7 +150,7 @@ export default function ProductTour() {
             }
           },
           {
-            element: '.main-nav a[href="/courses"]',
+            element: pickTarget('.main-nav a[href="/courses"]', '.menu-icon-btn', 'a.logo'),
             popover: {
               title: '下一個：精選課程 📚',
               description: '準備好了嗎？我們接著去看看有哪些適合您的精彩課程。',
@@ -166,7 +178,7 @@ export default function ProductTour() {
             }
           },
           {
-            element: '.main-nav a[href="/about"]',
+            element: pickTarget('.main-nav a[href="/about"]', '.menu-icon-btn', 'a.logo'),
             popover: {
               title: '最後：關於我們 🤝',
               description: '想更了解我們的理念與團隊嗎？隨時可以來這裡看看。祝您學習愉快！',
@@ -180,7 +192,14 @@ export default function ProductTour() {
         ];
       }
 
-      if (steps.length === 0) return;
+      // 丟掉 pickTarget 仍然找不到目標的步驟，避免遮罩空轉。
+      steps = steps.filter((s) => s.element === 'body' || !!s.element);
+
+      if (steps.length === 0) {
+        // 沒有任何可用步驟就結束這個階段，否則每次回到本頁都會重跑一次必定失敗的導覽。
+        localStorage.removeItem('jv_tour_phase');
+        return;
+      }
 
       const d = driver({
         showProgress: true,

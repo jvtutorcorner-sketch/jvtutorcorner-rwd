@@ -227,12 +227,13 @@ test.describe('Suite B: UI – Homepage Recommendation Section', () => {
     const questionnaire = page.locator('text=讓我們幫你找到最適合你的課程 ✦');
     await expect(questionnaire).toBeVisible();
 
-    // Click the backdrop (the overlay div). 
-    // In our implementation, the overlay has zIndex: 1200 and inset: 0.
-    // We can click at a coordinate that is outside the drawer card.
-    // The drawer has maxWidth 560 and is centered at the bottom.
-    // Click top-left corner should hit the backdrop.
-    await page.mouse.click(10, 10);
+    // Click the backdrop (the overlay div).
+    // The overlay is inset: 0 with zIndex: 90 — deliberately BELOW .site-header (z-index: 100)
+    // so the header logo stays clickable while the questionnaire is open.
+    // That means the top-left corner now hits the header, not the backdrop.
+    // Click far-left and below the header instead: the drawer has maxWidth 560 and is
+    // centred at the bottom, so x=10 is outside it.
+    await page.mouse.click(10, 300);
 
     // Verify it disappears
     await expect(questionnaire).not.toBeVisible({ timeout: 5000 });

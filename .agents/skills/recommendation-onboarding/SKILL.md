@@ -154,8 +154,10 @@ app/login/register/page.tsx   ← 註冊後顯示問卷
 - **原因**：`OnboardingQuestionnaire` (mode=lite) 或 `ProductTour` 的**半透明遮罩 (Backdrop)** 啟動後覆蓋了整個視窗。
 - **解決方案**：
   - 檢查是否觸發了「訪客閒置 3 分鐘」問卷。
-  - **修正**：已在 `OnboardingQuestionnaire.tsx` 加入「點擊遮罩即可關閉 (Backdrop-click to close)」功能，避免用戶被卡死。
-  - **驗證**：在 E2E 測試中，確認點擊問卷卡片以外的區域能正確觸發 `onSkip` 並關閉遮罩。
+  - **修正 1**：已在 `OnboardingQuestionnaire.tsx` 加入「點擊遮罩即可關閉 (Backdrop-click to close)」功能，避免用戶被卡死。
+  - **修正 2**：遮罩的 `zIndex` 由 1200 降為 **90**，刻意低於 `.site-header` 的 `z-index: 100`。原本遮罩蓋住 header，使用者點左上角 logo（全站唯一的回首頁入口）只會關掉問卷而不會導頁，看起來就像按鈕壞掉。降階後 header 永遠可直接點擊。
+  - **修正 3**：`ProductTour` 的三個步驟原本指向 `.main-nav a[href=...]`，但 `nav.main-nav` 在 ≤768px 是 `display:none`，driver.js 找不到目標時遮罩仍在卻沒有高亮、`onNextClick` 也不會觸發，手機版會整個卡死。已改用 `pickTarget()` 依序退回 `.menu-icon-btn` / `a.logo`，並在無任何可用步驟時清除 `jv_tour_phase`。
+  - **驗證**：在 E2E 測試中，確認點擊問卷卡片以外的區域能正確觸發 `onSkip` 並關閉遮罩。注意點擊座標必須避開 header（`recommendation_onboarding.spec.ts` 已由 `(10, 10)` 改為 `(10, 300)`）。
 
 ### 2. 登入後仍出現訪客問卷 (Timer Cleanup)
 - **問題**：已登入的 Admin 或學生在操作一段時間後，突然彈出訪客專用的輕量問卷。

@@ -62,7 +62,9 @@ const styles = {
     position: 'fixed' as const,
     inset: 0,
     background: 'rgba(0,0,0,0.45)',
-    zIndex: 1200,
+    // 必須低於 .site-header 的 z-index:100，否則會蓋住 logo（唯一的回首頁入口），
+    // 使用者點 logo 只會關掉問卷而不會導頁，看起來就像按鈕壞掉。
+    zIndex: 90,
     display: 'flex',
     alignItems: 'flex-end',
     justifyContent: 'center',

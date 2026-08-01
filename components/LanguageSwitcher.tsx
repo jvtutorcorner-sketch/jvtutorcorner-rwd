@@ -2,23 +2,29 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from 'react';
-import { useLocale, useSetLocale } from './IntlProvider';
+import { useLocale, useSetLocale, SUPPORTED_LOCALES, type SupportedLocale } from './IntlProvider';
 import Button from './UI/Button';
 
-type Locale = 'zh-TW' | 'zh-CN' | 'en';
+const LABELS: Record<SupportedLocale, { label: string; code2: string }> = {
+  'zh-TW': { label: '繁體中文', code2: 'TW' },
+  'zh-CN': { label: '简体中文', code2: 'CN' },
+  en: { label: 'English', code2: 'EN' },
+};
 
 // Use two-letter codes instead of flag emojis
-const LANGS: { code: Locale; label: string; code2: string }[] = [
-  { code: 'zh-TW', label: '繁體中文', code2: 'TW' },
-  { code: 'zh-CN', label: '简体中文', code2: 'CN' },
-  { code: 'en', label: 'English', code2: 'EN' },
-];
+const LANGS = SUPPORTED_LOCALES.map((code) => ({ code, ...LABELS[code] }));
 
 export const LanguageSwitcher: React.FC = () => {
   const locale = useLocale();
   const setLocale = useSetLocale();
   const [open, setOpen] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
+
+  // locale 的 useState initializer 會同步讀 localStorage，所以存了 en 的使用者
+  // server 端算出 zh-TW、client 端算出 en，造成 hydration mismatch。
+  // 首次繪製一律用預設語系，hydrate 後才切換。
+  useEffect(() => setHydrated(true), []);
 
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
@@ -32,7 +38,7 @@ export const LanguageSwitcher: React.FC = () => {
     return () => document.removeEventListener('click', onDocClick, true);
   }, []);
 
-  const current = LANGS.find((l) => l.code === locale) ?? LANGS[0];
+  const current = (hydrated ? LANGS.find((l) => l.code === locale) : undefined) ?? LANGS[0];
 
   return (
     <div ref={ref} style={{ position: 'relative', display: 'inline-block' }}>
