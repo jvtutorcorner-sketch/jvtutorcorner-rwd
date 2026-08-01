@@ -1,4 +1,5 @@
 import { ddbDocClient } from '@/lib/dynamo';
+import { QueryCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 
 /**
  * Email Whitelist Utility
@@ -21,6 +22,43 @@ export function getBaseEmail(email: string): string {
     const [local, domain] = parts;
     const baseLocal = local.split('+')[0];
     return `${baseLocal}@${domain}`;
+}
+
+/**
+ * Checks whether an email belongs to a registered profile.
+ *
+ * Profiles are keyed by `roid_id` (a UUID), not by email, so the lookup goes
+ * through the EmailIndex GSI. Falls back to a scan when the GSI is unavailable
+ * (e.g. a local table created before the index was added).
+ */
+async function isRegisteredEmail(email: string): Promise<boolean> {
+    const PROFILES_TABLE = process.env.DYNAMODB_TABLE_PROFILES || process.env.PROFILES_TABLE || 'jvtutorcorner-profiles';
+
+    try {
+        const res: any = await ddbDocClient.send(new QueryCommand({
+            TableName: PROFILES_TABLE,
+            IndexName: 'EmailIndex',
+            KeyConditionExpression: 'email = :email',
+            ExpressionAttributeValues: { ':email': email },
+            Limit: 1,
+        }));
+        return (res?.Count ?? 0) > 0;
+    } catch (err) {
+        console.warn('[Whitelist] EmailIndex query failed, trying scan fallback...', (err as any)?.message || err);
+        try {
+            // No Limit here: in a Scan it caps items *evaluated* before the
+            // filter is applied, so it would truncate away real matches.
+            const res: any = await ddbDocClient.send(new ScanCommand({
+                TableName: PROFILES_TABLE,
+                FilterExpression: 'email = :email',
+                ExpressionAttributeValues: { ':email': email },
+            }));
+            return (res?.Count ?? 0) > 0;
+        } catch (scanErr) {
+            console.error('[Whitelist] Profile scan fallback failed:', (scanErr as any)?.message || scanErr);
+            return false;
+        }
+    }
 }
 
 export async function isEmailWhitelisted(email: string): Promise<boolean> {
@@ -54,28 +92,14 @@ export async function isEmailWhitelisted(email: string): Promise<boolean> {
     // If the email is not in the static whitelist, check if the user exists in the system database.
     // This allows sending to any registered user regardless of their domain.
     try {
-        const { GetCommand } = await import('@aws-sdk/lib-dynamodb');
-        const PROFILES_TABLE = process.env.DYNAMODB_TABLE_PROFILES || 'jvtutorcorner-profiles';
-        
         // First check actual registered email (with + suffix if any)
-        let res = await ddbDocClient.send(new GetCommand({
-            TableName: PROFILES_TABLE,
-            Key: { id: rawNormalized }
-        }));
-
-        if (res.Item) {
+        if (await isRegisteredEmail(rawNormalized)) {
             return true;
         }
 
         // If not found, also check base email
-        if (baseEmail !== rawNormalized) {
-            res = await ddbDocClient.send(new GetCommand({
-                TableName: PROFILES_TABLE,
-                Key: { id: baseEmail }
-            }));
-            if (res.Item) {
-                return true;
-            }
+        if (baseEmail !== rawNormalized && await isRegisteredEmail(baseEmail)) {
+            return true;
         }
     } catch (err) {
         console.error('[Whitelist] Database registration check failed:', err);

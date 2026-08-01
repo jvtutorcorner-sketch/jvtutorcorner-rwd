@@ -1,4 +1,6 @@
 import { test, expect } from '@playwright/test';
+import { ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { ddbDocClient } from '../lib/dynamo';
 import { getBaseEmail, isEmailWhitelisted } from '../lib/email/whitelist';
 
 test.describe('Email Plus-Addressing / Sub-Addressing Support Tests', () => {
@@ -36,6 +38,39 @@ test.describe('Email Plus-Addressing / Sub-Addressing Support Tests', () => {
             expect(await isEmailWhitelisted('blocked@example.com')).toBe(false);
             expect(await isEmailWhitelisted('blocked+1@example.com')).toBe(false);
 
+        } finally {
+            process.env.EMAIL_WHITELIST = originalWhitelist;
+        }
+    });
+
+    test('isEmailWhitelisted falls back to the registered-user lookup for addresses outside the static whitelist', async () => {
+        // Profiles are keyed by roid_id (a UUID), so this path must resolve the
+        // address through the EmailIndex GSI rather than a primary-key get.
+        const PROFILES_TABLE = process.env.DYNAMODB_TABLE_PROFILES || process.env.PROFILES_TABLE || 'jvtutorcorner-profiles';
+        const { Items } = await ddbDocClient.send(new ScanCommand({
+            TableName: PROFILES_TABLE,
+            ProjectionExpression: 'email',
+            FilterExpression: 'attribute_exists(email)',
+            Limit: 25,
+        }));
+
+        // Pick a plain address (no "+" tag) so the sub-addressed variant below
+        // is guaranteed to resolve back to this same profile.
+        const registeredEmail = Items
+            ?.map(item => String(item.email || '').toLowerCase())
+            .find(email => email.includes('@') && !email.includes('+'));
+        test.skip(!registeredEmail, 'No plain-addressed profile available in the target table');
+
+        const originalWhitelist = process.env.EMAIL_WHITELIST;
+        try {
+            // A static whitelist that deliberately excludes the registered address
+            process.env.EMAIL_WHITELIST = 'nobody@example.com';
+
+            expect(await isEmailWhitelisted(registeredEmail!)).toBe(true);
+            // A sub-addressed variant resolves via its base address
+            expect(await isEmailWhitelisted(registeredEmail!.replace('@', '+e2e@'))).toBe(true);
+            // An unregistered address stays blocked
+            expect(await isEmailWhitelisted('definitely-not-registered@example.org')).toBe(false);
         } finally {
             process.env.EMAIL_WHITELIST = originalWhitelist;
         }
