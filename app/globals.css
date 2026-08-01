@@ -68,6 +68,13 @@ body {
   overflow-x: clip;
 }
 
+/* Homepage sections use Tailwind's `container` utility, which sets max-width
+   but (unlike Bootstrap) has no auto margins, so content hugs the left edge. */
+.container {
+  margin-left: auto;
+  margin-right: auto;
+}
+
 /* Sectioning Utilities */
 .section-white {
   background-color: #f1f5f9;
@@ -1082,6 +1089,20 @@ h3+h2 {
   height: 48px;
   border-radius: 999px;
   object-fit: cover;
+}
+
+/* 沒有 avatarUrl 或外連圖失效時的替代頭像，避免顯示破圖 icon */
+.card-avatar-fallback {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #e5e7eb;
+  color: #6b7280;
+  font-size: 1.15rem;
+  font-weight: 600;
+  line-height: 1;
+  user-select: none;
 }
 
 .card-title {
@@ -2124,7 +2145,7 @@ h3+h2 {
 
   .section-header-enhanced {
     flex-direction: column;
-    align-items: flex-start;
+    align-items: center;
   }
 
   .section-link-cta {

@@ -248,7 +248,7 @@ export default function Header() {
   return (
     <header className={`site-header ${scrolled ? 'scrolled' : ''}`} style={hideHeader ? { display: 'none' } : undefined}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <Button aria-label="開啟選單" variant="ghost" className="menu-icon-btn p-2" onClick={() => setMobileMenuOpen((s) => !s)}>
+        <Button aria-label="開啟選單" variant="ghost" className="menu-icon-btn p-2 flex-col" onClick={() => setMobileMenuOpen((s) => !s)}>
           <span style={{ display: 'block', width: 20, height: 2, background: '#111', marginBottom: 4 }} />
           <span style={{ display: 'block', width: 16, height: 2, background: '#111', marginBottom: 4 }} />
           <span style={{ display: 'block', width: 12, height: 2, background: '#111' }} />
