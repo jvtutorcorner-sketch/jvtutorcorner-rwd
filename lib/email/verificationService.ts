@@ -4,14 +4,53 @@ import { ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { ddbDocClient } from '@/lib/dynamo';
 import { getBaseEmail } from './whitelist';
 
+/** Last-resort base URL for links that leave the system in an email. */
+const PRODUCTION_BASE_URL = 'https://www.jvtutorcorner.com';
+
+function isLoopbackUrl(value: string): boolean {
+    try {
+        const { hostname } = new URL(value);
+        return hostname === 'localhost'
+            || hostname.endsWith('.localhost')
+            || hostname === '127.0.0.1'
+            || hostname === '[::1]';
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Resolves the base URL used for links inside outbound emails.
+ *
+ * Emails land in a real inbox, so a loopback address is never usable there —
+ * running locally must not leak "http://localhost:3000" into a verification
+ * link. Set EMAIL_LINK_BASE_URL to deliberately point links at a local server
+ * while testing the flow end to end.
+ */
+export function resolveEmailLinkBaseUrl(): string {
+    const override = process.env.EMAIL_LINK_BASE_URL?.trim();
+    if (override) return override.replace(/\/+$/, '');
+
+    const configured = process.env.NEXT_PUBLIC_BASE_URL?.trim();
+    if (configured && !isLoopbackUrl(configured)) return configured.replace(/\/+$/, '');
+
+    if (configured) {
+        console.warn(
+            `[VerificationService] NEXT_PUBLIC_BASE_URL is a loopback address (${configured}); ` +
+            `email links will use ${PRODUCTION_BASE_URL}. Set EMAIL_LINK_BASE_URL to override.`
+        );
+    }
+    return PRODUCTION_BASE_URL;
+}
+
 /**
  * Email Verification Service
- * 
+ *
  * 直接在服務端發送驗證信，避免內部 API 調用的複雜性和延遲
  * 支援 Gmail SMTP 和 Resend 兩種方式，優先使用資料庫中的動態配置
  */
 export async function sendVerificationEmail(email: string, token: string) {
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+    const baseUrl = resolveEmailLinkBaseUrl();
     const verifyUrl = `${baseUrl}/api/auth/verify-email?token=${token}&email=${encodeURIComponent(email)}`;
 
     const subject = '請驗證您的 JV Tutor Corner 帳號';
@@ -22,8 +61,7 @@ export async function sendVerificationEmail(email: string, token: string) {
             <a href="${verifyUrl}" style="display: inline-block; padding: 12px 24px; background-color: #3b82f6; color: white; text-decoration: none; border-radius: 6px; font-weight: bold; margin: 20px 0;">
                 驗證電子郵件
             </a>
-            <p>如果您無法點擊按鈕，請複製以下連結至瀏覽器：</p>
-            <p><a href="${verifyUrl}">${verifyUrl}</a></p>
+            <p>如果上方按鈕無法使用，請改點<a href="${verifyUrl}" style="color: #3b82f6;">這個驗證連結</a>。</p>
             <p>此連結將在 24 小時後失效。</p>
             <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
             <p style="font-size: 12px; color: #666;">如果您沒有註冊 JV Tutor Corner，請忽略此郵件。</p>
