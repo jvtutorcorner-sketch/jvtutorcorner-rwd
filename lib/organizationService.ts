@@ -26,7 +26,7 @@ import type { Organization, CreateOrganizationInput } from './types/b2b';
 // ==========================================
 
 const REGION = process.env.AWS_REGION || process.env.CI_AWS_REGION || 'ap-northeast-1';
-const ORGANIZATIONS_TABLE = process.env.DYNAMODB_TABLE_ORGANIZATIONS || 'jvtutorcorner-organizations';
+export const ORGANIZATIONS_TABLE = process.env.DYNAMODB_TABLE_ORGANIZATIONS || 'jvtutorcorner-organizations';
 
 /**
  * Initialize DynamoDB Client with secure credential handling:
@@ -219,23 +219,48 @@ export async function updateOrganization(
 
 /**
  * Increment used seats (atomic operation)
+ *
+ * NOTE: DynamoDB ConditionExpressions cannot do arithmetic (`usedSeats + :amount <= maxSeats`
+ * is illegal grammar — operands must be paths/values/functions, not expressions). Compare
+ * attribute-to-attribute for the common amount===1 case, or pre-read + precompute a bound
+ * for amount>1.
  */
 export async function incrementUsedSeats(id: string, amount: number = 1): Promise<number> {
   try {
-    const result = await ddbDocClient.send(new UpdateCommand({
-      TableName: ORGANIZATIONS_TABLE,
-      Key: { id },
-      UpdateExpression: 'SET usedSeats = usedSeats + :amount, updatedAt = :now',
-      ExpressionAttributeValues: {
-        ':amount': amount,
-        ':now': new Date().toISOString(),
-        ':maxSeats': 0
-      },
-      ConditionExpression: 'usedSeats + :amount <= maxSeats',
-      ReturnValues: 'ALL_NEW'
-    }));
-    
-    const newUsedSeats = (result.Attributes as Organization).usedSeats;
+    let updateResult;
+    if (amount === 1) {
+      updateResult = await ddbDocClient.send(new UpdateCommand({
+        TableName: ORGANIZATIONS_TABLE,
+        Key: { id },
+        UpdateExpression: 'SET usedSeats = usedSeats + :amount, updatedAt = :now',
+        ExpressionAttributeValues: {
+          ':amount': amount,
+          ':now': new Date().toISOString()
+        },
+        ConditionExpression: 'usedSeats < maxSeats',
+        ReturnValues: 'ALL_NEW'
+      }));
+    } else {
+      const org = await getOrganizationById(id);
+      if (!org) {
+        throw new Error('Organization not found');
+      }
+      const limit = org.maxSeats - amount;
+      updateResult = await ddbDocClient.send(new UpdateCommand({
+        TableName: ORGANIZATIONS_TABLE,
+        Key: { id },
+        UpdateExpression: 'SET usedSeats = usedSeats + :amount, updatedAt = :now',
+        ExpressionAttributeValues: {
+          ':amount': amount,
+          ':now': new Date().toISOString(),
+          ':limit': limit
+        },
+        ConditionExpression: 'usedSeats <= :limit',
+        ReturnValues: 'ALL_NEW'
+      }));
+    }
+
+    const newUsedSeats = (updateResult.Attributes as Organization).usedSeats;
     console.log(`[OrganizationService] ✅ Incremented seats for ${id}: ${newUsedSeats}`);
     return newUsedSeats;
   } catch (error: any) {

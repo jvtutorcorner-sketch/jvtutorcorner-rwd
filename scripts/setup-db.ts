@@ -420,6 +420,144 @@ async function createLicensesTable(): Promise<void> {
 }
 
 /**
+ * Ensure a single GSI exists on a table, creating it if missing. Idempotent — safe to
+ * call repeatedly. Mirrors the pattern updateProfilesTable already used for byOrgId,
+ * generalized so Organizations/OrgUnits/Licenses can each ensure their own GSIs without
+ * duplicating the create/wait/error-handling logic three times over.
+ */
+async function ensureGSI(
+  tableName: string,
+  indexName: string,
+  keySchema: { AttributeName: string; KeyType: KeyType }[],
+  attributeDefs: AttributeDefinition[]
+): Promise<void> {
+  if (await gsiExists(tableName, indexName)) {
+    console.log(`✅ [${tableName}] GSI "${indexName}" already exists, no update needed`);
+    return;
+  }
+
+  console.log(`📝 [${tableName}] Adding GSI: ${indexName}`);
+
+  const params: UpdateTableCommandInput = {
+    TableName: tableName,
+    AttributeDefinitions: attributeDefs,
+    GlobalSecondaryIndexUpdates: [
+      {
+        Create: {
+          IndexName: indexName,
+          KeySchema: keySchema,
+          Projection: { ProjectionType: ProjectionType.ALL },
+        },
+      },
+    ],
+  };
+
+  try {
+    await client.send(new UpdateTableCommand(params));
+    console.log(`✅ [${tableName}] GSI "${indexName}" creation initiated`);
+    await waitForGSIActive(tableName, indexName);
+  } catch (error: any) {
+    if (error.message?.includes('already exists')) {
+      console.log(`⚠️  [${tableName}] GSI "${indexName}" already exists (race condition)`);
+    } else if (error.message?.includes('ResourceInUseException')) {
+      console.log(`⚠️  [${tableName}] Table is being updated, GSI "${indexName}" may already be creating`);
+      try {
+        await waitForGSIActive(tableName, indexName);
+      } catch {
+        console.log(`   [${tableName}] Could not verify GSI "${indexName}" status, please check manually`);
+      }
+    } else {
+      console.error(`❌ [${tableName}] Failed to add GSI "${indexName}":`, error.message);
+      throw error;
+    }
+  }
+}
+
+/**
+ * Ensure Organizations table has its required GSIs (BillingEmailIndex, StatusIndex).
+ * These are declared in createOrganizationsTable's CreateTableCommand, but that function
+ * skips entirely once the table already exists — so an existing table created before
+ * these indexes were added would otherwise be silently left without them.
+ */
+async function updateOrganizationsTable(): Promise<void> {
+  console.log(`\n🔄 [Organizations] Ensuring GSIs on: ${ORGANIZATIONS_TABLE}`);
+
+  if (!(await tableExists(ORGANIZATIONS_TABLE))) {
+    console.log(`⚠️  [Organizations] Table does not exist, skipping GSI update`);
+    return;
+  }
+
+  await ensureGSI(
+    ORGANIZATIONS_TABLE,
+    'BillingEmailIndex',
+    [{ AttributeName: 'billingEmail', KeyType: KeyType.HASH }],
+    [{ AttributeName: 'billingEmail', AttributeType: ScalarAttributeType.S }]
+  );
+  await ensureGSI(
+    ORGANIZATIONS_TABLE,
+    'StatusIndex',
+    [{ AttributeName: 'status', KeyType: KeyType.HASH }],
+    [{ AttributeName: 'status', AttributeType: ScalarAttributeType.S }]
+  );
+}
+
+/**
+ * Ensure Org Units table has its required byOrgId GSI (orgId HASH + path RANGE).
+ */
+async function updateOrgUnitsTable(): Promise<void> {
+  console.log(`\n🔄 [OrgUnits] Ensuring GSIs on: ${ORG_UNITS_TABLE}`);
+
+  if (!(await tableExists(ORG_UNITS_TABLE))) {
+    console.log(`⚠️  [OrgUnits] Table does not exist, skipping GSI update`);
+    return;
+  }
+
+  await ensureGSI(
+    ORG_UNITS_TABLE,
+    'byOrgId',
+    [
+      { AttributeName: 'orgId', KeyType: KeyType.HASH },
+      { AttributeName: 'path', KeyType: KeyType.RANGE },
+    ],
+    [
+      { AttributeName: 'orgId', AttributeType: ScalarAttributeType.S },
+      { AttributeName: 'path', AttributeType: ScalarAttributeType.S },
+    ]
+  );
+}
+
+/**
+ * Ensure Licenses table has its required GSIs (byOrgId, byUserId).
+ */
+async function updateLicensesTable(): Promise<void> {
+  console.log(`\n🔄 [Licenses] Ensuring GSIs on: ${LICENSES_TABLE}`);
+
+  if (!(await tableExists(LICENSES_TABLE))) {
+    console.log(`⚠️  [Licenses] Table does not exist, skipping GSI update`);
+    return;
+  }
+
+  await ensureGSI(
+    LICENSES_TABLE,
+    'byOrgId',
+    [
+      { AttributeName: 'orgId', KeyType: KeyType.HASH },
+      { AttributeName: 'status', KeyType: KeyType.RANGE },
+    ],
+    [
+      { AttributeName: 'orgId', AttributeType: ScalarAttributeType.S },
+      { AttributeName: 'status', AttributeType: ScalarAttributeType.S },
+    ]
+  );
+  await ensureGSI(
+    LICENSES_TABLE,
+    'byUserId',
+    [{ AttributeName: 'userId', KeyType: KeyType.HASH }],
+    [{ AttributeName: 'userId', AttributeType: ScalarAttributeType.S }]
+  );
+}
+
+/**
  * Update Profiles table (add byOrgId GSI if missing)
  */
 async function updateProfilesTable(): Promise<void> {
@@ -571,8 +709,11 @@ async function main(): Promise<void> {
 
   const steps = [
     { name: 'Organizations Table', fn: createOrganizationsTable },
+    { name: 'Organizations Table GSIs', fn: updateOrganizationsTable },
     { name: 'Org Units Table', fn: createOrgUnitsTable },
+    { name: 'Org Units Table GSIs', fn: updateOrgUnitsTable },
     { name: 'Licenses Table', fn: createLicensesTable },
+    { name: 'Licenses Table GSIs', fn: updateLicensesTable },
     { name: 'Profiles Table Update', fn: updateProfilesTable },
     { name: 'Courses Table Verification', fn: verifyCoursesTable },
     { name: 'Plan Upgrades Table', fn: createPlanUpgradesTable },

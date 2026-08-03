@@ -1,8 +1,8 @@
 /**
  * Org Unit by ID API Route
- * 
+ *
  * Handles operations on a specific organizational unit.
- * 
+ *
  * Endpoints:
  * - GET /api/org-units/[id] - Get org unit by ID
  * - PATCH /api/org-units/[id] - Update org unit
@@ -10,21 +10,20 @@
  * - POST /api/org-units/[id]/move - Move unit to new parent
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import orgUnitService from '@/lib/orgUnitService';
 import type { UpdateOrgUnitInput } from '@/lib/types/b2b';
+import { withAuth } from '@/lib/auth/apiGuard';
+import { requireOrgAccess } from '@/lib/auth/orgAccess';
 
 export const dynamic = 'force-dynamic';
 
 // ==========================================
 // GET - Get org unit by ID
 // ==========================================
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const GET = withAuth(async (req, context) => {
   try {
-    const { id } = await params;
+    const { id } = await (context as { params: Promise<{ id: string }> }).params;
 
     if (!id) {
       return NextResponse.json(
@@ -32,10 +31,6 @@ export async function GET(
         { status: 400 }
       );
     }
-
-    const { searchParams } = new URL(req.url);
-    const includeChildren = searchParams.get('children') === 'true';
-    const includeDescendants = searchParams.get('descendants') === 'true';
 
     const orgUnit = await orgUnitService.getOrgUnitById(id);
 
@@ -45,6 +40,13 @@ export async function GET(
         { status: 404 }
       );
     }
+
+    const guard = await requireOrgAccess(req, orgUnit.orgId, 'read');
+    if (!guard.ok) return guard.response;
+
+    const { searchParams } = new URL(req.url);
+    const includeChildren = searchParams.get('children') === 'true';
+    const includeDescendants = searchParams.get('descendants') === 'true';
 
     const response: any = { ok: true, orgUnit };
 
@@ -66,17 +68,14 @@ export async function GET(
       { status: 500 }
     );
   }
-}
+});
 
 // ==========================================
 // PATCH - Update org unit
 // ==========================================
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const PATCH = withAuth(async (req, context) => {
   try {
-    const { id } = await params;
+    const { id } = await (context as { params: Promise<{ id: string }> }).params;
 
     if (!id) {
       return NextResponse.json(
@@ -85,13 +84,26 @@ export async function PATCH(
       );
     }
 
-    // TODO: Check if user is org admin or unit manager
-    // const session = await getServerSession();
-    // if (!session) {
-    //   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    // }
+    const existing = await orgUnitService.getOrgUnitById(id);
+    if (!existing) {
+      return NextResponse.json(
+        { ok: false, error: 'Org unit not found' },
+        { status: 404 }
+      );
+    }
+
+    const guard = await requireOrgAccess(req, existing.orgId, 'write');
+    if (!guard.ok) return guard.response;
 
     const body = await req.json();
+
+    // 換組織不是支援的操作 — 要換組織就刪掉重建，避免跟 moveOrgUnit 的路徑重算邏輯打架
+    if (body.orgId !== undefined) {
+      return NextResponse.json(
+        { ok: false, error: 'orgId cannot be changed via PATCH' },
+        { status: 400 }
+      );
+    }
 
     // Extract allowed updatable fields
     const updates: UpdateOrgUnitInput = {};
@@ -130,17 +142,14 @@ export async function PATCH(
       { status: 500 }
     );
   }
-}
+});
 
 // ==========================================
 // DELETE - Delete org unit
 // ==========================================
-export async function DELETE(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const DELETE = withAuth(async (req, context) => {
   try {
-    const { id } = await params;
+    const { id } = await (context as { params: Promise<{ id: string }> }).params;
 
     if (!id) {
       return NextResponse.json(
@@ -148,15 +157,6 @@ export async function DELETE(
         { status: 400 }
       );
     }
-
-    // TODO: Check if user is org admin
-    // const session = await getServerSession();
-    // if (!session || !session.user.isOrgAdmin) {
-    //   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    // }
-
-    const { searchParams } = new URL(req.url);
-    const hardDelete = searchParams.get('hard') === 'true';
 
     // Verify org unit exists
     const orgUnit = await orgUnitService.getOrgUnitById(id);
@@ -166,6 +166,12 @@ export async function DELETE(
         { status: 404 }
       );
     }
+
+    const guard = await requireOrgAccess(req, orgUnit.orgId, 'write');
+    if (!guard.ok) return guard.response;
+
+    const { searchParams } = new URL(req.url);
+    const hardDelete = searchParams.get('hard') === 'true';
 
     await orgUnitService.deleteOrgUnit(id, hardDelete);
 
@@ -190,4 +196,4 @@ export async function DELETE(
       { status: 500 }
     );
   }
-}
+});

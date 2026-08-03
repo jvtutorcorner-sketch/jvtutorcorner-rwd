@@ -14,14 +14,14 @@
  */
 
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { 
-  DynamoDBDocumentClient, 
-  PutCommand, 
-  GetCommand, 
+import {
+  DynamoDBDocumentClient,
+  PutCommand,
+  GetCommand,
   UpdateCommand,
   QueryCommand,
-  BatchWriteCommand,
-  DeleteCommand 
+  TransactWriteCommand,
+  DeleteCommand
 } from '@aws-sdk/lib-dynamodb';
 import { randomUUID } from 'crypto';
 import type { OrgUnit, CreateOrgUnitInput, UpdateOrgUnitInput } from './types/b2b';
@@ -31,7 +31,10 @@ import type { OrgUnit, CreateOrgUnitInput, UpdateOrgUnitInput } from './types/b2
 // ==========================================
 
 const REGION = process.env.AWS_REGION || process.env.CI_AWS_REGION || 'ap-northeast-1';
-const ORG_UNITS_TABLE = process.env.DYNAMODB_TABLE_ORG_UNITS || 'jvtutorcorner-org-units';
+export const ORG_UNITS_TABLE = process.env.DYNAMODB_TABLE_ORG_UNITS || 'jvtutorcorner-org-units';
+
+/** Max items per TransactWriteCommand call when rewriting a moved subtree. */
+const MOVE_TRANSACT_CHUNK_SIZE = 25;
 
 /**
  * Initialize DynamoDB Client with secure credential handling
@@ -316,72 +319,126 @@ export async function moveOrgUnit(unitId: string, newParentId: string | null): P
     const newPath = buildPath(newParentPath, unitId);
     const newLevel = calculateLevel(newParentLevel);
     const levelDelta = newLevel - unit.level;
-    
+    const now = new Date().toISOString();
+
     // 4. Get all descendants
     const descendants = await getDescendantUnits(unitId);
-    
+
     console.log(`[OrgUnitService] Moving unit ${unitId} from ${oldPath} to ${newPath} (${descendants.length} descendants)`);
-    
-    // 5. Update the unit itself
-    const updatedUnit = await ddbDocClient.send(new UpdateCommand({
-      TableName: ORG_UNITS_TABLE,
-      Key: { id: unitId },
-      UpdateExpression: 'SET #path = :newPath, #level = :newLevel, #parentId = :newParentId, #updatedAt = :now',
-      ExpressionAttributeNames: {
-        '#path': 'path',
-        '#level': 'level',
-        '#parentId': 'parentId',
-        '#updatedAt': 'updatedAt'
-      },
-      ExpressionAttributeValues: {
-        ':newPath': newPath,
-        ':newLevel': newLevel,
-        ':newParentId': newParentId,
-        ':now': new Date().toISOString()
-      },
-      ReturnValues: 'ALL_NEW'
-    }));
-    
-    // 6. Update all descendants (batch operations respecting 25-item limit)
-    if (descendants.length > 0) {
-      // Prepare descendant updates
-      const updatePromises: Promise<any>[] = [];
-      
-      for (const descendant of descendants) {
-        // Replace old path prefix with new prefix
-        const descendantNewPath = descendant.path.replace(oldPath, newPath);
-        const descendantNewLevel = descendant.level + levelDelta;
-        
-        updatePromises.push(
-          ddbDocClient.send(new UpdateCommand({
-            TableName: ORG_UNITS_TABLE,
-            Key: { id: descendant.id },
-            UpdateExpression: 'SET #path = :newPath, #level = :newLevel, #updatedAt = :now',
-            ExpressionAttributeNames: {
-              '#path': 'path',
-              '#level': 'level',
-              '#updatedAt': 'updatedAt'
-            },
-            ExpressionAttributeValues: {
-              ':newPath': descendantNewPath,
-              ':newLevel': descendantNewLevel,
-              ':now': new Date().toISOString()
+
+    // 5. Build one TransactWriteCommand item per affected unit (the moved unit + every
+    // descendant). Each item carries a ConditionExpression pinning it to its known
+    // current path (optimistic concurrency) so a concurrent move can't interleave.
+    // Prefix-slice rather than String.replace(oldPath, newPath) — replace() matches the
+    // first occurrence anywhere in the string, which could clobber a non-prefix match if a
+    // descendant path happens to contain oldPath elsewhere (unlikely with UUID segments,
+    // but slicing is the only actually-correct way to rewrite a path prefix).
+    type MoveItem = { id: string; path: string; level: number; expectedOldPath: string; isRoot: boolean };
+    const items: MoveItem[] = [
+      { id: unitId, path: newPath, level: newLevel, expectedOldPath: oldPath, isRoot: true },
+      ...descendants.map((d) => ({
+        id: d.id,
+        path: newPath + d.path.slice(oldPath.length),
+        level: d.level + levelDelta,
+        expectedOldPath: d.path,
+        isRoot: false
+      }))
+    ];
+
+    for (let i = 0; i < items.length; i += MOVE_TRANSACT_CHUNK_SIZE) {
+      const chunk = items.slice(i, i + MOVE_TRANSACT_CHUNK_SIZE);
+      try {
+        await ddbDocClient.send(new TransactWriteCommand({
+          TransactItems: chunk.map((item) => ({
+            Update: {
+              // ExpressionAttributeNames/Values shapes differ between the root item and
+              // descendants (root also sets #parentId); cast at the call site rather than
+              // widen every branch to a lowest-common-denominator Record type.
+              TableName: ORG_UNITS_TABLE,
+              Key: { id: item.id },
+              UpdateExpression: item.isRoot
+                ? 'SET #path = :newPath, #level = :newLevel, #parentId = :newParentId, #updatedAt = :now'
+                : 'SET #path = :newPath, #level = :newLevel, #updatedAt = :now',
+              ConditionExpression: 'attribute_exists(id) AND #path = :expectedOldPath',
+              ExpressionAttributeNames: item.isRoot
+                ? { '#path': 'path', '#level': 'level', '#parentId': 'parentId', '#updatedAt': 'updatedAt' }
+                : { '#path': 'path', '#level': 'level', '#updatedAt': 'updatedAt' },
+              ExpressionAttributeValues: item.isRoot
+                ? {
+                    ':newPath': item.path,
+                    ':newLevel': item.level,
+                    ':newParentId': newParentId,
+                    ':now': now,
+                    ':expectedOldPath': item.expectedOldPath
+                  }
+                : {
+                    ':newPath': item.path,
+                    ':newLevel': item.level,
+                    ':now': now,
+                    ':expectedOldPath': item.expectedOldPath
+                  }
             }
-          }))
+          })) as any
+        }));
+      } catch (chunkError: any) {
+        const affectedIds = chunk.map((c) => c.id).join(', ');
+        console.error(
+          `[OrgUnitService] ❌ moveOrgUnit failed at chunk ${Math.floor(i / MOVE_TRANSACT_CHUNK_SIZE)} (units: ${affectedIds}):`,
+          chunkError.message
+        );
+        throw new Error(
+          `Failed to move org unit: chunk ${Math.floor(i / MOVE_TRANSACT_CHUNK_SIZE)} of ${Math.ceil(items.length / MOVE_TRANSACT_CHUNK_SIZE)} failed (${chunk.length} units: ${affectedIds}). ` +
+          `Units before this chunk were already updated — run repairOrgUnitPaths('${unit.orgId}') to reconcile. Original error: ${chunkError.message}`
         );
       }
-      
-      // Execute updates in parallel (AWS SDK handles throttling)
-      await Promise.all(updatePromises);
-      console.log(`[OrgUnitService] ✅ Updated ${descendants.length} descendant paths`);
     }
-    
-    console.log(`[OrgUnitService] ✅ Successfully moved unit ${unitId} to new parent ${newParentId}`);
-    return updatedUnit.Attributes as OrgUnit;
+
+    console.log(`[OrgUnitService] ✅ Successfully moved unit ${unitId} to new parent ${newParentId} (${descendants.length} descendants updated)`);
+    const movedUnit = await getOrgUnitById(unitId);
+    return movedUnit as OrgUnit;
   } catch (error: any) {
     console.error(`[OrgUnitService] ❌ Failed to move org unit:`, error.message);
     throw new Error(`Failed to move org unit: ${error.message}`);
   }
+}
+
+/**
+ * Recompute path/level for every unit in an organization from its parentId chain and
+ * rewrite any that drifted. Idempotent — safe to run repeatedly. Intended as a manual
+ * backstop for the (rare) case where a multi-chunk moveOrgUnit partially fails.
+ */
+export async function repairOrgUnitPaths(orgId: string): Promise<{ repaired: number; total: number }> {
+  const units = await listOrgUnitsByOrg(orgId);
+  const byId = new Map(units.map((u) => [u.id, u]));
+  const now = new Date().toISOString();
+
+  function computePath(unit: OrgUnit, seen: Set<string>): { path: string; level: number } {
+    if (seen.has(unit.id)) {
+      throw new Error(`Cycle detected in org unit hierarchy at unit ${unit.id}`);
+    }
+    if (!unit.parentId || !byId.has(unit.parentId)) {
+      return { path: `/${unit.id}`, level: 0 };
+    }
+    const parent = computePath(byId.get(unit.parentId)!, new Set(seen).add(unit.id));
+    return { path: `${parent.path}/${unit.id}`, level: parent.level + 1 };
+  }
+
+  let repaired = 0;
+  for (const unit of units) {
+    const { path, level } = computePath(unit, new Set());
+    if (unit.path !== path || unit.level !== level) {
+      await ddbDocClient.send(new UpdateCommand({
+        TableName: ORG_UNITS_TABLE,
+        Key: { id: unit.id },
+        UpdateExpression: 'SET #path = :path, #level = :level, #updatedAt = :now',
+        ExpressionAttributeNames: { '#path': 'path', '#level': 'level', '#updatedAt': 'updatedAt' },
+        ExpressionAttributeValues: { ':path': path, ':level': level, ':now': now }
+      }));
+      repaired++;
+    }
+  }
+  console.log(`[OrgUnitService] repairOrgUnitPaths(${orgId}): repaired ${repaired}/${units.length} units`);
+  return { repaired, total: units.length };
 }
 
 /**
@@ -457,5 +514,6 @@ export default {
   updateOrgUnit,
   moveOrgUnit,
   deleteOrgUnit,
-  buildOrgTree
+  buildOrgTree,
+  repairOrgUnitPaths
 };

@@ -1,28 +1,39 @@
 /**
  * Organization by ID API Route
- * 
+ *
  * Handles operations on a specific organization.
- * 
+ *
  * Endpoints:
  * - GET /api/organizations/[id] - Get organization by ID
  * - PATCH /api/organizations/[id] - Update organization
  * - DELETE /api/organizations/[id] - Delete organization
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import organizationService from '@/lib/organizationService';
+import { withAuth } from '@/lib/auth/apiGuard';
+import { requireOrgAccess, requireSystemAdmin } from '@/lib/auth/orgAccess';
 
 export const dynamic = 'force-dynamic';
+
+// 系統管理員專屬欄位 — 計費/合約相關，組織管理員不可透過 PATCH 改動
+const SYSTEM_ADMIN_ONLY_FIELDS = [
+  'planTier',
+  'maxSeats',
+  'status',
+  'billingEmail',
+  'contractStartDate',
+  'contractEndDate',
+  'billingCycle',
+  'taxId'
+];
 
 // ==========================================
 // GET - Get organization by ID
 // ==========================================
-export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const GET = withAuth(async (req, context) => {
   try {
-    const { id } = await params;
+    const { id } = await (context as { params: Promise<{ id: string }> }).params;
 
     if (!id) {
       return NextResponse.json(
@@ -30,6 +41,9 @@ export async function GET(
         { status: 400 }
       );
     }
+
+    const guard = await requireOrgAccess(req, id, 'read');
+    if (!guard.ok) return guard.response;
 
     const organization = await organizationService.getOrganizationById(id);
 
@@ -39,17 +53,6 @@ export async function GET(
         { status: 404 }
       );
     }
-
-    // TODO: Check if user has permission to view this organization
-    // const session = await getServerSession();
-    // if (!session) {
-    //   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    // }
-    // const isAdmin = session.user.role === 'admin';
-    // const isMember = session.user.orgId === id;
-    // if (!isAdmin && !isMember) {
-    //   return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    // }
 
     return NextResponse.json({
       ok: true,
@@ -62,17 +65,14 @@ export async function GET(
       { status: 500 }
     );
   }
-}
+});
 
 // ==========================================
 // PATCH - Update organization
 // ==========================================
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const PATCH = withAuth(async (req, context) => {
   try {
-    const { id } = await params;
+    const { id } = await (context as { params: Promise<{ id: string }> }).params;
 
     if (!id) {
       return NextResponse.json(
@@ -81,18 +81,28 @@ export async function PATCH(
       );
     }
 
-    // TODO: Check if user is org admin or system admin
-    // const session = await getServerSession();
-    // if (!session) {
-    //   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    // }
-    // const isSystemAdmin = session.user.role === 'admin';
-    // const isOrgAdmin = session.user.orgId === id && session.user.isOrgAdmin;
-    // if (!isSystemAdmin && !isOrgAdmin) {
-    //   return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    // }
+    const guard = await requireOrgAccess(req, id, 'write');
+    if (!guard.ok) return guard.response;
 
     const body = await req.json();
+
+    if (!guard.actor.isSystemAdmin) {
+      const disallowed = SYSTEM_ADMIN_ONLY_FIELDS.filter((field) => body[field] !== undefined);
+      if (disallowed.length > 0) {
+        return NextResponse.json(
+          { ok: false, error: `Only system administrators may change: ${disallowed.join(', ')}` },
+          { status: 403 }
+        );
+      }
+    }
+
+    // usedSeats 永遠不能被直接 PATCH — 只能透過 orgMembershipService 的席次交易間接變動
+    if (body.usedSeats !== undefined) {
+      return NextResponse.json(
+        { ok: false, error: 'usedSeats cannot be set directly' },
+        { status: 400 }
+      );
+    }
 
     // Extract allowed updatable fields
     const updates: any = {};
@@ -135,6 +145,7 @@ export async function PATCH(
     if (body.contractStartDate !== undefined) updates.contractStartDate = body.contractStartDate;
     if (body.contractEndDate !== undefined) updates.contractEndDate = body.contractEndDate;
     if (body.billingCycle !== undefined) updates.billingCycle = body.billingCycle;
+    if (body.metadata !== undefined) updates.metadata = body.metadata;
 
     if (Object.keys(updates).length === 0) {
       return NextResponse.json(
@@ -157,17 +168,14 @@ export async function PATCH(
       { status: 500 }
     );
   }
-}
+});
 
 // ==========================================
-// DELETE - Delete organization
+// DELETE - Delete organization (system admin only)
 // ==========================================
-export async function DELETE(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const DELETE = withAuth(async (req, context) => {
   try {
-    const { id } = await params;
+    const { id } = await (context as { params: Promise<{ id: string }> }).params;
 
     if (!id) {
       return NextResponse.json(
@@ -176,11 +184,8 @@ export async function DELETE(
       );
     }
 
-    // TODO: Check if user is system admin
-    // const session = await getServerSession();
-    // if (!session || session.user.role !== 'admin') {
-    //   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    // }
+    const guard = await requireSystemAdmin(req);
+    if (!guard.ok) return guard.response;
 
     const { searchParams } = new URL(req.url);
     const hardDelete = searchParams.get('hard') === 'true';
@@ -209,4 +214,4 @@ export async function DELETE(
       { status: 500 }
     );
   }
-}
+});

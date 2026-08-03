@@ -141,6 +141,9 @@ export default function AdminDashboard() {
             <Link href="/admin/settings" className="text-sm font-medium text-gray-600 hover:text-purple-600 flex items-center gap-2 p-2 rounded hover:bg-purple-50 transition-colors">
               <span className="w-1.5 h-1.5 rounded-full bg-purple-400"></span> 系統權限與角色設定
             </Link>
+            <Link href="/admin/organizations" className="text-sm font-medium text-gray-600 hover:text-purple-600 flex items-center gap-2 p-2 rounded hover:bg-purple-50 transition-colors">
+              <span className="w-1.5 h-1.5 rounded-full bg-purple-400"></span> 🏢 企業組織管理
+            </Link>
             <div className="flex gap-2 mt-1 px-2">
               <Link href="/admin/whiteboard_sse" className="text-xs bg-purple-50 hover:bg-purple-100 text-purple-700 px-3 py-1.5 rounded-md border border-purple-100 transition-colors">
                 🎨 白板SSE

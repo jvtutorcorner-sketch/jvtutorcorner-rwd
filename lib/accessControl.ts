@@ -1,10 +1,9 @@
 import { ddbDocClient } from '@/lib/dynamo';
 import { ScanCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
+import { listLicensesByUser } from '@/lib/licenseService';
+import { getOrganizationById } from '@/lib/organizationService';
 
 const ENROLLMENTS_TABLE = process.env.ENROLLMENTS_TABLE || 'jvtutorcorner-enrollments';
-// Future B2B Tables
-// const ORGANIZATION_LICENSES_TABLE = ...
-// const USER_SEATS_TABLE = ...
 
 export interface AccessResult {
     granted: boolean;
@@ -70,9 +69,23 @@ export async function verifyCourseAccess(userId: string, courseId: string): Prom
             return { granted: true, source: 'B2C' };
         }
 
-        // 2. (Future) Check B2B Seats
-        // const seat = await checkUserSeat(userId, courseId);
-        // if (seat) return { granted: true, source: 'B2B_SEAT' };
+        // 2. Check B2B Seats (license-based access)
+        // A license with no courseId is an org-wide seat (grants any course); one with
+        // courseId set is scoped to that specific course.
+        const licenses = await listLicensesByUser(cleanUserId);
+        const now = Math.floor(Date.now() / 1000);
+        const matchingLicense = licenses.find((lic) =>
+            lic.status === 'active' &&
+            (!lic.expiresAt || lic.expiresAt > now) &&
+            (!lic.courseId || lic.courseId === courseId)
+        );
+
+        if (matchingLicense) {
+            const org = await getOrganizationById(matchingLicense.orgId);
+            if (org && (org.status === 'active' || org.status === 'trial')) {
+                return { granted: true, source: 'B2B_SEAT' };
+            }
+        }
 
         return { granted: false, reason: 'No active enrollment found' };
 

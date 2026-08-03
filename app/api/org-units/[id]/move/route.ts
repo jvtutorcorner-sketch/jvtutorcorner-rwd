@@ -7,20 +7,19 @@
  * POST /api/org-units/[id]/move
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import orgUnitService from '@/lib/orgUnitService';
+import { withAuth } from '@/lib/auth/apiGuard';
+import { requireOrgAccess } from '@/lib/auth/orgAccess';
 
 export const dynamic = 'force-dynamic';
 
 // ==========================================
 // POST - Move org unit to new parent
 // ==========================================
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const POST = withAuth(async (req, context) => {
   try {
-    const { id } = await params;
+    const { id } = await (context as { params: Promise<{ id: string }> }).params;
 
     if (!id) {
       return NextResponse.json(
@@ -29,11 +28,16 @@ export async function POST(
       );
     }
 
-    // TODO: Check if user is org admin
-    // const session = await getServerSession();
-    // if (!session || !session.user.isOrgAdmin) {
-    //   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    // }
+    const unit = await orgUnitService.getOrgUnitById(id);
+    if (!unit) {
+      return NextResponse.json(
+        { ok: false, error: 'Org unit not found' },
+        { status: 404 }
+      );
+    }
+
+    const guard = await requireOrgAccess(req, unit.orgId, 'write');
+    if (!guard.ok) return guard.response;
 
     const body = await req.json();
     const { newParentId } = body;
@@ -99,4 +103,4 @@ export async function POST(
       { status: 500 }
     );
   }
-}
+});

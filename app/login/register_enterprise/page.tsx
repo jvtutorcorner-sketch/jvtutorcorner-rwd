@@ -43,9 +43,13 @@ export default function RegisterPage() {
   const [saved, setSaved] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [roles, setRoles] = useState<Array<{ id: string, name: string }>>([]);
+  const [orgs, setOrgs] = useState<Array<{ id: string; name: string; domain?: string; availableSeats: number }>>([]);
+  const [selectedOrgId, setSelectedOrgId] = useState<string>("");
+  const [orgsLoading, setOrgsLoading] = useState(false);
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [csvError, setCsvError] = useState<string | null>(null);
-  const [csvSuccess, setCsvSuccess] = useState<{ count: number } | null>(null);
+  const [csvSuccess, setCsvSuccess] = useState<{ count: number; results: Array<{ email: string; ok: boolean; error?: string }> } | null>(null);
+  const [csvProgress, setCsvProgress] = useState<{ done: number; total: number } | null>(null);
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const [captchaImage, setCaptchaImage] = useState<string | null>(null);
   const [captchaValue, setCaptchaValue] = useState("");
@@ -53,6 +57,7 @@ export default function RegisterPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Refs for form fields
+  const orgRef = useRef<HTMLSelectElement>(null);
   const roleRef = useRef<HTMLSelectElement>(null);
   const firstNameRef = useRef<HTMLInputElement>(null);
   const lastNameRef = useRef<HTMLInputElement>(null);
@@ -91,6 +96,35 @@ export default function RegisterPage() {
       }
     })();
   }, []);
+
+  // Fetch the public (unauthenticated) organization list for the org picker
+  async function loadOrgs() {
+    setOrgsLoading(true);
+    try {
+      const res = await fetch('/api/organizations/public');
+      const data = await res.json();
+      if (res.ok && data?.ok) {
+        setOrgs(data.organizations || []);
+      }
+      return (data?.organizations || []) as Array<{ id: string; name: string; domain?: string; availableSeats: number }>;
+    } catch (e) {
+      console.error('Failed to fetch organizations:', e);
+      return [];
+    } finally {
+      setOrgsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadOrgs();
+  }, []);
+
+  const selectedOrg = orgs.find((o) => o.id === selectedOrgId) || null;
+  const emailDomainMismatch = !!(
+    selectedOrg?.domain &&
+    email.trim() &&
+    !email.trim().toLowerCase().endsWith(`@${selectedOrg.domain.replace(/^@/, '').toLowerCase()}`)
+  );
 
   // plan selection moved to user settings; registration defaults to 'viewer'
 
@@ -225,6 +259,11 @@ export default function RegisterPage() {
     const errors: string[] = [];
     const fieldRefs: { [key: string]: React.RefObject<any> } = {};
 
+    if (!selectedOrgId) {
+      errors.push('所屬組織');
+      fieldRefs['org'] = orgRef;
+    }
+
     if (!role) {
       errors.push('身份（學生或教師）');
       fieldRefs['role'] = roleRef;
@@ -312,6 +351,7 @@ export default function RegisterPage() {
       createdAtLocal: times.local,
       updatedAtUtc: times.utc,
       updatedAtLocal: times.local,
+      orgId: selectedOrgId,
     };
 
     try {
@@ -389,6 +429,11 @@ export default function RegisterPage() {
       return;
     }
 
+    if (!selectedOrgId) {
+      setCsvError('請先選擇所屬組織，才能匯入成員');
+      return;
+    }
+
     try {
       const text = await csvFile.text();
       const lines = text.split('\n').filter(line => line.trim());
@@ -441,8 +486,38 @@ export default function RegisterPage() {
         return;
       }
 
-      // Import records
-      let successCount = 0;
+      // CSV 內部重複 email 偵測 — 提早擋下，避免必定發生的 409 才在中途失敗
+      const emailCounts = new Map<string, number>();
+      records.forEach((r) => {
+        const key = r.email.toLowerCase();
+        emailCounts.set(key, (emailCounts.get(key) || 0) + 1);
+      });
+      const duplicateEmails = Array.from(emailCounts.entries()).filter(([, count]) => count > 1).map(([e]) => e);
+      if (duplicateEmails.length > 0) {
+        setCsvError(`CSV 內有重複的 Email，請先修正：\n${duplicateEmails.join('\n')}`);
+        return;
+      }
+
+      // 整批前置校驗 — 用「當下」剩餘席次（重新抓取，不用掛載時的舊快照）比對整批筆數，
+      // 超過就整批拒絕，避免前面幾筆先建立、後面幾筆才失敗的半吊子狀態
+      const freshOrgs = await loadOrgs();
+      const freshOrg = freshOrgs.find((o) => o.id === selectedOrgId);
+      if (!freshOrg) {
+        setCsvError('所選組織已不存在或已停用，請重新選擇');
+        return;
+      }
+      if (records.length > freshOrg.availableSeats) {
+        setCsvError(
+          `無法匯入：CSV 共 ${records.length} 筆，組織「${freshOrg.name}」剩餘席次僅 ${freshOrg.availableSeats}`
+        );
+        return;
+      }
+
+      // Import records sequentially — the transactional seat-consuming assignment on the
+      // server needs to serialize anyway, and this lets us collect a per-row result.
+      const results: Array<{ email: string; ok: boolean; error?: string }> = [];
+      setCsvProgress({ done: 0, total: records.length });
+
       for (const record of records) {
         const timezoneName = countryTimezones[record.country] || 'UTC';
         const times = formatLocalIso(timezoneName);
@@ -454,7 +529,6 @@ export default function RegisterPage() {
           firstName: record.firstName,
           lastName: record.lastName,
           role: record.role,
-          plan: record.role === 'teacher' ? null : 'viewer',
           birthdate: record.birthdate,
           gender: record.gender,
           country: record.country,
@@ -464,29 +538,40 @@ export default function RegisterPage() {
           createdAtLocal: times.local,
           updatedAtUtc: times.utc,
           updatedAtLocal: times.local,
+          orgId: selectedOrgId,
         };
 
-        const res = await fetch('/api/register', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-
-        if (res.ok) {
-          successCount++;
+        try {
+          const res = await fetch('/api/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+          const data = await res.json();
+          results.push({ email: record.email, ok: res.ok, error: res.ok ? undefined : (data?.message || '匯入失敗') });
+        } catch (rowErr: any) {
+          results.push({ email: record.email, ok: false, error: rowErr?.message || '網路錯誤' });
         }
+
+        setCsvProgress((prev) => (prev ? { done: prev.done + 1, total: prev.total } : prev));
       }
 
-      setCsvSuccess({ count: successCount });
+      const successCount = results.filter((r) => r.ok).length;
+      setCsvProgress(null);
+      setCsvSuccess({ count: successCount, results });
       setCsvFile(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
+      await loadOrgs();
 
-      // Redirect after 5 seconds
-      setTimeout(() => {
-        router.push('/login');
-      }, 5000);
+      // Redirect after 5 seconds only if everything succeeded
+      if (successCount === results.length) {
+        setTimeout(() => {
+          router.push('/login');
+        }, 5000);
+      }
 
     } catch (err: any) {
+      setCsvProgress(null);
       setCsvError(`CSV 解析失敗：${err.message}`);
     }
   };
@@ -597,6 +682,33 @@ export default function RegisterPage() {
         </div>
       )}
 
+      {/* CSV Import Progress */}
+      {csvProgress && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999
+        }}>
+          <div style={{
+            background: '#fff',
+            padding: 24,
+            borderRadius: 12,
+            maxWidth: 400,
+            boxShadow: '0 20px 40px rgba(0,0,0,0.3)',
+            textAlign: 'center'
+          }}>
+            <p style={{ fontSize: 16, fontWeight: 600 }}>匯入中... {csvProgress.done}/{csvProgress.total}</p>
+          </div>
+        </div>
+      )}
+
       {/* CSV Success Dialog */}
       {csvSuccess && (
         <div style={{
@@ -615,13 +727,42 @@ export default function RegisterPage() {
             background: '#fff',
             padding: 24,
             borderRadius: 12,
-            maxWidth: 500,
+            maxWidth: 560,
+            maxHeight: '80vh',
+            overflowY: 'auto',
             boxShadow: '0 20px 40px rgba(0,0,0,0.3)',
-            textAlign: 'center'
+            textAlign: 'left'
           }}>
-            <h2 style={{ color: '#10b981', marginBottom: 16 }}>✅ 匯入完成</h2>
-            <p style={{ fontSize: 18, marginBottom: 12 }}>成功匯入 <strong>{csvSuccess.count}</strong> 筆資料</p>
-            <p style={{ color: '#6b7280' }}>5秒後將自動返回登入頁面，請確認登入帳號</p>
+            <h2 style={{ color: csvSuccess.count === csvSuccess.results.length ? '#10b981' : '#f59e0b', marginBottom: 16, textAlign: 'center' }}>
+              {csvSuccess.count === csvSuccess.results.length ? '✅ 匯入完成' : '⚠️ 部分匯入失敗'}
+            </h2>
+            <p style={{ fontSize: 18, marginBottom: 12, textAlign: 'center' }}>
+              成功 <strong style={{ color: '#10b981' }}>{csvSuccess.count}</strong> 筆 / 失敗{' '}
+              <strong style={{ color: '#ef4444' }}>{csvSuccess.results.length - csvSuccess.count}</strong> 筆
+            </p>
+            {csvSuccess.results.some((r) => !r.ok) && (
+              <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: 12, marginBottom: 12 }}>
+                <p style={{ fontWeight: 600, marginBottom: 6 }}>失敗清單（可修正後單獨重新匯入）：</p>
+                <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13 }}>
+                  {csvSuccess.results.filter((r) => !r.ok).map((r, idx) => (
+                    <li key={idx}>{r.email}：{r.error}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <p style={{ color: '#6b7280', textAlign: 'center' }}>
+              {csvSuccess.count === csvSuccess.results.length
+                ? '5秒後將自動返回登入頁面，請確認登入帳號'
+                : '請修正失敗清單後，重新匯入失敗的項目'}
+            </p>
+            <div style={{ textAlign: 'center', marginTop: 12 }}>
+              <button
+                onClick={() => setCsvSuccess(null)}
+                style={{ padding: '8px 16px', borderRadius: 6, background: '#2563eb', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600 }}
+              >
+                關閉
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -630,6 +771,28 @@ export default function RegisterPage() {
         <div className="card">
           <h2>基本資料</h2>
           <form onSubmit={handleSubmit} className="modal-form">
+            <div className="field">
+              <label>所屬組織 <span style={{ color: 'red' }}>*</span></label>
+              <select
+                ref={orgRef}
+                value={selectedOrgId}
+                onChange={(e) => setSelectedOrgId(e.target.value)}
+                style={{ cursor: 'pointer' }}
+              >
+                <option value="">{orgsLoading ? '載入中...' : '請選擇組織'}</option>
+                {orgs.map((o) => (
+                  <option key={o.id} value={o.id} disabled={o.availableSeats <= 0}>
+                    {o.name}{o.availableSeats <= 0 ? '（席次已滿）' : ` （剩餘席次 ${o.availableSeats}）`}
+                  </option>
+                ))}
+              </select>
+              {!orgsLoading && orgs.length === 0 && (
+                <p style={{ color: '#c33', fontSize: 13, marginTop: 4 }}>
+                  目前沒有開放公開自助註冊的組織，請聯絡貴組織管理員為您加入帳號。
+                </p>
+              )}
+            </div>
+
             <div className="field">
               <label>身份 <span style={{ color: 'red' }}>*</span></label>
               <select
@@ -670,6 +833,11 @@ export default function RegisterPage() {
             <div className="field">
               <label>Email <span style={{ color: 'red' }}>*</span></label>
               <input ref={emailRef} type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="example@domain.com" />
+              {emailDomainMismatch && (
+                <div style={{ color: '#c33', fontSize: 13, marginTop: 4, fontWeight: 'bold' }}>
+                  ⚠️ 此 Email 網域與「{selectedOrg?.name}」不符（需為 @{selectedOrg?.domain?.replace(/^@/, '')}），送出時將會被拒絕
+                </div>
+              )}
             </div>
 
             <div className="field">

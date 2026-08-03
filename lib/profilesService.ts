@@ -2,7 +2,7 @@ import { ddbDocClient } from './dynamo';
 import { ScanCommand, PutCommand, GetCommand, QueryCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { LambdaClient, InvokeCommand } from '@aws-sdk/client-lambda';
 
-const PROFILES_TABLE = process.env.DYNAMODB_TABLE_PROFILES || process.env.PROFILES_TABLE || '';
+export const PROFILES_TABLE = process.env.DYNAMODB_TABLE_PROFILES || process.env.PROFILES_TABLE || '';
 const PROFILES_LAMBDA = process.env.PROFILES_LAMBDA_NAME || process.env.PROFILES_FUNCTION_NAME || '';
 const PROFILES_API = process.env.PROFILES_API_URL || process.env.PROFILES_ENDPOINT || '';
 
@@ -254,6 +254,9 @@ export async function findProfilesByOrgId(orgId: string): Promise<ProfileB2B[]> 
 /**
  * Assign a profile to an organization
  * Updates orgId, orgUnitId, isB2B, and licenseId fields
+ *
+ * 低階原語：不處理席次計數 (Organization.usedSeats) 或建立/指派 License 記錄。
+ * 成員管理（含席次與授權）請用 lib/orgMembershipService.ts 的 assignMemberWithLicense。
  */
 export async function assignProfileToOrg(
   profileId: string,
@@ -292,6 +295,9 @@ export async function assignProfileToOrg(
 
 /**
  * Remove a profile from an organization (convert back to B2C)
+ *
+ * 低階原語：不處理席次計數或撤銷 License 記錄。
+ * 成員管理請用 lib/orgMembershipService.ts 的 removeMemberFromOrg。
  */
 export async function removeProfileFromOrg(profileId: string): Promise<ProfileB2B> {
   if (!PROFILES_TABLE) {

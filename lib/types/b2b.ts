@@ -30,7 +30,12 @@ export interface Organization {
   /** Maximum licensed seats */
   maxSeats: number;
 
-  /** Currently used seats */
+  /**
+   * Currently used seats — count of this org's Licenses with status === 'active'
+   * (i.e. assigned to a userId). Unassigned ('pending') licenses are provisioned
+   * inventory and do not consume a seat. Only mutated via orgMembershipService /
+   * organizationService.incrementUsedSeats|decrementUsedSeats — never set directly.
+   */
   usedSeats: number;
 
   /** Billing email for invoices */
@@ -204,11 +209,11 @@ export interface ProfileB2B {
 // ==========================================
 
 export interface License {
-  /** Primary key (UUID v4) */
-  licenseId: string;
+  /** Primary key (UUID v4) — matches the provisioned table's hash key `id` */
+  id: string;
 
   /** Parent organization ID */
-  organizationId: string;
+  orgId: string;
 
   /** Assigned user ID (null if unassigned) */
   userId?: string | null;
@@ -228,11 +233,8 @@ export interface License {
   /** Expiration timestamp (for TTL) */
   expiresAt?: number; // UNIX timestamp
 
-  /** License type metadata */
-  metadata?: {
-    licenseType?: 'full' | 'trial' | 'demo';
-    restrictions?: string[];
-  };
+  /** License type metadata (e.g. { licenseType: 'full'|'trial'|'demo', restrictions: [...] }) */
+  metadata?: Record<string, any>;
 
   /** Creation timestamp (ISO 8601) */
   createdAt: string;
@@ -273,4 +275,21 @@ export interface UpdateOrgUnitInput {
   managerId?: string;
   description?: string;
   status?: 'active' | 'archived';
+}
+
+export interface CreateLicenseInput {
+  orgId: string;
+  /** If present, the license is created already-assigned to this user */
+  userId?: string;
+  /** Scope the license to a specific course; omit for an org-wide seat */
+  courseId?: string;
+  expiresAt?: string;
+  assignedBy?: string;
+  metadata?: Record<string, any>;
+}
+
+export interface UpdateLicenseInput {
+  courseId?: string;
+  expiresAt?: string | null;
+  metadata?: Record<string, any>;
 }

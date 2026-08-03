@@ -649,6 +649,10 @@ export default function RegisterPage() {
               <Link href="/login" className="modal-button secondary">返回登入</Link>
             </div>
 
+            <p style={{ marginTop: 16, textAlign: 'center', fontSize: 14 }}>
+              代表企業／組織註冊？<Link href="/login/register_enterprise" style={{ color: '#0066cc', textDecoration: 'underline' }}>前往企業用戶註冊 →</Link>
+            </p>
+
             </form>
           )}
         </div>
