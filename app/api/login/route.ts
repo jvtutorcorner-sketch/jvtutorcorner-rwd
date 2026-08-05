@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 import { headers } from 'next/headers';
-import { findProfileByEmail } from '@/lib/profilesService';
+import { findProfileByEmail, putProfile } from '@/lib/profilesService';
 import { verifyCaptcha, getBypassSecret, isBypassAllowed } from '@/lib/captcha';
 import { createSession } from '@/lib/auth/sessionManager';
+import { verifyPassword, hashPassword, isHashed } from '@/lib/auth/password';
 
 export async function POST(req: Request) {
   try {
@@ -39,8 +40,17 @@ export async function POST(req: Request) {
     try {
       const profile = await findProfileByEmail(String(email).toLowerCase());
       if (profile) {
-        if (profile.password === password) {
+        if (verifyPassword(password, profile.password)) {
           found = profile;
+          // Lazy migration: rehash legacy plaintext passwords on successful login
+          // so at-rest exposure shrinks over time without a disruptive batch migration.
+          if (!isHashed(profile.password)) {
+            try {
+              await putProfile({ ...profile, password: hashPassword(password) });
+            } catch (e) {
+              console.error('[login] Failed to rehash legacy password:', (e as any)?.message || e);
+            }
+          }
         } else {
           return NextResponse.json({ ok: false, message: 'login_password_wrong' }, { status: 401 });
         }

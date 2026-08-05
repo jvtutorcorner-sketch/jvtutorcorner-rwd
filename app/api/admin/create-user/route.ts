@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { ddbDocClient } from '@/lib/dynamo';
 import { PutCommand } from '@aws-sdk/lib-dynamodb';
 import { findProfileByEmail } from '@/lib/profilesService';
+import { hashPassword } from '@/lib/auth/password';
 
 function createTemporaryPassword() {
   return `tmp_${Date.now().toString(36)}_${crypto.randomBytes(6).toString('hex')}`;
@@ -30,7 +31,7 @@ export async function POST(req: Request) {
     const finalPassword = providedPassword || defaultPassword || generatedPassword;
     const useTemporaryPassword = !providedPassword && !defaultPassword;
 
-    const record = { id, email, password: finalPassword, plan: plan || 'basic', nickname: email.split('@')[0], role: 'student' };
+    const record = { id, email, password: hashPassword(finalPassword), plan: plan || 'basic', nickname: email.split('@')[0], role: 'student' };
     const responseProfile: any = { id: record.id, email: record.email, plan: record.plan };
     if (useTemporaryPassword) {
       responseProfile.temporaryPassword = finalPassword;

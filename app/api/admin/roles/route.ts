@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getRoles, saveRoles, type Role } from '@/lib/rolesService';
 import { savePagePermissions, getPagePermissions } from '@/lib/pagePermissionsService';
+import { withAdmin, AuthedRequest } from '@/lib/auth/apiGuard';
+import { writeAuditLog } from '@/lib/auditLogService';
 
 export async function GET() {
   try {
@@ -14,7 +16,10 @@ export async function GET() {
   }
 }
 
-export async function POST(req: Request) {
+// Role definitions gate every permission check in the app (see lib/auth/apiGuard.ts),
+// so writing them must be restricted to admins — this endpoint previously had no auth
+// check at all and anyone could overwrite the entire roles table.
+async function handlePost(req: AuthedRequest) {
   try {
     const body = await req.json();
     const { roles } = body;
@@ -40,6 +45,14 @@ export async function POST(req: Request) {
     }
 
     console.log('[Roles API] ✅ Roles saved to DynamoDB');
+
+    await writeAuditLog({
+      actorId: req.session.userId,
+      action: 'roles.update',
+      targetType: 'roles',
+      targetId: 'global',
+      metadata: { roleIds: roles.map((r: Role) => r.id) },
+    });
 
     // Sync roles to page permissions in DynamoDB
     try {
@@ -77,3 +90,5 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: err?.message || 'write error' }, { status: 500 });
   }
 }
+
+export const POST = withAdmin(handlePost);

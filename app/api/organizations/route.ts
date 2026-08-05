@@ -16,6 +16,7 @@ import organizationService from '@/lib/organizationService';
 import type { CreateOrganizationInput } from '@/lib/types/b2b';
 import { withAuth } from '@/lib/auth/apiGuard';
 import { resolveOrgActor, requireSystemAdmin } from '@/lib/auth/orgAccess';
+import { writeAuditLog } from '@/lib/auditLogService';
 
 export const dynamic = 'force-dynamic';
 
@@ -109,6 +110,14 @@ export const POST = withAuth(async (req) => {
     };
 
     const organization = await organizationService.createOrganization(input);
+
+    await writeAuditLog({
+      actorId: guard.actor.session.userId,
+      action: 'organization.create',
+      targetType: 'organization',
+      targetId: organization.id,
+      metadata: { name: organization.name, planTier: organization.planTier },
+    });
 
     return NextResponse.json({
       ok: true,

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { ddbDocClient } from '@/lib/dynamo';
 import { UpdateCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { findProfileByEmail } from '@/lib/profilesService';
+import { hashPassword } from '@/lib/auth/password';
 import nodemailer from 'nodemailer';
 
 function generateRandomPassword(length = 8) {
@@ -56,7 +57,7 @@ export async function POST(req: Request) {
                     Key: { id: found.id },
                     UpdateExpression: 'SET password = :password',
                     ExpressionAttributeValues: {
-                        ':password': newPassword
+                        ':password': hashPassword(newPassword)
                     }
                 }));
         } catch (e) {

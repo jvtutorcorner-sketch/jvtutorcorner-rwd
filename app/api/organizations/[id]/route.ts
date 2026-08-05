@@ -13,6 +13,7 @@ import { NextResponse } from 'next/server';
 import organizationService from '@/lib/organizationService';
 import { withAuth } from '@/lib/auth/apiGuard';
 import { requireOrgAccess, requireSystemAdmin } from '@/lib/auth/orgAccess';
+import { writeAuditLog } from '@/lib/auditLogService';
 
 export const dynamic = 'force-dynamic';
 
@@ -200,6 +201,14 @@ export const DELETE = withAuth(async (req, context) => {
     }
 
     await organizationService.deleteOrganization(id, hardDelete);
+
+    await writeAuditLog({
+      actorId: guard.actor.session.userId,
+      action: hardDelete ? 'organization.delete.hard' : 'organization.delete.soft',
+      targetType: 'organization',
+      targetId: id,
+      metadata: { name: org.name },
+    });
 
     return NextResponse.json({
       ok: true,

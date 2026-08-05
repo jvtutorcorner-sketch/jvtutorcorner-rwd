@@ -3,6 +3,8 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, GetCommand, PutCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
 import { getUserPoints, setUserPoints } from '@/lib/pointsStorage';
 import { getProfileById, putProfile } from '@/lib/profilesService';
+import { withAuth, AuthedRequest } from '@/lib/auth/apiGuard';
+import { writeAuditLog } from '@/lib/auditLogService';
 
 const ddbRegion = process.env.CI_AWS_REGION || process.env.AWS_REGION;
 const ddbExplicitAccessKey = process.env.CI_AWS_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID;
@@ -228,17 +230,40 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ or
   }
 }
 
-export async function DELETE(request: Request, { params }: { params: Promise<{ orderId: string }> }) {
+async function handleDelete(request: AuthedRequest, { params }: { params: Promise<{ orderId: string }> }) {
   try {
     const { orderId } = await params as { orderId: string };
     if (!orderId) {
       return NextResponse.json({ error: 'orderId required' }, { status: 400 });
     }
     const TableName = process.env.DYNAMODB_TABLE_ORDERS || 'jvtutorcorner-orders';
+
+    // Only the order's own owner, or an admin/teacher, may delete it — previously this
+    // endpoint had no auth check at all and anyone could delete any order by guessing an id.
+    const existing = await docClient.send(new GetCommand({ TableName, Key: { orderId } }));
+    if (!existing.Item) {
+      return NextResponse.json({ ok: true, message: 'Order deleted' });
+    }
+    const { role, userId: sessionUserId } = request.session;
+    const isPrivileged = role === 'admin' || role === 'teacher' || role === 'system';
+    if (!isPrivileged && existing.Item.userId !== sessionUserId) {
+      return NextResponse.json({ ok: false, error: 'Forbidden: not the order owner' }, { status: 403 });
+    }
+
     await docClient.send(new DeleteCommand({ TableName, Key: { orderId } }));
+
+    await writeAuditLog({
+      actorId: sessionUserId,
+      action: 'order.delete',
+      targetType: 'order',
+      targetId: orderId,
+    });
+
     return NextResponse.json({ ok: true, message: 'Order deleted' });
   } catch (err) {
     console.error('orders/[orderId] DELETE error:', err);
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
   }
 }
+
+export const DELETE = withAuth(handleDelete);

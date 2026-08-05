@@ -14,6 +14,7 @@ import licenseService from '@/lib/licenseService';
 import orgMembershipService from '@/lib/orgMembershipService';
 import { withAuth } from '@/lib/auth/apiGuard';
 import { requireOrgAccess } from '@/lib/auth/orgAccess';
+import { writeAuditLog } from '@/lib/auditLogService';
 
 export const dynamic = 'force-dynamic';
 
@@ -75,6 +76,14 @@ export const POST = withAuth(async (req, context) => {
       assignedBy: guard.actor.session.userId
     });
 
+    await writeAuditLog({
+      actorId: guard.actor.session.userId,
+      action: 'license.assign',
+      targetType: 'license',
+      targetId: licenseId,
+      metadata: { orgId: license.orgId, profileId },
+    });
+
     return NextResponse.json({
       ok: true,
       profile: { ...result.profile, password: undefined },
@@ -111,6 +120,14 @@ export const DELETE = withAuth(async (req, context) => {
     const result = await orgMembershipService.removeMemberFromOrg({
       orgId: license.orgId,
       profileId: license.userId
+    });
+
+    await writeAuditLog({
+      actorId: guard.actor.session.userId,
+      action: 'license.unassign',
+      targetType: 'license',
+      targetId: licenseId,
+      metadata: { orgId: license.orgId, profileId: license.userId },
     });
 
     return NextResponse.json({

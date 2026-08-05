@@ -9,6 +9,7 @@ import { headers } from 'next/headers';
 import organizationService from '@/lib/organizationService';
 import { getOrgUnitById } from '@/lib/orgUnitService';
 import orgMembershipService from '@/lib/orgMembershipService';
+import { hashPassword } from '@/lib/auth/password';
 
 
 const PROFILES_TABLE = process.env.DYNAMODB_TABLE_PROFILES || process.env.PROFILES_TABLE || 'jvtutorcorner-profiles';
@@ -94,9 +95,8 @@ export async function POST(req: Request) {
     // Strip orgId/orgUnitId out of what gets spread into the profile — they're handled
     // explicitly via orgMembershipService.assignMemberWithLicense below, not written
     // directly, so a request can't set them without going through seat/license accounting.
-    const { orgId: _rawOrgId, orgUnitId: _rawOrgUnitId, ...profileBody } = body;
+    const { orgId: _rawOrgId, orgUnitId: _rawOrgUnitId, password: _rawPassword, ...profileBody } = body;
 
-    // Note: For simplicity, password is stored as-is. In production, hash passwords.
     const plan = orgId ? null : (body.role === 'teacher' ? null : (body.plan ?? 'free'));
 
     // ── Email Verification Setup ─────────────────────────────────────
@@ -110,6 +110,7 @@ export async function POST(req: Request) {
     const profile = {
       ...profileBody,
       email,
+      password: hashPassword(password),
       plan,
       isB2B: Boolean(orgId),
       emailVerified: false,

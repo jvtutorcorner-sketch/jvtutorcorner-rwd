@@ -1,0 +1,66 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudFormation template for the append-only Audit Log table'
+
+Parameters:
+  AuditLogsTableName:
+    Type: String
+    Default: jvtutorcorner-audit-logs
+    Description: DynamoDB table name for audit log entries
+
+Resources:
+  AuditLogsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref AuditLogsTableName
+
+      AttributeDefinitions:
+        - AttributeName: auditId
+          AttributeType: S
+        - AttributeName: targetId
+          AttributeType: S
+        - AttributeName: createdAt
+          AttributeType: S
+
+      KeySchema:
+        - AttributeName: auditId
+          KeyType: HASH
+
+      BillingMode: PAY_PER_REQUEST
+
+      GlobalSecondaryIndexes:
+        # GSI: look up all audit entries for a given org/license/order/etc.
+        - IndexName: byTargetId
+          KeySchema:
+            - AttributeName: targetId
+              KeyType: HASH
+            - AttributeName: createdAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+
+      SSESpecification:
+        SSEEnabled: true
+
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
+      Tags:
+        - Key: Project
+          Value: jvtutorcorner
+        - Key: Environment
+          Value: production
+        - Key: Purpose
+          Value: AuditLog
+
+Outputs:
+  AuditLogsTableName:
+    Description: Name of the Audit Logs DynamoDB table
+    Value: !Ref AuditLogsTable
+    Export:
+      Name: !Sub '${AWS::StackName}-AuditLogsTableName'
+
+  AuditLogsTableArn:
+    Description: ARN of the Audit Logs DynamoDB table
+    Value: !GetAtt AuditLogsTable.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-AuditLogsTableArn'

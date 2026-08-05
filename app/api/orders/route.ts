@@ -5,6 +5,8 @@ import { randomUUID } from 'crypto';
 import { COURSES } from '@/data/courses';
 import { deductUserPoints } from '@/lib/pointsStorage';
 import { createEscrow } from '@/lib/pointsEscrow';
+import { withAuth, withAdmin, AuthedRequest } from '@/lib/auth/apiGuard';
+import { writeAuditLog } from '@/lib/auditLogService';
 
 // DynamoDB client initialization
 const ddbRegion = process.env.CI_AWS_REGION || process.env.AWS_REGION;
@@ -22,21 +24,18 @@ const docClient = DynamoDBDocumentClient.from(client);
 
 const ORDERS_TABLE = process.env.DYNAMODB_TABLE_ORDERS || 'jvtutorcorner-orders';
 
-export async function POST(request: Request) {
+async function handlePost(request: AuthedRequest) {
   try {
     const body = await request.json();
     const {
-      courseId, enrollmentId, amount, currency, userId: clientUserId,
+      courseId, enrollmentId, amount, currency,
       startTime, endTime, paymentMethod, pointsUsed, status: clientStatus
     } = body;
-    const userId = clientUserId || null;
+    // Server-authoritative: derive userId from the verified session, never trust client-supplied userId.
+    const userId = request.session.userId;
 
     if (!courseId) {
       return NextResponse.json({ error: 'Course ID is required. For plan subscriptions, use /api/plan-upgrades instead.' }, { status: 400 });
-    }
-
-    if (!userId) {
-      return NextResponse.json({ error: 'User not authenticated' }, { status: 401 });
     }
 
     const orderId = randomUUID();
@@ -188,7 +187,7 @@ export async function POST(request: Request) {
   }
 }
 
-export async function GET(request: Request) {
+async function handleGet(request: AuthedRequest) {
   try {
     const TableName = ORDERS_TABLE || 'jvtutorcorner-orders';
 
@@ -210,8 +209,12 @@ export async function GET(request: Request) {
 
     const status = params.get('status');
     const enrollmentId = params.get('enrollmentId');
-    const userId = params.get('userId');
-    const courseId = params.get('courseId');
+    // Admin/teacher/system may query any user's orders (needed for dashboards and the
+    // classroom timer's teacher->student lookup). Everyone else is force-scoped to their
+    // own session identity so a caller can't read another user's orders by passing ?userId=.
+    const isPrivileged = ['admin', 'teacher', 'system'].includes(request.session.role);
+    const userId = isPrivileged ? params.get('userId') : request.session.userId;
+    const courseId = isPrivileged ? params.get('courseId') : null;
     const orderIdFilter = params.get('orderId');
     const startDate = params.get('startDate');
     const endDate = params.get('endDate');
@@ -462,7 +465,7 @@ export async function GET(request: Request) {
   }
 }
 
-export async function DELETE(request: Request) {
+async function handleDelete(request: AuthedRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const orderId = searchParams.get('orderId');
@@ -478,10 +481,23 @@ export async function DELETE(request: Request) {
 
     await docClient.send(deleteCmd);
 
+    await writeAuditLog({
+      actorId: request.session.userId,
+      action: 'order.delete',
+      targetType: 'order',
+      targetId: orderId,
+    });
+
     return NextResponse.json({ ok: true, message: `Order ${orderId} deleted successfully` }, { status: 200 });
   } catch (err: any) {
     console.error('orders DELETE error:', err);
     return NextResponse.json({ ok: false, error: 'Failed to delete order', detail: err?.message }, { status: 500 });
   }
 }
+
+export const POST = withAuth(handlePost);
+export const GET = withAuth(handleGet);
+// No production caller uses this bulk-delete-by-query-param endpoint (single-order deletes go
+// through /api/orders/[orderId]); restrict to admin since it has no ownership context to check.
+export const DELETE = withAdmin(handleDelete);
 
