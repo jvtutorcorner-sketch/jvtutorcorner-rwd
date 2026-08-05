@@ -293,10 +293,13 @@ export async function removeMemberFromOrg(input: RemoveMemberInput): Promise<Rem
     Update: {
       TableName: PROFILES_TABLE,
       Key: { id: profileId },
+      // Restore plan to the B2C default ('free') — assignMemberWithLicense sets it to null
+      // on join, and leaving it null after removal stranded the account with no active
+      // plan of either kind until the user manually resubscribed.
       UpdateExpression:
-        'SET orgId = :null, orgUnitId = :null, isB2B = :false, isOrgAdmin = :false, licenseId = :null, updatedAt = :now',
+        'SET orgId = :null, orgUnitId = :null, isB2B = :false, isOrgAdmin = :false, licenseId = :null, plan = :freePlan, updatedAt = :now',
       ConditionExpression: 'attribute_exists(id)',
-      ExpressionAttributeValues: { ':null': null, ':false': false, ':now': now }
+      ExpressionAttributeValues: { ':null': null, ':false': false, ':freePlan': 'free', ':now': now }
     }
   });
   errorLabels.push('使用者不存在 (profile not found)');

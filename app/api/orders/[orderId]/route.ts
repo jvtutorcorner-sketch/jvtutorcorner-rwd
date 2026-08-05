@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, GetCommand, PutCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
 import { getUserPoints, setUserPoints } from '@/lib/pointsStorage';
+import { refundEscrow } from '@/lib/pointsEscrow';
 import { getProfileById, putProfile } from '@/lib/profilesService';
 import { withAuth, AuthedRequest } from '@/lib/auth/apiGuard';
 import { writeAuditLog } from '@/lib/auditLogService';
@@ -200,9 +201,22 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ or
       // 1. 如果是點數支付，退還點數
       if (updated.paymentMethod === 'points' && updated.pointsUsed > 0 && updated.userId) {
         try {
-          console.log(`[Refund] Refunding ${updated.pointsUsed} points to ${updated.userId} for order ${orderId}`);
-          const currentPoints = await getUserPoints(updated.userId);
-          await setUserPoints(updated.userId, currentPoints + updated.pointsUsed);
+          if (updated.pointsEscrowId) {
+            // Points were placed in escrow at order creation (see app/api/orders/route.ts) —
+            // refund through the same escrow record so its status moves HOLDING -> REFUNDED.
+            // Refunding via setUserPoints directly would leave the escrow stuck in HOLDING,
+            // letting a later admin /api/points-escrow refund double-credit the student.
+            console.log(`[Refund] Refunding escrow ${updated.pointsEscrowId} for order ${orderId}`);
+            const result = await refundEscrow(updated.pointsEscrowId);
+            if (!result.ok) {
+              console.error(`[Refund] refundEscrow failed for ${updated.pointsEscrowId}:`, result.error);
+            }
+          } else {
+            // Legacy order with no escrow record — fall back to direct point credit.
+            console.log(`[Refund] Refunding ${updated.pointsUsed} points to ${updated.userId} for order ${orderId}`);
+            const currentPoints = await getUserPoints(updated.userId);
+            await setUserPoints(updated.userId, currentPoints + updated.pointsUsed);
+          }
         } catch (err) {
           console.error('[Refund] Failed to refund points:', err);
         }
