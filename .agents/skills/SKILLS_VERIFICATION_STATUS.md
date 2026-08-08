@@ -274,6 +274,33 @@
 - **已知問題**: 無
 - **架構對齊**: ✅ 對齊完成
 
+### 23. b2b-core-modules
+- **狀態**: ✅ VERIFIED
+- **驗證日期**: 2026-08-08
+- **最後更新**: 2026-08-08
+- **驗證項目**:
+  - ✅ 席次/授權 CRUD 與成員增刪（licenseService、orgMembershipService，含併發搶席次）
+  - ✅ orgAccess 授權範圍守門（系統管理員／組織管理員兩層）
+  - ✅ 組織單位階層與 moveOrgUnit 原子性（orgUnitService，含併發移動、路徑修復）
+  - ✅ B2C/B2B 共用課程存取閘門 accessControl.ts（含優先順序驗證）
+- **已知問題**:
+  - 過程中發現並修復 4 個問題：`orgMembershipService.ts` 的 `plan` 保留字未加別名、`orgId` GSI key 誤用 `SET...=:null`、`accessControl.ts` B2C 分支欄位名對不上真實 schema（`studentID`/`courseID` vs 實際的 `userId`/`courseId`）、正式環境 Licenses 表缺少 `byUserId` GSI（已補上）
+  - dept_admin 子部門範圍限制未實作，不在本技能範圍
+- **架構對齊**: ✅ 對齊完成
+
+### 24. b2b-admin-ui-flow
+- **狀態**: ✅ VERIFIED
+- **驗證日期**: 2026-08-08
+- **最後更新**: 2026-08-08
+- **驗證項目**:
+  - ✅ 真實瀏覽器（headed）走過建組織 → 建部門並巢狀 → 加入成員到席次上限 → 移除成員的完整流程
+  - ✅ 席次已滿時 UI 正確 disable 輸入框並顯示提示訊息
+  - ✅ 測試自身的清理邏輯（透過 API 直接刪除，不透過 UI）
+- **已知問題**:
+  - 撰寫過程中發現測試自身的清理 bug：用了不帶 session cookie 的獨立 `request` fixture 打 DELETE API，得到 401 但 Playwright 不會 throw，清理靜默失敗，正式環境累積了 3 筆殘留測試組織（已手動清除）。已改用 `page.context().request` 並檢查 `.ok()` 修正
+  - 不重複 `b2b-core-modules` 已覆蓋的併發/邊界案例，只示範常見使用者路徑
+- **架構對齊**: ✅ 對齊完成
+
 ---
 
 ## 驗證流程與更新指南

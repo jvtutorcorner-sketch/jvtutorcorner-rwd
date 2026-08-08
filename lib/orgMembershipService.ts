@@ -183,8 +183,9 @@ export async function assignMemberWithLicense(input: AssignMemberInput): Promise
         TableName: PROFILES_TABLE,
         Key: { id: profileId },
         UpdateExpression:
-          'SET orgId = :orgId, orgUnitId = :orgUnitId, isB2B = :true, isOrgAdmin = :isOrgAdmin, licenseId = :licenseId, plan = :null, updatedAt = :now',
+          'SET orgId = :orgId, orgUnitId = :orgUnitId, isB2B = :true, isOrgAdmin = :isOrgAdmin, licenseId = :licenseId, #plan = :null, updatedAt = :now',
         ConditionExpression: 'attribute_exists(id) AND (attribute_not_exists(orgId) OR orgId = :orgId OR orgId = :null)',
+        ExpressionAttributeNames: { '#plan': 'plan' },
         ExpressionAttributeValues: {
           ':orgId': orgId,
           ':orgUnitId': input.orgUnitId || null,
@@ -296,9 +297,13 @@ export async function removeMemberFromOrg(input: RemoveMemberInput): Promise<Rem
       // Restore plan to the B2C default ('free') — assignMemberWithLicense sets it to null
       // on join, and leaving it null after removal stranded the account with no active
       // plan of either kind until the user manually resubscribed.
+      // orgId is REMOVEd rather than SET to null because it's the byOrgId GSI key —
+      // DynamoDB rejects SETting a GSI key attribute to NULL type (same reason
+      // licenseService.revokeLicense REMOVEs userId instead of nulling it).
       UpdateExpression:
-        'SET orgId = :null, orgUnitId = :null, isB2B = :false, isOrgAdmin = :false, licenseId = :null, plan = :freePlan, updatedAt = :now',
+        'SET orgUnitId = :null, isB2B = :false, isOrgAdmin = :false, licenseId = :null, #plan = :freePlan, updatedAt = :now REMOVE orgId',
       ConditionExpression: 'attribute_exists(id)',
+      ExpressionAttributeNames: { '#plan': 'plan' },
       ExpressionAttributeValues: { ':null': null, ':false': false, ':freePlan': 'free', ':now': now }
     }
   });

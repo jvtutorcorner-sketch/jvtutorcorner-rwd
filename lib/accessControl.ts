@@ -49,9 +49,12 @@ export async function verifyCourseAccess(userId: string, courseId: string): Prom
         // 1. Check B2C Enrollments (Direct Purchase)
         // optimizing with query if GSI exists, currently using Scan for safety based on loose schema knowledge
         // TODO: Switch to QueryCommand if GSI byStudent exists and is reliable
+        // Field names match app/api/enroll/route.ts's EnrollmentRecord (userId/courseId,
+        // camelCase) — confirmed against real table data. studentID/courseID never existed
+        // in any written record, so this filter previously never matched anything.
         const params = {
             TableName: ENROLLMENTS_TABLE,
-            FilterExpression: 'studentID = :uid AND courseID = :cid AND #status IN (:s1, :s2)',
+            FilterExpression: 'userId = :uid AND courseId = :cid AND #status IN (:s1, :s2)',
             ExpressionAttributeNames: {
                 '#status': 'status'
             },
