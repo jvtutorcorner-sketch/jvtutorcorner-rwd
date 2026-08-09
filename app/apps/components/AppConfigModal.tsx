@@ -8,23 +8,25 @@ import {
     AI_CONTAINER_TYPES, DATABASE_TYPES,
 } from '../_types';
 
-const DEFAULT_DRUG_ANALYSIS_PROMPT = `
-你是一位專業且嚴謹的「AI 數位藥劑師視覺助理」。你的任務是仔細觀察使用者上傳的藥品圖片，並精準萃取出藥品的外觀特徵。
+const DEFAULT_LEARNING_CONTENT_ANALYSIS_PROMPT = `
+你是線上教學平台的教材內容分析助理。請仔細觀察使用者上傳的教材、講義、題目、投影片、圖表或手寫筆記圖片，協助學員理解與複習。
 
 【任務規則】
-1. 你只能根據圖片中「真實看到」的特徵進行描述。絕對不可以猜測、推論或捏造圖片中看不清楚的細節。
-2. 如果圖片極度模糊、嚴重反光，或者根本不是藥品，請在對應的特徵欄位填寫 "無法辨識"。
+1. 只能根據圖片中實際看見的內容回答，不得補造看不清楚的文字或結論。
+2. 若圖片模糊、裁切不完整或不是教學內容，請在 summary 說明無法可靠分析，並提出重新上傳建議。
+3. 不提供醫療、法律或其他專業決策；遇到不確定內容要清楚標示不確定性。
 
-【特徵萃取標準】
-請分析圖片並回傳以下 JSON 結構：
+請只回傳 JSON：
 {
-  "shape": "請從以下選項中選擇：圓形、橢圓形、長圓柱形、膠囊形、三角形、方形、多邊形、其他。若無法辨識請填 '無法辨識'。",
-  "color": "請辨識藥品的主要顏色。請使用單一基礎顏色描述，例如：白、黃、紅、棕、粉紅、綠、藍、黑、灰。若有雙色請用 '/' 隔開。若無法辨識請填 '無法辨識'。",
-  "imprint": "請仔細讀取藥丸表面的『英文、數字或符號刻字』。請區分大小寫，若有空格請保留。若雙面皆有刻字請用 '/' 隔開。若表面平滑無字，請填寫 '無'。若模糊看不清請填 '無法辨識'。",
-  "score_line": "請觀察藥丸表面是否有『刻痕』。若有一條直線請填 '一字'，若有十字線請填 '十字'，若無刻痕請填 '無'。"
+  "contentType": "教材、講義、題目、投影片、圖表、手寫筆記或其他",
+  "title": "從圖片可辨識的主題；無法判斷時填 未能辨識",
+  "summary": "用繁體中文整理教材重點",
+  "keyConcepts": ["重要概念 1", "重要概念 2"],
+  "difficulty": "初級、中級、高級或無法判斷",
+  "suggestedQuestions": ["一個幫助學習者自我檢核的問題"],
+  "confidence": 0.0,
+  "extractedText": "可讀取的原文；無法讀取時留空"
 }
-
-這攸關醫療安全，寧可回傳 "無法辨識"，也絕對不可以使用推測的數值。
 `.trim();
 
 interface AppConfigModalProps {
@@ -851,7 +853,7 @@ function LineFeatures({
                 <h4 className="font-bold text-gray-800 dark:text-white mb-3 flex items-center gap-2">
                     <span className="text-xl">🎯</span> 圖片分析提示詞
                 </h4>
-                <p className="text-xs text-gray-500 mb-3">自訂藥品辨識的 AI 提示詞。空白時使用預設值。</p>
+                <p className="text-xs text-gray-500 mb-3">自訂教材內容分析的 AI 提示詞。空白時使用預設值。</p>
                 
                 {/* Tab buttons */}
                 <div className="flex gap-2 mb-3">
@@ -881,8 +883,8 @@ function LineFeatures({
                 {!showDefaultPrompt && (
                     <div className="border border-gray-300 dark:border-gray-700 rounded overflow-hidden shadow-inner">
                         <textarea
-                            value={editedConfig.drugAnalysisPrompt || ''}
-                            onChange={(e) => setEditedConfig({ ...editedConfig, drugAnalysisPrompt: e.target.value })}
+                            value={editedConfig.learningContentAnalysisPrompt || ''}
+                            onChange={(e) => setEditedConfig({ ...editedConfig, learningContentAnalysisPrompt: e.target.value })}
                             placeholder="輸入自訂提示詞或留空使用預設值..."
                             rows={10}
                             className="w-full px-4 py-3 text-sm font-mono border-0 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 focus:ring-1 focus:ring-blue-500 outline-none resize-none"
@@ -894,7 +896,7 @@ function LineFeatures({
                 {showDefaultPrompt && (
                     <div className="border border-amber-300 dark:border-amber-700 rounded overflow-hidden shadow-inner bg-amber-50 dark:bg-amber-900/20">
                         <textarea
-                            value={DEFAULT_DRUG_ANALYSIS_PROMPT}
+                            value={DEFAULT_LEARNING_CONTENT_ANALYSIS_PROMPT}
                             readOnly
                             rows={10}
                             className="w-full px-4 py-3 text-sm font-mono border-0 bg-transparent text-gray-800 dark:text-gray-200 focus:ring-1 focus:ring-amber-500 outline-none resize-none cursor-not-allowed"
@@ -905,13 +907,13 @@ function LineFeatures({
                 {/* Action buttons */}
                 <div className="flex gap-2 mt-2">
                     <button
-                        onClick={() => setEditedConfig({ ...editedConfig, drugAnalysisPrompt: '' })}
+                        onClick={() => setEditedConfig({ ...editedConfig, learningContentAnalysisPrompt: '' })}
                         className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300"
                     >
                         ↺ 清空（使用預設值）
                     </button>
                     <button
-                        onClick={() => setEditedConfig({ ...editedConfig, drugAnalysisPrompt: DEFAULT_DRUG_ANALYSIS_PROMPT })}
+                        onClick={() => setEditedConfig({ ...editedConfig, learningContentAnalysisPrompt: DEFAULT_LEARNING_CONTENT_ANALYSIS_PROMPT })}
                         className="text-xs text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300"
                     >
                         📋 複製預設值
@@ -944,7 +946,7 @@ function LineFeatures({
                 <h4 className="font-bold text-gray-800 dark:text-white mb-3 flex items-center gap-2">
                     <span className="text-xl">📸</span> 圖片辨識測試
                 </h4>
-                <p className="text-xs text-gray-500 mb-2">上傳藥品圖片進行 Gemini Vision 辨識測試</p>
+                <p className="text-xs text-gray-500 mb-2">上傳教材圖片進行 AI 內容分析測試</p>
                 {imageTestPreview && (
                     <div className="relative mb-3">
                         <img src={imageTestPreview} alt="preview" className="max-w-[200px] max-h-[200px] rounded-lg border border-gray-300 dark:border-gray-600" />

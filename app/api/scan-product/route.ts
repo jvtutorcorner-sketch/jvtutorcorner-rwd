@@ -1,62 +1,53 @@
-import { NextResponse, NextRequest } from 'next/server';
-import fs from 'fs/promises';
-import path from 'path';
-import { detectProducts } from '@/lib/detection';
+import { NextResponse } from 'next/server';
+import { withAuth, type AuthedRequest } from '@/lib/auth/apiGuard';
+import { verifyCourseAccess } from '@/lib/accessControl';
+import { analyzeLearningContentImage } from '@/lib/learningContentAnalysis';
 
-async function saveUploadedImage(buffer: Buffer, email: string): Promise<string> {
-  const uploadDir = path.join(process.cwd(), '.uploads');
+/**
+ * Legacy API compatibility route.
+ *
+ * The former product-scan endpoint awarded points from detected products.
+ * It now delegates to the teaching-content analysis flow and never modifies
+ * a profile or grants points based on client-submitted data.
+ */
+export const POST = withAuth(async (request: AuthedRequest) => {
   try {
-    await fs.mkdir(uploadDir, { recursive: true });
-  } catch {}
+    const formData = await request.formData();
+    const imageFile = formData.get('image');
+    const courseId = typeof formData.get('courseId') === 'string' ? String(formData.get('courseId')).trim() : '';
 
-  const filename = `${email}-${Date.now()}.jpg`;
-  const filepath = path.join(uploadDir, filename);
-  await fs.writeFile(filepath, buffer);
-
-  return filepath;
-}
-
-export async function POST(req: NextRequest) {
-  try {
-    const formData = await req.formData();
-    const imageFile = formData.get('image') as File | null;
-    const email = formData.get('email') as string | null;
-
-    if (!imageFile) {
-      return NextResponse.json({ error: '未提供圖片' }, { status: 400 });
+    if (!(imageFile instanceof File)) {
+      return NextResponse.json({ ok: false, error: '未提供教材圖片' }, { status: 400 });
+    }
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(imageFile.type)) {
+      return NextResponse.json({ ok: false, error: '不支援的教材圖片格式' }, { status: 415 });
+    }
+    if (imageFile.size > 7 * 1024 * 1024) {
+      return NextResponse.json({ ok: false, error: '圖片大小不可超過 7 MB' }, { status: 413 });
     }
 
-    if (!email) {
-      return NextResponse.json({ error: '未提供 email' }, { status: 400 });
+    if (courseId && request.session.role !== 'admin' && request.session.role !== 'system') {
+      const access = await verifyCourseAccess(request.session.userId, courseId);
+      if (!access.granted) {
+        return NextResponse.json({ ok: false, error: 'course access required' }, { status: 403 });
+      }
     }
 
-    // 讀取圖片檔案
     const buffer = Buffer.from(await imageFile.arrayBuffer());
-
-    // 儲存上傳的圖片（可選）
-    await saveUploadedImage(buffer, email);
-
-    // 使用可選的 YOLO/ONNX 偵測器（如果可用），否則回退到 mock
-    const detection = await detectProducts(buffer);
-    const detectedProducts = detection.products;
-
-    // 計算總點數
-    const totalPoints = detectedProducts.reduce(
-      (sum, p) => sum + p.quantity * p.pointsPerItem,
-      0,
-    );
+    const analysis = await analyzeLearningContentImage(buffer.toString('base64'), imageFile.type);
+    if (!analysis.result) {
+      return NextResponse.json({ ok: false, error: analysis.reason || '教材分析功能尚未啟用' }, { status: 503 });
+    }
 
     return NextResponse.json({
-      success: true,
-      products: detectedProducts,
-      totalPoints,
-      info: detection.info,
+      ok: true,
+      deprecated: true,
+      message: '請改用 /api/learning-content-analysis。',
+      analysis: analysis.result,
+      courseId: courseId || null,
     });
-  } catch (err: any) {
-    console.error('[scan-product] error:', err);
-    return NextResponse.json(
-      { error: '掃描失敗：' + (err?.message || '未知錯誤') },
-      { status: 500 },
-    );
+  } catch (error: unknown) {
+    console.error('[scan-product legacy alias] error:', error instanceof Error ? error.message : error);
+    return NextResponse.json({ ok: false, error: '教材分析請求格式錯誤' }, { status: 400 });
   }
-}
+});

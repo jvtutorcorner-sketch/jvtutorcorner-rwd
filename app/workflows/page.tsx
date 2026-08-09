@@ -240,7 +240,7 @@ const TEMPLATES = [
             {
                 id: 'node_3', type: 'action', position: { x: 20, y: 290 },
                 data: {
-                    label: '下載並辨識藥品圖片',
+                    label: '下載並分析教材圖片',
                     actionType: 'action_line_image_analyze',
                     config: { messageIdField: '{{message.id}}', outputField: 'analysisResult' }
                 }
@@ -256,11 +256,11 @@ const TEMPLATES = [
             {
                 id: 'node_5', type: 'action', position: { x: 20, y: 430 },
                 data: {
-                    label: '回覆圖片辨識結果',
+                    label: '回覆教材分析結果',
                     actionType: 'action_line_reply',
                     config: {
                         replyToken: '{{replyToken}}',
-                        message: '📸 藥品辨識結果：\n\n🔷 形狀：{{analysis_shape}}\n🔶 顏色：{{analysis_color}}\n✏️ 刻字：{{analysis_imprint}}\n📏 刻痕：{{analysis_score_line}}'
+                        message: '📚 教材分析結果：\n\n📝 標題：{{analysis_title}}\n💡 摘要：{{analysis_summary}}\n📖 類型：{{analysis_content_type}}\n❓ 理解檢核：{{analysis_questions}}'
                     }
                 }
             },

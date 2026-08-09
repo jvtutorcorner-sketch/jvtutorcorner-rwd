@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, GetCommand, ScanCommand, PutCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
 import { executeWebhookScript } from '@/lib/scriptExecutor';
+import { LEARNING_CONTENT_ANALYSIS_PROMPT } from '@/lib/learningContentAnalysis';
 
 const ddbRegion = process.env.CI_AWS_REGION || process.env.AWS_REGION;
 const ddbExplicitAccessKey = process.env.CI_AWS_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID;
@@ -293,28 +294,8 @@ async function downloadLineImage(messageId: string, channelAccessToken: string):
     }
 }
 
-const DEFAULT_DRUG_ANALYSIS_PROMPT = `
-你是一位專業且嚴謹的「AI 數位藥劑師視覺助理」。你的任務是仔細觀察使用者上傳的藥品圖片，並精準萃取出藥品的外觀特徵。
-
-【任務規則】
-1. 你只能根據圖片中「真實看到」的特徵進行描述。絕對不可以猜測、推論或捏造圖片中看不清楚的細節。
-2. 如果圖片極度模糊、嚴重反光，或者根本不是藥品，請在對應的特徵欄位填寫 "無法辨識"。
-
-【特徵萃取標準】
-請分析圖片並回傳以下 JSON 結構：
-{
-  "shape": "請從以下選項中選擇：圓形、橢圓形、長圓柱形、膠囊形、三角形、方形、多邊形、其他。若無法辨識請填 '無法辨識'。",
-  "color": "請辨識藥品的主要顏色。請使用單一基礎顏色描述，例如：白、黃、紅、棕、粉紅、綠、藍、黑、灰。若有雙色請用 '/' 隔開。若無法辨識請填 '無法辨識'。",
-  "imprint": "請仔細讀取藥丸表面的『英文、數字或符號刻字』。請區分大小寫，若有空格請保留。若雙面皆有刻字請用 '/' 隔開。若表面平滑無字，請填寫 '無'。若模糊看不清請填 '無法辨識'。",
-  "score_line": "請觀察藥丸表面是否有『刻痕』。若有一條直線請填 '一字'，若有十字線請填 '十字'，若無刻痕請填 '無'。"
-}
-
-這攸關醫療安全，寧可回傳 "無法辨識"，也絕對不可以使用推測的數值。
-`;
-
-// Default response template for LINE messages. Site admins can override per-integration
-// using `appInfo.config.drugAnalysisResponseTemplate` via the /apps UI.
-const DEFAULT_DRUG_RESPONSE_TEMPLATE = `📸 藥品辨識結果：
+// Default response template for LINE teaching-content messages. Site admins can override per-integration.
+const DEFAULT_LEARNING_CONTENT_RESPONSE_TEMPLATE = `📚 教材分析結果：
 
 {initial_instructions}
 
@@ -548,7 +529,7 @@ async function analyzeImageWithGeminiVision(imageBuffer: Buffer, geminiApiKey: s
         type: 'GEMINI',
         config: { apiKey: geminiApiKey, models: [model] }
     };
-    return analyzeImageWithVisionAPI(imageBuffer, geminiIntegration, prompt || DEFAULT_DRUG_ANALYSIS_PROMPT);
+    return analyzeImageWithVisionAPI(imageBuffer, geminiIntegration, prompt || LEARNING_CONTENT_ANALYSIS_PROMPT);
 }
 
 export async function POST(request: Request, context: { params: Promise<{ integrationId: string }> | { integrationId: string } }) {
@@ -795,7 +776,7 @@ export async function POST(request: Request, context: { params: Promise<{ integr
                                     });
                                     
                                     // Get prompt from config or use default
-                                    const customPrompt = appInfo.config?.drugAnalysisPrompt || DEFAULT_DRUG_ANALYSIS_PROMPT;
+                                    const customPrompt = appInfo.config?.learningContentAnalysisPrompt || LEARNING_CONTENT_ANALYSIS_PROMPT;
                                     
                                     // Analyze image with configured AI service
                                     const analysisResult = await analyzeImageWithVisionAPI(imageBuffer, aiIntegration, customPrompt);
@@ -838,21 +819,20 @@ export async function POST(request: Request, context: { params: Promise<{ integr
                                             }
                                         }
                                         // Format result into readable message
-                                        const responseText = '📸 藥品辨識結果：\n\n';
+                                        const responseText = '📚 教材分析結果：\n\n';
                                         const messages: any[] = [];
 
                                         if (analysisResult.raw) {
                                             // Use a configurable template for the initial user-facing message
-                                            const template = appInfo.config?.drugAnalysisResponseTemplate || DEFAULT_DRUG_RESPONSE_TEMPLATE;
-                                            const initialInstructions = '抱歉，我們無法以標準格式解析此張照片的結果。請先嘗試下列步驟，再重新上傳：\n1) 拍攝清晰、光線充足的照片；\n2) 藥丸完整置於畫面中央，避免手指或反光遮擋；\n3) 若有刻字，請拍攝近照並確保對焦。';
+                                            const template = appInfo.config?.learningContentAnalysisResponseTemplate || DEFAULT_LEARNING_CONTENT_RESPONSE_TEMPLATE;
+                                            const initialInstructions = '目前無法完整解析這張教材圖片，請重新上傳清晰、光線充足且文字完整可見的教材內容。';
                                             const templateData = {
                                                 messageId,
                                                 timestamp: new Date().toISOString(),
                                                 initial_instructions: initialInstructions,
-                                                shape: analysisResult.shape || '無法辨識',
-                                                color: analysisResult.color || '無法辨識',
-                                                imprint: analysisResult.imprint || '無',
-                                                score_line: analysisResult.score_line || '無'
+                                                title: analysisResult.title || '未辨識',
+                                                summary: analysisResult.summary || '無法產生摘要',
+                                                content_type: analysisResult.contentType || 'unknown'
                                             };
 
                                             const userMsg = renderTemplate(template, templateData);
@@ -893,17 +873,16 @@ export async function POST(request: Request, context: { params: Promise<{ integr
                                             });
                                         } else {
                                             // Standard formatted response using template
-                                            const template = appInfo.config?.drugAnalysisResponseTemplate || DEFAULT_DRUG_RESPONSE_TEMPLATE;
+                                            const template = appInfo.config?.learningContentAnalysisResponseTemplate || DEFAULT_LEARNING_CONTENT_RESPONSE_TEMPLATE;
                                             const templateData = {
                                                 messageId,
                                                 timestamp: new Date().toISOString(),
                                                 initial_instructions: '',
-                                                shape: analysisResult.shape || '無法辨識',
-                                                color: analysisResult.color || '無法辨識',
-                                                imprint: analysisResult.imprint || '無',
-                                                score_line: analysisResult.score_line || '無'
+                                                title: analysisResult.title || '未辨識',
+                                                summary: analysisResult.summary || '無法產生摘要',
+                                                content_type: analysisResult.contentType || 'unknown'
                                             };
-                                            const userMsg = renderTemplate(template, templateData) + `\n\n🔷 形狀：${templateData.shape}\n🔶 顏色：${templateData.color}\n✏️ 刻字：${templateData.imprint}\n📏 刻痕：${templateData.score_line}\n\n✅ 訊息 ID: ${messageId}`;
+                                            const userMsg = renderTemplate(template, templateData) + `\n\n📝 標題：${templateData.title}\n💡 摘要：${templateData.summary}\n📖 類型：${templateData.content_type}\n\n✅ 訊息 ID: ${messageId}`;
                                             messages.push({ type: 'text', text: userMsg });
                                         }
 
@@ -945,7 +924,7 @@ export async function POST(request: Request, context: { params: Promise<{ integr
                                             message: `Image analysis failed or returned null`,
                                             context: { messageId, aiType: aiIntegration.type, bufferSize: imageBuffer.length }
                                         });
-                                        const msg = { type: 'text', text: '抱歉，我們無法成功辨識此張圖片。請依照下列建議重試：\n1) 攝影時確保光線充足且對焦清晰；\n2) 藥品置於畫面中央、整顆入鏡；\n3) 避免反光或手指遮擋；\n4) 若有刻字，請拍攝更接近且清晰的照片。\n\n若多次嘗試仍失敗，請聯絡客服並提供此張圖片與時間，我們會協助處理。\n\n訊息 ID: ' + messageId };
+                                        const msg = { type: 'text', text: '抱歉，我們無法成功分析這張教材圖片。請重新上傳清晰且完整入鏡的教材內容。\n\n訊息 ID: ' + messageId };
                                         if (isSimulation) simulationReplies.push(msg);
                                         else await replyToLine(replyToken, [msg], channelAccessToken);
                                     }

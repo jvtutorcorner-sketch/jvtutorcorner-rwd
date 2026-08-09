@@ -5,6 +5,7 @@ import { ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { ddbDocClient } from './dynamo';
 import { LambdaClient, InvokeCommand } from '@aws-sdk/client-lambda';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { generateHmacHeaders } from './auth/hmac';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -89,6 +90,23 @@ function getOrCreateLambdaClient(): LambdaClient {
 
 function getInternalBaseUrl() {
     return process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+}
+
+/**
+ * 呼叫 /api/workflows/* 的 action node route（gmail-send、http-request…）。這些 route 會執行
+ * 寄信/外呼 HTTP/寫檔等有副作用的動作，之前完全沒有 auth，任何人都能直接打 API 觸發。
+ * 現在這些 route 改成 withAnyAuth（admin session 或 HMAC），這裡用 HMAC 簽名證明是引擎本身在呼叫。
+ */
+async function internalWorkflowFetch(path: string, body: unknown): Promise<Response> {
+    const rawBody = JSON.stringify(body);
+    return fetch(`${getInternalBaseUrl()}${path}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            ...generateHmacHeaders('POST', path, rawBody),
+        },
+        body: rawBody,
+    });
 }
 
 // Helpers for data mapping
@@ -362,16 +380,10 @@ async function analyzeLineImageWithVisionAI(imageBuffer: Buffer, aiIntegration: 
     throw new Error(`Unsupported AI provider for LINE Vision: ${aiIntegration.type}`);
 }
 
-const LINE_DRUG_ANALYSIS_PROMPT = `
-你是一位專業且嚴謹的「AI 數位藥劑師視覺助理」。請仔細觀察圖片中的藥品，並精準萃取外觀特徵。
-只根據圖片中真實看到的特徵，不猜測或推論。若無法辨識請填 "無法辨識"。
-請回傳以下 JSON 結構：
-{
-  "shape": "圓形|橢圓形|長圓柱形|膠囊形|三角形|方形|多邊形|其他|無法辨識",
-  "color": "白|黃|紅|棕|粉紅|綠|藍|黑|灰（雙色用/隔開）|無法辨識",
-  "imprint": "刻字內容（無字填無、看不清填無法辨識）",
-  "score_line": "一字|十字|無|無法辨識"
-}`;
+const LINE_LEARNING_CONTENT_ANALYSIS_PROMPT = `
+你是線上教學平台的教材分析助理。請分析圖片中的教材、題目、圖表、投影片或手寫筆記，只描述實際看得到的內容，不要猜測。
+請回傳 JSON：contentType、title、summary、extractedText、keyConcepts、difficulty、suggestedQuestions、confidence。
+圖片模糊或不是教材時，請使用 unknown、空字串或空陣列。最多產生 3 題學習理解檢核問題，不提供醫療或其他專業診斷。`;
 
 // Basic action executor
 async function executeAction(actionNode: Node, payloadData: any, logs: any[]) {
@@ -606,7 +618,6 @@ async function executeAction(actionNode: Node, payloadData: any, logs: any[]) {
             }
 
             case 'action_image_analysis': {
-                const baseUrl = getInternalBaseUrl();
                 const apiEndpoint = config?.apiEndpoint || '/api/image-analysis';
                 const inputField = config?.inputField || 'imageBase64';
                 const outputField = config?.outputField || 'analysisResult';
@@ -616,13 +627,20 @@ async function executeAction(actionNode: Node, payloadData: any, logs: any[]) {
 
                 if (!imageBase64) throw new Error(`Image data not found in path: ${inputField}`);
 
-                const targetUrl = apiEndpoint.startsWith('http') ? apiEndpoint : `${baseUrl}${apiEndpoint.startsWith('/') ? '' : '/'}${apiEndpoint}`;
-
-                const imgRes = await fetch(targetUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ imageBase64, prompt })
-                });
+                // /api/image-analysis 現在要求 admin session 或 HMAC；預設走內建 path 時用
+                // internalWorkflowFetch 帶 HMAC 簽名。節點若被設定成打外部自訂 URL，則不是我們
+                // 自己的 route，HMAC 無意義，維持原本直接呼叫。
+                const isDefaultInternalEndpoint = !apiEndpoint.startsWith('http');
+                const imgRes = isDefaultInternalEndpoint
+                    ? await internalWorkflowFetch(
+                        apiEndpoint.startsWith('/') ? apiEndpoint : `/${apiEndpoint}`,
+                        { imageBase64, prompt }
+                    )
+                    : await fetch(apiEndpoint, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ imageBase64, prompt })
+                    });
 
                 const imgData = await imgRes.json();
                 if (!imgRes.ok || !imgData.ok) {
@@ -741,7 +759,7 @@ async function executeAction(actionNode: Node, payloadData: any, logs: any[]) {
                 if (!aiIntegration?.config?.apiKey) throw new Error('No active AI service available for image analysis');
 
                 // Analyze with Vision AI
-                const analysisPrompt = config?.prompt || LINE_DRUG_ANALYSIS_PROMPT;
+                const analysisPrompt = config?.prompt || LINE_LEARNING_CONTENT_ANALYSIS_PROMPT;
                 const analysisResult = await analyzeLineImageWithVisionAI(imageBuffer, aiIntegration, analysisPrompt);
 
                 const outField = config?.outputField || 'analysisResult';
@@ -749,10 +767,10 @@ async function executeAction(actionNode: Node, payloadData: any, logs: any[]) {
 
                 // Also flatten top-level result fields for easy template access
                 if (analysisResult && !analysisResult.raw) {
-                    payloadData.analysis_shape = analysisResult.shape || '無法辨識';
-                    payloadData.analysis_color = analysisResult.color || '無法辨識';
-                    payloadData.analysis_imprint = analysisResult.imprint || '無';
-                    payloadData.analysis_score_line = analysisResult.score_line || '無';
+                    payloadData.analysis_title = analysisResult.title || '未辨識';
+                    payloadData.analysis_summary = analysisResult.summary || '';
+                    payloadData.analysis_content_type = analysisResult.contentType || 'unknown';
+                    payloadData.analysis_questions = analysisResult.suggestedQuestions || [];
                 }
                 break;
             }
@@ -786,11 +804,7 @@ async function executeAction(actionNode: Node, payloadData: any, logs: any[]) {
                 const libraryId = parseTemplate(config?.libraryId || '', payloadData);
 
                 try {
-                    const res = await fetch(`${getInternalBaseUrl()}/api/workflows/context7-retrieve`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ query, libraryId })
-                    });
+                    const res = await internalWorkflowFetch('/api/workflows/context7-retrieve', { query, libraryId });
                     const result = await res.json();
                     payloadData.context7_result = result;
                 } catch (e: any) {
@@ -805,11 +819,7 @@ async function executeAction(actionNode: Node, payloadData: any, logs: any[]) {
                 const body = parseTemplate(config?.body || '{{message}}', payloadData);
 
                 try {
-                    const res = await fetch(`${getInternalBaseUrl()}/api/workflows/gmail-send`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ to, subject, body })
-                    });
+                    const res = await internalWorkflowFetch('/api/workflows/gmail-send', { to, subject, body });
                     const result = await res.json();
                     payloadData.gmail_sent = result;
                 } catch (e: any) {
@@ -824,11 +834,7 @@ async function executeAction(actionNode: Node, payloadData: any, logs: any[]) {
                 const body = parseTemplate(config?.body || '{{message}}', payloadData);
 
                 try {
-                    const res = await fetch(`${getInternalBaseUrl()}/api/workflows/resend-send`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ to, subject, body })
-                    });
+                    const res = await internalWorkflowFetch('/api/workflows/resend-send', { to, subject, body });
                     const result = await res.json();
                     payloadData.resend_sent = result;
                 } catch (e: any) {
@@ -843,11 +849,7 @@ async function executeAction(actionNode: Node, payloadData: any, logs: any[]) {
                 const documents = parseTemplate(config?.documents || '{{documents}}', payloadData);
 
                 try {
-                    const res = await fetch(`${getInternalBaseUrl()}/api/workflows/qdrant-knowledge-base`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ collectionName, vectorSize, documents })
-                    });
+                    const res = await internalWorkflowFetch('/api/workflows/qdrant-knowledge-base', { collectionName, vectorSize, documents });
                     const result = await res.json();
                     payloadData.qdrant_result = result;
                 } catch (e: any) {
@@ -861,11 +863,7 @@ async function executeAction(actionNode: Node, payloadData: any, logs: any[]) {
                 const format = config?.format || 'json';
 
                 try {
-                    const res = await fetch(`${getInternalBaseUrl()}/api/workflows/figma-export`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ fileKey, format })
-                    });
+                    const res = await internalWorkflowFetch('/api/workflows/figma-export', { fileKey, format });
                     const result = await res.json();
                     payloadData.figma_export = result;
                 } catch (e: any) {
@@ -880,11 +878,7 @@ async function executeAction(actionNode: Node, payloadData: any, logs: any[]) {
                 const fileType = config?.fileType || 'json';
 
                 try {
-                    const res = await fetch(`${getInternalBaseUrl()}/api/workflows/import-file`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ fileContent, fileName, fileType })
-                    });
+                    const res = await internalWorkflowFetch('/api/workflows/import-file', { fileContent, fileName, fileType });
                     const result = await res.json();
                     payloadData.imported_data = result;
                 } catch (e: any) {
@@ -899,11 +893,7 @@ async function executeAction(actionNode: Node, payloadData: any, logs: any[]) {
                 const data = parseTemplate(config?.dataField || '{{payload}}', payloadData);
 
                 try {
-                    const res = await fetch(`${getInternalBaseUrl()}/api/workflows/export-file`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ format, fileName, data })
-                    });
+                    const res = await internalWorkflowFetch('/api/workflows/export-file', { format, fileName, data });
                     const result = await res.json();
                     payloadData.export_result = result;
                 } catch (e: any) {

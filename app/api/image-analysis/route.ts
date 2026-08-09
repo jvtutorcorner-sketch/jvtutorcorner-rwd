@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { withAdminOrHmac, type AuthedRequest } from '@/lib/auth/apiGuard';
+import { LEARNING_CONTENT_ANALYSIS_PROMPT } from '@/lib/learningContentAnalysis';
 
 const ddbRegion = process.env.CI_AWS_REGION || process.env.AWS_REGION;
 const ddbExplicitAccessKey = process.env.CI_AWS_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID;
@@ -20,25 +22,6 @@ const APPS_TABLE = process.env.DYNAMODB_TABLE_APP_INTEGRATIONS || 'jvtutorcorner
 const useDynamoForApps =
     typeof APPS_TABLE === 'string' && APPS_TABLE.length > 0 &&
     (process.env.NODE_ENV === 'production' || !!(process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID));
-
-const DRUG_ANALYSIS_PROMPT = `
-你是一位專業且嚴謹的「AI 數位藥劑師視覺助理」。你的任務是仔細觀察使用者上傳的藥品圖片，並精準萃取出藥品的外觀特徵。
-
-【任務規則】
-1. 你只能根據圖片中「真實看到」的特徵進行描述。絕對不可以猜測、推論或捏造圖片中看不清楚的細節。
-2. 如果圖片極度模糊、嚴重反光，或者根本不是藥品，請在對應的特徵欄位填寫 "無法辨識"。
-
-【特徵萃取標準】
-請分析圖片並回傳以下 JSON 結構：
-{
-  "shape": "請從以下選項中選擇：圓形、橢圓形、長圓柱形、膠囊形、三角形、方形、多邊形、其他。若無法辨識請填 '無法辨識'。",
-  "color": "請辨識藥品的主要顏色。請使用單一基礎顏色描述，例如：白、黃、紅、棕、粉紅、綠、藍、黑、灰。若有雙色請用 '/' 隔開。若無法辨識請填 '無法辨識'。",
-  "imprint": "請仔細讀取藥丸表面的『英文、數字或符號刻字』。請區分大小寫，若有空格請保留。若雙面皆有刻字請用 '/' 隔開。若表面平滑無字，請填寫 '無'。若模糊看不清請填 '無法辨識'。",
-  "score_line": "請觀察藥丸表面是否有『刻痕』。若有一條直線請填 '一字'，若有十字線請填 '十字'，若無刻痕請填 '無'。"
-}
-
-這攸關醫療安全，寧可回傳 "無法辨識"，也絕對不可以使用推測的數值。
-`;
 
 // Helper to get AI integration (fallback priority: OPENAI > ANTHROPIC > GEMINI)
 async function getAIIntegration(): Promise<any> {
@@ -192,10 +175,13 @@ async function analyzeWithAnthropic(imageBase64: string, apiKey: string, prompt:
     return responseText ? JSON.parse(responseText) : null;
 }
 
-export async function POST(request: Request) {
+// 先前完全沒有 auth：任何人都能匿名觸發付費的 AI 視覺模型呼叫（OpenAI/Anthropic/Gemini），
+// 等同一個公開、無限制的第三方 API 額度濫用管道。工作流程引擎會用 HMAC 呼叫，人類使用者
+// 只能透過 /apps 後台（admin）觸發，所以用 withAdminOrHmac。
+export const POST = withAdminOrHmac('/api/image-analysis', async (request: AuthedRequest) => {
     try {
         const body = await request.json();
-        const { imageBase64, prompt = DRUG_ANALYSIS_PROMPT, model } = body;
+        const { imageBase64, prompt = LEARNING_CONTENT_ANALYSIS_PROMPT, model } = body;
 
         if (!imageBase64) {
             return NextResponse.json({ error: '缺少 imageBase64' }, { status: 400 });
@@ -218,7 +204,7 @@ export async function POST(request: Request) {
             });
         } else {
             return NextResponse.json(
-                { error: '圖片分析失敗，請重新上傳清晰的藥品圖片。' },
+                { error: '教材分析失敗，請重新上傳清晰的教材圖片。' },
                 { status: 500 }
             );
         }
@@ -229,4 +215,4 @@ export async function POST(request: Request) {
             { status: 500 }
         );
     }
-}
+});

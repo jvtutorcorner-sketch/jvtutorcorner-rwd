@@ -578,14 +578,15 @@ export function useAppsPage() {
                     });
                     const data = await res.json();
                     if (data.ok && data.result) {
-                        let responseText = '📸 藥品辨識結果：\n\n';
+                        let responseText = '📚 教材內容分析結果：\n\n';
                         if (data.result.raw) {
                             responseText += data.result.raw;
                         } else {
-                            responseText += `🔷 形狀：${data.result.shape || '無法辨識'}\n`;
-                            responseText += `🔶 顏色：${data.result.color || '無法辨識'}\n`;
-                            responseText += `✏️ 刻字：${data.result.imprint || '無'}\n`;
-                            responseText += `📏 刻痕：${data.result.score_line || '無'}\n`;
+                            responseText += `📖 類型：${data.result.contentType || '待確認'}\n`;
+                            responseText += `📝 標題：${data.result.title || '未辨識'}\n`;
+                            responseText += `💡 摘要：${data.result.summary || '無'}\n`;
+                            responseText += `🎯 難度：${data.result.difficulty || '待確認'}\n`;
+                            responseText += `❓ 檢核題數：${Array.isArray(data.result.suggestedQuestions) ? data.result.suggestedQuestions.length : 0}\n`;
                         }
                         setImageTestResult(responseText);
                     } else {
