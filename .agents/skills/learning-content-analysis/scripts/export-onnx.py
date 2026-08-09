@@ -1,5 +1,5 @@
 from ultralytics import YOLO
-
+ 
 # 載入您訓練出的最佳權重 (.pt 檔案)
 model = YOLO('best.pt')
 

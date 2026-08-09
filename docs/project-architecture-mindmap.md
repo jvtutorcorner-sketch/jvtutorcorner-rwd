@@ -89,7 +89,7 @@ mindmap
     - 互動式白板功能 (Konva + PDF Sync)
     - 教室等待頁同步 (SSE + BroadcastChannel)
 - 附加整合功能：
-    - 商品/藥品辨識模型 (ONNX)
+    - 教學教材與課程內容影像分析模型 (ONNX)
     - 郵件服務整合 (SMTP + Resend)
 
 ## 3. AI 服務架構 (AI Ecosystem)
@@ -114,4 +114,3 @@ mindmap
 - AI Skills：各功能模組的 AI 開發技能文件 (.agents/skills，涵蓋 42+ 個檢驗項目)
 - Workflows：Git Commit 規範、CI/CD 與業務流程說明
 - 心智圖匯入指南：支援 Xmind 匯入的專用格式 (MD/OPML)
-

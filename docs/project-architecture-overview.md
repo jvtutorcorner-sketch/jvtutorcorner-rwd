@@ -1,4 +1,4 @@
-# JVTutorCorner 專案架構文件
+# JVTutorCorner Project Architecture Overview
 
 **文件版本：** 2026-06-28  
 **適用系統：** JV Tutor Corner（AWS Amplify Serverless）  

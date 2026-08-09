@@ -5,7 +5,7 @@ model = YOLO('yolov8n.pt')
 
 # 2. 開始訓練
 # data: 您的 Roboflow YAML 設定檔路徑
-# epochs: 訓練輪數 (藥品建議 100-300 輪)
+# epochs: 訓練輪數（教材資料集依驗證集 loss 與 early stopping 調整）
 # imgsz: 圖片解析度 (通常為 640)
 # batch: 批次大小 (若 T4 GPU 可設為 16 或 32)
 results = model.train(

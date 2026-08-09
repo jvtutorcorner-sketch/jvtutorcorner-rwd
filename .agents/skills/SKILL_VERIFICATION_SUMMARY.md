@@ -56,7 +56,7 @@
 ❌ payment-restitution-logic
 ❌ payment-simulation-linepay
 ❌ points-escrow
-❌ product-detection-ml
+❌ learning-content-analysis
 ❌ recommendation-onboarding
 ❌ student-courses-page
 ❌ student-enrollment-flow

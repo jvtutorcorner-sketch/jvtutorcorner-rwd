@@ -301,6 +301,47 @@
   - 不重複 `b2b-core-modules` 已覆蓋的併發/邊界案例，只示範常見使用者路徑
 - **架構對齊**: ✅ 對齊完成
 
+### 25. b2b-enterprise-registration
+- **狀態**: ✅ VERIFIED
+- **驗證日期**: 2026-08-08
+- **最後更新**: 2026-08-08
+- **驗證項目**:
+  - ✅ `/api/organizations/public` 公開組織清單（含網域過濾、席次計算）
+  - ✅ `/api/register` orgId 分支：網域檢查、席次前置檢查、teacher 角色額外建 Teachers 記錄
+  - ✅ 併發搶最後幾個席次下的原子性 rollback（輸家不留殘留 profile）
+  - ✅ 真實瀏覽器單筆註冊 + CSV 批次匯入全流程
+- **已知問題**:
+  - 過程中發現並修復 4 個問題：CSV 批次匯入完全沒帶驗證碼欄位（100% 不能用）、`PermissionGuard` 把匿名訪客誤判成 student 角色導致整頁對真實訪客不可達（改頁面權限設定修復，未動 `PermissionGuard.tsx` 邏輯）、`/api/register` 回傳的 profile 是指派組織前的舊快照、`lib/profilesService.ts` 的 `findProfileByEmail` 對查無資料的情況拋錯而非回傳 null（影響 login/forgot-password/create-user/license-assign/member-add 等多處）
+  - 順帶發現 `POST /api/admin/settings` 完全沒有認證保護，任何人都能改頁面權限矩陣——獨立的安全問題，不在本技能範圍
+- **架構對齊**: ✅ 對齊完成
+
+### 26. b2b-http-license-routes
+- **狀態**: ✅ VERIFIED
+- **驗證日期**: 2026-08-08
+- **最後更新**: 2026-08-08
+- **驗證項目**:
+  - ✅ HTTP route 層本身（`withAuth`/`requireOrgAccess`/`requireSystemAdmin` 串接、request 驗證、狀態碼）——涵蓋 `organizations`、`org-units`、`licenses` 三組共 10 個 route 檔案，86 個斷言
+  - ✅ system admin / org admin / plain member 三種真實身分在 HTTP 層的授權分層行為
+  - ✅ audit log 實際落地驗證（`organization.create`/`delete.soft`/`delete.hard`、`license.assign`/`unassign`）
+  - ✅ 授權管理 UI（`OrgLicensesPanel.tsx`）：批次核發 → 指派 → 取消指派 → 撤銷全流程（headed 瀏覽器）
+- **已知問題**:
+  - 過程中發現並修復 3 個問題：正式環境 `jvtutorcorner-audit-logs` 資料表從未部署（稽核寫入全部靜默失敗，已建表）、`licenseService.createLicense` 對 `byUserId` GSI key 寫入 `NULL` 導致核發庫存授權必定 500（已修復為省略欄位）、核發上限誤把 `revoked`/`expired` 歷史記錄永久算進配額造成「席次外洩」（已修復為只算 usedSeats + pending）
+  - `GET /api/organizations` 與 `GET /api/organizations/[id]` 的授權寬鬆度不一致（前者任何組織成員可讀，後者要求 isOrgAdmin）——記錄但未修復，需要產品判斷該收緊哪一端
+- **架構對齊**: ✅ 對齊完成
+
+### 27. learning-content-analysis
+- **狀態**: ⚠️ PARTIAL
+- **驗證日期**: 2026-08-08
+- **最後更新**: 2026-08-08
+- **驗證項目**:
+  - ✅ 已由商品／藥品辨識改為教材、講義、題目、圖表、投影片與手寫筆記的內容分析
+  - ✅ 已對齊 `app/learning-content/page.tsx`、`app/api/learning-content-analysis/route.ts` 與 `lib/learningContentAnalysis.ts`
+  - ✅ 已補教材內容標記規範、訓練腳本與學習問卷入口
+  - ✅ `e2e/learning_content_analysis.spec.ts` 已驗證新入口、舊路由 redirect、匿名 API 拒絕與舊掃描 API 不得匿名使用
+- **已知缺口**:
+  - 真實 AI provider contract、教材 PDF pipeline、分析結果持久化與完整課程 fixture 尚未完成
+- **架構對齊**: ✅ 對齊完成
+
 ---
 
 ## 驗證流程與更新指南
