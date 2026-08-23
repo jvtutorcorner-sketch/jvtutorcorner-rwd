@@ -46,24 +46,38 @@ async function loginAs(page: Page, email: string, password: string) {
   await page.fill('input[type="email"]', email);
   await page.fill('input[type="password"]', password);
 
-  try {
-    await page.waitForSelector('img[alt="captcha"]', { timeout: 15000 });
-  } catch {
-    /* captcha may not appear */
-  }
-  try {
-    await page.waitForSelector('button[type="submit"]:not([disabled])', { timeout: 10000 });
-  } catch {
-    /* button may already be enabled */
-  }
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      await page.waitForSelector('img[alt="captcha"]', { timeout: 15000 });
+    } catch {
+      /* captcha may not appear */
+    }
+    try {
+      await page.waitForSelector('button[type="submit"]:not([disabled])', { timeout: 10000 });
+    } catch {
+      /* button may already be enabled */
+    }
 
-  await page.fill('#captcha', LOGIN_BYPASS_SECRET);
-  await page.click('button[type="submit"]');
+    // Next.js dev 模式下 React StrictMode 會讓載入驗證碼的 useEffect 跑兩次；如果第二次
+    // fetch 在填完欄位「之後」才 resolve，會把欄位清空（loadCaptcha 成功時會
+    // setCaptchaValue('')）——真的渲染的 headed 模式時間點跟 headless 不同，特別容易撞見
+    // 這個窗口，結果送出的 captchaValue 是空字串，後端回 400 captcha_incorrect，整支測試
+    // 從此在沒登入的狀態下繼續跑（後面每個 API 呼叫都會是 401 missing session token）。
+    // 送出前稍等一下、確認欄位值還在，不在就重填一次。
+    await page.fill('#captcha', LOGIN_BYPASS_SECRET);
+    await page.waitForTimeout(300);
+    if ((await page.inputValue('#captcha').catch(() => '')) !== LOGIN_BYPASS_SECRET) {
+      await page.fill('#captcha', LOGIN_BYPASS_SECRET);
+    }
+    await page.click('button[type="submit"]');
 
-  try {
-    await page.waitForURL((url) => !url.pathname.includes('/login'), { timeout: 15000 });
-  } catch {
-    /* fall through — caller will fail on the next assertion if login actually failed */
+    try {
+      await page.waitForURL((url) => !url.pathname.includes('/login'), { timeout: 15000 });
+      return;
+    } catch {
+      if (attempt < 3) continue;
+      /* fall through — caller will fail on the next assertion if login actually failed */
+    }
   }
 }
 
