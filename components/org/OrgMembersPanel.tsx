@@ -17,6 +17,8 @@ type Member = {
   role: string;
   orgUnitId?: string | null;
   isOrgAdmin?: boolean;
+  isDeptAdmin?: boolean;
+  deptAdminUnitId?: string | null;
   license: License | null;
 };
 
@@ -126,6 +128,39 @@ export default function OrgMembersPanel({ orgId, usedSeats, maxSeats, isSystemAd
     }
   }
 
+  function unitNameFor(orgUnitId?: string | null) {
+    return orgUnits.find((u) => u.id === orgUnitId)?.name || orgUnitId || '';
+  }
+
+  async function handleToggleDeptAdmin(member: Member) {
+    const name = `${member.firstName || ''} ${member.lastName || ''}`.trim() || member.email;
+    const nextValue = !member.isDeptAdmin;
+
+    if (nextValue && !member.orgUnitId) {
+      alert('請先為此成員指定部門，才能設為部門管理員——部門管理員的管理範圍就是他目前所屬的部門（含子部門）。');
+      return;
+    }
+    if (nextValue && !confirm(`確定要把「${name}」設為「${unitNameFor(member.orgUnitId)}」的部門管理員嗎？\n他將能管理這個部門與其子部門的成員和組織單位。`)) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/organizations/${orgId}/members/${member.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          isDeptAdmin: nextValue,
+          deptAdminUnitId: nextValue ? member.orgUnitId : undefined
+        })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data?.error || '更新部門管理員狀態失敗');
+      await load();
+    } catch (err: any) {
+      alert(err?.message || String(err));
+    }
+  }
+
   async function handleRemove(member: Member) {
     const name = `${member.firstName || ''} ${member.lastName || ''}`.trim() || member.email;
     if (!confirm(`確定要將「${name}」移出組織嗎？此動作會釋放其席次。`)) return;
@@ -206,6 +241,7 @@ export default function OrgMembersPanel({ orgId, usedSeats, maxSeats, isSystemAd
                 <th style={th}>角色</th>
                 <th style={th}>部門</th>
                 <th style={th}>組織管理員</th>
+                <th style={th}>部門管理員</th>
                 <th style={th}>授權狀態</th>
                 <th style={th}>操作</th>
               </tr>
@@ -237,6 +273,20 @@ export default function OrgMembersPanel({ orgId, usedSeats, maxSeats, isSystemAd
                       disabled={!isSystemAdmin}
                       onChange={() => handleToggleOrgAdmin(m)}
                     />
+                  </td>
+                  <td style={td}>
+                    <input
+                      type="checkbox"
+                      checked={!!m.isDeptAdmin}
+                      disabled={!isSystemAdmin}
+                      onChange={() => handleToggleDeptAdmin(m)}
+                      title={m.isDeptAdmin ? `管理範圍：${unitNameFor(m.deptAdminUnitId)}（含子部門）` : undefined}
+                    />
+                    {m.isDeptAdmin && (
+                      <span style={{ marginLeft: 6, fontSize: 12, color: '#666' }}>
+                        {unitNameFor(m.deptAdminUnitId)}
+                      </span>
+                    )}
                   </td>
                   <td style={td}>
                     {m.license ? (

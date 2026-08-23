@@ -129,54 +129,20 @@ export default function LoginPage() {
   useEffect(() => {
     loadCaptcha();
 
-    // Check for Google Auth redirect success
-    const handleGoogleRedirect = async () => {
-      if (typeof window === 'undefined') return;
-
+    // Google SSO isn't implemented yet (no OAuth token exchange, no verification) — the
+    // callback route always redirects back with an error now. Surface that error if present;
+    // there is no success path here, and this must never fabricate a local session from
+    // URL query params (that was the previous, spoofable behavior).
+    if (typeof window !== 'undefined') {
       const searchParams = new URLSearchParams(window.location.search);
-      const isGoogleSuccess = searchParams.get('google_auth_success');
-
-      if (isGoogleSuccess === 'true') {
-        const authEmail = searchParams.get('email') || 'authorized-google-user';
-        
-        const user: StoredUser = {
-          email: authEmail,
-          plan: 'viewer',
-          firstName: 'Google',
-          lastName: 'User',
-          role: 'student',
-        };
-
-        setStoredUser(user);
-        setCurrentUser(user);
-
-        try {
-          const nowRef = String(Date.now());
-          window.sessionStorage.setItem('tutor_last_login_time', nowRef);
-          window.localStorage.setItem('tutor_last_login_time', nowRef);
-          window.sessionStorage.setItem('tutor_login_complete', 'true');
-        } catch { }
-
-        window.dispatchEvent(new Event('tutor:auth-changed'));
-
-        // Clean up URL
+      if (searchParams.get('error') === 'google_auth_unavailable') {
+        setError('Google 登入目前尚未開放，請使用 Email 密碼登入。');
         router.replace('/login');
-
-        alert(`${t('login_success')}\nGoogle Account Verified.\n${t('redirecting_home')}`);
-
-        // redirect based on previous requested redirect url or home
-        const redirect = searchParams.get('redirect');
-        if (redirect) {
-          router.push(decodeURIComponent(redirect));
-        } else {
-          router.push('/');
-        }
       } else if (searchParams.get('error') === 'google_auth_failed') {
         setError('Google 帳號驗證登入失敗。');
+        router.replace('/login');
       }
-    };
-
-    handleGoogleRedirect();
+    }
   }, [router, t]);
 
   const handleForgotSubmit = async (e: FormEvent<HTMLFormElement>) => {

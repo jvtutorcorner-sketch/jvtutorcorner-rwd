@@ -10,7 +10,8 @@
 import { NextResponse } from 'next/server';
 import orgUnitService from '@/lib/orgUnitService';
 import { withAuth } from '@/lib/auth/apiGuard';
-import { requireOrgAccess } from '@/lib/auth/orgAccess';
+import { requireOrgUnitAccess } from '@/lib/auth/orgAccess';
+import { writeAuditLog } from '@/lib/auditLogService';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,7 +37,7 @@ export const POST = withAuth(async (req, context) => {
       );
     }
 
-    const guard = await requireOrgAccess(req, unit.orgId, 'write');
+    const guard = await requireOrgUnitAccess(req, unit, 'write');
     if (!guard.ok) return guard.response;
 
     const body = await req.json();
@@ -50,9 +51,34 @@ export const POST = withAuth(async (req, context) => {
       );
     }
 
+    // 部門管理員只能在自己的子樹裡搬移——目的地也必須在範圍內，且不能搬到組織根層級
+    // （那等於把單位搬出自己的管轄範圍，屬於組織層級的重組決策）。
+    if (guard.actor.isDeptAdmin && !guard.actor.isOrgAdmin && !guard.actor.isSystemAdmin) {
+      if (newParentId === null) {
+        return NextResponse.json(
+          { ok: false, error: 'Forbidden: department admins cannot move a unit to the organization root' },
+          { status: 403 }
+        );
+      }
+      const newParent = await orgUnitService.getOrgUnitById(newParentId);
+      if (!newParent) {
+        return NextResponse.json({ ok: false, error: 'Parent unit not found' }, { status: 404 });
+      }
+      const newParentGuard = await requireOrgUnitAccess(req, newParent, 'write');
+      if (!newParentGuard.ok) return newParentGuard.response;
+    }
+
     console.log(`[OrgUnitsAPI] Moving unit ${id} to parent ${newParentId || 'ROOT'}`);
 
     const orgUnit = await orgUnitService.moveOrgUnit(id, newParentId);
+
+    await writeAuditLog({
+      actorId: guard.actor.session.userId,
+      action: 'orgunit.move',
+      targetType: 'orgUnit',
+      targetId: id,
+      metadata: { orgId: unit.orgId, fromParentId: unit.parentId ?? null, toParentId: newParentId }
+    });
 
     return NextResponse.json({
       ok: true,

@@ -12,6 +12,7 @@ import { NextResponse } from 'next/server';
 import licenseService from '@/lib/licenseService';
 import { withAuth } from '@/lib/auth/apiGuard';
 import { requireOrgAccess } from '@/lib/auth/orgAccess';
+import { writeAuditLog } from '@/lib/auditLogService';
 
 export const dynamic = 'force-dynamic';
 
@@ -114,6 +115,14 @@ export const DELETE = withAuth(async (req, context) => {
     const hardDelete = searchParams.get('hard') === 'true';
 
     await licenseService.deleteLicense(id, hardDelete);
+
+    await writeAuditLog({
+      actorId: guard.actor.session.userId,
+      action: hardDelete ? 'license.delete' : 'license.revoke',
+      targetType: 'license',
+      targetId: id,
+      metadata: { orgId: license.orgId, hardDelete }
+    });
 
     return NextResponse.json({
       ok: true,

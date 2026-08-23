@@ -1,0 +1,68 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudFormation template for the Org Invoices table — manual B2B billing/invoice records'
+
+Parameters:
+  OrgInvoicesTableName:
+    Type: String
+    Default: jvtutorcorner-org-invoices
+    Description: DynamoDB table name for organization invoice records
+
+Resources:
+  OrgInvoicesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref OrgInvoicesTableName
+
+      AttributeDefinitions:
+        # Primary Key
+        - AttributeName: id
+          AttributeType: S
+
+        # GSI: list all invoices for an organization, most recent due date first
+        - AttributeName: orgId
+          AttributeType: S
+        - AttributeName: dueDate
+          AttributeType: S
+
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+
+      BillingMode: PAY_PER_REQUEST
+
+      GlobalSecondaryIndexes:
+        - IndexName: byOrgId
+          KeySchema:
+            - AttributeName: orgId
+              KeyType: HASH
+            - AttributeName: dueDate
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+
+      SSESpecification:
+        SSEEnabled: true
+
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
+      Tags:
+        - Key: Project
+          Value: jvtutorcorner
+        - Key: Environment
+          Value: production
+        - Key: Purpose
+          Value: B2B-Billing
+
+Outputs:
+  OrgInvoicesTableName:
+    Description: Name of the Org Invoices DynamoDB table
+    Value: !Ref OrgInvoicesTable
+    Export:
+      Name: !Sub '${AWS::StackName}-OrgInvoicesTableName'
+
+  OrgInvoicesTableArn:
+    Description: ARN of the Org Invoices DynamoDB table
+    Value: !GetAtt OrgInvoicesTable.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-OrgInvoicesTableArn'

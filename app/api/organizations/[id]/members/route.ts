@@ -13,7 +13,9 @@ import { findProfilesByOrgId, findProfileByEmail, getProfileById } from '@/lib/p
 import licenseService from '@/lib/licenseService';
 import orgMembershipService from '@/lib/orgMembershipService';
 import { withAuth } from '@/lib/auth/apiGuard';
-import { requireOrgAccess } from '@/lib/auth/orgAccess';
+import { requireOrgOrDeptAccess, requireOrgUnitAccess, resolveDeptScopeUnitIds } from '@/lib/auth/orgAccess';
+import { getOrgUnitById } from '@/lib/orgUnitService';
+import { writeAuditLog } from '@/lib/auditLogService';
 
 export const dynamic = 'force-dynamic';
 
@@ -48,13 +50,17 @@ export const GET = withAuth(async (req, context) => {
   try {
     const { id: orgId } = await (context as { params: Promise<{ id: string }> }).params;
 
-    const guard = await requireOrgAccess(req, orgId, 'read');
+    const guard = await requireOrgOrDeptAccess(req, orgId, 'read');
     if (!guard.ok) return guard.response;
 
-    const [profiles, activeLicenses] = await Promise.all([
+    const [allProfiles, activeLicenses] = await Promise.all([
       findProfilesByOrgId(orgId),
       licenseService.listLicensesByOrg(orgId, 'active')
     ]);
+
+    // 部門管理員只看得到自己與子孫單位裡的成員；沒有部門的成員（orgUnitId 未設）一律排除。
+    const scope = await resolveDeptScopeUnitIds(guard.actor);
+    const profiles = scope ? allProfiles.filter((p: any) => p.orgUnitId && scope.has(p.orgUnitId)) : allProfiles;
 
     const licenseByUserId = new Map(activeLicenses.map((l) => [l.userId, l]));
 
@@ -80,7 +86,7 @@ export const POST = withAuth(async (req, context) => {
   try {
     const { id: orgId } = await (context as { params: Promise<{ id: string }> }).params;
 
-    const guard = await requireOrgAccess(req, orgId, 'write');
+    const guard = await requireOrgOrDeptAccess(req, orgId, 'write');
     if (!guard.ok) return guard.response;
 
     const body = await req.json();
@@ -91,6 +97,22 @@ export const POST = withAuth(async (req, context) => {
         { ok: false, error: 'Forbidden: only system administrators may grant org-admin' },
         { status: 403 }
       );
+    }
+
+    if (guard.actor.isDeptAdmin && !guard.actor.isOrgAdmin && !guard.actor.isSystemAdmin) {
+      // 部門管理員一定要把新成員放進自己範圍內的單位，不能加到組織層級（無部門）或別的部門。
+      if (!orgUnitId) {
+        return NextResponse.json(
+          { ok: false, error: 'Forbidden: department admins must assign members into their own scope (orgUnitId is required)' },
+          { status: 403 }
+        );
+      }
+      const targetUnit = await getOrgUnitById(orgUnitId);
+      if (!targetUnit) {
+        return NextResponse.json({ ok: false, error: '無效的組織單位' }, { status: 400 });
+      }
+      const unitGuard = await requireOrgUnitAccess(req, targetUnit, 'write');
+      if (!unitGuard.ok) return unitGuard.response;
     }
 
     let profileId = bodyProfileId as string | undefined;
@@ -121,6 +143,14 @@ export const POST = withAuth(async (req, context) => {
       courseId,
       expiresAt,
       assignedBy: guard.actor.session.userId
+    });
+
+    await writeAuditLog({
+      actorId: guard.actor.session.userId,
+      action: 'member.assign',
+      targetType: 'organization',
+      targetId: orgId,
+      metadata: { profileId, orgUnitId: orgUnitId || null, isOrgAdmin: isOrgAdmin === true, licenseId: result.license?.id }
     });
 
     return NextResponse.json(

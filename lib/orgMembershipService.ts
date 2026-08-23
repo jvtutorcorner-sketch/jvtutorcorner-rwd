@@ -384,9 +384,52 @@ export async function setMemberOrgAdmin(input: SetMemberOrgAdminInput): Promise<
   return result.Attributes as ProfileB2B;
 }
 
+export interface SetMemberDeptAdminInput {
+  orgId: string;
+  profileId: string;
+  isDeptAdmin: boolean;
+  /** Required when isDeptAdmin is true; ignored (cleared) when false. */
+  deptAdminUnitId?: string | null;
+}
+
+export async function setMemberDeptAdmin(input: SetMemberDeptAdminInput): Promise<ProfileB2B> {
+  const profile = (await getProfileById(input.profileId)) as ProfileB2B | null;
+  if (!profile) {
+    throw new Error('Profile not found');
+  }
+  if (profile.orgId !== input.orgId) {
+    throw new Error('Profile does not belong to this organization');
+  }
+
+  if (input.isDeptAdmin) {
+    if (!input.deptAdminUnitId) {
+      throw new Error('deptAdminUnitId is required when granting department admin');
+    }
+    const unit = await getOrgUnitById(input.deptAdminUnitId);
+    if (!unit || unit.orgId !== input.orgId) {
+      throw new Error('Org unit not found in this organization');
+    }
+  }
+
+  const result = await ddbDocClient.send(new UpdateCommand({
+    TableName: PROFILES_TABLE,
+    Key: { id: input.profileId },
+    UpdateExpression: 'SET isDeptAdmin = :v, deptAdminUnitId = :unitId, updatedAt = :now',
+    ExpressionAttributeValues: {
+      ':v': input.isDeptAdmin,
+      ':unitId': input.isDeptAdmin ? input.deptAdminUnitId : null,
+      ':now': new Date().toISOString()
+    },
+    ReturnValues: 'ALL_NEW'
+  }));
+
+  return result.Attributes as ProfileB2B;
+}
+
 export default {
   assignMemberWithLicense,
   removeMemberFromOrg,
   changeMemberOrgUnit,
-  setMemberOrgAdmin
+  setMemberOrgAdmin,
+  setMemberDeptAdmin
 };

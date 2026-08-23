@@ -6,6 +6,7 @@ import { getStoredUser } from "@/lib/mockAuth";
 import OrgUnitTreePanel from "@/components/org/OrgUnitTreePanel";
 import OrgMembersPanel from "@/components/org/OrgMembersPanel";
 import OrgLicensesPanel from "@/components/org/OrgLicensesPanel";
+import OrgBillingPanel from "@/components/org/OrgBillingPanel";
 
 type Organization = {
   id: string;
@@ -20,7 +21,7 @@ type Organization = {
   contractEndDate?: string;
 };
 
-type Tab = 'overview' | 'units' | 'members' | 'licenses';
+type Tab = 'overview' | 'units' | 'members' | 'licenses' | 'billing';
 
 const STATUS_LABEL: Record<Organization['status'], string> = {
   active: '啟用中',
@@ -132,7 +133,8 @@ export default function OrganizationDetailManager({ orgId }: Props) {
           ['overview', '概覽'],
           ['units', '組織單位'],
           ['members', '成員'],
-          ['licenses', '授權']
+          ['licenses', '授權'],
+          ['billing', '帳單']
         ] as [Tab, string][]).map(([key, label]) => (
           <button
             key={key}
@@ -171,6 +173,7 @@ export default function OrganizationDetailManager({ orgId }: Props) {
         />
       )}
       {tab === 'licenses' && <OrgLicensesPanel orgId={orgId} onSeatsChanged={loadOrg} />}
+      {tab === 'billing' && <OrgBillingPanel orgId={orgId} isSystemAdmin={isSystemAdmin} />}
     </div>
   );
 }

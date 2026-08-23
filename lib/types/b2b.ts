@@ -154,6 +154,17 @@ export interface ProfileB2B {
   /** Is this user an org admin? */
   isOrgAdmin?: boolean;
 
+  /**
+   * Is this user a department-scoped admin? Grants read/write over deptAdminUnitId and its
+   * descendant org units and their members only — never the whole organization. Mutually
+   * additive with isOrgAdmin (an org admin already has full access; this field only matters
+   * for members where isOrgAdmin is not true).
+   */
+  isDeptAdmin?: boolean;
+
+  /** The org unit this profile administers (self + descendants), when isDeptAdmin is true. */
+  deptAdminUnitId?: string | null;
+
   /** Assigned license ID (for tracking seat usage) */
   licenseId?: string | null;
 
@@ -241,6 +252,63 @@ export interface License {
 
   /** Last update timestamp (ISO 8601) */
   updatedAt: string;
+}
+
+// ==========================================
+// Org Billing (Manual invoice tracking — no payment gateway wired up; see
+// lib/orgBillingService.ts header for why)
+// ==========================================
+
+export interface OrgInvoice {
+  /** Primary key (UUID v4) */
+  id: string;
+
+  /** Parent organization ID */
+  orgId: string;
+
+  /** Billing period this invoice covers (ISO 8601 dates) */
+  periodStart: string;
+  periodEnd: string;
+
+  /** Seat count billed for this period — a snapshot, not a live reference to org.maxSeats */
+  seats: number;
+
+  /** Amount in the smallest currency unit (e.g. cents for USD, whole yuan/dollar for TWD/JPY — pick one convention and keep it consistent per org) */
+  amount: number;
+
+  /** ISO 4217 currency code */
+  currency: string;
+
+  /**
+   * 'unpaid' / 'paid' / 'void' are the only states actually stored — 'overdue' is never
+   * written, only computed at read time from (status === 'unpaid' && dueDate < now) by
+   * getOrgBillingStatus(). Storing a persisted 'overdue' state would need a cron job to
+   * transition it and could drift from reality; computing it on read cannot drift.
+   */
+  status: 'unpaid' | 'paid' | 'void';
+
+  dueDate: string;
+  paidAt?: string;
+  notes?: string;
+
+  /** Who created/last mutated this invoice (system admin only — see orgBillingService) */
+  createdBy: string;
+
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateOrgInvoiceInput {
+  orgId: string;
+  periodStart: string;
+  periodEnd: string;
+  /** Defaults to the organization's current maxSeats if omitted */
+  seats?: number;
+  amount: number;
+  currency: string;
+  dueDate: string;
+  notes?: string;
+  createdBy: string;
 }
 
 // ==========================================

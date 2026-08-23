@@ -197,7 +197,10 @@ export async function POST(req: Request) {
         }
       }
 
-      return NextResponse.json({ ok: true, profile, emailSent, orgId: orgId || undefined, licenseId }, { status: 201 });
+      return NextResponse.json(
+        { ok: true, profile: { ...profile, password: undefined }, emailSent, orgId: orgId || undefined, licenseId },
+        { status: 201 }
+      );
     } catch (e: any) {
       console.error('[register] DynamoDB Profile write failed', e?.message || e);
       return NextResponse.json({ message: 'Failed to write to DB' }, { status: 500 });

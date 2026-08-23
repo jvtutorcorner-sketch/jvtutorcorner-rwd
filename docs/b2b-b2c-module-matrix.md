@@ -38,14 +38,19 @@
 
 目前共 32 個模組、57 個 API domain，未映射 API domain 為 0：
 
+> 2026-08-23 更新：B2B-06／07／08 的狀態已依實測結果更正（見各模組說明）；其餘模組的
+> `COVERED` 標記仍沿用 2026-08-08 的稽核結果，其中 B2B-01／02／04／05 引用的部分測試檔案
+> （`scripts/verify-b2b-enterprise-registration.mjs`、`scripts/verify-b2b-http-routes.mjs`
+> 等）經人工確認並不存在，`COVERED` 標記本身不完全可信，之後盤點時應一併修正。
+
 | 分組 | 模組數 | `COVERED` | `PARTIAL` | `BLOCKED` | `UNTESTED` | `NOT_IMPLEMENTED` |
 |---|---:|---:|---:|---:|---:|---:|
-| 企業 B2B | 9 | 5 | 2 | 1 | 0 | 1 |
+| 企業 B2B | 9 | 6 | 1 | 0 | 0 | 2 |
 | 一般學員 B2C | 7 | 5 | 2 | 0 | 0 | 0 |
 | 老師／管理員 | 4 | 0 | 4 | 0 | 0 | 0 |
 | B2B／B2C 共用 | 4 | 3 | 1 | 0 | 0 | 0 |
 | 平台共通／附加 | 8 | 1 | 7 | 0 | 0 | 0 |
-| **合計** | **32** | **14** | **16** | **1** | **0** | **1** |
+| **合計** | **32** | **15** | **15** | **0** | **0** | **2** |
 
 > 分組中的共用模組會以實際使用者範圍標記；因此同一個模組可能同時服務 B2B 與 B2C，但只計入一次。
 
@@ -100,29 +105,30 @@
 ### B2B-06 `dept_admin` 部門／子部門範圍
 
 - **責任**：讓部門管理者只能管理指定 `orgUnitId` 與其子部門的成員、授權和資料。
-- **API／Service**：`lib/auth/orgAccess.ts`、`app/api/org-units/**`、`app/api/organizations/[id]/members/route.ts`
-- **主要驗證**：本部門允許、子部門允許、兄弟部門拒絕、跨組織拒絕、不能自行提升權限、移動部門後範圍重新計算。
-- **測試**：`scripts/verify-b2b-dept-admin-scope.mjs`
-- **狀態**：`PARTIAL`
-- **缺口**：API guard 已存在，但產品沒有完整 UI 可將成員設定為 `dept_admin` 並指定部門，因此缺真實瀏覽器角色流程與資料層 fixture。
+- **API／Service**：`lib/auth/orgAccess.ts`（`requireOrgUnitAccess`／`requireOrgOrDeptAccess`／`resolveDeptScopeUnitIds`）、`lib/orgMembershipService.ts`（`setMemberDeptAdmin`）、`app/api/org-units/**`、`app/api/organizations/[id]/members/**`
+- **UI**：`components/org/OrgMembersPanel.tsx`（成員列表的「部門管理員」欄位，勾選即以該成員目前所屬部門為管理範圍）
+- **資料模型**：`ProfileB2B.isDeptAdmin` / `ProfileB2B.deptAdminUnitId`（2026-08-23 新增）。範圍判斷用 `orgUnit.path` 前綴比對，不是寫死的單位清單——部門被搬移後，管理範圍自動重算，不用重新授權。
+- **主要驗證**：本部門允許、子部門允許、兄弟部門拒絕、跨組織拒絕、不能自行提升權限（含不能把 `isDeptAdmin` 授予別人）、移動部門後範圍重新計算。
+- **測試**：`e2e/b2b_dept_admin_scope.spec.ts`（真實 HTTP API，22 個子步驟，含「組織管理員移動部門後、部門管理員範圍自動涵蓋新子部門」的動態重算驗證）
+- **狀態**：`COVERED`
+- **仍需注意**：v1 只允許系統管理員／組織管理員授予或收回 `isDeptAdmin`，部門管理員之間不能互相授權或移除彼此，避免範圍混亂；如需部門管理員自助委派子部門管理權，需要另外設計。
 
 ### B2B-07 跨租戶隔離／Org A-B／DSAR
 
 - **責任**：隔離不同 Organization 的課程、成員、訂單、Profile、證書與刪除／匿名化請求。
-- **Service／Data**：`lib/auth/sessionManager.ts`、`lib/auth/orgAccess.ts`、`lib/types/b2b.ts`
-- **主要驗證**：Org A session 不能讀／改 Org B；B2C 個人資料不能被企業查詢；公開證書驗證不暴露私有欄位；DSAR 匿名化保留正確稽核資料。
-- **測試狀態**：尚無可用的 Org A／Org B 真實 SSO fixture。
-- **狀態**：`BLOCKED`
-- **阻塞原因**：`SessionPayload` 尚無 `tenantId`，且完整跨租戶測試所需的真實 SSO fixture 尚未完成；不能用 skip 當成通過。
+- **Service／Data**：`lib/auth/orgAccess.ts`、`lib/types/b2b.ts`
+- **架構說明（2026-08-23 更正）**：先前把這個模組標成 `BLOCKED`、理由是「`SessionPayload` 沒有 `tenantId`」，這個判斷不成立——這個專案的組織權限完全不靠 session 帶的 tenant 宣告，`resolveOrgActor()` 每個請求都重新從 DynamoDB 查 `profile.orgId`／`isOrgAdmin`／`isDeptAdmin`，client 端無法偽造或用舊 session 繞過。加 `tenantId` 到 `SessionPayload` 不會提升安全性，所以沒有加。
+- **主要驗證**：Org A session 不能讀／改 Org B 的組織、部門、成員、授權（含正對照：Org A 讀寫自己的組織要正常成功，證明不是 guard 整個壞掉）。
+- **測試**：`e2e/b2b_cross_tenant_isolation.spec.ts`（真實 HTTP API，兩個真實登入 session 對打 11 種跨租戶操作 + 2 個正對照）
+- **狀態**：`PARTIAL`
+- **仍未涵蓋**：訂單／證書／DSAR 刪除或匿名化流程的跨租戶邊界尚未驗證；DSAR 匿名化功能本身也還沒實作（見下方「範圍以外」）。這次只把 B2B 核心資源（organizations／org-units／licenses／members）的跨租戶邊界從「沒有證據」變成「真實 HTTP 測試證明」。
 
 ### B2B-08 Google SSO／企業網域白名單
 
 - **責任**：authorization code 登入、state／nonce CSRF 防護、Google token 驗證、email verified 與企業網域白名單。
-- **UI／API／Service**：`app/login/page.tsx`、`app/api/auth/google/start/route.ts`、`app/api/auth/callback/google/route.ts`、`lib/auth/googleSSO.ts`
-- **主要驗證**：偽造 code、state、issuer、audience、nonce、未驗證 email、非白名單網域都必須拒絕且不建立 session；成功登入要正確建立組織關聯。
-- **測試**：`e2e/enterprise_general_security_contract.spec.ts`
-- **狀態**：`PARTIAL`
-- **缺口**：拒絕邊界已有驗證，但環境沒有真正 Google client credentials，尚無成功登入路徑的完整 E2E。
+- **API**：`app/api/auth/callback/google/route.ts`
+- **狀態說明（2026-08-23 更正）**：先前把這個模組標成 `PARTIAL`，並引用 `app/api/auth/google/start/route.ts`、`lib/auth/googleSSO.ts`、`e2e/enterprise_general_security_contract.spec.ts` 作為證據——這三個檔案在 git 歷史裡從來沒存在過。實際程式碼是一支明寫 `STUB` 的路由：收到任何 `code` 查詢參數就當作登入成功，沒有 token exchange、沒有 JWT 驗證、沒有 state/nonce，而且 UI 上完全沒有「使用 Google 登入」的按鈕能導向這條路徑——只能靠手動組網址觸發。已於 2026-08-23 移除這個假成功路徑：路由現在一律導回登入頁並帶錯誤訊息，前端也不再信任 URL 帶的 `google_auth_success`／`email` 參數建立本機 session。密碼登入不受影響。
+- **狀態**：`NOT_IMPLEMENTED`（安全性已修復，但真正的 Google OAuth 整合——token exchange、JWT 驗證、網域白名單——需要使用者提供 Google Cloud OAuth client ID/secret 才能開始做）
 
 ### B2B-09 企業帳單／合約／續約／發票
 

@@ -13,7 +13,7 @@ import { NextResponse } from 'next/server';
 import orgUnitService from '@/lib/orgUnitService';
 import type { CreateOrgUnitInput, OrgUnit } from '@/lib/types/b2b';
 import { withAuth } from '@/lib/auth/apiGuard';
-import { requireOrgAccess } from '@/lib/auth/orgAccess';
+import { requireOrgOrDeptAccess, requireOrgUnitAccess, resolveDeptScopeUnitIds } from '@/lib/auth/orgAccess';
 
 export const dynamic = 'force-dynamic';
 
@@ -46,15 +46,22 @@ export const GET = withAuth(async (req) => {
           { status: 404 }
         );
       }
-      const guard = await requireOrgAccess(req, parent.orgId, 'read');
+      const guard = await requireOrgUnitAccess(req, parent, 'read');
       if (!guard.ok) return guard.response;
 
       units = await orgUnitService.getChildUnits(parentId);
     } else if (orgId) {
-      const guard = await requireOrgAccess(req, orgId, 'read');
+      const guard = await requireOrgOrDeptAccess(req, orgId, 'read');
       if (!guard.ok) return guard.response;
 
       units = await orgUnitService.listOrgUnitsByOrg(orgId);
+
+      // 部門管理員透過 requireOrgOrDeptAccess 進來的，不代表整個組織的單位都能看——
+      // 用範圍集合過濾成只剩自己與子孫單位。系統/組織管理員的 scope 是 null，不過濾。
+      const scope = await resolveDeptScopeUnitIds(guard.actor);
+      if (scope) {
+        units = units.filter((u) => scope.has(u.id));
+      }
 
       // If tree format requested, build hierarchical structure
       if (tree) {
@@ -105,8 +112,25 @@ export const POST = withAuth(async (req) => {
       );
     }
 
-    const guard = await requireOrgAccess(req, orgId.trim(), 'write');
+    const guard = await requireOrgOrDeptAccess(req, orgId.trim(), 'write');
     if (!guard.ok) return guard.response;
+
+    // 部門管理員不能建立組織根層級的單位——一定要指定範圍內的 parentId，否則就是在做組織
+    // 層級的重組（那是組織/系統管理員的權限）。
+    if (guard.actor.isDeptAdmin && !guard.actor.isOrgAdmin && !guard.actor.isSystemAdmin) {
+      if (!parentId) {
+        return NextResponse.json(
+          { ok: false, error: 'Forbidden: department admins must create units under their own scope (parentId is required)' },
+          { status: 403 }
+        );
+      }
+      const parent = await orgUnitService.getOrgUnitById(parentId);
+      if (!parent) {
+        return NextResponse.json({ ok: false, error: 'Parent unit does not exist' }, { status: 404 });
+      }
+      const parentGuard = await requireOrgUnitAccess(req, parent, 'write');
+      if (!parentGuard.ok) return parentGuard.response;
+    }
 
     const input: CreateOrgUnitInput = {
       orgId: orgId.trim(),
