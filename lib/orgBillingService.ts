@@ -260,6 +260,13 @@ export interface OrgBillingStatus {
   totalOutstanding: number;
   /** Present only when overdueInvoices is non-empty and every overdue invoice shares one currency; null if mixed or none. */
   totalOutstandingCurrency: string | null;
+  /**
+   * True if invoice data could not be read (e.g. the org-invoices table isn't provisioned
+   * yet in this environment) — contractStatus is still computed from Organization fields
+   * either way, since that doesn't depend on the invoices table at all. overdueInvoices/
+   * totalOutstanding are best-effort zero in that case, not "confirmed nothing is overdue".
+   */
+  invoiceDataUnavailable: boolean;
 }
 
 const EXPIRING_SOON_WINDOW_DAYS = 30;
@@ -270,7 +277,18 @@ export async function getOrgBillingStatus(orgId: string): Promise<OrgBillingStat
     throw new Error('Organization not found');
   }
 
-  const invoices = await listInvoicesByOrg(orgId);
+  // Contract status (derived purely from Organization fields) must not become unreachable
+  // just because invoice listing fails — those are two independently useful pieces of
+  // information, and a missing/unreachable invoices table shouldn't hide the renewal UI.
+  let invoices: OrgInvoice[] = [];
+  let invoiceDataUnavailable = false;
+  try {
+    invoices = await listInvoicesByOrg(orgId);
+  } catch (err: any) {
+    console.error('[OrgBillingService] ⚠️ Could not load invoices for billing status, degrading gracefully:', err.message);
+    invoiceDataUnavailable = true;
+  }
+
   const now = Date.now();
   const overdueInvoices = invoices.filter((inv) => inv.status === 'unpaid' && new Date(inv.dueDate).getTime() < now);
 
@@ -291,7 +309,8 @@ export async function getOrgBillingStatus(orgId: string): Promise<OrgBillingStat
     contractEndDate: org.contractEndDate || null,
     overdueInvoices,
     totalOutstanding,
-    totalOutstandingCurrency: overdueInvoices.length > 0 && currencies.size === 1 ? [...currencies][0] : null
+    totalOutstandingCurrency: overdueInvoices.length > 0 && currencies.size === 1 ? [...currencies][0] : null,
+    invoiceDataUnavailable
   };
 }
 

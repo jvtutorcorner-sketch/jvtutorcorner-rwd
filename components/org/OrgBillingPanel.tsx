@@ -21,6 +21,7 @@ type BillingStatus = {
   overdueInvoices: Invoice[];
   totalOutstanding: number;
   totalOutstandingCurrency: string | null;
+  invoiceDataUnavailable: boolean;
 };
 
 interface Props {
@@ -51,6 +52,7 @@ export default function OrgBillingPanel({ orgId, isSystemAdmin }: Props) {
   const [status, setStatus] = useState<BillingStatus | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [invoicesError, setInvoicesError] = useState<string | null>(null);
 
   const [form, setForm] = useState({
     periodStart: '',
@@ -70,19 +72,30 @@ export default function OrgBillingPanel({ orgId, isSystemAdmin }: Props) {
   async function load() {
     setLoading(true);
     setError(null);
+    setInvoicesError(null);
+
+    // 合約狀態（billing-status）只讀 Organization 欄位算出來，不該因為發票清單讀不到就整個
+    // 掛掉——這兩個是各自獨立有用的資訊。分開 fetch、分開處理失敗，只有 billing-status 本身
+    // 失敗才視為整個面板載入失敗；發票清單失敗只顯示局部錯誤，續約表單等其他功能照常可用。
     try {
-      const [invRes, statusRes] = await Promise.all([
-        fetch(`/api/organizations/${orgId}/invoices`),
-        fetch(`/api/organizations/${orgId}/billing-status`)
-      ]);
-      const invData = await invRes.json();
+      const statusRes = await fetch(`/api/organizations/${orgId}/billing-status`);
       const statusData = await statusRes.json();
-      if (!invRes.ok || !invData.ok) throw new Error(invData?.error || '無法載入發票');
       if (!statusRes.ok || !statusData.ok) throw new Error(statusData?.error || '無法載入帳單狀態');
-      setInvoices(invData.invoices || []);
       setStatus(statusData);
     } catch (err: any) {
       setError(err?.message || String(err));
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const invRes = await fetch(`/api/organizations/${orgId}/invoices`);
+      const invData = await invRes.json();
+      if (!invRes.ok || !invData.ok) throw new Error(invData?.error || '無法載入發票');
+      setInvoices(invData.invoices || []);
+    } catch (err: any) {
+      setInvoicesError(err?.message || String(err));
+      setInvoices([]);
     } finally {
       setLoading(false);
     }
@@ -197,6 +210,11 @@ export default function OrgBillingPanel({ orgId, isSystemAdmin }: Props) {
               </span>
             </div>
           )}
+          {status.invoiceDataUnavailable && (
+            <div style={{ marginTop: 4, color: '#e65100', fontSize: 13 }}>
+              ⚠️ 目前無法讀取發票資料（服務端資料庫尚未就緒），逾期提示可能不完整；合約狀態不受影響。
+            </div>
+          )}
         </div>
       )}
 
@@ -297,7 +315,8 @@ export default function OrgBillingPanel({ orgId, isSystemAdmin }: Props) {
         </>
       )}
 
-      {!loading && invoices.length === 0 && <p style={{ color: '#999' }}>尚無發票紀錄</p>}
+      {!loading && invoicesError && <p style={{ color: '#d32f2f' }}>發票清單載入失敗：{invoicesError}</p>}
+      {!loading && !invoicesError && invoices.length === 0 && <p style={{ color: '#999' }}>尚無發票紀錄</p>}
 
       {!loading && invoices.length > 0 && (
         <div style={{ overflowX: 'auto' }}>
