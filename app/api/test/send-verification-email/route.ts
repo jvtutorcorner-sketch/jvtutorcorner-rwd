@@ -29,7 +29,10 @@ export async function POST(req: NextRequest) {
 
         // Attempt to send
         console.log('[Test API] Calling sendVerificationEmail()...');
-        const result = await sendVerificationEmail(email, token);
+        const protocol = req.headers.get('x-forwarded-proto') || 'http';
+        const host = req.headers.get('host');
+        const requestOrigin = host ? `${protocol}://${host}` : undefined;
+        const result = await sendVerificationEmail(email, token, requestOrigin);
 
         console.log('[Test API] Send result:', result);
 

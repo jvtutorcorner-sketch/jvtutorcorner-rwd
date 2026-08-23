@@ -22,21 +22,31 @@ function isLoopbackUrl(value: string): boolean {
 /**
  * Resolves the base URL used for links inside outbound emails.
  *
+ * `NEXT_PUBLIC_BASE_URL` is inlined at build time, so a shared build pipeline
+ * (e.g. one Amplify build spec for every branch) bakes the same value into
+ * every environment. `requestOrigin` — derived from the live request's
+ * `host`/`x-forwarded-proto` headers — reflects whichever domain actually
+ * served the request, so it takes priority whenever it's available.
+ *
  * Emails land in a real inbox, so a loopback address is never usable there —
  * running locally must not leak "http://localhost:3000" into a verification
  * link. Set EMAIL_LINK_BASE_URL to deliberately point links at a local server
  * while testing the flow end to end.
  */
-export function resolveEmailLinkBaseUrl(): string {
+export function resolveEmailLinkBaseUrl(requestOrigin?: string): string {
     const override = process.env.EMAIL_LINK_BASE_URL?.trim();
     if (override) return override.replace(/\/+$/, '');
+
+    const fromRequest = requestOrigin?.trim();
+    if (fromRequest && !isLoopbackUrl(fromRequest)) return fromRequest.replace(/\/+$/, '');
 
     const configured = process.env.NEXT_PUBLIC_BASE_URL?.trim();
     if (configured && !isLoopbackUrl(configured)) return configured.replace(/\/+$/, '');
 
-    if (configured) {
+    if (configured || fromRequest) {
         console.warn(
-            `[VerificationService] NEXT_PUBLIC_BASE_URL is a loopback address (${configured}); ` +
+            `[VerificationService] Resolved base URL was a loopback address ` +
+            `(request=${fromRequest ?? 'n/a'}, NEXT_PUBLIC_BASE_URL=${configured ?? 'n/a'}); ` +
             `email links will use ${PRODUCTION_BASE_URL}. Set EMAIL_LINK_BASE_URL to override.`
         );
     }
@@ -49,8 +59,8 @@ export function resolveEmailLinkBaseUrl(): string {
  * 直接在服務端發送驗證信，避免內部 API 調用的複雜性和延遲
  * 支援 Gmail SMTP 和 Resend 兩種方式，優先使用資料庫中的動態配置
  */
-export async function sendVerificationEmail(email: string, token: string) {
-    const baseUrl = resolveEmailLinkBaseUrl();
+export async function sendVerificationEmail(email: string, token: string, requestOrigin?: string) {
+    const baseUrl = resolveEmailLinkBaseUrl(requestOrigin);
     const verifyUrl = `${baseUrl}/api/auth/verify-email?token=${token}&email=${encodeURIComponent(email)}`;
 
     const subject = '請驗證您的 JV Tutor Corner 帳號';

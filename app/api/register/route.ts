@@ -171,7 +171,11 @@ export async function POST(req: Request) {
       }
 
       try {
-        emailSent = await sendVerificationEmail(email, verificationToken);
+        // 連結網域取自實際請求，避免正式/測試環境用到同一組 build-time 網址
+        const protocol = headerList.get('x-forwarded-proto') || 'http';
+        const host = headerList.get('host');
+        const requestOrigin = host ? `${protocol}://${host}` : undefined;
+        emailSent = await sendVerificationEmail(email, verificationToken, requestOrigin);
       } catch (err) {
         console.error('[register] Failed to send verification email', err);
       }

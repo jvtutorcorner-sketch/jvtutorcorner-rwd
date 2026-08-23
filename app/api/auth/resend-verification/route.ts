@@ -86,8 +86,11 @@ export async function POST(req: NextRequest) {
     const newTokenExpires = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
     const now = new Date().toISOString();
 
-    // 6. 發送驗證信
-    const emailSent = await sendVerificationEmail(normalizedEmail, newToken);
+    // 6. 發送驗證信（連結網域取自實際請求，避免正式/測試環境用到同一組 build-time 網址）
+    const protocol = req.headers.get('x-forwarded-proto') || 'http';
+    const host = req.headers.get('host');
+    const requestOrigin = host ? `${protocol}://${host}` : undefined;
+    const emailSent = await sendVerificationEmail(normalizedEmail, newToken, requestOrigin);
 
     if (!emailSent) {
       return NextResponse.json(

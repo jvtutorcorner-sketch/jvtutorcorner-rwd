@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { withAdmin } from '@/lib/auth/apiGuard';
+import { withAdmin, AuthedRequest } from '@/lib/auth/apiGuard';
 import { resolveEmailLinkBaseUrl } from '@/lib/email/verificationService';
 
 export const dynamic = 'force-dynamic'; // Ensure this route is not cached
@@ -7,17 +7,21 @@ export const dynamic = 'force-dynamic'; // Ensure this route is not cached
 /**
  * Reports the base URL that outbound email links are built from.
  *
- * A verification email is sent by whichever process happens to be running, so
- * "the link points at localhost" is usually a stale build rather than a bug.
- * This endpoint shows what the *running* server would put in an email.
+ * Verification emails now prioritize the *incoming request's* host over the
+ * build-time-inlined NEXT_PUBLIC_BASE_URL, so the resolved URL reflects
+ * whichever domain hit this endpoint (production vs. staging).
  */
-const getEmailLinkDiagnostics = async () => {
-  const resolvedBaseUrl = resolveEmailLinkBaseUrl();
+const getEmailLinkDiagnostics = async (req: AuthedRequest) => {
+  const protocol = req.headers.get('x-forwarded-proto') || 'http';
+  const host = req.headers.get('host');
+  const requestOrigin = host ? `${protocol}://${host}` : undefined;
+  const resolvedBaseUrl = resolveEmailLinkBaseUrl(requestOrigin);
 
   return NextResponse.json({
     status: 'success',
     timestamp: new Date().toISOString(),
     config: {
+      requestOrigin: requestOrigin ?? null,
       NEXT_PUBLIC_BASE_URL: process.env.NEXT_PUBLIC_BASE_URL ?? null,
       EMAIL_LINK_BASE_URL: process.env.EMAIL_LINK_BASE_URL ?? null,
     },
