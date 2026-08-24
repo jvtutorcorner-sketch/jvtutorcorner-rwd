@@ -4,6 +4,20 @@
 import { NextResponse } from 'next/server';
 import { extractTokenFromRequest, getSession } from '@/lib/auth/sessionManager';
 import { createLipsyncPrediction, extractAudioUrl, extractVideoUrl, getPrediction } from '@/lib/replicate/aiAvatarPipeline';
+import { uploadToS3 } from '@/lib/s3';
+
+export const runtime = 'nodejs';
+
+// Replicate 的輸出網址 API 呼叫產生的一小時後就會失效，
+// 所以生成完成要立刻搬一份到自己的 S3，不然東西會直接消失。
+async function persistVideoToS3(sourceUrl: string): Promise<string> {
+  const res = await fetch(sourceUrl);
+  if (!res.ok) throw new Error(`下載生成的影片失敗：HTTP ${res.status}`);
+  const buffer = Buffer.from(await res.arrayBuffer());
+  const key = `ai-avatar/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.mp4`;
+  const { url } = await uploadToS3(buffer, key, 'video/mp4');
+  return url;
+}
 
 async function requireAdmin(req: Request) {
   const token = extractTokenFromRequest(req);
@@ -33,7 +47,20 @@ export async function POST(req: Request) {
       if (lipsync.status === 'succeeded') {
         const videoUrl = extractVideoUrl(lipsync.output);
         if (!videoUrl) return NextResponse.json({ stage: 'error', error: '影片生成完成但找不到輸出網址' }, { status: 500 });
-        return NextResponse.json({ stage: 'done', videoUrl });
+        try {
+          const persistedUrl = await persistVideoToS3(videoUrl);
+          return NextResponse.json({ stage: 'done', videoUrl: persistedUrl, persisted: true });
+        } catch (uploadErr) {
+          // S3 存檔失敗也不能讓這次生成的結果整個消失，先把 Replicate 的暫存網址回傳，
+          // 讓前端提醒使用者這個網址一小時內會失效、要盡快下載。
+          console.error('[ai-avatar] persistVideoToS3 failed', uploadErr);
+          return NextResponse.json({
+            stage: 'done',
+            videoUrl,
+            persisted: false,
+            warning: '影片已生成，但自動存檔失敗，此網址約 1 小時後失效，請立即下載',
+          });
+        }
       }
       if (lipsync.status === 'failed' || lipsync.status === 'canceled') {
         return NextResponse.json({ stage: 'error', error: `虛擬人影片生成失敗：${JSON.stringify(lipsync.error)}` }, { status: 500 });

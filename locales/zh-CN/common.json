@@ -476,6 +476,7 @@
   "ai_avatar_stage_lipsync": "虚拟人影片生成中（可能需要 1-3 分钟）…",
   "ai_avatar_stage_done": "完成！",
   "ai_avatar_download_note": "影片网址由 Replicate 暂存，请尽快下载保存",
+  "ai_avatar_saved_note": "已自动存档到云端，可长期取用",
   "ai_avatar_download_link": "下载影片",
   "ai_avatar_error_prefix": "发生错误：",
   "ai_avatar_need_script_and_photo": "请输入脚本并上传照片",

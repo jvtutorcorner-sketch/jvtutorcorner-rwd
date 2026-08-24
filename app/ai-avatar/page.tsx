@@ -25,6 +25,8 @@ export default function AiAvatarPage() {
   const [stage, setStage] = useState<Stage>('idle');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [persisted, setPersisted] = useState(false);
+  const [warningMsg, setWarningMsg] = useState<string | null>(null);
 
   const cancelledRef = useRef(false);
 
@@ -84,6 +86,8 @@ export default function AiAvatarPage() {
       if (data.stage === 'done') {
         setStage('done');
         setVideoUrl(data.videoUrl);
+        setPersisted(!!data.persisted);
+        setWarningMsg(data.warning || null);
       }
     } catch (err) {
       setStage('error');
@@ -98,6 +102,8 @@ export default function AiAvatarPage() {
     }
     setErrorMsg(null);
     setVideoUrl(null);
+    setPersisted(false);
+    setWarningMsg(null);
     setStage('tts_processing');
     try {
       const res = await fetch('/api/ai-avatar/generate', {
@@ -139,8 +145,8 @@ export default function AiAvatarPage() {
         {videoUrl ? (
           <div className="w-full">
             <video className="w-full aspect-video rounded-2xl bg-black" src={videoUrl} controls />
-            <p className="text-center text-gray-500 text-xs mt-2">
-              {t('ai_avatar_download_note')}{' '}
+            <p className={`text-center text-xs mt-2 ${persisted ? 'text-gray-500' : 'text-amber-600 font-medium'}`}>
+              {persisted ? t('ai_avatar_saved_note') : (warningMsg || t('ai_avatar_download_note'))}{' '}
               <a href={videoUrl} target="_blank" rel="noreferrer" className="text-blue-600 underline">
                 {t('ai_avatar_download_link')}
               </a>

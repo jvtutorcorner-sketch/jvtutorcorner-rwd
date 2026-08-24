@@ -428,6 +428,7 @@
   "ai_avatar_stage_lipsync": "Generating avatar video (may take 1-3 minutes)…",
   "ai_avatar_stage_done": "Done!",
   "ai_avatar_download_note": "The video URL is temporarily hosted by Replicate — download it soon",
+  "ai_avatar_saved_note": "Automatically saved to cloud storage — available long-term",
   "ai_avatar_download_link": "Download video",
   "ai_avatar_error_prefix": "Error: ",
   "ai_avatar_need_script_and_photo": "Please enter a script and upload a photo",
