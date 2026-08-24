@@ -17,6 +17,7 @@ mindmap
       AI Ecosystem
         Gemini 1.5 Pro / GPT-4o
         3-Agent Loop (Ask-Plan-Execute)
+        Replicate (AI Avatar TTS + Lip-sync)
       Communication
         Agora RTC/RTM
         SSE & BroadcastChannel
@@ -42,6 +43,7 @@ mindmap
       Big Data & AI
         Medicine Product Scanning
         TagScore & MMR Recommend
+        AI Avatar Ad Pilot (Admin-only, Replicate + S3)
     Infrastructure & DevOps
       Automation
         Playwright E2E Tests
@@ -97,6 +99,7 @@ mindmap
 - 平台工具：lib/platform-skills.ts (自動化工具呼叫)
 - 整合類型：Gemini 1.5 Pro (預設), OpenAI GPT-4o
 - 向量資料庫：Qdrant (嵌入搜尋)
+- AI 虛擬人教學廣告試作：Replicate（TTS + SadTalker 口型同步）→ S3 永久儲存，`/ai-avatar` 頁面，僅 Admin 可生成（見 [project-architecture-overview.md §3.6](./project-architecture-overview.md#36-ai-虛擬人生成pilotadmin-only)）
 
 ## 4. 自動化與 DevOps (Infrastructure)
 - 持續整合：GitHub Actions (自動化構建與測試)

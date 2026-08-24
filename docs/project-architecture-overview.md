@@ -1,6 +1,6 @@
 # JVTutorCorner Project Architecture Overview
 
-**文件版本：** 2026-06-28  
+**文件版本：** 2026-08-24  
 **適用系統：** JV Tutor Corner（AWS Amplify Serverless）  
 **撰寫範疇：** 現況架構 · 壓力測試發現 · 未來規劃  
 
@@ -19,6 +19,7 @@
    - 3.3 API 路由分類
    - 3.4 資料儲存層
    - 3.5 前端元件樹
+   - 3.6 AI 虛擬人生成（Pilot，Admin-only）
 4. [壓力測試發現的問題](#四壓力測試發現的問題)
    - 4.1 測試規格與通過門檻
    - 4.2 容量臨界點總表
@@ -49,6 +50,7 @@ JVTutorCorner 是一個**企業級線上家教平台**，核心功能是即時�
 - 頁面翻頁、畫筆操作、就緒狀態等即時信令（Agora RTM）
 - 課程報名、點數管理、多元支付（PayPal / Stripe / LINE Pay / ECPay）
 - AI 工作流自動化（Gemini）
+- AI 虛擬人教學廣告試作（Replicate：文字轉語音＋口型同步影片生成，Admin-only pilot）
 
 ---
 
@@ -83,7 +85,7 @@ JVTutorCorner 是一個**企業級線上家教平台**，核心功能是即時�
 ### 其他主要依賴
 
 - 支付：`stripe`, `@paypal/react-paypal-js`
-- AI：`@google/generative-ai`（Gemini）, `@qdrant/js-client-rest`（向量 DB）
+- AI：`@google/generative-ai`（Gemini）, `@qdrant/js-client-rest`（向量 DB）, `replicate`（AI 虛擬人語音／影片生成）
 - UI：`@xyflow/react`（流程圖）, `@monaco-editor/react`（程式碼編輯器）
 - PDF：`pdfjs-dist`, `jspdf`
 
@@ -117,6 +119,7 @@ JVTutorCorner 是一個**企業級線上家教平台**，核心功能是即時�
 │                                                                      │
 │  課程管理、審核、報名、點數、支付、出席報表、CRM                      │
 │  /api/workflows/execute → Make.com Webhook → Email / S3 / BI        │
+│  /api/ai-avatar/* → Replicate（TTS＋口型同步）→ S3（Admin-only 試作）│
 ├──────────────────────────────────────────────────────────────────────┤
 │  L4  可觀測與保護層                                                  │
 │                                                                      │
@@ -197,6 +200,7 @@ ClientClassroom.tsx（app/classroom/ClientClassroom.tsx）
 | `/api/workflows/*` | Make.com 工作流整合 |
 | `/api/auth/*` | 身份驗證（LINE / Google / Email） |
 | `/api/ai-chat/*` | AI 對話功能 |
+| `/api/ai-avatar/*` | AI 虛擬人教學廣告生成（Admin-only，見 3.6） |
 
 ### 3.4 資料儲存層
 
@@ -211,7 +215,10 @@ ClientClassroom.tsx（app/classroom/ClientClassroom.tsx）
 | jvtutorcorner-sessions | sessionId | 教室 Session 紀錄 |
 | jvtutorcorner-plan-upgrades | userId | 方案升級紀錄 |
 
-S3 Bucket：`jvtutorcorner-uploads`（PDF 教材儲存，ap-northeast-1）
+S3 Bucket：`jvtutorcorner-uploads`（ap-northeast-1）
+- `carousel/*` — 首頁輪播圖片
+- PDF 教材儲存（教室白板同步用）
+- `ai-avatar/*` — AI 虛擬人生成影片（見 3.6，取代 Replicate 1小時後失效的暫存網址）
 
 ### 3.5 前端元件樹（教室相關）
 
@@ -229,6 +236,34 @@ app/classroom/room/page.tsx
 app/classroom/wait/page.tsx
 └── WaitClient.tsx                   # 等待室（含 PDF 上傳）
 ```
+
+### 3.6 AI 虛擬人生成（Pilot，Admin-only）
+
+**用途：** 試作 1 分鐘內的 AI 虛擬人教學廣告樣片，評估是否值得投入正式製作。頁面存在但未串進主選單，且生成功能僅 `role === 'admin'` 的登入使用者可見/可呼叫。
+
+```
+app/ai-avatar/page.tsx                        ← 頁面（一般訪客只看預留框＋特色卡片）
+│
+├── [Admin 專屬表單]
+│   ├── 腳本文字（≤ 400 字）＋ 大頭照上傳（client 端轉 base64）
+│   └── 「產生樣片」按鈕
+│
+├── POST /api/ai-avatar/generate               ← 啟動 TTS prediction，立即回傳 ttsId
+│   └── lib/replicate/aiAvatarPipeline.ts
+│       └── Replicate: minimax/speech-02-turbo（文字→語音，按字數計費）
+│
+└── POST /api/ai-avatar/advance                ← 前端每 3 秒輪詢一次，狀態機式推進
+    ├── ttsId 完成 → 啟動 lipsync prediction，回傳 lipsyncId
+    │   └── Replicate: lucataco/sadtalker（大頭照＋語音→影片，固定跑 Nvidia L40S，按秒計費）
+    └── lipsyncId 完成 → 下載影片並上傳 S3（lib/s3.ts::uploadToS3，key: ai-avatar/*）
+        └── 回傳永久 S3 網址；S3 上傳失敗則退回 Replicate 暫存網址並標記 warning
+```
+
+**設計取捨（現況、非未來規劃）：**
+
+- **無狀態、無資料庫**：目前進度完全靠前端把 `ttsId` / `lipsyncId` 傳回，沒有 DynamoDB 記錄，關閉分頁即遺失進度、無歷史生成列表
+- **為何要立即轉存 S3**：Replicate API 呼叫產生的輸出檔案 **1 小時後自動刪除**，`/api/ai-avatar/advance` 在偵測到 lipsync 完成的當下就把影片下載並轉存進既有的 `jvtutorcorner-uploads` bucket，避免暫存網址過期後成品直接消失
+- **仍是輪詢，非 webhook**：小規模試作可接受，量大會增加 Lambda 呼叫次數，是已知待優化項（見 [ai-avatar-vendor-comparison.md](./ai-avatar-vendor-comparison.md)）
 
 ---
 
@@ -622,3 +657,4 @@ NEXT_PUBLIC_HOCUSPOCUS_URL=ws://...
 | `NEXT_PUBLIC_BASE_URL` | build | 應用基底 URL | 本機 `http://localhost:3000` |
 | `LOGIN_BYPASS_SECRET` | server | E2E 測試自動登入 | 僅測試環境 |
 | `GEMINI_API_KEY` | server | Google Gemini AI | AI Chat 功能 |
+| `REPLICATE_API_TOKEN` | server | Replicate API 金鑰 | AI 虛擬人生成（3.6），必填才能使用 |
