@@ -48,7 +48,7 @@ export const CourseCard: React.FC<CourseCardProps> = ({ course, className = "" }
             }
           }}
         >
-          {course.teacherName}
+          {teacherMatch ? tt(`teachers.${teacherMatch.id}.name`, course.teacherName) : course.teacherName}
         </span>
         <br />
         {t('course_language_label')}{tt(`courses.${course.id}.language`, course.language)}

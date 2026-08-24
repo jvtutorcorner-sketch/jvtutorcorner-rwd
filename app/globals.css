@@ -523,7 +523,6 @@ main {
   
   button.menu-icon-btn span {
     flex-shrink: 0 !important;
-    margin-bottom: 0 !important;
   }
   
   .menu-icon-btn {

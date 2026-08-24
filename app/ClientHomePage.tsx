@@ -175,7 +175,7 @@ export default function ClientHomePage({
             <div className="hero-premium-text">
               <h1 className="hero-premium-title">
                 {user 
-                  ? `${t('hero_premium_title_user')}！${user.firstName || user.email?.split('@')[0] || '學習者'}` 
+                  ? `${t('hero_premium_title_user')}！${user.firstName || user.email?.split('@')[0] || t('guest_learner_fallback')}`
                   : t('hero_premium_title_guest')}
               </h1>
               <p className="hero-premium-subtitle">

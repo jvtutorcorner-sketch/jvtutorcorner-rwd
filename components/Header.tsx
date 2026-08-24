@@ -248,7 +248,7 @@ export default function Header() {
   return (
     <header className={`site-header ${scrolled ? 'scrolled' : ''}`} style={hideHeader ? { display: 'none' } : undefined}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <Button aria-label="開啟選單" variant="ghost" className="menu-icon-btn p-2 flex-col" onClick={() => setMobileMenuOpen((s) => !s)}>
+        <Button aria-label={t('menu_open')} variant="ghost" className="menu-icon-btn p-2 flex-col" onClick={() => setMobileMenuOpen((s) => !s)}>
           <span style={{ display: 'block', width: 20, height: 2, background: '#111', marginBottom: 4 }} />
           <span style={{ display: 'block', width: 16, height: 2, background: '#111', marginBottom: 4 }} />
           <span style={{ display: 'block', width: 12, height: 2, background: '#111' }} />
@@ -256,7 +256,7 @@ export default function Header() {
         <Link href="/" className="logo">Tutor Corner</Link>
       </div>
 
-      <nav id="menu" className="menu main-nav" style={{ boxShadow: 'none' }} aria-label="主選單">
+      <nav id="menu" className="menu main-nav" style={{ boxShadow: 'none' }} aria-label={t('main_menu')}>
         <ul className="main-nav-left">
           {
             // build menu items and apply menuVisible from pageConfigs permissions
@@ -290,9 +290,9 @@ export default function Header() {
                             return roleObj.description || roleObj.name || r;
                           }
                           // Fallback labels for well-known roles
-                          if (r === 'admin') return '管理者';
-                          if (r === 'teacher') return '教師';
-                          if (r === 'student') return '使用者';
+                          if (r === 'admin') return t('role_admin');
+                          if (r === 'teacher') return t('role_teacher');
+                          if (r === 'student') return t('role_student');
                           return r; // return raw ID as last resort
                         })()}
                       </div>
@@ -324,7 +324,7 @@ export default function Header() {
                               user?.role === 'admin' ? (() => {
                                 const ppPath = '/admin/settings/page-permissions';
                                 const pc = (adminSettings?.pageConfigs || []).find((x: any) => x.path === ppPath);
-                                const label = (pc && (pc.label || pc.path)) || 'Page 存取權限';
+                                const label = (pc && (pc.label || pc.path)) || t('page_permissions_label');
                                 return (
                                   <li key={ppPath}>
                                     <span role="menuitem" tabIndex={0} className="menu-link" onClick={() => { setMenuOpen(false); router.push(ppPath); }}>{label}</span>
@@ -344,7 +344,7 @@ export default function Header() {
                                       p === '/teacher_courses' ? t('course_orders') :
                                         p === '/courses_manage' ? t('my_courses') :
                                           p === '/calendar' ? t('calendar_label') :
-                                            p === '/plans' ? (user?.role === 'admin' ? '全站購買紀錄' : '我的方案紀錄') : p);
+                                            p === '/plans' ? (user?.role === 'admin' ? t('plans_admin_records') : t('plans_my_records')) : p);
 
                                   return (
                                     <li key={p}>
@@ -394,7 +394,7 @@ export default function Header() {
           <div className="mobile-menu-panel">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <div style={{ fontWeight: 700 }}>{t('menu_label')}</div>
-              <Button aria-label="關閉選單" variant="ghost" className="p-1" onClick={() => setMobileMenuOpen(false)}>✕</Button>
+              <Button aria-label={t('menu_close')} variant="ghost" className="p-1" onClick={() => setMobileMenuOpen(false)}>✕</Button>
             </div>
             <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
               {MENU_ITEMS.map((item) => {
