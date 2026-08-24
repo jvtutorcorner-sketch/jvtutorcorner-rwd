@@ -2,6 +2,7 @@ import { GetCommand } from '@aws-sdk/lib-dynamodb';
 import { ddbDocClient } from '@/lib/dynamo';
 import { COURSES } from '@/data/courses';
 import { EnrollButton } from '@/components/EnrollButton';
+import AutoTranslateText from '@/components/AutoTranslateText';
 import Link from 'next/link';
 
 export default async function CourseDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -94,9 +95,9 @@ export default async function CourseDetailPage({ params }: { params: Promise<{ i
   return (
     <div className="page">
       <header className="page-header">
-        <h1>{title}</h1>
+        <h1><AutoTranslateText text={title} as="span" /></h1>
         <p>
-          {subject}｜{level}｜{mode === 'online' ? '線上課程' : '實體課程'}
+          <AutoTranslateText text={subject} as="span" />｜<AutoTranslateText text={level} as="span" />｜{mode === 'online' ? '線上課程' : '實體課程'}
         </p>
       </header>
 
@@ -104,7 +105,7 @@ export default async function CourseDetailPage({ params }: { params: Promise<{ i
         <section className="course-main">
           <div className="course-section">
             <h2>課程介紹</h2>
-            <p>{description || '這是一門精心設計的主題式課程。'}</p>
+            <AutoTranslateText text={description || '這是一門精心設計的主題式課程。'} as="p" />
           </div>
 
           {/* Interactive whiteboard removed */}
@@ -123,7 +124,7 @@ export default async function CourseDetailPage({ params }: { params: Promise<{ i
             <div className="card-tags">
               {(tags || []).map((tag: string) => (
                 <span key={tag} className="tag">
-                  {tag}
+                  <AutoTranslateText text={tag} as="span" />
                 </span>
               ))}
             </div>
@@ -135,11 +136,11 @@ export default async function CourseDetailPage({ params }: { params: Promise<{ i
             <h3>課程資訊</h3>
             <div className="info-row">
               <span>授課老師</span>
-              <span>{teacherName}</span>
+              <span><AutoTranslateText text={teacherName} as="span" /></span>
             </div>
             <div className="info-row">
               <span>課程語言</span>
-              <span>{language}</span>
+              <span><AutoTranslateText text={language} as="span" /></span>
             </div>
             <div className="info-row">
               <span>單堂時長</span>

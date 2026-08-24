@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { GetCommand } from '@aws-sdk/lib-dynamodb';
 import { ddbDocClient } from '@/lib/dynamo';
 import TeacherEditButton from '@/components/auth/TeacherEditButton';
+import AutoTranslateText from '@/components/AutoTranslateText';
 
 export default async function TeacherDetailPage({ params }: { params: any }) {
   const { id } = await params;
@@ -43,14 +44,14 @@ export default async function TeacherDetailPage({ params }: { params: any }) {
           style={{ width: '200px', height: '200px', borderRadius: '50%', objectFit: 'cover' }}
         />
         <div style={{ flex: 1 }}>
-          <h1>{teacher.name}</h1>
+          <h1><AutoTranslateText text={teacher.name} as="span" /></h1>
           <p style={{ fontSize: '1.2rem', color: '#666', marginBottom: '8px' }}>
-            {(teacher.subjects || []).join(' · ')}
+            <AutoTranslateText text={(teacher.subjects || []).join(' · ')} as="span" />
           </p>
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', margin: '16px 0' }}>
             {(teacher.languages || []).map((lang: string) => (
               <span key={lang} style={{ background: '#f3f4f6', padding: '4px 12px', borderRadius: '16px', fontSize: '14px' }}>
-                {lang}
+                <AutoTranslateText text={lang} as="span" />
               </span>
             ))}
           </div>
@@ -61,7 +62,7 @@ export default async function TeacherDetailPage({ params }: { params: any }) {
         <h3 style={{ fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '16px' }}>
           關於老師
         </h3>
-        <p style={{ lineHeight: '1.6', whiteSpace: 'pre-line' }}>{teacher.intro}</p>
+        <AutoTranslateText text={teacher.intro} as="p" style={{ lineHeight: '1.6', whiteSpace: 'pre-line' }} />
       </div>
 
     </main>
