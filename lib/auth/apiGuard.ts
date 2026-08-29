@@ -220,3 +220,83 @@ export function withAnyAuth(
     );
   };
 }
+
+// ─────────────────────────────────────────────
+// 5. Admin or HMAC Guard — Admin Session 或 HMAC 其中一個即可
+// ─────────────────────────────────────────────
+
+/**
+ * 允許兩種認證方式之一通過：
+ * - 有效的 session token，且角色為 admin
+ * - 有效的 HMAC 簽名（服務間，如工作流程引擎）
+ *
+ * 與 withAnyAuth 不同：session 這條路徑要求 admin 角色，一般已登入
+ * 使用者無法通過，僅能透過 HMAC 觸發（例如內部服務呼叫）。
+ */
+export function withAdminOrHmac(
+  path: string,
+  handler: ApiHandler
+): PlainHandler {
+  return async (req: Request, context?: any) => {
+    // 嘗試 E2E Bypass
+    const e2eSecret = req.headers.get('x-e2e-secret');
+    const bypassSecret = process.env.LOGIN_BYPASS_SECRET;
+
+    if (e2eSecret && bypassSecret && e2eSecret === bypassSecret) {
+      const systemSession: Session = {
+        sessionId: 'e2e-bypass',
+        userId: 'system',
+        email: 'system@e2e',
+        role: 'system',
+        plan: 'system',
+        createdAt: Math.floor(Date.now() / 1000),
+        expiresAt: Math.floor(Date.now() / 1000) + 3600,
+      };
+      const authedReq = Object.assign(req, { session: systemSession }) as AuthedRequest;
+      return handler(authedReq, context);
+    }
+
+    // 嘗試 Admin Session 驗證
+    const token = extractTokenFromRequest(req);
+    if (token) {
+      const session = await getSession(token);
+      if (session && session.role === 'admin') {
+        const authedReq = Object.assign(req, { session }) as AuthedRequest;
+        return handler(authedReq, context);
+      }
+    }
+
+    // 嘗試 HMAC 驗證
+    let rawBody = '';
+    try {
+      rawBody = await req.text();
+    } catch {
+      rawBody = '';
+    }
+    const hmacResult = verifyHmacFromHeaders(req, path, rawBody);
+    if (hmacResult.valid) {
+      // HMAC 通過，建立虛擬 system session
+      const systemSession: Session = {
+        sessionId: 'hmac-system',
+        userId: 'system',
+        email: 'system@internal',
+        role: 'system',
+        plan: 'system',
+        createdAt: Math.floor(Date.now() / 1000),
+        expiresAt: Math.floor(Date.now() / 1000) + 60,
+      };
+      const newReq = new Request(req.url, {
+        method: req.method,
+        headers: req.headers,
+        body: rawBody || undefined,
+      });
+      const authedReq = Object.assign(newReq, { session: systemSession }) as AuthedRequest;
+      return handler(authedReq, context);
+    }
+
+    return NextResponse.json(
+      { ok: false, error: 'Unauthorized: admin session or HMAC signature required' },
+      { status: 401 }
+    );
+  };
+}

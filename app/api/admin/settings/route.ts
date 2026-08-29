@@ -26,7 +26,7 @@ const DEFAULT_SETTINGS = {
   ],
 };
 
-async function readSettings() {
+async function readSettings(): Promise<typeof DEFAULT_SETTINGS & { pageConfigs?: any[] }> {
   // pageConfigs is loaded separately from DynamoDB via getPagePermissions()
   // Return hardcoded defaults for other settings
   return { ...DEFAULT_SETTINGS };
