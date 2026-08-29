@@ -9,6 +9,12 @@ import {
   PlanId,
 } from "@/lib/mockAuth";
 import { PLAN_PRICES, PLAN_FEATURES } from "@/lib/mockAuth";
+import { useT } from "@/components/IntlProvider";
+
+const COUNTRY_CODES = [
+  "TW", "JP", "US", "GB", "HK", "MO", "CN", "KR", "SG", "MY",
+  "AU", "NZ", "CA", "DE", "FR", "ES", "IT", "IN", "BR", "MX", "ZA",
+] as const;
 
 function simpleMarkdownToHtml(md: string) {
   if (!md) return "";
@@ -24,6 +30,7 @@ function simpleMarkdownToHtml(md: string) {
 }
 
 export default function RegisterPage() {
+  const t = useT();
   const router = useRouter();
   const [role, setRole] = useState<"student" | "teacher" | null>("student");
   const [firstName, setFirstName] = useState("");
@@ -129,30 +136,8 @@ export default function RegisterPage() {
   // plan selection moved to user settings; registration defaults to 'viewer'
 
   const countries = useMemo(
-    () => [
-      { code: "TW", label: "台灣" },
-      { code: "JP", label: "日本" },
-      { code: "US", label: "美國" },
-      { code: "GB", label: "英國" },
-      { code: "HK", label: "香港" },
-      { code: "MO", label: "澳門" },
-      { code: "CN", label: "中國" },
-      { code: "KR", label: "南韓" },
-      { code: "SG", label: "新加坡" },
-      { code: "MY", label: "馬來西亞" },
-      { code: "AU", label: "澳洲" },
-      { code: "NZ", label: "紐西蘭" },
-      { code: "CA", label: "加拿大" },
-      { code: "DE", label: "德國" },
-      { code: "FR", label: "法國" },
-      { code: "ES", label: "西班牙" },
-      { code: "IT", label: "義大利" },
-      { code: "IN", label: "印度" },
-      { code: "BR", label: "巴西" },
-      { code: "MX", label: "墨西哥" },
-      { code: "ZA", label: "南非" },
-    ],
-    [],
+    () => COUNTRY_CODES.map((code) => ({ code, label: t(`country_${code}`) })),
+    [t],
   );
 
   // 國家時區映射
@@ -243,7 +228,7 @@ export default function RegisterPage() {
 
     // 優先檢查服務條款同意
     if (!termsAccepted) {
-      setFormError('請先勾選同意服務條款與隱私權政策');
+      setFormError(t('register_error_terms_required'));
       setTimeout(() => {
         // 滾動到服務條款區域
         const termsSection = document.querySelector('input[name="terms"]') as HTMLInputElement | null;
@@ -260,60 +245,60 @@ export default function RegisterPage() {
     const fieldRefs: { [key: string]: React.RefObject<any> } = {};
 
     if (!selectedOrgId) {
-      errors.push('所屬組織');
+      errors.push(t('register_enterprise_org_label'));
       fieldRefs['org'] = orgRef;
     }
 
     if (!role) {
-      errors.push('身份（學生或教師）');
+      errors.push(t('register_error_field_role'));
       fieldRefs['role'] = roleRef;
     }
 
     if (!firstName.trim()) {
-      errors.push('First Name');
+      errors.push(t('first_name_label'));
       fieldRefs['firstName'] = firstNameRef;
     }
 
     if (!lastName.trim()) {
-      errors.push('Last Name');
+      errors.push(t('last_name_label'));
       fieldRefs['lastName'] = lastNameRef;
     }
 
     if (!email.trim()) {
-      errors.push('Email');
+      errors.push(t('email'));
       fieldRefs['email'] = emailRef;
     }
 
     if (!password) {
-      errors.push('密碼');
+      errors.push(t('password'));
       fieldRefs['password'] = passwordRef;
     }
 
     if (!confirmPassword) {
-      errors.push('確認密碼');
+      errors.push(t('register_confirm_password_label'));
       fieldRefs['confirmPassword'] = confirmPasswordRef;
     } else if (password !== confirmPassword) {
-      errors.push('密碼確認（密碼不相符）');
+      errors.push(t('register_error_password_mismatch_field'));
       fieldRefs['confirmPassword'] = confirmPasswordRef;
     }
 
     if (!birthdate) {
-      errors.push('出生日期');
+      errors.push(t('birthdate_label'));
       fieldRefs['birthdate'] = birthdateRef;
     }
 
     if (!gender) {
-      errors.push('性別');
+      errors.push(t('gender_label'));
       fieldRefs['gender'] = genderRef;
     }
 
     if (!country) {
-      errors.push('國家');
+      errors.push(t('country_label'));
       fieldRefs['country'] = countryRef;
     }
 
     if (errors.length > 0) {
-      const errorMessage = `請填寫以下必填欄位：\n• ${errors.join('\n• ')}`;
+      const errorMessage = `${t('register_error_required_fields_prefix')}\n• ${errors.join('\n• ')}`;
       setFormError(errorMessage);
 
       // Scroll to first error field or error message
@@ -363,7 +348,7 @@ export default function RegisterPage() {
       const data = await res.json();
       if (!res.ok) {
         // show server message inline instead of throwing an exception
-        const message = data?.message || '註冊失敗';
+        const message = data?.message || t('register_error_register_failed');
         setFormError(message);
         // focus email for duplicate-email errors
         try {
@@ -378,7 +363,7 @@ export default function RegisterPage() {
       setTimeout(() => router.push('/login'), 900);
     } catch (err: any) {
       console.error(err);
-      setFormError(err?.message || '儲存失敗');
+      setFormError(err?.message || t('save_failed'));
     }
   };
 
@@ -413,7 +398,7 @@ export default function RegisterPage() {
     if (!file) return;
 
     if (!file.name.endsWith('.csv')) {
-      setCsvError('請選擇 CSV 檔案');
+      setCsvError(t('register_enterprise_csv_error_invalid_file'));
       setCsvFile(null);
       return;
     }
@@ -425,12 +410,12 @@ export default function RegisterPage() {
   // Parse and validate CSV
   const handleCsvImport = async () => {
     if (!csvFile) {
-      setCsvError('請先選擇檔案');
+      setCsvError(t('register_enterprise_csv_error_no_file'));
       return;
     }
 
     if (!selectedOrgId) {
-      setCsvError('請先選擇所屬組織，才能匯入成員');
+      setCsvError(t('register_enterprise_csv_error_no_org'));
       return;
     }
 
@@ -439,7 +424,7 @@ export default function RegisterPage() {
       const lines = text.split('\n').filter(line => line.trim());
 
       if (lines.length < 2) {
-        setCsvError('CSV 檔案格式錯誤：至少需要標題列和一筆資料');
+        setCsvError(t('register_enterprise_csv_error_format'));
         return;
       }
 
@@ -448,7 +433,7 @@ export default function RegisterPage() {
 
       const missingHeaders = requiredHeaders.filter(h => !headers.includes(h));
       if (missingHeaders.length > 0) {
-        setCsvError(`CSV 檔案缺少必要欄位：${missingHeaders.join(', ')}`);
+        setCsvError(t('register_enterprise_csv_error_missing_headers').replace('{headers}', missingHeaders.join(', ')));
         return;
       }
 
@@ -475,14 +460,14 @@ export default function RegisterPage() {
         if (!record.country) rowErrors.push('country');
 
         if (rowErrors.length > 0) {
-          errors.push(`第 ${i + 1} 列缺少欄位：${rowErrors.join(', ')}`);
+          errors.push(t('register_enterprise_csv_row_missing_fields').replace('{row}', String(i + 1)).replace('{fields}', rowErrors.join(', ')));
         } else {
           records.push(record);
         }
       }
 
       if (errors.length > 0) {
-        setCsvError(`資料驗證失敗：\n${errors.join('\n')}`);
+        setCsvError(`${t('register_enterprise_csv_validation_failed')}\n${errors.join('\n')}`);
         return;
       }
 
@@ -494,7 +479,7 @@ export default function RegisterPage() {
       });
       const duplicateEmails = Array.from(emailCounts.entries()).filter(([, count]) => count > 1).map(([e]) => e);
       if (duplicateEmails.length > 0) {
-        setCsvError(`CSV 內有重複的 Email，請先修正：\n${duplicateEmails.join('\n')}`);
+        setCsvError(`${t('register_enterprise_csv_duplicate_emails')}\n${duplicateEmails.join('\n')}`);
         return;
       }
 
@@ -503,12 +488,15 @@ export default function RegisterPage() {
       const freshOrgs = await loadOrgs();
       const freshOrg = freshOrgs.find((o) => o.id === selectedOrgId);
       if (!freshOrg) {
-        setCsvError('所選組織已不存在或已停用，請重新選擇');
+        setCsvError(t('register_enterprise_csv_org_gone'));
         return;
       }
       if (records.length > freshOrg.availableSeats) {
         setCsvError(
-          `無法匯入：CSV 共 ${records.length} 筆，組織「${freshOrg.name}」剩餘席次僅 ${freshOrg.availableSeats}`
+          t('register_enterprise_csv_seats_exceeded')
+            .replace('{count}', String(records.length))
+            .replace('{orgName}', freshOrg.name)
+            .replace('{seats}', String(freshOrg.availableSeats))
         );
         return;
       }
@@ -548,9 +536,9 @@ export default function RegisterPage() {
             body: JSON.stringify(payload),
           });
           const data = await res.json();
-          results.push({ email: record.email, ok: res.ok, error: res.ok ? undefined : (data?.message || '匯入失敗') });
+          results.push({ email: record.email, ok: res.ok, error: res.ok ? undefined : (data?.message || t('register_enterprise_csv_row_import_failed')) });
         } catch (rowErr: any) {
-          results.push({ email: record.email, ok: false, error: rowErr?.message || '網路錯誤' });
+          results.push({ email: record.email, ok: false, error: rowErr?.message || t('register_enterprise_csv_network_error') });
         }
 
         setCsvProgress((prev) => (prev ? { done: prev.done + 1, total: prev.total } : prev));
@@ -572,15 +560,15 @@ export default function RegisterPage() {
 
     } catch (err: any) {
       setCsvProgress(null);
-      setCsvError(`CSV 解析失敗：${err.message}`);
+      setCsvError(`${t('register_enterprise_csv_parse_failed')}${err.message}`);
     }
   };
 
   return (
     <div className="page">
       <header className="page-header">
-        <h1>企業建立帳戶</h1>
-        <p>請選擇身份並填寫下列<strong>所有必填</strong>資料（標記 <span style={{ color: 'red' }}>*</span> 的欄位為必填）。</p>
+        <h1>{t('register_enterprise_title')}</h1>
+        <p>{t('register_subtitle_before')}<strong>{t('register_subtitle_bold')}</strong>{t('register_subtitle_after')}<span style={{ color: 'red' }}>*</span>{t('register_subtitle_after_asterisk')}</p>
 
         {/* CSV Import Section */}
         <div style={{ marginTop: 16, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -604,7 +592,7 @@ export default function RegisterPage() {
               fontWeight: 600
             }}
           >
-            📁 選擇檔案
+            {t('register_enterprise_select_file')}
           </button>
           <button
             type="button"
@@ -620,7 +608,7 @@ export default function RegisterPage() {
               fontWeight: 600
             }}
           >
-            📥 匯入CSV
+            {t('register_enterprise_import_csv')}
           </button>
           <button
             type="button"
@@ -635,7 +623,7 @@ export default function RegisterPage() {
               fontWeight: 600
             }}
           >
-            📄 下載範例CSV
+            {t('register_enterprise_download_sample_csv')}
           </button>
           {csvFile && <span style={{ color: '#059669', fontWeight: 600 }}>✓ {csvFile.name}</span>}
         </div>
@@ -662,7 +650,7 @@ export default function RegisterPage() {
             maxWidth: 500,
             boxShadow: '0 20px 40px rgba(0,0,0,0.3)'
           }}>
-            <h2 style={{ color: '#dc2626', marginBottom: 16 }}>❌ 匯入錯誤</h2>
+            <h2 style={{ color: '#dc2626', marginBottom: 16 }}>{t('register_enterprise_import_error_title')}</h2>
             <p style={{ whiteSpace: 'pre-line', marginBottom: 20 }}>{csvError}</p>
             <button
               onClick={() => setCsvError(null)}
@@ -676,7 +664,7 @@ export default function RegisterPage() {
                 fontWeight: 600
               }}
             >
-              確定
+              {t('register_enterprise_ok_button')}
             </button>
           </div>
         </div>
@@ -704,7 +692,7 @@ export default function RegisterPage() {
             boxShadow: '0 20px 40px rgba(0,0,0,0.3)',
             textAlign: 'center'
           }}>
-            <p style={{ fontSize: 16, fontWeight: 600 }}>匯入中... {csvProgress.done}/{csvProgress.total}</p>
+            <p style={{ fontSize: 16, fontWeight: 600 }}>{t('register_enterprise_importing_progress').replace('{done}', String(csvProgress.done)).replace('{total}', String(csvProgress.total))}</p>
           </div>
         </div>
       )}
@@ -734,15 +722,16 @@ export default function RegisterPage() {
             textAlign: 'left'
           }}>
             <h2 style={{ color: csvSuccess.count === csvSuccess.results.length ? '#10b981' : '#f59e0b', marginBottom: 16, textAlign: 'center' }}>
-              {csvSuccess.count === csvSuccess.results.length ? '✅ 匯入完成' : '⚠️ 部分匯入失敗'}
+              {csvSuccess.count === csvSuccess.results.length ? t('register_enterprise_import_complete_title') : t('register_enterprise_import_partial_fail_title')}
             </h2>
             <p style={{ fontSize: 18, marginBottom: 12, textAlign: 'center' }}>
-              成功 <strong style={{ color: '#10b981' }}>{csvSuccess.count}</strong> 筆 / 失敗{' '}
-              <strong style={{ color: '#ef4444' }}>{csvSuccess.results.length - csvSuccess.count}</strong> 筆
+              {t('register_enterprise_import_result_summary')
+                .replace('{success}', String(csvSuccess.count))
+                .replace('{fail}', String(csvSuccess.results.length - csvSuccess.count))}
             </p>
             {csvSuccess.results.some((r) => !r.ok) && (
               <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: 12, marginBottom: 12 }}>
-                <p style={{ fontWeight: 600, marginBottom: 6 }}>失敗清單（可修正後單獨重新匯入）：</p>
+                <p style={{ fontWeight: 600, marginBottom: 6 }}>{t('register_enterprise_fail_list_title')}</p>
                 <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13 }}>
                   {csvSuccess.results.filter((r) => !r.ok).map((r, idx) => (
                     <li key={idx}>{r.email}：{r.error}</li>
@@ -752,15 +741,15 @@ export default function RegisterPage() {
             )}
             <p style={{ color: '#6b7280', textAlign: 'center' }}>
               {csvSuccess.count === csvSuccess.results.length
-                ? '5秒後將自動返回登入頁面，請確認登入帳號'
-                : '請修正失敗清單後，重新匯入失敗的項目'}
+                ? t('register_enterprise_redirect_notice')
+                : t('register_enterprise_fix_and_retry_notice')}
             </p>
             <div style={{ textAlign: 'center', marginTop: 12 }}>
               <button
                 onClick={() => setCsvSuccess(null)}
                 style={{ padding: '8px 16px', borderRadius: 6, background: '#2563eb', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600 }}
               >
-                關閉
+                {t('dismiss')}
               </button>
             </div>
           </div>
@@ -769,32 +758,32 @@ export default function RegisterPage() {
 
       <section className="section">
         <div className="card">
-          <h2>基本資料</h2>
+          <h2>{t('register_basic_info_title')}</h2>
           <form onSubmit={handleSubmit} className="modal-form">
             <div className="field">
-              <label>所屬組織 <span style={{ color: 'red' }}>*</span></label>
+              <label>{t('register_enterprise_org_label')} <span style={{ color: 'red' }}>*</span></label>
               <select
                 ref={orgRef}
                 value={selectedOrgId}
                 onChange={(e) => setSelectedOrgId(e.target.value)}
                 style={{ cursor: 'pointer' }}
               >
-                <option value="">{orgsLoading ? '載入中...' : '請選擇組織'}</option>
+                <option value="">{orgsLoading ? t('loading') : t('register_enterprise_select_org_placeholder')}</option>
                 {orgs.map((o) => (
                   <option key={o.id} value={o.id} disabled={o.availableSeats <= 0}>
-                    {o.name}{o.availableSeats <= 0 ? '（席次已滿）' : ` （剩餘席次 ${o.availableSeats}）`}
+                    {o.name}{o.availableSeats <= 0 ? t('register_enterprise_seats_full') : ` ${t('register_enterprise_seats_remaining').replace('{seats}', String(o.availableSeats))}`}
                   </option>
                 ))}
               </select>
               {!orgsLoading && orgs.length === 0 && (
                 <p style={{ color: '#c33', fontSize: 13, marginTop: 4 }}>
-                  目前沒有開放公開自助註冊的組織，請聯絡貴組織管理員為您加入帳號。
+                  {t('register_enterprise_no_orgs_available')}
                 </p>
               )}
             </div>
 
             <div className="field">
-              <label>身份 <span style={{ color: 'red' }}>*</span></label>
+              <label>{t('register_role_label')} <span style={{ color: 'red' }}>*</span></label>
               <select
                 ref={roleRef}
                 value={role || ""}
@@ -810,7 +799,7 @@ export default function RegisterPage() {
                 }}
                 style={{ cursor: 'pointer' }}
               >
-                <option value="">請選擇身份</option>
+                <option value="">{t('register_select_role_placeholder')}</option>
                 {roles.map((r) => (
                   <option key={r.id} value={r.id}>
                     {r.name}
@@ -821,27 +810,29 @@ export default function RegisterPage() {
 
             <div className="field-row">
               <div className="field">
-                <label>First Name <span style={{ color: 'red' }}>*</span></label>
+                <label>{t('first_name_label')} <span style={{ color: 'red' }}>*</span></label>
                 <input ref={firstNameRef} value={firstName} onChange={(e) => setFirstName(e.target.value)} />
               </div>
               <div className="field">
-                <label>Last Name <span style={{ color: 'red' }}>*</span></label>
+                <label>{t('last_name_label')} <span style={{ color: 'red' }}>*</span></label>
                 <input ref={lastNameRef} value={lastName} onChange={(e) => setLastName(e.target.value)} />
               </div>
             </div>
 
             <div className="field">
-              <label>Email <span style={{ color: 'red' }}>*</span></label>
+              <label>{t('email')} <span style={{ color: 'red' }}>*</span></label>
               <input ref={emailRef} type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="example@domain.com" />
               {emailDomainMismatch && (
                 <div style={{ color: '#c33', fontSize: 13, marginTop: 4, fontWeight: 'bold' }}>
-                  ⚠️ 此 Email 網域與「{selectedOrg?.name}」不符（需為 @{selectedOrg?.domain?.replace(/^@/, '')}），送出時將會被拒絕
+                  ⚠️ {t('register_enterprise_email_domain_mismatch')
+                    .replace('{orgName}', selectedOrg?.name || '')
+                    .replace('{domain}', selectedOrg?.domain?.replace(/^@/, '') || '')}
                 </div>
               )}
             </div>
 
             <div className="field">
-              <label>密碼 <span style={{ color: 'red' }}>*</span></label>
+              <label>{t('password')} <span style={{ color: 'red' }}>*</span></label>
               <input
                 ref={passwordRef}
                 type={showPasswords ? 'text' : 'password'}
@@ -851,7 +842,7 @@ export default function RegisterPage() {
                   setPassword(e.target.value);
                   // 當密碼改變時，重新驗證確認密碼
                   if (confirmPassword && e.target.value !== confirmPassword) {
-                    setConfirmPasswordError('密碼確認不相符');
+                    setConfirmPasswordError(t('register_password_mismatch'));
                   } else if (confirmPassword && e.target.value === confirmPassword) {
                     setConfirmPasswordError(null);
                   }
@@ -860,7 +851,7 @@ export default function RegisterPage() {
             </div>
 
             <div className="field">
-              <label>再次輸入密碼 <span style={{ color: 'red' }}>*</span></label>
+              <label>{t('register_confirm_password_label')} <span style={{ color: 'red' }}>*</span></label>
               <input
                 ref={confirmPasswordRef}
                 type={showPasswords ? 'text' : 'password'}
@@ -870,7 +861,7 @@ export default function RegisterPage() {
                   setConfirmPassword(e.target.value);
                   // 即時驗證密碼匹配
                   if (e.target.value && password && e.target.value !== password) {
-                    setConfirmPasswordError('密碼確認不相符');
+                    setConfirmPasswordError(t('register_password_mismatch'));
                   } else {
                     setConfirmPasswordError(null);
                   }
@@ -903,38 +894,38 @@ export default function RegisterPage() {
                   appearance: 'checkbox'
                 }}
               />
-              <label htmlFor="showPasswords" style={{ cursor: 'pointer', userSelect: 'none' }}>顯示密碼</label>
+              <label htmlFor="showPasswords" style={{ cursor: 'pointer', userSelect: 'none' }}>{t('register_show_passwords')}</label>
             </div>
 
             <div className="field" style={{ display: 'none' }}>
-              <label>自動生成 ID</label>
+              <label>{t('register_auto_id_label')}</label>
               <input
                 value={uuid}
                 readOnly
                 disabled
-                aria-label="自動生成 ID（已鎖定）"
+                aria-label={t('register_auto_id_aria')}
                 style={{ background: '#f3f4f6', cursor: 'not-allowed' }}
               />
             </div>
 
             <div className="field">
-              <label>出生日期 <span style={{ color: 'red' }}>*</span></label>
+              <label>{t('birthdate_label')} <span style={{ color: 'red' }}>*</span></label>
               <input ref={birthdateRef} type="date" value={birthdate} onChange={(e) => setBirthdate(e.target.value)} />
             </div>
 
             <div className="field">
-              <label>性別 <span style={{ color: 'red' }}>*</span></label>
+              <label>{t('gender_label')} <span style={{ color: 'red' }}>*</span></label>
               <select ref={genderRef} value={gender} onChange={(e) => setGender(e.target.value)}>
-                <option value="">請選擇</option>
-                <option value="male">男</option>
-                <option value="female">女</option>
+                <option value="">{t('select_placeholder')}</option>
+                <option value="male">{t('gender_male')}</option>
+                <option value="female">{t('gender_female')}</option>
               </select>
             </div>
 
             <div className="field">
-              <label>國家 <span style={{ color: 'red' }}>*</span></label>
+              <label>{t('country_label')} <span style={{ color: 'red' }}>*</span></label>
               <select ref={countryRef} value={country} onChange={(e) => setCountry(e.target.value)}>
-                <option value="">請選擇</option>
+                <option value="">{t('select_placeholder')}</option>
                 {countries.map((c) => (
                   <option key={c.code} value={c.code}>{`${c.label} ${c.code}`}</option>
                 ))}
@@ -948,9 +939,9 @@ export default function RegisterPage() {
             {/* Payment details moved to user settings after login; registration does not collect card info. */}
 
             <div className="field">
-              <label>服務條款與隱私權政策 <span style={{ color: 'red' }}>*</span></label>
+              <label>{t('register_terms_label')} <span style={{ color: 'red' }}>*</span></label>
               <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <p>請先閱讀我們的 <Link href="/terms" target="_blank" style={{ color: '#0066cc', textDecoration: 'underline' }}>服務條款與隱私權政策</Link></p>
+                <p>{t('register_terms_read_prefix')} <Link href="/terms" target="_blank" style={{ color: '#0066cc', textDecoration: 'underline' }}>{t('register_terms_label')}</Link></p>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' }}>
                   <input
                     name="terms"
@@ -967,14 +958,14 @@ export default function RegisterPage() {
                       appearance: 'checkbox'
                     }}
                   />
-                  我已閱讀並同意服務條款與隱私權政策
+                  {t('register_terms_agree_label')}
                 </label>
               </div>
             </div>
 
             {/* Captcha Section */}
             <div className="field">
-              <label>驗證碼 <span style={{ color: "red" }}>*</span></label>
+              <label>{t('captcha_label')} <span style={{ color: "red" }}>*</span></label>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
                 {captchaImage ? (
                   <img src={captchaImage} alt="captcha" style={{ height: 48, border: "1px solid #ddd", borderRadius: 4 }} />
@@ -982,13 +973,13 @@ export default function RegisterPage() {
                   <div style={{ width: 140, height: 48, background: "#f3f4f6", borderRadius: 4 }} />
                 )}
                 <button type="button" className="card-button secondary" onClick={loadCaptcha} disabled={captchaLoading} style={{ padding: '8px 12px' }}>
-                  重新取得
+                  {t('register_captcha_refresh')}
                 </button>
               </div>
               <input
                 type="text"
                 value={captchaValue}
-                placeholder="請輸入上方驗證碼"
+                placeholder={t('register_captcha_input_placeholder')}
                 onChange={(e) => setCaptchaValue(e.target.value)}
                 autoComplete="off"
               />
@@ -1011,13 +1002,13 @@ export default function RegisterPage() {
             )}
             <div className="modal-actions" style={{ marginTop: 12 }}>
               <button type="submit" className="modal-button primary">
-                建立帳戶
+                {t('create_account')}
               </button>
 
-              <Link href="/login" className="modal-button secondary">返回登入</Link>
+              <Link href="/login" className="modal-button secondary">{t('register_back_to_login')}</Link>
             </div>
 
-            {saved && <p className="form-success">已儲存（模擬） — 將在幾秒後導回首頁。</p>}
+            {saved && <p className="form-success">{t('register_enterprise_saved_notice')}</p>}
           </form>
         </div>
       </section>

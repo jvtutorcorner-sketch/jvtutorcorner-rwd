@@ -12,8 +12,14 @@ import {
 } from "@/lib/mockAuth";
 import { PLAN_PRICES, PLAN_FEATURES } from "@/lib/mockAuth";
 import OnboardingQuestionnaire from "@/components/OnboardingQuestionnaire";
+import { useT } from "@/components/IntlProvider";
 
 const ONBOARDING_ENABLED = process.env.NEXT_PUBLIC_ENABLE_ONBOARDING_QUESTIONNAIRE === 'true';
+
+const COUNTRY_CODES = [
+  "TW", "JP", "US", "GB", "HK", "MO", "CN", "KR", "SG", "MY",
+  "AU", "NZ", "CA", "DE", "FR", "ES", "IT", "IN", "BR", "MX", "ZA",
+] as const;
 
 function simpleMarkdownToHtml(md: string) {
   if (!md) return "";
@@ -29,6 +35,7 @@ function simpleMarkdownToHtml(md: string) {
 }
 
 export default function RegisterPage() {
+  const t = useT();
   const router = useRouter();
   const [role, setRole] = useState<"student" | "teacher" | null>("student");
   const [firstName, setFirstName] = useState("");
@@ -83,30 +90,8 @@ export default function RegisterPage() {
   // plan selection moved to user settings; registration defaults to 'viewer'
 
   const countries = useMemo(
-    () => [
-      { code: "TW", label: "台灣" },
-      { code: "JP", label: "日本" },
-      { code: "US", label: "美國" },
-      { code: "GB", label: "英國" },
-      { code: "HK", label: "香港" },
-      { code: "MO", label: "澳門" },
-      { code: "CN", label: "中國" },
-      { code: "KR", label: "南韓" },
-      { code: "SG", label: "新加坡" },
-      { code: "MY", label: "馬來西亞" },
-      { code: "AU", label: "澳洲" },
-      { code: "NZ", label: "紐西蘭" },
-      { code: "CA", label: "加拿大" },
-      { code: "DE", label: "德國" },
-      { code: "FR", label: "法國" },
-      { code: "ES", label: "西班牙" },
-      { code: "IT", label: "義大利" },
-      { code: "IN", label: "印度" },
-      { code: "BR", label: "巴西" },
-      { code: "MX", label: "墨西哥" },
-      { code: "ZA", label: "南非" },
-    ],
-    [],
+    () => COUNTRY_CODES.map((code) => ({ code, label: t(`country_${code}`) })),
+    [t],
   );
 
   // 國家時區映射
@@ -202,7 +187,7 @@ export default function RegisterPage() {
 
     // 優先檢查服務條款同意
     if (!termsAccepted) {
-      setFormError('請先勾選同意服務條款與隱私權政策');
+      setFormError(t('register_error_terms_required'));
       setTimeout(() => {
         // 滾動到服務條款區域
         const termsSection = document.querySelector('input[name="terms"]') as HTMLInputElement | null;
@@ -219,55 +204,55 @@ export default function RegisterPage() {
     const fieldRefs: { [key: string]: React.RefObject<any> } = {};
 
     if (!role) {
-      errors.push('身份（學生或教師）');
+      errors.push(t('register_error_field_role'));
       fieldRefs['role'] = roleRef;
     }
 
     if (!firstName.trim()) {
-      errors.push('First Name');
+      errors.push(t('first_name_label'));
       fieldRefs['firstName'] = firstNameRef;
     }
 
     if (!lastName.trim()) {
-      errors.push('Last Name');
+      errors.push(t('last_name_label'));
       fieldRefs['lastName'] = lastNameRef;
     }
 
     if (!email.trim()) {
-      errors.push('Email');
+      errors.push(t('email'));
       fieldRefs['email'] = emailRef;
     }
 
     if (!password) {
-      errors.push('密碼');
+      errors.push(t('password'));
       fieldRefs['password'] = passwordRef;
     }
 
     if (!confirmPassword) {
-      errors.push('確認密碼');
+      errors.push(t('register_confirm_password_label'));
       fieldRefs['confirmPassword'] = confirmPasswordRef;
     } else if (password !== confirmPassword) {
-      errors.push('密碼確認（密碼不相符）');
+      errors.push(t('register_error_password_mismatch_field'));
       fieldRefs['confirmPassword'] = confirmPasswordRef;
     }
 
     if (!birthdate) {
-      errors.push('出生日期');
+      errors.push(t('birthdate_label'));
       fieldRefs['birthdate'] = birthdateRef;
     }
 
     if (!gender) {
-      errors.push('性別');
+      errors.push(t('gender_label'));
       fieldRefs['gender'] = genderRef;
     }
 
     if (!country) {
-      errors.push('國家');
+      errors.push(t('country_label'));
       fieldRefs['country'] = countryRef;
     }
 
     if (errors.length > 0) {
-      const errorMessage = `請填寫以下必填欄位：\n• ${errors.join('\n• ')}`;
+      const errorMessage = `${t('register_error_required_fields_prefix')}\n• ${errors.join('\n• ')}`;
       setFormError(errorMessage);
 
       // Scroll to first error field or error message
@@ -318,8 +303,8 @@ export default function RegisterPage() {
       if (!res.ok) {
         // show server message inline instead of throwing an exception
         const message = data?.message === 'captcha_incorrect'
-          ? '驗證碼錯誤或已過期，請重新輸入下方新的驗證碼'
-          : (data?.message || '註冊失敗');
+          ? t('register_error_captcha_incorrect')
+          : (data?.message || t('register_error_register_failed'));
         setFormError(message);
         if (data?.message === 'captcha_incorrect') {
           // 驗證碼失效後畫面上的舊圖片/token 已無法通過驗證，必須重新取得
@@ -352,7 +337,7 @@ export default function RegisterPage() {
 
     } catch (err: any) {
       console.error(err);
-      setFormError(err?.message || '儲存失敗');
+      setFormError(err?.message || t('save_failed'));
       loadCaptcha();
     }
 
@@ -361,27 +346,27 @@ export default function RegisterPage() {
   return (
     <div className="page">
       <header className="page-header">
-        <h1>建立帳戶</h1>
-        <p>請選擇身份並填寫下列<strong>所有必填</strong>資料（標記 <span style={{ color: 'red' }}>*</span> 的欄位為必填）。</p>
+        <h1>{t('create_account')}</h1>
+        <p>{t('register_subtitle_before')}<strong>{t('register_subtitle_bold')}</strong>{t('register_subtitle_after')}<span style={{ color: 'red' }}>*</span>{t('register_subtitle_after_asterisk')}</p>
       </header>
 
       <section className="section">
         <div className="card">
-          <h2>基本資料</h2>
+          <h2>{t('register_basic_info_title')}</h2>
             {saved ? (
               <div style={{ textAlign: 'center', padding: '40px 20px' }}>
                 <div style={{ fontSize: '64px', marginBottom: '20px' }}>{emailSendFailed ? '⚠️' : '📧'}</div>
                 <h2 style={{ color: emailSendFailed ? '#b45309' : '#059669', marginBottom: '16px' }}>
-                  {emailSendFailed ? '註冊成功！但驗證信發送失敗' : '註冊成功！請驗證您的電子郵件'}
+                  {emailSendFailed ? t('register_success_title_email_failed') : t('register_success_title_email_sent')}
                 </h2>
                 {emailSendFailed ? (
                   <>
                     <p style={{ fontSize: '18px', color: '#4b5563', lineHeight: '1.6', marginBottom: '24px' }}>
-                      您的帳戶已建立，但驗證信寄送至 <strong>{email}</strong> 時發生問題。<br />
-                      請點擊下方按鈕重新發送驗證信。
+                      {t('register_email_failed_message_prefix')} <strong>{email}</strong>{t('register_email_failed_message_suffix')}<br />
+                      {t('register_email_failed_message_line2')}
                     </p>
                     <div style={{ padding: '16px', backgroundColor: '#fffbeb', borderRadius: '8px', border: '1px solid #fde68a', color: '#92400e', fontSize: '14px', marginBottom: '24px' }}>
-                      提示：驗證後您的電子郵件將自動加入平台白名單，即可接收課程通知。
+                      {t('register_whitelist_hint')}
                     </div>
                     <button
                       type="button"
@@ -398,14 +383,14 @@ export default function RegisterPage() {
                           });
                           const data = await res.json();
                           if (res.ok && data.success) {
-                            setResendMsg(data.message || '驗證信已重新發送，請檢查您的信箱');
+                            setResendMsg(data.message || t('register_resend_success_default'));
                           } else if (res.status === 429 && data.retryAfter) {
-                            setResendError(`請等待 ${data.retryAfter} 秒後再試`);
+                            setResendError(t('register_resend_wait_seconds').replace('{seconds}', String(data.retryAfter)));
                           } else {
-                            setResendError(data?.message || '重新發送失敗，請稍後再試');
+                            setResendError(data?.message || t('register_resend_failed_default'));
                           }
                         } catch (e: any) {
-                          setResendError(e?.message || '重新發送失敗，請稍後再試');
+                          setResendError(e?.message || t('register_resend_failed_default'));
                         } finally {
                           setResendLoading(false);
                         }
@@ -413,27 +398,26 @@ export default function RegisterPage() {
                       className="modal-button primary"
                       style={{ display: 'inline-block', width: 'auto', padding: '12px 32px', marginBottom: '16px', cursor: resendLoading ? 'not-allowed' : 'pointer' }}
                     >
-                      {resendLoading ? '發送中...' : '重新發送驗證信'}
+                      {resendLoading ? t('register_resend_sending') : t('register_resend_button')}
                     </button>
                     {resendMsg && <p style={{ color: '#059669', marginBottom: '16px' }}>{resendMsg}</p>}
                     {resendError && <p style={{ color: '#dc2626', marginBottom: '16px' }}>{resendError}</p>}
                     <div>
                       <Link href="/login" className="modal-button" style={{ display: 'inline-block', width: 'auto', padding: '12px 32px' }}>
-                        返回登入
+                        {t('register_back_to_login')}
                       </Link>
                     </div>
                   </>
                 ) : (
                   <>
                     <p style={{ fontSize: '18px', color: '#4b5563', lineHeight: '1.6', marginBottom: '24px' }}>
-                      我們已發送一封驗證信至 <strong>{email}</strong>。<br />
-                      請前往您的信箱並點擊驗證連結以啟用帳戶。
+                      {t('register_email_sent_message_prefix')} <strong>{email}</strong>{t('register_email_sent_message_suffix')}
                     </p>
                     <div style={{ padding: '16px', backgroundColor: '#ecfdf5', borderRadius: '8px', border: '1px solid #d1fae5', color: '#065f46', fontSize: '14px', marginBottom: '32px' }}>
-                      提示：驗證後您的電子郵件將自動加入平台白名單，即可接收課程通知。
+                      {t('register_whitelist_hint')}
                     </div>
                     <Link href="/login" className="modal-button primary" style={{ display: 'inline-block', width: 'auto', padding: '12px 32px' }}>
-                      返回登入
+                      {t('register_back_to_login')}
                     </Link>
                   </>
                 )}
@@ -441,7 +425,7 @@ export default function RegisterPage() {
             ) : (
               <form onSubmit={handleSubmit} className="modal-form">
             <div className="field">
-              <label>身份 <span style={{ color: 'red' }}>*</span></label>
+              <label>{t('register_role_label')} <span style={{ color: 'red' }}>*</span></label>
               <select
                 ref={roleRef}
                 value={role || ""}
@@ -457,30 +441,30 @@ export default function RegisterPage() {
                 }}
                 style={{ cursor: 'pointer' }}
               >
-                <option value="">請選擇身份</option>
-                <option value="student">Student</option>
-                <option value="teacher">Teacher</option>
+                <option value="">{t('register_select_role_placeholder')}</option>
+                <option value="student">{t('role_student')}</option>
+                <option value="teacher">{t('role_teacher')}</option>
               </select>
             </div>
 
             <div className="field-row">
               <div className="field">
-                <label>First Name <span style={{ color: 'red' }}>*</span></label>
+                <label>{t('first_name_label')} <span style={{ color: 'red' }}>*</span></label>
                 <input ref={firstNameRef} name="firstName" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
               </div>
               <div className="field">
-                <label>Last Name <span style={{ color: 'red' }}>*</span></label>
+                <label>{t('last_name_label')} <span style={{ color: 'red' }}>*</span></label>
                 <input ref={lastNameRef} name="lastName" value={lastName} onChange={(e) => setLastName(e.target.value)} />
               </div>
             </div>
 
             <div className="field">
-              <label>Email <span style={{ color: 'red' }}>*</span></label>
+              <label>{t('email')} <span style={{ color: 'red' }}>*</span></label>
               <input ref={emailRef} type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="example@domain.com" />
             </div>
 
             <div className="field">
-              <label>密碼 <span style={{ color: 'red' }}>*</span></label>
+              <label>{t('password')} <span style={{ color: 'red' }}>*</span></label>
               <input
                 ref={passwordRef}
                 type={showPasswords ? 'text' : 'password'}
@@ -490,7 +474,7 @@ export default function RegisterPage() {
                   setPassword(e.target.value);
                   // 當密碼改變時，重新驗證確認密碼
                   if (confirmPassword && e.target.value !== confirmPassword) {
-                    setConfirmPasswordError('密碼確認不相符');
+                    setConfirmPasswordError(t('register_password_mismatch'));
                   } else if (confirmPassword && e.target.value === confirmPassword) {
                     setConfirmPasswordError(null);
                   }
@@ -499,7 +483,7 @@ export default function RegisterPage() {
             </div>
 
             <div className="field">
-              <label>再次輸入密碼 <span style={{ color: 'red' }}>*</span></label>
+              <label>{t('register_confirm_password_label')} <span style={{ color: 'red' }}>*</span></label>
               <input
                 ref={confirmPasswordRef}
                 type={showPasswords ? 'text' : 'password'}
@@ -509,7 +493,7 @@ export default function RegisterPage() {
                   setConfirmPassword(e.target.value);
                   // 即時驗證密碼匹配
                   if (e.target.value && password && e.target.value !== password) {
-                    setConfirmPasswordError('密碼確認不相符');
+                    setConfirmPasswordError(t('register_password_mismatch'));
                   } else {
                     setConfirmPasswordError(null);
                   }
@@ -542,38 +526,38 @@ export default function RegisterPage() {
                   appearance: 'checkbox'
                 }}
               />
-              <label htmlFor="showPasswords" style={{ cursor: 'pointer', userSelect: 'none' }}>顯示密碼</label>
+              <label htmlFor="showPasswords" style={{ cursor: 'pointer', userSelect: 'none' }}>{t('register_show_passwords')}</label>
             </div>
 
             <div className="field" style={{ display: 'none' }}>
-              <label>自動生成 ID</label>
+              <label>{t('register_auto_id_label')}</label>
               <input
                 value={uuid}
                 readOnly
                 disabled
-                aria-label="自動生成 ID（已鎖定）"
+                aria-label={t('register_auto_id_aria')}
                 style={{ background: '#f3f4f6', cursor: 'not-allowed' }}
               />
             </div>
 
             <div className="field">
-              <label>出生日期 <span style={{ color: 'red' }}>*</span></label>
+              <label>{t('birthdate_label')} <span style={{ color: 'red' }}>*</span></label>
               <input ref={birthdateRef} name="birthdate" type="date" value={birthdate} onChange={(e) => setBirthdate(e.target.value)} />
             </div>
 
             <div className="field">
-              <label>性別 <span style={{ color: 'red' }}>*</span></label>
+              <label>{t('gender_label')} <span style={{ color: 'red' }}>*</span></label>
               <select ref={genderRef} name="gender" value={gender} onChange={(e) => setGender(e.target.value)}>
-                <option value="">請選擇</option>
-                <option value="male">男</option>
-                <option value="female">女</option>
+                <option value="">{t('select_placeholder')}</option>
+                <option value="male">{t('gender_male')}</option>
+                <option value="female">{t('gender_female')}</option>
               </select>
             </div>
 
             <div className="field">
-              <label>國家 <span style={{ color: 'red' }}>*</span></label>
+              <label>{t('country_label')} <span style={{ color: 'red' }}>*</span></label>
               <select ref={countryRef} name="country" value={country} onChange={(e) => setCountry(e.target.value)}>
-                <option value="">請選擇</option>
+                <option value="">{t('select_placeholder')}</option>
                 {countries.map((c) => (
                   <option key={c.code} value={c.code}>{`${c.label} ${c.code}`}</option>
                 ))}
@@ -587,9 +571,9 @@ export default function RegisterPage() {
             {/* Payment details moved to user settings after login; registration does not collect card info. */}
 
             <div className="field">
-              <label>服務條款與隱私權政策 <span style={{ color: 'red' }}>*</span></label>
+              <label>{t('register_terms_label')} <span style={{ color: 'red' }}>*</span></label>
               <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <p>請先閱讀我們的 <Link href="/terms" target="_blank" style={{ color: '#0066cc', textDecoration: 'underline' }}>服務條款與隱私權政策</Link></p>
+                <p>{t('register_terms_read_prefix')} <Link href="/terms" target="_blank" style={{ color: '#0066cc', textDecoration: 'underline' }}>{t('register_terms_label')}</Link></p>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' }}>
                   <input
                     name="terms"
@@ -606,13 +590,13 @@ export default function RegisterPage() {
                       appearance: 'checkbox'
                     }}
                   />
-                  我已閱讀並同意服務條款與隱私權政策
+                  {t('register_terms_agree_label')}
                 </label>
               </div>
             </div>
             {/* Captcha Section */}
             <div className="field">
-              <label>驗證碼 <span style={{ color: "red" }}>*</span></label>
+              <label>{t('captcha_label')} <span style={{ color: "red" }}>*</span></label>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
                 {captchaImage ? (
                   <img src={captchaImage} alt="captcha" style={{ height: 48, border: "1px solid #ddd", borderRadius: 4 }} />
@@ -620,13 +604,13 @@ export default function RegisterPage() {
                   <div style={{ width: 140, height: 48, background: "#f3f4f6", borderRadius: 4 }} />
                 )}
                 <button type="button" className="card-button secondary" onClick={loadCaptcha} disabled={captchaLoading} style={{ padding: '8px 12px' }}>
-                  重新取得
+                  {t('register_captcha_refresh')}
                 </button>
               </div>
               <input
                 type="text"
                 value={captchaValue}
-                placeholder="請輸入上方驗證碼"
+                placeholder={t('register_captcha_input_placeholder')}
                 onChange={(e) => setCaptchaValue(e.target.value)}
                 autoComplete="off"
               />
@@ -650,13 +634,13 @@ export default function RegisterPage() {
 
             <div className="modal-actions" style={{ marginTop: 12 }}>
               <button type="submit" className="modal-button primary">
-                建立帳戶
+                {t('create_account')}
               </button>
-              <Link href="/login" className="modal-button secondary">返回登入</Link>
+              <Link href="/login" className="modal-button secondary">{t('register_back_to_login')}</Link>
             </div>
 
             <p style={{ marginTop: 16, textAlign: 'center', fontSize: 14 }}>
-              代表企業／組織註冊？<Link href="/login/register_enterprise" style={{ color: '#0066cc', textDecoration: 'underline' }}>前往企業用戶註冊 →</Link>
+              {t('register_enterprise_prompt')}<Link href="/login/register_enterprise" style={{ color: '#0066cc', textDecoration: 'underline' }}>{t('register_enterprise_link')}</Link>
             </p>
 
             </form>
