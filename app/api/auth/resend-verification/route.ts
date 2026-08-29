@@ -99,7 +99,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 7. 更新驗證狀態
+    // 7. 更新驗證狀態（連同新的 token/過期時間寫回 profile，否則新信裡的連結永遠對不上資料庫）
     await updateEmailVerificationStatus(
       profile.id,
       normalizedEmail,
@@ -108,7 +108,9 @@ export async function POST(req: NextRequest) {
         emailVerificationStatus: 'resend_requested',
         emailVerificationResendCount: resendCount + 1,
         emailVerificationLastResendAt: now,
-        emailVerificationLastAttempt: now
+        emailVerificationLastAttempt: now,
+        verificationToken: newToken,
+        verificationExpires: newTokenExpires
       },
       {
         token: newToken,

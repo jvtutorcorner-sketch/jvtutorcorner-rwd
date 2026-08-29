@@ -18,6 +18,8 @@ export interface EmailVerificationStatusUpdate {
   emailVerificationSuccessAt?: string;
   emailVerificationResendCount?: number;
   emailVerificationLastResendAt?: string;
+  verificationToken?: string;
+  verificationExpires?: string;
 }
 
 /**
@@ -88,6 +90,18 @@ export async function updateEmailVerificationStatus(
       updateFields['#evlra'] = 'emailVerificationLastResendAt';
       expressionValues[':evlra'] = updates.emailVerificationLastResendAt;
       updateExpression += ', #evlra = :evlra';
+    }
+
+    if (updates.verificationToken) {
+      updateFields['#vt'] = 'verificationToken';
+      expressionValues[':vt'] = updates.verificationToken;
+      updateExpression += ', #vt = :vt';
+    }
+
+    if (updates.verificationExpires) {
+      updateFields['#vte'] = 'verificationExpires';
+      expressionValues[':vte'] = updates.verificationExpires;
+      updateExpression += ', #vte = :vte';
     }
 
     await ddbDocClient.send(new UpdateCommand({

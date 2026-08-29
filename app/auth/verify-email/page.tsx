@@ -11,9 +11,13 @@ function EmailVerifiedContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [redirectCount, setRedirectCount] = useState(5);
+  const [resendEmail, setResendEmail] = useState(searchParams.get('email') || '');
+  const [resendStatus, setResendStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  const [resendMessage, setResendMessage] = useState('');
 
   const messageParam = searchParams.get('message');
   const errorParam = searchParams.get('error');
+  const canResend = errorParam === 'token_expired';
 
   useEffect(() => {
     if (!messageParam && !errorParam) {
@@ -21,7 +25,9 @@ function EmailVerifiedContent() {
       return;
     }
 
-    // 5 秒後自動跳轉到登入頁面
+    // 連結過期時停留在頁面上，讓使用者可以重新發送驗證信；其餘情況 5 秒後自動跳轉到登入頁面
+    if (canResend) return;
+
     const timer = setInterval(() => {
       setRedirectCount(prev => {
         if (prev <= 1) {
@@ -33,7 +39,35 @@ function EmailVerifiedContent() {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [messageParam, errorParam, router]);
+  }, [messageParam, errorParam, router, canResend]);
+
+  async function handleResend() {
+    if (!resendEmail.trim()) {
+      setResendStatus('error');
+      setResendMessage('請輸入註冊時使用的 Email');
+      return;
+    }
+    setResendStatus('sending');
+    setResendMessage('');
+    try {
+      const res = await fetch('/api/auth/resend-verification', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: resendEmail.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setResendStatus('error');
+        setResendMessage(data?.error || '發送失敗，請稍後再試');
+        return;
+      }
+      setResendStatus('sent');
+      setResendMessage(data?.message || '驗證信已重新發送，請檢查您的郵箱');
+    } catch (e) {
+      setResendStatus('error');
+      setResendMessage('發送失敗，請稍後再試');
+    }
+  }
 
   let title = '';
   let message = '';
@@ -66,7 +100,7 @@ function EmailVerifiedContent() {
       break;
     case 'token_expired':
       title = '驗證連結已過期';
-      message = '驗證連結已過期（有效期為 24 小時）。請重新註冊帳號以獲得新的驗證連結。';
+      message = '驗證連結已過期（有效期為 24 小時）。請點擊下方按鈕重新發送驗證信，不需要重新註冊帳號。';
       icon = '⏰';
       className = 'warning';
       break;
@@ -91,6 +125,33 @@ function EmailVerifiedContent() {
           {message}
         </p>
 
+        {canResend && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px', textAlign: 'left' }}>
+            <label style={{ fontSize: '14px', color: '#444' }}>註冊 Email</label>
+            <input
+              type="email"
+              value={resendEmail}
+              onChange={(e) => setResendEmail(e.target.value)}
+              placeholder="請輸入註冊時使用的 Email"
+              disabled={resendStatus === 'sending' || resendStatus === 'sent'}
+              style={{ padding: '10px', border: '1px solid #ddd', borderRadius: 4, fontSize: '14px' }}
+            />
+            <button
+              type="button"
+              className="modal-button primary"
+              onClick={handleResend}
+              disabled={resendStatus === 'sending' || resendStatus === 'sent'}
+            >
+              {resendStatus === 'sending' ? '發送中...' : resendStatus === 'sent' ? '已發送' : '重新發送驗證信'}
+            </button>
+            {resendMessage && (
+              <p style={{ fontSize: '13px', color: resendStatus === 'error' ? '#ef4444' : '#10b981', margin: 0 }}>
+                {resendMessage}
+              </p>
+            )}
+          </div>
+        )}
+
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '20px' }}>
           <Link href="/login" className="modal-button primary">
             前往登入
@@ -100,9 +161,11 @@ function EmailVerifiedContent() {
           </Link>
         </div>
 
-        <p style={{ fontSize: '12px', color: '#999' }}>
-          系統將在 {redirectCount} 秒後自動跳轉到登入頁面...
-        </p>
+        {!canResend && (
+          <p style={{ fontSize: '12px', color: '#999' }}>
+            系統將在 {redirectCount} 秒後自動跳轉到登入頁面...
+          </p>
+        )}
       </div>
 
       <style jsx>{`

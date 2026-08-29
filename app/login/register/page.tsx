@@ -317,8 +317,14 @@ export default function RegisterPage() {
       const data = await res.json();
       if (!res.ok) {
         // show server message inline instead of throwing an exception
-        const message = data?.message || '註冊失敗';
+        const message = data?.message === 'captcha_incorrect'
+          ? '驗證碼錯誤或已過期，請重新輸入下方新的驗證碼'
+          : (data?.message || '註冊失敗');
         setFormError(message);
+        if (data?.message === 'captcha_incorrect') {
+          // 驗證碼失效後畫面上的舊圖片/token 已無法通過驗證，必須重新取得
+          loadCaptcha();
+        }
         // focus email for duplicate-email errors
         try {
           const el = document.querySelector('input[type="email"]') as HTMLInputElement | null;
