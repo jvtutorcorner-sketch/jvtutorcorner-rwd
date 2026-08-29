@@ -28,8 +28,8 @@ export default async function TeacherDetailPage({ params }: { params: any }) {
   if (!teacher) {
     return (
       <div style={{ padding: 48, textAlign: 'center' }}>
-        <h2>找不到該老師</h2>
-        <Link href="/teachers">回到列表</Link>
+        <h2><ServerT k="teacher_not_found_title" /></h2>
+        <Link href="/teachers"><ServerT k="teacher_not_found_back_link" /></Link>
       </div>
     );
   }
@@ -60,7 +60,7 @@ export default async function TeacherDetailPage({ params }: { params: any }) {
 
       <div style={{ marginTop: '40px', padding: '24px', background: '#f9fafb', borderRadius: '12px' }}>
         <h3 style={{ fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '16px' }}>
-          關於老師
+          <ServerT k="about_teacher_title" />
         </h3>
         <AutoTranslateText text={teacher.intro} as="p" style={{ lineHeight: '1.6', whiteSpace: 'pre-line' }} />
       </div>

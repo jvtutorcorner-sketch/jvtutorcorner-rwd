@@ -1,7 +1,7 @@
 // components/EnrollButton.tsx
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { getStoredUser } from '@/lib/mockAuth';
@@ -45,6 +45,7 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
   const t = useT();
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
+  const isPointsErrorRef = useRef(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [isLoadingPoints, setIsLoadingPoints] = useState(false); // Added loading state for points
@@ -85,7 +86,10 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
         if (d.ok) {
           setUserPoints(d.balance);
           // If points are updated and previously there was a point-related error, clear it
-          setError(prev => prev?.includes('點數不足') ? null : prev);
+          if (isPointsErrorRef.current) {
+            isPointsErrorRef.current = false;
+            setError(null);
+          }
         }
       })
       .catch(() => { })
@@ -95,7 +99,7 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
   const handleEnrollAndOrder = async () => {
     if (!storedUser) return;
     if (!selectedStartTime) {
-      setError('請選擇開始時間');
+      setError(t('enroll_error_select_start_time'));
       return;
     }
 
@@ -104,12 +108,13 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
     if (payMethod === 'points') {
       if (!pointCost || pointCost <= 0) {
         console.error('[EnrollButton] pointCost missing or zero');
-        setError('此課程未設定點數費用');
+        setError(t('enroll_error_no_point_cost'));
         return;
       }
       if (userPoints === null || userPoints < pointCost) {
         console.error('[EnrollButton] insufficient points:', userPoints, '<', pointCost);
-        setError(`點數不足，目前餘額 ${userPoints ?? 0} 點，需要 ${pointCost} 點`);
+        isPointsErrorRef.current = true;
+        setError(t('enroll_error_insufficient_points').replace('{balance}', String(userPoints ?? 0)).replace('{cost}', String(pointCost)));
         return;
       }
     }
@@ -137,6 +142,7 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
     try {
       setIsSubmitting(true);
       setError(null);
+      isPointsErrorRef.current = false;
 
       // 時間衝突檢查
       const selectedStart = new Date(selectedStartTime).getTime();
@@ -165,10 +171,15 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
 
           const hasOverlap = selectedStart < existingEnd && selectedEnd > existingStart;
           if (hasOverlap) {
-            const conflictTitle = existing.courseTitle || existing.courseId || '其他課程';
+            const conflictTitle = existing.courseTitle || existing.courseId || t('enroll_other_course_fallback');
             const conflictStart = new Date(existing.startTime).toLocaleString();
-            const conflictEnd = existing.endTime ? new Date(existing.endTime).toLocaleString() : '未知';
-            setError(`此時間段（${new Date(selectedStartTime).toLocaleString()} ~ ${endTime ? new Date(endTime).toLocaleString() : '未知'}）與已報名的「${conflictTitle}」（${conflictStart} ~ ${conflictEnd}）有時間重疊，請選擇其他時段。`);
+            const conflictEnd = existing.endTime ? new Date(existing.endTime).toLocaleString() : t('unknown');
+            setError(t('enroll_error_time_conflict')
+              .replace('{startTime}', new Date(selectedStartTime).toLocaleString())
+              .replace('{endTime}', endTime ? new Date(endTime).toLocaleString() : t('unknown'))
+              .replace('{conflictTitle}', conflictTitle)
+              .replace('{conflictStart}', conflictStart)
+              .replace('{conflictEnd}', conflictEnd));
             setIsSubmitting(false); // Make sure to stop submission
             return;
           }
@@ -183,7 +194,7 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
 
       const data = await res.json();
       if (!res.ok || !data.ok) {
-        setError(data.error || '報名失敗，請稍後再試。');
+        setError(data.error || t('enroll_error_generic_failed'));
         return;
       }
 
@@ -218,7 +229,7 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
       const orderData = await orderRes.json();
       
       if (!orderRes.ok || !orderData.ok) {
-        setError(orderData.error || '訂單建立失敗，請稍後再試。');
+        setError(orderData.error || t('enroll_error_order_failed'));
         return;
       }
 
@@ -310,37 +321,37 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
           !storedUser
             ? t('enroll_title_login')
             : storedUser.role === 'teacher'
-              ? '老師帳號無法報名學生課程'
+              ? t('enroll_title_teacher_blocked')
               : !isDateValid
-                ? '目前不在課程期間，請選擇其他可報名的課程'
+                ? t('enroll_title_out_of_period')
                 : !canUsePlan && !canUsePoints
-                  ? '此課程目前不開放報名'
+                  ? t('enroll_title_not_open')
                   : canUsePlan && !isPlanSufficient && !canUsePoints
-                    ? `需要 ${requiredPlan.charAt(0).toUpperCase() + requiredPlan.slice(1)} 方案才能報名此課程`
-                    : `${t('enroll_title_logged_prefix')} ${storedUser.email} ${t('enroll_title_logged_suffix')}`
+                    ? t('enroll_title_plan_required').replace('{plan}', requiredPlan.charAt(0).toUpperCase() + requiredPlan.slice(1))
+                    : [t('enroll_title_logged_prefix'), storedUser.email, t('enroll_title_logged_suffix')].filter(Boolean).join(' ')
         }
       >
-        {isSubmitting ? t('loading') : isSuccess ? '報名成功！正在跳轉...' : !isDateValid ? '請選擇其他可報名的課程' : t('enroll_button_label')}
+        {isSubmitting ? t('loading') : isSuccess ? t('enroll_success_redirecting') : !isDateValid ? t('enroll_button_out_of_period') : t('enroll_button_label')}
       </button>
 
       {/* 點數餘額顯示 */}
       {storedUser && canUsePoints && userPoints !== null && (
         <p style={{ marginTop: 6, fontSize: '0.83rem', color: userPoints >= (pointCost ?? 0) ? '#059669' : '#dc2626' }}>
-          💎 點數餘額：{userPoints} 點{pointCost ? `（本課需 ${pointCost} 點）` : ''}
+          {t('enroll_points_balance_label')}{userPoints} {t('unit_points')}{pointCost ? t('enroll_points_balance_required_suffix').replace('{cost}', String(pointCost)) : ''}
         </p>
       )}
 
       {showStartTimeModal && (
         <Modal onClose={() => setShowStartTimeModal(false)}>
           <div className="p-4">
-            <h2 className="text-xl font-bold mb-4">確認報名課程</h2>
-            <p className="mb-4 text-gray-600">請確認您預計開始上課的時間。</p>
+            <h2 className="text-xl font-bold mb-4">{t('enroll_modal_title')}</h2>
+            <p className="mb-4 text-gray-600">{t('enroll_modal_subtitle')}</p>
 
             {/* 付款方式選擇器（只要兩者皆可用才顯示） */}
             {showMethodSelector && (
               <div style={{ marginBottom: 20 }}>
                 <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: 600, color: '#374151', marginBottom: 8 }}>
-                  付款方式：
+                  {t('enroll_modal_payment_method_label')}
                 </label>
                 <div style={{ display: 'flex', gap: 12 }}>
                   <button
@@ -355,9 +366,9 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
                       cursor: 'pointer',
                     }}
                   >
-                    📅 方案報名
+                    {t('enroll_modal_pay_with_plan')}
                     <div style={{ fontSize: '0.78rem', marginTop: 2, fontWeight: 400 }}>
-                      需 {requiredPlan.toUpperCase()} 方案
+                      {t('enroll_modal_requires_plan').replace('{plan}', requiredPlan.toUpperCase())}
                     </div>
                   </button>
                   <button
@@ -374,9 +385,9 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
                       opacity: isLoadingPoints || (userPoints ?? 0) < (pointCost ?? 0) ? 0.5 : 1,
                     }}
                   >
-                    💎 點數報名
+                    {t('enroll_modal_pay_with_points')}
                     <div style={{ fontSize: '0.78rem', marginTop: 2, fontWeight: 400 }}>
-                      {isLoadingPoints ? '讀取中...' : `扣 ${pointCost} 點（餘 ${userPoints ?? 0} 點）`}
+                      {isLoadingPoints ? t('loading') : t('enroll_modal_points_cost_balance').replace('{cost}', String(pointCost)).replace('{balance}', String(userPoints ?? 0))}
                     </div>
                   </button>
                 </div>
@@ -387,14 +398,14 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
             {enrollmentType === 'points' && (
               <div style={{ marginBottom: 16, padding: '10px 14px', backgroundColor: '#f5f3ff', borderRadius: 8, borderLeft: '4px solid #7c3aed' }}>
                 <p style={{ fontSize: '0.88rem', color: '#6d28d9' }}>
-                  💎 <strong>點數報名：</strong>本課程需扣 <strong>{pointCost} 點</strong>，您目前有 <strong>{userPoints ?? 0} 點</strong>
+                  {t('enroll_modal_pay_with_points')}：{t('enroll_modal_points_only_desc').replace('{cost}', String(pointCost)).replace('{balance}', String(userPoints ?? 0))}
                 </p>
               </div>
             )}
 
             <div style={{ marginBottom: '24px' }}>
               <label htmlFor="start-time" style={{ display: 'block', fontSize: '0.9rem', fontWeight: 600, color: '#374151', marginBottom: '8px' }}>
-                選擇課程開始時間:
+                {t('enroll_modal_start_time_label')}
               </label>
               <input
                 id="start-time"
@@ -415,8 +426,8 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
               />
               <div style={{ marginTop: '12px', padding: '12px', backgroundColor: '#eff6ff', borderRadius: '8px', borderLeft: '4px solid #3b82f6' }}>
                 <p style={{ fontSize: '0.85rem', color: '#1e40af', lineHeight: '1.5' }}>
-                  <strong>配置說明：</strong><br />
-                  此時間將作為您第一堂課的建議開始時間。系統會根據此設定為您預約導師並準備教學環境。若需更改，請於課程開始前 24 小時至會員中心調整。
+                  <strong>{t('enroll_modal_config_note_title')}</strong><br />
+                  {t('enroll_modal_config_note_body')}
                 </p>
               </div>
             </div>
@@ -429,14 +440,14 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
                 className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
                 disabled={isSubmitting}
               >
-                取消
+                {t('cancel')}
               </button>
               <button
                 onClick={handleEnrollAndOrder}
                 className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium shadow-md disabled:bg-blue-300"
                 disabled={isSubmitting || !selectedStartTime || isLoadingPoints || (payMethod === 'points' && (userPoints === null || userPoints < (pointCost ?? 0)))}
               >
-                {isSubmitting ? '處理中...' : payMethod === 'points' ? `確認報名（扣 ${pointCost} 點）` : '確認報名'}
+                {isSubmitting ? t('processing') : payMethod === 'points' ? t('enroll_confirm_with_points').replace('{cost}', String(pointCost)) : t('enroll_confirm_title')}
               </button>
             </div>
           </div>
@@ -449,19 +460,19 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
 
       {storedUser && storedUser.role === 'teacher' && (
         <p className="auth-warning" style={{ color: '#d32f2f' }}>
-          老師帳號無法報名此課程。
+          {t('enroll_warning_teacher_blocked')}
         </p>
       )}
 
       {storedUser && storedUser.role !== 'teacher' && canUsePlan && !isPlanSufficient && !canUsePoints && (
         <p className="auth-warning" style={{ color: '#d32f2f' }}>
-          您的 {userPlan} 方案無法報名此課程，請升級至 {requiredPlan.charAt(0).toUpperCase() + requiredPlan.slice(1)} 方案或更高等級。
+          {t('enroll_warning_plan_insufficient').replace('{userPlan}', userPlan).replace('{requiredPlan}', requiredPlan.charAt(0).toUpperCase() + requiredPlan.slice(1))}
         </p>
       )}
 
       {storedUser && storedUser.role !== 'teacher' && enrollmentType === 'points' && !canUsePlan && (userPoints ?? 0) < (pointCost ?? 0) && (
         <p className="auth-warning" style={{ color: '#d32f2f' }}>
-          點數不足，此課程需要 {pointCost} 點，您目前有 {userPoints ?? 0} 點。請先購買點數套餐。
+          {t('enroll_warning_points_insufficient').replace('{cost}', String(pointCost)).replace('{balance}', String(userPoints ?? 0))}
         </p>
       )}
     </>

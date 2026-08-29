@@ -51,9 +51,8 @@ export function AuthStatusBar() {
   return (
     <div className="tag" style={{ marginBottom: '1rem' }}>
       {user.lastName ? <div style={{ fontWeight: 700 }}>{user.lastName}</div> : null}
-      {t('auth_status_prefix')} <strong>{user.email}</strong> {t('auth_status_suffix')}
-      {t('plan_label')}<strong>{PLAN_LABELS[user.plan]}</strong>
-      <Button variant="outline" className="ml-2" onClick={handleLogout}>登出</Button>
+      {t('auth_status_prefix')} <strong>{user.email}</strong>{t('auth_status_suffix')} {t('plan_label')}<strong>{PLAN_LABELS[user.plan]}</strong>
+      <Button variant="outline" className="ml-2" onClick={handleLogout}>{t('logout')}</Button>
       <Link href="/pricing" style={{ marginLeft: 8 }}>
         <Button variant="secondary">{t('view_pricing')}</Button>
       </Link>

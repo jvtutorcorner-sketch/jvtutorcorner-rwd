@@ -80,11 +80,11 @@ function PlansPageContent() {
             if (data.ok) {
                 setUpgrades(data.data || []);
             } else {
-                setError(data.error || 'Failed to fetch plans');
+                setError(data.error || t('plans_fetch_error'));
             }
         } catch (err) {
             console.error('Error fetching upgrades:', err);
-            setError('An error occurred while fetching plans');
+            setError(t('plans_fetch_error_generic'));
         } finally {
             setLoading(false);
         }
@@ -251,7 +251,7 @@ function PlansPageContent() {
     const StatusBadge = ({ status }: { status: string }) => (
         <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${['PAID', 'COMPLETED'].includes(status) ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
             }`}>
-            {['PAID', 'COMPLETED'].includes(status) ? '已付款' : '處理中'}
+            {['PAID', 'COMPLETED'].includes(status) ? t('status_payment_paid') : t('plan_status_processing')}
         </span>
     );
 
@@ -269,33 +269,33 @@ function PlansPageContent() {
                         </svg>
                     </span>
                     <div>
-                        <h2 className="text-xl font-bold text-indigo-900">訂閱方案紀錄</h2>
-                        <p className="text-xs text-indigo-500 mt-0.5">包含訂閱期間與金額資訊</p>
+                        <h2 className="text-xl font-bold text-indigo-900">{t('plans_subscription_section_title')}</h2>
+                        <p className="text-xs text-indigo-500 mt-0.5">{t('plans_subscription_section_desc')}</p>
                     </div>
                 </div>
                 <div className="overflow-x-auto">
                     <table className="min-w-full divide-y divide-gray-200">
                         <thead className="bg-gray-50/50">
                             <tr>
-                                <th 
+                                <th
                                     className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors"
                                     onClick={() => handleSort('createdAt')}
                                 >
-                                    <div className="flex items-center">購買時間 <SortIcon field="createdAt" /></div>
+                                    <div className="flex items-center">{t('plans_col_purchase_time')} <SortIcon field="createdAt" /></div>
                                 </th>
                                 {user?.role === 'admin' && (
-                                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">使用者</th>
+                                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('user')}</th>
                                 )}
-                                <th 
+                                <th
                                     className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors"
                                     onClick={() => handleSort('title')}
                                 >
-                                    <div className="flex items-center">訂閱方案 <SortIcon field="title" /></div>
+                                    <div className="flex items-center">{t('plans_col_subscription_plan')} <SortIcon field="title" /></div>
                                 </th>
-                                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">金額</th>
-                                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">生效日期</th>
-                                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">結束日期</th>
-                                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">狀態</th>
+                                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('amount')}</th>
+                                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('plans_col_effective_date')}</th>
+                                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('end_date')}</th>
+                                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('status')}</th>
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
@@ -335,7 +335,7 @@ function PlansPageContent() {
                                                 <td colSpan={colCount} className="px-12 py-3 border-t border-indigo-100/50">
                                                     <div className="flex flex-col space-y-2 border-l-2 border-indigo-300/40 pl-4 py-1">
                                                         <span className="text-xs font-bold text-indigo-400 uppercase tracking-widest">
-                                                            關聯應用方案
+                                                            {t('plans_associated_app_plans')}
                                                         </span>
                                                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                                                             {appPlans.map((ap: any, idx: number) => (
@@ -348,7 +348,7 @@ function PlansPageContent() {
                                                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                                                                                         d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                                                                                 </svg>
-                                                                                有效期 {ap.durationDays} 天
+                                                                                {t('plans_validity_period_label')} {ap.durationDays} {t('unit_days')}
                                                                             </span>
                                                                         )}
                                                                         {ap.pointsCost != null && ap.pointsCost > 0 && (
@@ -357,7 +357,7 @@ function PlansPageContent() {
                                                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                                                                                         d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                                                                                 </svg>
-                                                                                消耗 {ap.pointsCost} 點
+                                                                                {t('plans_points_cost_label')} {ap.pointsCost} {t('unit_points')}
                                                                             </span>
                                                                         )}
                                                                     </div>
@@ -373,7 +373,7 @@ function PlansPageContent() {
                             }) : (
                                 <tr>
                                     <td colSpan={colCount} className="px-6 py-8 text-center text-gray-400 italic">
-                                        尚無訂閱方案紀錄
+                                        {t('plans_no_subscription_records')}
                                     </td>
                                 </tr>
                             )}
@@ -398,32 +398,32 @@ function PlansPageContent() {
                         </svg>
                     </span>
                     <div>
-                        <h2 className="text-xl font-bold text-blue-900">點數購買紀錄</h2>
-                        <p className="text-xs text-blue-500 mt-0.5">點數無使用期限，購買後永久有效</p>
+                        <h2 className="text-xl font-bold text-blue-900">{t('plans_points_section_title')}</h2>
+                        <p className="text-xs text-blue-500 mt-0.5">{t('plans_points_section_desc')}</p>
                     </div>
                 </div>
                 <div className="overflow-x-auto">
                     <table className="min-w-full divide-y divide-gray-200">
                         <thead className="bg-gray-50/50">
                             <tr>
-                                <th 
+                                <th
                                     className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors"
                                     onClick={() => handleSort('createdAt')}
                                 >
-                                    <div className="flex items-center">購買時間 <SortIcon field="createdAt" /></div>
+                                    <div className="flex items-center">{t('plans_col_purchase_time')} <SortIcon field="createdAt" /></div>
                                 </th>
                                 {user?.role === 'admin' && (
-                                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">使用者</th>
+                                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('user')}</th>
                                 )}
-                                <th 
+                                <th
                                     className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors"
                                     onClick={() => handleSort('title')}
                                 >
-                                    <div className="flex items-center">點數套餐 <SortIcon field="title" /></div>
+                                    <div className="flex items-center">{t('plans_col_points_package')} <SortIcon field="title" /></div>
                                 </th>
-                                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">購買點數</th>
-                                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">金額</th>
-                                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">狀態</th>
+                                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('plans_col_points_purchased')}</th>
+                                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('amount')}</th>
+                                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('status')}</th>
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
@@ -453,7 +453,7 @@ function PlansPageContent() {
                                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                                                                 d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                                                         </svg>
-                                                        {points.toLocaleString()} 點
+                                                        {points.toLocaleString()} {t('unit_points')}
                                                     </span>
                                                 ) : (
                                                     <span className="text-gray-400">—</span>
@@ -471,7 +471,7 @@ function PlansPageContent() {
                                                 <td colSpan={colCount} className="px-12 py-3 border-t border-blue-100/50">
                                                     <div className="flex flex-col space-y-2 border-l-2 border-blue-300/40 pl-4 py-1">
                                                         <span className="text-xs font-bold text-blue-400 uppercase tracking-widest">
-                                                            關聯應用方案
+                                                            {t('plans_associated_app_plans')}
                                                         </span>
                                                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                                                             {appPlans.map((ap: any, idx: number) => (
@@ -484,7 +484,7 @@ function PlansPageContent() {
                                                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                                                                                         d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                                                                                 </svg>
-                                                                                有效期 {ap.durationDays} 天
+                                                                                {t('plans_validity_period_label')} {ap.durationDays} {t('unit_days')}
                                                                             </span>
                                                                         )}
                                                                         {ap.pointsCost != null && ap.pointsCost > 0 && (
@@ -493,7 +493,7 @@ function PlansPageContent() {
                                                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                                                                                         d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                                                                                 </svg>
-                                                                                消耗 {ap.pointsCost} 點
+                                                                                {t('plans_points_cost_label')} {ap.pointsCost} {t('unit_points')}
                                                                             </span>
                                                                         )}
                                                                     </div>
@@ -509,7 +509,7 @@ function PlansPageContent() {
                             }) : (
                                 <tr>
                                     <td colSpan={colCount} className="px-6 py-8 text-center text-gray-400 italic">
-                                        尚無點數購買紀錄
+                                        {t('plans_no_points_records')}
                                     </td>
                                 </tr>
                             )}
@@ -526,12 +526,12 @@ function PlansPageContent() {
                 <div className="flex justify-between items-center">
                     <div>
                         <h1 className="text-3xl font-bold text-gray-900">
-                            {user?.role === 'admin' ? '全站購買與方案紀錄' : '我的方案紀錄'}
+                            {user?.role === 'admin' ? t('plans_admin_records') : t('plans_my_records')}
                         </h1>
                         <p className="text-gray-600 mt-2">
                             {user?.role === 'admin'
-                                ? '管理員可在此查看所有使用者的方案購買、點數儲值與使用期限。'
-                                : '您可以在此查看您過去購買的所有方案、點數儲值與有效期限。'}
+                                ? t('plans_page_desc_admin')
+                                : t('plans_page_desc_user')}
                         </p>
                     </div>
                 </div>
@@ -539,17 +539,17 @@ function PlansPageContent() {
                 {/* 搜尋欄位 */}
                 <form onSubmit={handleSearch} className="flex gap-4 mt-8 items-end flex-wrap">
                     <div className="flex flex-col gap-1">
-                        <label className="text-sm font-bold text-gray-700">搜尋關鍵字</label>
+                        <label className="text-sm font-bold text-gray-700">{t('plans_search_keyword_label')}</label>
                         <input
                             type="text"
                             value={searchInput}
                             onChange={(e) => setSearchInput(e.target.value)}
-                            placeholder={user?.role === 'admin' ? "搜尋使用者或方案..." : "搜尋方案名稱..."}
+                            placeholder={user?.role === 'admin' ? t('plans_search_placeholder_admin') : t('plans_search_placeholder_user')}
                             className="px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 min-w-[200px]"
                         />
                     </div>
                     <div className="flex flex-col gap-1">
-                        <label className="text-sm font-bold text-gray-700">開始日期</label>
+                        <label className="text-sm font-bold text-gray-700">{t('start_date')}</label>
                         <input
                             type="date"
                             value={searchInputTimeFrom}
@@ -558,7 +558,7 @@ function PlansPageContent() {
                         />
                     </div>
                     <div className="flex flex-col gap-1">
-                        <label className="text-sm font-bold text-gray-700">結束日期</label>
+                        <label className="text-sm font-bold text-gray-700">{t('end_date')}</label>
                         <input
                             type="date"
                             value={searchInputTimeTo}
@@ -579,7 +579,7 @@ function PlansPageContent() {
                         }}
                         className="px-4 py-2 text-gray-600 font-medium hover:text-gray-900 h-[42px]"
                     >
-                        清除重置
+                        {t('plans_clear_reset')}
                     </button>
                 </form>
 
@@ -596,7 +596,7 @@ function PlansPageContent() {
                             <svg className={`w-4 h-4 ${activeTab === 'subscription' ? 'text-indigo-500' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                             </svg>
-                            訂閱方案紀錄
+                            {t('plans_subscription_section_title')}
                         </button>
                         <button
                             onClick={() => handleTabChange('points')}
@@ -608,7 +608,7 @@ function PlansPageContent() {
                             <svg className={`w-4 h-4 ${activeTab === 'points' ? 'text-blue-500' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                             </svg>
-                            點數購買紀錄
+                            {t('plans_points_section_title')}
                         </button>
                     </div>
                 </div>
@@ -639,7 +639,7 @@ function PlansPageContent() {
                     
                     {paginatedUpgrades.length === 0 && (
                         <div className="text-center py-12 bg-white rounded-lg shadow-sm border border-gray-100">
-                            <p className="text-gray-400 italic">目前分類下沒有符合條件的紀錄</p>
+                            <p className="text-gray-400 italic">{t('plans_no_matching_records')}</p>
                         </div>
                     )}
 

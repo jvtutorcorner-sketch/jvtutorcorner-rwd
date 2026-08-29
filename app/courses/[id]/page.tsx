@@ -3,6 +3,7 @@ import { ddbDocClient } from '@/lib/dynamo';
 import { COURSES } from '@/data/courses';
 import { EnrollButton } from '@/components/EnrollButton';
 import AutoTranslateText from '@/components/AutoTranslateText';
+import { ServerT } from '@/components/IntlProvider';
 import Link from 'next/link';
 
 export default async function CourseDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -40,11 +41,11 @@ export default async function CourseDetailPage({ params }: { params: Promise<{ i
     return (
       <div className="page">
         <header className="page-header">
-          <h1>找不到課程</h1>
-          <p>這個課程可能已下架，請回到課程列表重新選擇。</p>
+          <h1><ServerT k="course_not_found_title" /></h1>
+          <p><ServerT k="course_not_found_message" /></p>
         </header>
         <Link href="/courses" className="card-button">
-          回課程列表
+          <ServerT k="course_not_found_back_button" />
         </Link>
       </div>
     );
@@ -97,30 +98,30 @@ export default async function CourseDetailPage({ params }: { params: Promise<{ i
       <header className="page-header">
         <h1><AutoTranslateText text={title} as="span" /></h1>
         <p>
-          <AutoTranslateText text={subject} as="span" />｜<AutoTranslateText text={level} as="span" />｜{mode === 'online' ? '線上課程' : '實體課程'}
+          <AutoTranslateText text={subject} as="span" />｜<AutoTranslateText text={level} as="span" />｜<ServerT k={mode === 'online' ? 'online_course' : 'offline_course'} />
         </p>
       </header>
 
       <div className="course-layout">
         <section className="course-main">
           <div className="course-section">
-            <h2>課程介紹</h2>
+            <h2><ServerT k="course_intro_title" /></h2>
             <AutoTranslateText text={description || '這是一門精心設計的主題式課程。'} as="p" />
           </div>
 
           {/* Interactive whiteboard removed */}
 
           <div className="course-section">
-            <h2>適合對象</h2>
+            <h2><ServerT k="course_target_audience_title" /></h2>
             <ul>
-              <li>希望在 {subject} 有系統進步的學生或上班族。</li>
-              <li>可以配合每週固定時間上課。</li>
-              <li>願意課後花時間做練習與複習。</li>
+              <li><ServerT k="course_audience_bullet1" vars={{ subject }} /></li>
+              <li><ServerT k="course_audience_bullet2" /></li>
+              <li><ServerT k="course_audience_bullet3" /></li>
             </ul>
           </div>
 
           <div className="course-section">
-            <h2>課程標籤</h2>
+            <h2><ServerT k="course_tags_title" /></h2>
             <div className="card-tags">
               {(tags || []).map((tag: string) => (
                 <span key={tag} className="tag">
@@ -133,46 +134,46 @@ export default async function CourseDetailPage({ params }: { params: Promise<{ i
 
         <aside className="course-side">
           <div className="course-side-card">
-            <h3>課程資訊</h3>
+            <h3><ServerT k="course_info_title" /></h3>
             <div className="info-row">
-              <span>授課老師</span>
+              <span><ServerT k="course_info_teacher_label" /></span>
               <span><AutoTranslateText text={teacherName} as="span" /></span>
             </div>
             <div className="info-row">
-              <span>課程語言</span>
+              <span><ServerT k="course_info_language_label" /></span>
               <span><AutoTranslateText text={language} as="span" /></span>
             </div>
             <div className="info-row">
-              <span>單堂時長</span>
-              <span>{durationMinutes} 分鐘</span>
+              <span><ServerT k="course_info_duration_label" /></span>
+              <span>{durationMinutes} <ServerT k="minutes" /></span>
             </div>
             <div className="info-row">
-              <span>課程期間</span>
+              <span><ServerT k="course_info_period_label" /></span>
               <span>
                 {formatDate(startDate || nextStartDate)} ~ {formatDate(endDate)}
               </span>
             </div>
             {pointCost && (
               <div className="info-row">
-                <span>💎 需消耗點數</span>
+                <span><ServerT k="course_info_points_required_label" /></span>
                 <span style={{ color: '#7c3aed', fontWeight: 600 }}>
-                  {pointCost} 點 / 堂
-                  {enrollmentType === 'both' && <span style={{ marginLeft: 6, fontSize: '0.8rem', color: '#6b7280' }}>(可用方案或點數)</span>}
-                  {enrollmentType === 'points' && <span style={{ marginLeft: 6, fontSize: '0.8rem', color: '#6b7280' }}>(限點數報名)</span>}
+                  {pointCost} <ServerT k="points_per_session_suffix" />
+                  {enrollmentType === 'both' && <span style={{ marginLeft: 6, fontSize: '0.8rem', color: '#6b7280' }}><ServerT k="course_enrollment_both_hint" /></span>}
+                  {enrollmentType === 'points' && <span style={{ marginLeft: 6, fontSize: '0.8rem', color: '#6b7280' }}><ServerT k="course_enrollment_points_only_hint" /></span>}
                 </span>
               </div>
             )}
             {totalSessions && (
               <div className="info-row">
-                <span>總堂數</span>
-                <span>{totalSessions} 堂</span>
+                <span><ServerT k="course_info_total_sessions_label" /></span>
+                <span>{totalSessions} <ServerT k="per_session" /></span>
               </div>
             )}
 
             {typeof seatsLeft === 'number' && (
               <div className="info-row">
-                <span>剩餘名額</span>
-                <span>{seatsLeft} 位</span>
+                <span><ServerT k="course_info_seats_left_label" /></span>
+                <span>{seatsLeft} <ServerT k="unit_seats" /></span>
               </div>
             )}
 

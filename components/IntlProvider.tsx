@@ -130,9 +130,21 @@ export function useSetLocale() {
   return setLocale;
 }
 
-// ServerT is a simple placeholder to use in Server Components
-// It will just render the key, allowing client-side hydration to handle it if needed
-// or just providing a consistent way to mark translatable strings.
-export function ServerT({ s }: { s: string }) {
-  return <span>{s}</span>;
+// ServerT lets Server Components render a translated string: it's a Client
+// Component (this file is "use client") that calls useT() once mounted inside
+// IntlProvider. `s` stays supported as a raw-string passthrough for backward compat.
+// `vars` substitutes {token} placeholders in the resolved string (t() itself does
+// no interpolation), so it applies regardless of which locale's value was used.
+export function ServerT({ k, fallback, s, vars }: { k?: string; fallback?: string; s?: string; vars?: Record<string, string> }) {
+  const t = useT();
+  if (k) {
+    let out = t(k, fallback);
+    if (vars) {
+      for (const [token, value] of Object.entries(vars)) {
+        out = out.split(`{${token}}`).join(value);
+      }
+    }
+    return <>{out}</>;
+  }
+  return <>{s}</>;
 }
