@@ -170,7 +170,7 @@ export default function ClientHomePage({
 
       {/* Hero Section */}
       <section className="home-hero-premium">
-        <div className="hero-premium-container container">
+        <div className="hero-premium-container">
           <div className="hero-premium-content">
             <div className="hero-premium-text">
               <h1 className="hero-premium-title">
@@ -258,7 +258,7 @@ export default function ClientHomePage({
 
       {/* Recommendations Section */}
       <section className="section-personalized" id="tour-recommendation">
-        <div className="container">
+        <div className="section-container">
           <div className="section-header-enhanced">
             <div>
               <h2 className="section-title-large">
@@ -293,7 +293,7 @@ export default function ClientHomePage({
 
       {/* Featured Teachers */}
       <section className="section-teachers">
-        <div className="container">
+        <div className="section-container">
           <div className="section-header-enhanced">
             <div>
               <h2 className="section-title-large">{t('popular_teachers')}</h2>
@@ -337,7 +337,7 @@ export default function ClientHomePage({
 
       {/* How it Works */}
       <section className="section-white">
-        <div className="container">
+        <div className="section-container">
           <div className="section-header-enhanced text-center" style={{ textAlign: 'center', marginBottom: '60px' }}>
             <h2 className="section-title-large">{t('how_it_works_title')}</h2>
             <p className="section-subtitle">{t('how_it_works_subtitle')}</p>
@@ -360,7 +360,7 @@ export default function ClientHomePage({
 
       {/* Newsletter */}
       <section className="section-accent">
-        <div className="container">
+        <div className="section-container">
           <div className="contact-container text-center" style={{ maxWidth: '600px', margin: '0 auto', textAlign: 'center' }}>
             <h2 style={{ fontSize: '2.5rem', color: 'white', marginBottom: '16px' }}>{t('subscribe_newsletter_title')}</h2>
             <p style={{ color: 'rgba(255,255,255,0.8)', marginBottom: '32px' }}>{t('subscribe_newsletter_subtitle')}</p>
