@@ -2,10 +2,12 @@
 
 import { useEffect, useState } from 'react';
 import { useT } from '@/components/IntlProvider';
+import { useDateFormat } from '@/lib/hooks/useDateFormat';
 import { getStoredUser } from '@/lib/mockAuth';
 
 export default function ProfilePage() {
   const t = useT();
+  const dateFmt = useDateFormat();
   const [user, setUser] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -15,7 +17,7 @@ export default function ProfilePage() {
       try {
         const stored = getStoredUser();
         if (!stored?.email) {
-          setError('未登入');
+          setError(t('profile_not_logged_in'));
           return;
         }
 
@@ -27,11 +29,11 @@ export default function ProfilePage() {
         if (data.ok && data.profile) {
           setUser(data.profile);
         } else {
-          setError(data.message || '找不到個人資料');
+          setError(data.message || t('profile_not_found'));
         }
       } catch (err) {
         console.error('Failed to load user:', err);
-        setError('載入失敗');
+        setError(t('profile_load_failed'));
       }
     };
 
@@ -87,19 +89,19 @@ export default function ProfilePage() {
           <div>
             <h3 className="text-xl font-semibold mb-3">{t('basic_info')}</h3>
             <div className="space-y-2 text-gray-700">
-              <p><strong>{t('email')}：</strong> {user.email}</p>
-              <p><strong>{t('gender')}：</strong> {user.gender || '-'}</p>
-              <p><strong>{t('birthday')}：</strong> {user.birthdate || '-'}</p>
-              <p><strong>{t('country')}：</strong> {user.country || '-'}</p>
+              <p><strong>{t('email')}{t('label_colon')}</strong> {user.email}</p>
+              <p><strong>{t('gender')}{t('label_colon')}</strong> {user.gender || '-'}</p>
+              <p><strong>{t('birthday')}{t('label_colon')}</strong> {user.birthdate || '-'}</p>
+              <p><strong>{t('country')}{t('label_colon')}</strong> {user.country || '-'}</p>
             </div>
           </div>
 
           <div>
             <h3 className="text-xl font-semibold mb-3">{t('system_info')}</h3>
             <div className="space-y-2 text-gray-700">
-              <p><strong>{t('account_id')}：</strong> {user.roid_id || user.id || '-'}</p>
-              <p><strong>{t('role')}：</strong> {user.role || '-'}</p>
-              <p><strong>{t('created_time')}：</strong> {user.createdAtUtc ? new Date(user.createdAtUtc).toLocaleString() : '-'}</p>
+              <p><strong>{t('account_id')}{t('label_colon')}</strong> {user.roid_id || user.id || '-'}</p>
+              <p><strong>{t('role')}{t('label_colon')}</strong> {user.role || '-'}</p>
+              <p><strong>{t('created_time')}{t('label_colon')}</strong> {user.createdAtUtc ? dateFmt.formatDateTime(user.createdAtUtc) : '-'}</p>
             </div>
           </div>
         </div>

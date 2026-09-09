@@ -1,5 +1,6 @@
 // app/api/carousel/presign/route.ts
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { withAdmin, type AuthedRequest } from '@/lib/auth/apiGuard';
 import { getPresignedPutUrl } from '@/lib/s3';
 import fs from 'fs';
 import path from 'path';
@@ -25,7 +26,8 @@ function loadAwsEnvFromDotenv() {
   }
 }
 
-export async function POST(request: NextRequest) {
+// 先前完全沒有 auth：任何人都能取得 S3 上傳用的預簽網址。
+async function handlePresign(request: AuthedRequest) {
   console.log('[Carousel Presign API] Request received');
 
   // Ensure AWS env vars are present when possible (helpful when dev server started earlier)
@@ -121,3 +123,5 @@ export async function POST(request: NextRequest) {
     }, { status: 500 });
   }
 }
+
+export const POST = withAdmin(handlePresign);

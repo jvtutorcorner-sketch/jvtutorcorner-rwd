@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { withAuth, type AuthedRequest } from '@/lib/auth/apiGuard';
 import { ddbDocClient } from '@/lib/dynamo';
 import { GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
 import { broadcast } from '@/lib/classroomSSE';
@@ -44,7 +45,8 @@ async function writeSession(uuid: string, obj: { endTs?: number | null }) {
   }
 }
 
-export async function GET(req: NextRequest) {
+// 先前完全沒有 auth：任何人都能讀取與改寫教室 session 狀態。
+async function handleGet(req: AuthedRequest) {
   try {
     const url = new URL(req.url);
     const uuid = url.searchParams.get('uuid');
@@ -57,7 +59,7 @@ export async function GET(req: NextRequest) {
   }
 }
 
-export async function POST(req: NextRequest) {
+async function handlePost(req: AuthedRequest) {
   try {
     const body = await req.json().catch(() => ({} as any));
     const { uuid, endTs, action } = body || {};
@@ -85,3 +87,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'unexpected' }, { status: 500 });
   }
 }
+
+export const GET = withAuth(handleGet);
+export const POST = withAuth(handlePost);

@@ -8,11 +8,13 @@ import { COURSES } from '@/data/courses';
 import { TEACHERS } from '@/data/teachers';
 import { parseISO, format, addMinutes, isSameYear, isSameMonth, isSameWeek, isSameDay } from 'date-fns';
 import { getStoredUser } from '@/lib/mockAuth';
-import { useT } from '@/components/IntlProvider';
+import { useT, useLocale } from '@/components/IntlProvider';
+import { getDateFnsLocale, getDateFormats } from '@/lib/dateLocale';
 import Link from 'next/link';
 
 export default function CalendarPage() {
   const t = useT();
+  const locale = useLocale();
   const [allowedCourseIds, setAllowedCourseIds] = useState<Set<string> | null>(null);
   const [view, setView] = useState<'year' | 'month' | 'week' | 'day'>('month');
   // 存放從 /api/orders 取得的訂單資料（包含 startTime / endTime）
@@ -128,18 +130,18 @@ export default function CalendarPage() {
 
                 if (status === 'ABSENT') statusStr = 'absent';
 
-                const courseTitle = r.courseTitle || COURSES.find(x => x.id === r.courseId)?.title || '課程';
+                const courseTitle = r.courseTitle || COURSES.find(x => x.id === r.courseId)?.title || t('calendar_default_course_title');
                 // userName is already resolved to firstName+lastName by the API, never use raw userId
-                const studentName = r.userName || '學生';
+                const studentName = r.userName || t('student');
 
                 eventsFromOrders.push({
                   id: `order-${r.orderId}`,
                   title: courseTitle,
-                  teacherName: '老師', // Assuming current user is teacher
+                  teacherName: t('teacher'), // Assuming current user is teacher
                   studentName: studentName,
                   start,
                   end,
-                  description: `課程時間：${start.toLocaleString()} ~ ${end.toLocaleString()}`,
+                  description: t('calendar_event_time_range', { start: start.toLocaleString(locale), end: end.toLocaleString(locale) }),
                   type: 'activity' as const,
                   ownerType: 'teacher' as const,
                   courseId: r.courseId,
@@ -238,18 +240,18 @@ export default function CalendarPage() {
               if (status === 'ABSENT') statusStr = 'absent';
 
               // 取得課程名稱
-              const courseTitle = r.courseTitle || COURSES.find(x => x.id === r.courseId)?.title || '課程';
+              const courseTitle = r.courseTitle || COURSES.find(x => x.id === r.courseId)?.title || t('calendar_default_course_title');
               // teacherName is resolved by the API from the course record — never use raw email
-              const teacherName = r.teacherName || COURSES.find(x => x.id === r.courseId)?.teacherName || '老師';
+              const teacherName = r.teacherName || COURSES.find(x => x.id === r.courseId)?.teacherName || t('teacher');
 
               eventsFromOrders.push({
                 id: `order-${r.orderId}`,
                 title: courseTitle,
                 teacherName: teacherName,
-                studentName: '學生', // Assuming current user is student
+                studentName: t('student'), // Assuming current user is student
                 start,
                 end,
-                description: `課程時間：${start.toLocaleString()} ~ ${end.toLocaleString()}`,
+                description: t('calendar_event_time_range', { start: start.toLocaleString(locale), end: end.toLocaleString(locale) }),
                 type: 'activity' as const,
                 ownerType: 'student' as const,
                 courseId: r.courseId,
@@ -403,7 +405,7 @@ export default function CalendarPage() {
   }, [allowedCourseIds, view]);
 
   // 設定今天的日期格式提供給 Banner 使用
-  const todayDateStr = format(new Date(), 'EEEE, d MMMM yyyy');
+  const todayDateStr = format(new Date(), getDateFormats(locale).day, { locale: getDateFnsLocale(locale) });
 
   return (
     <div className="min-h-screen bg-white text-gray-800 font-sans">
@@ -416,7 +418,7 @@ export default function CalendarPage() {
             className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition-colors font-medium text-sm"
           >
             <span>🔔</span>
-            <span>提醒設定</span>
+            <span>{t('calendar_reminder_settings')}</span>
           </Link>
         </div>
 

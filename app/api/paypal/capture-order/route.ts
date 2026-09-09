@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { generateAccessToken, PAYPAL_API } from '@/lib/paypal';
 import { handlePaymentSuccess } from '@/lib/paymentSuccessHandler';
 import profilesService from '@/lib/profilesService';
+import { internalFetch } from '@/lib/auth/internalFetch';
 
 export async function POST(req: NextRequest) {
     try {
@@ -32,11 +33,10 @@ export async function POST(req: NextRequest) {
             // Update Database
             if (orderID) {
                 try {
-                    const base = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-                    const res = await fetch(`${base}/api/orders/${encodeURIComponent(orderID)}`, {
+                    const res = await internalFetch(`/api/orders/${encodeURIComponent(orderID)}`, {
                         method: 'PATCH',
-                        headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ status: 'PAID' }),
+                        originRequest: req,
                     });
                     if (!res.ok) {
                         console.error('[PayPal Capture] Failed to update order status via API', res.status);

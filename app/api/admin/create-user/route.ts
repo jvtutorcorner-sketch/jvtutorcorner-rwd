@@ -4,12 +4,14 @@ import { ddbDocClient } from '@/lib/dynamo';
 import { PutCommand } from '@aws-sdk/lib-dynamodb';
 import { findProfileByEmail } from '@/lib/profilesService';
 import { hashPassword } from '@/lib/auth/password';
+import { withAdmin, type AuthedRequest } from '@/lib/auth/apiGuard';
 
 function createTemporaryPassword() {
   return `tmp_${Date.now().toString(36)}_${crypto.randomBytes(6).toString('hex')}`;
 }
 
-export async function POST(req: Request) {
+// 先前完全沒有 auth：任何人都能建立帳號並指定方案。
+async function handleCreateUser(req: AuthedRequest) {
   try {
     const body = await req.json();
     const { email, plan, password } = body;
@@ -49,3 +51,5 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: err?.message || 'error' }, { status: 500 });
   }
 }
+
+export const POST = withAdmin(handleCreateUser);

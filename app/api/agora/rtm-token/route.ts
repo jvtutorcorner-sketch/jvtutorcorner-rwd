@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { withAuth, type AuthedRequest } from '@/lib/auth/apiGuard';
 
 /**
  * /api/agora/rtm-token
@@ -42,7 +43,8 @@ async function getAgoraCredentials() {
   return cachedCredentials;
 }
 
-export async function GET(req: NextRequest) {
+// 先前完全沒有 auth：任何人都能索取任意 userId 的 RTM token。
+async function handleGet(req: AuthedRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const userId = searchParams.get('userId') || 'anonymous';
@@ -83,3 +85,5 @@ export async function GET(req: NextRequest) {
     );
   }
 }
+
+export const GET = withAuth(handleGet);

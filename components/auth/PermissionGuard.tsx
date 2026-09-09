@@ -6,7 +6,19 @@ import { useAdminSettings } from '@/components/AdminSettingsProvider';
 import { getStoredUser } from '@/lib/mockAuth';
 import { useT } from '@/components/IntlProvider';
 
-export default function PermissionGuard() {
+/**
+ * 依管理員在後台設定的頁面可見度矩陣（settings.pageConfigs）決定要不要顯示內容。
+ *
+ * 這是「介面層」的可見度控制，不是安全邊界：角色來自 localStorage，使用者可以自行修改。
+ * 真正的存取控制在兩個地方 ——
+ *   1. 各區塊的 server layout（lib/auth/pageGuard.ts），在渲染前於伺服器端擋下
+ *   2. API 路由的 apiGuard（withAuth / withAdmin / …）
+ *
+ * 先前這個元件是 `{children}` 的「兄弟節點」而非包裹層：判定拒絕時只是在頁面上方
+ * 多渲染一塊 403 面板，被保護的內容仍然完整掛載並送出所有 API 請求。現在它會真正
+ * 包住內容，拒絕時內容不會被渲染。
+ */
+export default function PermissionGuard({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
     const router = useRouter();
     const { settings, loading } = useAdminSettings();
@@ -134,12 +146,11 @@ export default function PermissionGuard() {
     }, [checking, authorized, router, pathname]);
 
     if (loading || checking) {
-        return null; // Or a spinner? Transparent is better to avoid flicker if fast
+        // 尚未判定完成前不渲染內容，避免「先畫出來、發完 API 才跳走」。
+        return null;
     }
 
     if (!authorized) {
-        // Return null to render nothing while redirecting
-        // Or render a "403" component
         return (
             <div style={{
                 height: '100vh',
@@ -169,5 +180,5 @@ export default function PermissionGuard() {
         );
     }
 
-    return null; // Render nothing if authorized (it's just a guard)
+    return <>{children}</>;
 }

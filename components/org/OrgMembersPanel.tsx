@@ -126,6 +126,29 @@ export default function OrgMembersPanel({ orgId, usedSeats, maxSeats, isSystemAd
     }
   }
 
+  async function handleToggleDeptAdmin(member: Member) {
+    const promoting = member.role !== 'dept_admin';
+    if (promoting && !member.orgUnitId) {
+      alert('請先在「部門」欄位為此成員指派部門，才能設為部門管理員。');
+      return;
+    }
+    try {
+      const res = await fetch(`/api/organizations/${orgId}/members/${member.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isDeptAdmin: promoting })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data?.error || '更新部門管理員狀態失敗');
+      await load();
+      if (promoting) {
+        alert('已設定為部門管理員。此變更需要該成員重新登入才會生效。');
+      }
+    } catch (err: any) {
+      alert(err?.message || String(err));
+    }
+  }
+
   async function handleRemove(member: Member) {
     const name = `${member.firstName || ''} ${member.lastName || ''}`.trim() || member.email;
     if (!confirm(`確定要將「${name}」移出組織嗎？此動作會釋放其席次。`)) return;
@@ -215,7 +238,32 @@ export default function OrgMembersPanel({ orgId, usedSeats, maxSeats, isSystemAd
                 <tr key={m.id}>
                   <td style={td}>{`${m.firstName || ''} ${m.lastName || ''}`.trim() || '-'}</td>
                   <td style={td}>{m.email}</td>
-                  <td style={td}>{m.role}</td>
+                  <td style={td}>
+                    {m.role === 'dept_admin' ? (
+                      <>
+                        <span style={{ color: '#1565c0', fontWeight: 'bold' }}>部門管理員</span>{' '}
+                        <button
+                          onClick={() => handleToggleDeptAdmin(m)}
+                          disabled={!isSystemAdmin}
+                          style={{ ...btn('#9e9e9e'), padding: '2px 8px' }}
+                        >
+                          取消
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        {m.role}{' '}
+                        <button
+                          onClick={() => handleToggleDeptAdmin(m)}
+                          disabled={!isSystemAdmin || !m.orgUnitId}
+                          title={!m.orgUnitId ? '請先指派部門' : undefined}
+                          style={{ ...btn('#1565c0'), padding: '2px 8px' }}
+                        >
+                          設為部門管理員
+                        </button>
+                      </>
+                    )}
+                  </td>
                   <td style={td}>
                     <select
                       value={m.orgUnitId || ''}

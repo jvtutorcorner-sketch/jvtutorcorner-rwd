@@ -1,9 +1,6 @@
-import { ddbDocClient } from '@/lib/dynamo';
-import { ScanCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
 import { listLicensesByUser } from '@/lib/licenseService';
 import { getOrganizationById } from '@/lib/organizationService';
-
-const ENROLLMENTS_TABLE = process.env.ENROLLMENTS_TABLE || 'jvtutorcorner-enrollments';
+import { findActiveEnrollment } from '@/lib/enrollmentService';
 
 export interface AccessResult {
     granted: boolean;
@@ -47,28 +44,20 @@ export async function verifyCourseAccess(userId: string, courseId: string): Prom
 
     try {
         // 1. Check B2C Enrollments (Direct Purchase)
-        // optimizing with query if GSI exists, currently using Scan for safety based on loose schema knowledge
-        // TODO: Switch to QueryCommand if GSI byStudent exists and is reliable
-        // Field names match app/api/enroll/route.ts's EnrollmentRecord (userId/courseId,
-        // camelCase) — confirmed against real table data. studentID/courseID never existed
-        // in any written record, so this filter previously never matched anything.
-        const params = {
-            TableName: ENROLLMENTS_TABLE,
-            FilterExpression: 'userId = :uid AND courseId = :cid AND #status IN (:s1, :s2)',
-            ExpressionAttributeNames: {
-                '#status': 'status'
-            },
-            ExpressionAttributeValues: {
-                ':uid': cleanUserId,
-                ':cid': courseId,
-                ':s1': 'PAID',
-                ':s2': 'ACTIVE'
-            }
-        };
+        //
+        // This was a full-table ScanCommand with a FilterExpression. Beyond reading
+        // every tenant's rows to answer one user's question, a filtered Scan is not
+        // a reliable membership test: DynamoDB applies any page limit to items
+        // SCANNED, not items matched, and a Scan that exhausts its budget returns a
+        // partial page plus LastEvaluatedKey rather than an error. The single-page
+        // call below it therefore answered "no enrollment" for a genuinely enrolled
+        // student once the table grew past one scan page — a paid student locked
+        // out of their own course, non-deterministically.
+        //
+        // findActiveEnrollment Queries the byUserId GSI and pages to exhaustion.
+        const enrollment = await findActiveEnrollment(cleanUserId, courseId);
 
-        const result = await ddbDocClient.send(new ScanCommand(params));
-
-        if (result.Items && result.Items.length > 0) {
+        if (enrollment) {
             return { granted: true, source: 'B2C' };
         }
 

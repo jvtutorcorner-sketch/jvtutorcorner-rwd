@@ -5,11 +5,19 @@
 import crypto from 'crypto';
 
 const HMAC_SECRET = process.env.API_HMAC_SECRET || '';
-const TIMESTAMP_TOLERANCE_MS = 5 * 60 * 1000; // 5 分鐘容許誤差，防重放攻擊
+// 舊請求的容許窗口。時間戳只能落後，不能超前 —— 先前用 Math.abs 比較，
+// 等於連「未來 5 分鐘」的簽名也收，把重放窗口實際放大成 10 分鐘。
+const TIMESTAMP_MAX_AGE_MS = 5 * 60 * 1000;
+// 允許呼叫端時鐘些微快於本機，避免正常的伺服器間時差造成偽陰性。
+const TIMESTAMP_MAX_SKEW_AHEAD_MS = 30 * 1000;
 
 /**
  * 計算 HMAC-SHA256 簽名
  * Message = `${method}\n${path}\n${timestamp}\n${body}`
+ *
+ * `path` 必須包含 query string（例如 `/api/points?userId=u1`）。省略 query 會讓
+ * 同一組簽名適用於任何參數 —— 例如 `GET /api/points?userId=A` 的簽名可以直接
+ * 拿去讀 `?userId=B`。
  */
 export function computeHmac(
   method: string,
@@ -46,9 +54,12 @@ export function verifyHmacRequest(
   if (isNaN(ts)) {
     return { valid: false, reason: 'Invalid timestamp' };
   }
-  const diff = Math.abs(Date.now() - ts);
-  if (diff > TIMESTAMP_TOLERANCE_MS) {
-    return { valid: false, reason: `Timestamp out of tolerance (diff=${diff}ms)` };
+  const age = Date.now() - ts;
+  if (age > TIMESTAMP_MAX_AGE_MS) {
+    return { valid: false, reason: `Timestamp too old (age=${age}ms)` };
+  }
+  if (age < -TIMESTAMP_MAX_SKEW_AHEAD_MS) {
+    return { valid: false, reason: `Timestamp is in the future (skew=${-age}ms)` };
   }
 
   // 2. 計算期望簽名並比對
@@ -76,11 +87,28 @@ export function verifyHmacRequest(
 }
 
 /**
+ * 從實際請求的 URL 取出要納入簽名的路徑（pathname + query string）。
+ */
+export function signedPathFromRequest(req: Request): string {
+  try {
+    const url = new URL(req.url);
+    return `${url.pathname}${url.search}`;
+  } catch {
+    return '';
+  }
+}
+
+/**
  * 從 Next.js Request 解析並驗證 HMAC
  * 回傳 { valid, reason }
  * rawBody 必須由呼叫者先讀取（避免 stream 消耗問題）
+ *
+ * 簽名比對的路徑一律由 `req.url` 推導（含 query string），而不是用呼叫端傳進來的
+ * `declaredPath`。這樣做有兩個好處：query string 會被納入簽名，且動態路由
+ * （`/api/orders/[orderId]`）不需要各自組出字面路徑就能驗證。`declaredPath`
+ * 只留作記錄與錯誤訊息用。
  */
-export function verifyHmacFromHeaders(req: Request, path: string, rawBody: string): { valid: boolean; reason?: string } {
+export function verifyHmacFromHeaders(req: Request, declaredPath: string, rawBody: string): { valid: boolean; reason?: string } {
   const timestamp = req.headers.get('x-api-timestamp') || '';
   const signature = req.headers.get('x-api-signature') || '';
 
@@ -88,11 +116,18 @@ export function verifyHmacFromHeaders(req: Request, path: string, rawBody: strin
     return { valid: false, reason: 'Missing X-Api-Timestamp or X-Api-Signature headers' };
   }
 
+  const path = signedPathFromRequest(req);
+  if (!path) {
+    return { valid: false, reason: `Could not derive request path (declared: ${declaredPath})` };
+  }
+
   return verifyHmacRequest(req.method, path, timestamp, rawBody, signature);
 }
 
 /**
  * 產生 HMAC 請求 headers（供客戶端 / 內部服務呼叫時使用）
+ *
+ * `path` 要跟接收端看到的請求路徑完全一致，包含 query string。
  */
 export function generateHmacHeaders(
   method: string,

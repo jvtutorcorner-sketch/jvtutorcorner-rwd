@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+import { withAuth, type AuthedRequest } from '@/lib/auth/apiGuard';
+import { verifyClassroomAccess } from '@/lib/auth/classroomAccess';
 import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm';
 
 // Server route to generate Agora RTC token for a given channelName and uid.
@@ -57,7 +59,8 @@ function truncateChannelName(name: string): string {
   return new TextDecoder().decode(sliced).replace(/\uFFFD/g, ''); // remove any broken chars at boundary
 }
 
-export async function GET(req: Request) {
+// 先前完全沒有 auth：任何人都能索取可加入任意頻道的 RTC token。
+async function handleGet(req: AuthedRequest) {
   try {
     console.log('[Agora] Token request received');
     const url = new URL(req.url);
@@ -68,6 +71,16 @@ export async function GET(req: Request) {
     }
     const uidParam = url.searchParams.get('uid') || '0';
     const uid = Number(uidParam) || 0;
+
+    // 有帶 courseId 就驗證這位登入者確實是該堂課的參與者（老師或已報名/有授權的學生）。
+    const courseId = url.searchParams.get('courseId');
+    if (courseId) {
+      const access = await verifyClassroomAccess(req.session, courseId);
+      if (!access.granted) {
+        console.warn(`[Agora] token denied for ${req.session.userId} on course ${courseId}: ${access.reason}`);
+        return NextResponse.json({ error: 'Forbidden: no access to this course' }, { status: 403 });
+      }
+    }
 
     // Get Agora credentials securely
     const { appId, appCertificate } = await getAgoraCredentials();
@@ -112,3 +125,5 @@ export async function GET(req: Request) {
     }, { status: 500 });
   }
 }
+
+export const GET = withAuth(handleGet);

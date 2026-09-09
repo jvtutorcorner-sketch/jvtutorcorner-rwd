@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
 import { ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { ddbDocClient } from '@/lib/dynamo';
+import { withAdminOrHmac, type AuthedRequest } from '@/lib/auth/apiGuard';
 
 export const runtime = 'nodejs';
 
@@ -11,8 +12,9 @@ export const runtime = 'nodejs';
  * 透過 smtp.resend.com (port 465) 發送郵件。
  *
  * 若 DynamoDB 查無 RESEND 整合，fallback 至環境變數 RESEND_API_KEY + RESEND_FROM。
+ * 先前完全沒有 auth，這裡加上 admin session 或 HMAC（workflow 引擎）門檻。
  */
-export async function POST(req: NextRequest) {
+export const POST = withAdminOrHmac('/api/workflows/resend-send', async (req: AuthedRequest) => {
     try {
         const { to, subject, body, html, purpose } = await req.json();
 
@@ -126,7 +128,7 @@ export async function POST(req: NextRequest) {
             error: error?.message || 'Resend send failed',
         }, { status: 500 });
     }
-}
+});
 
 /**
  * 將純文字或 HTML 片段包裝成帶有 JV Tutor 品牌樣式的完整 HTML 郵件

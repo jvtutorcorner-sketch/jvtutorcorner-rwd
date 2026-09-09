@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { stripe } from '@/lib/stripe';
 import { handlePaymentSuccess } from '@/lib/paymentSuccessHandler';
 import profilesService from '@/lib/profilesService';
+import { internalFetch } from '@/lib/auth/internalFetch';
 import Stripe from 'stripe';
 
 // Next.js App Router requests are streams by default, so we don't need to disable body parser.
@@ -111,13 +112,11 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) 
     // Update DB Order Status
     if (orderId) {
         try {
-            const base = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
             console.log(`[Stripe Webhook] Attempting to update order ${orderId} status...`);
 
             // First try plan-upgrades API (for membership/points)
-            let res = await fetch(`${base}/api/plan-upgrades/${encodeURIComponent(orderId)}`, {
+            let res = await internalFetch(`/api/plan-upgrades/${encodeURIComponent(orderId)}`, {
                 method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ status: 'PAID' }),
             });
 
@@ -126,9 +125,8 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) 
             } else if (res.status === 404) {
                 // If not found in plan-upgrades, try the standard orders API (for course enrollments)
                 console.log(`[Stripe Webhook] Order ${orderId} not found in plan-upgrades, trying standard orders API...`);
-                res = await fetch(`${base}/api/orders/${encodeURIComponent(orderId)}`, {
+                res = await internalFetch(`/api/orders/${encodeURIComponent(orderId)}`, {
                     method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ status: 'PAID' }),
                 });
 

@@ -133,7 +133,10 @@ export async function findProfileByEmail(email: string) {
         ExpressionAttributeValues: { ':email': email },
         Limit: 1,
       }));
-      if (queryRes?.Count > 0) return queryRes.Items[0];
+      // A successful query with zero matches means "no such profile" — return null,
+      // don't fall through to the DB-failure throw below (that previously made every
+      // lookup of a genuinely-nonexistent email look like a query failure).
+      return queryRes?.Count > 0 ? queryRes.Items[0] : null;
     } catch (e) {
       console.warn('[profilesService] dynamo email query failed, trying scan fallback...', (e as any)?.message || e);
       try {
@@ -142,7 +145,7 @@ export async function findProfileByEmail(email: string) {
           FilterExpression: 'email = :email',
           ExpressionAttributeValues: { ':email': email }
         }));
-        if (scanRes?.Count > 0) return scanRes.Items[0];
+        return scanRes?.Count > 0 ? scanRes.Items[0] : null;
       } catch (scanErr) {
         console.error('[profilesService] dynamo email scan fallback failed', (scanErr as any)?.message || scanErr);
       }

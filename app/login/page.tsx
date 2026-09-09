@@ -137,14 +137,32 @@ export default function LoginPage() {
       const isGoogleSuccess = searchParams.get('google_auth_success');
 
       if (isGoogleSuccess === 'true') {
-        const authEmail = searchParams.get('email') || 'authorized-google-user';
-        
+        // 身分只信任 server session cookie（callback 已經建立），不再信任 URL 上的 email —— 舊版
+        // 直接拿 ?email= 建立本地登入狀態，等於任何人把網址列的 email 改掉就能冒充該信箱登入。
+        let meData: any = null;
+        try {
+          const meRes = await fetch('/api/auth/me');
+          if (meRes.ok) meData = await meRes.json();
+        } catch { }
+
+        if (!meData?.ok || !meData?.user?.email) {
+          setError('Google 帳號驗證登入失敗，請重新登入。');
+          router.replace('/login');
+          return;
+        }
+
+        let profileData: any = null;
+        try {
+          const pRes = await fetch(`/api/profile?id=${encodeURIComponent(meData.user.userId)}`);
+          if (pRes.ok) profileData = (await pRes.json())?.profile;
+        } catch { }
+
         const user: StoredUser = {
-          email: authEmail,
-          plan: 'viewer',
-          firstName: 'Google',
-          lastName: 'User',
-          role: 'student',
+          email: meData.user.email,
+          plan: meData.user.plan || 'basic',
+          firstName: profileData?.firstName || 'Google',
+          lastName: profileData?.lastName || 'User',
+          role: meData.user.role || 'student',
         };
 
         setStoredUser(user);
@@ -173,6 +191,10 @@ export default function LoginPage() {
         }
       } else if (searchParams.get('error') === 'google_auth_failed') {
         setError('Google 帳號驗證登入失敗。');
+      } else if (searchParams.get('error') === 'google_auth_domain_denied') {
+        setError('此 Google 帳號的網域不在允許清單內，請改用其他帳號或聯繫管理員。');
+      } else if (searchParams.get('error') === 'google_sso_not_configured') {
+        setError('Google 登入目前尚未設定完成，請改用 Email 登入。');
       }
     };
 
@@ -351,6 +373,10 @@ export default function LoginPage() {
                     忘記密碼?
                   </button> */}
                 </div>
+
+                <a href="/api/auth/google/start" className="modal-button secondary" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginTop: '12px' }}>
+                  {t('login_with_google')}
+                </a>
               </>
             )}
 

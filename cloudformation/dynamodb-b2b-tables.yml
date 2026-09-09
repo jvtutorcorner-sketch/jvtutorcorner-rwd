@@ -1,5 +1,38 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'CloudFormation template for B2B/B2C hybrid tables - Organizations and Licenses'
+
+# ==============================================================================
+#  SOURCE OF TRUTH: scripts/setup-db.mjs
+# ==============================================================================
+#  This template is a *mirror* of the table shapes that scripts/setup-db.mjs
+#  provisions, kept so the same tables can be created via CloudFormation in a
+#  fresh account. setup-db.mjs is authoritative: if the two ever disagree, this
+#  file is the one that is wrong.
+#
+#  It previously disagreed on every single key, which meant a stack-created
+#  environment and a script-created environment produced tables the application
+#  code could not both read:
+#
+#    | entity        | this template (before) | setup-db.mjs / app code (now) |
+#    |---------------|------------------------|-------------------------------|
+#    | Organizations | PK organizationId      | PK id                         |
+#    | Licenses      | PK licenseId           | PK id                         |
+#    | Licenses GSI  | OrganizationIdIndex    | byOrgId                       |
+#    | Licenses GSI  | UserIdIndex            | byUserId                      |
+#    | Licenses attr | organizationId         | orgId                         |
+#    | Org Units     | (absent)               | PK id, byOrgId / byParentId   |
+#    | Roles         | PK roleId              | PK id                         |
+#    | PagePerms     | PK permissionId        | PK id (id === path)           |
+#
+#  The right-hand column is what lib/organizationService.ts, lib/licenseService.ts,
+#  lib/orgUnitService.ts, lib/rolesService.ts and lib/pagePermissionsService.ts
+#  actually issue their Get/Query/Put calls against.
+#
+#  When you add a table or GSI: change scripts/setup-db.mjs first, then mirror
+#  it here. `node scripts/verify-schema.mjs` diffs a live account against
+#  setup-db.mjs and fails if they drift.
+# ==============================================================================
+
+Description: 'B2B/B2C hybrid tables - Organizations, Org Units, Licenses, Roles, Page Permissions. Mirrors scripts/setup-db.mjs.'
 
 Parameters:
   OrganizationsTableName:
@@ -7,15 +40,15 @@ Parameters:
     Default: jvtutorcorner-organizations
     Description: DynamoDB table name for organization records
 
+  OrgUnitsTableName:
+    Type: String
+    Default: jvtutorcorner-org-units
+    Description: DynamoDB table name for the org unit hierarchy
+
   LicensesTableName:
     Type: String
     Default: jvtutorcorner-licenses
     Description: DynamoDB table name for license/seat management
-
-  ProfilesTableName:
-    Type: String
-    Default: jvtutorcorner-profiles
-    Description: DynamoDB table name for user profiles (must already exist)
 
   RolesTableName:
     Type: String
@@ -29,23 +62,24 @@ Parameters:
 
 Resources:
   # ==========================================
-  # Organizations Table (B2B Accounts)
+  # Organizations (B2B accounts)
+  # setup-db.mjs :: createOrganizationsTable
   # ==========================================
   OrganizationsTable:
     Type: AWS::DynamoDB::Table
     Properties:
       TableName: !Ref OrganizationsTableName
+      BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
-        - AttributeName: organizationId
+        - AttributeName: id
           AttributeType: S
         - AttributeName: billingEmail
           AttributeType: S
         - AttributeName: status
           AttributeType: S
       KeySchema:
-        - AttributeName: organizationId
+        - AttributeName: id
           KeyType: HASH
-      BillingMode: PAY_PER_REQUEST
       GlobalSecondaryIndexes:
         - IndexName: BillingEmailIndex
           KeySchema:
@@ -61,9 +95,6 @@ Resources:
             ProjectionType: ALL
       StreamSpecification:
         StreamViewType: NEW_AND_OLD_IMAGES
-      TimeToLiveSpecification:
-        AttributeName: expiresAt
-        Enabled: false
       SSESpecification:
         SSEEnabled: true
       PointInTimeRecoverySpecification:
@@ -71,41 +102,88 @@ Resources:
       Tags:
         - Key: Project
           Value: jvtutorcorner
-        - Key: Environment
-          Value: production
         - Key: Purpose
           Value: B2B-Organizations
 
   # ==========================================
-  # Licenses Table (Seat Management)
+  # Org Units (hierarchy inside an organization)
+  # setup-db.mjs :: createOrgUnitsTable
+  # ==========================================
+  OrgUnitsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref OrgUnitsTableName
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: orgId
+          AttributeType: S
+        - AttributeName: parentId
+          AttributeType: S
+        - AttributeName: path
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: byOrgId
+          KeySchema:
+            - AttributeName: orgId
+              KeyType: HASH
+            - AttributeName: path
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: byParentId
+          KeySchema:
+            - AttributeName: parentId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: Project
+          Value: jvtutorcorner
+        - Key: Purpose
+          Value: B2B-OrgUnits
+
+  # ==========================================
+  # Licenses (seat management)
+  # setup-db.mjs :: createLicensesTable
   # ==========================================
   LicensesTable:
     Type: AWS::DynamoDB::Table
     Properties:
       TableName: !Ref LicensesTableName
+      BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
-        - AttributeName: licenseId
+        - AttributeName: id
           AttributeType: S
-        - AttributeName: organizationId
+        - AttributeName: orgId
           AttributeType: S
         - AttributeName: userId
           AttributeType: S
         - AttributeName: status
           AttributeType: S
       KeySchema:
-        - AttributeName: licenseId
+        - AttributeName: id
           KeyType: HASH
-      BillingMode: PAY_PER_REQUEST
       GlobalSecondaryIndexes:
-        - IndexName: OrganizationIdIndex
+        - IndexName: byOrgId
           KeySchema:
-            - AttributeName: organizationId
+            - AttributeName: orgId
               KeyType: HASH
             - AttributeName: status
               KeyType: RANGE
           Projection:
             ProjectionType: ALL
-        - IndexName: UserIdIndex
+        - IndexName: byUserId
           KeySchema:
             - AttributeName: userId
               KeyType: HASH
@@ -113,9 +191,10 @@ Resources:
             ProjectionType: ALL
       StreamSpecification:
         StreamViewType: NEW_AND_OLD_IMAGES
-      TimeToLiveSpecification:
-        AttributeName: expiresAt
-        Enabled: true  # Auto-cleanup expired licenses
+      # TTL is intentionally NOT enabled on licenses. License.expiresAt is a
+      # business-state marker read by lib/licenseService.ts; letting DynamoDB
+      # delete the row on expiry would silently drop the seat record that
+      # Organization.usedSeats reconciliation counts against.
       SSESpecification:
         SSEEnabled: true
       PointInTimeRecoverySpecification:
@@ -123,70 +202,26 @@ Resources:
       Tags:
         - Key: Project
           Value: jvtutorcorner
-        - Key: Environment
-          Value: production
         - Key: Purpose
           Value: B2B-Licenses
 
   # ==========================================
-  # Profiles Table (Enhanced for B2B)
-  # ==========================================
-  # NOTE: This assumes Profiles table already exists
-  # You'll need to update it manually or via migration script
-  # Uncomment below if creating fresh:
-  
-  # ProfilesTable:
-  #   Type: AWS::DynamoDB::Table
-  #   Properties:
-  #     TableName: !Ref ProfilesTableName
-  #     AttributeDefinitions:
-  #       - AttributeName: id
-  #         AttributeType: S
-  #       - AttributeName: email
-  #         AttributeType: S
-  #       - AttributeName: organizationId
-  #         AttributeType: S
-  #     KeySchema:
-  #       - AttributeName: id
-  #         KeyType: HASH
-  #     BillingMode: PAY_PER_REQUEST
-  #     GlobalSecondaryIndexes:
-  #       - IndexName: EmailIndex
-  #         KeySchema:
-  #           - AttributeName: email
-  #             KeyType: HASH
-  #         Projection:
-  #           ProjectionType: ALL
-  #       - IndexName: OrganizationIdIndex
-  #         KeySchema:
-  #           - AttributeName: organizationId
-  #             KeyType: HASH
-  #         Projection:
-  #           ProjectionType: ALL
-  #     SSESpecification:
-  #       SSEEnabled: true
-  #     PointInTimeRecoverySpecification:
-  #       PointInTimeRecoveryEnabled: true
-  #     Tags:
-  #       - Key: Project
-  #         Value: jvtutorcorner
-
-  # ==========================================
-  # Roles Table (RBAC)
+  # Roles (RBAC)
+  # PK is `id` - see lib/rolesService.ts, which does Key: { id: role.id }.
   # ==========================================
   RolesTable:
     Type: AWS::DynamoDB::Table
     Properties:
       TableName: !Ref RolesTableName
+      BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
-        - AttributeName: roleId
+        - AttributeName: id
           AttributeType: S
         - AttributeName: name
           AttributeType: S
       KeySchema:
-        - AttributeName: roleId
+        - AttributeName: id
           KeyType: HASH
-      BillingMode: PAY_PER_REQUEST
       GlobalSecondaryIndexes:
         - IndexName: RoleNameIndex
           KeySchema:
@@ -194,37 +229,42 @@ Resources:
               KeyType: HASH
           Projection:
             ProjectionType: ALL
-      StreamSpecification:
-        StreamViewType: NEW_AND_OLD_IMAGES
-      TimeToLiveSpecification:
-        AttributeName: expiresAt
-        Enabled: false
       Tags:
         - Key: Project
           Value: jvtutorcorner
-        - Key: Environment
-          Value: production
         - Key: Purpose
           Value: RBAC-Roles
 
   # ==========================================
-  # Page Permissions Table (RBAC)
+  # Page Permissions (RBAC)
+  # PK is `id`, and lib/pagePermissionsService.ts sets id === path. Each item is
+  # one page carrying an embedded `permissions[]` array of per-role flags.
+  #
+  # KNOWN INCONSISTENCY (not fixed here - needs a data migration, not a schema
+  # edit): lib/auth/pagePermissions.ts::queryDbPermission queries a RolePathIndex
+  # on a top-level `roleId` attribute, but the items this table actually stores
+  # have no top-level `roleId` - the role lives inside permissions[]. That query
+  # therefore matches nothing and the caller silently falls back to the built-in
+  # DEFAULT_PAGE_PERMISSIONS matrix. The index is declared below so the query
+  # keeps returning empty rather than throwing, but either the writer must
+  # denormalize one item per (roleId, path), or the reader must switch to a Get
+  # on id and read permissions[]. Pick one before relying on DB overrides.
   # ==========================================
   PagePermissionsTable:
     Type: AWS::DynamoDB::Table
     Properties:
       TableName: !Ref PagePermissionsTableName
+      BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
-        - AttributeName: permissionId
+        - AttributeName: id
           AttributeType: S
         - AttributeName: roleId
           AttributeType: S
         - AttributeName: path
           AttributeType: S
       KeySchema:
-        - AttributeName: permissionId
+        - AttributeName: id
           KeyType: HASH
-      BillingMode: PAY_PER_REQUEST
       GlobalSecondaryIndexes:
         - IndexName: RolePathIndex
           KeySchema:
@@ -234,43 +274,24 @@ Resources:
               KeyType: RANGE
           Projection:
             ProjectionType: ALL
-        - IndexName: PathIndex
-          KeySchema:
-            - AttributeName: path
-              KeyType: HASH
-          Projection:
-            ProjectionType: ALL
-      StreamSpecification:
-        StreamViewType: NEW_AND_OLD_IMAGES
-      TimeToLiveSpecification:
-        AttributeName: expiresAt
-        Enabled: false
       Tags:
         - Key: Project
           Value: jvtutorcorner
-        - Key: Environment
-          Value: production
         - Key: Purpose
           Value: RBAC-PagePermissions
 
 Outputs:
-  OrganizationsTableName:
-    Description: Name of Organizations DynamoDB table
-    Value: !Ref OrganizationsTableName
-    Export:
-      Name: !Sub '${AWS::StackName}-OrganizationsTableName'
-
   OrganizationsTableArn:
     Description: ARN of Organizations DynamoDB table
     Value: !GetAtt OrganizationsTable.Arn
     Export:
       Name: !Sub '${AWS::StackName}-OrganizationsTableArn'
 
-  LicensesTableName:
-    Description: Name of Licenses DynamoDB table
-    Value: !Ref LicensesTableName
+  OrgUnitsTableArn:
+    Description: ARN of Org Units DynamoDB table
+    Value: !GetAtt OrgUnitsTable.Arn
     Export:
-      Name: !Sub '${AWS::StackName}-LicensesTableName'
+      Name: !Sub '${AWS::StackName}-OrgUnitsTableArn'
 
   LicensesTableArn:
     Description: ARN of Licenses DynamoDB table
@@ -278,23 +299,11 @@ Outputs:
     Export:
       Name: !Sub '${AWS::StackName}-LicensesTableArn'
 
-  RolesTableName:
-    Description: Name of Roles DynamoDB table
-    Value: !Ref RolesTableName
-    Export:
-      Name: !Sub '${AWS::StackName}-RolesTableName'
-
   RolesTableArn:
     Description: ARN of Roles DynamoDB table
     Value: !GetAtt RolesTable.Arn
     Export:
       Name: !Sub '${AWS::StackName}-RolesTableArn'
-
-  PagePermissionsTableName:
-    Description: Name of Page Permissions DynamoDB table
-    Value: !Ref PagePermissionsTableName
-    Export:
-      Name: !Sub '${AWS::StackName}-PagePermissionsTableName'
 
   PagePermissionsTableArn:
     Description: ARN of Page Permissions DynamoDB table

@@ -4,7 +4,8 @@ import {
   QueryCommand,
   PutCommand,
 } from '@aws-sdk/lib-dynamodb';
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { withAdmin, type AuthedRequest } from '@/lib/auth/apiGuard';
 
 interface AgoraLog {
   id: string;
@@ -38,9 +39,10 @@ const docClient = DynamoDBDocumentClient.from(dynamoClient, {
 const tableName = process.env.DYNAMODB_TABLE_AGORA_LOGS || 'jvtutorcorner-agora-logs';
 
 // GET: Fetch Agora logs from the last N hours
-export async function GET(request: NextRequest) {
+// 先前 GET/POST 都沒有 auth；這些日誌含有使用者 Email、角色與 session UUID。
+async function handleGet(request: AuthedRequest) {
   try {
-    const searchParams = request.nextUrl.searchParams;
+    const searchParams = new URL(request.url).searchParams;
     const limit = parseInt(searchParams.get('limit') || '50');
     const hoursAgo = parseInt(searchParams.get('hoursAgo') || '24');
 
@@ -84,7 +86,7 @@ export async function GET(request: NextRequest) {
 }
 
 // POST: Add a new Agora log
-export async function POST(request: NextRequest) {
+async function handlePost(request: AuthedRequest) {
   try {
     const body = await request.json() as Partial<AgoraLog>;
 
@@ -134,3 +136,6 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export const GET = withAdmin(handleGet);
+export const POST = withAdmin(handlePost);

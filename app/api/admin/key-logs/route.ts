@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { queryKeyLogs, KeyLogCategory, KeyLogLevel } from '@/lib/keyLogger';
+import { withAdmin, type AuthedRequest } from '@/lib/auth/apiGuard';
 
 /**
  * GET /api/admin/key-logs
@@ -18,8 +19,10 @@ import { queryKeyLogs, KeyLogCategory, KeyLogLevel } from '@/lib/keyLogger';
  * Response:
  *   { ok, totalFound, dates, logs: KeyLogEntry[] }
  */
-export async function GET(request: NextRequest) {
-    const sp = request.nextUrl.searchParams;
+// 先前無 auth，任何人都能撈全站關鍵業務日誌（含 userId、payment/auth 事件）；AI 工具走的是
+// queryKeyLogs() 直接函式呼叫（見 lib/platform-skills.ts），不受影響，這裡只鎖 HTTP route 給 admin。
+export const GET = withAdmin(async (request: AuthedRequest) => {
+    const sp = new URL(request.url).searchParams;
 
     const hoursBack = Math.min(parseInt(sp.get('hoursBack') || '24', 10), 168);
     const date = sp.get('date') || undefined;
@@ -49,7 +52,7 @@ export async function GET(request: NextRequest) {
             { status: 500 }
         );
     }
-}
+});
 
 // ─── Summary Builder（供 AI 快速理解） ────────────────────────────────────────
 

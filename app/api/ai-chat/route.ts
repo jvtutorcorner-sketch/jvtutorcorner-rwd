@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { withAuth, type AuthedRequest } from '@/lib/auth/apiGuard';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { ddbDocClient } from '@/lib/dynamo';
 import { ScanCommand } from '@aws-sdk/lib-dynamodb';
@@ -117,7 +118,8 @@ async function getAIConfig(messages: any[] = [], useSmartRouter: boolean = false
 
 const promptCache = new Map<string, { data: any, timestamp: number }>();
 
-export async function POST(req: Request) {
+// 先前完全沒有 auth：匿名呼叫就能消耗平台自己的 LLM 金鑰。AI 助理元件本來就只對登入者顯示。
+async function handlePost(req: AuthedRequest) {
     try {
         const { messages, agentId, useSmartRouter, usePromptCache } = await req.json();
 
@@ -280,3 +282,5 @@ export async function POST(req: Request) {
         return NextResponse.json({ reply: '系統發生錯誤，請稍後再試。', error: error.message }, { status: 500 });
     }
 }
+
+export const POST = withAuth(handlePost);

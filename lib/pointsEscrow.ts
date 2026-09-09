@@ -9,6 +9,7 @@
 import { GetCommand, PutCommand, UpdateCommand, ScanCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
 import { ddbDocClient } from '@/lib/dynamo';
 import { getUserPoints, setUserPoints } from '@/lib/pointsStorage';
+import { resolveCanonicalTeacherId } from '@/lib/teacherIdentity';
 
 export const ESCROW_TABLE =
   process.env.DYNAMODB_TABLE_POINTS_ESCROW || 'jvtutorcorner-points-escrow';
@@ -96,40 +97,50 @@ export async function listEscrows(opts?: {
 }): Promise<EscrowRecord[]> {
   if (useDynamoForEscrow) {
     try {
-      const filters: string[] = [];
-      const ExpressionAttributeValues: Record<string, any> = {};
-      const ExpressionAttributeNames: Record<string, string> = {};
+      const limit = opts?.limit ?? 100;
 
-      if (opts?.status) {
-        filters.push('#status = :status');
-        ExpressionAttributeNames['#status'] = 'status';
-        ExpressionAttributeValues[':status'] = opts.status;
-      }
-      if (opts?.studentId) {
-        filters.push('studentId = :studentId');
-        ExpressionAttributeValues[':studentId'] = opts.studentId;
-      }
-      if (opts?.teacherId) {
-        filters.push('teacherId = :teacherId');
-        ExpressionAttributeValues[':teacherId'] = opts.teacherId;
-      }
+      // Per-party listing goes through the byStudentId / byTeacherId GSIs that
+      // scripts/setup-db.mjs provisions. This used to be a full-table Scan with a
+      // FilterExpression, which is not merely slow: DynamoDB applies Limit to items
+      // SCANNED, not items matched, so "list my escrows" silently returned an
+      // arbitrary subset once the table outgrew the first page. A Query on the
+      // index partition key returns every row belonging to that party.
+      const partyIndex = opts?.studentId
+        ? { indexName: 'byStudentId', keyName: 'studentId', value: opts.studentId }
+        : opts?.teacherId
+          ? { indexName: 'byTeacherId', keyName: 'teacherId', value: opts.teacherId }
+          : null;
 
-      const params: any = {
-        TableName: ESCROW_TABLE,
-        Limit: opts?.limit ?? 100,
-      };
-      if (filters.length) {
-        params.FilterExpression = filters.join(' AND ');
-        params.ExpressionAttributeValues = ExpressionAttributeValues;
-        if (Object.keys(ExpressionAttributeNames).length) {
-          params.ExpressionAttributeNames = ExpressionAttributeNames;
+      if (partyIndex) {
+        const queryParams: any = {
+          TableName: ESCROW_TABLE,
+          IndexName: partyIndex.indexName,
+          KeyConditionExpression: partyIndex.keyName + ' = :party',
+          ExpressionAttributeValues: { ':party': partyIndex.value },
+          Limit: limit,
+        };
+        if (opts?.status) {
+          queryParams.FilterExpression = '#status = :status';
+          queryParams.ExpressionAttributeNames = { '#status': 'status' };
+          queryParams.ExpressionAttributeValues[':status'] = opts.status;
         }
+        const queryRes = await ddbDocClient.send(new QueryCommand(queryParams));
+        return (queryRes.Items || []) as EscrowRecord[];
+      }
+
+      // No party filter (admin-wide listing). Scan is the only option here, since
+      // status on its own has no index.
+      const params: any = { TableName: ESCROW_TABLE, Limit: limit };
+      if (opts?.status) {
+        params.FilterExpression = '#status = :status';
+        params.ExpressionAttributeNames = { '#status': 'status' };
+        params.ExpressionAttributeValues = { ':status': opts.status };
       }
 
       const res = await ddbDocClient.send(new ScanCommand(params));
       return (res.Items || []) as EscrowRecord[];
     } catch (e) {
-      console.error('[pointsEscrow] DynamoDB scan error:', e);
+      console.error('[pointsEscrow] DynamoDB list error:', e);
       return [];
     }
   }
@@ -166,8 +177,29 @@ export async function createEscrow(params: {
   courseEndTime?: string;
 }): Promise<EscrowRecord> {
   const now = new Date().toISOString();
+
+  // The teacher key MUST be the canonical profile id. releaseEscrow() credits the
+  // teacher with setUserPoints(record.teacherId). If an email string lands here
+  // instead (app/api/orders/route.ts resolved the course teacher as
+  // `teacherId || teacherEmail`) the points are written to a balance keyed by that
+  // email, which no teacher-facing read ever looks at. The escrow then reads as
+  // RELEASED while the teacher's actual balance never moves.
+  const canonicalTeacherId = await resolveCanonicalTeacherId(params.teacherId);
+  if (!canonicalTeacherId) {
+    throw new Error(
+      '[pointsEscrow] refusing to create escrow ' + params.escrowId +
+        ': teacherId "' + params.teacherId + '" does not resolve to a teacher profile'
+    );
+  }
+  if (canonicalTeacherId !== params.teacherId) {
+    console.log(
+      '[pointsEscrow] normalised teacherId ' + params.teacherId + ' -> ' + canonicalTeacherId
+    );
+  }
+
   const record: EscrowRecord = {
     ...params,
+    teacherId: canonicalTeacherId,
     status: 'HOLDING',
     createdAt: now,
     updatedAt: now,

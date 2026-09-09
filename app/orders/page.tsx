@@ -239,7 +239,7 @@ export default function OrdersPage() {
             {/* Filter section */}
             <div style={{ marginBottom: 16, padding: 12, background: '#f5f5f5', borderRadius: 6 }}>
               <div style={{ marginBottom: 8 }}>
-                <label style={{ marginRight: 8 }}>每頁數量：</label>
+                <label style={{ marginRight: 8 }}>{t('orders_page_size_label')}</label>
                 <select value={limit} onChange={(e) => setLimit(parseInt(e.target.value, 10))} style={{ padding: '4px 8px' }}>
                   <option value="10">10</option>
                   <option value="20">20</option>
@@ -249,21 +249,21 @@ export default function OrdersPage() {
               </div>
               
               <div style={{ marginBottom: 8 }}>
-                <label style={{ marginRight: 8 }}>狀態：</label>
+                <label style={{ marginRight: 8 }}>{t('orders_status_label')}</label>
                 <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} style={{ padding: '4px 8px', marginRight: 12 }}>
-                  <option value="">全部</option>
-                  <option value="PENDING">待付款</option>
-                  <option value="PAID">已付款</option>
-                  <option value="COMPLETED">已完成</option>
-                  <option value="CANCELLED">已取消</option>
-                  <option value="REFUNDED">已退款</option>
+                  <option value="">{t('all')}</option>
+                  <option value="PENDING">{t('order_status_pending')}</option>
+                  <option value="PAID">{t('order_status_paid')}</option>
+                  <option value="COMPLETED">{t('order_status_completed')}</option>
+                  <option value="CANCELLED">{t('order_status_cancelled')}</option>
+                  <option value="REFUNDED">{t('order_status_refunded')}</option>
                 </select>
 
                 {user?.role !== 'student' && (
                   <>
-                    <label style={{ marginRight: 8 }}>課程：</label>
+                    <label style={{ marginRight: 8 }}>{t('orders_course_label')}</label>
                     <select value={filterCourseId} onChange={(e) => setFilterCourseId(e.target.value)} style={{ padding: '4px 8px', marginRight: 12 }}>
-                      <option value="">全部</option>
+                      <option value="">{t('all')}</option>
                       {COURSES.map((c) => (
                         <option key={c.id} value={c.id}>{c.title}</option>
                       ))}
@@ -273,7 +273,7 @@ export default function OrdersPage() {
               </div>
 
               <div style={{ marginBottom: 8 }}>
-                <label style={{ marginRight: 8 }}>開始日期：</label>
+                <label style={{ marginRight: 8 }}>{t('orders_start_date_label')}</label>
                 <input 
                   type="date" 
                   value={filterStartDate} 
@@ -281,7 +281,7 @@ export default function OrdersPage() {
                   style={{ padding: '4px 8px', marginRight: 12 }}
                 />
                 
-                <label style={{ marginRight: 8 }}>結束日期：</label>
+                <label style={{ marginRight: 8 }}>{t('orders_end_date_label')}</label>
                 <input 
                   type="date" 
                   value={filterEndDate} 
@@ -291,7 +291,7 @@ export default function OrdersPage() {
               </div>
 
               <button onClick={handleSearch} style={{ padding: '6px 12px', background: '#0366d6', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}>
-                搜尋
+                {t('search')}
               </button>
             </div>
 
@@ -307,14 +307,14 @@ export default function OrdersPage() {
                 <table className="orders-table" style={{ borderCollapse: 'collapse', border: '1px solid #ddd', width: '100%', marginBottom: 12 }}>
                   <thead>
                     <tr style={{ background: '#f5f5f5' }}>
-                      <th style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'left' }}>學生</th>
-                      <th style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'left' }}>訂單編號</th>
-                      <th style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'left' }}>課程</th>
-                      <th style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'left' }}>金額</th>
-                      <th style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'left' }}>訂單流程</th>
-                      <th style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'left' }}>建立時間</th>
-                      <th style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'left' }}>更新時間</th>
-                      <th style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'left' }}>操作</th>
+                      <th style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'left' }}>{t('student')}</th>
+                      <th style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'left' }}>{t('student_courses_order_number')}</th>
+                      <th style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'left' }}>{t('course')}</th>
+                      <th style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'left' }}>{t('student_courses_amount')}</th>
+                      <th style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'left' }}>{t('orders_col_flow')}</th>
+                      <th style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'left' }}>{t('student_courses_created_at')}</th>
+                      <th style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'left' }}>{t('update_time')}</th>
+                      <th style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'left' }}>{t('orders_col_actions')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -392,13 +392,13 @@ export default function OrdersPage() {
                                     cursor: 'pointer'
                                   }}
                                 >
-                                  {isExpanded ? '隱藏' : '付款紀錄'}
+                                  {isExpanded ? t('orders_hide') : t('order_detail_payments')}
                                 </button>
                                 <Link 
                                   href={`/orders/${o.orderId}`}
                                   style={{ padding: '4px 8px', fontSize: '12px', color: '#0366d6', textDecoration: 'none', border: '1px solid #0366d6', borderRadius: 3, display: 'inline-block' }}
                                 >
-                                  詳情
+                                  {t('orders_detail')}
                                 </Link>
                               </div>
                             </td>
@@ -407,19 +407,19 @@ export default function OrdersPage() {
                             <tr key={`payment-${o.orderId}`}>
                               <td colSpan={8} style={{ border: '1px solid #ddd', padding: '12px', background: '#f9f9f9' }}>
                                 <div style={{ marginTop: 8 }}>
-                                  <h4 style={{ marginTop: 0, marginBottom: 8 }}>付款紀錄</h4>
+                                  <h4 style={{ marginTop: 0, marginBottom: 8 }}>{t('order_detail_payments')}</h4>
                                   {(!o.payments || o.payments.length === 0) ? (
-                                    <p>無付款紀錄</p>
+                                    <p>{t('orders_no_payments')}</p>
                                   ) : (
                                     <table style={{ borderCollapse: 'collapse', border: '1px solid #ddd', width: '100%' }}>
                                       <thead>
                                         <tr style={{ background: '#e8e8e8' }}>
-                                          <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'left', fontSize: 12 }}>時間</th>
-                                          <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'left', fontSize: 12 }}>事件</th>
-                                          <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'left', fontSize: 12 }}>金額</th>
-                                          <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'left', fontSize: 12 }}>幣別</th>
-                                          <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'left', fontSize: 12 }}>狀態</th>
-                                          <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'left', fontSize: 12 }}>備註</th>
+                                          <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'left', fontSize: 12 }}>{t('time')}</th>
+                                          <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'left', fontSize: 12 }}>{t('event')}</th>
+                                          <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'left', fontSize: 12 }}>{t('student_courses_amount')}</th>
+                                          <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'left', fontSize: 12 }}>{t('currency_label')}</th>
+                                          <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'left', fontSize: 12 }}>{t('student_courses_status')}</th>
+                                          <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'left', fontSize: 12 }}>{t('notes')}</th>
                                         </tr>
                                       </thead>
                                       <tbody>
@@ -460,13 +460,13 @@ export default function OrdersPage() {
                 {/* Pagination */}
                 <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
                   <button onClick={handlePrev} disabled={history.length === 0} style={{ padding: '6px 12px', background: history.length === 0 ? '#ddd' : '#0366d6', color: '#fff', border: 'none', borderRadius: 4, cursor: history.length === 0 ? 'not-allowed' : 'pointer' }}>
-                    上一頁
+                    {t('previous')}
                   </button>
                   <span style={{ fontSize: 12, color: '#666' }}>
-                    第 {history.length + 1} 頁 (每頁 {limit} 筆)
+                    {t('orders_page_indicator', { page: history.length + 1, limit })}
                   </span>
                   <button onClick={handleNext} disabled={!lastKey} style={{ padding: '6px 12px', background: !lastKey ? '#ddd' : '#0366d6', color: '#fff', border: 'none', borderRadius: 4, cursor: !lastKey ? 'not-allowed' : 'pointer' }}>
-                    下一頁
+                    {t('next')}
                   </button>
                 </div>
               </>

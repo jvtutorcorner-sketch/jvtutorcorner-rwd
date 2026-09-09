@@ -32,7 +32,8 @@ import {
   getDay,
   subDays,
 } from 'date-fns';
-import { zhTW } from 'date-fns/locale';
+import { useLocale } from '@/components/IntlProvider';
+import { getDateFnsLocale, getDateFormats } from '@/lib/dateLocale';
 import Button from './UI/Button';
 
 interface CalendarEvent {
@@ -60,6 +61,9 @@ type ViewType = 'month' | 'week' | 'day' | 'year';
 
 const Calendar: React.FC<CalendarProps> = ({ events, view: controlledView, onViewChange }) => {
   const t = useT();
+  const uiLocale = useLocale();
+  const dfLocale = getDateFnsLocale(uiLocale);
+  const dfFormats = getDateFormats(uiLocale);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [internalView, setInternalView] = useState<ViewType>('month');
 
@@ -122,26 +126,26 @@ const Calendar: React.FC<CalendarProps> = ({ events, view: controlledView, onVie
   };
 
   const renderHeader = () => {
-    let titleFormat = 'yyyy年 MMMM';
-    if (view === 'year') titleFormat = 'yyyy年';
-    if (view === 'day') titleFormat = 'yyyy年MM月dd日 (eeee)';
+    let titleFormat = dfFormats.month;
+    if (view === 'year') titleFormat = dfFormats.year;
+    if (view === 'day') titleFormat = dfFormats.day;
     if (view === 'week') {
-      const start = startOfWeek(currentDate, { locale: zhTW });
-      const end = endOfWeek(currentDate, { locale: zhTW });
+      const start = startOfWeek(currentDate, { locale: dfLocale });
+      const end = endOfWeek(currentDate, { locale: dfLocale });
       // Custom format for week range if needed, or just show Month Year
       // Showing range: "2023年 10月 22日 - 10月 28日"
       return (
         <div className="flex flex-col xl:flex-row items-center justify-between px-2 sm:px-4 py-3 sm:py-4 bg-white border-b border-gray-200 gap-3">
           <div className="flex flex-row items-center justify-between w-full xl:w-auto xl:space-x-4">
             <h2 className="text-base sm:text-lg lg:text-xl font-semibold text-gray-900 leading-tight flex-1 text-center xl:text-left">
-              {format(start, 'yyyy年MM月dd日', { locale: zhTW })} - {format(end, 'MM月dd日', { locale: zhTW })}
+              {format(start, dfFormats.weekStart, { locale: dfLocale })} - {format(end, dfFormats.weekEnd, { locale: dfLocale })}
             </h2>
             {/* 檢視提醒按鈕 */}
             {Object.keys(reminders).length > 0 && (
               <Link
                 href="/calendar/reminders"
                 className="flex items-center space-x-1 px-2.5 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-colors text-xs sm:text-sm font-medium ml-2"
-                title="檢視所有提醒"
+                title={t('calendar_view_all_reminders')}
               >
                 <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                   <path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z" />
@@ -186,14 +190,14 @@ const Calendar: React.FC<CalendarProps> = ({ events, view: controlledView, onVie
       <div className="flex flex-col xl:flex-row items-center justify-between px-2 sm:px-4 py-3 sm:py-4 bg-white border-b border-gray-200 gap-3">
         <div className="flex flex-row items-center justify-between w-full xl:w-auto xl:space-x-4">
           <h2 className="text-base sm:text-xl font-semibold text-gray-900 leading-tight">
-            {format(currentDate, titleFormat, { locale: zhTW })}
+            {format(currentDate, titleFormat, { locale: dfLocale })}
           </h2>
           {/* 檢視提醒按鈕 */}
           {Object.keys(reminders).length > 0 && (
             <Link
               href="/calendar/reminders"
               className="flex items-center space-x-1 px-2.5 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-colors text-xs sm:text-sm font-medium ml-2"
-              title="檢視所有提醒"
+              title={t('calendar_view_all_reminders')}
             >
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                 <path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z" />
@@ -259,8 +263,8 @@ const Calendar: React.FC<CalendarProps> = ({ events, view: controlledView, onVie
   const renderMonth = () => {
     const monthStart = startOfMonth(currentDate);
     const monthEnd = endOfMonth(monthStart);
-    const startDate = startOfWeek(monthStart, { locale: zhTW });
-    const endDate = endOfWeek(monthEnd, { locale: zhTW });
+    const startDate = startOfWeek(monthStart, { locale: dfLocale });
+    const endDate = endOfWeek(monthEnd, { locale: dfLocale });
 
     const daysHeader = [t('day_sun'), t('day_mon'), t('day_tue'), t('day_wed'), t('day_thu'), t('day_fri'), t('day_sat')];
 
@@ -353,8 +357,8 @@ const Calendar: React.FC<CalendarProps> = ({ events, view: controlledView, onVie
         {months.map((month) => {
           const mStart = startOfMonth(month);
           const mEnd = endOfMonth(mStart);
-          const dStart = startOfWeek(mStart, { locale: zhTW });
-          const dEnd = endOfWeek(mEnd, { locale: zhTW });
+          const dStart = startOfWeek(mStart, { locale: dfLocale });
+          const dEnd = endOfWeek(mEnd, { locale: dfLocale });
 
           // Mini calendar logic
           const days = [];
@@ -373,7 +377,7 @@ const Calendar: React.FC<CalendarProps> = ({ events, view: controlledView, onVie
                 setView('month');
               }}
             >
-              <h3 className="text-center font-semibold text-gray-700 mb-2">{format(month, 'MMMM', { locale: zhTW })}</h3>
+              <h3 className="text-center font-semibold text-gray-700 mb-2">{format(month, 'MMMM', { locale: dfLocale })}</h3>
               <div className="grid grid-cols-7 gap-1 text-[0.6rem] text-center text-gray-400 mb-1">
                 {['日', '一', '二', '三', '四', '五', '六'].map(d => <div key={d}>{d}</div>)}
               </div>
@@ -397,7 +401,7 @@ const Calendar: React.FC<CalendarProps> = ({ events, view: controlledView, onVie
   };
 
   const renderWeek = () => {
-    const weekStart = startOfWeek(currentDate, { locale: zhTW });
+    const weekStart = startOfWeek(currentDate, { locale: dfLocale });
     const weekDays = [];
     for (let i = 0; i < 7; i++) {
       weekDays.push(addDays(weekStart, i));
@@ -428,7 +432,7 @@ const Calendar: React.FC<CalendarProps> = ({ events, view: controlledView, onVie
                 }}
               >
                 <div className={`text-[10px] sm:text-xs font-semibold uppercase tracking-wider mb-0.5 ${isSameDay(day, new Date()) ? 'text-blue-600' : 'text-gray-500'}`}>
-                  {format(day, 'EEE', { locale: zhTW })}
+                  {format(day, 'EEE', { locale: dfLocale })}
                 </div>
                 <div className={`text-base sm:text-xl font-bold flex items-center justify-center mx-auto w-6 h-6 sm:w-8 sm:h-8 rounded-full ${isSameDay(day, new Date()) ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-900'}`}>
                   {format(day, 'd')}
@@ -745,7 +749,7 @@ const Calendar: React.FC<CalendarProps> = ({ events, view: controlledView, onVie
               <div className="flex space-x-8">
                 <div>
                   <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('date')}</label>
-                  <p className="text-gray-700">{format(selectedEvent.start, 'yyyy年MM月dd日', { locale: zhTW })}</p>
+                  <p className="text-gray-700">{format(selectedEvent.start, 'yyyy年MM月dd日', { locale: dfLocale })}</p>
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{t('time')}</label>

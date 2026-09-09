@@ -36,8 +36,14 @@ function isAuthorized(req: NextRequest): boolean {
     return true;
   }
 
-  // 3. Allow if no CRON_SECRET is set (dev mode / local testing)
+  // 3. 沒設定 CRON_SECRET 時只在非正式環境放行。
+  //    先前不分環境一律 return true —— 正式環境漏設這個變數，這支會產生完整營運報表
+  //    並寄出郵件的端點就完全公開。
   if (!cronSecret) {
+    if (process.env.NODE_ENV === 'production') {
+      console.error('[Cron] CRON_SECRET is not set in production — refusing unauthenticated access');
+      return false;
+    }
     console.warn('[Cron] CRON_SECRET not set — allowing unauthenticated access (dev mode)');
     return true;
   }

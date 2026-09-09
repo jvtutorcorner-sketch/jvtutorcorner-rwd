@@ -1,5 +1,6 @@
 // app/api/carousel/upload/route.ts
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { withAdmin, type AuthedRequest } from '@/lib/auth/apiGuard';
 import { uploadToS3 } from '@/lib/s3';
 import fs from 'fs';
 import path from 'path';
@@ -28,7 +29,8 @@ function loadAwsEnvFromDotenv() {
   }
 }
 
-export async function POST(request: NextRequest) {
+// 先前完全沒有 auth：任何人都能上傳檔案到輪播用的 S3 bucket。
+async function handleUpload(request: AuthedRequest) {
   console.log('[Carousel Upload API] Request received');
 
   // Ensure AWS env vars are present when possible (helpful when dev server started earlier)
@@ -178,3 +180,5 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to upload image' }, { status: 500 });
   }
 }
+
+export const POST = withAdmin(handleUpload);

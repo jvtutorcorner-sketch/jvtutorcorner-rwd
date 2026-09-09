@@ -146,6 +146,10 @@ export async function POST(req: Request) {
             assignedBy: 'self-registration'
           });
           licenseId = assignResult.license.id;
+          // assignMemberWithLicense's own UpdateCommand sets orgId/orgUnitId/licenseId/plan
+          // on the DB record after the PutCommand above — merge those back in so the
+          // response's `profile` isn't a stale pre-assignment snapshot.
+          Object.assign(profile, assignResult.profile);
         } catch (assignErr: any) {
           console.error('[register] Org assignment failed, rolling back profile', assignErr?.message || assignErr);
           try {

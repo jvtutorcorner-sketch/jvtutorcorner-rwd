@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import path from 'path';
 import fs from 'fs/promises';
 import { getPagePermissions, savePagePermissions } from '@/lib/pagePermissionsService';
+import { withAdmin } from '@/lib/auth/apiGuard';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,7 +27,11 @@ const DEFAULT_SETTINGS = {
   ],
 };
 
-async function readSettings() {
+// pageConfigs 不在 DEFAULT_SETTINGS 裡，是後面才從 DynamoDB 併進來的，
+// 所以型別上要先宣告成選填欄位。
+type AdminSettings = typeof DEFAULT_SETTINGS & { pageConfigs?: any[] };
+
+async function readSettings(): Promise<AdminSettings> {
   // pageConfigs is loaded separately from DynamoDB via getPagePermissions()
   // Return hardcoded defaults for other settings
   return { ...DEFAULT_SETTINGS };
@@ -55,7 +60,9 @@ export async function GET() {
   }
 }
 
-export async function POST(req: Request) {
+// GET 保持公開（Header/MenuBar/白板等一般使用者元件都靠它拿 feature flag），
+// 但 POST 會整批覆寫全站頁面權限與角色可見性設定，先前完全沒有 auth，任何人都能改，這裡鎖 admin。
+export const POST = withAdmin(async (req) => {
   try {
     console.log('\n[Admin Settings API] ════════════════════════════════════════');
     console.log('[Admin Settings API] 🔵 POST 請求開始');
@@ -253,4 +260,4 @@ export async function POST(req: Request) {
       details: process.env.NODE_ENV === 'development' ? err?.stack : undefined
     }, { status: 500 });
   }
-}
+});

@@ -1,11 +1,12 @@
 // app/api/admin/teacher-reviews/history/route.ts
-import { NextRequest, NextResponse } from 'next/server';
-import { 
-  getAllReviewRecords, 
+import { NextResponse } from 'next/server';
+import {
+  getAllReviewRecords,
   getReviewRecordsByTeacherId,
   getRecentReviewRecords,
   getReviewStats
 } from '@/lib/teacherReviewService';
+import { withAdmin, type AuthedRequest } from '@/lib/auth/apiGuard';
 
 export const runtime = 'nodejs';
 
@@ -17,9 +18,9 @@ export const runtime = 'nodejs';
  * - recent: If true, return recent reviews sorted by date
  * - stats: If true, return statistics only
  */
-export async function GET(req: NextRequest) {
+export const GET = withAdmin(async (req: AuthedRequest) => {
   try {
-    const searchParams = req.nextUrl.searchParams;
+    const searchParams = new URL(req.url).searchParams;
     const teacherId = searchParams.get('teacherId');
     const limit = parseInt(searchParams.get('limit') || '20', 10);
     const recent = searchParams.get('recent') === 'true';
@@ -68,4 +69,4 @@ export async function GET(req: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

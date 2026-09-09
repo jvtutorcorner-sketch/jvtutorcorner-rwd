@@ -3,6 +3,7 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, PutCommand, ScanCommand, DeleteCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 // 如果您有實作 S3 刪除邏輯，請保留這行；如果沒有，可以先註解掉
 import { deleteFromS3, getS3KeyFromUrl } from '@/lib/s3'; 
+import { withAdmin, type AuthedRequest } from '@/lib/auth/apiGuard';
 
 // 強制動態執行
 export const dynamic = 'force-dynamic';
@@ -59,7 +60,8 @@ export async function GET() {
 // ==========================================
 // 🔵 POST: 儲存圖片 (上傳後)
 // ==========================================
-export async function POST(request: Request) {
+// 先前 POST/PATCH/DELETE 都沒有 auth：任何人都能改寫首頁輪播（含以 url/alt 注入內容）。
+async function handlePost(request: AuthedRequest) {
   try {
     const body = await request.json();
     const { url, alt, order } = body;
@@ -100,7 +102,7 @@ export async function POST(request: Request) {
 // ==========================================
 // � PATCH: 更新圖片 (例如順序)
 // ==========================================
-export async function PATCH(request: Request) {
+async function handlePatch(request: AuthedRequest) {
   try {
     const body = await request.json();
     const { id, order } = body;
@@ -136,7 +138,7 @@ export async function PATCH(request: Request) {
 // ==========================================
 // �🔴 DELETE: 刪除圖片
 // ==========================================
-export async function DELETE(request: Request) {
+async function handleDelete(request: AuthedRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
@@ -166,3 +168,7 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
+
+export const POST = withAdmin(handlePost);
+export const PATCH = withAdmin(handlePatch);
+export const DELETE = withAdmin(handleDelete);

@@ -1,14 +1,13 @@
-import { NextRequest, NextResponse } from 'next/server';
-import * as fs from 'fs/promises';
-import * as path from 'path';
+import { NextResponse } from 'next/server';
+import { withAdminOrHmac, type AuthedRequest } from '@/lib/auth/apiGuard';
 
 export const runtime = 'nodejs';
 
 /**
- * 檔案匯出 API
- * 用於生成並保存各種格式的檔案（JSON、CSV、XML）
+ * 檔案匯出 API — 目前仍是 TODO/mock stub（用固定假資料，未真正依 dataField 產生檔案）。
+ * 先前完全沒有 auth，這裡加上 admin session 或 HMAC（workflow 引擎）門檻。
  */
-export async function POST(req: NextRequest) {
+export const POST = withAdminOrHmac('/api/workflows/export-file', async (req: AuthedRequest) => {
     try {
         const { format = 'json', fileName, dataField } = await req.json();
 
@@ -91,4 +90,4 @@ export async function POST(req: NextRequest) {
             error: error?.message || 'File export failed',
         }, { status: 500 });
     }
-}
+});

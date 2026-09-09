@@ -1,15 +1,16 @@
 // app/api/calendar/reminders/route.ts
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { 
-  DynamoDBDocumentClient, 
-  PutCommand, 
-  QueryCommand, 
-  ScanCommand, 
+import {
+  DynamoDBDocumentClient,
+  PutCommand,
+  QueryCommand,
+  ScanCommand,
   DeleteCommand,
   GetCommand,
   UpdateCommand
 } from '@aws-sdk/lib-dynamodb';
+import { withAuth, withAnyAuth, type AuthedRequest } from '@/lib/auth/apiGuard';
 
 export const dynamic = 'force-dynamic';
 
@@ -93,11 +94,17 @@ async function queryOrScan(
   }
 }
 
+// 呼叫者聲稱的身分只能拿來「篩選」，能不能用 isAdmin／讀到別人的資料一律由 session 決定。
+function isOwnIdentity(session: AuthedRequest['session'], claimedUserId: string | null): boolean {
+  if (!claimedUserId) return false;
+  return claimedUserId === session.userId || claimedUserId === session.email;
+}
+
 // GET: Fetch reminders with filtering
-export async function GET(request: NextRequest) {
+export const GET = withAuth(async (request: AuthedRequest) => {
   try {
     const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId');
+    const requestedUserId = searchParams.get('userId');
     const orderId = searchParams.get('orderId');
     const courseId = searchParams.get('courseId');
     const teacherId = searchParams.get('teacherId');
@@ -105,7 +112,14 @@ export async function GET(request: NextRequest) {
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
     const limit = parseInt(searchParams.get('limit') || '50');
-    const isAdmin = searchParams.get('isAdmin') === 'true';
+    // isAdmin 只能由 session 角色決定，不可信任 client 傳入的 query string。
+    const isAdmin = request.session.role === 'admin' || request.session.role === 'system';
+    // 非 admin 只能查自己的資料：client 可以用 roid_id/id 或 email 當 userId，
+    // 但一定要驗證跟 session 是同一人，否則就能讀到別人的提醒。
+    if (!isAdmin && requestedUserId && !isOwnIdentity(request.session, requestedUserId)) {
+      return NextResponse.json({ ok: false, error: "Forbidden: cannot read another user's reminders" }, { status: 403 });
+    }
+    const userId = isAdmin ? requestedUserId : (requestedUserId || request.session.userId);
 
     let reminders: CalendarReminder[] = [];
 
@@ -196,15 +210,16 @@ export async function GET(request: NextRequest) {
 
   } catch (error: any) {
     console.error('[calendar/reminders GET] Error:', error);
-    return NextResponse.json({ 
-      ok: false, 
-      error: error.message || 'Failed to fetch reminders' 
+    return NextResponse.json({
+      ok: false,
+      error: error.message || 'Failed to fetch reminders'
     }, { status: 500 });
   }
-}
+});
 
 // POST: Create a new reminder
-export async function POST(request: NextRequest) {
+// withAnyAuth：一般使用者用 session 建立自己的提醒；enroll API 用 HMAC 簽名幫使用者自動建立 3 小時提醒。
+export const POST = withAnyAuth('/api/calendar/reminders', async (request: AuthedRequest) => {
   try {
     const body = await request.json();
     const {
@@ -219,10 +234,16 @@ export async function POST(request: NextRequest) {
     // 需要時透過 courseId → COURSES，orderId → Orders API 動態取得
 
     if (!userId || !eventId || !eventStartTime || !reminderMinutes) {
-      return NextResponse.json({ 
-        ok: false, 
-        error: 'Missing required fields: userId, eventId, eventStartTime, reminderMinutes' 
+      return NextResponse.json({
+        ok: false,
+        error: 'Missing required fields: userId, eventId, eventStartTime, reminderMinutes'
       }, { status: 400 });
+    }
+
+    // 非 admin 只能替自己建立提醒，不可冒用別人的 userId。
+    const isAdmin = request.session.role === 'admin' || request.session.role === 'system';
+    if (!isAdmin && !isOwnIdentity(request.session, userId)) {
+      return NextResponse.json({ ok: false, error: "Forbidden: cannot create a reminder for another user" }, { status: 403 });
     }
 
     const now = new Date().toISOString();
@@ -250,15 +271,17 @@ export async function POST(request: NextRequest) {
 
   } catch (error: any) {
     console.error('[calendar/reminders POST] Error:', error);
-    return NextResponse.json({ 
-      ok: false, 
-      error: error.message || 'Failed to create reminder' 
+    return NextResponse.json({
+      ok: false,
+      error: error.message || 'Failed to create reminder'
     }, { status: 500 });
   }
-}
+});
 
 // PATCH: Update email send status
-export async function PATCH(request: NextRequest) {
+// 目前沒有前端呼叫這個 endpoint（cron/process-reminders 直接寫 DynamoDB），
+// 但仍需要守門避免任意使用者竄改別人提醒的寄送狀態；只開放 admin/system。
+export const PATCH = withAuth(async (request: AuthedRequest) => {
   try {
     const body = await request.json();
     const { id, emailStatus, emailError } = body;
@@ -296,22 +319,22 @@ export async function PATCH(request: NextRequest) {
     console.error('[calendar/reminders PATCH] Error:', error);
     return NextResponse.json({ ok: false, error: error.message || 'Failed to update email status' }, { status: 500 });
   }
-}
+}, { roles: ['admin', 'system'] });
 
 // DELETE: Remove a reminder
-export async function DELETE(request: NextRequest) {
+export const DELETE = withAuth(async (request: AuthedRequest) => {
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
-    const userId = searchParams.get('userId');
-    const isAdmin = searchParams.get('isAdmin') === 'true';
+    // isAdmin 只能由 session 角色決定，client 傳入的 query string 只是雜訊。
+    const isAdmin = request.session.role === 'admin' || request.session.role === 'system';
 
     if (!id) {
       return NextResponse.json({ ok: false, error: 'id required' }, { status: 400 });
     }
 
-    // Verify ownership unless admin
-    if (!isAdmin && userId) {
+    // 非 admin 一律要驗證是自己的提醒才能刪除（不論 client 是否有帶 userId）。
+    if (!isAdmin) {
       const result = await docClient.send(new GetCommand({
         TableName: TABLE_NAME,
         Key: { id }
@@ -321,7 +344,7 @@ export async function DELETE(request: NextRequest) {
         return NextResponse.json({ ok: false, error: 'Reminder not found' }, { status: 404 });
       }
 
-      if (result.Item.userId !== userId) {
+      if (!isOwnIdentity(request.session, result.Item.userId)) {
         return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 403 });
       }
     }
@@ -335,9 +358,9 @@ export async function DELETE(request: NextRequest) {
 
   } catch (error: any) {
     console.error('[calendar/reminders DELETE] Error:', error);
-    return NextResponse.json({ 
-      ok: false, 
-      error: error.message || 'Failed to delete reminder' 
+    return NextResponse.json({
+      ok: false,
+      error: error.message || 'Failed to delete reminder'
     }, { status: 500 });
   }
-}
+});

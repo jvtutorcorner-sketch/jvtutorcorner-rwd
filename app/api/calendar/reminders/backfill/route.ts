@@ -9,13 +9,14 @@
  * - 回傳資料表統計（總數、各 emailStatus 計數）
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import {
   DynamoDBDocumentClient,
   ScanCommand,
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
+import { withAuth } from '@/lib/auth/apiGuard';
 
 const region = process.env.AWS_REGION || process.env.CI_AWS_REGION || 'ap-northeast-1';
 const accessKey = process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID;
@@ -38,8 +39,8 @@ const docClient = DynamoDBDocumentClient.from(client, {
 const TABLE_NAME =
   process.env.DYNAMODB_TABLE_CALENDAR_REMINDERS || 'jvtutorcorner-calendar-reminders';
 
-// GET: 取得資料表統計
-export async function GET() {
+// GET: 取得資料表統計（只有整表統計，不含個資，但仍限管理員）
+export const GET = withAuth(async () => {
   try {
     const stats = {
       total: 0,
@@ -90,18 +91,12 @@ export async function GET() {
       { status: 500 }
     );
   }
-}
+}, { roles: ['admin', 'system'] });
 
 // POST: 執行 backfill — 補齊缺少 emailStatus 的記錄
-export async function POST(request: NextRequest) {
+// isAdmin 一律由 session role 決定，不接受 client body 自報（先前的漏洞：body.isAdmin === true 就放行）。
+export const POST = withAuth(async () => {
   try {
-    const body = await request.json().catch(() => ({}));
-    // isAdmin 驗證
-    const isAdmin = body.isAdmin === true;
-    if (!isAdmin) {
-      return NextResponse.json({ ok: false, error: 'Admin only' }, { status: 403 });
-    }
-
     const results = {
       scanned: 0,
       updated: 0,
@@ -169,4 +164,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+}, { roles: ['admin', 'system'] });

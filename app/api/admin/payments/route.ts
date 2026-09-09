@@ -1,10 +1,12 @@
-import { NextResponse, NextRequest } from 'next/server';
+import { NextResponse } from 'next/server';
 import { ddbDocClient } from '@/lib/dynamo';
 import { ScanCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
+import { withAdmin, type AuthedRequest } from '@/lib/auth/apiGuard';
 
 const ORDERS_TABLE = process.env.DYNAMODB_TABLE_ORDERS || 'jvtutorcorner-orders';
 
-export async function GET(request: NextRequest) {
+// 全站所有訂單/金流明細，先前無 auth，任何人都能撈全部使用者的付款紀錄。只有 /admin/payments 會用。
+export const GET = withAdmin(async (request: AuthedRequest) => {
   try {
     const { searchParams } = new URL(request.url);
     
@@ -117,4 +119,4 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

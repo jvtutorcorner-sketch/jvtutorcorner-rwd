@@ -20,6 +20,7 @@ import { NextResponse } from 'next/server';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, PutCommand, ScanCommand, GetCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
 import { randomUUID } from 'crypto';
+import { withAdmin, type AuthedRequest } from '@/lib/auth/apiGuard';
 
 const ddbRegion = process.env.CI_AWS_REGION || process.env.AWS_REGION;
 const ddbExplicitAccessKey = process.env.CI_AWS_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID;
@@ -70,7 +71,8 @@ export type AppIntegrationRecord = {
 // ---------------------------------------------------------------------------
 // POST - 新增整合
 // ---------------------------------------------------------------------------
-export async function POST(request: Request) {
+// 先前完全沒有 auth：任何人都能寫入任意 userId 的整合設定（含第三方 API 金鑰）。
+export const POST = withAdmin(async (request: AuthedRequest) => {
     try {
         const body = await request.json();
         const { userId, type, name, config } = body || {};
@@ -108,12 +110,14 @@ export async function POST(request: Request) {
         console.error('[app-integrations API] POST error:', error?.message || error);
         return NextResponse.json({ ok: false, error: 'Failed to create integration.' }, { status: 500 });
     }
-}
+});
 
 // ---------------------------------------------------------------------------
 // GET - 查詢整合 (支援 ?userId=... 與 ?type=... 篩選)
 // ---------------------------------------------------------------------------
-export async function GET(request: Request) {
+// 先前完全沒有 auth：任何人 scan 全表就能拿到所有使用者的第三方 API 金鑰／channel secret
+// （LINE channelAccessToken、AI provider apiKey 等直接以明文存在 config 裡）。
+export const GET = withAdmin(async (request: AuthedRequest) => {
     try {
         const { searchParams } = new URL(request.url);
         const userId = searchParams.get('userId');
@@ -146,12 +150,12 @@ export async function GET(request: Request) {
         console.error('[app-integrations API] GET error:', error?.message || error);
         return NextResponse.json({ ok: false, error: 'Failed to fetch integrations.' }, { status: 500 });
     }
-}
+});
 
 // ---------------------------------------------------------------------------
 // PUT - 更新整合
 // ---------------------------------------------------------------------------
-export async function PUT(request: Request) {
+export const PUT = withAdmin(async (request: AuthedRequest) => {
     try {
         const body = await request.json();
         console.log('[app-integrations API] PUT request body:', body);
@@ -191,12 +195,12 @@ export async function PUT(request: Request) {
         console.error('[app-integrations API] PUT error:', error);
         return NextResponse.json({ ok: false, error: `Failed to update integration: ${error.message}` }, { status: 500 });
     }
-}
+});
 
 // ---------------------------------------------------------------------------
 // DELETE - 刪除整合
 // ---------------------------------------------------------------------------
-export async function DELETE(request: Request) {
+export const DELETE = withAdmin(async (request: AuthedRequest) => {
     try {
         const { searchParams } = new URL(request.url);
         const userId = searchParams.get('userId');
@@ -216,4 +220,4 @@ export async function DELETE(request: Request) {
         console.error('[app-integrations API] DELETE error:', error);
         return NextResponse.json({ ok: false, error: `Failed to delete integration: ${error.message}` }, { status: 500 });
     }
-}
+});

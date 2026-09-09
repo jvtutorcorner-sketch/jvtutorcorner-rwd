@@ -4,6 +4,7 @@ import { COURSES } from '@/data/courses';
 import { CourseCard } from '@/components/CourseCard';
 import SearchForm from '@/components/SearchForm';
 import Pagination from '@/components/Pagination';
+import { T } from '@/components/IntlProvider';
 
 type CoursesPageProps = {
   searchParams?: {
@@ -123,7 +124,7 @@ export default async function CoursesPage(props?: CoursesPageProps) {
 
   return (
     <main style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
-      <h1 style={{ marginBottom: '24px' }}>所有課程</h1>
+      <h1 style={{ marginBottom: '24px' }}><T k="courses_all_title" /></h1>
 
       {/* 搜尋表單（移到課程總覽頁面） */}
       <section style={{ marginBottom: '32px' }}>
@@ -135,7 +136,7 @@ export default async function CoursesPage(props?: CoursesPageProps) {
 
       <section>
         {paginatedCourses.length === 0 ? (
-          <p>目前沒有符合篩選條件的課程，請調整搜尋條件再試試。</p>
+          <p><T k="courses_empty_filtered" /></p>
         ) : (
           <>
             <div className="card-grid">

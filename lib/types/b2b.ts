@@ -134,8 +134,18 @@ export interface ProfileB2B {
   /** Last name */
   lastName?: string;
 
-  /** User role */
-  role: 'student' | 'teacher' | 'admin';
+  /**
+   * User role. 'dept_admin' 是限定 orgUnitId 子樹範圍的組織部門管理員（見 lib/auth/orgAccess.ts
+   * 的 requireOrgUnitAccess）—— 跟一般 admin（全站）與 isOrgAdmin（整個組織）不同層級。
+   */
+  role: 'student' | 'teacher' | 'admin' | 'dept_admin';
+
+  /**
+   * Role held before being promoted to 'dept_admin'. `role` is a single mutually-exclusive
+   * value, so promoting to dept_admin overwrites it — this is the restore point used when
+   * dept_admin status is revoked (see orgMembershipService.setMemberDeptAdmin).
+   */
+  previousRole?: 'student' | 'teacher' | 'admin' | 'dept_admin';
 
   /** Subscription plan (B2C) or null for B2B users */
   plan: 'basic' | 'pro' | 'elite' | 'viewer' | null;

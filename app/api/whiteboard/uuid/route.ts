@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { withAuth, type AuthedRequest } from '@/lib/auth/apiGuard';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, GetCommand } from '@aws-sdk/lib-dynamodb';
 import { normalizeUuid } from '@/lib/whiteboardService';
@@ -22,7 +23,8 @@ const docClient = DynamoDBDocumentClient.from(client, {
   marshallOptions: { removeUndefinedValues: true, convertEmptyValues: true }
 });
 
-export async function POST(req: NextRequest) {
+// 先前完全沒有 auth：白板的教材 PDF、房間狀態與事件端點任何人都能存取／改寫。
+async function handlePost(req: AuthedRequest) {
   try {
     const body = await req.json();
     const courseId = body?.courseId?.trim();
@@ -81,3 +83,5 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid request', details: err?.message }, { status: 400 });
   }
 }
+
+export const POST = withAuth(handlePost);

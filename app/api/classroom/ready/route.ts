@@ -131,7 +131,7 @@ export async function POST(req: NextRequest) {
 
     if (!role) return NextResponse.json({ error: 'role required' }, { status: 400 });
     if (!userId) return NextResponse.json({ error: 'userId required' }, { status: 400 });
-    if (!['ready', 'unready'].includes(action)) return NextResponse.json({ error: 'action must be ready, unready, or clear-all' }, { status: 400 });
+    if (!action || !['ready', 'unready'].includes(action)) return NextResponse.json({ error: 'action must be ready, unready, or clear-all' }, { status: 400 });
 
     const userIdNorm = String(userId).toLowerCase().trim();
 

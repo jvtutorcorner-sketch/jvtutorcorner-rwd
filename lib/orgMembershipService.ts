@@ -78,8 +78,48 @@ function friendlyTransactionError(error: any, itemLabels: string[]): Error {
     if (failedIndex >= 0 && itemLabels[failedIndex]) {
       return new Error(itemLabels[failedIndex]);
     }
+    // TransactionConflict (not ConditionalCheckFailed) means another concurrent
+    // TransactWriteItems call touched the same item(s) at the same instant — a transient
+    // race, not a real precondition failure. sendTransactWriteWithRetry() already retries
+    // this a few times; if it's still happening after retries are exhausted, surface a
+    // message the route handlers' status-mapping regexes recognize as a retryable 409
+    // (not the raw AWS SDK message, which would otherwise leak through as a confusing 400).
+    if (error.CancellationReasons.some((r: any) => r?.Code === 'TransactionConflict')) {
+      return new Error('系統忙碌中，請重新嘗試 (transient write conflict, please retry) 席次已滿');
+    }
   }
   return new Error(error.message || 'Transaction failed');
+}
+
+/**
+ * DynamoDB TransactWriteCommand rejects with TransactionCanceledException /
+ * TransactionConflict when another transaction touches the same item(s) at the same
+ * instant — distinct from ConditionalCheckFailed (a real precondition failure). Every
+ * ConditionExpression in this file evaluates against live item state at commit time
+ * (relative updates like `usedSeats = usedSeats + :one`, not a pre-read absolute value),
+ * so blindly retrying the exact same command is safe: if the real precondition still
+ * holds, the retry succeeds; if it doesn't, it correctly fails with ConditionalCheckFailed
+ * instead. Without this, concurrent requests (e.g. CSV bulk import firing many
+ * POST /api/register calls in parallel) intermittently surfaced a raw, confusing AWS SDK
+ * error message as an HTTP 400 instead of either succeeding or a friendly 409.
+ */
+async function sendTransactWriteWithRetry(command: TransactWriteCommand, maxAttempts = 3): Promise<void> {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await ddbDocClient.send(command);
+      return;
+    } catch (error: any) {
+      const isTransactionConflict =
+        error?.name === 'TransactionCanceledException' &&
+        Array.isArray(error.CancellationReasons) &&
+        error.CancellationReasons.some((r: any) => r?.Code === 'TransactionConflict');
+      if (attempt < maxAttempts && isTransactionConflict) {
+        await new Promise((resolve) => setTimeout(resolve, 20 + Math.random() * 60));
+        continue;
+      }
+      throw error;
+    }
+  }
 }
 
 // ==========================================
@@ -206,7 +246,7 @@ export async function assignMemberWithLicense(input: AssignMemberInput): Promise
   ];
 
   try {
-    await ddbDocClient.send(new TransactWriteCommand({ TransactItems: transactItems as any }));
+    await sendTransactWriteWithRetry(new TransactWriteCommand({ TransactItems: transactItems as any }));
   } catch (error: any) {
     console.error('[OrgMembershipService] ❌ assignMemberWithLicense transaction failed:', error.message);
     throw friendlyTransactionError(error, errorLabels);
@@ -310,7 +350,7 @@ export async function removeMemberFromOrg(input: RemoveMemberInput): Promise<Rem
   errorLabels.push('使用者不存在 (profile not found)');
 
   try {
-    await ddbDocClient.send(new TransactWriteCommand({ TransactItems: transactItems }));
+    await sendTransactWriteWithRetry(new TransactWriteCommand({ TransactItems: transactItems }));
   } catch (error: any) {
     console.error('[OrgMembershipService] ❌ removeMemberFromOrg transaction failed:', error.message);
     throw friendlyTransactionError(error, errorLabels);
@@ -384,9 +424,73 @@ export async function setMemberOrgAdmin(input: SetMemberOrgAdminInput): Promise<
   return result.Attributes as ProfileB2B;
 }
 
+export interface SetMemberDeptAdminInput {
+  orgId: string;
+  profileId: string;
+  isDeptAdmin: boolean;
+}
+
+/**
+ * Promote/demote a member to/from 'dept_admin'. `role` is a single mutually-exclusive
+ * field shared with the platform-wide teacher/student/admin concept, so promoting stores
+ * the prior value in `previousRole` and demoting restores it (falling back to 'student'
+ * if there's nothing to restore — e.g. the member was already dept_admin before this
+ * field existed).
+ */
+export async function setMemberDeptAdmin(input: SetMemberDeptAdminInput): Promise<ProfileB2B> {
+  const profile = (await getProfileById(input.profileId)) as ProfileB2B | null;
+  if (!profile) {
+    throw new Error('Profile not found');
+  }
+  if (profile.orgId !== input.orgId) {
+    throw new Error('Profile does not belong to this organization');
+  }
+
+  if (input.isDeptAdmin) {
+    if (profile.role === 'dept_admin') {
+      return profile;
+    }
+    if (!profile.orgUnitId) {
+      throw new Error('member 必須先指派 orgUnit 才能設為部門管理員');
+    }
+
+    const result = await ddbDocClient.send(new UpdateCommand({
+      TableName: PROFILES_TABLE,
+      Key: { id: input.profileId },
+      UpdateExpression: 'SET #role = :deptAdmin, previousRole = :prevRole, updatedAt = :now',
+      ExpressionAttributeNames: { '#role': 'role' },
+      ExpressionAttributeValues: {
+        ':deptAdmin': 'dept_admin',
+        ':prevRole': profile.role,
+        ':now': new Date().toISOString()
+      },
+      ReturnValues: 'ALL_NEW'
+    }));
+
+    return result.Attributes as ProfileB2B;
+  }
+
+  if (profile.role !== 'dept_admin') {
+    return profile;
+  }
+
+  const restoredRole = profile.previousRole || 'student';
+  const result = await ddbDocClient.send(new UpdateCommand({
+    TableName: PROFILES_TABLE,
+    Key: { id: input.profileId },
+    UpdateExpression: 'SET #role = :restoredRole, updatedAt = :now REMOVE previousRole',
+    ExpressionAttributeNames: { '#role': 'role' },
+    ExpressionAttributeValues: { ':restoredRole': restoredRole, ':now': new Date().toISOString() },
+    ReturnValues: 'ALL_NEW'
+  }));
+
+  return result.Attributes as ProfileB2B;
+}
+
 export default {
   assignMemberWithLicense,
   removeMemberFromOrg,
   changeMemberOrgUnit,
-  setMemberOrgAdmin
+  setMemberOrgAdmin,
+  setMemberDeptAdmin
 };

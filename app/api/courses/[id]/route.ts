@@ -4,13 +4,21 @@ import path from 'path';
 import { COURSES as BUNDLED_COURSES } from '@/data/courses';
 import { PutCommand, GetCommand, UpdateCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
 import { ddbDocClient } from '@/lib/dynamo';
+import { withAuth, type AuthedRequest } from '@/lib/auth/apiGuard';
+import { canManageCourse } from '@/lib/auth/courseOwnership';
 
 const COURSES_TABLE = process.env.DYNAMODB_TABLE_COURSES || 'jvtutorcorner-courses';
 const TEACHERS_TABLE = process.env.DYNAMODB_TABLE_TEACHERS || 'jvtutorcorner-teachers';
 
-export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
+// 先前完全沒有 auth，任何人都能刪除任何課程；限 teacher（僅限自己開的課）或 admin。
+export const DELETE = withAuth(async (req: AuthedRequest, context) => {
   try {
-    const { id } = await params;
+    const { id } = await (context as { params: Promise<{ id: string }> }).params;
+
+    const existing = await ddbDocClient.send(new GetCommand({ TableName: COURSES_TABLE, Key: { id } }));
+    if (existing.Item && !(await canManageCourse(req.session, existing.Item as any))) {
+      return NextResponse.json({ ok: false, message: 'Forbidden: you do not own this course' }, { status: 403 });
+    }
 
     const deleteCmd = new DeleteCommand({ TableName: COURSES_TABLE, Key: { id } });
     await ddbDocClient.send(deleteCmd);
@@ -19,7 +27,7 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     console.error('[courses DELETE] error', err?.message || err);
     return NextResponse.json({ ok: false, message: 'Failed to delete course' }, { status: 500 });
   }
-}
+});
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -64,10 +72,24 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   }
 }
 
-export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+// 先前完全沒有 auth，任何人都能改任何課程（含把 teacherId 改成別人、改價格/時段）；
+// 限 teacher（僅限自己開的課）或 admin。
+export const PATCH = withAuth(async (req: AuthedRequest, context) => {
   try {
-    const { id } = await params;
+    const { id } = await (context as { params: Promise<{ id: string }> }).params;
     const body = await req.json();
+
+    const existingForAuth = await ddbDocClient.send(new GetCommand({ TableName: COURSES_TABLE, Key: { id } }));
+    if (!existingForAuth.Item) {
+      return NextResponse.json({ ok: false, message: 'Course not found' }, { status: 404 });
+    }
+    if (!(await canManageCourse(req.session, existingForAuth.Item as any))) {
+      return NextResponse.json({ ok: false, message: 'Forbidden: you do not own this course' }, { status: 403 });
+    }
+    // teacherId 只有 admin 能改（等於把課程過繼給別的老師），一般老師不行。
+    if (body.teacherId !== undefined && req.session.role !== 'admin' && req.session.role !== 'system') {
+      return NextResponse.json({ ok: false, message: 'Forbidden: only admins may reassign a course to another teacher' }, { status: 403 });
+    }
 
     // Build update expression for DynamoDB
     const updateExpressionParts: string[] = [];
@@ -153,11 +175,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
     const updateExpression = 'SET ' + updateExpressionParts.join(', ');
 
+    // DynamoDB rejects an empty (but present) ExpressionAttributeNames map — only #title
+    // populates it, so any PATCH that doesn't touch title (e.g. just { status }, the
+    // teacher "request approval" flow) used to crash with "ExpressionAttributeNames must
+    // not be empty". Omit the key entirely when there's nothing to substitute.
     const updateCmd = new UpdateCommand({
       TableName: COURSES_TABLE,
       Key: { id },
       UpdateExpression: updateExpression,
-      ExpressionAttributeNames: expressionAttributeNames,
+      ...(Object.keys(expressionAttributeNames).length > 0 ? { ExpressionAttributeNames: expressionAttributeNames } : {}),
       ExpressionAttributeValues: expressionAttributeValues,
       ReturnValues: 'ALL_NEW',
     });
@@ -181,6 +207,6 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     console.error('[courses PATCH] error', err?.message || err);
     return NextResponse.json({ ok: false, message: 'Failed to patch course' }, { status: 500 });
   }
-}
+});
 
 

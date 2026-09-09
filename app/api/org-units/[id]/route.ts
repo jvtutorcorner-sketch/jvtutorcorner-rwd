@@ -14,7 +14,7 @@ import { NextResponse } from 'next/server';
 import orgUnitService from '@/lib/orgUnitService';
 import type { UpdateOrgUnitInput } from '@/lib/types/b2b';
 import { withAuth } from '@/lib/auth/apiGuard';
-import { requireOrgAccess } from '@/lib/auth/orgAccess';
+import { requireOrgUnitAccess } from '@/lib/auth/orgAccess';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,7 +41,7 @@ export const GET = withAuth(async (req, context) => {
       );
     }
 
-    const guard = await requireOrgAccess(req, orgUnit.orgId, 'read');
+    const guard = await requireOrgUnitAccess(req, orgUnit, 'read');
     if (!guard.ok) return guard.response;
 
     const { searchParams } = new URL(req.url);
@@ -92,7 +92,7 @@ export const PATCH = withAuth(async (req, context) => {
       );
     }
 
-    const guard = await requireOrgAccess(req, existing.orgId, 'write');
+    const guard = await requireOrgUnitAccess(req, existing, 'write');
     if (!guard.ok) return guard.response;
 
     const body = await req.json();
@@ -167,7 +167,7 @@ export const DELETE = withAuth(async (req, context) => {
       );
     }
 
-    const guard = await requireOrgAccess(req, orgUnit.orgId, 'write');
+    const guard = await requireOrgUnitAccess(req, orgUnit, 'write');
     if (!guard.ok) return guard.response;
 
     const { searchParams } = new URL(req.url);

@@ -1,11 +1,13 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { withAuth, type AuthedRequest } from '@/lib/auth/apiGuard';
 import { uploadToS3, getObjectBuffer, deleteFromS3 } from '@/lib/s3';
 import { saveWhiteboardState, getWhiteboardState, normalizeUuid } from '@/lib/whiteboardService';
 import { broadcastToUuid } from '../stream/route';
 import path from 'path';
 import fs from 'fs';
 
-export async function POST(req: NextRequest) {
+// 先前完全沒有 auth：白板的教材 PDF、房間狀態與事件端點任何人都能存取／改寫。
+async function handlePost(req: AuthedRequest) {
   try {
     const body = await req.json();
     const { uuid: rawUuid, pdf, orderId } = body;
@@ -198,7 +200,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-export async function GET(req: NextRequest) {
+async function handleGet(req: AuthedRequest) {
   const { searchParams } = new URL(req.url);
   const rawUuid = searchParams.get('uuid');
   const uuid = normalizeUuid(rawUuid);
@@ -357,7 +359,7 @@ export async function GET(req: NextRequest) {
   }
 }
 
-export async function DELETE(req: NextRequest) {
+async function handleDelete(req: AuthedRequest) {
   const { searchParams } = new URL(req.url);
   const rawUuid = searchParams.get('uuid');
   const orderId = searchParams.get('orderId');
@@ -440,3 +442,7 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: 'Internal server error', details: error.message }, { status: 500 });
   }
 }
+
+export const POST = withAuth(handlePost);
+export const GET = withAuth(handleGet);
+export const DELETE = withAuth(handleDelete);

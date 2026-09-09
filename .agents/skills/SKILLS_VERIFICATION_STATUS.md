@@ -277,14 +277,14 @@
 ### 23. b2b-core-modules
 - **狀態**: ✅ VERIFIED
 - **驗證日期**: 2026-08-08
-- **最後更新**: 2026-08-08
+- **最後更新**: 2026-08-08（複驗）
 - **驗證項目**:
   - ✅ 席次/授權 CRUD 與成員增刪（licenseService、orgMembershipService，含併發搶席次）
   - ✅ orgAccess 授權範圍守門（系統管理員／組織管理員兩層）
   - ✅ 組織單位階層與 moveOrgUnit 原子性（orgUnitService，含併發移動、路徑修復）
   - ✅ B2C/B2B 共用課程存取閘門 accessControl.ts（含優先順序驗證）
 - **已知問題**:
-  - 過程中發現並修復 4 個問題：`orgMembershipService.ts` 的 `plan` 保留字未加別名、`orgId` GSI key 誤用 `SET...=:null`、`accessControl.ts` B2C 分支欄位名對不上真實 schema（`studentID`/`courseID` vs 實際的 `userId`/`courseId`）、正式環境 Licenses 表缺少 `byUserId` GSI（已補上）
+  - 過程中發現並修復 5 個問題：`orgMembershipService.ts` 的 `plan` 保留字未加別名、`orgId` GSI key 誤用 `SET...=:null`、`accessControl.ts` B2C 分支欄位名對不上真實 schema（`studentID`/`courseID` vs 實際的 `userId`/`courseId`）、正式環境 Licenses 表缺少 `byUserId` GSI（已補上）、複驗時發現併發下 `TransactionConflict` 沒被當成可重試的暫時性衝突而洩漏成原始 AWS 錯誤訊息（連續 5 次重現率 100%，已加重試 wrapper 修復，見 b2b-core-modules SKILL.md）
   - dept_admin 子部門範圍限制未實作，不在本技能範圍
 - **架構對齊**: ✅ 對齊完成
 

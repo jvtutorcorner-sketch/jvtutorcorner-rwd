@@ -24,9 +24,10 @@
  * }
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, PutCommand } from '@aws-sdk/lib-dynamodb';
+import { withAuth, type AuthedRequest } from '@/lib/auth/apiGuard';
 
 const TABLE_NAME = process.env.DYNAMODB_TABLE_CALENDAR_REMINDERS || 'jvtutorcorner-calendar-reminders';
 const REGION = process.env.AWS_REGION || 'ap-northeast-1';
@@ -64,7 +65,9 @@ function generateReminderId(): string {
   return `reminder_${timestamp}_${random}`;
 }
 
-export async function POST(request: NextRequest) {
+// 這個 route 完全沒有 auth guard（先前任何人都能幫任意 userId 灌入大量提醒）；
+// 頁面本身只在 /admin 底下，這裡比照 backfill route 限制為 admin/system。
+export const POST = withAuth(async (request: AuthedRequest) => {
   try {
     const body: MigrateRequest = await request.json();
 
@@ -168,4 +171,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+}, { roles: ['admin', 'system'] });

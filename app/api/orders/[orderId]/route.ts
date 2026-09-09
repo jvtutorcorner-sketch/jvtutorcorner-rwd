@@ -4,8 +4,16 @@ import { DynamoDBDocumentClient, GetCommand, PutCommand, DeleteCommand } from '@
 import { getUserPoints, setUserPoints } from '@/lib/pointsStorage';
 import { refundEscrow } from '@/lib/pointsEscrow';
 import { getProfileById, putProfile } from '@/lib/profilesService';
-import { withAuth, AuthedRequest } from '@/lib/auth/apiGuard';
+import { withAuth, withAnyAuth, AuthedRequest } from '@/lib/auth/apiGuard';
 import { writeAuditLog } from '@/lib/auditLogService';
+import { generateHmacHeaders } from '@/lib/auth/hmac';
+
+type OrderRouteContext = { params: Promise<{ orderId: string }> };
+
+/** admin/system/teacher 可以看與改別人的訂單；一般使用者只能碰自己的。 */
+function isStaffRole(role: string): boolean {
+  return role === 'admin' || role === 'system' || role === 'teacher';
+}
 
 const ddbRegion = process.env.CI_AWS_REGION || process.env.AWS_REGION;
 const ddbExplicitAccessKey = process.env.CI_AWS_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID;
@@ -20,9 +28,9 @@ const ddbExplicitCreds = ddbExplicitAccessKey && ddbExplicitSecretKey ? {
 const client = new DynamoDBClient({ region: ddbRegion, credentials: ddbExplicitCreds });
 const docClient = DynamoDBDocumentClient.from(client);
 
-export async function GET(request: Request, { params }: { params: Promise<{ orderId: string }> }) {
+async function handleGet(request: AuthedRequest, ctx?: OrderRouteContext) {
   try {
-    const { orderId } = await params as { orderId: string };
+    const { orderId } = await ctx!.params;
 
     if (!orderId) {
       return NextResponse.json({ error: 'orderId required' }, { status: 400 });
@@ -37,6 +45,13 @@ export async function GET(request: Request, { params }: { params: Promise<{ orde
     const item = res.Item || null;
     if (!item) {
       return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+    }
+
+    // 這支端點會回傳買家姓名、Email 與完整付款紀錄。先前沒有任何驗證，
+    // 只要猜到 orderId 就能讀出別人的訂單。
+    const { role, userId: sessionUserId } = request.session;
+    if (!isStaffRole(role) && item.userId !== sessionUserId) {
+      return NextResponse.json({ ok: false, error: 'Forbidden: not the order owner' }, { status: 403 });
     }
 
     // Resolve Names
@@ -70,9 +85,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ orde
   }
 }
 
-export async function PATCH(request: Request, { params }: { params: Promise<{ orderId: string }> }) {
+export const GET = withAuth(handleGet);
+
+async function handlePatch(request: AuthedRequest, ctx?: OrderRouteContext) {
   try {
-    const { orderId } = await params as { orderId: string };
+    const { orderId } = await ctx!.params;
     const body = await request.json();
     const { action, status, payments, payment, remainingSeconds } = body || {};
 
@@ -93,6 +110,23 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ or
 
     if (!existingRes.Item) {
       return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+    }
+
+    // 授權：這支端點可以把訂單標記成 PAID、扣課堂數、觸發退點與退課，
+    // 先前完全沒有驗證。規則如下：
+    //   - 一般使用者只能動自己的訂單
+    //   - 只有 admin/system（system = 金流 webhook 的 HMAC 內部呼叫）能標記 PAID，
+    //     否則任何登入者都能把自己的訂單改成已付款，等於免費購買
+    const { role, userId: sessionUserId } = request.session;
+    const isStaff = isStaffRole(role);
+    if (!isStaff && existingRes.Item.userId !== sessionUserId) {
+      return NextResponse.json({ ok: false, error: 'Forbidden: not the order owner' }, { status: 403 });
+    }
+    if (status === 'PAID' && role !== 'admin' && role !== 'system') {
+      return NextResponse.json(
+        { ok: false, error: 'Forbidden: only the payment gateway or an admin can mark an order paid' },
+        { status: 403 }
+      );
     }
 
     const now = new Date().toISOString();
@@ -182,10 +216,16 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ or
       const base = process.env.NEXT_PUBLIC_BASE_URL || `${protocol}://${host}`;
       try {
         // 只標記為 PAID。實際的課程激活 (ACTIVE) 和 點數加總 改由 paymentSuccessHandler 統一處理 以確保冪等性
+        // /api/enroll 的 PATCH 現在只允許付款權威（admin session 或 HMAC）把狀態
+        // 改成 PAID/ACTIVE，所以這個 server-to-server 呼叫必須帶 HMAC 簽章。
+        const paidBody = JSON.stringify({ id: updated.enrollmentId, status: 'PAID' });
         await fetch(`${base}/api/enroll`, {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: updated.enrollmentId, status: 'PAID' }),
+          headers: {
+            'Content-Type': 'application/json',
+            ...generateHmacHeaders('PATCH', '/api/enroll', paidBody),
+          },
+          body: paidBody,
         });
       } catch (err) {
         console.error('[PAID] Failed to update enrollment:', err);
@@ -226,10 +266,14 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ or
       if (updated.enrollmentId) {
         try {
           console.log(`[Refund] Revoking enrollment ${updated.enrollmentId} due to refund`);
+          const cancelBody = JSON.stringify({ id: updated.enrollmentId, status: 'CANCELLED' });
           await fetch(`${base}/api/enroll`, {
             method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: updated.enrollmentId, status: 'CANCELLED' }),
+            headers: {
+              'Content-Type': 'application/json',
+              ...generateHmacHeaders('PATCH', '/api/enroll', cancelBody),
+            },
+            body: cancelBody,
           });
         } catch (err) {
           console.error('[Refund] Failed to revoke enrollment:', err);
@@ -244,9 +288,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ or
   }
 }
 
-async function handleDelete(request: AuthedRequest, { params }: { params: Promise<{ orderId: string }> }) {
+// withAnyAuth：使用者用 session 改自己的訂單；金流 webhook 用 HMAC 簽名以 system 身分回寫。
+export const PATCH = withAnyAuth('/api/orders/[orderId]', handlePatch);
+
+async function handleDelete(request: AuthedRequest, ctx?: OrderRouteContext) {
   try {
-    const { orderId } = await params as { orderId: string };
+    const { orderId } = await ctx!.params;
     if (!orderId) {
       return NextResponse.json({ error: 'orderId required' }, { status: 400 });
     }

@@ -1,119 +1,185 @@
 // app/api/enroll/route.ts
-import { NextRequest, NextResponse } from 'next/server';
-import { PutCommand, ScanCommand, GetCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
-import { getSession, extractTokenFromRequest } from '@/lib/auth/sessionManager';
+//
+// Enrollment lifecycle.
+//
+// ── What changed and why ──────────────────────────────────────────────────────
+// Every handler in this file was previously unauthenticated:
+//
+//   POST   read `userId` from an optional session but never required one, so an
+//          anonymous caller could create enrollments with any name/email.
+//   PATCH  accepted { id, status } from anyone. Setting status to 'ACTIVE' is
+//          what grants course access, so this was a complete payment bypass —
+//          and it also fired the 3-hour reminder side effect on demand.
+//   GET    returned a Scan of the table (names, emails, user ids, course ids)
+//          to any caller.
+//   DELETE removed any enrollment by id.
+//
+// Enrollment rows also carried no `orderId` (so a granted seat could not be tied
+// back to the payment that bought it) and never populated `orgId` (so a B2B seat
+// was indistinguishable from a personal purchase).
+//
+// Now: a session is required to enroll; the identity on the row comes from the
+// session, not the body; orgId is resolved server-side from the caller's profile;
+// orderId is recorded; and reads go through the byUserId / byCourseId / byOrgId
+// GSIs (lib/enrollmentService.ts) instead of scanning.
+//
+// Status transitions that grant access ('PAID', 'ACTIVE') are restricted to the
+// payment authority — an admin session or an HMAC-signed internal call. The
+// enrollment's owner may only cancel their own row.
+
+import { NextResponse } from 'next/server';
+import { PutCommand, GetCommand, DeleteCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { ddbDocClient } from '@/lib/dynamo';
+import { generateHmacHeaders } from '@/lib/auth/hmac';
+import { withAuth, withAnyAuth, withAdmin, type AuthedRequest } from '@/lib/auth/apiGuard';
+import { getProfileById } from '@/lib/profilesService';
+import {
+  ENROLLMENTS_TABLE as TABLE_NAME,
+  listEnrollmentsByUser,
+  listEnrollmentsByCourse,
+  listEnrollmentsByOrg,
+  type EnrollmentRecord,
+  type EnrollmentStatus,
+} from '@/lib/enrollmentService';
 
 export const runtime = 'nodejs';
 
-export type EnrollmentStatus =
-  | 'PENDING_PAYMENT'
-  | 'PAID'
-  | 'ACTIVE'
-  | 'CANCELLED'
-  | 'FAILED';
+// Re-exported for the existing importers of these types.
+export type { EnrollmentRecord, EnrollmentStatus };
 
-export type EnrollmentRecord = {
-  id: string;
-  name: string;
-  email: string;
-  userId?: string;
-  courseId: string;
-  courseTitle: string;
-  status: EnrollmentStatus;
-  createdAt: string;
-  updatedAt: string;
-  paymentProvider?: string;
-  paymentSessionId?: string;
-  startTime?: string;
-  endTime?: string;
-  orgId?: string;
-  sourceType?: 'B2C' | 'B2B_SEAT' | 'ADMIN_OVERRIDE';
-};
+/** Statuses only the payment authority may set. */
+const PRIVILEGED_STATUSES: EnrollmentStatus[] = ['PAID', 'ACTIVE'];
 
-const TABLE_NAME = process.env.ENROLLMENTS_TABLE || process.env.DYNAMODB_TABLE_ENROLLMENTS || 'jvtutorcorner-enrollments';
+/** Statuses the enrollment's own holder may set. */
+const OWNER_SETTABLE_STATUSES: EnrollmentStatus[] = ['CANCELLED'];
 
-if (!TABLE_NAME) {
-  console.error('[enroll API] ❌ ENROLLMENTS_TABLE 環境變數未設定！');
-} else {
-  console.log(`[enroll API] 使用 DynamoDB Table: ${TABLE_NAME}`);
-}
+const ALL_STATUSES: EnrollmentStatus[] = [
+  'PENDING_PAYMENT',
+  'PAID',
+  'ACTIVE',
+  'CANCELLED',
+  'FAILED',
+];
 
 function generateId() {
   return `enr_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;
+}
+
+function isPrivileged(session: AuthedRequest['session']): boolean {
+  return session.role === 'admin' || session.role === 'system';
 }
 
 function requireTable() {
   if (!TABLE_NAME) throw new Error('ENROLLMENTS_TABLE 未設定，無法存取報名資料庫。');
 }
 
-export async function POST(request: NextRequest) {
+/**
+ * Resolve the organisation this enrollment belongs to.
+ *
+ * Read from the caller's own profile rather than the request body: orgId decides
+ * which organisation's admins can see the row and which tenant's seat it counts
+ * against, so a client-supplied value would let anyone file an enrollment into
+ * someone else's organisation.
+ */
+async function resolveOrgId(userId: string): Promise<string | null> {
+  try {
+    const profile = await getProfileById(userId);
+    return (profile as any)?.orgId || null;
+  } catch (err: any) {
+    console.warn('[enroll API] orgId lookup failed:', err?.message || err);
+    return null;
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// POST — create an enrollment
+// ──────────────────────────────────────────────────────────────────────────────
+export const POST = withAuth(async (request: AuthedRequest) => {
   try {
     const body = await request.json();
-    const { name, email, courseId, courseTitle, startTime, endTime } = body || {};
+    const { name, courseId, courseTitle, startTime, endTime, orderId, courseSessionId } = body || {};
 
-    // Resolve userId from session (undefined for unauthenticated enrollments)
-    const sessionToken = extractTokenFromRequest(request as any);
-    const session = sessionToken ? await getSession(sessionToken) : null;
-    const resolvedUserId = session?.userId;
-
-    if (!name || !email || !courseId || !courseTitle) {
+    if (!courseId || !courseTitle) {
       return NextResponse.json(
-        { ok: false, error: '缺少必要欄位（name, email, courseId, courseTitle）。' },
+        { ok: false, error: '缺少必要欄位（courseId, courseTitle）。' },
         { status: 400 },
       );
     }
 
-    if (typeof email !== 'string' || !email.includes('@')) {
+    // Identity comes from the session. An admin may enroll someone else by
+    // passing userId; nobody else can.
+    const requestedUserId = body?.userId;
+    const userId = isPrivileged(request.session)
+      ? String(requestedUserId || request.session.userId)
+      : request.session.userId;
+
+    if (!isPrivileged(request.session) && requestedUserId && requestedUserId !== userId) {
+      return NextResponse.json(
+        { ok: false, error: 'Forbidden: cannot enroll another user' },
+        { status: 403 },
+      );
+    }
+
+    // Email likewise: the session's email is authoritative for a self-enrollment.
+    const email = isPrivileged(request.session)
+      ? String(body?.email || request.session.email || '').trim()
+      : String(request.session.email || '').trim();
+
+    if (!email || !email.includes('@')) {
       return NextResponse.json(
         { ok: false, error: 'Email 格式不正確。' },
         { status: 400 },
       );
     }
 
+    const orgId = await resolveOrgId(userId);
     const now = new Date().toISOString();
 
     const item: EnrollmentRecord = {
       id: generateId(),
-      name: String(name).trim(),
-      email: String(email).trim(),
-      userId: resolvedUserId,
+      name: String(name || request.session.email || '').trim(),
+      email,
+      userId,
       courseId: String(courseId),
       courseTitle: String(courseTitle),
       startTime: startTime ? String(startTime) : undefined,
       endTime: endTime ? String(endTime) : undefined,
+      // Link back to the payment. Null when the enrollment is opened before an
+      // order exists; app/api/orders writes the order side of the pair.
+      orderId: orderId ? String(orderId) : null,
+      orgId,
+      courseSessionId: courseSessionId ? String(courseSessionId) : null,
       status: 'PENDING_PAYMENT',
-      sourceType: 'B2C', // Default to B2C purchase
+      sourceType: orgId ? 'B2B_SEAT' : 'B2C',
       createdAt: now,
       updatedAt: now,
     };
 
     requireTable();
     await ddbDocClient.send(new PutCommand({ TableName: TABLE_NAME, Item: item }));
-    console.log('[enroll API] DynamoDB 已寫入報名資料:', item);
+    console.log(
+      `[enroll API] created enrollment ${item.id} user=${userId} course=${courseId} org=${orgId ?? 'B2C'} order=${item.orderId ?? 'none'}`
+    );
 
     // Trigger Workflow (non-blocking)
     import('@/lib/workflowEngine').then(({ triggerWorkflow }) => {
-        triggerWorkflow('trigger_enrollment', item);
+      triggerWorkflow('trigger_enrollment', item);
     }).catch(err => console.error('[enroll API] Workflow trigger failed:', err));
 
-    return NextResponse.json(
-      {
-        ok: true,
-        enrollment: item,
-      },
-      { status: 200 },
-    );
+    return NextResponse.json({ ok: true, enrollment: item }, { status: 200 });
   } catch (err: any) {
     console.error('[enroll API] 處理報名請求時發生錯誤:', err?.message || err, err?.stack);
-    return NextResponse.json(
-      { ok: false, error: '伺服器錯誤。' },
-      { status: 500 },
-    );
+    return NextResponse.json({ ok: false, error: '伺服器錯誤。' }, { status: 500 });
   }
-}
+});
 
-export async function PATCH(request: NextRequest) {
+// ──────────────────────────────────────────────────────────────────────────────
+// PATCH — advance an enrollment's status
+//
+// withAnyAuth: a user session, or an HMAC-signed internal call from the order
+// routes (app/api/orders/[orderId]/route.ts) which run server-to-server.
+// ──────────────────────────────────────────────────────────────────────────────
+export const PATCH = withAnyAuth('/api/enroll', async (request: AuthedRequest) => {
   try {
     const body = await request.json();
     const { id, status, paymentProvider, paymentSessionId } = body || {};
@@ -122,18 +188,56 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ ok: false, error: '需要 id 與 status' }, { status: 400 });
     }
 
+    if (!ALL_STATUSES.includes(status as EnrollmentStatus)) {
+      return NextResponse.json(
+        { ok: false, error: `status 必須是 ${ALL_STATUSES.join(' / ')} 之一` },
+        { status: 400 },
+      );
+    }
+
     requireTable();
 
-    // 💡 重要：獲取現有資料以進行合併，避免覆寫掉其他欄位 (如 startTime)
     const getRes = await ddbDocClient.send(
       new GetCommand({ TableName: TABLE_NAME, Key: { id } })
     );
 
-    const existing = getRes.Item || {};
+    const existing = getRes.Item as EnrollmentRecord | undefined;
+    if (!existing) {
+      return NextResponse.json({ ok: false, error: 'Enrollment not found' }, { status: 404 });
+    }
+
+    const privileged = isPrivileged(request.session);
+    const isOwner =
+      existing.userId === request.session.userId ||
+      (!!existing.email &&
+        !!request.session.email &&
+        existing.email.toLowerCase() === request.session.email.toLowerCase());
+
+    if (!privileged && !isOwner) {
+      return NextResponse.json({ ok: false, error: 'Enrollment not found' }, { status: 404 });
+    }
+
+    // Granting access is the payment authority's call, not the buyer's. Without
+    // this an authenticated student could PATCH their own PENDING_PAYMENT row
+    // straight to ACTIVE and take the course without paying.
+    if (!privileged && PRIVILEGED_STATUSES.includes(status as EnrollmentStatus)) {
+      return NextResponse.json(
+        { ok: false, error: `Forbidden: status "${status}" is set by the payment flow` },
+        { status: 403 },
+      );
+    }
+
+    if (!privileged && !OWNER_SETTABLE_STATUSES.includes(status as EnrollmentStatus)) {
+      return NextResponse.json(
+        { ok: false, error: `Forbidden: you may only set ${OWNER_SETTABLE_STATUSES.join(' / ')}` },
+        { status: 403 },
+      );
+    }
+
     const updatedAt = new Date().toISOString();
 
     const item: EnrollmentRecord = {
-      ...existing as EnrollmentRecord,
+      ...existing,
       id, // 確保 ID 不變
       status,
       paymentProvider: paymentProvider || existing.paymentProvider,
@@ -141,9 +245,7 @@ export async function PATCH(request: NextRequest) {
       updatedAt,
     };
 
-    await ddbDocClient.send(
-      new PutCommand({ TableName: TABLE_NAME, Item: item }),
-    );
+    await ddbDocClient.send(new PutCommand({ TableName: TABLE_NAME, Item: item }));
 
     // ── Create Reminder Logic ──────────────────────────────────────────
     // When enrollment becomes ACTIVE, create a 3-hour reminder (180 mins)
@@ -152,17 +254,23 @@ export async function PATCH(request: NextRequest) {
         const protocol = request.headers.get('x-forwarded-proto') || 'http';
         const host = request.headers.get('host') || 'localhost:3000';
         const base = process.env.NEXT_PUBLIC_BASE_URL || `${protocol}://${host}`;
-        
+
+        const reminderBody = JSON.stringify({
+          userId: item.userId || item.email,
+          eventId: `enroll_${item.id}`,
+          courseId: item.courseId,
+          eventStartTime: item.startTime,
+          reminderMinutes: 180, // 3 hours before
+        });
+        // /api/calendar/reminders 需要 session 或 HMAC 驗證，這裡是 server-to-server
+        // 呼叫，用 HMAC 簽名證明是內部服務（避免只靠 client 可偽造的 userId 建立提醒）。
         await fetch(`${base}/api/calendar/reminders`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userId: item.userId || item.email,
-            eventId: `enroll_${item.id}`,
-            courseId: item.courseId,
-            eventStartTime: item.startTime,
-            reminderMinutes: 180, // 3 hours before
-          }),
+          headers: {
+            'Content-Type': 'application/json',
+            ...generateHmacHeaders('POST', '/api/calendar/reminders', reminderBody),
+          },
+          body: reminderBody,
         });
         console.log(`[enroll API] Created 3h reminder for userId=${item.userId || item.email} on course ${item.courseId}`);
       } catch (remErr) {
@@ -176,40 +284,82 @@ export async function PATCH(request: NextRequest) {
     console.error('[enroll API] PATCH 發生錯誤:', err?.message || err, err?.stack);
     return NextResponse.json({ ok: false, error: '伺服器錯誤。' }, { status: 500 });
   }
-}
+});
 
-export async function GET() {
+// ──────────────────────────────────────────────────────────────────────────────
+// GET — list enrollments
+//
+// Scoped by identity, and served from a GSI Query rather than a Scan. A plain
+// student gets their own rows; an org admin may ask for their organisation's;
+// a site admin may ask for a course roster or the whole table.
+// ──────────────────────────────────────────────────────────────────────────────
+export const GET = withAuth(async (request: AuthedRequest) => {
   try {
     requireTable();
 
-    const res = await ddbDocClient.send(
-      new ScanCommand({
-        TableName: TABLE_NAME,
-        Limit: 50,
-      }),
-    );
+    const url = new URL(request.url);
+    const courseId = url.searchParams.get('courseId');
+    const orgIdParam = url.searchParams.get('orgId');
+    const privileged = isPrivileged(request.session);
 
-    const items = (res.Items || []) as EnrollmentRecord[];
+    let items: EnrollmentRecord[];
+    let source: string;
+
+    if (courseId) {
+      // A course roster names other students, so it is for the site admin and the
+      // course's own teacher. Teacher ownership is checked by the caller-facing
+      // course routes; here we require admin.
+      if (!privileged) {
+        return NextResponse.json(
+          { ok: false, error: 'Forbidden: course rosters are admin-only' },
+          { status: 403 },
+        );
+      }
+      items = await listEnrollmentsByCourse(courseId);
+      source = 'byCourseId';
+    } else if (orgIdParam) {
+      const callerProfile = await getProfileById(request.session.userId);
+      const callerOrgId = (callerProfile as any)?.orgId || null;
+      const isOrgAdmin = Boolean((callerProfile as any)?.isOrgAdmin);
+
+      if (!privileged && !(isOrgAdmin && callerOrgId === orgIdParam)) {
+        return NextResponse.json(
+          { ok: false, error: 'Forbidden: not an admin of that organisation' },
+          { status: 403 },
+        );
+      }
+      items = await listEnrollmentsByOrg(orgIdParam);
+      source = 'byOrgId';
+    } else if (privileged && url.searchParams.get('all') === 'true') {
+      // The only remaining Scan, and it is explicitly opted into by an admin.
+      const res = await ddbDocClient.send(
+        new ScanCommand({ TableName: TABLE_NAME, Limit: 200 })
+      );
+      items = (res.Items || []) as EnrollmentRecord[];
+      source = 'scan';
+    } else {
+      items = await listEnrollmentsByUser(request.session.userId);
+      source = 'byUserId';
+    }
 
     return NextResponse.json(
-      {
-        ok: true,
-        total: items.length,
-        data: items,
-        source: 'dynamodb',
-      },
+      { ok: true, total: items.length, data: items, source },
       { status: 200 },
     );
   } catch (err: any) {
     console.error('[enroll API] 讀取報名資料時發生錯誤:', err?.message || err, err?.stack);
-    return NextResponse.json(
-      { ok: false, error: '伺服器錯誤。' },
-      { status: 500 },
-    );
+    return NextResponse.json({ ok: false, error: '伺服器錯誤。' }, { status: 500 });
   }
-}
+});
 
-export async function DELETE(request: NextRequest) {
+// ──────────────────────────────────────────────────────────────────────────────
+// DELETE — hard-remove an enrollment (admin only)
+//
+// Cancelling is a status change (PATCH -> 'CANCELLED') and keeps the audit trail;
+// deletion destroys the record that ties a payment to what it bought, so it stays
+// an administrative operation.
+// ──────────────────────────────────────────────────────────────────────────────
+export const DELETE = withAdmin(async (request: AuthedRequest) => {
   try {
     const url = new URL(request.url);
     const id = url.searchParams.get('id');
@@ -226,4 +376,4 @@ export async function DELETE(request: NextRequest) {
     console.error('[enroll API] DELETE 發生錯誤:', err?.message || err);
     return NextResponse.json({ ok: false, error: '伺服器錯誤。' }, { status: 500 });
   }
-}
+});

@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
+import { withAdminOrHmac, type AuthedRequest } from '@/lib/auth/apiGuard';
 
 export const runtime = 'nodejs';
 
@@ -14,8 +15,11 @@ export const runtime = 'nodejs';
  *   SMTP_HOST  — SMTP 主機，預設 smtp.gmail.com
  *   SMTP_PORT  — SMTP 連接埠，預設 587
  *   SMTP_FROM  — 顯示名稱，預設 "JV Tutor Workflow"
+ *
+ * 白名單檢查（isEmailWhitelisted）是第二層防護；先前完全沒有 auth，任何人都能直接打這支 API
+ * 幫白名單內的地址群發信件，這裡加上 admin session 或 HMAC（workflow 引擎）門檻。
  */
-export async function POST(req: NextRequest) {
+export const POST = withAdminOrHmac('/api/workflows/gmail-send', async (req: AuthedRequest) => {
     try {
         const { to, subject, body, html, purpose } = await req.json();
 
@@ -132,7 +136,7 @@ export async function POST(req: NextRequest) {
             error: error?.message || 'Gmail send failed',
         }, { status: 500 });
     }
-}
+});
 
 /**
  * 將純文字或 HTML 片段包裝成帶有 JV Tutor 品牌樣式的完整 HTML 郵件

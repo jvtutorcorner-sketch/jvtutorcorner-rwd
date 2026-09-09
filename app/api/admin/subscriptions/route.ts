@@ -6,8 +6,11 @@ import {
     deleteSubscription,
     SubscriptionConfig,
 } from '@/lib/subscriptionsService';
+import { withAdmin } from '@/lib/auth/apiGuard';
 
-export async function GET(request: Request) {
+// 這支是「管理端」訂閱方案設定 CRUD（跟一般使用者查自己方案用的 /api/shared/subscriptions
+// 是不同 route）。先前完全沒有 auth，任何人都能新增/覆寫/刪除全站訂閱方案設定，三個 method 都鎖 admin。
+export const GET = withAdmin(async (request) => {
     try {
         const { searchParams } = new URL(request.url);
         const id = searchParams.get('id');
@@ -35,9 +38,9 @@ export async function GET(request: Request) {
             { status: 500 }
         );
     }
-}
+});
 
-export async function POST(request: Request) {
+export const POST = withAdmin(async (request) => {
     try {
         const body = await request.json();
 
@@ -87,9 +90,9 @@ export async function POST(request: Request) {
             { status: 500 }
         );
     }
-}
+});
 
-export async function DELETE(request: Request) {
+export const DELETE = withAdmin(async (request) => {
     try {
         const { searchParams } = new URL(request.url);
         const id = searchParams.get('id');
@@ -111,4 +114,4 @@ export async function DELETE(request: Request) {
             { status: 500 }
         );
     }
-}
+});

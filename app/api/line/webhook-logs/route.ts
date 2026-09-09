@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { withAdmin, type AuthedRequest } from '@/lib/auth/apiGuard';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, QueryCommand } from '@aws-sdk/lib-dynamodb';
 
@@ -28,7 +29,8 @@ const WEBHOOK_LOGS_TABLE = process.env.DYNAMODB_TABLE_WEBHOOK_LOGS || 'jvtutorco
  * - hoursBack: number of hours to look back (optional, default: 24)
  * - limit: max results (optional, default: 100)
  */
-export async function GET(request: Request) {
+// 先前完全沒有 auth：任何人帶一個 integrationId 就能讀出該整合的 webhook 日誌。
+async function handleGet(request: AuthedRequest) {
     try {
         const url = new URL(request.url);
         const integrationId = url.searchParams.get('integrationId');
@@ -95,3 +97,5 @@ export async function GET(request: Request) {
         }, { status: 500 });
     }
 }
+
+export const GET = withAdmin(handleGet);

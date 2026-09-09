@@ -16,10 +16,18 @@ function isSupportedLocale(l: string | null | undefined): l is SupportedLocale {
   return !!l && (SUPPORTED_LOCALES as readonly string[]).includes(l);
 }
 
+/** 插值變數：翻譯字串中的 `{name}` 會被對應的值取代。 */
+export type TVars = Record<string, string | number>;
+
+export type TFunction = {
+  (key: string, fallback?: string, vars?: TVars): string;
+  (key: string, vars: TVars): string;
+};
+
 type IntlContextValue = {
   locale: string;
   setLocale: (l: string) => void;
-  t: (key: string, fallback?: string) => string;
+  t: TFunction;
   ready: boolean;
 };
 
@@ -98,9 +106,20 @@ export const IntlProvider: React.FC<{ children: React.ReactNode; defaultLocale?:
 
   // 三段查找：目標語系 -> 繁中 -> 呼叫端 fallback -> key 本身。
   // 沒有繁中這層 fallback 的話，en/zh-CN 缺的 key 會直接把識別字印在畫面上。
-  const t = (key: string, fallback?: string) => {
-    return messages[key] ?? BASE_MESSAGES[key] ?? fallback ?? key;
-  };
+  //
+  // 第二個參數可以是 fallback 字串，也可以直接傳插值變數：
+  //   t('points_amount', { count: 20 })            -> 「20 點」
+  //   t('points_amount', '{count} 點', { count: 20 })
+  // 用插值取代 prefix/suffix 兩個 key 的舊寫法，語序不同的語言才不會被中文語法綁死。
+  const t = ((key: string, fallbackOrVars?: string | TVars, maybeVars?: TVars) => {
+    const fallback = typeof fallbackOrVars === 'string' ? fallbackOrVars : undefined;
+    const vars = fallbackOrVars && typeof fallbackOrVars === 'object' ? fallbackOrVars : maybeVars;
+    const raw = messages[key] ?? BASE_MESSAGES[key] ?? fallback ?? key;
+    if (!vars) return raw;
+    return raw.replace(/\{(\w+)\}/g, (match, name: string) =>
+      Object.prototype.hasOwnProperty.call(vars, name) ? String(vars[name]) : match
+    );
+  }) as TFunction;
 
   return (
     <IntlContext.Provider value={{ locale, setLocale, t, ready }}>
@@ -130,9 +149,35 @@ export function useSetLocale() {
   return setLocale;
 }
 
-// ServerT is a simple placeholder to use in Server Components
-// It will just render the key, allowing client-side hydration to handle it if needed
-// or just providing a consistent way to mark translatable strings.
+/**
+ * 在 Server Component 裡輸出翻譯字串。
+ *
+ * IntlProvider 是 client 模組，所以 <T> 匯入到 Server Component 時會自動成為
+ * client boundary——Server Component 不必整頁改寫成 client 也能跟著語言切換。
+ *
+ *   <h1><T k="courses_all_title" /></h1>
+ *   <T k="teachers_empty_subject" vars={{ subject }} />
+ */
+export function T({
+  k,
+  fallback,
+  vars,
+  tVars,
+}: {
+  k: string;
+  fallback?: string;
+  vars?: TVars;
+  /** 值本身也是翻譯 key 的插值變數，會先翻譯再代入（例如把科目名一起翻掉）。 */
+  tVars?: Record<string, string>;
+}) {
+  const t = useT();
+  const resolved: TVars = { ...vars };
+  if (tVars) for (const [name, key] of Object.entries(tVars)) resolved[name] = t(key);
+  const hasVars = Object.keys(resolved).length > 0;
+  return <>{t(k, fallback, hasVars ? resolved : undefined)}</>;
+}
+
+/** @deprecated 改用 <T k="..." />。保留舊的 `s` prop 以免既有呼叫端壞掉。 */
 export function ServerT({ s }: { s: string }) {
-  return <span>{s}</span>;
+  return <T k={s} />;
 }

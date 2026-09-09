@@ -10,7 +10,7 @@
 import { NextResponse } from 'next/server';
 import orgUnitService from '@/lib/orgUnitService';
 import { withAuth } from '@/lib/auth/apiGuard';
-import { requireOrgAccess } from '@/lib/auth/orgAccess';
+import { requireOrgUnitAccess } from '@/lib/auth/orgAccess';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,7 +36,7 @@ export const POST = withAuth(async (req, context) => {
       );
     }
 
-    const guard = await requireOrgAccess(req, unit.orgId, 'write');
+    const guard = await requireOrgUnitAccess(req, unit, 'write');
     if (!guard.ok) return guard.response;
 
     const body = await req.json();
@@ -48,6 +48,23 @@ export const POST = withAuth(async (req, context) => {
         { ok: false, error: 'newParentId is required (use null for root)' },
         { status: 400 }
       );
+    }
+
+    // dept_admin 對自己子樹有 write 權限，但不能把子樹搬到自己管轄範圍外（含搬去根層），
+    // 否則等於繞過範圍限制把部門「過繼」給別人或脫離監管。只有整組織權限的人可以這樣搬。
+    if (!guard.actor.isSystemAdmin && !guard.actor.isOrgAdmin) {
+      if (!newParentId) {
+        return NextResponse.json(
+          { ok: false, error: 'Forbidden: dept_admin cannot move a unit to root' },
+          { status: 403 }
+        );
+      }
+      const newParent = await orgUnitService.getOrgUnitById(newParentId);
+      if (!newParent) {
+        return NextResponse.json({ ok: false, error: 'New parent unit not found' }, { status: 404 });
+      }
+      const targetGuard = await requireOrgUnitAccess(req, newParent, 'write');
+      if (!targetGuard.ok) return targetGuard.response;
     }
 
     console.log(`[OrgUnitsAPI] Moving unit ${id} to parent ${newParentId || 'ROOT'}`);

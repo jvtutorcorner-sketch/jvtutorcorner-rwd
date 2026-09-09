@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { withAdmin, type AuthedRequest } from '@/lib/auth/apiGuard';
 
 const ddbRegion = process.env.CI_AWS_REGION || process.env.AWS_REGION;
 const ddbExplicitAccessKey = process.env.CI_AWS_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID;
@@ -119,7 +120,9 @@ async function sendLinePushMessage(lineUid: string, messages: any[], channelAcce
  *   "title"?: string,               // 可选：标题（用于增强显示）
  * }
  */
-export async function POST(request: Request) {
+// 先前完全沒有 auth：任何人都能觸發推播（不帶 userEmail 時甚至是廣播給「所有」已綁定
+// LINE 的使用者），等同匿名可用的騷擾/濫用管道，鎖 admin。
+export const POST = withAdmin(async (request: AuthedRequest) => {
     try {
         const { userEmail, message, title } = await request.json();
 
@@ -215,4 +218,4 @@ export async function POST(request: Request) {
             { status: 500 }
         );
     }
-}
+});

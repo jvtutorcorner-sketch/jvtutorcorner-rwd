@@ -13,7 +13,7 @@ import { findProfilesByOrgId, findProfileByEmail, getProfileById } from '@/lib/p
 import licenseService from '@/lib/licenseService';
 import orgMembershipService from '@/lib/orgMembershipService';
 import { withAuth } from '@/lib/auth/apiGuard';
-import { requireOrgAccess } from '@/lib/auth/orgAccess';
+import { requireOrgAccess, requireMemberScopeAccess, filterMembersForActor, resolveOrgActor } from '@/lib/auth/orgAccess';
 
 export const dynamic = 'force-dynamic';
 
@@ -48,8 +48,13 @@ export const GET = withAuth(async (req, context) => {
   try {
     const { id: orgId } = await (context as { params: Promise<{ id: string }> }).params;
 
-    const guard = await requireOrgAccess(req, orgId, 'read');
-    if (!guard.ok) return guard.response;
+    // 系統管理員／組織管理員讀整組織成員；dept_admin 讀不到就用範圍過濾而不是直接 403，
+    // 才能支撐「dept_admin 可見 /admin/learners 且僅列出自己部門下學員」的需求。
+    const orgGuard = await requireOrgAccess(req, orgId, 'read');
+    const actor = orgGuard.ok ? orgGuard.actor : await resolveOrgActor(req);
+    if (!orgGuard.ok && !(actor.isDeptAdmin && actor.orgId === orgId)) {
+      return orgGuard.response;
+    }
 
     const [profiles, activeLicenses] = await Promise.all([
       findProfilesByOrgId(orgId),
@@ -58,10 +63,14 @@ export const GET = withAuth(async (req, context) => {
 
     const licenseByUserId = new Map(activeLicenses.map((l) => [l.userId, l]));
 
-    const members = profiles.map((profile: any) => ({
-      ...sanitizeProfile(profile),
-      license: licenseByUserId.get(profile.id) || null
-    }));
+    const members = await filterMembersForActor(
+      actor,
+      orgId,
+      profiles.map((profile: any) => ({
+        ...sanitizeProfile(profile),
+        license: licenseByUserId.get(profile.id) || null
+      }))
+    );
 
     return NextResponse.json({ ok: true, members, count: members.length });
   } catch (error: any) {
@@ -80,11 +89,12 @@ export const POST = withAuth(async (req, context) => {
   try {
     const { id: orgId } = await (context as { params: Promise<{ id: string }> }).params;
 
-    const guard = await requireOrgAccess(req, orgId, 'write');
-    if (!guard.ok) return guard.response;
-
     const body = await req.json();
     const { email, profileId: bodyProfileId, orgUnitId, isOrgAdmin, courseId, expiresAt } = body;
+
+    // dept_admin 只能把新成員指派進自己子樹內的部門（沒填 orgUnitId 一律拒絕，不能塞進「無部門」）。
+    const guard = await requireMemberScopeAccess(req, orgId, orgUnitId ?? null);
+    if (!guard.ok) return guard.response;
 
     if (isOrgAdmin === true && !guard.actor.isSystemAdmin) {
       return NextResponse.json(

@@ -1,8 +1,14 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { withAdminOrHmac, type AuthedRequest } from '@/lib/auth/apiGuard';
 
 export const runtime = 'nodejs';
 
-export async function POST(req: NextRequest) {
+/**
+ * 通用 HTTP 代理節點 — 伺服器端替呼叫者對任意 URL 發出請求。先前完全沒有 auth，
+ * 等於對外開放一個匿名可用的 SSRF 工具（可探測內網、繞過來源限制）。鎖 admin/HMAC。
+ * 目前 workflowEngine.ts 尚未接上這個 action node（見 §14 缺口清單），先關掉暴露面。
+ */
+export const POST = withAdminOrHmac('/api/workflows/http-request', async (req: AuthedRequest) => {
     try {
         const { url, method = 'GET', headers: customHeaders = {}, body } = await req.json();
 
@@ -57,4 +63,4 @@ export async function POST(req: NextRequest) {
             code: error?.code,
         }, { status: 500 });
     }
-}
+});

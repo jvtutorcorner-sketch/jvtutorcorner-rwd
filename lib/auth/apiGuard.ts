@@ -8,15 +8,55 @@ import { verifyHmacFromHeaders } from './hmac';
 
 export type AuthedRequest = Request & { session: Session };
 
+// 回傳型別用 Response 而非 NextResponse：Next.js route handler 本來就允許回傳原生
+// Response（串流、二進位檔、SSE 都會這樣寫），NextResponse 也是它的子型別。
 export type ApiHandler<T = any> = (
   req: AuthedRequest,
   context?: T
-) => Promise<NextResponse>;
+) => Promise<Response>;
 
 export type PlainHandler<T = any> = (
   req: Request,
   context?: T
-) => Promise<NextResponse>;
+) => Promise<Response>;
+
+// ─────────────────────────────────────────────
+// E2E Bypass — 僅限非正式環境
+// ─────────────────────────────────────────────
+
+/**
+ * 測試用的萬能鑰匙：帶對 `x-e2e-secret` 就取得 role='system' 的 session。
+ *
+ * system 這個角色在下游等同最高權限（orgAccess 的 isSystemAdmin、withAdminOrHmac
+ * 允許的角色、profile/courses 的擁有者檢查都認它），而且這段檢查跑在 withAuth 的
+ * 角色檢查之前，所以連 withAdmin 都會被繞過。先前沒有任何環境判斷 —— 只要正式環境
+ * 存在 LOGIN_BYPASS_SECRET，一個 header 就能拿到全站管理權。
+ *
+ * 現在正式環境一律關閉，除非明確設定 ALLOW_E2E_BYPASS_IN_PRODUCTION=true。
+ */
+function isE2eBypassAllowed(): boolean {
+  if (process.env.NODE_ENV !== 'production') return true;
+  return process.env.ALLOW_E2E_BYPASS_IN_PRODUCTION === 'true';
+}
+
+function tryE2eBypassSession(req: Request): Session | null {
+  if (!isE2eBypassAllowed()) return null;
+
+  const e2eSecret = req.headers.get('x-e2e-secret');
+  const bypassSecret = process.env.LOGIN_BYPASS_SECRET;
+  if (!e2eSecret || !bypassSecret || e2eSecret !== bypassSecret) return null;
+
+  const now = Math.floor(Date.now() / 1000);
+  return {
+    sessionId: 'e2e-bypass',
+    userId: 'system',
+    email: 'system@e2e',
+    role: 'system',
+    plan: 'system',
+    createdAt: now,
+    expiresAt: now + 3600,
+  };
+}
 
 // ─────────────────────────────────────────────
 // 1. Session Guard — 必須有登入 Session
@@ -37,21 +77,10 @@ export function withAuth(
   options?: { roles?: string[] }
 ): PlainHandler {
   return async (req: Request, context?: any) => {
-    // 嘗試 E2E Bypass
-    const e2eSecret = req.headers.get('x-e2e-secret');
-    const bypassSecret = process.env.LOGIN_BYPASS_SECRET;
-
-    if (e2eSecret && bypassSecret && e2eSecret === bypassSecret) {
-      const systemSession: Session = {
-        sessionId: 'e2e-bypass',
-        userId: 'system',
-        email: 'system@e2e',
-        role: 'system', // or options.roles[0]
-        plan: 'system',
-        createdAt: Math.floor(Date.now() / 1000),
-        expiresAt: Math.floor(Date.now() / 1000) + 3600,
-      };
-      const authedReq = Object.assign(req, { session: systemSession }) as AuthedRequest;
+    // 嘗試 E2E Bypass（正式環境預設關閉，見 tryE2eBypassSession）
+    const bypassSession = tryE2eBypassSession(req);
+    if (bypassSession) {
+      const authedReq = Object.assign(req, { session: bypassSession }) as AuthedRequest;
       return handler(authedReq, context);
     }
 
@@ -158,21 +187,10 @@ export function withAnyAuth(
   handler: ApiHandler
 ): PlainHandler {
   return async (req: Request, context?: any) => {
-    // 嘗試 E2E Bypass
-    const e2eSecret = req.headers.get('x-e2e-secret');
-    const bypassSecret = process.env.LOGIN_BYPASS_SECRET;
-
-    if (e2eSecret && bypassSecret && e2eSecret === bypassSecret) {
-      const systemSession: Session = {
-        sessionId: 'e2e-bypass',
-        userId: 'system',
-        email: 'system@e2e',
-        role: 'system',
-        plan: 'system',
-        createdAt: Math.floor(Date.now() / 1000),
-        expiresAt: Math.floor(Date.now() / 1000) + 3600,
-      };
-      const authedReq = Object.assign(req, { session: systemSession }) as AuthedRequest;
+    // 嘗試 E2E Bypass（正式環境預設關閉，見 tryE2eBypassSession）
+    const bypassSession = tryE2eBypassSession(req);
+    if (bypassSession) {
+      const authedReq = Object.assign(req, { session: bypassSession }) as AuthedRequest;
       return handler(authedReq, context);
     }
 
@@ -219,4 +237,29 @@ export function withAnyAuth(
       { status: 401 }
     );
   };
+}
+
+// ─────────────────────────────────────────────
+// 5. Admin-or-HMAC Guard — 給有副作用的內部 action node（寄信、外呼 HTTP…）
+// ─────────────────────────────────────────────
+
+/**
+ * 跟 withAnyAuth 一樣接受 session 或 HMAC 其中一個，但 session 那條路必須是 admin/system
+ * 角色 —— 用在像 workflow action node（gmail-send、http-request…）這種一般登入使用者
+ * 不該直接觸發的內部端點：只有工作流程引擎本身（HMAC）或管理員可以呼叫。
+ */
+export function withAdminOrHmac(
+  path: string,
+  handler: ApiHandler
+): PlainHandler {
+  const inner = withAnyAuth(path, async (req, context) => {
+    if (req.session.role !== 'admin' && req.session.role !== 'system') {
+      return NextResponse.json(
+        { ok: false, error: 'Forbidden: requires admin session or internal service call' },
+        { status: 403 }
+      );
+    }
+    return handler(req, context);
+  });
+  return inner;
 }

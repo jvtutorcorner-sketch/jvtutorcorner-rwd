@@ -7,6 +7,7 @@
 import { NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
 import crypto from 'crypto';
+import { withAdmin, type AuthedRequest } from '@/lib/auth/apiGuard';
 
 // ---------------------------------------------------------------------------
 // 各服務的驗證邏輯
@@ -688,7 +689,9 @@ const TEST_HANDLERS: Record<string, (config: Record<string, any>, prompt?: strin
 // ---------------------------------------------------------------------------
 // POST - 執行測試
 // ---------------------------------------------------------------------------
-export async function POST(request: Request) {
+// 先前完全沒有 auth：接受任意 { type, config } 並用伺服器去連線該 config 指定的外部服務
+// （SMTP host、任意 URL 的 webhook 測試等），等同一個匿名可用的 SSRF/憑證探測工具。
+export const POST = withAdmin(async (request: AuthedRequest) => {
     try {
         const body = await request.json();
         console.log('[app-integrations API] TEST request body:', JSON.stringify(body, null, 2));
@@ -735,4 +738,4 @@ export async function POST(request: Request) {
             { status: 500 }
         );
     }
-}
+});

@@ -1,18 +1,39 @@
 import { NextResponse } from 'next/server';
 import { ddbDocClient } from '@/lib/dynamo';
 import { ScanCommand, GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
+import { withAuth, type AuthedRequest } from '@/lib/auth/apiGuard';
 
 const PROFILES_TABLE = process.env.DYNAMODB_TABLE_PROFILES || process.env.PROFILES_TABLE || 'jvtutorcorner-profiles';
 
-export async function GET(req: Request) {
+function isSelf(session: AuthedRequest['session'], profile: any): boolean {
+  if (!profile) return false;
+  return profile.id === session.userId || profile.roid_id === session.userId ||
+    (typeof profile.email === 'string' && profile.email.toLowerCase() === session.email?.toLowerCase());
+}
+
+// 這支 API 被大量頁面拿來查「別人的」profile 只是為了顯示名字（教室參與者、老師儀表板的學生名單…），
+// 不能整包 profile 回傳（含 password hash、points、生日等 PII）。非本人一律只回傳這個安全子集。
+function publicSubset(profile: any) {
+  if (!profile) return profile;
+  const { id, roid_id, firstName, lastName, nickname, teacherId, role } = profile;
+  return { id, roid_id, firstName, lastName, nickname, teacherId, role };
+}
+
+function sanitizeOwn(profile: any) {
+  if (!profile) return profile;
+  const { password, ...rest } = profile;
+  return rest;
+}
+
+export const GET = withAuth(async (req: AuthedRequest) => {
   try {
     const url = new URL(req.url);
     const email = url.searchParams.get('email');
     const id = url.searchParams.get('id');
+    const isAdmin = req.session.role === 'admin' || req.session.role === 'system';
 
     if (email) {
       const emailLower = String(email).toLowerCase();
-      // Look up in DynamoDB
       try {
         const scanRes: any = await ddbDocClient.send(new ScanCommand({
           TableName: PROFILES_TABLE,
@@ -20,9 +41,11 @@ export async function GET(req: Request) {
           ExpressionAttributeValues: { ':email': emailLower }
         }));
 
-        let profile = scanRes?.Items?.[0] || null;
-
-        if (profile) return NextResponse.json({ ok: true, profile });
+        const profile = scanRes?.Items?.[0] || null;
+        if (profile) {
+          const own = isAdmin || isSelf(req.session, profile);
+          return NextResponse.json({ ok: true, profile: own ? sanitizeOwn(profile) : publicSubset(profile) });
+        }
       } catch (e) {
         console.warn('[profile GET] Dynamo lookup failed', (e as any)?.message || e);
       }
@@ -44,23 +67,29 @@ export async function GET(req: Request) {
           profile = scanRes?.Items?.[0] || null;
         }
 
-        if (profile) return NextResponse.json({ ok: true, profile });
+        if (profile) {
+          const own = isAdmin || isSelf(req.session, profile);
+          return NextResponse.json({ ok: true, profile: own ? sanitizeOwn(profile) : publicSubset(profile) });
+        }
       } catch (e) {
         console.warn('[profile GET] Dynamo lookup by ID failed', (e as any)?.message || e);
       }
       return NextResponse.json({ ok: false, message: 'Profile not found' }, { status: 404 });
     }
 
-    // List all (scan)
+    // List all (scan) — 沒帶 id/email 等於整表列出，只有管理員能用。
+    if (!isAdmin) {
+      return NextResponse.json({ ok: false, message: 'Forbidden' }, { status: 403 });
+    }
     const res: any = await ddbDocClient.send(new ScanCommand({ TableName: PROFILES_TABLE }));
-    return NextResponse.json({ ok: true, profiles: res.Items || [] });
+    return NextResponse.json({ ok: true, profiles: (res.Items || []).map(sanitizeOwn) });
   } catch (err: any) {
     console.error('[profile GET] error', err?.message || err);
     return NextResponse.json({ ok: false, message: 'Failed to read profiles' }, { status: 500 });
   }
-}
+});
 
-export async function PATCH(req: Request) {
+export const PATCH = withAuth(async (req: AuthedRequest) => {
   try {
     const body = await req.json();
     if (!body || (!body.email && !body.id)) {
@@ -101,6 +130,17 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ ok: false, message: 'Profile not found' }, { status: 404 });
     }
 
+    const isAdmin = req.session.role === 'admin' || req.session.role === 'system';
+    if (!isAdmin && !isSelf(req.session, profile)) {
+      return NextResponse.json({ ok: false, message: 'Forbidden: cannot modify another user\'s profile' }, { status: 403 });
+    }
+
+    // pointsToAdd 一般人只能扣自己的點數（例如兌換商品），不能用這支 API 幫自己加點 —
+    // 加點只能透過 admin 或真正的付款/退款流程。
+    if (!isAdmin && typeof body.pointsToAdd === 'number' && body.pointsToAdd > 0) {
+      return NextResponse.json({ ok: false, message: 'Forbidden: cannot grant points to yourself' }, { status: 403 });
+    }
+
     // Apply updates
     const updates: any = {};
     const fields = ['firstName', 'lastName', 'bio', 'backupEmail', 'birthdate', 'gender', 'country', 'timezone', 'card'];
@@ -132,7 +172,7 @@ export async function PATCH(req: Request) {
     // Persist to DynamoDB
     try {
       await ddbDocClient.send(new PutCommand({ TableName: PROFILES_TABLE, Item: merged }));
-      return NextResponse.json({ ok: true, profile: merged });
+      return NextResponse.json({ ok: true, profile: sanitizeOwn(merged) });
     } catch (e) {
       console.error('[profile PATCH] Dynamo write failed', (e as any)?.message || e);
       return NextResponse.json({ ok: false, message: 'Failed to update profile' }, { status: 500 });
@@ -141,4 +181,4 @@ export async function PATCH(req: Request) {
     console.error('[profile PATCH] error', err?.message || err);
     return NextResponse.json({ ok: false, message: 'Failed to update profile' }, { status: 500 });
   }
-}
+});

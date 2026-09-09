@@ -1,9 +1,11 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { PutCommand, UpdateCommand, GetCommand, DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 import { v4 as uuidv4 } from 'uuid';
 import type { SessionUpsertPayload } from '@/lib/agora/types';
 import { getEscrowByOrder, releaseEscrow } from '@/lib/pointsEscrow';
+import { withAuth, type AuthedRequest } from '@/lib/auth/apiGuard';
+import { verifyClassroomAccess } from '@/lib/auth/classroomAccess';
 
 const client = new DynamoDBClient({
     region: process.env.AWS_REGION || 'ap-northeast-1',
@@ -15,6 +17,14 @@ const client = new DynamoDBClient({
 const docClient = DynamoDBDocumentClient.from(client);
 
 const TABLE_NAME = 'jvtutorcorner-agora-sessions';
+
+/** 這個 session 的老師或學生本人，或管理員。 */
+function isSessionParticipant(req: AuthedRequest, item: Record<string, any>): boolean {
+    const { role, userId } = req.session;
+    if (role === 'admin' || role === 'system') return true;
+    return item.teacherId === userId || item.studentId === userId;
+}
+
 
 /**
  * POST /api/agora/session
@@ -33,7 +43,8 @@ const TABLE_NAME = 'jvtutorcorner-agora-sessions';
  *
  * Returns: { sessionId }
  */
-export async function POST(req: NextRequest) {
+// 先前完全沒有 auth：任何人都能替任意課程捏造上課紀錄。
+async function handlePost(req: AuthedRequest) {
     try {
         const body = (await req.json()) as Partial<SessionUpsertPayload>;
 
@@ -43,6 +54,15 @@ export async function POST(req: NextRequest) {
             return NextResponse.json(
                 { ok: false, error: 'channelName, courseId, teacherId and studentId are required' },
                 { status: 400 },
+            );
+        }
+
+        // 只有這堂課的參與者（老師／已報名學生）或管理員能開上課紀錄。
+        const access = await verifyClassroomAccess(req.session, courseId);
+        if (!access.granted) {
+            return NextResponse.json(
+                { ok: false, error: 'Forbidden: no access to this course' },
+                { status: 403 },
             );
         }
 
@@ -86,7 +106,7 @@ export async function POST(req: NextRequest) {
  *   endedAt        — ISO 8601 結束時間
  *   durationSeconds— 實際課堂秒數
  */
-export async function PATCH(req: NextRequest) {
+async function handlePatch(req: AuthedRequest) {
     let reqStatus: string | undefined;
     try {
         const body = await req.json();
@@ -95,6 +115,16 @@ export async function PATCH(req: NextRequest) {
 
         if (!sessionId) {
             return NextResponse.json({ ok: false, error: 'sessionId is required' }, { status: 400 });
+        }
+
+        // 這支在 status='completed' 時會把託管點數釋出給老師，先前完全沒有驗證：
+        // 任何人送一個 sessionId 就能觸發撥款。限定這堂課的老師／學生本人或管理員。
+        const existing = await docClient.send(new GetCommand({ TableName: TABLE_NAME, Key: { sessionId } }));
+        if (!existing.Item) {
+            return NextResponse.json({ ok: false, error: 'Session not found' }, { status: 404 });
+        }
+        if (!isSessionParticipant(req, existing.Item)) {
+            return NextResponse.json({ ok: false, error: 'Forbidden: not a participant of this session' }, { status: 403 });
         }
 
         const now = new Date().toISOString();
@@ -169,7 +199,7 @@ export async function PATCH(req: NextRequest) {
  *
  * 取得 Session 詳細資訊。
  */
-export async function GET(req: NextRequest) {
+async function handleGet(req: AuthedRequest) {
     try {
         const { searchParams } = new URL(req.url);
         const sessionId = searchParams.get('sessionId');
@@ -184,9 +214,17 @@ export async function GET(req: NextRequest) {
             return NextResponse.json({ ok: false, error: 'Session not found' }, { status: 404 });
         }
 
+        if (!isSessionParticipant(req, result.Item)) {
+            return NextResponse.json({ ok: false, error: 'Session not found' }, { status: 404 });
+        }
+
         return NextResponse.json({ ok: true, session: result.Item });
     } catch (error) {
         console.error('Error fetching Agora session:', error);
         return NextResponse.json({ ok: false, error: 'Failed to fetch session' }, { status: 500 });
     }
 }
+
+export const POST = withAuth(handlePost);
+export const PATCH = withAuth(handlePatch);
+export const GET = withAuth(handleGet);

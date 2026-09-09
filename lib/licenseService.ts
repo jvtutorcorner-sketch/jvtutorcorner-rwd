@@ -70,7 +70,11 @@ export async function createLicense(input: CreateLicenseInput): Promise<License>
   const license: License = {
     id,
     orgId: input.orgId,
-    userId: input.userId || null,
+    // Omit (not `null`) when unassigned — `userId` is the byUserId GSI's key attribute,
+    // and DynamoDB rejects a NULL-typed value there (String expected). Same gotcha
+    // revokeLicense's REMOVE already works around; PutCommand relies on this client's
+    // marshallOptions.removeUndefinedValues to drop the attribute entirely.
+    userId: input.userId || undefined,
     courseId: input.courseId,
     status: input.userId ? 'active' : 'pending',
     assignedAt: input.userId ? now : undefined,

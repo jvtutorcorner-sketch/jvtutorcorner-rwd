@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { verifyCheckMacValue } from '@/lib/ecpay';
 import { handlePaymentSuccess } from '@/lib/paymentSuccessHandler';
 import profilesService from '@/lib/profilesService';
+import { internalFetch } from '@/lib/auth/internalFetch';
 
 // Handle x-www-form-urlencoded data
 async function parseFormBody(req: NextRequest) {
@@ -44,14 +45,13 @@ export async function POST(req: NextRequest) {
             // 3. Update DB
             if (orderId) {
                 try {
-                    const base = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
                     console.log(`[ECPay Return] Attempting to update order ${orderId} status...`);
                     
                     // First try plan-upgrades API (for membership/points)
-                    let res = await fetch(`${base}/api/plan-upgrades/${encodeURIComponent(orderId)}`, {
+                    let res = await internalFetch(`/api/plan-upgrades/${encodeURIComponent(orderId)}`, {
                         method: 'PATCH',
-                        headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ status: 'PAID' }),
+                        originRequest: req,
                     });
                     
                     if (res.ok) {
@@ -59,10 +59,10 @@ export async function POST(req: NextRequest) {
                     } else if (res.status === 404) {
                         // If not found in plan-upgrades, try the standard orders API (for course enrollments)
                         console.log(`[ECPay Return] Order ${orderId} not found in plan-upgrades, trying standard orders API...`);
-                        res = await fetch(`${base}/api/orders/${encodeURIComponent(orderId)}`, {
+                        res = await internalFetch(`/api/orders/${encodeURIComponent(orderId)}`, {
                             method: 'PATCH',
-                            headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ status: 'PAID' }),
+                            originRequest: req,
                         });
                         
                         if (res.ok) {

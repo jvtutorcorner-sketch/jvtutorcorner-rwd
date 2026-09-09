@@ -13,7 +13,7 @@ import { NextResponse } from 'next/server';
 import orgUnitService from '@/lib/orgUnitService';
 import type { CreateOrgUnitInput, OrgUnit } from '@/lib/types/b2b';
 import { withAuth } from '@/lib/auth/apiGuard';
-import { requireOrgAccess } from '@/lib/auth/orgAccess';
+import { requireOrgAccess, requireOrgUnitAccess, filterOrgUnitsForActor, resolveOrgActor } from '@/lib/auth/orgAccess';
 
 export const dynamic = 'force-dynamic';
 
@@ -46,15 +46,25 @@ export const GET = withAuth(async (req) => {
           { status: 404 }
         );
       }
-      const guard = await requireOrgAccess(req, parent.orgId, 'read');
+      // 用 orgUnit 範圍守門而不是整組織守門：dept_admin 只能看自己子樹內的部門當 parent。
+      const guard = await requireOrgUnitAccess(req, parent, 'read');
       if (!guard.ok) return guard.response;
 
       units = await orgUnitService.getChildUnits(parentId);
     } else if (orgId) {
-      const guard = await requireOrgAccess(req, orgId, 'read');
-      if (!guard.ok) return guard.response;
-
-      units = await orgUnitService.listOrgUnitsByOrg(orgId);
+      // 系統管理員／組織管理員拿完整清單；dept_admin 拿子樹過濾後的清單（不是直接 403），
+      // 讓 /admin/learners 等頁面能正常列出「自己部門」的資料。
+      const orgGuard = await requireOrgAccess(req, orgId, 'read');
+      if (orgGuard.ok) {
+        units = await orgUnitService.listOrgUnitsByOrg(orgId);
+      } else {
+        const actor = await resolveOrgActor(req);
+        if (!actor.isDeptAdmin || actor.orgId !== orgId) {
+          return orgGuard.response;
+        }
+        const allUnits = await orgUnitService.listOrgUnitsByOrg(orgId);
+        units = await filterOrgUnitsForActor(actor, allUnits);
+      }
 
       // If tree format requested, build hierarchical structure
       if (tree) {
@@ -105,8 +115,21 @@ export const POST = withAuth(async (req) => {
       );
     }
 
-    const guard = await requireOrgAccess(req, orgId.trim(), 'write');
-    if (!guard.ok) return guard.response;
+    // 建根部門（無 parentId）一律要整組織權限；建子部門的話 dept_admin 只要 parent 在自己子樹內即可。
+    if (parentId) {
+      const parent = await orgUnitService.getOrgUnitById(parentId);
+      if (!parent) {
+        return NextResponse.json({ ok: false, error: 'Parent unit does not exist' }, { status: 404 });
+      }
+      if (parent.orgId !== orgId.trim()) {
+        return NextResponse.json({ ok: false, error: 'Parent unit must belong to the same organization' }, { status: 400 });
+      }
+      const guard = await requireOrgUnitAccess(req, parent, 'write');
+      if (!guard.ok) return guard.response;
+    } else {
+      const guard = await requireOrgAccess(req, orgId.trim(), 'write');
+      if (!guard.ok) return guard.response;
+    }
 
     const input: CreateOrgUnitInput = {
       orgId: orgId.trim(),
