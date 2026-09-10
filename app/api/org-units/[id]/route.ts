@@ -184,6 +184,13 @@ export const DELETE = withAuth(async (req, context) => {
   } catch (error: any) {
     console.error('[OrgUnitsAPI] DELETE failed:', error.message);
 
+    if (error.message.includes('members assigned')) {
+      return NextResponse.json(
+        { ok: false, error: error.message.replace(/^Failed to delete org unit: /, '') },
+        { status: 409 }
+      );
+    }
+
     if (error.message.includes('children')) {
       return NextResponse.json(
         { ok: false, error: 'Cannot delete unit with children. Remove children first or use soft delete.' },

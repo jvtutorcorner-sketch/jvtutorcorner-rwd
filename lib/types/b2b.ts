@@ -147,8 +147,19 @@ export interface ProfileB2B {
    */
   previousRole?: 'student' | 'teacher' | 'admin' | 'dept_admin';
 
-  /** Subscription plan (B2C) or null for B2B users */
-  plan: 'basic' | 'pro' | 'elite' | 'viewer' | null;
+  /**
+   * Subscription plan (B2C) or null while the user is an active B2B member.
+   * Vocabulary is lib/plans.ts (catalogue ids + BUILTIN_PLAN_IDS) — always write it
+   * through assertPlanId()/normalizePlanId(), never a free-text literal.
+   */
+  plan: string | null;
+
+  /**
+   * The B2C plan the user held when they joined an organization. assignMemberWithLicense
+   * nulls `plan` on join; removeMemberFromOrg restores this value (falling back to
+   * DEFAULT_PLAN_ID) so leaving an org does not wipe out a paid personal plan.
+   */
+  planBeforeOrg?: string | null;
 
   // --- B2B specific fields ---
 
@@ -231,7 +242,10 @@ export interface License {
   /** Associated course ID (optional, for course-specific licenses) */
   courseId?: string | null;
 
-  /** License status */
+  /**
+   * License status. 'expired' is written by orgMembershipService.expireOverdueLicenses
+   * (POST /api/licenses/expire) once expiresAt has passed, which also frees the seat.
+   */
   status: 'active' | 'revoked' | 'expired' | 'pending';
 
   /** Assignment timestamp */
@@ -240,8 +254,8 @@ export interface License {
   /** Who assigned this license */
   assignedBy?: string;
 
-  /** Expiration timestamp (for TTL) */
-  expiresAt?: number; // UNIX timestamp
+  /** Expiry as UNIX epoch SECONDS. Never an ISO string (accessControl compares numerically). */
+  expiresAt?: number;
 
   /** License type metadata (e.g. { licenseType: 'full'|'trial'|'demo', restrictions: [...] }) */
   metadata?: Record<string, any>;
@@ -300,6 +314,10 @@ export interface CreateLicenseInput {
 
 export interface UpdateLicenseInput {
   courseId?: string;
-  expiresAt?: string | null;
+  /**
+   * ISO 8601 string or epoch seconds; null clears the expiry. Always persisted as
+   * epoch seconds (License.expiresAt) — see licenseService.toEpochSeconds.
+   */
+  expiresAt?: string | number | null;
   metadata?: Record<string, any>;
 }

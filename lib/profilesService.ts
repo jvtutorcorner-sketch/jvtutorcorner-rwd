@@ -2,7 +2,12 @@ import { ddbDocClient } from './dynamo';
 import { ScanCommand, PutCommand, GetCommand, QueryCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { LambdaClient, InvokeCommand } from '@aws-sdk/client-lambda';
 
-export const PROFILES_TABLE = process.env.DYNAMODB_TABLE_PROFILES || process.env.PROFILES_TABLE || '';
+// Same default as every other module that touches this table (app/api/register,
+// app/api/profile, ...). It used to default to '' here only, so with the env var
+// unset, register wrote the profile to 'jvtutorcorner-profiles' while
+// orgMembershipService's transaction (which imports this constant) targeted a
+// table named '' — every B2B registration failed and rolled back.
+export const PROFILES_TABLE = process.env.DYNAMODB_TABLE_PROFILES || process.env.PROFILES_TABLE || 'jvtutorcorner-profiles';
 const PROFILES_LAMBDA = process.env.PROFILES_LAMBDA_NAME || process.env.PROFILES_FUNCTION_NAME || '';
 const PROFILES_API = process.env.PROFILES_API_URL || process.env.PROFILES_ENDPOINT || '';
 
@@ -254,79 +259,9 @@ export async function findProfilesByOrgId(orgId: string): Promise<ProfileB2B[]> 
   }
 }
 
-/**
- * Assign a profile to an organization
- * Updates orgId, orgUnitId, isB2B, and licenseId fields
- *
- * 低階原語：不處理席次計數 (Organization.usedSeats) 或建立/指派 License 記錄。
- * 成員管理（含席次與授權）請用 lib/orgMembershipService.ts 的 assignMemberWithLicense。
- */
-export async function assignProfileToOrg(
-  profileId: string,
-  orgId: string,
-  orgUnitId?: string,
-  licenseId?: string,
-  isOrgAdmin: boolean = false
-): Promise<ProfileB2B> {
-  if (!PROFILES_TABLE) {
-    throw new Error('DYNAMODB_TABLE_PROFILES not configured');
-  }
-
-  try {
-    const result = await ddbDocClient.send(new UpdateCommand({
-      TableName: PROFILES_TABLE,
-      Key: { id: profileId },
-      UpdateExpression: 'SET orgId = :orgId, orgUnitId = :orgUnitId, isB2B = :isB2B, isOrgAdmin = :isOrgAdmin, licenseId = :licenseId, updatedAt = :now',
-      ExpressionAttributeValues: {
-        ':orgId': orgId,
-        ':orgUnitId': orgUnitId || null,
-        ':isB2B': true,
-        ':isOrgAdmin': isOrgAdmin,
-        ':licenseId': licenseId || null,
-        ':now': new Date().toISOString()
-      },
-      ReturnValues: 'ALL_NEW'
-    }));
-
-    console.log(`[profilesService] ✅ Assigned profile ${profileId} to org ${orgId}`);
-    return result.Attributes as ProfileB2B;
-  } catch (error: any) {
-    console.error(`[profilesService] ❌ Failed to assign profile to org:`, error.message);
-    throw new Error(`Failed to assign profile to org: ${error.message}`);
-  }
-}
-
-/**
- * Remove a profile from an organization (convert back to B2C)
- *
- * 低階原語：不處理席次計數或撤銷 License 記錄。
- * 成員管理請用 lib/orgMembershipService.ts 的 removeMemberFromOrg。
- */
-export async function removeProfileFromOrg(profileId: string): Promise<ProfileB2B> {
-  if (!PROFILES_TABLE) {
-    throw new Error('DYNAMODB_TABLE_PROFILES not configured');
-  }
-
-  try {
-    const result = await ddbDocClient.send(new UpdateCommand({
-      TableName: PROFILES_TABLE,
-      Key: { id: profileId },
-      UpdateExpression: 'SET orgId = :null, orgUnitId = :null, isB2B = :false, isOrgAdmin = :false, licenseId = :null, updatedAt = :now',
-      ExpressionAttributeValues: {
-        ':null': null,
-        ':false': false,
-        ':now': new Date().toISOString()
-      },
-      ReturnValues: 'ALL_NEW'
-    }));
-
-    console.log(`[profilesService] ✅ Removed profile ${profileId} from org`);
-    return result.Attributes as ProfileB2B;
-  } catch (error: any) {
-    console.error(`[profilesService] ❌ Failed to remove profile from org:`, error.message);
-    throw new Error(`Failed to remove profile from org: ${error.message}`);
-  }
-}
+// assignProfileToOrg / removeProfileFromOrg were deleted: they bypassed seat and
+// license accounting, and removeProfileFromOrg SET orgId = NULL on the byOrgId GSI
+// key, which DynamoDB rejects. Use lib/orgMembershipService.ts.
 
 /**
  * Update profile's org unit (for moving within organizational hierarchy)
@@ -390,8 +325,6 @@ export default {
 
   // B2B/B2C extended functions
   findProfilesByOrgId,
-  assignProfileToOrg,
-  removeProfileFromOrg,
   updateProfileOrgUnit,
   findProfileByStripeCustomerId,
 };

@@ -1,6 +1,7 @@
-import { listLicensesByUser } from '@/lib/licenseService';
+import { listLicensesByUser, toEpochSeconds } from '@/lib/licenseService';
 import { getOrganizationById } from '@/lib/organizationService';
 import { findActiveEnrollment } from '@/lib/enrollmentService';
+import { getProfileById } from '@/lib/profilesService';
 
 export interface AccessResult {
     granted: boolean;
@@ -55,6 +56,11 @@ export async function verifyCourseAccess(userId: string, courseId: string): Prom
         // out of their own course, non-deterministically.
         //
         // findActiveEnrollment Queries the byUserId GSI and pages to exhaustion.
+        //
+        // NOTE for whoever adds seat-based enrollment rows: an enrollment created from
+        // a license must NOT grant access here on its own, or revoking the license
+        // would leave the row granting access forever. Today no code writes such rows
+        // (app/api/enroll only records purchases), so every active row is a purchase.
         const enrollment = await findActiveEnrollment(cleanUserId, courseId);
 
         if (enrollment) {
@@ -66,16 +72,30 @@ export async function verifyCourseAccess(userId: string, courseId: string): Prom
         // courseId set is scoped to that specific course.
         const licenses = await listLicensesByUser(cleanUserId);
         const now = Math.floor(Date.now() / 1000);
-        const matchingLicense = licenses.find((lic) =>
-            lic.status === 'active' &&
-            (!lic.expiresAt || lic.expiresAt > now) &&
-            (!lic.courseId || lic.courseId === courseId)
-        );
+        const candidates = licenses.filter((lic) => {
+            if (lic.status !== 'active') return false;
+            if (lic.courseId && lic.courseId !== courseId) return false;
+            if (lic.expiresAt === undefined || lic.expiresAt === null) return true;
+            // Rows written by the old PATCH path stored an ISO string here; a raw
+            // `string > number` comparison is always false and silently expired them.
+            // An unparseable value fails closed.
+            let expiry: number | null = null;
+            try { expiry = toEpochSeconds(lic.expiresAt as any); } catch { expiry = null; }
+            return expiry !== null && expiry > now;
+        });
 
-        if (matchingLicense) {
-            const org = await getOrganizationById(matchingLicense.orgId);
-            if (org && (org.status === 'active' || org.status === 'trial')) {
-                return { granted: true, source: 'B2B_SEAT' };
+        if (candidates.length > 0) {
+            // The license must belong to the org the user is currently a member of.
+            // A license left active after its holder was removed (drift from before
+            // removeMemberFromOrg revoked every license) must not keep granting access.
+            const profile: any = await getProfileById(cleanUserId);
+            const memberOrgId = profile?.orgId || null;
+            for (const lic of candidates) {
+                if (!memberOrgId || lic.orgId !== memberOrgId) continue;
+                const org = await getOrganizationById(lic.orgId);
+                if (org && (org.status === 'active' || org.status === 'trial')) {
+                    return { granted: true, source: 'B2B_SEAT' };
+                }
             }
         }
 

@@ -55,6 +55,29 @@ function createDynamoClient(): DynamoDBDocumentClient {
 const ddbDocClient = createDynamoClient();
 
 // ==========================================
+// Expiry normalisation
+// ==========================================
+
+/**
+ * License.expiresAt is ALWAYS stored as integer epoch seconds. Accepts an ISO 8601
+ * string, epoch seconds, or epoch milliseconds (anything above 1e11 is treated as ms).
+ * Returns null for null/undefined/'' (no expiry). Throws on an unparseable value —
+ * a license whose expiry cannot be read must not be written.
+ */
+export function toEpochSeconds(value: string | number | null | undefined): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value) || value <= 0) throw new Error(`Invalid license expiresAt: ${value}`);
+    return Math.floor(value > 1e11 ? value / 1000 : value);
+  }
+  const trimmed = String(value).trim();
+  if (/^\d+$/.test(trimmed)) return toEpochSeconds(Number(trimmed));
+  const ms = Date.parse(trimmed);
+  if (!Number.isFinite(ms)) throw new Error(`Invalid license expiresAt: ${value}`);
+  return Math.floor(ms / 1000);
+}
+
+// ==========================================
 // CRUD Operations
 // ==========================================
 
@@ -66,6 +89,7 @@ const ddbDocClient = createDynamoClient();
 export async function createLicense(input: CreateLicenseInput): Promise<License> {
   const now = new Date().toISOString();
   const id = randomUUID();
+  const expiresAt = toEpochSeconds(input.expiresAt);
 
   const license: License = {
     id,
@@ -79,7 +103,7 @@ export async function createLicense(input: CreateLicenseInput): Promise<License>
     status: input.userId ? 'active' : 'pending',
     assignedAt: input.userId ? now : undefined,
     assignedBy: input.userId ? input.assignedBy : undefined,
-    expiresAt: input.expiresAt ? Date.parse(input.expiresAt) / 1000 : undefined,
+    expiresAt: expiresAt ?? undefined,
     metadata: input.metadata,
     createdAt: now,
     updatedAt: now
@@ -120,17 +144,24 @@ export async function getLicenseById(id: string): Promise<License | null> {
  */
 export async function listLicensesByOrg(orgId: string, status?: License['status']): Promise<License[]> {
   try {
-    const result = await ddbDocClient.send(new QueryCommand({
-      TableName: LICENSES_TABLE,
-      IndexName: 'byOrgId',
-      KeyConditionExpression: status ? 'orgId = :orgId AND #status = :status' : 'orgId = :orgId',
-      ExpressionAttributeNames: status ? { '#status': 'status' } : undefined,
-      ExpressionAttributeValues: status
-        ? { ':orgId': orgId, ':status': status }
-        : { ':orgId': orgId }
-    }));
+    const items: License[] = [];
+    let lastKey: Record<string, any> | undefined;
+    do {
+      const result: any = await ddbDocClient.send(new QueryCommand({
+        TableName: LICENSES_TABLE,
+        IndexName: 'byOrgId',
+        KeyConditionExpression: status ? 'orgId = :orgId AND #status = :status' : 'orgId = :orgId',
+        ExpressionAttributeNames: status ? { '#status': 'status' } : undefined,
+        ExpressionAttributeValues: status
+          ? { ':orgId': orgId, ':status': status }
+          : { ':orgId': orgId },
+        ExclusiveStartKey: lastKey
+      }));
+      items.push(...((result.Items as License[]) || []));
+      lastKey = result.LastEvaluatedKey;
+    } while (lastKey);
 
-    return (result.Items as License[]) || [];
+    return items;
   } catch (error: any) {
     console.error(`[LicenseService] ❌ Failed to list licenses for org ${orgId}:`, error.message);
     throw new Error(`Failed to list licenses: ${error.message}`);
@@ -139,14 +170,21 @@ export async function listLicensesByOrg(orgId: string, status?: License['status'
 
 export async function listLicensesByUser(userId: string): Promise<License[]> {
   try {
-    const result = await ddbDocClient.send(new QueryCommand({
-      TableName: LICENSES_TABLE,
-      IndexName: 'byUserId',
-      KeyConditionExpression: 'userId = :userId',
-      ExpressionAttributeValues: { ':userId': userId }
-    }));
+    const items: License[] = [];
+    let lastKey: Record<string, any> | undefined;
+    do {
+      const result: any = await ddbDocClient.send(new QueryCommand({
+        TableName: LICENSES_TABLE,
+        IndexName: 'byUserId',
+        KeyConditionExpression: 'userId = :userId',
+        ExpressionAttributeValues: { ':userId': userId },
+        ExclusiveStartKey: lastKey
+      }));
+      items.push(...((result.Items as License[]) || []));
+      lastKey = result.LastEvaluatedKey;
+    } while (lastKey);
 
-    return (result.Items as License[]) || [];
+    return items;
   } catch (error: any) {
     console.error(`[LicenseService] ❌ Failed to list licenses for user ${userId}:`, error.message);
     throw new Error(`Failed to list licenses: ${error.message}`);
@@ -237,22 +275,41 @@ export async function updateLicense(id: string, updates: UpdateLicenseInput): Pr
   const now = new Date().toISOString();
 
   const updateExpressions: string[] = ['#updatedAt = :updatedAt'];
+  const removeExpressions: string[] = [];
   const expressionAttributeNames: Record<string, string> = { '#updatedAt': 'updatedAt' };
   const expressionAttributeValues: Record<string, any> = { ':updatedAt': now };
 
   Object.entries(updates).forEach(([key, value]) => {
-    if (value !== undefined) {
-      updateExpressions.push(`#${key} = :${key}`);
-      expressionAttributeNames[`#${key}`] = key;
-      expressionAttributeValues[`:${key}`] = value;
+    if (value === undefined) return;
+    if (key === 'expiresAt') {
+      // Normalise to epoch seconds; null/'' clears the expiry. Previously the raw
+      // ISO string from the request was stored, which accessControl then compared
+      // numerically — any PATCHed expiry made the license read as already expired.
+      const epoch = toEpochSeconds(value as any);
+      expressionAttributeNames['#expiresAt'] = 'expiresAt';
+      if (epoch === null) {
+        removeExpressions.push('#expiresAt');
+      } else {
+        updateExpressions.push('#expiresAt = :expiresAt');
+        expressionAttributeValues[':expiresAt'] = epoch;
+      }
+      return;
     }
+    updateExpressions.push(`#${key} = :${key}`);
+    expressionAttributeNames[`#${key}`] = key;
+    expressionAttributeValues[`:${key}`] = value;
   });
+
+  const updateExpression =
+    `SET ${updateExpressions.join(', ')}` +
+    (removeExpressions.length ? ` REMOVE ${removeExpressions.join(', ')}` : '');
 
   try {
     const result = await ddbDocClient.send(new UpdateCommand({
       TableName: LICENSES_TABLE,
       Key: { id },
-      UpdateExpression: `SET ${updateExpressions.join(', ')}`,
+      ConditionExpression: 'attribute_exists(id)',
+      UpdateExpression: updateExpression,
       ExpressionAttributeNames: expressionAttributeNames,
       ExpressionAttributeValues: expressionAttributeValues,
       ReturnValues: 'ALL_NEW'
@@ -294,6 +351,7 @@ export default {
   listLicensesByOrg,
   listLicensesByUser,
   countActiveLicenses,
+  toEpochSeconds,
   assignLicenseToUser,
   revokeLicense,
   updateLicense,

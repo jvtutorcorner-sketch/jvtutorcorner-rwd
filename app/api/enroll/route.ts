@@ -19,8 +19,8 @@
 // was indistinguishable from a personal purchase).
 //
 // Now: a session is required to enroll; the identity on the row comes from the
-// session, not the body; orgId is resolved server-side from the caller's profile;
-// orderId is recorded; and reads go through the byUserId / byCourseId / byOrgId
+// session, not the body; orgId is never taken from the body (and a purchase is
+// not stamped with the buyer's organisation — see POST); orderId is recorded; and reads go through the byUserId / byCourseId / byOrgId
 // GSIs (lib/enrollmentService.ts) instead of scanning.
 //
 // Status transitions that grant access ('PAID', 'ACTIVE') are restricted to the
@@ -38,6 +38,7 @@ import {
   listEnrollmentsByUser,
   listEnrollmentsByCourse,
   listEnrollmentsByOrg,
+  stripEmptyIndexKeys,
   type EnrollmentRecord,
   type EnrollmentStatus,
 } from '@/lib/enrollmentService';
@@ -71,24 +72,6 @@ function isPrivileged(session: AuthedRequest['session']): boolean {
 
 function requireTable() {
   if (!TABLE_NAME) throw new Error('ENROLLMENTS_TABLE 未設定，無法存取報名資料庫。');
-}
-
-/**
- * Resolve the organisation this enrollment belongs to.
- *
- * Read from the caller's own profile rather than the request body: orgId decides
- * which organisation's admins can see the row and which tenant's seat it counts
- * against, so a client-supplied value would let anyone file an enrollment into
- * someone else's organisation.
- */
-async function resolveOrgId(userId: string): Promise<string | null> {
-  try {
-    const profile = await getProfileById(userId);
-    return (profile as any)?.orgId || null;
-  } catch (err: any) {
-    console.warn('[enroll API] orgId lookup failed:', err?.message || err);
-    return null;
-  }
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -132,10 +115,18 @@ export const POST = withAuth(async (request: AuthedRequest) => {
       );
     }
 
-    const orgId = await resolveOrgId(userId);
     const now = new Date().toISOString();
 
-    const item: EnrollmentRecord = {
+    // This handler only opens a PENDING_PAYMENT row for a purchase, which is a B2C
+    // transaction whoever the buyer is. It is NOT stamped with the buyer's orgId:
+    // EnrollmentRecord.orgId means "a seat consumed under this organisation's
+    // contract", and tagging a member's personal purchase with it both mislabelled
+    // it as B2B_SEAT and exposed it to their employer's org admins via ?orgId=.
+    // Seat-based access is decided by licenses in lib/accessControl.ts.
+    //
+    // Optional GSI key attributes (orderId / orgId / courseSessionId) are omitted
+    // rather than written as null — see stripEmptyIndexKeys.
+    const item: EnrollmentRecord = stripEmptyIndexKeys({
       id: generateId(),
       name: String(name || request.session.email || '').trim(),
       email,
@@ -144,21 +135,20 @@ export const POST = withAuth(async (request: AuthedRequest) => {
       courseTitle: String(courseTitle),
       startTime: startTime ? String(startTime) : undefined,
       endTime: endTime ? String(endTime) : undefined,
-      // Link back to the payment. Null when the enrollment is opened before an
+      // Link back to the payment. Absent when the enrollment is opened before an
       // order exists; app/api/orders writes the order side of the pair.
-      orderId: orderId ? String(orderId) : null,
-      orgId,
-      courseSessionId: courseSessionId ? String(courseSessionId) : null,
+      orderId: orderId ? String(orderId) : undefined,
+      courseSessionId: courseSessionId ? String(courseSessionId) : undefined,
       status: 'PENDING_PAYMENT',
-      sourceType: orgId ? 'B2B_SEAT' : 'B2C',
+      sourceType: 'B2C',
       createdAt: now,
       updatedAt: now,
-    };
+    });
 
     requireTable();
     await ddbDocClient.send(new PutCommand({ TableName: TABLE_NAME, Item: item }));
     console.log(
-      `[enroll API] created enrollment ${item.id} user=${userId} course=${courseId} org=${orgId ?? 'B2C'} order=${item.orderId ?? 'none'}`
+      `[enroll API] created enrollment ${item.id} user=${userId} course=${courseId} order=${item.orderId ?? 'none'}`
     );
 
     // Trigger Workflow (non-blocking)
@@ -236,14 +226,16 @@ export const PATCH = withAnyAuth('/api/enroll', async (request: AuthedRequest) =
 
     const updatedAt = new Date().toISOString();
 
-    const item: EnrollmentRecord = {
+    // stripEmptyIndexKeys: rows written before the null-key fix carry orgId/orderId
+    // as NULL; re-putting them verbatim would be rejected once byOrgId/byOrderId exist.
+    const item: EnrollmentRecord = stripEmptyIndexKeys({
       ...existing,
       id, // 確保 ID 不變
       status,
       paymentProvider: paymentProvider || existing.paymentProvider,
       paymentSessionId: paymentSessionId || existing.paymentSessionId,
       updatedAt,
-    };
+    });
 
     await ddbDocClient.send(new PutCommand({ TableName: TABLE_NAME, Item: item }));
 

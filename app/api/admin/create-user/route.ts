@@ -5,6 +5,7 @@ import { PutCommand } from '@aws-sdk/lib-dynamodb';
 import { findProfileByEmail } from '@/lib/profilesService';
 import { hashPassword } from '@/lib/auth/password';
 import { withAdmin, type AuthedRequest } from '@/lib/auth/apiGuard';
+import { assertPlanId } from '@/lib/plans';
 
 function createTemporaryPassword() {
   return `tmp_${Date.now().toString(36)}_${crypto.randomBytes(6).toString('hex')}`;
@@ -14,8 +15,18 @@ function createTemporaryPassword() {
 async function handleCreateUser(req: AuthedRequest) {
   try {
     const body = await req.json();
-    const { email, plan, password } = body;
-    if (!email) return NextResponse.json({ ok: false, error: 'email required' }, { status: 400 });
+    const { plan, password } = body;
+    const email = String(body.email || '').trim().toLowerCase();
+    if (!email || !email.includes('@')) return NextResponse.json({ ok: false, error: 'email required' }, { status: 400 });
+
+    // profile.plan is a controlled vocabulary (lib/plans.ts); an unknown value is rejected here
+    // rather than written and silently failing a later entitlement check.
+    let normalizedPlan: string;
+    try {
+      normalizedPlan = await assertPlanId(plan);
+    } catch (e) {
+      return NextResponse.json({ ok: false, error: e instanceof Error ? e.message : 'invalid plan' }, { status: 400 });
+    }
     const PROFILES_TABLE = process.env.DYNAMODB_TABLE_PROFILES || process.env.PROFILES_TABLE || 'jvtutorcorner-profiles';
     if (!PROFILES_TABLE) return NextResponse.json({ ok: false, error: 'DYNAMODB_TABLE_PROFILES 未設定' }, { status: 500 });
 
@@ -26,21 +37,31 @@ async function handleCreateUser(req: AuthedRequest) {
       console.warn('[admin.create-user] Email check failed', (e as any)?.message || e);
     }
 
-    const id = `u_${Date.now()}`;
+    const id = crypto.randomUUID();
     const providedPassword = typeof password === 'string' ? password.trim() : '';
     const defaultPassword = process.env.DEFAULT_NEW_USER_PASSWORD || '';
     const generatedPassword = createTemporaryPassword();
     const finalPassword = providedPassword || defaultPassword || generatedPassword;
     const useTemporaryPassword = !providedPassword && !defaultPassword;
 
-    const record = { id, email, password: hashPassword(finalPassword), plan: plan || 'basic', nickname: email.split('@')[0], role: 'student' };
+    const record = {
+      id,
+      roid_id: id,
+      email,
+      password: hashPassword(finalPassword),
+      plan: normalizedPlan,
+      nickname: email.split('@')[0],
+      role: 'student',
+      isB2B: false,
+      createdAt: new Date().toISOString(),
+    };
     const responseProfile: any = { id: record.id, email: record.email, plan: record.plan };
     if (useTemporaryPassword) {
       responseProfile.temporaryPassword = finalPassword;
     }
 
     try {
-      await ddbDocClient.send(new PutCommand({ TableName: PROFILES_TABLE, Item: record }));
+      await ddbDocClient.send(new PutCommand({ TableName: PROFILES_TABLE, Item: record, ConditionExpression: 'attribute_not_exists(id)' }));
       return NextResponse.json({ ok: true, profile: responseProfile });
     } catch (e: any) {
       console.error('[admin.create-user] Dynamo write failed', e?.message || e);

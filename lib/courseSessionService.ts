@@ -149,12 +149,15 @@ export async function createCourseSession(
     id: randomUUID(),
     courseId: String(input.courseId),
     teacherId,
-    orgId: input.orgId ?? null,
+    orgId: input.orgId || undefined,
     sequence,
     title: input.title,
     startTime: input.startTime,
     endTime: input.endTime,
-    roomId: input.roomId ?? null,
+    // roomId is the byRoomId GSI key: a NULL-typed value is rejected by DynamoDB
+    // ("Type mismatch for Index Key"), so an unassigned room must be an absent
+    // attribute. setSessionRoom() adds it later.
+    roomId: input.roomId || undefined,
     capacity: input.capacity ?? null,
     status: 'SCHEDULED',
     attendedCount: 0,

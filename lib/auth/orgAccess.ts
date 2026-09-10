@@ -70,8 +70,10 @@ async function getDeptAdminUnit(actor: OrgActor): Promise<OrgUnit | null> {
   if (!actor.isDeptAdmin || !actor.orgUnitId) return null;
   if (actor._deptAdminUnit !== undefined) return actor._deptAdminUnit;
   const unit = await orgUnitService.getOrgUnitById(actor.orgUnitId);
-  actor._deptAdminUnit = unit;
-  return unit;
+  // An archived unit confers no management scope — otherwise archiving a department
+  // left its dept_admin managing it (and its sub-units) indefinitely.
+  actor._deptAdminUnit = unit && unit.status !== 'archived' ? unit : null;
+  return actor._deptAdminUnit;
 }
 
 /**

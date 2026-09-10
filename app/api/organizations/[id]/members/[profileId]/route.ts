@@ -13,6 +13,7 @@ import organizationService from '@/lib/organizationService';
 import orgMembershipService from '@/lib/orgMembershipService';
 import { withAuth } from '@/lib/auth/apiGuard';
 import { requireMemberScopeAccess } from '@/lib/auth/orgAccess';
+import { writeAuditLog } from '@/lib/auditLogService';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,7 +28,11 @@ function mapMembershipError(error: any): { status: number; message: string } {
   if (message.includes('not found') || message.includes('does not belong')) {
     return { status: 404, message };
   }
-  if (message.includes('必須先指派 orgUnit')) {
+  if (
+    message.includes('必須先指派 orgUnit') ||
+    message.includes('僅學生身分') ||
+    message.includes('archived')
+  ) {
     return { status: 400, message };
   }
   return { status: 500, message };
@@ -106,6 +111,19 @@ export const PATCH = withAuth(async (req, context) => {
       });
     }
 
+    await writeAuditLog({
+      actorId: guard.actor.session.userId,
+      action: 'org.member.update',
+      targetType: 'profile',
+      targetId: profileId,
+      orgId,
+      metadata: {
+        orgUnitId: body.orgUnitId,
+        isOrgAdmin: body.isOrgAdmin,
+        isDeptAdmin: body.isDeptAdmin,
+      },
+    });
+
     return NextResponse.json({ ok: true, profile: sanitizeProfile(profile), message: 'Member updated successfully' });
   } catch (error: any) {
     console.error('[OrgMemberAPI] PATCH failed:', error.message);
@@ -141,6 +159,15 @@ export const DELETE = withAuth(async (req, context) => {
     }
 
     const result = await orgMembershipService.removeMemberFromOrg({ orgId, profileId });
+
+    await writeAuditLog({
+      actorId: guard.actor.session.userId,
+      action: 'org.member.remove',
+      targetType: 'profile',
+      targetId: profileId,
+      orgId,
+      metadata: { usedSeats: result.usedSeats },
+    });
 
     return NextResponse.json({
       ok: true,

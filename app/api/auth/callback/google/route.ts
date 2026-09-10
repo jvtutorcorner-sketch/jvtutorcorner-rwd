@@ -90,7 +90,8 @@ export async function GET(request: Request) {
                 firstName: firstName || 'Google',
                 lastName: lastName || 'User',
                 role: 'student',
-                plan: 'basic',
+                // lib/plans.ts DEFAULT_PLAN_ID — 'basic' is the legacy synonym of 'free'.
+                plan: 'free',
                 isB2B: false,
                 emailVerified: true, // Google 已驗證過
                 emailVerificationStatus: 'verified',
@@ -112,7 +113,7 @@ export async function GET(request: Request) {
             userId: canonicalId,
             email: profile.email,
             role: profile.role || 'student',
-            plan: profile.plan || 'basic',
+            plan: profile.plan || 'free',
         });
     } catch (err: any) {
         console.error('[google callback] failed to create session:', err?.message || err);

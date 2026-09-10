@@ -125,9 +125,20 @@ export const PATCH = withAuth(async (req: AuthedRequest, context) => {
       updateExpressionParts.push('totalSessions = :totalSessions');
       expressionAttributeValues[':totalSessions'] = body.totalSessions;
     }
-    if (body.seatsLeft !== undefined) {
-      updateExpressionParts.push('seatsLeft = :seatsLeft');
-      expressionAttributeValues[':seatsLeft'] = body.seatsLeft;
+    if (body.capacity !== undefined || body.seatsLeft !== undefined) {
+      // `capacity` is what lib/seatAccounting.ts reads first; `seatsLeft` is the
+      // legacy name for the same number. Writing only seatsLeft (as the edit forms
+      // do) left capacity stale, so once a course had a capacity, editing its seat
+      // limit silently did nothing. Always write both.
+      const raw = body.capacity !== undefined ? body.capacity : body.seatsLeft;
+      const cap = raw === null || raw === '' ? null : Number(raw);
+      if (cap !== null && (!Number.isInteger(cap) || cap < 0)) {
+        return NextResponse.json({ ok: false, error: 'capacity must be a non-negative integer or null' }, { status: 400 });
+      }
+      updateExpressionParts.push('#capacity = :capacity', 'seatsLeft = :seatsLeft');
+      expressionAttributeNames['#capacity'] = 'capacity';
+      expressionAttributeValues[':capacity'] = cap;
+      expressionAttributeValues[':seatsLeft'] = cap;
     }
     if (body.pricePerSession !== undefined) {
       updateExpressionParts.push('pricePerSession = :pricePerSession');

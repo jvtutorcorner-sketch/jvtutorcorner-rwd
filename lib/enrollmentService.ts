@@ -81,6 +81,28 @@ export type EnrollmentRecord = {
   sourceType?: 'B2C' | 'B2B_SEAT' | 'ADMIN_OVERRIDE';
 };
 
+/**
+ * Enrollment attributes that are GSI key attributes (byOrderId / byOrgId) or may
+ * become one. DynamoDB rejects a write whose index key attribute is NULL-typed
+ * ("Type mismatch for Index Key"), so an absent value must be an absent attribute,
+ * never `null`. courseSessionId is included so it can be indexed later without a
+ * data migration.
+ */
+export const ENROLLMENT_OPTIONAL_KEY_ATTRS = ['orgId', 'orderId', 'courseSessionId'] as const;
+
+/**
+ * Return a copy of an enrollment item safe to PutItem: optional index-key
+ * attributes that are null/empty are dropped. Use on every full-item write,
+ * including read-modify-write of rows created before this rule existed.
+ */
+export function stripEmptyIndexKeys<T extends Record<string, any>>(item: T): T {
+  const out: Record<string, any> = { ...item };
+  for (const key of ENROLLMENT_OPTIONAL_KEY_ATTRS) {
+    if (out[key] === null || out[key] === undefined || out[key] === '') delete out[key];
+  }
+  return out as T;
+}
+
 async function queryAll(params: any): Promise<EnrollmentRecord[]> {
   const items: EnrollmentRecord[] = [];
   let exclusiveStartKey: any = undefined;

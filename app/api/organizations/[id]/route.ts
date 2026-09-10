@@ -14,6 +14,9 @@ import organizationService from '@/lib/organizationService';
 import { withAuth } from '@/lib/auth/apiGuard';
 import { requireOrgAccess, requireSystemAdmin } from '@/lib/auth/orgAccess';
 import { writeAuditLog } from '@/lib/auditLogService';
+import { findProfilesByOrgId, getProfileById } from '@/lib/profilesService';
+import licenseService from '@/lib/licenseService';
+import orgMembershipService from '@/lib/orgMembershipService';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,7 +29,10 @@ const SYSTEM_ADMIN_ONLY_FIELDS = [
   'contractStartDate',
   'contractEndDate',
   'billingCycle',
-  'taxId'
+  'taxId',
+  // Changing the primary admin grants org-admin; the members route already reserves
+  // granting org-admin to system administrators, so this field must match.
+  'adminUserId'
 ];
 
 // ==========================================
@@ -105,6 +111,11 @@ export const PATCH = withAuth(async (req, context) => {
       );
     }
 
+    const current = await organizationService.getOrganizationById(id);
+    if (!current) {
+      return NextResponse.json({ ok: false, error: 'Organization not found' }, { status: 404 });
+    }
+
     // Extract allowed updatable fields
     const updates: any = {};
 
@@ -126,6 +137,13 @@ export const PATCH = withAuth(async (req, context) => {
           { status: 400 }
         );
       }
+      if (maxSeats < (current.usedSeats ?? 0)) {
+        // usedSeats <= maxSeats is the invariant every seat transaction relies on.
+        return NextResponse.json(
+          { ok: false, error: `maxSeats (${maxSeats}) cannot be below the ${current.usedSeats} seats in use — remove members first` },
+          { status: 409 }
+        );
+      }
       updates.maxSeats = maxSeats;
     }
     if (body.planTier !== undefined) {
@@ -138,11 +156,34 @@ export const PATCH = withAuth(async (req, context) => {
       updates.planTier = body.planTier;
     }
     if (body.billingEmail !== undefined) updates.billingEmail = body.billingEmail;
-    if (body.domain !== undefined) updates.domain = body.domain;
+    if (body.domain !== undefined) {
+      const domain = organizationService.normalizeOrgDomain(body.domain);
+      if (domain) {
+        const clash = await organizationService.findOrganizationByDomain(domain, id);
+        if (clash) {
+          return NextResponse.json(
+            { ok: false, error: `Email domain "${domain}" is already used by organization "${clash.name}"` },
+            { status: 409 }
+          );
+        }
+      }
+      updates.domain = domain;
+    }
     if (body.industry !== undefined) updates.industry = body.industry;
     if (body.country !== undefined) updates.country = body.country;
     if (body.taxId !== undefined) updates.taxId = body.taxId;
-    if (body.adminUserId !== undefined) updates.adminUserId = body.adminUserId;
+    if (body.adminUserId !== undefined) {
+      const newAdmin = (body.adminUserId ? await getProfileById(String(body.adminUserId)) : null) as
+        | { orgId?: string | null }
+        | null;
+      if (body.adminUserId && (!newAdmin || newAdmin.orgId !== id)) {
+        return NextResponse.json(
+          { ok: false, error: 'adminUserId must be an existing member of this organization (add them via /members first)' },
+          { status: 400 }
+        );
+      }
+      updates.adminUserId = body.adminUserId ? String(body.adminUserId) : '';
+    }
     if (body.contractStartDate !== undefined) updates.contractStartDate = body.contractStartDate;
     if (body.contractEndDate !== undefined) updates.contractEndDate = body.contractEndDate;
     if (body.billingCycle !== undefined) updates.billingCycle = body.billingCycle;
@@ -156,6 +197,19 @@ export const PATCH = withAuth(async (req, context) => {
     }
 
     const organization = await organizationService.updateOrganization(id, updates);
+
+    if (updates.adminUserId) {
+      await orgMembershipService.setMemberOrgAdmin({ orgId: id, profileId: updates.adminUserId, isOrgAdmin: true });
+    }
+
+    await writeAuditLog({
+      actorId: guard.actor.session.userId,
+      action: 'organization.update',
+      targetType: 'organization',
+      targetId: id,
+      orgId: id,
+      metadata: { fields: Object.keys(updates) },
+    });
 
     return NextResponse.json({
       ok: true,
@@ -200,6 +254,25 @@ export const DELETE = withAuth(async (req, context) => {
       );
     }
 
+    if (hardDelete) {
+      // A hard delete used to orphan every OrgUnit, License and member profile still
+      // pointing at this id — and a member with a dangling orgId can never join
+      // another org ("already belongs to a different organization").
+      const [members, licenses] = await Promise.all([
+        findProfilesByOrgId(id),
+        licenseService.listLicensesByOrg(id),
+      ]);
+      if (members.length > 0 || licenses.length > 0 || (org.usedSeats ?? 0) > 0) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: `Cannot hard delete: ${members.length} members and ${licenses.length} licenses still reference this organization. Remove them first, or soft delete (cancel) instead.`,
+          },
+          { status: 409 }
+        );
+      }
+    }
+
     await organizationService.deleteOrganization(id, hardDelete);
 
     await writeAuditLog({
@@ -207,6 +280,7 @@ export const DELETE = withAuth(async (req, context) => {
       action: hardDelete ? 'organization.delete.hard' : 'organization.delete.soft',
       targetType: 'organization',
       targetId: id,
+      orgId: id,
       metadata: { name: org.name },
     });
 

@@ -25,6 +25,7 @@ import {
 } from '@aws-sdk/lib-dynamodb';
 import { randomUUID } from 'crypto';
 import type { OrgUnit, CreateOrgUnitInput, UpdateOrgUnitInput } from './types/b2b';
+import { findProfilesByOrgId } from './profilesService';
 
 // ==========================================
 // DynamoDB Client Setup (Clean IAM Pattern)
@@ -454,6 +455,16 @@ export async function deleteOrgUnit(id: string, hardDelete: boolean = false): Pr
     }
     
     if (hardDelete) {
+      // A hard-deleted unit used to leave its members' profile.orgUnitId pointing at
+      // nothing (and a dept_admin of it with a dangling scope). Members must be moved
+      // first; archiving (soft delete) keeps the record, so it stays allowed.
+      const unit = await getOrgUnitById(id);
+      if (unit) {
+        const members = (await findProfilesByOrgId(unit.orgId)).filter((p) => p.orgUnitId === id);
+        if (members.length > 0) {
+          throw new Error(`Cannot hard delete unit with ${members.length} members assigned. Move them to another unit first or use soft delete.`);
+        }
+      }
       await ddbDocClient.send(new DeleteCommand({
         TableName: ORG_UNITS_TABLE,
         Key: { id }

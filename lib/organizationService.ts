@@ -158,17 +158,45 @@ export async function listOrganizations(status?: Organization['status']): Promis
       
       return (result.Items as Organization[]) || [];
     } else {
-      // Scan all organizations
-      const result = await ddbDocClient.send(new ScanCommand({
-        TableName: ORGANIZATIONS_TABLE
-      }));
-      
-      return (result.Items as Organization[]) || [];
+      // Scan all organizations (paged — a single Scan page stops at 1 MB)
+      const items: Organization[] = [];
+      let lastKey: Record<string, any> | undefined;
+      do {
+        const result: any = await ddbDocClient.send(new ScanCommand({
+          TableName: ORGANIZATIONS_TABLE,
+          ExclusiveStartKey: lastKey
+        }));
+        items.push(...((result.Items as Organization[]) || []));
+        lastKey = result.LastEvaluatedKey;
+      } while (lastKey);
+
+      return items;
     }
   } catch (error: any) {
     console.error('[OrganizationService] ❌ Failed to list organizations:', error.message);
     throw new Error(`Failed to list organizations: ${error.message}`);
   }
+}
+
+/** Canonical form of an org email domain: lowercase, no leading '@'. '' when absent. */
+export function normalizeOrgDomain(domain: unknown): string {
+  return String(domain ?? '').trim().replace(/^@/, '').toLowerCase();
+}
+
+/**
+ * The non-cancelled organization that already claims this email domain, if any.
+ * Domains decide which org a self-registering user may join, so two live orgs must
+ * never share one. There is no domain index; the organizations table is small.
+ */
+export async function findOrganizationByDomain(domain: string, excludeId?: string): Promise<Organization | null> {
+  const wanted = normalizeOrgDomain(domain);
+  if (!wanted) return null;
+  const all = await listOrganizations();
+  return (
+    all.find(
+      (o) => o.id !== excludeId && o.status !== 'cancelled' && normalizeOrgDomain(o.domain) === wanted
+    ) || null
+  );
 }
 
 /**
@@ -333,6 +361,8 @@ export default {
   getOrganizationById,
   getOrganizationByEmail,
   listOrganizations,
+  findOrganizationByDomain,
+  normalizeOrgDomain,
   updateOrganization,
   incrementUsedSeats,
   decrementUsedSeats,

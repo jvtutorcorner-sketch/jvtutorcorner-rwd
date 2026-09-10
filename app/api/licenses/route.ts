@@ -11,7 +11,7 @@
  */
 
 import { NextResponse } from 'next/server';
-import licenseService from '@/lib/licenseService';
+import licenseService, { toEpochSeconds } from '@/lib/licenseService';
 import organizationService from '@/lib/organizationService';
 import type { License } from '@/lib/types/b2b';
 import { withAuth } from '@/lib/auth/apiGuard';
@@ -94,6 +94,14 @@ export const POST = withAuth(async (req) => {
         { ok: false, error: `count must be between 1 and ${MAX_BULK_PROVISION}` },
         { status: 400 }
       );
+    }
+
+    if (body.expiresAt !== undefined && body.expiresAt !== null && body.expiresAt !== '') {
+      try {
+        toEpochSeconds(body.expiresAt);
+      } catch {
+        return NextResponse.json({ ok: false, error: 'expiresAt must be an ISO 8601 date or epoch seconds' }, { status: 400 });
+      }
     }
 
     // 未指派的授權不佔席次，但防止備妥超過組織上限的庫存（永遠無法被指派完）。

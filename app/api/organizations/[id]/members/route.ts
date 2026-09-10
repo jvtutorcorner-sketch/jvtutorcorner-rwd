@@ -14,6 +14,7 @@ import licenseService from '@/lib/licenseService';
 import orgMembershipService from '@/lib/orgMembershipService';
 import { withAuth } from '@/lib/auth/apiGuard';
 import { requireOrgAccess, requireMemberScopeAccess, filterMembersForActor, resolveOrgActor } from '@/lib/auth/orgAccess';
+import { writeAuditLog } from '@/lib/auditLogService';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,11 +32,13 @@ function mapAssignError(error: any): { status: number; message: string } {
     message.includes('占用') ||
     message.includes('已屬於其他組織') ||
     message.includes('already assigned') ||
-    message.includes('already belongs')
+    message.includes('already belongs') ||
+    message.includes('已持有有效授權') ||
+    message.includes('already holds')
   ) {
     return { status: 409, message };
   }
-  if (message.includes('not active') || message.includes('archived')) {
+  if (message.includes('not active') || message.includes('archived') || message.includes('Invalid license expiresAt')) {
     return { status: 400, message };
   }
   return { status: 500, message };
@@ -131,6 +134,15 @@ export const POST = withAuth(async (req, context) => {
       courseId,
       expiresAt,
       assignedBy: guard.actor.session.userId
+    });
+
+    await writeAuditLog({
+      actorId: guard.actor.session.userId,
+      action: 'org.member.add',
+      targetType: 'profile',
+      targetId: profileId!,
+      orgId,
+      metadata: { licenseId: result.license.id, orgUnitId: orgUnitId || null, isOrgAdmin: isOrgAdmin === true },
     });
 
     return NextResponse.json(
