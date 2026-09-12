@@ -7,6 +7,7 @@ import {
 } from '@/lib/auth/googleSSO';
 import { findProfileByEmail, putProfile } from '@/lib/profilesService';
 import { createSession } from '@/lib/auth/sessionManager';
+import { getAccountBlock } from '@/lib/auth/accountStatus';
 import { randomUUID } from 'crypto';
 
 export const dynamic = 'force-dynamic';
@@ -104,6 +105,13 @@ export async function GET(request: Request) {
     } catch (err: any) {
         console.error('[google callback] profile lookup/create failed:', err?.message || err);
         return redirectWithError(request, 'google_auth_failed');
+    }
+
+    // 停權 / 封鎖的帳號不得透過 Google 登入繞過（狀態存在 profile 上，跟登入方式無關）
+    const block = getAccountBlock(profile);
+    if (block) {
+        console.warn('[google callback] blocked account attempted login', { email, status: block.status });
+        return redirectWithError(request, block.status === 'banned' ? 'account_banned' : 'account_suspended');
     }
 
     const canonicalId = profile.roid_id || profile.id;
