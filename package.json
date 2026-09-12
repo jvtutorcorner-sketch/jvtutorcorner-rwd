@@ -11,6 +11,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "check:bundle-secrets": "node scripts/check-bundle-secrets.mjs",
     "db:setup": "node scripts/setup-db.mjs",
     "db:verify": "node scripts/verify-schema.mjs",
     "db:verify:template": "node scripts/verify-schema.mjs --template",

@@ -4,7 +4,7 @@ description: '測試 Stripe 支付流程——包括學生端在 /pricing 頁面
 argument-hint: '執行 Stripe 支付測試流程，包含故障診斷'
 metadata:
   verified-status: '✅ VERIFIED'
-  last-verified-date: '2026-04-30'
+  last-verified-date: '2026-09-11'
   architecture-aligned: true
   notes: '環境配置已統一至 lib/envConfig.ts (APP_ENV switch)'
 ---
@@ -366,13 +366,9 @@ app/apps/page.tsx              # 應用程式與服務管理
 ### 執行 Stripe 支付流程測試
 ```bash
 # 基礎 Stripe 支付測試（學生端）
-npx playwright test e2e/stripe_payment.spec.ts
+npx playwright test e2e/stripe_payment_verification.spec.ts
 
-# 管理員 Stripe 診斷測試
-npx playwright test e2e/admin_stripe_diagnostics.spec.ts
-
-# 完整端到端測試（學生 + 管理員）
-npx playwright test e2e/stripe_payment.spec.ts e2e/admin_stripe_diagnostics.spec.ts
+# 管理員 Stripe 診斷測試（尚未建立：e2e/admin_stripe_diagnostics.spec.ts）
 ```
 
 ## 幣種支持

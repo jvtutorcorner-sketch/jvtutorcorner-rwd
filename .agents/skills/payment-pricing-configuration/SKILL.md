@@ -4,7 +4,7 @@ description: '確認 "/settings/pricing" 的訂閱方案、點數購買、折扣
 argument-hint: '執行 "/settings/pricing" 全面性功能的 E2E 驗證測試'
 metadata:
   verified-status: '✅ VERIFIED'
-  last-verified-date: '2026-04-30'
+  last-verified-date: '2026-09-11'
   architecture-aligned: true
   notes: '環境配置由 lib/envConfig.ts 統一管理 (APP_ENV)；paymentSuccessHandler 冪等性確保支付後配置生效'
   dependencies:

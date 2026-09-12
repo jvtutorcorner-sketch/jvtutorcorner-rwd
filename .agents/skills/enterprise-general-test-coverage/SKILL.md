@@ -3,7 +3,7 @@ name: enterprise-general-test-coverage
 description: Audit and extend test coverage for JV Tutor Corner enterprise (B2B) and general-user (B2C) functionality. Use when reviewing feature completeness, finding untested or skipped enterprise/general flows, reconciling stale architecture documents with current routes, or adding focused verification scripts.
 metadata:
   verified-status: '✅ VERIFIED'
-  last-verified-date: '2026-08-08'
+  last-verified-date: '2026-09-11'
   architecture-aligned: true
 ---
 

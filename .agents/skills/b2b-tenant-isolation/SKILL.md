@@ -86,8 +86,11 @@ metadata:
 # 階段 2-2 完成後：
 npm run test:local -- --grep "b2b-tenant-isolation"
 
-# k6 效能壓測（每租戶獨立 session token）
-k6 run .agents/skills/b2b-tenant-isolation/scripts/tenant_isolation_load.js
+# 已實作的部門管理員範圍測試
+npx playwright test e2e/b2b_dept_admin_scope.spec.ts --project=chromium
+
+# k6 效能壓測（每租戶獨立 session token）——尚未建立：
+# .agents/skills/b2b-tenant-isolation/scripts/tenant_isolation_load.js
 ```
 
 ## 相關技能

@@ -4,7 +4,7 @@ description: '負責處理課程取消後的點數返還（Point Return）邏輯
 argument-hint: '實作或更新點數返還/扣點回補邏輯'
 metadata:
   verified-status: '✅ VERIFIED'
-  last-verified-date: '2026-04-30'
+  last-verified-date: '2026-09-11'
   architecture-aligned: true
   notes: '與 paymentSuccessHandler 冪等性配合，確保課程激活與取消的對稱性'
 ---

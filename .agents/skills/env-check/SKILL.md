@@ -2,6 +2,11 @@
 type: skill
 name: env-check
 description: 檢查本地開發環境變數 (.env.local) 是否正確配置，並確保沒有將機密資訊硬編碼在專案代碼中。
+metadata:
+  verified-status: '⚠️ PARTIAL'
+  last-verified-date: '2026-09-11'
+  architecture-aligned: true
+  related-skills: [cloud-hybrid-architecture, db-ops-migrations, server-auth-guards]
 ---
 
 # 環境變數檢查與安全性規範 (Env Check & Security Guidelines)
@@ -56,3 +61,15 @@ description: 檢查本地開發環境變數 (.env.local) 是否正確配置，�
    - 回報檔案位置與風險等級
    - 提供替換方案（改用環境變數 + 佔位符）
 5. 重新掃描確認修正已生效，再繼續其他任務。
+
+## 自動化檢查 (Automated Checks)
+
+- `npm run check:bundle-secrets`（[scripts/check-bundle-secrets.mjs](../../../scripts/check-bundle-secrets.mjs)）：build 後掃描 client bundle，確認伺服器祕密（含 `STORAGE_SECRET_ACCESS_KEY`、`CF_REALTIME_APP_SECRET`、`CF_TURN_KEY_API_TOKEN`）沒有被打包進瀏覽器端。需先 `npm run build`。
+- `npm run sync:amplify:env`（[scripts/sync-amplify-env-to-dotenv.mjs](../../../scripts/sync-amplify-env-to-dotenv.mjs)）：從 Amplify 拉環境變數到本機 dotenv。
+- [next.config.ts](../../../next.config.ts) 啟動時會警告仍在使用已作廢預設值的 `SESSION_SECRET`／`API_HMAC_SECRET`。
+- 新增伺服器端變數時：Amplify Gen1 SSR 需把變數加進 `next.config.ts` 的 `env` 區塊才會在執行期可用；祕密類變數同時加進 check-bundle-secrets 的名單。
+- 非 production 的測試開關：`DISABLE_RATE_LIMIT=true` 停用速率限制（見 [abuse-prevention](../abuse-prevention/SKILL.md)）。
+
+## 相關技能
+
+- [cloud-hybrid-architecture](../cloud-hybrid-architecture/SKILL.md)、[db-ops-migrations](../db-ops-migrations/SKILL.md)、[server-auth-guards](../server-auth-guards/SKILL.md)

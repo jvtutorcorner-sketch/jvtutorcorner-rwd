@@ -4,7 +4,7 @@ description: '自動登入驗證技能。讀取 .env.local 中的測試帳號資
 argument-hint: '執行自動登入，並指定角色 (teacher/student)'
 metadata:
   verified-status: '✅ VERIFIED'
-  last-verified-date: '2026-03-15'
+  last-verified-date: '2026-09-11'
   architecture-aligned: true
 ---
 

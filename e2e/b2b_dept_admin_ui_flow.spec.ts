@@ -86,7 +86,8 @@ test.describe('dept_admin 指派 — 真實瀏覽器操作流程', () => {
       email: memberEmail,
       firstName: 'DeptAdminE2E',
       lastName: '測試對象',
-      role: 'teacher',
+      // 只有學生身分可升為部門管理員（lib/orgMembershipService.ts setMemberDeptAdmin），老師會回 400
+      role: 'student',
       plan: null,
       isB2B: true,
       orgId: org.id,
@@ -107,7 +108,7 @@ test.describe('dept_admin 指派 — 真實瀏覽器操作流程', () => {
 
       const row = page.locator('tr', { hasText: memberEmail });
       await expect(row).toBeVisible({ timeout: 10000 });
-      await expect(row).toContainText('teacher');
+      await expect(row).toContainText('student');
 
       await test.step('設為部門管理員', async () => {
         const promoteResponsePromise = page.waitForResponse(
@@ -122,7 +123,7 @@ test.describe('dept_admin 指派 — 真實瀏覽器操作流程', () => {
         await expect(row).toContainText('部門管理員', { timeout: 10000 });
       });
 
-      await test.step('取消 → 還原成原本的 teacher 角色', async () => {
+      await test.step('取消 → 還原成原本的 student 角色', async () => {
         const revokeResponsePromise = page.waitForResponse(
           (r) => r.url().includes(`/api/organizations/${org.id}/members/${memberId}`) && r.request().method() === 'PATCH'
         );
@@ -130,9 +131,9 @@ test.describe('dept_admin 指派 — 真實瀏覽器操作流程', () => {
         const revokeResponse = await revokeResponsePromise;
         expect(revokeResponse.ok(), '取消 API 回應 2xx').toBeTruthy();
         const revokeData = await revokeResponse.json();
-        expect(revokeData.profile?.role, 'API 回傳 role 已還原成 teacher').toBe('teacher');
+        expect(revokeData.profile?.role, 'API 回傳 role 已還原成 student').toBe('student');
 
-        await expect(row).toContainText('teacher', { timeout: 10000 });
+        await expect(row).toContainText('student', { timeout: 10000 });
         // 「設為部門管理員」按鈕文字本身就含有「部門管理員」四個字，所以不能用
         // not.toContainText 判斷是否還原——改成直接確認「取消」按鈕消失、
         // 「設為部門管理員」按鈕重新出現，這才是真正區分兩種狀態的依據。
@@ -141,7 +142,7 @@ test.describe('dept_admin 指派 — 真實瀏覽器操作流程', () => {
       });
 
       const persisted = await getProfileById(memberId);
-      expect((persisted as any)?.role, 'DynamoDB 裡的 role 真的還原了，不只是畫面顯示').toBe('teacher');
+      expect((persisted as any)?.role, 'DynamoDB 裡的 role 真的還原了，不只是畫面顯示').toBe('student');
       expect((persisted as any)?.previousRole, 'previousRole 在還原後已被清除').toBeUndefined();
     } finally {
       console.log('\n--- cleanup ---');

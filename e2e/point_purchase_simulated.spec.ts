@@ -62,6 +62,9 @@ test('Point Purchase Flow (Simulated Payment)', async ({ page }) => {
     await page.evaluate((data) => {
         localStorage.setItem('tutor_mock_user', JSON.stringify({
             email: data.profile.email,
+            // checkout 以 roid_id || id 當 userId；缺少時會退回 email，被 /api/plan-upgrades 的本人檢查 403
+            roid_id: data.profile.roid_id,
+            id: data.profile.id,
             plan: data.profile.plan || 'basic',
             role: data.profile.role,
             firstName: data.profile.firstName,
@@ -99,8 +102,9 @@ test('Point Purchase Flow (Simulated Payment)', async ({ page }) => {
         console.log("On /plans page. Verifying record...");
         // Check for "Point Purchase Record" tab and content
         await page.click('button:has-text("點數購買紀錄")');
-        await expect(page.locator('tr:has-text("已付款")').first()).toBeVisible();
-        await expect(page.locator('tr:has-text("點數套餐")').first()).toBeVisible();
+        // /plans 以非同步方式載入 /api/plan-upgrades；next dev 下預設 5 秒不一定夠
+        await expect(page.locator('tr:has-text("已付款")').first()).toBeVisible({ timeout: 15000 });
+        await expect(page.locator('tr:has-text("點數套餐")').first()).toBeVisible({ timeout: 15000 });
     }
     
     console.log("Purchase verified in UI. Checking API for balance update...");

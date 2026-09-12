@@ -68,8 +68,10 @@ test.describe('企業自助註冊 — 真實瀏覽器操作流程', () => {
         console.log('   [debug] org selected');
         await page.locator('.field', { hasText: '身份' }).locator('select').selectOption('student', { timeout: 10000 });
         console.log('   [debug] role selected');
-        await page.locator('.field', { hasText: 'First Name' }).locator('input').fill('Verify', { timeout: 10000 });
-        await page.locator('.field', { hasText: 'Last Name' }).locator('input').fill('Bot', { timeout: 10000 });
+        // 姓名標籤已在地化為「名」「姓」（first_name_label／last_name_label），input 沒有 name；
+        // 以 label 全文比對，避免單字「名」「姓」誤中其他欄位。
+        await page.locator('.field').filter({ has: page.locator('label', { hasText: /^名\s*\*$/ }) }).locator('input').fill('Verify', { timeout: 10000 });
+        await page.locator('.field').filter({ has: page.locator('label', { hasText: /^姓\s*\*$/ }) }).locator('input').fill('Bot', { timeout: 10000 });
         await page.locator('.field', { hasText: 'Email' }).locator('input').fill(email, { timeout: 10000 });
         await page.locator('input[type="password"]').nth(0).fill('TestPassw0rd!', { timeout: 10000 });
         await page.locator('input[type="password"]').nth(1).fill('TestPassw0rd!', { timeout: 10000 });

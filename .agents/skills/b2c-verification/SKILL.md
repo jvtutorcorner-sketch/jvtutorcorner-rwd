@@ -4,7 +4,7 @@ description: 'B2C 端到端驗證技能。涵蓋公開頁渲染策略與 SEO、�
 argument-hint: '驗證 B2C 獲客漏斗、公開頁 SSR/SEO、訪客可及性與租戶隔離'
 metadata:
   verified-status: '⚠️ PARTIAL'
-  last-verified-date: '2026-07-31'
+  last-verified-date: '2026-09-11'
   architecture-aligned: false
   notes: 'M1 的失敗項為架構缺陷（middleware 全站 no-store + 缺 generateMetadata），非測試錯誤；M4 依賴 tenantId 導入後才能執行'
 ---

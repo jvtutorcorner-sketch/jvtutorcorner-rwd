@@ -116,8 +116,16 @@ test.describe('Enterprise + general feature security contracts', () => {
     expect([401, 403]).toContain(response.status());
   });
 
-  test('AI dispatch exposes a read-only agent catalog without provider credentials', async ({ request }) => {
-    const response = await request.get('/api/ai-chat/dispatch');
+  // /api/ai-chat/dispatch 會呼叫付費的 AI 供應商，bd85fe7 起改為 withAuth：匿名一律 401。
+  test('AI dispatch rejects anonymous GET and POST', async ({ request }) => {
+    expect((await request.get('/api/ai-chat/dispatch')).status()).toBe(401);
+    expect((await request.post('/api/ai-chat/dispatch', { data: {} })).status()).toBe(401);
+  });
+
+  test('AI dispatch exposes a read-only agent catalog to an authenticated caller', async ({ request }) => {
+    const bypass = process.env.LOGIN_BYPASS_SECRET;
+    test.skip(!bypass, 'LOGIN_BYPASS_SECRET is required for the x-e2e-secret system session');
+    const response = await request.get('/api/ai-chat/dispatch', { headers: { 'x-e2e-secret': bypass! } });
     expect(response.status()).toBe(200);
     const body = await response.json();
     expect(body.ok).toBe(true);
@@ -125,7 +133,9 @@ test.describe('Enterprise + general feature security contracts', () => {
   });
 
   test('AI dispatch validates an empty query before contacting an AI provider', async ({ request }) => {
-    const response = await request.post('/api/ai-chat/dispatch', { data: {} });
+    const bypass = process.env.LOGIN_BYPASS_SECRET;
+    test.skip(!bypass, 'LOGIN_BYPASS_SECRET is required for the x-e2e-secret system session');
+    const response = await request.post('/api/ai-chat/dispatch', { data: {}, headers: { 'x-e2e-secret': bypass! } });
     expect(response.status()).toBe(400);
     await expect(response.json()).resolves.toMatchObject({ ok: false, error: 'query required' });
   });

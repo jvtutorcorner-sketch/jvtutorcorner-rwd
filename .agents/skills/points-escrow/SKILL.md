@@ -4,7 +4,7 @@ description: '點數暫存（Escrow）系統：學生報名時扣點，課程完
 argument-hint: '驗證報名扣點與課程完成時的 Escrow 釋放邏輯'
 metadata:
   verified-status: '✅ VERIFIED'
-  last-verified-date: '2026-04-30'
+  last-verified-date: '2026-09-11'
   infrastructure-deployed: '✅ Table 配置 + 初始化腳本'
   amplify-build-status: '✅ 修復 js-yaml TypeScript 錯誤'
   architecture-aligned: true

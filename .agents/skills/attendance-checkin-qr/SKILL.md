@@ -3,8 +3,8 @@ name: attendance-checkin-qr
 description: '驗證 QR 報到核銷系統：學員動態票券頁、助教掃碼、報到核銷 API 與報到通知信。'
 argument-hint: '驗證 QR 報到核銷與票券信流程'
 metadata:
-  verified-status: '🔄 IN-PROGRESS'
-  last-verified-date: '2026-08-04'
+  verified-status: '⚠️ PARTIAL'
+  last-verified-date: '2026-09-11'
   architecture-aligned: true
   related-skills: [auto-login, student-enrollment-flow, email-notification-testing]
 ---

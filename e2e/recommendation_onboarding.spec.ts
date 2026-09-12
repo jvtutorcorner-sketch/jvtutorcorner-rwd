@@ -177,7 +177,8 @@ test.describe('Suite B: UI – Homepage Recommendation Section', () => {
     await expect(header).toBeVisible({ timeout: 8000 });
 
     // The "create account" link should be visible for guests
-    const createAccountLink = page.locator('a', { hasText: '建立帳號獲得更精準推薦' });
+    // 文案改由 i18n key create_account_for_recommendations 提供（app/ClientHomePage.tsx）
+    const createAccountLink = page.locator('a', { hasText: '建立帳號，獲得個性化推薦' });
     await expect(createAccountLink).toBeVisible();
 
     console.log('[B1] Guest homepage recommendation section visible');
@@ -213,6 +214,11 @@ test.describe('Suite B: UI – Homepage Recommendation Section', () => {
   });
 
   test('Guest: clicking backdrop closes the questionnaire', async ({ page }) => {
+    // 問卷抽屜由 feature flag 控制（0de6a89）；關閉時頁面不會渲染它。
+    test.skip(
+      process.env.NEXT_PUBLIC_ENABLE_ONBOARDING_QUESTIONNAIRE !== 'true',
+      'Questionnaire is feature-flagged off (NEXT_PUBLIC_ENABLE_ONBOARDING_QUESTIONNAIRE)'
+    );
     await page.addInitScript(() => {
       localStorage.removeItem('jv_survey_seeds');
       localStorage.removeItem('jv_survey_answers');
@@ -243,6 +249,11 @@ test.describe('Suite B: UI – Homepage Recommendation Section', () => {
 
 test.describe('Suite B: UI – Register Page Questionnaire', () => {
   test('Questionnaire appears after successful registration', async ({ page }) => {
+    test.fixme(
+      true,
+      'Registration now ends on the email-verification card (app/login/register/page.tsx); ' +
+        'the post-registration questionnaire trigger was removed (0a6826a, f504a31)'
+    );
     test.setTimeout(60000);
 
     await page.goto(`${BASE_URL}/login/register`);

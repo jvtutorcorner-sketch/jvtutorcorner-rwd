@@ -1,5 +1,11 @@
 # MVP 成本分析 & Agora 替代方案評估
 
+> **2026-09-10 補充**：本文件只比較 Agora 替代方案。若要看「整個平台換到 GCP 或 Cloudflare 的成本與適配性」
+> （運算、資料庫、儲存、頻寬、知識庫、部署），見
+> [cloud-platform-comparison-aws-gcp-cloudflare.md](./cloud-platform-comparison-aws-gcp-cloudflare.md)，
+> 該文件沿用本文的 10 / 50 / 100 堂·天基準。
+
+
 **文件日期：** 2026-06-27  
 **分析範圍：** MVP 壓力測試（10 組並發）+ 上線後生產費用  
 **課堂規格：** 固定 50 分鐘 / 堂，1 教師 + 1 學生（2 users/session）

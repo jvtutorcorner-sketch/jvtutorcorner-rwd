@@ -9,8 +9,29 @@ const BYPASS_SECRET = process.env.LOGIN_BYPASS_SECRET;
 const STUDENT_EMAIL = process.env.TEST_STUDENT_EMAIL;
 const STUDENT_PASSWORD = process.env.TEST_STUDENT_PASSWORD;
 
+// /learning-content（含其 questionnaire 子路由）由 app/learning-content/layout.tsx 的
+// requirePageSession 守門（bd85fe7），匿名會被導向 /login?reason=learning_content_no_session。
+// 頁面類案例因此先以真實學生 session 登入；page.request 與瀏覽器共用 cookie。
+async function loginAsStudent(page: import('@playwright/test').Page) {
+  test.skip(
+    !BYPASS_SECRET || !STUDENT_EMAIL || !STUDENT_PASSWORD,
+    'Requires TEST_STUDENT_EMAIL/TEST_STUDENT_PASSWORD + LOGIN_BYPASS_SECRET for a real session'
+  );
+  const loginRes = await page.request.post('/api/login', {
+    data: JSON.stringify({ email: STUDENT_EMAIL, password: STUDENT_PASSWORD, captchaToken: '', captchaValue: BYPASS_SECRET }),
+    headers: { 'Content-Type': 'application/json' },
+  });
+  expect(loginRes.ok(), 'Test student login must succeed').toBeTruthy();
+}
+
 test.describe('learning content analysis module', () => {
+  test('anonymous visitors are sent to login from the teaching content page', async ({ page }) => {
+    await page.goto('/learning-content');
+    await expect(page).toHaveURL(/\/login\?reason=learning_content_no_session/);
+  });
+
   test('teaching content page exposes analysis and learning questionnaire entry points', async ({ page }) => {
+    await loginAsStudent(page);
     await page.goto('/learning-content');
 
     await expect(page.getByRole('heading', { name: '教材影像分析與學習回饋' })).toBeVisible();
@@ -19,11 +40,13 @@ test.describe('learning content analysis module', () => {
   });
 
   test('learning content questionnaire entry redirects to the shared learning questionnaire', async ({ page }) => {
+    await loginAsStudent(page);
     await page.goto('/learning-content/questionnaire');
     await expect(page).toHaveURL(/\/questionnaire\/learning$/);
   });
 
   test('legacy medicine and product pages redirect to the teaching module', async ({ page }) => {
+    await loginAsStudent(page);
     await page.goto('/medicine-product');
     await expect(page).toHaveURL(/\/learning-content$/);
 
@@ -123,6 +146,7 @@ test.describe('learning content analysis module', () => {
       })
     );
 
+    await loginAsStudent(page);
     await page.goto('/learning-content');
     await page.locator('input[type="file"]').setInputFiles({
       name: 'note.png',

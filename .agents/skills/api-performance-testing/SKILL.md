@@ -1,6 +1,11 @@
 ---
 name: api-performance-testing
 description: 使用 k6 進行 API 效能測試與壓力測試。支援 Session 與 HMAC 認證，可用於驗證系統容量、反應時間與穩定性。
+metadata:
+  verified-status: '❌ UNVERIFIED'
+  last-verified-date: '-'
+  architecture-aligned: false
+  related-skills: [server-auth-guards, b2b-tenant-isolation]
 ---
 
 # API Performance Testing Skill

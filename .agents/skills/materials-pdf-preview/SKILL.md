@@ -3,8 +3,8 @@ name: materials-pdf-preview
 description: '驗證講義「僅供線上預覽」機制：教師上傳教材、S3 受保護串流、以及報名學生才能預覽的存取控管。'
 argument-hint: '驗證講義線上預覽與防下載機制'
 metadata:
-  verified-status: '🔄 IN-PROGRESS'
-  last-verified-date: '2026-08-04'
+  verified-status: '⚠️ PARTIAL'
+  last-verified-date: '2026-09-11'
   architecture-aligned: true
   related-skills: [attendance-checkin-qr, student-enrollment-flow]
   latest-fixes:

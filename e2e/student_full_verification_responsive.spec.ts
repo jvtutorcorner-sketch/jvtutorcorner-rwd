@@ -32,6 +32,7 @@ test('學生付款報名到上課與倒數計時測試 (響應式包含電腦版
     // ============================================
     // 1. 後台 API 準備資料: 建立課程並清空學生點數
     // ============================================
+    let studentId = '';
     const apiContext = await browser.newContext();
     try {
         console.log(`[準備] 建立測試課程: ${testCourseId}`);
@@ -56,20 +57,32 @@ test('學生付款報名到上課與倒數計時測試 (響應式包含電腦版
             }
         });
 
-        // Reset Student points to 0
-        console.log(`[準備] 重置學生 (${studentEmail}) 點數為 0...`);
-        await apiContext.request.post(`${baseUrl}/api/points`, {
-            data: { userId: studentEmail, action: 'set', amount: 0, reason: 'E2E Full Flow Test Reset' }
+        // 點數與訂單都以 canonical id（roid_id || id）為 key，session.userId 也是它，不是 email。
+        const studentLoginRes = await apiContext.request.post(`${baseUrl}/api/login`, {
+            data: { email: studentEmail, password: studentPassword, captchaValue: bypassSecret }
         });
+        const studentData = await studentLoginRes.json();
+        studentId = String(studentData.profile?.roid_id || studentData.profile?.id || '');
+        if (!studentId) throw new Error('Student login response has no roid_id/id');
+
+        // Reset Student points to 0（以 x-e2e-secret 取得 system 身分，僅非 production）
+        console.log(`[準備] 重置學生 (${studentEmail}) 點數為 0...`);
+        const resetRes = await apiContext.request.post(`${baseUrl}/api/points`, {
+            data: { userId: studentId, action: 'set', amount: 0, reason: 'E2E Full Flow Test Reset' },
+            headers: { 'x-e2e-secret': bypassSecret }
+        });
+        expect(resetRes.ok(), `reset student points failed: ${await resetRes.text()}`).toBe(true);
 
         console.log(`[準備] 清理學生 ${studentEmail} 既有訂單，避免時間衝突...`);
-        const oldOrdersRes = await apiContext.request.get(`${baseUrl}/api/orders?userId=${studentEmail}&limit=50`);
+        const oldOrdersRes = await apiContext.request.get(`${baseUrl}/api/orders?userId=${encodeURIComponent(studentId)}&limit=50`);
         const oldOrdersData = await oldOrdersRes.json();
         if (oldOrdersData?.ok && oldOrdersData.data) {
             for (const order of oldOrdersData.data) {
                 const oid = order.orderId || order.id;
                 if (oid) {
-                    await apiContext.request.delete(`${baseUrl}/api/orders/${oid}`);
+                    await apiContext.request.delete(`${baseUrl}/api/orders/${oid}`, {
+                        headers: { 'x-e2e-secret': bypassSecret }
+                    });
                 }
             }
         }
@@ -260,7 +273,8 @@ test('學生付款報名到上課與倒數計時測試 (響應式包含電腦版
 
             // 3. 重置點數
             await cleanupContext.request.post(`${baseUrl}/api/points`, {
-                data: { userId: studentEmail, action: 'set', amount: 0, reason: 'E2E Cleanup' }
+                data: { userId: studentId, action: 'set', amount: 0, reason: 'E2E Cleanup' },
+                headers: { 'x-e2e-secret': bypassSecret }
             });
         } catch (e) {
             console.warn(`[清理] 警告: 清理過程發生錯誤: ${e}`);

@@ -4,7 +4,7 @@ description: 'B2B 企業戶核心模組驗證技能。用 Node 腳本直接打�
 argument-hint: '驗證 B2B 席次/授權、成員管理、組織單位階層、orgAccess 授權範圍、B2C/B2B 共用課程存取閘門'
 metadata:
   verified-status: '✅ VERIFIED'
-  last-verified-date: '2026-08-08'
+  last-verified-date: '2026-09-12'
   architecture-aligned: true
   notes: '涵蓋 32c5977 commit 點名的四個核心模組；過程中發現並修復 5 個問題（見下），最新一個是 2026-08-08 複驗時發現的併發 TransactionConflict 未重試 bug。不含 dept_admin 子部門範圍限制（未實作）與跨租戶 SSO 隔離（見 b2b-tenant-isolation，待階段 2-2）。'
 ---

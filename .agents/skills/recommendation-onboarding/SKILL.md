@@ -4,7 +4,7 @@ description: '驗證首頁推薦系統（混合式權重演算法）與新手引
 argument-hint: '描述要驗證的功能，例如：驗證問卷注入後首頁推薦是否變化、測試訪客閒置觸發問卷'
 metadata:
   verified-status: '✅ VERIFIED'
-  last-verified-date: '2026-03-15'
+  last-verified-date: '2026-09-11'
   architecture-aligned: true
 ---
 

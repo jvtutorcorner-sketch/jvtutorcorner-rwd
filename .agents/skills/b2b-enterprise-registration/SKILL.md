@@ -4,7 +4,7 @@ description: '企業自助註冊流程驗證技能。涵蓋 /login/register_ente
 argument-hint: '驗證企業自助註冊：單筆註冊、CSV 批次匯入、網域檢查、席次競態 rollback'
 metadata:
   verified-status: '✅ VERIFIED'
-  last-verified-date: '2026-08-08'
+  last-verified-date: '2026-09-12'
   architecture-aligned: true
   notes: '驗證過程中發現並修復 4 個問題，其中一個（PermissionGuard 誤擋匿名訪客）讓整個企業註冊頁對真實訪客完全不可達。'
 ---

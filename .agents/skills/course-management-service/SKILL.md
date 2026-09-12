@@ -3,8 +3,8 @@ name: course-management-service
 description: '負責教師的課程管理與管理員的課程審核。'
 argument-hint: '管理教師課程建立、狀態更新及管理員審核流程'
 metadata:
-  verified-status: ✅ VERIFIED
-  last-verified-date: '2026-03-16'
+  verified-status: '⚠️ PARTIAL'
+  last-verified-date: '2026-09-11'
   architecture-aligned: true
 ---
 
@@ -57,7 +57,7 @@ metadata:
 
 ### 3. 執行驗證指令 (Validation Command)
 - `npx playwright test e2e/course_management_flow.spec.ts`
-- `npx playwright test e2e/student_enrollment.spec.ts` (驗證測試課程生命週期)
+- `npx playwright test e2e/student_enrollment_flow.spec.ts` (驗證測試課程生命週期)
 - **API Registry**: `node scripts/inspect_apis.mjs` (若有修改 API 結構)
 
 ## 測試指令

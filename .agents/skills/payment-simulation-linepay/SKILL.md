@@ -3,8 +3,8 @@ name: payment-simulation-linepay
 description: '模擬 LINE Pay 支付流程，驗證從結帳頁面導向 LINE Pay 模擬環境並成功返回的完整邏輯。'
 argument-hint: '執行 LINE Pay 模擬支付測試'
 metadata:
-  verified-status: '✅ VERIFIED'
-  last-verified-date: '2026-04-17'
+  verified-status: '⚠️ PARTIAL'
+  last-verified-date: '2026-09-11'
   architecture-aligned: true
 ---
 

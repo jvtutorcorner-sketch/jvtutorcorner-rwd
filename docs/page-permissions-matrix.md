@@ -5,6 +5,12 @@
 > `app/admin/layout.tsx`、`app/layout.tsx`、`components/auth/PermissionGuard.tsx`、`middleware.ts`，
 > 以及對應的 `app/**/page.tsx`／`app/api/**/route.ts`。盤點時間：2026-08-28。
 >
+> **⚠️ 2026-09-09 更新**：第 0 節與第 5 節列出的機制缺陷（`middleware.ts` 未注入 `x-pathname`、
+> `PermissionGuard` fail-open 且未包住頁面內容、`/carousel` 任何登入者可進、`/settings/pricing` 無守衛、
+> `/apps`／`/add-app`／`/workflows`／`/refunds` 等頁面無守衛）**都已修復**——現在共有 23 個
+> server `layout.tsx` 在渲染前於伺服器端擋下。這兩節的描述已過期，現況請看
+> [auth-architecture-diagram.md](./auth-architecture-diagram.md)。第 3 節的逐頁矩陣尚未重新盤點。
+>
 > B2B 租戶／部門範圍（`dept_admin` 子樹限制、`isOrgAdmin`）另有專屬文件：
 > [b2b-access-orgunit-manual-test-guide.md](./b2b-access-orgunit-manual-test-guide.md)、
 > [b2b-b2c-module-matrix.md](./b2b-b2c-module-matrix.md)。本文件只處理「頁面能不能進去」，

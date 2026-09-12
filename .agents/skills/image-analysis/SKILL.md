@@ -1,6 +1,11 @@
 ---
 name: image-analysis
 description: 使用 AI 視覺模型分析 UI 截圖，並根據指定的 Prompt Markdown 檔案生成測試案例或分析報告。
+metadata:
+  verified-status: '❌ UNVERIFIED'
+  last-verified-date: '-'
+  architecture-aligned: false
+  related-skills: [learning-content-analysis]
 ---
 
 # Image Analysis Skill

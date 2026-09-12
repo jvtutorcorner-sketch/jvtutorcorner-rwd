@@ -4,7 +4,7 @@ description: '驗證 organizations/org-units/licenses 的 HTTP route 層本身�
 argument-hint: '驗證 B2B HTTP route 層與授權管理 UI：auth 分層、狀態碼、audit log、核發/指派/取消指派/撤銷'
 metadata:
   verified-status: '✅ VERIFIED'
-  last-verified-date: '2026-08-08'
+  last-verified-date: '2026-09-12'
   architecture-aligned: true
   notes: '過程中發現並修復 3 個問題：正式環境 audit-logs 資料表從未部署（稽核寫入全部靜默失敗）、createLicense 對 byUserId GSI key 寫入 NULL 導致核發直接 500、核發上限誤把 revoked/expired 歷史記錄算進配額造成「席次外洩」。'
 ---

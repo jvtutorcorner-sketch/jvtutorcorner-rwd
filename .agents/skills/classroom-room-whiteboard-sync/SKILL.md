@@ -3,49 +3,50 @@ name: classroom-room-whiteboard-sync
 description: '驗證 /classroom/room 頁面中教師白板繪圖與學生實時同步功能。支援在已報名情況下跳過報名流程，並確保教師與學生分別從等待頁進入教室。'
 argument-hint: '執行白板同步驗證測試，確保教師繪圖能同步到學生端。若已報名，會自動跳過報名步驟。'
 metadata:
-   verified-status: '✅ FULLY_VERIFIED'
-   last-verified-date: '2026-04-25'
-   architecture-aligned: true
-   test-framework: '🎬 Streaming Platform Modular (like YouTube Live / Twitch / Zoom)'
-   verification-results:
-      - '✅ 基礎白板同步：教師端繪圖驗證通過 (Canvas Check: true)'
-      - '✅ 學生同步驗證：學生端接收繪圖驗證通過 (Canvas Check: true)'
-      - '✅ SSE 同步機制：雙方準備信號正確傳遞'
-      - '✅ 教室進入邏輯：序列 POST + 並行進入運作正常'
-      - '✅ 預檢查閘道：系統健康度檢查 (7 項 API 端點驗證)'
-      - '✅ 金絲雀會話：單一會話 6 階段檢查點驗證'
-      - '✅ 同步品質探針：5 次繪圖探針 + 60s 離線重連'
-      - '✅ 持續時間穩定性：心跳監控（30s 間隔）+ 漂移檢測'
-      - '✅ 分階段負載：1x / 3x / 5x / 10x 組並行，電路斷路器機制'
-   stability-improvements-2026-04-19:
-      - '✅ runEnrollmentFlow() 完整傳遞所有必要環境變數給 subprocess（包含 Agora config）'
-      - '✅ 報名流程重試邏輯：maxRetries=2，間隔 2 秒'
-      - '✅ 教室退出邏輯改進：優雅處理按鈕不可見的情況'
-   long-term-fixes-applied:
-      - '✅ student_enrollment_flow.spec.ts 已加入 teacherId 綁定邏輯'
-      - '✅ 課程建立自動化：測試會自動建立臨時測試課程並回傳 `courseId`；`TEST_COURSE_ID` 為可選（未設定時自動產生），避免硬編碼 courseId'
-      - '✅ 修復 classroom-wait 雙人同步驗證：'
-      - '  - clickReadyButton 序列執行（避免時序問題）'
-      - '  - enterClassroom 並行執行（但包含自動跳轉檢測）'
-      - '  - 超時時間增加到 60 秒以容納網絡延遲'
-      - '✅ [2026-04-11] 媒體權限自動化：BrowserContext 注入 camera/microphone 授權'
-      - '✅ [2026-04-11] Canvas 選取器修復：使用 canvas:visible 避免抓到隱藏圖層'
-      - '✅ [2026-04-11] 資源清理強化：使用 try...finally 確保測試失敗也會執行刪除'
-      - '✅ [2026-04-19] DynamoDB race condition 修正：POST /api/classroom/ready 改為序列執行，避免並行讀取導致寫入覆蓋'
-      - '✅ [2026-04-19] Playwright 媒體設備修正：playwright.config.ts 添加 --use-fake-device-for-media-stream 與 --use-fake-ui-for-media-stream Chromium 旗標'
-      - '✅ [2026-04-19] Agora Whiteboard App ID 驗證：app/api/whiteboard/room/route.ts 添加 appIdentifier 格式驗證，提供清晰的錯誤訊息和設置指南'
-      - '✅ [2026-04-20] 修復學生端「進入教室」按鈕不顯示問題：移除 app/student_courses/page.tsx 中的訂閱方案硬編碼攔截。'
-      - '✅ [2026-04-20] 修復 E2E 時區偏移：student_enrollment_flow.spec.ts 與 whiteboard_helpers.ts 改用本地時間字串 (移除 "Z" 標記)'
-      - '✅ [2026-04-25] 🎬 模組化流式平台測試架構：取代龐大的單一壓力測試，導入 5 個獨立專注模組（預檢查、金絲雀、品質、時長、負載），每個模組 <10 分鐘，支援精準故障診斷'
-      - '✅ [2026-04-25] 流式平台設計模式：預檢查閘道 + 金絲雀門控 + 心跳監控 + 漂移檢測 + 電路斷路器，靈感源自 YouTube Live / Twitch 驗證框架'
-      - '✅ [2026-04-25] SLO 可配置閾值：SYNC_LATENCY_SLO_MS=8000, API_LATENCY_SLO_MS=3000, SUCCESS_THRESHOLD=0.75，支援環境變數覆蓋'
-      - '✅ [2026-04-25] 模組化幫助函式：streaming_monitor.ts 提供 health check、latency measurement、heartbeat、drift detection 等流式平台核心工具'
-   related-skills:
-      - auto-login
-      - classroom-wait
-      - classroom-ready
-      - classroom-room
-      - student-enrollment-flow
+  verified-status: '⚠️ PARTIAL'
+  last-verified-date: '2026-09-11'
+  architecture-aligned: true
+  test-framework: '🎬 Streaming Platform Modular (like YouTube Live / Twitch / Zoom)'
+  verification-results:
+    - '✅ 基礎白板同步：教師端繪圖驗證通過 (Canvas Check: true)'
+    - '✅ 學生同步驗證：學生端接收繪圖驗證通過 (Canvas Check: true)'
+    - '✅ SSE 同步機制：雙方準備信號正確傳遞'
+    - '✅ 教室進入邏輯：序列 POST + 並行進入運作正常'
+    - '✅ 預檢查閘道：系統健康度檢查 (7 項 API 端點驗證)'
+    - '✅ 金絲雀會話：單一會話 6 階段檢查點驗證'
+    - '✅ 同步品質探針：5 次繪圖探針 + 60s 離線重連'
+    - '✅ 持續時間穩定性：心跳監控（30s 間隔）+ 漂移檢測'
+    - '✅ 分階段負載：1x / 3x / 5x / 10x 組並行，電路斷路器機制'
+  stability-improvements-2026-04-19:
+    - '✅ runEnrollmentFlow() 完整傳遞所有必要環境變數給 subprocess（包含 Agora config）'
+    - '✅ 報名流程重試邏輯：maxRetries=2，間隔 2 秒'
+    - '✅ 教室退出邏輯改進：優雅處理按鈕不可見的情況'
+  long-term-fixes-applied:
+    - '✅ student_enrollment_flow.spec.ts 已加入 teacherId 綁定邏輯'
+    - '✅ 課程建立自動化：測試會自動建立臨時測試課程並回傳 `courseId`；`TEST_COURSE_ID` 為可選（未設定時自動產生），避免硬編碼 courseId'
+    - '✅ 修復 classroom-wait 雙人同步驗證：'
+    - '  - clickReadyButton 序列執行（避免時序問題）'
+    - '  - enterClassroom 並行執行（但包含自動跳轉檢測）'
+    - '  - 超時時間增加到 60 秒以容納網絡延遲'
+    - '✅ [2026-04-11] 媒體權限自動化：BrowserContext 注入 camera/microphone 授權'
+    - '✅ [2026-04-11] Canvas 選取器修復：使用 canvas:visible 避免抓到隱藏圖層'
+    - '✅ [2026-04-11] 資源清理強化：使用 try...finally 確保測試失敗也會執行刪除'
+    - '✅ [2026-04-19] DynamoDB race condition 修正：POST /api/classroom/ready 改為序列執行，避免並行讀取導致寫入覆蓋'
+    - '✅ [2026-04-19] Playwright 媒體設備修正：playwright.config.ts 添加 --use-fake-device-for-media-stream 與 --use-fake-ui-for-media-stream Chromium 旗標'
+    - '✅ [2026-04-19] Agora Whiteboard App ID 驗證：app/api/whiteboard/room/route.ts 添加 appIdentifier 格式驗證，提供清晰的錯誤訊息和設置指南'
+    - '✅ [2026-04-20] 修復學生端「進入教室」按鈕不顯示問題：移除 app/student_courses/page.tsx 中的訂閱方案硬編碼攔截。'
+    - '✅ [2026-04-20] 修復 E2E 時區偏移：student_enrollment_flow.spec.ts 與 whiteboard_helpers.ts 改用本地時間字串 (移除 "Z" 標記)'
+    - '✅ [2026-04-25] 🎬 模組化流式平台測試架構：取代龐大的單一壓力測試，導入 5 個獨立專注模組（預檢查、金絲雀、品質、時長、負載），每個模組 <10 分鐘，支援精準故障診斷'
+    - '✅ [2026-04-25] 流式平台設計模式：預檢查閘道 + 金絲雀門控 + 心跳監控 + 漂移檢測 + 電路斷路器，靈感源自 YouTube Live / Twitch 驗證框架'
+    - '✅ [2026-04-25] SLO 可配置閾值：SYNC_LATENCY_SLO_MS=8000, API_LATENCY_SLO_MS=3000, SUCCESS_THRESHOLD=0.75，支援環境變數覆蓋'
+    - '✅ [2026-04-25] 模組化幫助函式：streaming_monitor.ts 提供 health check、latency measurement、heartbeat、drift detection 等流式平台核心工具'
+  related-skills:
+    - auto-login
+    - classroom-wait
+    - classroom-ready
+    - classroom-room
+    - student-enrollment-flow
+---
 
 # 教室白板同步驗證技能
 
@@ -733,3 +734,7 @@ node cleanup-test-data.mjs --execute
 | 訂單刪除失敗 | 訂單已被其他進程修改 | 重新執行清理腳本（會自動跳過已刪除的項目） |
 
 ---
+
+## 影音／白板供應商
+
+教室使用的 RTC、信令與白板實作可用環境變數切換（Agora 為現行正式路徑；LiveKit、Cloudflare Realtime SFU 為備援），token／session API 的授權與設定檢查見 [classroom-rtc-providers](../classroom-rtc-providers/SKILL.md)。

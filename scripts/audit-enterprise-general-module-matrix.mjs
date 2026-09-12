@@ -91,9 +91,9 @@ const modules = [
   {
     id: 'b2c-auth-account', audience: 'B2C', name: '註冊／登入／Session／Profile／密碼', critical: true,
     evidence: [p('app/login/page.tsx', 'ui'), p('app/login/register/page.tsx', 'ui'), p('app/api/register/route.ts', 'api'), p('app/api/login/route.ts', 'api'), p('app/api/auth/me/route.ts', 'api'), p('app/api/logout/route.ts', 'api'), p('app/api/profile/route.ts', 'api'), p('app/api/forgot-password/route.ts', 'api'), p('lib/auth/sessionManager.ts', 'service'), p('lib/profilesService.ts', 'data')],
-    tests: ['e2e/email_verification_flow.spec.ts', 'e2e/navbar_verification.spec.ts', 'e2e/enterprise_general_security_contract.spec.ts'],
+    tests: ['e2e/email_verification_flow.spec.ts', 'e2e/navbar_verification.spec.ts', 'e2e/enterprise_general_security_contract.spec.ts', 'e2e/auth_sso_verification.spec.ts'],
     apiGroups: ['login', 'logout', 'register', 'auth', 'profile', 'forgot-password', 'captcha'],
-    forcedStatus: 'PARTIAL', note: '有 UI 與匿名邊界測試，但仍缺完整 auth API contract 與已登入 profile 角色測試。',
+    forcedStatus: 'PARTIAL', note: 'e2e/auth_sso_verification.spec.ts 已補 login／logout／verify-email／forgot-password／LINE Login 回調的 contract（偽造回調不發 session）；仍缺已登入 profile 角色測試。',
   },
   {
     id: 'b2c-public-catalog', audience: 'B2C', name: '公開頁／課程目錄／老師目錄／SEO', critical: true,
@@ -118,7 +118,7 @@ const modules = [
   {
     id: 'b2c-payments-pricing', audience: 'B2C', name: '方案／點數購買／多金流', critical: true,
     evidence: [p('app/pricing/page.tsx', 'ui'), p('app/api/stripe/checkout/route.ts', 'api'), p('app/api/paypal/create-order/route.ts', 'api'), p('app/api/linepay/checkout/route.ts', 'api'), p('app/api/ecpay/checkout/route.ts', 'api'), p('lib/paymentSuccessHandler.ts', 'service'), p('lib/pricingService.ts', 'service')],
-    tests: ['e2e/stripe_payment_verification.spec.ts', 'e2e/line_pay_simulated.spec.ts', 'e2e/point_purchase_simulated.spec.ts', 'e2e/point_purchase_real.spec.ts', 'e2e/pricing_comprehensive.spec.ts'],
+    tests: ['e2e/stripe_payment_verification.spec.ts', 'e2e/line_pay_simulated.spec.ts', 'e2e/point_purchase_simulated.spec.ts', 'e2e/point_purchase_real.spec.ts', 'e2e/pricing_comprehensive.spec.ts', 'e2e/subscriptions_plan_upgrades_verification.spec.ts'],
     apiGroups: ['stripe', 'paypal', 'linepay', 'ecpay', 'payments', 'plan-upgrades'],
   },
   {
@@ -176,16 +176,16 @@ const modules = [
     // 沒有 app/api/admin/orders/route.ts —— /admin/orders 頁面（見 components/OrdersManager.tsx）
     // 走的是共用的 app/api/orders/route.ts（已有 withAuth/withAdmin + 自身角色隔離），不是漏掉的路由。
     evidence: [p('app/admin/orders/page.tsx', 'ui'), p('app/admin/analytics/page.tsx', 'ui'), p('app/admin/settings/page.tsx', 'ui'), p('app/admin/roles/page.tsx', 'ui'), p('app/api/orders/route.ts', 'api'), p('app/api/admin/stats/route.ts', 'api'), p('app/api/admin/settings/route.ts', 'api'), p('app/api/admin/roles/route.ts', 'api')],
-    tests: ['e2e/pricing_comprehensive.spec.ts', 'e2e/probe_admin_pricing.spec.ts', 'e2e/enterprise_general_security_contract.spec.ts'],
+    tests: ['e2e/pricing_comprehensive.spec.ts', 'e2e/probe_admin_pricing.spec.ts', 'e2e/enterprise_general_security_contract.spec.ts', 'e2e/roles_page_permissions_verification.spec.ts', 'e2e/admin_observability_verification.spec.ts'],
     apiGroups: ['admin', 'orders', 'shared'],
     forcedStatus: 'PARTIAL', note: 'stats／teacher-reviews／teacher-reviews/history／payments／subscriptions／key-logs／ai-models(POST)／workflows 現已補上共用 auth/role guard（見 e2e/enterprise_general_security_contract.spec.ts）；settings/pricing/roles 的 GET 故意保持公開（Header/公開頁需要），POST 已鎖 admin。仍缺完整的 admin 操作 API contract（拒絕/越權案例）。',
   },
   {
-    id: 'ai-chat-workflow', audience: '共通', name: 'AI Chat／Agent／Tool calling／Workflow', critical: true,
-    evidence: [p('app/apps/ai-chat/page.tsx', 'ui'), p('app/api/ai-chat/route.ts', 'api'), p('app/api/ai-chat/dispatch/route.ts', 'api'), p('app/api/workflows/execute/route.ts', 'api'), p('lib/workflowEngine.ts', 'service'), p('lib/workflowService.ts', 'service'), p('lib/platform-agents.ts', 'service')],
+    id: 'ai-chat-workflow', audience: '共通', name: 'AI Chat／Agent／Tool calling', critical: true,
+    evidence: [p('app/apps/ai-chat/page.tsx', 'ui'), p('app/api/ai-chat/route.ts', 'api'), p('app/api/ai-chat/dispatch/route.ts', 'api'), p('app/api/admin/ai-models/route.ts', 'api'), p('lib/aiModelsService.ts', 'service'), p('lib/smartRouterService.ts', 'service'), p('lib/platform-agents.ts', 'service')],
     tests: ['e2e/enterprise_general_security_contract.spec.ts'],
-    apiGroups: ['ai-chat', 'chat', 'workflows'],
-    forcedStatus: 'PARTIAL', note: 'workflows 的 CRUD/execute 與 9 個 action node route（gmail-send、http-request 等）先前完全沒有 auth（http-request 等同公開 SSRF 工具），已補 withAdmin／withAdminOrHmac，workflowEngine 內部呼叫改用 HMAC 簽名；仍未驗多 provider、工具呼叫失敗回復。figma-export／notebooklm-create／export-file／context7-retrieve 仍是 TODO stub，只是現在至少不再是匿名可打。',
+    apiGroups: ['ai-chat', 'chat'],
+    forcedStatus: 'PARTIAL', note: 'workflows 的 CRUD/execute 與 9 個 action node route（gmail-send、http-request 等）先前完全沒有 auth（http-request 等同公開 SSRF 工具），已補 withAdmin／withAdminOrHmac，workflowEngine 內部呼叫改用 HMAC 簽名；仍未驗多 provider、工具呼叫失敗回復。figma-export／notebooklm-create／export-file／context7-retrieve 仍是 TODO stub，只是現在至少不再是匿名可打。workflows 相關證據已拆到 workflow-engine 模組。',
   },
   {
     id: 'email-notifications', audience: '共通', name: 'Email 驗證／提醒／郵件服務', critical: false,
@@ -202,14 +202,14 @@ const modules = [
   {
     id: 'integrations-automation', audience: '共通', name: 'App integration／LINE／Make／自動化', critical: false,
     evidence: [p('app/add-app/page.tsx', 'ui'), p('app/api/app-integrations/route.ts', 'api'), p('app/api/integration/make-webhook/route.ts', 'api'), p('app/api/line/webhook/[integrationId]/route.ts', 'api'), p('lib/integration', 'service')],
-    tests: ['e2e/line_pay_simulated.spec.ts'],
+    tests: ['e2e/app_integrations_line_make_verification.spec.ts'],
     apiGroups: ['app-integrations', 'integration', 'line'],
-    forcedStatus: 'PARTIAL', note: '有整合程式碼，但 Make／LINE webhook／秘密欄位保護缺專用回歸。',
+    forcedStatus: 'PARTIAL', note: 'e2e/app_integrations_line_make_verification.spec.ts 已補 app-integrations／line／make-* 的 G/S/SYS contract。已知缺口：LINE webhook 的 x-simulation header 可跳過簽章、debug GET 未驗證；make-webhook 未設 secret 時不驗簽章；make-sync?health=true 匿名外呼。',
   },
   {
     id: 'scheduled-jobs-reminders', audience: '共通', name: '日曆／提醒／Cron／排程工作', critical: true,
     evidence: [p('app/calendar/page.tsx', 'ui'), p('app/api/calendar/reminders/route.ts', 'api'), p('app/api/cron/process-reminders/route.ts', 'api'), p('app/api/cron/daily-report/route.ts', 'api'), p('lib/dailyReportService.ts', 'service'), p('lib/email', 'service')],
-    tests: ['scripts/test-reminder-flow.ts', 'e2e/enterprise_general_security_contract.spec.ts'],
+    tests: ['scripts/test-reminder-flow.ts', 'e2e/enterprise_general_security_contract.spec.ts', 'e2e/scheduled_jobs_verification.spec.ts'],
     apiGroups: ['calendar', 'cron'],
     forcedStatus: 'PARTIAL', note: 'reminders 主 route 與 backfill/migrate 兩支 sibling route 先前用 client 自報的 isAdmin query/body 判斷權限（形同沒有守門），已改成 withAuth/withAnyAuth 由 session role 決定，internal enroll→reminders 呼叫改用 HMAC 簽名；仍缺 scheduler／重試／重複執行的完整 contract。',
   },
@@ -238,11 +238,38 @@ const modules = [
     note: '已重構為教材／課程內容影像分析與學習問卷：新頁面使用真正 session、新 API 支援課程 access check，問卷重用既有 learning questionnaire。舊 /product-scan、/medicine-product 與 /api/scan-product 僅保留相容入口，不再發點數。仍缺真實 AI provider contract、分析結果持久化與教材檔案／PDF pipeline。',
   },
   {
-    id: 'platform-observability', audience: '共通', name: 'Debug／健康檢查／錯誤／上傳', critical: false,
-    evidence: [p('app/api/ping/route.ts', 'api'), p('app/api/test-db/route.ts', 'api'), p('app/api/client-error/route.ts', 'api'), p('app/api/uploads/avatar/[...path]/route.ts', 'api'), p('lib/awsHealthChecker.ts', 'service')],
-    tests: ['e2e/smoke.spec.ts'],
-    apiGroups: ['ping', 'test-db', 'client-error', 'uploads', 'avatar', 'debug', 'debug-env'],
-    forcedStatus: 'PARTIAL', note: '有 smoke 但缺 production-safe health／secret exposure／upload authorization matrix。',
+    id: 'platform-observability', audience: '共通', name: 'Debug／健康檢查／錯誤回報／稽核紀錄', critical: false,
+    evidence: [p('app/api/ping/route.ts', 'api'), p('app/api/client-error/route.ts', 'api'), p('app/api/admin/key-logs/route.ts', 'api'), p('app/api/admin/audit-logs/route.ts', 'api'), p('lib/auditLogService.ts', 'service'), p('lib/keyLogger.ts', 'service'), p('lib/awsHealthChecker.ts', 'service')],
+    tests: ['e2e/smoke.spec.ts', 'e2e/admin_observability_verification.spec.ts'],
+    apiGroups: ['ping', 'client-error', 'debug', 'debug-env'],
+    forcedStatus: 'PARTIAL', note: '稽核／key logs／Agora logs 的權限 contract 由 e2e/admin_observability_verification.spec.ts 覆蓋；上傳授權矩陣移到 object-storage-uploads。仍缺 production-safe health，client-error 與 agora 遙測仍可匿名寫入。',
+  },
+  {
+    id: 'server-auth-guards', audience: '共通', name: '伺服器端守門／HMAC／頁面守衛', critical: true,
+    evidence: [p('lib/auth/apiGuard.ts', 'service'), p('lib/auth/pageGuard.ts', 'service'), p('lib/auth/hmac.ts', 'service'), p('middleware.ts', 'service'), p('app/admin/layout.tsx', 'ui'), p('app/api/auth/me/route.ts', 'api')],
+    tests: ['e2e/server_auth_guards_verification.spec.ts', 'e2e/enterprise_general_security_contract.spec.ts', 'scripts/verify-course-ownership-scope.mjs'],
+    apiGroups: ['auth', 'admin'],
+  },
+  {
+    id: 'object-storage-uploads', audience: '共通', name: '物件儲存（S3／R2）／上傳／代理讀取', critical: true,
+    evidence: [p('lib/s3.ts', 'data'), p('lib/awsHealthChecker.ts', 'service'), p('app/api/avatar/upload/route.ts', 'api'), p('app/api/carousel/upload/route.ts', 'api'), p('app/api/carousel/presign/route.ts', 'api'), p('app/api/uploads/whiteboard/[...path]/route.ts', 'api')],
+    tests: ['e2e/object_storage_uploads_verification.spec.ts'],
+    apiGroups: ['uploads', 'avatar', 'carousel'],
+    forcedStatus: 'PARTIAL', note: '權限與路徑穿越 contract 已覆蓋；R2 分支需要 Cloudflare 憑證，未在本機驗證；uploads/carousel 缺檔回 500（avatar 回 404）。',
+  },
+  {
+    id: 'classroom-rtc-providers', audience: 'B2C/B2B', name: 'RTC 供應商抽象／LiveKit／Cloudflare SFU／信令', critical: false,
+    evidence: [p('lib/providers/rtc/useRTC.ts', 'ui'), p('app/api/livekit/token/route.ts', 'api'), p('app/api/realtime/session/route.ts', 'api'), p('app/api/signaling/token/route.ts', 'api'), p('app/api/netless/room/route.ts', 'api'), p('lib/realtime/guard.ts', 'service'), p('lib/livekit/authorizeJoin.ts', 'service')],
+    tests: ['e2e/classroom_rtc_providers_verification.spec.ts', 'scripts/verify-realtime-sfu-guards.mjs', 'e2e/signaling/phase1_token_api.spec.ts'],
+    apiGroups: ['livekit', 'realtime', 'signaling', 'netless'],
+    forcedStatus: 'PARTIAL', note: '授權與「未設定 → 503」contract 已覆蓋；Cloudflare SFU 的已設定分支與實際雙向連線需要憑證，待驗證。Agora 仍是正式路徑（見 classroom-live-whiteboard）。',
+  },
+  {
+    id: 'workflow-engine', audience: '共通/Admin', name: '工作流程引擎／Action nodes', critical: false,
+    evidence: [p('app/workflows/page.tsx', 'ui'), p('app/api/workflows/route.ts', 'api'), p('app/api/workflows/execute/route.ts', 'api'), p('lib/workflowEngine.ts', 'service'), p('lib/workflowService.ts', 'service')],
+    tests: ['e2e/workflow_engine_verification.spec.ts', 'e2e/enterprise_general_security_contract.spec.ts'],
+    apiGroups: ['workflows'],
+    forcedStatus: 'PARTIAL', note: 'CRUD 與 10 支 action node 的 G 401／S 403／SYS 400 contract 已覆蓋；figma-export／notebooklm-create／export-file／context7-retrieve 仍是 TODO stub，qdrant-knowledge-base 需要 Qdrant（未部署）。',
   },
 ];
 

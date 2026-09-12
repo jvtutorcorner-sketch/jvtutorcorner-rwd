@@ -41,7 +41,17 @@ const config = {
 // ─────────────────────────────────────────────────────────
 // API-only 登入（繞開 UI 驗證碼）
 // ─────────────────────────────────────────────────────────
-async function apiLogin(page: Page, email: string, password: string): Promise<void> {
+// /api/points、訂單與課程的 teacherId 都以 canonical id（profile.roid_id || profile.id）為 key，
+// session.userId 也是它；用 email 當 userId 會讀寫到另一個點數桶，並被本人檢查回 403。
+const canonicalIds = new Map<string, string>();
+function idOf(email: string): string {
+    const id = canonicalIds.get(email);
+    if (!id) throw new Error(`No canonical id for ${email}; call apiLogin first`);
+    return id;
+}
+
+/** Logs in and returns the canonical user id that the session carries. */
+async function apiLogin(page: Page, email: string, password: string): Promise<string> {
     const bypassSecret = config.bypassCaptcha;
     
     try {
@@ -59,6 +69,9 @@ async function apiLogin(page: Page, email: string, password: string): Promise<vo
 
         const loginData = await loginRes.json();
         const profile = loginData?.profile || loginData?.data || loginData;
+        const canonicalId = String(profile?.roid_id || profile?.id || '');
+        if (!canonicalId) throw new Error(`Login response for ${email} has no roid_id/id`);
+        canonicalIds.set(email, canonicalId);
         const isTeacher = email === config.teacherEmail;
         const role = isTeacher ? 'teacher' : 'student';
 
@@ -84,6 +97,7 @@ async function apiLogin(page: Page, email: string, password: string): Promise<vo
         );
 
         console.log(`   ✅ API 登入成功：${email} (${role})`);
+        return canonicalId;
     } catch (e: any) {
         console.error(`❌ API 登入失敗：`, e.message);
         throw e;
@@ -91,10 +105,11 @@ async function apiLogin(page: Page, email: string, password: string): Promise<vo
 }
 
 async function setUserPoints(page: Page, email: string, password: string, amount: number): Promise<number> {
-    await apiLogin(page, email, password);
+    const userId = await apiLogin(page, email, password);
+    // 以 x-e2e-secret 取得 system 身分設定測試基準點數（僅非 production），不依賴「本人可自行 set 點數」
     const setRes = await page.request.post(`${BASE_URL}/api/points`, {
-        data: JSON.stringify({ userId: email, action: 'set', amount, reason: 'escrow edge test setup' }),
-        headers: { 'Content-Type': 'application/json' },
+        data: JSON.stringify({ userId, action: 'set', amount, reason: 'escrow edge test setup' }),
+        headers: { 'Content-Type': 'application/json', 'x-e2e-secret': config.bypassCaptcha },
     });
     const setData = await setRes.json().catch(() => ({} as any));
     if (!setRes.ok() || !setData?.ok || typeof setData?.balance !== 'number') {
@@ -104,8 +119,8 @@ async function setUserPoints(page: Page, email: string, password: string, amount
 }
 
 async function getUserPoints(page: Page, email: string, password: string): Promise<number> {
-    await apiLogin(page, email, password);
-    const res = await page.request.get(`${BASE_URL}/api/points?userId=${encodeURIComponent(email)}`);
+    const userId = await apiLogin(page, email, password);
+    const res = await page.request.get(`${BASE_URL}/api/points?userId=${encodeURIComponent(userId)}`);
     const data = await res.json().catch(() => ({} as any));
     if (!res.ok() || !data?.ok || typeof data?.balance !== 'number') {
         throw new Error(`getUserPoints failed (${res.status()}): ${JSON.stringify(data)}`);
@@ -132,7 +147,7 @@ test.describe('Points Escrow Edge Cases (Fixed)', () => {
                 price: 10,
                 durationMinutes: 1,
                 totalSessions: 1,
-                teacherId: config.teacherEmail,
+                teacherId: idOf(config.teacherEmail),
                 status: 'APPROVED',
             }
         });
@@ -148,7 +163,7 @@ test.describe('Points Escrow Edge Cases (Fixed)', () => {
         const enrollRes = await page.request.post(`${BASE_URL}/api/orders`, {
             data: {
                 courseId,
-                userId: config.studentEmail,
+                userId: idOf(config.studentEmail),
                 paymentMethod: 'points',
                 pointsUsed: 10,
                 status: 'PAID',
@@ -180,7 +195,7 @@ test.describe('Points Escrow Edge Cases (Fixed)', () => {
                 price: 10,
                 durationMinutes: 1,
                 totalSessions: 1,
-                teacherId: config.teacherEmail,
+                teacherId: idOf(config.teacherEmail),
                 status: 'APPROVED',
             }
         });
@@ -197,7 +212,7 @@ test.describe('Points Escrow Edge Cases (Fixed)', () => {
             data: {
                 courseId,
                 enrollmentId,
-                userId: config.studentEmail,
+                userId: idOf(config.studentEmail),
                 paymentMethod: 'points',
                 pointsUsed: 10,
                 status: 'PAID',
@@ -232,7 +247,7 @@ test.describe('Points Escrow Edge Cases (Fixed)', () => {
                 price: 10,
                 durationMinutes: 1,
                 totalSessions: 1,
-                teacherId: config.teacherEmail,
+                teacherId: idOf(config.teacherEmail),
                 status: 'APPROVED',
             }
         });
@@ -246,7 +261,7 @@ test.describe('Points Escrow Edge Cases (Fixed)', () => {
         const enrollRes = await page.request.post(`${BASE_URL}/api/orders`, {
             data: {
                 courseId,
-                userId: config.studentEmail,
+                userId: idOf(config.studentEmail),
                 paymentMethod: 'points',
                 pointsUsed: 10,
                 status: 'PAID',
@@ -278,7 +293,7 @@ test.describe('Points Escrow Edge Cases (Fixed)', () => {
                 price: 5,
                 durationMinutes: 1,
                 totalSessions: 1,
-                teacherId: config.teacherEmail,
+                teacherId: idOf(config.teacherEmail),
                 status: 'APPROVED',
             }
         });
@@ -289,7 +304,7 @@ test.describe('Points Escrow Edge Cases (Fixed)', () => {
         const enrollRes = await page.request.post(`${BASE_URL}/api/orders`, {
             data: {
                 courseId,
-                userId: config.studentEmail,
+                userId: idOf(config.studentEmail),
                 paymentMethod: 'points',
                 pointsUsed: 5,
                 status: 'PAID',
@@ -303,7 +318,9 @@ test.describe('Points Escrow Edge Cases (Fixed)', () => {
 
         // 4. 手動釋放 Escrow
         const releaseRes = await page.request.post(`${BASE_URL}/api/points-escrow`, {
-            data: { action: 'release', escrowId }
+            data: { action: 'release', escrowId },
+            // POST /api/points-escrow 只限 admin／system（withAdmin）；以 x-e2e-secret 取得 system 身分（僅非 production）
+            headers: { 'x-e2e-secret': config.bypassCaptcha },
         });
         if (!releaseRes.ok()) {
             console.log(`   ⚠️  釋放失敗，狀態：${releaseRes.status()}`);
@@ -341,7 +358,7 @@ test.describe('Points Escrow Edge Cases (Fixed)', () => {
                 price: 5,
                 durationMinutes: 1,
                 totalSessions: 1,
-                teacherId: config.teacherEmail,
+                teacherId: idOf(config.teacherEmail),
                 status: 'APPROVED',
             }
         });
@@ -352,7 +369,7 @@ test.describe('Points Escrow Edge Cases (Fixed)', () => {
         const enrollRes = await page.request.post(`${BASE_URL}/api/orders`, {
             data: {
                 courseId,
-                userId: config.studentEmail,
+                userId: idOf(config.studentEmail),
                 paymentMethod: 'points',
                 pointsUsed: 5,
                 status: 'PAID',
@@ -369,7 +386,9 @@ test.describe('Points Escrow Edge Cases (Fixed)', () => {
 
         // 4. 手動退款 Escrow
         const refundRes = await page.request.post(`${BASE_URL}/api/points-escrow`, {
-            data: { action: 'refund', escrowId }
+            data: { action: 'refund', escrowId },
+            // POST /api/points-escrow 只限 admin／system（withAdmin）；以 x-e2e-secret 取得 system 身分（僅非 production）
+            headers: { 'x-e2e-secret': config.bypassCaptcha },
         });
         if (!refundRes.ok()) {
             console.log(`   ⚠️  退款失敗，狀態：${refundRes.status()}`);
@@ -410,7 +429,7 @@ test.describe('Points Escrow Edge Cases (Fixed)', () => {
                 price: 5,
                 durationMinutes: 1,
                 totalSessions: 1,
-                teacherId: config.teacherEmail,
+                teacherId: idOf(config.teacherEmail),
                 status: 'APPROVED',
             }
         });
@@ -421,7 +440,7 @@ test.describe('Points Escrow Edge Cases (Fixed)', () => {
         const enrollRes = await page.request.post(`${BASE_URL}/api/orders`, {
             data: {
                 courseId,
-                userId: config.studentEmail,
+                userId: idOf(config.studentEmail),
                 paymentMethod: 'points',
                 pointsUsed: 5,
                 status: 'PAID',
@@ -437,7 +456,9 @@ test.describe('Points Escrow Edge Cases (Fixed)', () => {
 
         // 4. 第一次釋放
         const release1 = await page.request.post(`${BASE_URL}/api/points-escrow`, {
-            data: { action: 'release', escrowId }
+            data: { action: 'release', escrowId },
+            // POST /api/points-escrow 只限 admin／system（withAdmin）；以 x-e2e-secret 取得 system 身分（僅非 production）
+            headers: { 'x-e2e-secret': config.bypassCaptcha },
         });
         if (!release1.ok()) {
             console.log(`   ⚠️  釋放失敗，狀態：${release1.status()}`);
@@ -452,7 +473,9 @@ test.describe('Points Escrow Edge Cases (Fixed)', () => {
 
         // 5. 第二次釋放（應為 idempotent）
         const release2 = await page.request.post(`${BASE_URL}/api/points-escrow`, {
-            data: { action: 'release', escrowId }
+            data: { action: 'release', escrowId },
+            // POST /api/points-escrow 只限 admin／system（withAdmin）；以 x-e2e-secret 取得 system 身分（僅非 production）
+            headers: { 'x-e2e-secret': config.bypassCaptcha },
         });
         expect(release2.ok()).toBeFalsy();
 

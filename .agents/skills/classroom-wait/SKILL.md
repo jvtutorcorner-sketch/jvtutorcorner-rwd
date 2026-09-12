@@ -3,8 +3,8 @@ name: classroom-wait
 description: '檢查 /classroom/wait 頁面的連線同步、身份驗證、設備檢測狀態與進入教室按鈕。'
 argument-hint: '測試並驗證 /classroom/wait 頁面的等待流程與同步機制'
 metadata:
-  verified-status: '❌ UNVERIFIED'
-  last-verified-date: '2026-03-16'
+  verified-status: '✅ VERIFIED'
+  last-verified-date: '2026-09-11'
   architecture-aligned: true
 ---
 
