@@ -14,41 +14,87 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  lint-and-build:
-    name: Lint & Build
+  # ── Blocking gates. These run in parallel; none waits on the build. ──
+
+  typecheck:
+    name: Typecheck
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-
+    timeout-minutes: 10
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          persist-credentials: false
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: 'npm' }
+      - run: npm ci
+      # Two projects: tsconfig.json (app) and tsconfig.e2e.json (the 92 Playwright
+      # files, which tsconfig.json deliberately excludes so `next build` never
+      # typechecks the test suite). Baseline is 0 errors in both, so this is
+      # blocking from day one.
+      - run: npm run typecheck
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
+  lint:
+    name: Lint (zero-tolerance zone)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: 'npm' }
+      - run: npm ci
+      # Blocking on lib/ + types/ only: those are at 0 errors / 109 warnings today,
+      # so the gate is real rather than aspirational. app/ (1018 errors) and
+      # components/ (287) stay advisory below until their backlog is burned down.
+      # The warning ceiling is a ratchet — lower it after each cleanup PR.
+      - run: npm run lint:ci
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Lint
-        # 目前 repo 已有大量既存 lint 錯誤（多在 scripts/、tmp/、src/ 等非本次改動範圍），
-        # 若設為 blocking 會讓 CI 從第一次執行就是紅的，而且擋的是舊債不是新回歸。
-        # 先設為非阻斷、只留紀錄；等既存錯誤清完後再拿掉 continue-on-error。
-        run: npm run lint
-        continue-on-error: true
-
-      - name: Build
-        # next.config.ts 的 assertRequiredSecrets() 只要求 SESSION_SECRET / API_HMAC_SECRET
-        # 兩個變數存在且不是已作廢的預設值——CI 只做建置驗證，不部署，
-        # 用隨機假值即可通過檢查，不需要真正的正式環境機密。
-        run: npm run build
+  build:
+    name: Build & Bundle Secret Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: 'npm' }
+      - run: npm ci
+      # next.config.ts assertRequiredSecrets() only requires these two to exist and
+      # not be the revoked values; CI builds but never deploys, so dummies suffice.
+      - run: npm run build
         env:
           SESSION_SECRET: ci-build-only-dummy-session-secret-value
           API_HMAC_SECRET: ci-build-only-dummy-hmac-secret-value
+      - run: npm run check:bundle-secrets
 
-      - name: Check bundled client output for leaked secrets
-        run: npm run check:bundle-secrets
+  # ── Advisory. Reported, never blocking, until the backlog is cleared. ──
+
+  lint-full:
+    name: Lint (full report, advisory)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: 'npm' }
+      - run: npm ci
+      - run: npm run lint:report
+
+  audit:
+    name: Coverage & Module Matrix Audit (advisory)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      # Zero-dependency node:fs readers — no npm ci needed.
+      # NOT blocking yet: --strict fails today with 15 critical modules below
+      # COVERED (notably cross-tenant isolation, which is BLOCKED). That is a
+      # pre-existing state, not a regression. Flip to blocking once those are
+      # addressed, or once --strict grows a count ratchet.
+      - run: npm run test:audit-coverage:strict
+      - run: npm run test:audit-module-matrix:strict

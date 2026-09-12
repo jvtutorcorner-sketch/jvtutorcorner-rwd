@@ -343,8 +343,8 @@ test.describe(`點數暫存課程中途退出驗證 — ${DURATION_MINUTES} 分�
         // ─── Step 6: 雙方進入等待室 ───
         console.log(`\n📝 Step 6: 雙方進入等待室...`);
 
-        const goWaitTeacher = goToWaitRoom(pageTeacher, courseId, 'teacher', orderId, BYPASS_SECRET);
-        const goWaitStudent = goToWaitRoom(pageStudent, courseId, 'student', orderId, BYPASS_SECRET);
+        const goWaitTeacher = goToWaitRoom(pageTeacher, courseId, 'teacher');
+        const goWaitStudent = goToWaitRoom(pageStudent, courseId, 'student');
         await Promise.all([goWaitTeacher, goWaitStudent]);
 
         console.log(`   ✅ 老師已在等待室`);
@@ -352,15 +352,15 @@ test.describe(`點數暫存課程中途退出驗證 — ${DURATION_MINUTES} 分�
 
         // ─── Step 7: 雙方按準備好 ───
         console.log(`\n📝 Step 7: 雙方按準備好...`);
-        await clickReadyButton(pageTeacher, 3000);
+        await clickReadyButton(pageTeacher, 'teacher');
         await pageTeacher.waitForTimeout(500);
-        await clickReadyButton(pageStudent, 3000);
+        await clickReadyButton(pageStudent, 'student');
         console.log(`   ✅ 雙方已按準備好`);
 
         // ─── Step 8: 雙方進入教室 ───
         console.log(`\n📝 Step 8: 雙方進入教室...`);
-        const enterTeacher = waitAndEnterClassroom(pageTeacher, courseId, 'teacher');
-        const enterStudent = waitAndEnterClassroom(pageStudent, courseId, 'student');
+        const enterTeacher = waitAndEnterClassroom(pageTeacher, 'teacher');
+        const enterStudent = waitAndEnterClassroom(pageStudent, 'student');
         await Promise.all([enterTeacher, enterStudent]);
 
         console.log(`   ✅ [student] Entered /classroom/room`);

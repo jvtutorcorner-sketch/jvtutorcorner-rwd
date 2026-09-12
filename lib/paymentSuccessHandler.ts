@@ -113,7 +113,7 @@ export async function handlePaymentSuccess(
           TableName: PROFILES_TABLE,
           Key: { id: userId },
         }));
-        let profile = getProfileRes.Item;
+        const profile = getProfileRes.Item;
         
         if (profile) {
           const existingPlans = Array.isArray(profile.activeAppPlanIds) ? profile.activeAppPlanIds : [];

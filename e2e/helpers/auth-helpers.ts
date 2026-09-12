@@ -114,7 +114,10 @@ export async function runContractCase(c: ContractCase, ctx: Contexts): Promise<A
   const target = c.who === 'S' ? ctx.student : c.who === 'T' ? ctx.teacher : ctx.guest;
   if (!target) throw new Error(`沒有 ${c.who} 身分的 context`);
 
-  const auth = c.who === 'SYS' ? { 'x-e2e-secret': BYPASS_SECRET } : {};
+  // Annotated rather than inferred: a ternary over two object literals widens to
+  // `{k: string} | {k?: undefined}`, which does not satisfy Playwright's
+  // `{ [key: string]: string }` header type.
+  const auth: Record<string, string> = c.who === 'SYS' ? { 'x-e2e-secret': BYPASS_SECRET } : {};
   const res = await target.fetch(c.path, {
     method: c.method,
     headers: c.multipart ? auth : { ...JSON_HEADERS, ...auth },

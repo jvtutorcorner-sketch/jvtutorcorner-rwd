@@ -35,8 +35,8 @@ test.describe('排程工作 Verification (scheduled-jobs)', () => {
     test.skip(!process.env.CRON_SECRET, '未設定 CRON_SECRET 時非正式環境會放行（會真的產生報表），不測');
 
     const WRONG = [
-      { label: 'Authorization: Bearer <錯誤值>', headers: { authorization: 'Bearer e2e-wrong-secret' } },
-      { label: 'x-cron-token: <錯誤值>', headers: { 'x-cron-token': 'e2e-wrong-secret' } },
+      { label: 'Authorization: Bearer <錯誤值>', headers: { authorization: 'Bearer e2e-wrong-secret' } as Record<string, string> },
+      { label: 'x-cron-token: <錯誤值>', headers: { 'x-cron-token': 'e2e-wrong-secret' } as Record<string, string> },
     ];
     for (const w of WRONG) {
       test(`錯誤的 ${w.label} 被拒`, async ({ request }) => {

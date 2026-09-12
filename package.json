@@ -11,6 +11,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "lint:ci": "eslint lib types --max-warnings 109",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.e2e.json",
     "check:bundle-secrets": "node scripts/check-bundle-secrets.mjs",
     "db:setup": "node scripts/setup-db.mjs",
     "db:verify": "node scripts/verify-schema.mjs",
@@ -40,7 +42,8 @@
     "test:stress:5": "powershell -ExecutionPolicy Bypass -File e2e/scripts/run-stress-test.ps1 -Groups 5",
     "test:stress:6": "powershell -ExecutionPolicy Bypass -File e2e/scripts/run-stress-test.ps1 -Groups 6",
     "test:stress:escalation": "powershell -ExecutionPolicy Bypass -File e2e/scripts/run-escalation-test.ps1",
-    "test:phase1": "playwright test --config playwright.phase1.config.ts e2e/signaling/ --project=chromium"
+    "test:phase1": "playwright test --config playwright.phase1.config.ts e2e/signaling/ --project=chromium",
+    "lint:report": "eslint --max-warnings 963"
   },
   "dependencies": {
     "@aws-amplify/ui-react": "^6.13.1",
