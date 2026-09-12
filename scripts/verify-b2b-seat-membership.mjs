@@ -6,9 +6,11 @@
  *     (32c5977 rewrote incrementUsedSeats as a TransactWriteCommand condition
  *     expression — this checks the limit actually holds, including under
  *     concurrent assignment).
- *  2) lib/orgMembershipService.ts member add/remove, including the plan
- *     restore-to-'free' fix from 7dd3400 (previously removal left `plan: null`,
- *     stranding the former member with no B2C plan either).
+ *  2) lib/orgMembershipService.ts member add/remove, including plan restore on
+ *     removal (7dd3400 restored 'free'; removal now restores planBeforeOrg, the
+ *     personal plan held before joining, and falls back to 'free').
+ *  3) One active license per member, removal revoking every license the member
+ *     holds in the org, and the expiry sweep releasing seats.
  *
  * Runs against the real DynamoDB tables from .env.local (same tables the app
  * uses locally) and hard-deletes everything it creates in a finally block.
@@ -33,8 +35,9 @@ const { DeleteCommand } = await import('@aws-sdk/lib-dynamodb');
 const { ddbDocClient } = await import('../lib/dynamo.ts');
 const { createOrganization, getOrganizationById, deleteOrganization } = await import('../lib/organizationService.ts');
 const { PROFILES_TABLE, getProfileById, putProfile } = await import('../lib/profilesService.ts');
-const { getLicenseById, listLicensesByOrg, deleteLicense } = await import('../lib/licenseService.ts');
-const { assignMemberWithLicense, removeMemberFromOrg } = await import('../lib/orgMembershipService.ts');
+const { getLicenseById, listLicensesByOrg, deleteLicense, createLicense } = await import('../lib/licenseService.ts');
+const { assignMemberWithLicense, removeMemberFromOrg, expireOverdueLicenses } = await import('../lib/orgMembershipService.ts');
+const { incrementUsedSeats } = await import('../lib/organizationService.ts');
 
 const RUN_TAG = `b2bverify-${Date.now()}`;
 const TEST_DOMAIN = `${RUN_TAG}.test`;
@@ -171,7 +174,8 @@ async function main() {
     const removeResult = await removeMemberFromOrg({ orgId: org.id, profileId: winner.id });
 
     assert(removeResult.usedSeats === 1, `usedSeats decremented to 1 after removal (got ${removeResult.usedSeats})`);
-    assert(removeResult.profile.plan === 'free', `removed member's plan restored to 'free' (got '${removeResult.profile.plan}') — regression check for 7dd3400`);
+    assert(removeResult.profile.plan === 'basic', `removed member's plan restored to the pre-join plan 'basic' (got '${removeResult.profile.plan}')`);
+    assert(!removeResult.profile.planBeforeOrg, 'planBeforeOrg cleared after removal');
     assert(!removeResult.profile.orgId, 'removed member orgId cleared');
     assert(removeResult.profile.isB2B === false, 'removed member isB2B reset to false');
     assert(!removeResult.profile.licenseId, 'removed member licenseId cleared');
@@ -195,7 +199,75 @@ async function main() {
       orphanRemoveResult.usedSeats === orgBeforeOrphanRemoval.usedSeats,
       `usedSeats unchanged when removing a member with no active license (${orphanRemoveResult.usedSeats})`
     );
-    assert(orphanRemoveResult.profile.plan === 'free', "orphaned member's plan also restored to 'free'");
+    assert(orphanRemoveResult.profile.plan === 'free', "orphaned member (no planBeforeOrg) falls back to 'free'");
+
+    // ------------------------------------------------------------------
+    // 5) One active license per member; removal revokes every license
+    // ------------------------------------------------------------------
+    console.log('\n--- 5. Duplicate license prevention + full revoke on removal ---');
+    // Free the remaining concurrent winner so the seat limit is not what rejects below.
+    await removeMemberFromOrg({ orgId: org.id, profileId: fulfilled[1].value.profile.id });
+
+    const d1 = await makeProfile('d1');
+    createdProfileIds.push(d1.id);
+    const d1First = await assignMemberWithLicense({ orgId: org.id, profileId: d1.id, assignedBy: 'verify-script' });
+    createdLicenseIds.push(d1First.license.id);
+    assert(d1First.usedSeats === 1, `d1 assigned -> usedSeats 1 (got ${d1First.usedSeats})`);
+
+    let dupError = null;
+    try {
+      const again = await assignMemberWithLicense({ orgId: org.id, profileId: d1.id, assignedBy: 'verify-script' });
+      createdLicenseIds.push(again.license.id);
+    } catch (e) {
+      dupError = e;
+    }
+    assert(
+      dupError && /有效授權/.test(dupError.message),
+      `second assign of the same member to the same org is rejected (got: ${dupError ? dupError.message : 'no error — a 2nd license was minted'})`
+    );
+    const orgAfterDup = await getOrganizationById(org.id);
+    assert(orgAfterDup.usedSeats === 1, `usedSeats unchanged by the rejected duplicate (got ${orgAfterDup.usedSeats})`);
+
+    // Reproduce pre-fix drift: an extra active license for d1 whose seat was counted.
+    const drifted = await createLicense({ orgId: org.id, userId: d1.id, assignedBy: 'verify-script-drift' });
+    createdLicenseIds.push(drifted.id);
+    await incrementUsedSeats(org.id);
+    const d1Removal = await removeMemberFromOrg({ orgId: org.id, profileId: d1.id });
+    assert(d1Removal.usedSeats === 0, `removal released both seats (usedSeats ${d1Removal.usedSeats})`);
+    const [d1Lic, driftLic] = await Promise.all([getLicenseById(d1First.license.id), getLicenseById(drifted.id)]);
+    assert(d1Lic.status === 'revoked', 'pointed-to license revoked');
+    assert(driftLic.status === 'revoked', 'duplicate (drifted) license also revoked — no lingering course access');
+
+    // ------------------------------------------------------------------
+    // 6) Expiry sweep releases the seat; the member can be re-seated
+    // ------------------------------------------------------------------
+    console.log('\n--- 6. Expiry sweep ---');
+    const e1 = await makeProfile('e1');
+    createdProfileIds.push(e1.id);
+    const e1Assign = await assignMemberWithLicense({
+      orgId: org.id,
+      profileId: e1.id,
+      expiresAt: new Date(Date.now() - 60_000).toISOString(),
+      assignedBy: 'verify-script'
+    });
+    createdLicenseIds.push(e1Assign.license.id);
+    assert(Number.isInteger(e1Assign.license.expiresAt), `expiresAt stored as integer epoch seconds (got ${e1Assign.license.expiresAt})`);
+
+    const sweep = await expireOverdueLicenses({ orgId: org.id });
+    assert(sweep.expired.some((x) => x.licenseId === e1Assign.license.id), 'overdue license reported as expired by the sweep');
+    assert(sweep.failed.length === 0, `sweep had no failures (${JSON.stringify(sweep.failed)})`);
+    const e1Lic = await getLicenseById(e1Assign.license.id);
+    assert(e1Lic.status === 'expired', `license status is 'expired' (got ${e1Lic.status})`);
+    const orgAfterSweep = await getOrganizationById(org.id);
+    assert(orgAfterSweep.usedSeats === 0, `seat released by expiry (usedSeats ${orgAfterSweep.usedSeats})`);
+    const e1After = await getProfileById(e1.id);
+    assert(!e1After.licenseId && e1After.orgId === org.id, 'member keeps org membership but no longer points at the expired license');
+
+    const e1Reseat = await assignMemberWithLicense({ orgId: org.id, profileId: e1.id, assignedBy: 'verify-script' });
+    createdLicenseIds.push(e1Reseat.license.id);
+    assert(e1Reseat.usedSeats === 1, `member re-seated after expiry (usedSeats ${e1Reseat.usedSeats})`);
+    const e1Removal = await removeMemberFromOrg({ orgId: org.id, profileId: e1.id });
+    assert(e1Removal.profile.plan === 'basic', `re-seating did not overwrite planBeforeOrg (plan restored to '${e1Removal.profile.plan}')`);
   } finally {
     // ------------------------------------------------------------------
     // Cleanup — best-effort, runs even if an assertion/throw happened above.

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from 'react';
+import { useT } from './IntlProvider';
 
 interface LineProfile {
   id: string;
@@ -20,6 +21,7 @@ interface LineLoginButtonProps {
 }
 
 export default function LineLoginButton({ returnTo, className, onLogin }: LineLoginButtonProps) {
+  const t = useT();
   const [profile, setProfile] = useState<LineProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -53,7 +55,7 @@ export default function LineLoginButton({ returnTo, className, onLogin }: LineLo
           }}
           className="text-xs text-gray-500 underline ml-1"
         >
-          登出
+          {t('logout')}
         </button>
       </div>
     );
@@ -69,7 +71,7 @@ export default function LineLoginButton({ returnTo, className, onLogin }: LineLo
       <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
         <path d="M12 2C6.48 2 2 5.92 2 10.72c0 3.24 2.04 6.08 5.12 7.76-.16.56-.52 2-.6 2.32-.1.4.14.4.3.28.12-.08 1.96-1.32 2.76-1.84.76.12 1.56.18 2.42.18 5.52 0 10-3.92 10-8.72S17.52 2 12 2z"/>
       </svg>
-      使用 LINE 登入
+      {t('line_login')}
     </a>
   );
 }

@@ -12,8 +12,7 @@ import { getProfileById } from '@/lib/profilesService';
 import organizationService from '@/lib/organizationService';
 import orgMembershipService from '@/lib/orgMembershipService';
 import { withAuth } from '@/lib/auth/apiGuard';
-import { requireOrgOrDeptAccess, requireOrgUnitAccess, resolveDeptScopeUnitIds } from '@/lib/auth/orgAccess';
-import { getOrgUnitById } from '@/lib/orgUnitService';
+import { requireMemberScopeAccess } from '@/lib/auth/orgAccess';
 import { writeAuditLog } from '@/lib/auditLogService';
 
 export const dynamic = 'force-dynamic';
@@ -29,6 +28,13 @@ function mapMembershipError(error: any): { status: number; message: string } {
   if (message.includes('not found') || message.includes('does not belong')) {
     return { status: 404, message };
   }
+  if (
+    message.includes('必須先指派 orgUnit') ||
+    message.includes('僅學生身分') ||
+    message.includes('archived')
+  ) {
+    return { status: 400, message };
+  }
   return { status: 500, message };
 }
 
@@ -41,13 +47,14 @@ export const PATCH = withAuth(async (req, context) => {
       context as { params: Promise<{ id: string; profileId: string }> }
     ).params;
 
-    const guard = await requireOrgOrDeptAccess(req, orgId, 'write');
-    if (!guard.ok) return guard.response;
-
     const target = await getProfileById(profileId);
-    if (!target || target.orgId !== orgId) {
+    if (!target || (target as any).orgId !== orgId) {
       return NextResponse.json({ ok: false, error: 'Member not found in this organization' }, { status: 404 });
     }
+
+    // dept_admin 只能動「目前在自己子樹內」的成員 —— 不能碰其他部門的人。
+    const guard = await requireMemberScopeAccess(req, orgId, (target as any).orgUnitId ?? null);
+    if (!guard.ok) return guard.response;
 
     const body = await req.json();
 
@@ -58,34 +65,27 @@ export const PATCH = withAuth(async (req, context) => {
       );
     }
 
-    // 部門管理員身分只能由系統/組織管理員授予或收回——部門管理員自己不能把這個身分轉給
-    // 別人（沒有自我擴權/橫向授權的路徑），邏輯跟 isOrgAdmin 的保護一致，只是門檻放寬一級。
+    // 指派/撤銷 dept_admin：system admin 或本組織自己的 org admin 都可以，
+    // 純 dept_admin 或一般成員不行（避免自己把自己或同儕升級）。
     if (
-      (body.isDeptAdmin !== undefined || body.deptAdminUnitId !== undefined) &&
+      body.isDeptAdmin !== undefined &&
       !guard.actor.isSystemAdmin &&
-      !guard.actor.isOrgAdmin
+      !(guard.actor.isOrgAdmin && guard.actor.orgId === orgId)
     ) {
       return NextResponse.json(
-        { ok: false, error: 'Forbidden: only system or organization administrators may change department admin status' },
+        { ok: false, error: 'Forbidden: only system administrators or this organization\'s admin may change dept-admin status' },
         { status: 403 }
       );
     }
 
-    const isDeptAdminActor = guard.actor.isDeptAdmin && !guard.actor.isOrgAdmin && !guard.actor.isSystemAdmin;
-    if (isDeptAdminActor) {
-      // 部門管理員只能動範圍內的成員：目標成員目前所屬的單位、以及要改去的新單位都要在範圍內。
-      const scope = await resolveDeptScopeUnitIds(guard.actor);
-      if (!target.orgUnitId || !scope?.has(target.orgUnitId)) {
-        return NextResponse.json({ ok: false, error: 'Forbidden: member is outside your department scope' }, { status: 403 });
-      }
-      if (body.orgUnitId !== undefined) {
-        if (!body.orgUnitId || !scope.has(body.orgUnitId)) {
-          return NextResponse.json(
-            { ok: false, error: 'Forbidden: target org unit is outside your department scope' },
-            { status: 403 }
-          );
-        }
-      }
+    // 改部門也要確認「新部門」還是在 dept_admin 的子樹內，否則等於把成員過繼給範圍外的部門。
+    if (
+      body.orgUnitId !== undefined &&
+      !guard.actor.isSystemAdmin &&
+      !(guard.actor.isOrgAdmin && guard.actor.orgId === orgId)
+    ) {
+      const targetScopeGuard = await requireMemberScopeAccess(req, orgId, body.orgUnitId || null);
+      if (!targetScopeGuard.ok) return targetScopeGuard.response;
     }
 
     let profile = target;
@@ -107,18 +107,22 @@ export const PATCH = withAuth(async (req, context) => {
       profile = await orgMembershipService.setMemberDeptAdmin({
         orgId,
         profileId,
-        isDeptAdmin: body.isDeptAdmin === true,
-        deptAdminUnitId: body.deptAdminUnitId
-      });
-
-      await writeAuditLog({
-        actorId: guard.actor.session.userId,
-        action: body.isDeptAdmin ? 'member.grant_dept_admin' : 'member.revoke_dept_admin',
-        targetType: 'organization',
-        targetId: orgId,
-        metadata: { profileId, deptAdminUnitId: body.isDeptAdmin ? body.deptAdminUnitId : null }
+        isDeptAdmin: body.isDeptAdmin === true
       });
     }
+
+    await writeAuditLog({
+      actorId: guard.actor.session.userId,
+      action: 'org.member.update',
+      targetType: 'profile',
+      targetId: profileId,
+      orgId,
+      metadata: {
+        orgUnitId: body.orgUnitId,
+        isOrgAdmin: body.isOrgAdmin,
+        isDeptAdmin: body.isDeptAdmin,
+      },
+    });
 
     return NextResponse.json({ ok: true, profile: sanitizeProfile(profile), message: 'Member updated successfully' });
   } catch (error: any) {
@@ -137,7 +141,13 @@ export const DELETE = withAuth(async (req, context) => {
       context as { params: Promise<{ id: string; profileId: string }> }
     ).params;
 
-    const guard = await requireOrgOrDeptAccess(req, orgId, 'write');
+    const target = await getProfileById(profileId);
+    if (!target || (target as any).orgId !== orgId) {
+      return NextResponse.json({ ok: false, error: 'Member not found in this organization' }, { status: 404 });
+    }
+
+    // dept_admin 只能移除「目前在自己子樹內」的成員。
+    const guard = await requireMemberScopeAccess(req, orgId, (target as any).orgUnitId ?? null);
     if (!guard.ok) return guard.response;
 
     const org = await organizationService.getOrganizationById(orgId);
@@ -148,29 +158,15 @@ export const DELETE = withAuth(async (req, context) => {
       );
     }
 
-    if (guard.actor.isDeptAdmin && !guard.actor.isOrgAdmin && !guard.actor.isSystemAdmin) {
-      const target = await getProfileById(profileId);
-      const scope = await resolveDeptScopeUnitIds(guard.actor);
-      if (!target || target.orgId !== orgId || !target.orgUnitId || !scope?.has(target.orgUnitId)) {
-        return NextResponse.json({ ok: false, error: 'Forbidden: member is outside your department scope' }, { status: 403 });
-      }
-      // 部門管理員不能移除另一個部門管理員（避免同層互相清除彼此的部門管理權）。
-      if ((target as any).isDeptAdmin) {
-        return NextResponse.json(
-          { ok: false, error: 'Forbidden: department admins cannot remove another department admin' },
-          { status: 403 }
-        );
-      }
-    }
-
     const result = await orgMembershipService.removeMemberFromOrg({ orgId, profileId });
 
     await writeAuditLog({
       actorId: guard.actor.session.userId,
-      action: 'member.remove',
-      targetType: 'organization',
-      targetId: orgId,
-      metadata: { profileId }
+      action: 'org.member.remove',
+      targetType: 'profile',
+      targetId: profileId,
+      orgId,
+      metadata: { usedSeats: result.usedSeats },
     });
 
     return NextResponse.json({

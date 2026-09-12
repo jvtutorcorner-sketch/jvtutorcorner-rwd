@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { withAuth, type AuthedRequest } from '@/lib/auth/apiGuard';
 
 // Create or return an Agora-compatible whiteboard room and room token.
 // POST /api/agora/whiteboard
@@ -11,7 +12,8 @@ const NETLESS_SDK_TOKEN = process.env.NETLESS_SDK_TOKEN; // optional
 const AGORA_WB_AK = process.env.AGORA_WB_AK;
 const AGORA_WB_SK = process.env.AGORA_WB_SK;
 
-export async function POST(req: NextRequest) {
+// 先前完全沒有 auth：任何人都能建立白板房間並取得房間 token。
+async function handlePost(req: AuthedRequest) {
   try {
     const body = await req.json().catch(() => ({} as any));
     const { uuid: incomingUuid, name = 'Classroom Room', role = 'writer', lifespanMs = 0 } = body || {};
@@ -146,3 +148,5 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unexpected server error', detail: err?.message ?? String(err) }, { status: 500 });
   }
 }
+
+export const POST = withAuth(handlePost);

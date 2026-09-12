@@ -4,7 +4,7 @@ description: '首頁完整功能自動化測試技能。驗證語言切換、翻
 argument-hint: '驗證首頁語言切換、翻譯系統、移動端菜單、頁面快取、問卷觸發與推薦課程'
 metadata:
   verified-status: '✅ VERIFIED'
-  last-verified-date: '2026-04-25'
+  last-verified-date: '2026-09-11'
   last-fixed-date: '2026-04-25'
   test-pass-rate: '54/54 (100%)'
   architecture-aligned: true

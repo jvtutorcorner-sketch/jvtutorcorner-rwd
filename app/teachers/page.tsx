@@ -6,6 +6,8 @@ import { ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { ddbDocClient } from '@/lib/dynamo';
 import Pagination from '@/components/Pagination';
 import { SUBJECTS } from '@/types/questionnaire';
+import { T } from '@/components/IntlProvider';
+import { subjectKey } from '@/lib/subjectI18n';
 
 export default async function TeachersPage({ searchParams }: { searchParams: Promise<any> }) {
   const spa = await searchParams;
@@ -59,7 +61,7 @@ export default async function TeachersPage({ searchParams }: { searchParams: Pro
 
   return (
     <main style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
-      <h1 style={{ marginBottom: '24px' }}>專業師資</h1>
+      <h1 style={{ marginBottom: '24px' }}><T k="menu_teachers" /></h1>
 
       <section style={{ marginBottom: '24px' }}>
         <SearchForm
@@ -71,7 +73,7 @@ export default async function TeachersPage({ searchParams }: { searchParams: Pro
       {/* 科目篩選 */}
       <section style={{ marginBottom: '32px' }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
-          <span style={{ fontSize: '14px', color: '#555', marginRight: '4px' }}>科目：</span>
+          <span style={{ fontSize: '14px', color: '#555', marginRight: '4px' }}><T k="teachers_subject_label" /></span>
           <a
             href="/teachers"
             style={{
@@ -85,7 +87,7 @@ export default async function TeachersPage({ searchParams }: { searchParams: Pro
               textDecoration: 'none',
             }}
           >
-            全部
+            <T k="all" />
           </a>
           {SUBJECTS.map(s => (
             <a
@@ -102,7 +104,7 @@ export default async function TeachersPage({ searchParams }: { searchParams: Pro
                 textDecoration: 'none',
               }}
             >
-              {s}
+              <T k={subjectKey(s)} fallback={s} />
             </a>
           ))}
         </div>
@@ -122,7 +124,11 @@ export default async function TeachersPage({ searchParams }: { searchParams: Pro
 
       {totalItems === 0 && (
         <div style={{ textAlign: 'center', padding: '48px', color: '#666' }}>
-          目前沒有{subjectQuery ? `教「${subjectQuery}」的` : '符合條件的'}老師。
+          {subjectQuery ? (
+            <T k="teachers_empty_subject" tVars={{ subject: subjectKey(subjectQuery) }} />
+          ) : (
+            <T k="teachers_empty_all" />
+          )}
         </div>
       )}
     </main>

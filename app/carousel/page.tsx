@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { getStoredUser } from '@/lib/mockAuth';
+import { useDateFormat } from '@/lib/hooks/useDateFormat';
 
 interface CarouselImage {
   id: string;
@@ -14,6 +15,7 @@ interface CarouselImage {
 }
 
 export default function AdminCarouselPage() {
+  const dateFmt = useDateFormat();
   const router = useRouter();
   const [images, setImages] = useState<CarouselImage[]>([]);
   const [loading, setLoading] = useState(true);
@@ -719,7 +721,7 @@ export default function AdminCarouselPage() {
                   <div style={{ flex: 1 }}>
                     <p><strong>文件名：</strong>{image.alt}</p>
                     <p><strong>順序：</strong>{image.order}</p>
-                    <p><strong>上傳時間：</strong>{new Date(image.createdAt).toLocaleString('zh-TW')}</p>
+                    <p><strong>上傳時間：</strong>{dateFmt.formatDateTime(image.createdAt)}</p>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginRight: 16 }}>
                     <button

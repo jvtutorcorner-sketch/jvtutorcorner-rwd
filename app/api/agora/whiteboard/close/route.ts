@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { withAuth, type AuthedRequest } from '@/lib/auth/apiGuard';
 
 // POST /api/agora/whiteboard/close
 // body: { uuid: string }
@@ -7,7 +8,8 @@ const NETLESS_API_BASE = process.env.NETLESS_API_BASE || 'https://api.netless.li
 const NETLESS_REGION = process.env.NETLESS_REGION || 'sg';
 const NETLESS_SDK_TOKEN = process.env.NETLESS_SDK_TOKEN;
 
-export async function POST(req: NextRequest) {
+// 先前完全沒有 auth：任何人都能關閉任意白板房間。
+async function handlePost(req: AuthedRequest) {
   try {
     const body = await req.json().catch(() => ({} as any));
     const { uuid } = body || {};
@@ -55,3 +57,5 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unexpected server error', detail: err?.message ?? String(err) }, { status: 500 });
   }
 }
+
+export const POST = withAuth(handlePost);

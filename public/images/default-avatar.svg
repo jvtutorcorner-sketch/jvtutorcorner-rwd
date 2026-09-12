@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="Default avatar">
+  <defs>
+    <linearGradient id="jv-avatar-bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#eef2ff" />
+      <stop offset="100%" stop-color="#e0e7ff" />
+    </linearGradient>
+    <clipPath id="jv-avatar-clip">
+      <circle cx="64" cy="64" r="64" />
+    </clipPath>
+  </defs>
+  <g clip-path="url(#jv-avatar-clip)">
+    <rect width="128" height="128" fill="url(#jv-avatar-bg)" />
+    <circle cx="64" cy="50" r="22" fill="#a5b4fc" />
+    <path d="M64 78c-23 0-42 14.5-45.5 34.2A64 64 0 0 0 64 128a64 64 0 0 0 45.5-15.8C106 92.5 87 78 64 78Z" fill="#a5b4fc" />
+  </g>
+</svg>

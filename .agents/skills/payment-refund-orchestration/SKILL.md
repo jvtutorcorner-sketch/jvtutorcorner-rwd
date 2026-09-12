@@ -3,8 +3,8 @@ name: payment-refund-orchestration
 description: '負責驗證點數與方案（訂閱/組合包）購買後的退款驗證，包含金流原路退回、資產扣除與狀態同步。'
 argument-hint: '執行點數或方案退款驗證 (金流 vs 點數扣除)'
 metadata:
-  verified-status: '✅ VERIFIED'
-  last-verified-date: '2026-04-30'
+  verified-status: '⚠️ PARTIAL'
+  last-verified-date: '2026-09-11'
   architecture-aligned: true
   notes: '與 payment-infrastructure 統一的環境配置 (APP_ENV) 及 paymentSuccessHandler 冪等性配合'
 ---
@@ -42,6 +42,11 @@ metadata:
 # 驗證報名課程退款 (點數返還)
 npx playwright test e2e/order_refund.spec.ts
 
-# 預期開發：驗證金流退錢 + 資產回扣
-# npx playwright test e2e/purchase_money_refund.spec.ts
+# 預期開發（尚未建立 e2e/purchase_money_refund.spec.ts）：驗證金流退錢 + 資產回扣
 ```
+
+## 退款相關頁面
+
+- [app/refunds/](../../../app/refunds/)：使用者的退款申請與紀錄（由 [app/refunds/layout.tsx](../../../app/refunds/layout.tsx) 要求登入）。
+- [app/admin/refunds/](../../../app/admin/refunds/)：管理員審核與執行退款。
+- 金流端的原路退回見 [payment-refund-gateway](../payment-refund-gateway/SKILL.md)；方案升級單的退款影響見 [subscriptions-plan-upgrades](../subscriptions-plan-upgrades/SKILL.md)。

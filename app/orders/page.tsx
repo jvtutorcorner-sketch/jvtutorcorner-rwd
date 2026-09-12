@@ -247,13 +247,13 @@ export default function OrdersPage() {
                   <option value="100">100</option>
                 </select>
               </div>
-
+              
               <div style={{ marginBottom: 8 }}>
                 <label style={{ marginRight: 8 }}>{t('orders_status_label')}</label>
                 <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} style={{ padding: '4px 8px', marginRight: 12 }}>
                   <option value="">{t('all')}</option>
-                  <option value="PENDING">{t('status_payment_pending')}</option>
-                  <option value="PAID">{t('status_payment_paid')}</option>
+                  <option value="PENDING">{t('order_status_pending')}</option>
+                  <option value="PAID">{t('order_status_paid')}</option>
                   <option value="COMPLETED">{t('order_status_completed')}</option>
                   <option value="CANCELLED">{t('order_status_cancelled')}</option>
                   <option value="REFUNDED">{t('order_status_refunded')}</option>
@@ -273,18 +273,18 @@ export default function OrdersPage() {
               </div>
 
               <div style={{ marginBottom: 8 }}>
-                <label style={{ marginRight: 8 }}>{t('start_date')}：</label>
-                <input
-                  type="date"
-                  value={filterStartDate}
+                <label style={{ marginRight: 8 }}>{t('orders_start_date_label')}</label>
+                <input 
+                  type="date" 
+                  value={filterStartDate} 
                   onChange={(e) => setFilterStartDate(e.target.value)}
                   style={{ padding: '4px 8px', marginRight: 12 }}
                 />
-
-                <label style={{ marginRight: 8 }}>{t('end_date')}：</label>
-                <input
-                  type="date"
-                  value={filterEndDate}
+                
+                <label style={{ marginRight: 8 }}>{t('orders_end_date_label')}</label>
+                <input 
+                  type="date" 
+                  value={filterEndDate} 
                   onChange={(e) => setFilterEndDate(e.target.value)}
                   style={{ padding: '4px 8px', marginRight: 12 }}
                 />
@@ -308,13 +308,13 @@ export default function OrdersPage() {
                   <thead>
                     <tr style={{ background: '#f5f5f5' }}>
                       <th style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'left' }}>{t('student')}</th>
-                      <th style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'left' }}>{t('order_id')}</th>
+                      <th style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'left' }}>{t('student_courses_order_number')}</th>
                       <th style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'left' }}>{t('course')}</th>
-                      <th style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'left' }}>{t('amount')}</th>
-                      <th style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'left' }}>{t('order_flow_label')}</th>
-                      <th style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'left' }}>{t('create_time')}</th>
+                      <th style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'left' }}>{t('student_courses_amount')}</th>
+                      <th style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'left' }}>{t('orders_col_flow')}</th>
+                      <th style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'left' }}>{t('student_courses_created_at')}</th>
                       <th style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'left' }}>{t('update_time')}</th>
-                      <th style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'left' }}>{t('actions')}</th>
+                      <th style={{ border: '1px solid #ddd', padding: '8px', textAlign: 'left' }}>{t('orders_col_actions')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -392,13 +392,13 @@ export default function OrdersPage() {
                                     cursor: 'pointer'
                                   }}
                                 >
-                                  {isExpanded ? t('orders_hide_button') : t('orders_payment_records_button')}
+                                  {isExpanded ? t('orders_hide') : t('order_detail_payments')}
                                 </button>
-                                <Link
+                                <Link 
                                   href={`/orders/${o.orderId}`}
                                   style={{ padding: '4px 8px', fontSize: '12px', color: '#0366d6', textDecoration: 'none', border: '1px solid #0366d6', borderRadius: 3, display: 'inline-block' }}
                                 >
-                                  {t('orders_view_details')}
+                                  {t('orders_detail')}
                                 </Link>
                               </div>
                             </td>
@@ -407,19 +407,19 @@ export default function OrdersPage() {
                             <tr key={`payment-${o.orderId}`}>
                               <td colSpan={8} style={{ border: '1px solid #ddd', padding: '12px', background: '#f9f9f9' }}>
                                 <div style={{ marginTop: 8 }}>
-                                  <h4 style={{ marginTop: 0, marginBottom: 8 }}>{t('orders_payment_records_button')}</h4>
+                                  <h4 style={{ marginTop: 0, marginBottom: 8 }}>{t('order_detail_payments')}</h4>
                                   {(!o.payments || o.payments.length === 0) ? (
-                                    <p>{t('orders_no_payment_records')}</p>
+                                    <p>{t('orders_no_payments')}</p>
                                   ) : (
                                     <table style={{ borderCollapse: 'collapse', border: '1px solid #ddd', width: '100%' }}>
                                       <thead>
                                         <tr style={{ background: '#e8e8e8' }}>
                                           <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'left', fontSize: 12 }}>{t('time')}</th>
-                                          <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'left', fontSize: 12 }}>{t('event_label')}</th>
-                                          <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'left', fontSize: 12 }}>{t('amount')}</th>
+                                          <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'left', fontSize: 12 }}>{t('event')}</th>
+                                          <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'left', fontSize: 12 }}>{t('student_courses_amount')}</th>
                                           <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'left', fontSize: 12 }}>{t('currency_label')}</th>
-                                          <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'left', fontSize: 12 }}>{t('status')}</th>
-                                          <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'left', fontSize: 12 }}>{t('note_label')}</th>
+                                          <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'left', fontSize: 12 }}>{t('student_courses_status')}</th>
+                                          <th style={{ border: '1px solid #ddd', padding: '6px', textAlign: 'left', fontSize: 12 }}>{t('notes')}</th>
                                         </tr>
                                       </thead>
                                       <tbody>
@@ -463,7 +463,7 @@ export default function OrdersPage() {
                     {t('previous')}
                   </button>
                   <span style={{ fontSize: 12, color: '#666' }}>
-                    {t('orders_page_indicator').replace('{page}', String(history.length + 1)).replace('{limit}', String(limit))}
+                    {t('orders_page_indicator', { page: history.length + 1, limit })}
                   </span>
                   <button onClick={handleNext} disabled={!lastKey} style={{ padding: '6px 12px', background: !lastKey ? '#ddd' : '#0366d6', color: '#fff', border: 'none', borderRadius: 4, cursor: !lastKey ? 'not-allowed' : 'pointer' }}>
                     {t('next')}

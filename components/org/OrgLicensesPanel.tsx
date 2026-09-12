@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useDateFormat } from '@/lib/hooks/useDateFormat';
 
 type License = {
   id: string;
@@ -36,6 +37,7 @@ const STATUS_COLOR: Record<License['status'], string> = {
 };
 
 export default function OrgLicensesPanel({ orgId, onSeatsChanged }: Props) {
+  const dateFmt = useDateFormat();
   const [licenses, setLicenses] = useState<License[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(false);
@@ -201,9 +203,9 @@ export default function OrgLicensesPanel({ orgId, onSeatsChanged }: Props) {
                   </td>
                   <td style={td}>{memberLabel(lic.userId)}</td>
                   <td style={td}>{lic.courseId || '-'}</td>
-                  <td style={{ ...td, fontSize: 12 }}>{lic.assignedAt ? new Date(lic.assignedAt).toLocaleString('zh-TW') : '-'}</td>
+                  <td style={{ ...td, fontSize: 12 }}>{lic.assignedAt ? dateFmt.formatDateTime(lic.assignedAt) : '-'}</td>
                   <td style={{ ...td, fontSize: 12 }}>
-                    {lic.expiresAt ? new Date(lic.expiresAt * 1000).toLocaleDateString('zh-TW') : '永久'}
+                    {lic.expiresAt ? dateFmt.formatDate(lic.expiresAt * 1000) : '永久'}
                   </td>
                   <td style={td}>
                     {lic.status === 'pending' && (

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { withAuth, type AuthedRequest } from '@/lib/auth/apiGuard';
 import { GoogleGenerativeAI, FunctionDeclaration, SchemaType } from '@google/generative-ai';
 import { ddbDocClient } from '@/lib/dynamo';
 import { PutCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
@@ -116,7 +117,8 @@ const notifyDepartmentDeclaration: FunctionDeclaration = {
 
 const tools = [{ functionDeclarations: [notifyDepartmentDeclaration] }];
 
-export async function POST(req: Request) {
+// 先前完全沒有 auth：匿名呼叫就能消耗平台自己的 LLM 金鑰。
+async function handlePost(req: AuthedRequest) {
     try {
         const config = await getGeminiConfig();
 
@@ -358,3 +360,5 @@ ${customInstruction}
         );
     }
 }
+
+export const POST = withAuth(handlePost);

@@ -127,6 +127,11 @@ JVTutorCorner 是一個**企業級線上家教平台**，核心功能是即時�
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
+> **補充（2026-09-09）**：上面這張分層圖沒有畫出授權層。伺服器端的權限鏈
+> （middleware → server layout 守衛 → apiGuard → 授權 helper → DynamoDB）與完整的元件關聯圖見
+> [system-architecture-diagram.md](./system-architecture-diagram.md) 與
+> [auth-architecture-diagram.md](./auth-architecture-diagram.md)。
+
 ### 3.2 教室即時通訊架構
 
 ```

@@ -6,6 +6,7 @@ import {
   savePricingSettings,
   PricingSettings,
 } from '@/lib/pricingService';
+import { withAdmin } from '@/lib/auth/apiGuard';
 
 export async function GET() {
   try {
@@ -38,7 +39,9 @@ export async function GET() {
   }
 }
 
-export async function POST(req: Request) {
+// GET 保持公開（/plans、/pricing/checkout、/settings/pricing 都要在未確定角色前讀取方案列表）。
+// POST 會整包覆寫全站訂閱方案/點數包/折扣/App 方案，先前無 auth，任何人都能改價，這裡鎖 admin。
+export const POST = withAdmin(async (req) => {
   try {
     const body = await req.json();
     const { settings } = body;
@@ -264,4 +267,4 @@ export async function POST(req: Request) {
       error: err?.message || 'Failed to save settings'
     }, { status: 500 });
   }
-}
+});

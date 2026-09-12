@@ -1,6 +1,11 @@
 ---
 name: big-data-collection
 description: '負責大數據推薦課程的前置數據收集規劃與實作。包含行為追蹤 (Behavioral Tracking)、冷啟動問卷整合、以及推薦系統擴展。'
+metadata:
+  verified-status: '❌ UNVERIFIED'
+  last-verified-date: '-'
+  architecture-aligned: false
+  related-skills: [recommendation-onboarding, ai-chat]
 ---
 
 # 大數據推薦課程 - 資料收集規劃 (Big Data Collection Strategy)
@@ -87,3 +92,9 @@ description: '負責大數據推薦課程的前置數據收集規劃與實作。
 - **A/B Testing**：測試不同問卷題項對推薦點擊率的影響。
 - **動態權重**：根據用戶最近期的行為（如 1 小時內的搜尋）給予更高的推薦權重。
 - **跨平台同步**：確保 Web 與 Mobile 收集到的數據有一致的標籤系統 (`lib/surveyTagMap.ts`)。
+
+## 行為追蹤 API（已實作）
+
+- [app/api/tracking/](../../../app/api/tracking/)：`course-click`、`feedback`、`purchase`、`scroll-depth` 四支收集端點。
+- [lib/trackingUtils.ts](../../../lib/trackingUtils.ts)：前端送出追蹤事件的共用工具。
+- 冷啟動問卷與推薦見 [recommendation-onboarding](../recommendation-onboarding/SKILL.md)。

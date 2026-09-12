@@ -131,3 +131,11 @@ feat(ai-chat): <簡短描述>
 ### 3. 執行驗證指令 (Validation Command)
 - 目前以手動在 `/apps/ai-chat` 進行測試為主
 - **API 紀錄更新**: `node scripts/inspect_apis.mjs`
+
+## 模型設定與路由
+
+- [lib/aiModelsService.ts](../../../lib/aiModelsService.ts)：可用模型清單（存在 DynamoDB，範本 [cloudformation/dynamodb-ai-models-table.yml](../../../cloudformation/dynamodb-ai-models-table.yml)，初始化 [scripts/init-ai-models.mjs](../../../scripts/init-ai-models.mjs)）。
+- [lib/smartRouterService.ts](../../../lib/smartRouterService.ts)：依請求選擇模型／供應商。
+- [lib/platform-agents.ts](../../../lib/platform-agents.ts)：平台 agent 定義。
+- [app/api/admin/ai-models/](../../../app/api/admin/ai-models/)：後台模型設定 API；頁面 [app/admin/ai-chat/](../../../app/admin/ai-chat/)。
+- 檢索增強（RAG）見 [knowledge-base-rag](../knowledge-base-rag/SKILL.md)；工作流程中的 AI node 見 [workflow-engine](../workflow-engine/SKILL.md)。

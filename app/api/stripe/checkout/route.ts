@@ -1,11 +1,16 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { stripe } from '@/lib/stripe';
 import profilesService from '@/lib/profilesService';
+import { withAuth, type AuthedRequest } from '@/lib/auth/apiGuard';
+import { resolvePayableOrderForSession } from '@/lib/payments/payableOrder';
 
-export async function POST(req: NextRequest) {
+// 結帳一律以登入者身分建立，不再接受 request body 指定的 userId
+// （先前任何人都能用別人的身分、任意金額開結帳單）。
+async function handleCheckout(req: AuthedRequest) {
     try {
         const body = await req.json();
-        const { priceId, amount, currency, successUrl, cancelUrl, userId, orderId, itemName } = body;
+        const { priceId, amount, currency, successUrl, cancelUrl, orderId, itemName } = body;
+        const userId = req.session.userId;
 
         // 0. Global Mock Mode Check
         if (process.env.NEXT_PUBLIC_PAYMENT_MOCK_MODE === 'true') {
@@ -23,6 +28,21 @@ export async function POST(req: NextRequest) {
 
         if (!priceId && !amount) {
             return NextResponse.json({ error: 'Missing priceId or amount' }, { status: 400 });
+        }
+
+        // 單次付款的金額以伺服器端的訂單紀錄為準，不採信 request body 的 amount。
+        // （priceId 走 Stripe 上設定好的價格，本來就不受呼叫端左右。）
+        let payableAmount = amount;
+        let payableCurrency = currency;
+        let payableItemName = itemName;
+        if (!priceId) {
+            const resolved = await resolvePayableOrderForSession(orderId, req.session);
+            if (!resolved.ok) {
+                return NextResponse.json({ error: resolved.error }, { status: resolved.status });
+            }
+            payableAmount = resolved.order.amount;
+            payableCurrency = resolved.order.currency;
+            payableItemName = resolved.order.itemName;
         }
 
         // 2. Get user profile
@@ -55,11 +75,11 @@ export async function POST(req: NextRequest) {
             ? [{ price: priceId, quantity: 1 }]
             : [{
                 price_data: {
-                    currency: (currency || 'TWD').toLowerCase(),
+                    currency: (payableCurrency || 'TWD').toLowerCase(),
                     product_data: {
-                        name: itemName || 'JV Tutor Corner Purchase',
+                        name: payableItemName || 'JV Tutor Corner Purchase',
                     },
-                    unit_amount: Math.round(amount * 1), // TWD usually doesn't have decimals in Stripe, but some currencies do. Stripe expects zero-decimal for TWD.
+                    unit_amount: Math.round(payableAmount * 1), // TWD usually doesn't have decimals in Stripe, but some currencies do. Stripe expects zero-decimal for TWD.
                 },
                 quantity: 1,
             }];
@@ -83,3 +103,5 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }
+
+export const POST = withAuth(handleCheckout);

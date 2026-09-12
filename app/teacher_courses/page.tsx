@@ -475,12 +475,12 @@ function TeacherCoursesContent() {
               type="text"
               value={searchInputCourse}
               onChange={(e) => setSearchInputCourse(e.target.value)}
-              placeholder={`搜尋課程...`}
+              placeholder={t('courses_search_placeholder')}
               style={{ padding: '8px', border: '1px solid #ccc', borderRadius: '4px', minWidth: '150px' }}
             />
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <label style={{ fontSize: '14px', fontWeight: 'bold' }}>開始區間 (起)</label>
+            <label style={{ fontSize: '14px', fontWeight: 'bold' }}>{t('courses_range_from')}</label>
             <input
               type="datetime-local"
               step="1"
@@ -490,7 +490,7 @@ function TeacherCoursesContent() {
             />
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <label style={{ fontSize: '14px', fontWeight: 'bold' }}>開始區間 (迄)</label>
+            <label style={{ fontSize: '14px', fontWeight: 'bold' }}>{t('courses_range_to')}</label>
             <input
               type="datetime-local"
               step="1"
@@ -509,7 +509,7 @@ function TeacherCoursesContent() {
         ) : error ? (
           <p>{t('load_error')}: {error}</p>
         ) : paginatedOrders.length === 0 ? (
-          <p>目前沒有符合條件的訂單。</p>
+          <p>{t('courses_empty_orders')}</p>
         ) : (
           <>
             <table className="orders-table" style={{ borderCollapse: 'collapse', border: '2px solid #ccc', width: '100%' }}>
@@ -519,8 +519,8 @@ function TeacherCoursesContent() {
                   <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>{t('student_courses_course_name')}</th>
                   <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>{t('role_teacher')}</th>
                   <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>{t('session_duration_label')}</th>
-                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>剩餘課程數</th>
-                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>剩餘時間 (分)</th>
+                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>{t('courses_col_remaining_sessions')}</th>
+                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>{t('courses_col_remaining_minutes')}</th>
                   <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>{t('start_time_label')}</th>
                   <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>{t('end_time_label')}</th>
                   <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>{t('enter_classroom')}</th>
@@ -541,7 +541,7 @@ function TeacherCoursesContent() {
                     </td>
                     <td data-label={t('role_teacher')} style={{ border: '2px solid #ccc', padding: '6px' }}>{o.courseId ? (courseMap[o.courseId]?.teacherName || '-') : '-'}</td>
                     <td data-label={t('session_duration_label')} style={{ border: '2px solid #ccc', padding: '6px' }}>{o.courseId ? (courseMap[o.courseId]?.durationMinutes ? `${courseMap[o.courseId]?.durationMinutes} m` : '-') : '-'}</td>
-                    <td data-label="剩餘課程數" style={{ border: '2px solid #ccc', padding: '6px' }}>
+                    <td data-label={t('courses_col_remaining_sessions')} style={{ border: '2px solid #ccc', padding: '6px' }}>
                       {(() => {
                         if (typeof (o as any).remainingSessions === 'number') {
                           return `${(o as any).remainingSessions}`;
@@ -549,7 +549,7 @@ function TeacherCoursesContent() {
                         return '--';
                       })()}
                     </td>
-                    <td data-label="剩餘時間 (分)" style={{ border: '2px solid #ccc', padding: '6px' }}>
+                    <td data-label={t('courses_col_remaining_minutes')} style={{ border: '2px solid #ccc', padding: '6px' }}>
                       {(() => {
                         if (typeof (o as any).remainingSeconds === 'number') {
                           const sess = typeof (o as any).remainingSessions === 'number' ? (o as any).remainingSessions : 1;
@@ -679,7 +679,7 @@ function TeacherCoursesContent() {
         {/* Section for courses with no orders yet - but still ongoing or upcoming */}
         {user.role === 'teacher' && teacherCourses.length > 0 && (
           <div style={{ marginTop: '40px' }}>
-            <h3 style={{ marginBottom: '16px' }}>我的排程課程 (尚未有預約)</h3>
+            <h3 style={{ marginBottom: '16px' }}>{t('teacher_courses_scheduled_title')}</h3>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px' }}>
               {(teacherCourses || []).filter((c: any) => {
                 // Filter out courses that already have orders showing in the table above
@@ -705,7 +705,7 @@ function TeacherCoursesContent() {
                       className="btn btn-primary"
                       style={{ padding: '6px 12px', fontSize: '13px' }}
                     >
-                      {t('enter_classroom')} (準備/預演)
+                      {t('enter_classroom')} {t('teacher_courses_rehearsal_suffix')}
                     </Link>
                   </div>
                 );

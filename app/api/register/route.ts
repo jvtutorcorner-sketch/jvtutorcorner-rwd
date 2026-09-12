@@ -10,10 +10,29 @@ import organizationService from '@/lib/organizationService';
 import { getOrgUnitById } from '@/lib/orgUnitService';
 import orgMembershipService from '@/lib/orgMembershipService';
 import { hashPassword } from '@/lib/auth/password';
+import { randomUUID } from 'crypto';
+import { DEFAULT_PLAN_ID, toPlanId } from '@/lib/plans';
+import { checkRateLimit, getClientIp, rateLimitResponse, RATE_LIMIT_RULES } from '@/lib/rateLimit';
 
 
 const PROFILES_TABLE = process.env.DYNAMODB_TABLE_PROFILES || process.env.PROFILES_TABLE || 'jvtutorcorner-profiles';
 const TEACHERS_TABLE = process.env.DYNAMODB_TABLE_TEACHERS || process.env.TEACHERS_TABLE || 'jvtutorcorner-teachers';
+
+/** Roles a person may give themselves. admin / dept_admin / custom roles are granted, never self-selected. */
+const SELF_REGISTRATION_ROLES = ['student', 'teacher'] as const;
+
+/**
+ * Plans a new account may start on — the NT$0 tiers only ('basic' is the legacy
+ * synonym of 'free', 'viewer' is the register page's default). Paid plans are
+ * applied by the payment flow (lib/paymentSuccessHandler.ts), never by a form field.
+ */
+const SELF_REGISTRATION_PLANS = ['free', 'basic', 'viewer'];
+
+/** Profile fields a registration form may populate. Everything else is server-owned. */
+const PROFILE_TEXT_FIELDS = [
+  'firstName', 'lastName', 'nickname', 'name', 'birthdate', 'gender', 'country',
+  'timezone', 'bio', 'createdAtUtc', 'createdAtLocal', 'updatedAtLocal',
+];
 
 export async function POST(req: Request) {
   try {
@@ -21,6 +40,14 @@ export async function POST(req: Request) {
     const { email: rawEmail, password, captchaToken, captchaValue } = body;
     if (!rawEmail || !password) {
       return NextResponse.json({ message: 'Email and password required' }, { status: 400 });
+    }
+
+    // 限流：同一 IP 短時間內大量註冊 = 灌假帳號。放在驗證碼之前，連驗證碼比對的成本都省下來。
+    const clientIp = getClientIp(req);
+    const ipLimit = await checkRateLimit(RATE_LIMIT_RULES.registerPerIp, clientIp);
+    if (!ipLimit.allowed) {
+      console.warn('[register] rate limited by ip', { ip: clientIp, count: ipLimit.count });
+      return rateLimitResponse(ipLimit, 'register_too_many_attempts');
     }
 
 
@@ -92,12 +119,36 @@ export async function POST(req: Request) {
       }
     }
 
-    // Strip orgId/orgUnitId out of what gets spread into the profile — they're handled
-    // explicitly via orgMembershipService.assignMemberWithLicense below, not written
-    // directly, so a request can't set them without going through seat/license accounting.
-    const { orgId: _rawOrgId, orgUnitId: _rawOrgUnitId, password: _rawPassword, ...profileBody } = body;
+    // ── Whitelist what a self-registration may write ─────────────────
+    // The body used to be spread wholesale into the profile and its `id`/`roid_id`
+    // chose the primary key, with no existence condition on the Put. Anyone could
+    // therefore pass another user's id and overwrite that account (email and password
+    // included), or give themselves role 'admin'/'dept_admin', a paid plan,
+    // isOrgAdmin, points, emailVerified... The server now picks the id and copies
+    // only the fields below. orgId/orgUnitId still go exclusively through
+    // orgMembershipService.assignMemberWithLicense (seat + license accounting).
+    const role = body.role === undefined || body.role === null || body.role === '' ? 'student' : String(body.role);
+    if (!(SELF_REGISTRATION_ROLES as readonly string[]).includes(role)) {
+      return NextResponse.json({ message: 'invalid_role' }, { status: 400 });
+    }
 
-    const plan = orgId ? null : (body.role === 'teacher' ? null : (body.plan ?? 'free'));
+    let plan: string | null = null;
+    if (!orgId && role !== 'teacher') {
+      const requestedPlan = toPlanId(String(body.plan ?? DEFAULT_PLAN_ID));
+      if (!SELF_REGISTRATION_PLANS.includes(requestedPlan)) {
+        return NextResponse.json({ message: 'invalid_plan' }, { status: 400 });
+      }
+      plan = requestedPlan;
+    }
+
+    const profileFields: Record<string, string | boolean> = {};
+    for (const field of PROFILE_TEXT_FIELDS) {
+      const value = body[field];
+      if (typeof value === 'string' && value.trim()) {
+        profileFields[field] = value.trim().slice(0, field === 'bio' ? 500 : 200);
+      }
+    }
+    if (typeof body.termsAccepted === 'boolean') profileFields.termsAccepted = body.termsAccepted;
 
     // ── Email Verification Setup ─────────────────────────────────────
     const { generateVerificationToken, sendVerificationEmail } = await import('@/lib/email/verificationService');
@@ -106,10 +157,17 @@ export async function POST(req: Request) {
     const verificationToken = generateVerificationToken();
     const verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(); // 24 hours
 
+    // Server-generated primary key. roid_id mirrors it (the rest of the app reads
+    // `roid_id || id`); client-supplied ids are ignored.
+    const id = randomUUID();
+
     // Create profile object
-    const profile = {
-      ...profileBody,
+    const profile: Record<string, unknown> = {
+      ...profileFields,
+      id,
+      roid_id: id,
       email,
+      role,
       password: hashPassword(password),
       plan,
       isB2B: Boolean(orgId),
@@ -124,14 +182,14 @@ export async function POST(req: Request) {
       updatedAtUtc: new Date().toISOString()
     };
 
-    // Use roid_id as primary identifier
-    const id = profile.id || profile.roid_id || `u_${Date.now()}`;
-    profile.roid_id = profile.roid_id || id;
-    profile.id = id;
-
     // Persist Profile to DynamoDB
     try {
-      await ddbDocClient.send(new PutCommand({ TableName: PROFILES_TABLE, Item: profile }));
+      await ddbDocClient.send(new PutCommand({
+        TableName: PROFILES_TABLE,
+        Item: profile,
+        // Never overwrite an existing account, even on a (astronomically unlikely) UUID clash.
+        ConditionExpression: 'attribute_not_exists(id)',
+      }));
 
       // If this is a B2B registration, atomically mint/consume a license and increment
       // the org's seat count. On failure, roll back the just-created profile — a B2B
@@ -146,6 +204,10 @@ export async function POST(req: Request) {
             assignedBy: 'self-registration'
           });
           licenseId = assignResult.license.id;
+          // assignMemberWithLicense's own UpdateCommand sets orgId/orgUnitId/licenseId/plan
+          // on the DB record after the PutCommand above — merge those back in so the
+          // response's `profile` isn't a stale pre-assignment snapshot.
+          Object.assign(profile, assignResult.profile);
         } catch (assignErr: any) {
           console.error('[register] Org assignment failed, rolling back profile', assignErr?.message || assignErr);
           try {
@@ -171,17 +233,13 @@ export async function POST(req: Request) {
       }
 
       try {
-        // 連結網域取自實際請求，避免正式/測試環境用到同一組 build-time 網址
-        const protocol = headerList.get('x-forwarded-proto') || 'http';
-        const host = headerList.get('host');
-        const requestOrigin = host ? `${protocol}://${host}` : undefined;
-        emailSent = await sendVerificationEmail(email, verificationToken, requestOrigin);
+        emailSent = await sendVerificationEmail(email, verificationToken);
       } catch (err) {
         console.error('[register] Failed to send verification email', err);
       }
 
       // If role is teacher, also create a teacher record
-      if (body.role === 'teacher') {
+      if (role === 'teacher') {
         const teacherRecord = {
           id: profile.roid_id,
           name: profile.name || (profile.firstName && profile.lastName ? `${profile.firstName} ${profile.lastName}` : profile.email),
@@ -201,10 +259,10 @@ export async function POST(req: Request) {
         }
       }
 
-      return NextResponse.json(
-        { ok: true, profile: { ...profile, password: undefined }, emailSent, orgId: orgId || undefined, licenseId },
-        { status: 201 }
-      );
+      // Never echo the password hash or the email-verification token: returning the
+      // token let a registrant verify an address they do not control.
+      const { password: _pw, verificationToken: _vt, ...publicProfile } = profile;
+      return NextResponse.json({ ok: true, profile: publicProfile, emailSent, orgId: orgId || undefined, licenseId }, { status: 201 });
     } catch (e: any) {
       console.error('[register] DynamoDB Profile write failed', e?.message || e);
       return NextResponse.json({ message: 'Failed to write to DB' }, { status: 500 });

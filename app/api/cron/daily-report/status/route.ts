@@ -5,8 +5,9 @@
  * POST /api/cron/daily-report/status — Manually trigger a report
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { generateDailyReport, ReportTier } from '@/lib/dailyReportService';
+import { withAdmin, type AuthedRequest } from '@/lib/auth/apiGuard';
 
 const VALID_TIERS: ReportTier[] = ['health', 'daily', 'weekly', 'full'];
 
@@ -54,7 +55,8 @@ export async function GET() {
 }
 
 // POST: Manual trigger (admin only) — supports tier parameter
-export async function POST(req: NextRequest) {
+// 註解一直寫著 admin only，但先前沒有任何檢查：任何人都能觸發完整報表產生與寄送。
+async function handlePost(req: AuthedRequest) {
   let tier: ReportTier = 'full';
 
   try {
@@ -86,3 +88,5 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+
+export const POST = withAdmin(handlePost);

@@ -54,7 +54,7 @@ metadata:
 
 已包含建議的 E2E 驗證步驟與範例。下面給出可直接使用或改寫的 Playwright 範例片段與 CLI 指令。
 
-### Playwright 範例（選擇性放入 `e2e/admin_teacher_management.spec.ts`）
+### Playwright 範例（尚未建立；建立時放在 `e2e/admin_teacher_management.spec.ts`）
 ```ts
 import { test, expect } from '@playwright/test';
 import path from 'path';
@@ -79,7 +79,8 @@ test('Admin can approve teacher profile changes', async ({ page }) => {
 ### CLI 範例
 ```bash
 # 以 dev server 已啟動為前提（或使用 playwright 的 webServer 設定）
-npx playwright test e2e/admin_teacher_management.spec.ts --project=chromium
+# 尚未建立 e2e/admin_teacher_management.spec.ts；目前可用：
+npx playwright test e2e/teacher_courses_verification.spec.ts --project=chromium
 ```
 
 ### 手動驗證流程

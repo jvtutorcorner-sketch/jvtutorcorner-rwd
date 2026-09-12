@@ -30,26 +30,12 @@ test.describe('Email Verification Hybrid Schema', () => {
   test('should initialize verification status on registration', async ({ page, request }) => {
     const testEmail = getTestEmail();
     
-    // 1. 註冊新帳號
-    await page.goto(`${BASE_URL}/login/register`);
-    
-    // 填寫註冊表單
-    await page.fill('input[type="text"]', 'Test User');
-    await page.fill('input[type="email"]', testEmail);
-    await page.fill('input[type="password"]', 'TestPassword123!');
-    
-    // 選擇學生角色
-    const studentOption = page.locator('text=我是學生');
-    if (await studentOption.isVisible()) {
-      await studentOption.click();
-    }
-    
-    // 提交表單（假設有驗證碼 bypass）
-    await page.fill('input[name="captcha"]', LOGIN_BYPASS_SECRET);
-    await page.click('button:has-text("建立帳號")');
-    
-    // 等待重定向
-    await page.waitForURL('**/login/**', { timeout: 5000 }).catch(() => {});
+    // 1. 註冊新帳號。改走 API：本測試驗證的是後端的驗證狀態初始化，不是表單；
+    //    註冊表單已改版（身份為 select、姓名分欄、驗證碼欄位沒有 name），舊的 UI 選擇器已失效。
+    const regRes = await request.post(`${BASE_URL}/api/register`, {
+      data: { email: testEmail, password: 'TestPassword123!', firstName: 'Test', lastName: 'User', role: 'student', termsAccepted: true, captchaValue: LOGIN_BYPASS_SECRET },
+    });
+    expect(regRes.status(), `register failed: ${await regRes.text()}`).toBe(201);
     
     // 2. 查詢驗證狀態 - profiles 表基礎信息
     const statusResponse = await request.get(`${BASE_URL}/api/admin/email-verification/status?userId=*&action=status`);
@@ -67,13 +53,11 @@ test.describe('Email Verification Hybrid Schema', () => {
   test('should record detailed events in verification logs', async ({ page, request }) => {
     const testEmail = getTestEmail();
     
-    // 註冊帳號
-    await page.goto(`${BASE_URL}/login/register`);
-    await page.fill('input[type="text"]', 'Test User');
-    await page.fill('input[type="email"]', testEmail);
-    await page.fill('input[type="password"]', 'TestPassword123!');
-    await page.fill('input[name="captcha"]', LOGIN_BYPASS_SECRET);
-    await page.click('button:has-text("建立帳號")');
+    // 註冊帳號（改走 API，理由同上）
+    const regRes = await request.post(`${BASE_URL}/api/register`, {
+      data: { email: testEmail, password: 'TestPassword123!', firstName: 'Test', lastName: 'User', role: 'student', termsAccepted: true, captchaValue: LOGIN_BYPASS_SECRET },
+    });
+    expect(regRes.status(), `register failed: ${await regRes.text()}`).toBe(201);
     
     // 等待郵件發送
     await page.waitForTimeout(2000);

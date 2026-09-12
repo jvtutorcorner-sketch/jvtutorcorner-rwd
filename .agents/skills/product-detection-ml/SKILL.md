@@ -1,9 +1,9 @@
 ---
 name: product-detection-ml
-description: 教學教材與課程內容影像分析模型的資料標記、訓練、ONNX 部署與驗證指南。Use when building or updating image analysis for textbooks, worksheets, diagrams, slides, handwritten notes, OCR, or learning-content feedback in JV Tutor Corner.
+description: '舊名稱相容入口：內容與 learning-content-analysis（教學教材影像分析）相同，保留給仍引用舊名稱的文件、腳本與 commit。Use when: an older doc, script or commit refers to product-detection-ml; for new work use learning-content-analysis instead.'
 metadata:
-  verified-status: '⚠️ PARTIAL'
-  last-verified-date: '2026-08-08'
+  verified-status: '✅ VERIFIED'
+  last-verified-date: '2026-09-11'
   architecture-aligned: true
   notes: '已對齊教材影像分析入口、AI service、OCR/標記文件與學習問卷；仍缺正式模型 provider contract、PDF pipeline、結果持久化與完整課程 fixture。'
 ---

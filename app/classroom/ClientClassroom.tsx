@@ -320,6 +320,8 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
 
   const agoraConfig = useMemo(() => ({
     channelName: effectiveChannelName,
+    // 讓 /api/agora/token 能驗證這位使用者確實屬於這堂課
+    courseId,
     // Map 'observer' and 'assistant' to actual Agora roles (teacher or student)
     role: (urlRole === 'teacher' || urlRole === 'student') ? (urlRole as any as 'teacher' | 'student') :
       isAssistant ? 'teacher' :
@@ -327,7 +329,7 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           computedRole,
     isOneOnOne: false, // P3: Disable 1v1 mode to enable small class 2-6 people
     defaultQuality: 'high' as const // 默认高质量
-  }), [effectiveChannelName, urlRole, computedRole, isAssistant, isObserver]);
+  }), [effectiveChannelName, courseId, urlRole, computedRole, isAssistant, isObserver]);
 
   const {
     joined,

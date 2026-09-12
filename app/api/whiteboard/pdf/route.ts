@@ -1,11 +1,13 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { uploadToS3, getObjectBuffer, deleteFromS3 } from '@/lib/s3';
+import { NextResponse } from 'next/server';
+import { withAuth, type AuthedRequest } from '@/lib/auth/apiGuard';
+import { uploadToS3, getObjectBuffer, deleteFromS3, isObjectStorageConfigured, getStorageBucket } from '@/lib/s3';
 import { saveWhiteboardState, getWhiteboardState, normalizeUuid } from '@/lib/whiteboardService';
 import { broadcastToUuid } from '../stream/route';
 import path from 'path';
 import fs from 'fs';
 
-export async function POST(req: NextRequest) {
+// 先前完全沒有 auth：白板的教材 PDF、房間狀態與事件端點任何人都能存取／改寫。
+async function handlePost(req: AuthedRequest) {
   try {
     const body = await req.json();
     const { uuid: rawUuid, pdf, orderId } = body;
@@ -23,14 +25,13 @@ export async function POST(req: NextRequest) {
     }
 
     let uploaded: { url: string; key: string } | null = null;
-    let useS3 = !!(process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID || process.env.AWS_S3_BUCKET_NAME);
+    // 物件儲存（S3 或 R2）是否可用，統一由 lib/s3.ts 判斷。
+    let useS3 = isObjectStorageConfigured();
 
-    console.log('[PDF POST] S3 Configuration check:', {
-      hasAccessKey: !!process.env.AWS_ACCESS_KEY_ID,
-      hasCiAccessKey: !!process.env.CI_AWS_ACCESS_KEY_ID,
-      hasBucket: !!process.env.AWS_S3_BUCKET_NAME,
-      useS3: useS3,
-      bucket: process.env.AWS_S3_BUCKET_NAME || process.env.CI_AWS_S3_BUCKET_NAME
+    console.log('[PDF POST] Object storage check:', {
+      useS3,
+      bucket: getStorageBucket(),
+      customEndpoint: !!process.env.STORAGE_S3_ENDPOINT,
     });
 
     // Case 1: PDF already uploaded (e.g., via presigned URL)
@@ -198,7 +199,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-export async function GET(req: NextRequest) {
+async function handleGet(req: AuthedRequest) {
   const { searchParams } = new URL(req.url);
   const rawUuid = searchParams.get('uuid');
   const uuid = normalizeUuid(rawUuid);
@@ -357,7 +358,7 @@ export async function GET(req: NextRequest) {
   }
 }
 
-export async function DELETE(req: NextRequest) {
+async function handleDelete(req: AuthedRequest) {
   const { searchParams } = new URL(req.url);
   const rawUuid = searchParams.get('uuid');
   const orderId = searchParams.get('orderId');
@@ -395,7 +396,7 @@ export async function DELETE(req: NextRequest) {
     const { s3Key, url } = state.pdf;
     console.log('[PDF DELETE] Found PDF to delete:', { s3Key, url });
 
-    const useS3 = !!(process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID || process.env.AWS_S3_BUCKET_NAME);
+    const useS3 = isObjectStorageConfigured();
 
     // Delete from S3
     if (useS3 && s3Key) {
@@ -440,3 +441,7 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: 'Internal server error', details: error.message }, { status: 500 });
   }
 }
+
+export const POST = withAuth(handlePost);
+export const GET = withAuth(handleGet);
+export const DELETE = withAuth(handleDelete);

@@ -145,13 +145,31 @@ export async function verifyDesktopMenuHidden(page: Page) {
  * @param page Playwright Page 物件
  * @returns 返回註冊的用戶 Email
  */
-export async function registerUserAndVerifyLogin(page: Page): Promise<string> {
-  const timestamp = Date.now();
-  const testEmail = `homepage_test_${timestamp}@example.com`;
-  
-  6
-  
-  return testEmail;
+export async function registerUserAndVerifyLogin(
+  page: Page,
+  opts: { baseUrl?: string; bypassSecret?: string; emailPrefix?: string } = {}
+): Promise<{ userId: string; email: string }> {
+  // Registers through the API, then logs in so the session cookie lands in page's
+  // context. Returns the canonical id (roid_id || id) that session.userId carries —
+  // not the email, which /api/points and /api/orders no longer accept for "self".
+  const baseUrl = opts.baseUrl || process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+  const bypass = opts.bypassSecret || process.env.LOGIN_BYPASS_SECRET || '';
+  const email = `${opts.emailPrefix || 'homepage_test'}_${Date.now()}@example.com`;
+  const password = 'Password123!';
+
+  const regRes = await page.request.post(`${baseUrl}/api/register`, {
+    data: { email, password, firstName: 'E2E', lastName: 'User', role: 'student', termsAccepted: true, captchaValue: bypass },
+  });
+  expect(regRes.status(), `register failed: ${await regRes.text()}`).toBe(201);
+
+  const loginRes = await page.request.post(`${baseUrl}/api/login`, {
+    data: { email, password, captchaToken: '', captchaValue: bypass },
+  });
+  expect(loginRes.ok(), `login failed: ${await loginRes.text()}`).toBe(true);
+  const { profile } = await loginRes.json();
+  const userId = String(profile?.roid_id || profile?.id || '');
+  expect(userId, 'login response has no roid_id/id').toBeTruthy();
+  return { userId, email };
 }
 
 /**

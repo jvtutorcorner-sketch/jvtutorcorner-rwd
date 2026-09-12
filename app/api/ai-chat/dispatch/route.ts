@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { withAuth, type AuthedRequest } from '@/lib/auth/apiGuard';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { ddbDocClient } from '@/lib/dynamo';
 import { ScanCommand } from '@aws-sdk/lib-dynamodb';
@@ -49,7 +50,8 @@ async function getDispatchAIConfig() {
 }
 
 // ─── POST /api/ai-chat/dispatch ───────────────────────────────────────────────
-export async function POST(req: Request) {
+// 先前完全沒有 auth：匿名呼叫就能消耗平台自己的 LLM 金鑰。
+async function handlePost(req: AuthedRequest) {
     try {
         const { query } = await req.json();
         if (!query?.trim()) {
@@ -150,7 +152,7 @@ export async function POST(req: Request) {
 }
 
 // ─── GET /api/ai-chat/dispatch — List all agents ──────────────────────────────
-export async function GET() {
+async function handleGet() {
     return NextResponse.json({
         ok: true,
         agents: PLATFORM_AGENTS.map(a => ({
@@ -166,3 +168,6 @@ export async function GET() {
         }))
     });
 }
+
+export const POST = withAuth(handlePost);
+export const GET = withAuth(handleGet);

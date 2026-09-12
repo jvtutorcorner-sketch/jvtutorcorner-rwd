@@ -4,6 +4,7 @@ import { UpdateCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { findProfileByEmail } from '@/lib/profilesService';
 import { hashPassword } from '@/lib/auth/password';
 import nodemailer from 'nodemailer';
+import { checkRateLimit, getClientIp, rateLimitResponse, RATE_LIMIT_RULES } from '@/lib/rateLimit';
 
 function generateRandomPassword(length = 8) {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -22,6 +23,20 @@ export async function POST(req: Request) {
         }
 
         const targetEmail = String(email).toLowerCase();
+
+        // 限流：這支 API 每次呼叫都會「直接重設密碼並寄信」，被濫用等於可以反覆把別人的密碼改掉。
+        // 同一 IP 與同一 Email 都要限制。
+        const clientIp = getClientIp(req);
+        const ipLimit = await checkRateLimit(RATE_LIMIT_RULES.forgotPasswordPerIp, clientIp);
+        if (!ipLimit.allowed) {
+            console.warn('[forgot-password] rate limited by ip', { ip: clientIp, count: ipLimit.count });
+            return rateLimitResponse(ipLimit, 'too_many_requests');
+        }
+        const emailLimit = await checkRateLimit(RATE_LIMIT_RULES.forgotPasswordPerEmail, targetEmail);
+        if (!emailLimit.allowed) {
+            console.warn('[forgot-password] rate limited by email', { email: targetEmail, count: emailLimit.count });
+            return rateLimitResponse(emailLimit, 'too_many_requests');
+        }
 
         // Do not allow password reset for test accounts from the API
         if (targetEmail === 'admin@jvtutorcorner.com' || targetEmail === 'teacher@test.com') {

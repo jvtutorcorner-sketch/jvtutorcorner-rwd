@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server';
 import { triggerWorkflow, executeSingleWorkflow } from '@/lib/workflowEngine';
+import { withAdmin } from '@/lib/auth/apiGuard';
 
-export async function POST(req: Request) {
+// 只有 WorkflowCanvas 的手動測試按鈕會呼叫這支（admin 頁面）；先前完全沒有 auth，
+// 任何人都能直接觸發任意已設定好的自動化流程（含寄信、外呼 API 等有副作用的動作）。
+export const POST = withAdmin(async (req) => {
     try {
         const { triggerType, data, testWorkflow } = await req.json();
 
@@ -32,4 +35,4 @@ export async function POST(req: Request) {
         console.error('[Workflow API Error]', error);
         return NextResponse.json({ ok: false, message: 'Workflow API failure' }, { status: 500 });
     }
-}
+});

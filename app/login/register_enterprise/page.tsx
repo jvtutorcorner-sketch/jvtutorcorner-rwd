@@ -3,18 +3,14 @@
 import { useEffect, useMemo, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useT } from "@/components/IntlProvider";
+import { COUNTRY_CODES, countryKey } from "@/lib/countryI18n";
 import {
   PLAN_LABELS,
   PLAN_DESCRIPTIONS,
   PlanId,
 } from "@/lib/mockAuth";
 import { PLAN_PRICES, PLAN_FEATURES } from "@/lib/mockAuth";
-import { useT } from "@/components/IntlProvider";
-
-const COUNTRY_CODES = [
-  "TW", "JP", "US", "GB", "HK", "MO", "CN", "KR", "SG", "MY",
-  "AU", "NZ", "CA", "DE", "FR", "ES", "IT", "IN", "BR", "MX", "ZA",
-] as const;
 
 function simpleMarkdownToHtml(md: string) {
   if (!md) return "";
@@ -135,8 +131,9 @@ export default function RegisterPage() {
 
   // plan selection moved to user settings; registration defaults to 'viewer'
 
+  // 標籤走翻譯 key，code 才是存進資料庫的值。
   const countries = useMemo(
-    () => COUNTRY_CODES.map((code) => ({ code, label: t(`country_${code}`) })),
+    () => COUNTRY_CODES.map((code) => ({ code, label: t(countryKey(code)) })),
     [t],
   );
 
@@ -228,7 +225,7 @@ export default function RegisterPage() {
 
     // 優先檢查服務條款同意
     if (!termsAccepted) {
-      setFormError(t('register_error_terms_required'));
+      setFormError(t('register_terms_required'));
       setTimeout(() => {
         // 滾動到服務條款區域
         const termsSection = document.querySelector('input[name="terms"]') as HTMLInputElement | null;
@@ -245,12 +242,12 @@ export default function RegisterPage() {
     const fieldRefs: { [key: string]: React.RefObject<any> } = {};
 
     if (!selectedOrgId) {
-      errors.push(t('register_enterprise_org_label'));
+      errors.push(t('register_field_org'));
       fieldRefs['org'] = orgRef;
     }
 
     if (!role) {
-      errors.push(t('register_error_field_role'));
+      errors.push(t('register_field_identity'));
       fieldRefs['role'] = roleRef;
     }
 
@@ -265,40 +262,40 @@ export default function RegisterPage() {
     }
 
     if (!email.trim()) {
-      errors.push(t('email'));
+      errors.push('Email');
       fieldRefs['email'] = emailRef;
     }
 
     if (!password) {
-      errors.push(t('password'));
+      errors.push(t('register_field_password'));
       fieldRefs['password'] = passwordRef;
     }
 
     if (!confirmPassword) {
-      errors.push(t('register_confirm_password_label'));
+      errors.push(t('register_field_confirm_password'));
       fieldRefs['confirmPassword'] = confirmPasswordRef;
     } else if (password !== confirmPassword) {
-      errors.push(t('register_error_password_mismatch_field'));
+      errors.push(t('register_field_password_mismatch'));
       fieldRefs['confirmPassword'] = confirmPasswordRef;
     }
 
     if (!birthdate) {
-      errors.push(t('birthdate_label'));
+      errors.push(t('register_field_birthdate'));
       fieldRefs['birthdate'] = birthdateRef;
     }
 
     if (!gender) {
-      errors.push(t('gender_label'));
+      errors.push(t('register_field_gender'));
       fieldRefs['gender'] = genderRef;
     }
 
     if (!country) {
-      errors.push(t('country_label'));
+      errors.push(t('register_field_country'));
       fieldRefs['country'] = countryRef;
     }
 
     if (errors.length > 0) {
-      const errorMessage = `${t('register_error_required_fields_prefix')}\n• ${errors.join('\n• ')}`;
+      const errorMessage = `${t('register_required_fields')}\n• ${errors.join('\n• ')}`;
       setFormError(errorMessage);
 
       // Scroll to first error field or error message
@@ -348,7 +345,7 @@ export default function RegisterPage() {
       const data = await res.json();
       if (!res.ok) {
         // show server message inline instead of throwing an exception
-        const message = data?.message || t('register_error_register_failed');
+        const message = data?.message || t('register_failed');
         setFormError(message);
         // focus email for duplicate-email errors
         try {
@@ -363,7 +360,7 @@ export default function RegisterPage() {
       setTimeout(() => router.push('/login'), 900);
     } catch (err: any) {
       console.error(err);
-      setFormError(err?.message || t('save_failed'));
+      setFormError(err?.message || t('register_save_failed'));
     }
   };
 
@@ -398,7 +395,7 @@ export default function RegisterPage() {
     if (!file) return;
 
     if (!file.name.endsWith('.csv')) {
-      setCsvError(t('register_enterprise_csv_error_invalid_file'));
+      setCsvError(t('csv_error_pick_file'));
       setCsvFile(null);
       return;
     }
@@ -410,12 +407,12 @@ export default function RegisterPage() {
   // Parse and validate CSV
   const handleCsvImport = async () => {
     if (!csvFile) {
-      setCsvError(t('register_enterprise_csv_error_no_file'));
+      setCsvError(t('csv_error_no_file'));
       return;
     }
 
     if (!selectedOrgId) {
-      setCsvError(t('register_enterprise_csv_error_no_org'));
+      setCsvError(t('csv_error_no_org'));
       return;
     }
 
@@ -424,7 +421,7 @@ export default function RegisterPage() {
       const lines = text.split('\n').filter(line => line.trim());
 
       if (lines.length < 2) {
-        setCsvError(t('register_enterprise_csv_error_format'));
+        setCsvError(t('csv_error_format'));
         return;
       }
 
@@ -433,7 +430,7 @@ export default function RegisterPage() {
 
       const missingHeaders = requiredHeaders.filter(h => !headers.includes(h));
       if (missingHeaders.length > 0) {
-        setCsvError(t('register_enterprise_csv_error_missing_headers').replace('{headers}', missingHeaders.join(', ')));
+        setCsvError(t('csv_error_missing_headers', { fields: missingHeaders.join(', ') }));
         return;
       }
 
@@ -460,14 +457,14 @@ export default function RegisterPage() {
         if (!record.country) rowErrors.push('country');
 
         if (rowErrors.length > 0) {
-          errors.push(t('register_enterprise_csv_row_missing_fields').replace('{row}', String(i + 1)).replace('{fields}', rowErrors.join(', ')));
+          errors.push(t('csv_error_row_missing', { row: i + 1, fields: rowErrors.join(', ') }));
         } else {
           records.push(record);
         }
       }
 
       if (errors.length > 0) {
-        setCsvError(`${t('register_enterprise_csv_validation_failed')}\n${errors.join('\n')}`);
+        setCsvError(`${t('csv_error_validation')}\n${errors.join('\n')}`);
         return;
       }
 
@@ -479,7 +476,7 @@ export default function RegisterPage() {
       });
       const duplicateEmails = Array.from(emailCounts.entries()).filter(([, count]) => count > 1).map(([e]) => e);
       if (duplicateEmails.length > 0) {
-        setCsvError(`${t('register_enterprise_csv_duplicate_emails')}\n${duplicateEmails.join('\n')}`);
+        setCsvError(`${t('csv_error_duplicate_emails')}\n${duplicateEmails.join('\n')}`);
         return;
       }
 
@@ -488,15 +485,12 @@ export default function RegisterPage() {
       const freshOrgs = await loadOrgs();
       const freshOrg = freshOrgs.find((o) => o.id === selectedOrgId);
       if (!freshOrg) {
-        setCsvError(t('register_enterprise_csv_org_gone'));
+        setCsvError(t('csv_error_org_gone'));
         return;
       }
       if (records.length > freshOrg.availableSeats) {
         setCsvError(
-          t('register_enterprise_csv_seats_exceeded')
-            .replace('{count}', String(records.length))
-            .replace('{orgName}', freshOrg.name)
-            .replace('{seats}', String(freshOrg.availableSeats))
+          t('csv_error_not_enough_seats', { records: records.length, org: freshOrg.name, seats: freshOrg.availableSeats })
         );
         return;
       }
@@ -527,6 +521,13 @@ export default function RegisterPage() {
           updatedAtUtc: times.utc,
           updatedAtLocal: times.local,
           orgId: selectedOrgId,
+          // Reuse the captcha solved once at the top of the page — verifyCaptcha's
+          // token is stateless (signature + expiry only, no single-use consumption),
+          // so it's safe to submit against every row in the batch. Without this every
+          // CSV row was rejected with captcha_incorrect since /api/register always
+          // requires it.
+          captchaToken,
+          captchaValue,
         };
 
         try {
@@ -536,9 +537,9 @@ export default function RegisterPage() {
             body: JSON.stringify(payload),
           });
           const data = await res.json();
-          results.push({ email: record.email, ok: res.ok, error: res.ok ? undefined : (data?.message || t('register_enterprise_csv_row_import_failed')) });
+          results.push({ email: record.email, ok: res.ok, error: res.ok ? undefined : (data?.message || t('csv_error_row_failed')) });
         } catch (rowErr: any) {
-          results.push({ email: record.email, ok: false, error: rowErr?.message || t('register_enterprise_csv_network_error') });
+          results.push({ email: record.email, ok: false, error: rowErr?.message || t('csv_error_network') });
         }
 
         setCsvProgress((prev) => (prev ? { done: prev.done + 1, total: prev.total } : prev));
@@ -560,7 +561,7 @@ export default function RegisterPage() {
 
     } catch (err: any) {
       setCsvProgress(null);
-      setCsvError(`${t('register_enterprise_csv_parse_failed')}${err.message}`);
+      setCsvError(t('csv_error_parse', { message: err.message }));
     }
   };
 
@@ -568,7 +569,7 @@ export default function RegisterPage() {
     <div className="page">
       <header className="page-header">
         <h1>{t('register_enterprise_title')}</h1>
-        <p>{t('register_subtitle_before')}<strong>{t('register_subtitle_bold')}</strong>{t('register_subtitle_after')}<span style={{ color: 'red' }}>*</span>{t('register_subtitle_after_asterisk')}</p>
+        <p>{t('register_subtitle')}</p>
 
         {/* CSV Import Section */}
         <div style={{ marginTop: 16, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -592,7 +593,7 @@ export default function RegisterPage() {
               fontWeight: 600
             }}
           >
-            {t('register_enterprise_select_file')}
+            📁 {t('register_csv_choose')}
           </button>
           <button
             type="button"
@@ -608,7 +609,7 @@ export default function RegisterPage() {
               fontWeight: 600
             }}
           >
-            {t('register_enterprise_import_csv')}
+            📥 {t('register_csv_import')}
           </button>
           <button
             type="button"
@@ -623,7 +624,7 @@ export default function RegisterPage() {
               fontWeight: 600
             }}
           >
-            {t('register_enterprise_download_sample_csv')}
+            📄 {t('register_csv_sample')}
           </button>
           {csvFile && <span style={{ color: '#059669', fontWeight: 600 }}>✓ {csvFile.name}</span>}
         </div>
@@ -650,7 +651,7 @@ export default function RegisterPage() {
             maxWidth: 500,
             boxShadow: '0 20px 40px rgba(0,0,0,0.3)'
           }}>
-            <h2 style={{ color: '#dc2626', marginBottom: 16 }}>{t('register_enterprise_import_error_title')}</h2>
+            <h2 style={{ color: '#dc2626', marginBottom: 16 }}>{t('csv_import_error_title')}</h2>
             <p style={{ whiteSpace: 'pre-line', marginBottom: 20 }}>{csvError}</p>
             <button
               onClick={() => setCsvError(null)}
@@ -664,7 +665,7 @@ export default function RegisterPage() {
                 fontWeight: 600
               }}
             >
-              {t('register_enterprise_ok_button')}
+              {t('confirm_ok')}
             </button>
           </div>
         </div>
@@ -692,7 +693,7 @@ export default function RegisterPage() {
             boxShadow: '0 20px 40px rgba(0,0,0,0.3)',
             textAlign: 'center'
           }}>
-            <p style={{ fontSize: 16, fontWeight: 600 }}>{t('register_enterprise_importing_progress').replace('{done}', String(csvProgress.done)).replace('{total}', String(csvProgress.total))}</p>
+            <p style={{ fontSize: 16, fontWeight: 600 }}>{t('csv_importing', { done: csvProgress.done, total: csvProgress.total })}</p>
           </div>
         </div>
       )}
@@ -722,34 +723,32 @@ export default function RegisterPage() {
             textAlign: 'left'
           }}>
             <h2 style={{ color: csvSuccess.count === csvSuccess.results.length ? '#10b981' : '#f59e0b', marginBottom: 16, textAlign: 'center' }}>
-              {csvSuccess.count === csvSuccess.results.length ? t('register_enterprise_import_complete_title') : t('register_enterprise_import_partial_fail_title')}
+              {csvSuccess.count === csvSuccess.results.length ? t('csv_import_done') : t('csv_import_partial')}
             </h2>
             <p style={{ fontSize: 18, marginBottom: 12, textAlign: 'center' }}>
-              {t('register_enterprise_import_result_summary')
-                .replace('{success}', String(csvSuccess.count))
-                .replace('{fail}', String(csvSuccess.results.length - csvSuccess.count))}
+              {t('csv_import_summary', { ok: csvSuccess.count, failed: csvSuccess.results.length - csvSuccess.count })}
             </p>
             {csvSuccess.results.some((r) => !r.ok) && (
               <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: 12, marginBottom: 12 }}>
-                <p style={{ fontWeight: 600, marginBottom: 6 }}>{t('register_enterprise_fail_list_title')}</p>
+                <p style={{ fontWeight: 600, marginBottom: 6 }}>{t('csv_import_failed_list')}</p>
                 <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13 }}>
                   {csvSuccess.results.filter((r) => !r.ok).map((r, idx) => (
-                    <li key={idx}>{r.email}：{r.error}</li>
+                    <li key={idx}>{r.email}{t('label_colon')}{r.error}</li>
                   ))}
                 </ul>
               </div>
             )}
             <p style={{ color: '#6b7280', textAlign: 'center' }}>
               {csvSuccess.count === csvSuccess.results.length
-                ? t('register_enterprise_redirect_notice')
-                : t('register_enterprise_fix_and_retry_notice')}
+                ? t('csv_import_redirect_hint')
+                : t('csv_import_retry_hint')}
             </p>
             <div style={{ textAlign: 'center', marginTop: 12 }}>
               <button
                 onClick={() => setCsvSuccess(null)}
                 style={{ padding: '8px 16px', borderRadius: 6, background: '#2563eb', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600 }}
               >
-                {t('dismiss')}
+                {t('close')}
               </button>
             </div>
           </div>
@@ -758,32 +757,32 @@ export default function RegisterPage() {
 
       <section className="section">
         <div className="card">
-          <h2>{t('register_basic_info_title')}</h2>
+          <h2>{t('register_basic_info')}</h2>
           <form onSubmit={handleSubmit} className="modal-form">
             <div className="field">
-              <label>{t('register_enterprise_org_label')} <span style={{ color: 'red' }}>*</span></label>
+              <label>{t('register_org_label')} <span style={{ color: 'red' }}>*</span></label>
               <select
                 ref={orgRef}
                 value={selectedOrgId}
                 onChange={(e) => setSelectedOrgId(e.target.value)}
                 style={{ cursor: 'pointer' }}
               >
-                <option value="">{orgsLoading ? t('loading') : t('register_enterprise_select_org_placeholder')}</option>
+                <option value="">{orgsLoading ? t('loading') : t('register_org_select')}</option>
                 {orgs.map((o) => (
                   <option key={o.id} value={o.id} disabled={o.availableSeats <= 0}>
-                    {o.name}{o.availableSeats <= 0 ? t('register_enterprise_seats_full') : ` ${t('register_enterprise_seats_remaining').replace('{seats}', String(o.availableSeats))}`}
+                    {o.name}{o.availableSeats <= 0 ? t('register_org_seats_full') : t('register_org_seats_left', { count: o.availableSeats })}
                   </option>
                 ))}
               </select>
               {!orgsLoading && orgs.length === 0 && (
                 <p style={{ color: '#c33', fontSize: 13, marginTop: 4 }}>
-                  {t('register_enterprise_no_orgs_available')}
+                  {t('register_org_none')}
                 </p>
               )}
             </div>
 
             <div className="field">
-              <label>{t('register_role_label')} <span style={{ color: 'red' }}>*</span></label>
+              <label>{t('register_identity')} <span style={{ color: 'red' }}>*</span></label>
               <select
                 ref={roleRef}
                 value={role || ""}
@@ -799,7 +798,7 @@ export default function RegisterPage() {
                 }}
                 style={{ cursor: 'pointer' }}
               >
-                <option value="">{t('register_select_role_placeholder')}</option>
+                <option value="">{t('register_select_identity')}</option>
                 {roles.map((r) => (
                   <option key={r.id} value={r.id}>
                     {r.name}
@@ -820,13 +819,11 @@ export default function RegisterPage() {
             </div>
 
             <div className="field">
-              <label>{t('email')} <span style={{ color: 'red' }}>*</span></label>
+              <label>Email <span style={{ color: 'red' }}>*</span></label>
               <input ref={emailRef} type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="example@domain.com" />
               {emailDomainMismatch && (
                 <div style={{ color: '#c33', fontSize: 13, marginTop: 4, fontWeight: 'bold' }}>
-                  ⚠️ {t('register_enterprise_email_domain_mismatch')
-                    .replace('{orgName}', selectedOrg?.name || '')
-                    .replace('{domain}', selectedOrg?.domain?.replace(/^@/, '') || '')}
+                  {t('register_email_domain_mismatch', { org: selectedOrg?.name ?? '', domain: selectedOrg?.domain?.replace(/^@/, '') ?? '' })}
                 </div>
               )}
             </div>
@@ -851,7 +848,7 @@ export default function RegisterPage() {
             </div>
 
             <div className="field">
-              <label>{t('register_confirm_password_label')} <span style={{ color: 'red' }}>*</span></label>
+              <label>{t('register_confirm_password')} <span style={{ color: 'red' }}>*</span></label>
               <input
                 ref={confirmPasswordRef}
                 type={showPasswords ? 'text' : 'password'}
@@ -898,12 +895,12 @@ export default function RegisterPage() {
             </div>
 
             <div className="field" style={{ display: 'none' }}>
-              <label>{t('register_auto_id_label')}</label>
+              <label>{t('register_auto_id')}</label>
               <input
                 value={uuid}
                 readOnly
                 disabled
-                aria-label={t('register_auto_id_aria')}
+                aria-label={t('register_auto_id_locked')}
                 style={{ background: '#f3f4f6', cursor: 'not-allowed' }}
               />
             </div>
@@ -958,14 +955,14 @@ export default function RegisterPage() {
                       appearance: 'checkbox'
                     }}
                   />
-                  {t('register_terms_agree_label')}
+                  {t('register_terms_agree')}
                 </label>
               </div>
             </div>
 
             {/* Captcha Section */}
             <div className="field">
-              <label>{t('captcha_label')} <span style={{ color: "red" }}>*</span></label>
+              <label>{t('register_captcha_label')} <span style={{ color: "red" }}>*</span></label>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
                 {captchaImage ? (
                   <img src={captchaImage} alt="captcha" style={{ height: 48, border: "1px solid #ddd", borderRadius: 4 }} />
@@ -979,7 +976,7 @@ export default function RegisterPage() {
               <input
                 type="text"
                 value={captchaValue}
-                placeholder={t('register_captcha_input_placeholder')}
+                placeholder={t('register_captcha_placeholder')}
                 onChange={(e) => setCaptchaValue(e.target.value)}
                 autoComplete="off"
               />
@@ -1008,7 +1005,7 @@ export default function RegisterPage() {
               <Link href="/login" className="modal-button secondary">{t('register_back_to_login')}</Link>
             </div>
 
-            {saved && <p className="form-success">{t('register_enterprise_saved_notice')}</p>}
+            {saved && <p className="form-success">{t('register_saved_simulated')}</p>}
           </form>
         </div>
       </section>

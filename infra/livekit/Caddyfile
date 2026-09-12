@@ -1,0 +1,26 @@
+# infra/livekit/Caddyfile
+# 由 envsubst 代入 ${LIVEKIT_DOMAIN}，例如 livekit.jvtutorcorner.com
+#
+# Caddy 會自動向 Let's Encrypt 申請憑證（需要 80/443 對外可達且 DNS A 記錄指向 Elastic IP）。
+# TURN/TLS 走 layer4 分流需要 caddy-l4 plugin；若不想自建映像，先只開 UDP TURN（3478）即可，
+# 絕大多數家用 / 學校網路都能透過 UDP 3478 或直接 UDP 50000-60000 連上。
+
+{
+  email ops@jvtutorcorner.com
+}
+
+${LIVEKIT_DOMAIN} {
+  # 信令 WebSocket 與 REST（RoomServiceClient / webhook 都走這裡）
+  reverse_proxy localhost:7880
+
+  # 給 ALB / 監控用的健康檢查
+  handle /healthz {
+    respond "ok" 200
+  }
+
+  encode gzip
+  log {
+    output stdout
+    format json
+  }
+}

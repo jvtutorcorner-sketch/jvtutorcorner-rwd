@@ -3,6 +3,7 @@ import { ddbDocClient } from '@/lib/dynamo';
 import { ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { sendVerificationEmail, generateVerificationToken } from '@/lib/email/verificationService';
 import { updateEmailVerificationStatus } from '@/lib/email/emailVerificationStatus';
+import { checkRateLimit, getClientIp, rateLimitResponse, RATE_LIMIT_RULES } from '@/lib/rateLimit';
 
 /**
  * POST /api/auth/resend-verification
@@ -24,7 +25,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const normalizedEmail = email.toLowerCase();
+    const normalizedEmail = String(email).toLowerCase();
+
+    // 限流（IP 層級）：既有的 per-account 冷卻只擋得住同一帳號，擋不住拿一堆信箱來洗信。
+    const clientIp = getClientIp(req);
+    const ipLimit = await checkRateLimit(RATE_LIMIT_RULES.resendVerificationPerIp, clientIp);
+    if (!ipLimit.allowed) {
+      console.warn('[ResendVerification] rate limited by ip', { ip: clientIp, count: ipLimit.count });
+      return rateLimitResponse(ipLimit, 'too_many_requests');
+    }
+
     const PROFILES_TABLE = process.env.DYNAMODB_TABLE_PROFILES || 'jvtutorcorner-profiles';
 
     // 1. 查詢用戶

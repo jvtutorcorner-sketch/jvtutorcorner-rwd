@@ -28,7 +28,9 @@ function mapError(error: any): { status: number; message: string } {
     message.includes('占用') ||
     message.includes('已屬於其他組織') ||
     message.includes('already assigned') ||
-    message.includes('already belongs')
+    message.includes('already belongs') ||
+    message.includes('已持有有效授權') ||
+    message.includes('already holds')
   ) {
     return { status: 409, message };
   }
@@ -81,6 +83,7 @@ export const POST = withAuth(async (req, context) => {
       action: 'license.assign',
       targetType: 'license',
       targetId: licenseId,
+      orgId: license.orgId,
       metadata: { orgId: license.orgId, profileId },
     });
 
@@ -127,6 +130,7 @@ export const DELETE = withAuth(async (req, context) => {
       action: 'license.unassign',
       targetType: 'license',
       targetId: licenseId,
+      orgId: license.orgId,
       metadata: { orgId: license.orgId, profileId: license.userId },
     });
 

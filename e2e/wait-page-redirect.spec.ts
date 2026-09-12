@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
-// 增加測試超時以容納 20s 延遲場景
-test.setTimeout(40000);
+// 增加測試超時以容納 20s 延遲場景（加上 next dev 首次編譯）
+test.setTimeout(90000);
 
 test.describe('Wait Page Redirect Test', () => {
   test('should not redirect to login immediately after entering wait page', async ({ page }) => {
@@ -43,8 +43,8 @@ test.describe('Wait Page Redirect Test', () => {
     console.log(`Navigating to ${base}${waitPath}`);
     await page.goto(`${base}${waitPath}`);
 
-    // 等待頁面載入
-    await page.waitForLoadState('networkidle');
+    // 等待頁面載入。不用 'networkidle'：等待頁會持續輪詢，網路永遠不會閒置。
+    await page.waitForLoadState('domcontentloaded');
 
     // 檢查初始 URL
     const initialUrl = page.url();

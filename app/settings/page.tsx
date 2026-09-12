@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { getStoredUser, setStoredUser, PLAN_LABELS, PLAN_PRICES } from '@/lib/mockAuth';
 import type { PlanId } from '@/lib/mockAuth';
 import { useT } from '@/components/IntlProvider';
+import { COUNTRY_CODES, countryKey } from '@/lib/countryI18n';
 
 export default function SettingsPage() {
   const t = useT();
@@ -74,7 +75,7 @@ export default function SettingsPage() {
           <p>{t('personal_settings_description')}</p>
         </header>
         <section className="section">
-          <div className="card">載入中…</div>
+          <div className="card">{t('loading')}</div>
         </section>
       </div>
     );
@@ -116,8 +117,8 @@ export default function SettingsPage() {
         body: JSON.stringify(payload),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.message || '更新失敗');
-      setMessage('更新個人設定成功');
+      if (!res.ok) throw new Error(data?.message || t('settings_update_failed'));
+      setMessage(t('settings_update_success'));
       // update stored user display name
       const stored = getStoredUser();
       if (stored) {
@@ -126,7 +127,7 @@ export default function SettingsPage() {
         setUser(updated);
       }
     } catch (err: any) {
-      setMessage(err?.message || '更新失敗');
+      setMessage(err?.message || t('settings_update_failed'));
     } finally {
       setLoading(false);
     }
@@ -176,27 +177,9 @@ export default function SettingsPage() {
               <label>{t('country_label')}</label>
               <select value={country} onChange={(e) => setCountry(e.target.value)}>
                 <option value="">{t('select_placeholder')}</option>
-                <option value="TW">台灣</option>
-                <option value="JP">日本</option>
-                <option value="US">美國</option>
-                <option value="GB">英國</option>
-                <option value="HK">香港</option>
-                <option value="MO">澳門</option>
-                <option value="CN">中國</option>
-                <option value="KR">南韓</option>
-                <option value="SG">新加坡</option>
-                <option value="MY">馬來西亞</option>
-                <option value="AU">澳洲</option>
-                <option value="NZ">紐西蘭</option>
-                <option value="CA">加拿大</option>
-                <option value="DE">德國</option>
-                <option value="FR">法國</option>
-                <option value="ES">西班牙</option>
-                <option value="IT">義大利</option>
-                <option value="IN">印度</option>
-                <option value="BR">巴西</option>
-                <option value="MX">墨西哥</option>
-                <option value="ZA">南非</option>
+                {COUNTRY_CODES.map((code) => (
+                  <option key={code} value={code}>{t(countryKey(code))}</option>
+                ))}
               </select>
             </div>
 

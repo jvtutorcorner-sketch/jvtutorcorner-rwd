@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useT } from "@/components/IntlProvider";
 
 export default function TermsPage() {
+  const t = useT();
   const [termsHtml, setTermsHtml] = useState<string | null>(null);
 
   useEffect(() => {
@@ -11,8 +13,8 @@ export default function TermsPage() {
     let mounted = true;
     fetch('/terms.html')
       .then((r) => r.text())
-      .then((t) => {
-        if (mounted) setTermsHtml(t);
+      .then((html) => {
+        if (mounted) setTermsHtml(html);
       })
       .catch(() => setTermsHtml(null));
     return () => { mounted = false; };
@@ -21,8 +23,8 @@ export default function TermsPage() {
   return (
     <div className="page">
       <header className="page-header">
-        <h1>服務條款與隱私權政策</h1>
-        <p>請仔細閱讀以下條款內容</p>
+        <h1>{t('terms_page_title')}</h1>
+        <p>{t('terms_page_subtitle')}</p>
       </header>
 
       <section className="section">
@@ -36,14 +38,14 @@ export default function TermsPage() {
               lineHeight: '1.6'
             }}
             dangerouslySetInnerHTML={{
-              __html: termsHtml || '<p>載入條款中... 或放置一份 PDF 到 public/terms.pdf 並提供下載。</p>'
+              __html: termsHtml || `<p>${t('terms_loading')}</p>`
             }}
           />
         </div>
 
         <div className="modal-actions" style={{ marginTop: 20, textAlign: 'center' }}>
           <Link href="/login/register" className="modal-button primary">
-            返回註冊頁面
+            {t('terms_back_to_register')}
           </Link>
         </div>
       </section>

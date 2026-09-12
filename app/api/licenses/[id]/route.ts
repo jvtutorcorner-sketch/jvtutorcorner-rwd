@@ -9,7 +9,7 @@
  */
 
 import { NextResponse } from 'next/server';
-import licenseService from '@/lib/licenseService';
+import licenseService, { toEpochSeconds } from '@/lib/licenseService';
 import { withAuth } from '@/lib/auth/apiGuard';
 import { requireOrgAccess } from '@/lib/auth/orgAccess';
 import { writeAuditLog } from '@/lib/auditLogService';
@@ -68,7 +68,16 @@ export const PATCH = withAuth(async (req, context) => {
 
     const updates: any = {};
     if (body.courseId !== undefined) updates.courseId = body.courseId;
-    if (body.expiresAt !== undefined) updates.expiresAt = body.expiresAt;
+    if (body.expiresAt !== undefined) {
+      // Validate up front: an unparseable expiry used to be stored verbatim (an ISO
+      // string), which accessControl then compared numerically and read as expired.
+      try {
+        toEpochSeconds(body.expiresAt);
+      } catch {
+        return NextResponse.json({ ok: false, error: 'expiresAt must be an ISO 8601 date or epoch seconds' }, { status: 400 });
+      }
+      updates.expiresAt = body.expiresAt;
+    }
     if (body.metadata !== undefined) updates.metadata = body.metadata;
 
     if (Object.keys(updates).length === 0) {

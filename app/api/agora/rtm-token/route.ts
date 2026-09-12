@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { withAuth, type AuthedRequest } from '@/lib/auth/apiGuard';
 
 /**
  * /api/agora/rtm-token
@@ -33,16 +34,14 @@ async function getAgoraCredentials() {
     return cachedCredentials;
   }
 
-  // Fallback: use the same hardcoded credentials as the RTC token route
-  cachedCredentials = {
-    appId: '5cbf2f6128cf4e5ea92e046e3c161621',
-    appCertificate: '3f9ea1c4321646e0a38d634505806bd7',
-    expires: Date.now() + 5 * 60 * 1000,
-  };
-  return cachedCredentials;
+  // 先前這裡跟 /api/agora/token 一樣，缺環境變數時會退回一組寫死在原始碼裡的
+  // App ID / App Certificate。App Certificate 是簽發 token 的祕密，已進 git 歷史，
+  // 需要在 Agora Console 輪替。現在缺少時直接失敗，不再使用外洩的憑證。
+  throw new Error('Agora credentials are not configured (AGORA_APP_ID / AGORA_APP_CERTIFICATE)');
 }
 
-export async function GET(req: NextRequest) {
+// 先前完全沒有 auth：任何人都能索取任意 userId 的 RTM token。
+async function handleGet(req: AuthedRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const userId = searchParams.get('userId') || 'anonymous';
@@ -83,3 +82,5 @@ export async function GET(req: NextRequest) {
     );
   }
 }
+
+export const GET = withAuth(handleGet);

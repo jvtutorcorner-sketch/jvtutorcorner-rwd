@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
-import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm';
+import { withAuth, type AuthedRequest } from '@/lib/auth/apiGuard';
+import { verifyClassroomAccess } from '@/lib/auth/classroomAccess';
 
 // Server route to generate Agora RTC token for a given channelName and uid.
 // Usage: GET /api/agora/token?channelName=room1&uid=123
 
-// Cache for credentials to avoid repeated SSM calls
+// Cache for credentials (env lookup + format validation) — 5 minutes
 let cachedCredentials: { appId: string; appCertificate: string; expires: number } | null = null;
 
 async function getAgoraCredentials() {
@@ -35,17 +36,10 @@ async function getAgoraCredentials() {
     return cachedCredentials;
   }
 
-  // Emergency fallback: hardcode credentials for immediate fix
-  console.log('[Agora] Using emergency hardcoded credentials');
-  const hardcodedAppId = '5cbf2f6128cf4e5ea92e046e3c161621';
-  const hardcodedAppCertificate = '3f9ea1c4321646e0a38d634505806bd7';
-
-  cachedCredentials = {
-    appId: hardcodedAppId,
-    appCertificate: hardcodedAppCertificate,
-    expires: Date.now() + 5 * 60 * 1000 // 5 minutes
-  };
-  return cachedCredentials;
+  // 先前這裡有一組寫死在原始碼裡的 App ID / App Certificate 當「緊急 fallback」。
+  // App Certificate 是簽發 RTC token 的祕密，寫進原始碼就等於公開（已進 git 歷史，
+  // 需要在 Agora Console 輪替）。缺少環境變數時改為直接失敗，不再靜默使用外洩的憑證。
+  throw new Error('Agora credentials are not configured (AGORA_APP_ID / AGORA_APP_CERTIFICATE)');
 }
 
 // Agora requires channel names ≤ 64 bytes (ASCII only from allowed charset)
@@ -57,7 +51,8 @@ function truncateChannelName(name: string): string {
   return new TextDecoder().decode(sliced).replace(/\uFFFD/g, ''); // remove any broken chars at boundary
 }
 
-export async function GET(req: Request) {
+// 先前完全沒有 auth：任何人都能索取可加入任意頻道的 RTC token。
+async function handleGet(req: AuthedRequest) {
   try {
     console.log('[Agora] Token request received');
     const url = new URL(req.url);
@@ -68,6 +63,16 @@ export async function GET(req: Request) {
     }
     const uidParam = url.searchParams.get('uid') || '0';
     const uid = Number(uidParam) || 0;
+
+    // 有帶 courseId 就驗證這位登入者確實是該堂課的參與者（老師或已報名/有授權的學生）。
+    const courseId = url.searchParams.get('courseId');
+    if (courseId) {
+      const access = await verifyClassroomAccess(req.session, courseId);
+      if (!access.granted) {
+        console.warn(`[Agora] token denied for ${req.session.userId} on course ${courseId}: ${access.reason}`);
+        return NextResponse.json({ error: 'Forbidden: no access to this course' }, { status: 403 });
+      }
+    }
 
     // Get Agora credentials securely
     const { appId, appCertificate } = await getAgoraCredentials();
@@ -112,3 +117,5 @@ export async function GET(req: Request) {
     }, { status: 500 });
   }
 }
+
+export const GET = withAuth(handleGet);

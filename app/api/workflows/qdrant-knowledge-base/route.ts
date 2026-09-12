@@ -1,14 +1,16 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { qdrantClient, ensureCollection } from '@/lib/qdrant';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { withAdminOrHmac, type AuthedRequest } from '@/lib/auth/apiGuard';
 
 export const runtime = 'nodejs';
 
 /**
  * Qdrant 知識庫操作 API
  * 用於將文檔存入 Qdrant 並生成向量嵌入
+ * 先前完全沒有 auth，任何人都能寫入/查詢知識庫並消耗 Google embedding API 額度。
  */
-export async function POST(req: NextRequest) {
+export const POST = withAdminOrHmac('/api/workflows/qdrant-knowledge-base', async (req: AuthedRequest) => {
     try {
         const { collectionName, vectorSize, documents } = await req.json();
 
@@ -121,12 +123,12 @@ export async function POST(req: NextRequest) {
             error: error?.message || 'Qdrant knowledge base operation failed',
         }, { status: 500 });
     }
-}
+});
 
 /**
  * GET - 查詢知識庫
  */
-export async function GET(req: NextRequest) {
+export const GET = withAdminOrHmac('/api/workflows/qdrant-knowledge-base', async (req: AuthedRequest) => {
     try {
         const { searchParams } = new URL(req.url);
         const collectionName = searchParams.get('collection');
@@ -177,4 +179,4 @@ export async function GET(req: NextRequest) {
             error: error?.message || 'Qdrant search failed',
         }, { status: 500 });
     }
-}
+});

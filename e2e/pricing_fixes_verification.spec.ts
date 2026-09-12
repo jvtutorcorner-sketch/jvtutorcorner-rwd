@@ -106,6 +106,10 @@ test.describe('Pricing Fixes Verification', () => {
 
   // ── Fix 9: Admin API accepts plan with all new fields ───────────────────────
   test('Fix 9: /api/admin/pricing validates extended PlanConfig fields', async ({ request }) => {
+    // POST /api/admin/pricing 需要 admin（bd85fe7）；以 x-e2e-secret 取得 system 身分（僅非 production）。
+    test.skip(!BYPASS_SECRET, 'LOGIN_BYPASS_SECRET is required for the x-e2e-secret system session');
+    const adminHeaders = { 'x-e2e-secret': BYPASS_SECRET };
+
     // GET current settings
     const getRes = await request.get(`${BASE_URL}/api/admin/pricing`);
     const getData = await getRes.json();
@@ -137,18 +141,22 @@ test.describe('Pricing Fixes Verification', () => {
       ),
     };
 
-    const postRes = await request.post(`${BASE_URL}/api/admin/pricing`, {
-      data: { settings: testSettings },
-    });
-    const postData = await postRes.json();
+    try {
+      const postRes = await request.post(`${BASE_URL}/api/admin/pricing`, {
+        data: { settings: testSettings },
+        headers: adminHeaders,
+      });
+      const postData = await postRes.json();
 
-    expect(postRes.ok(), `POST failed: ${JSON.stringify(postData)}`).toBeTruthy();
-    expect(postData.ok).toBe(true);
-    console.log('  ✓ API accepted extended PlanConfig fields without validation error');
-
-    // Restore original
-    await request.post(`${BASE_URL}/api/admin/pricing`, { data: { settings } });
-    console.log('  ✓ Restored original settings');
+      expect(postRes.ok(), `POST failed: ${JSON.stringify(postData)}`).toBeTruthy();
+      expect(postData.ok).toBe(true);
+      console.log('  ✓ API accepted extended PlanConfig fields without validation error');
+    } finally {
+      // Restore original even when the assertion above fails
+      const restoreRes = await request.post(`${BASE_URL}/api/admin/pricing`, { data: { settings }, headers: adminHeaders });
+      expect(restoreRes.ok(), 'restoring the original pricing settings must succeed').toBeTruthy();
+      console.log('  ✓ Restored original settings');
+    }
   });
 
   // ── Fix 7: Point packages form has only ONE badge input ─────────────────────

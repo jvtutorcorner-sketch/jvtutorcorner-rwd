@@ -50,10 +50,11 @@ const _POST = withAnyAuth(API_PATH, async (req: AuthedRequest) => {
       );
     }
 
-    // 非 admin/system 不能修改其他使用者點數
-    const isSelf = req.session.userId === userId;
-    if (req.session.role !== 'admin' && req.session.role !== 'system' && !isSelf) {
-      return NextResponse.json({ ok: false, error: 'Forbidden: cannot modify other user points' }, { status: 403 });
+    // 只有 admin／system（含 HMAC 簽章的內部呼叫）能直接改點數。
+    // 先前本人也能 add／set 自己的點數，任何登入學生都能把餘額設成任意值。
+    // 購點、報名扣點、escrow 釋放／退款等正常流程都在伺服器端直接呼叫 lib/pointsStorage，不經過這支 API。
+    if (req.session.role !== 'admin' && req.session.role !== 'system') {
+      return NextResponse.json({ ok: false, error: 'Forbidden: only admin or system may modify points' }, { status: 403 });
     }
 
     const current = await getUserPoints(userId);

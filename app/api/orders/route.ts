@@ -1,6 +1,6 @@
 ﻿import { NextResponse } from 'next/server';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, PutCommand, ScanCommand, QueryCommand, GetCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, PutCommand, ScanCommand, QueryCommand, GetCommand, DeleteCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { randomUUID } from 'crypto';
 import { COURSES } from '@/data/courses';
 import { deductUserPoints } from '@/lib/pointsStorage';
@@ -23,6 +23,7 @@ const client = new DynamoDBClient({ region: ddbRegion, credentials: ddbExplicitC
 const docClient = DynamoDBDocumentClient.from(client);
 
 const ORDERS_TABLE = process.env.DYNAMODB_TABLE_ORDERS || 'jvtutorcorner-orders';
+const ENROLLMENTS_TABLE = process.env.ENROLLMENTS_TABLE || process.env.DYNAMODB_TABLE_ENROLLMENTS || 'jvtutorcorner-enrollments';
 
 async function handlePost(request: AuthedRequest) {
   try {
@@ -174,6 +175,86 @@ async function handlePost(request: AuthedRequest) {
       Item: order,
     });
     await docClient.send(command);
+
+    // ── Close the order <-> enrollment loop, server-side ──────────────────────
+    //
+    // Two things used to be left to the browser here, and the browser is not the
+    // payment authority:
+    //
+    //   1. The enrollment carried no orderId, so the link existed in one
+    //      direction only (order.enrollmentId). Reconciling "this order was paid
+    //      — was a seat actually granted?" meant scanning enrollments.
+    //   2. For a points purchase the order is created already PAID (no webhook
+    //      and no later PATCH fires), so components/EnrollButton.tsx followed up
+    //      with its own `PATCH /api/enroll { status: 'PAID' }` from the client.
+    //      That is why the enroll route had to accept an unauthenticated status
+    //      change to PAID, which meant anyone could grant themselves a seat.
+    //
+    // Both now happen here, in the same request that took the payment.
+    if (enrollmentId) {
+      try {
+        // "Settled" means THIS SERVER took the money, not that the client said so.
+        //
+        // order.status comes from `clientStatus` in the request body, so a caller
+        // can post status:'PAID' on an unpaid order. Keying the enrollment's
+        // status off that would hand out course access for free — the exact
+        // payment bypass being closed in app/api/enroll/route.ts, reintroduced
+        // one layer down.
+        //
+        // A points order is the only kind settled inline: reaching this line with
+        // paymentMethod === 'points' means deductUserPoints() succeeded above
+        // (every other branch returns 400 before here). Card/wallet orders stay
+        // PENDING until their webhook confirms, and paymentSuccessHandler
+        // activates the enrollment then.
+        const orderIsSettled = paymentMethod === 'points';
+
+        const updateParts = ['orderId = :oid', 'updatedAt = :u'];
+        const eav: Record<string, any> = { ':oid': orderId, ':u': createdAt, ':uid': userId };
+        const ean: Record<string, string> = {};
+
+        if (orderIsSettled) {
+          updateParts.push('#st = :st');
+          ean['#st'] = 'status';
+          eav[':st'] = 'PAID';
+          if (paymentMethod) {
+            updateParts.push('paymentProvider = :pp');
+            eav[':pp'] = paymentMethod;
+          }
+        }
+
+        await docClient.send(new UpdateCommand({
+          TableName: ENROLLMENTS_TABLE,
+          Key: { id: enrollmentId },
+          UpdateExpression: 'SET ' + updateParts.join(', '),
+          ...(Object.keys(ean).length ? { ExpressionAttributeNames: ean } : {}),
+          ExpressionAttributeValues: eav,
+          // The enrollment must exist AND belong to the session that placed this
+          // order. enrollmentId arrives in the request body while userId comes
+          // from the verified session, so without the ownership half of this
+          // condition a caller could name somebody else's enrollment and flip it
+          // to PAID. Enforced as a ConditionExpression rather than a read-then-
+          // write so there is no window between the check and the update.
+          ConditionExpression: 'attribute_exists(id) AND userId = :uid',
+        }));
+
+        console.log(
+          `[orders API] linked enrollment ${enrollmentId} to order ${orderId}` +
+            (orderIsSettled ? ' and marked it PAID' : '')
+        );
+      } catch (linkErr: any) {
+        if (linkErr?.name === 'ConditionalCheckFailedException') {
+          console.warn(
+            `[orders API] order ${orderId} did not link enrollment ${enrollmentId}: ` +
+              `it is missing, or does not belong to ${userId}`
+          );
+        } else {
+          console.error(
+            `[orders API] failed to link enrollment ${enrollmentId} to order ${orderId}:`,
+            linkErr?.message || linkErr
+          );
+        }
+      }
+    }
 
     return NextResponse.json({
       message: 'Order created successfully',

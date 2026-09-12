@@ -1,5 +1,7 @@
 // app/api/netless/room/route.ts
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { withAuth, type AuthedRequest } from '@/lib/auth/apiGuard';
+import { verifyClassroomAccess, whiteboardRoleFor } from '@/lib/auth/classroomAccess';
 
 const NETLESS_SDK_TOKEN = process.env.NETLESS_SDK_TOKEN;
 const NETLESS_REGION = process.env.NETLESS_REGION || 'sg'; // cn-hz / us-sv / eu / in-mum / sg 等
@@ -30,7 +32,9 @@ if (!NETLESS_SDK_TOKEN && !(NETLESS_APP_ID && NETLESS_APP_SECRET)) {
  *   "isRecord"?: boolean; // 可選：是否開啟錄製能力（單純白板可先不用）
  * }
  */
-export async function POST(req: NextRequest) {
+// 先前完全沒有 auth，且 role 直接採信呼叫端、預設還是 'admin'：
+// 任何人都能匿名取得任意白板房間的 admin 權限 token。
+async function handlePost(req: AuthedRequest) {
   try {
     if (!NETLESS_SDK_TOKEN && !(NETLESS_APP_ID && NETLESS_APP_SECRET)) {
       console.warn('[Netless] NETLESS_SDK_TOKEN / APP credentials not configured; returning local mock room for development');
@@ -44,18 +48,27 @@ export async function POST(req: NextRequest) {
     let {
       uuid,
       name = 'Classroom Room',
-      role = 'admin',
       lifespanMs = 0,
       limit = 0,
       isRecord = false,
+      courseId,
     }: {
       uuid?: string;
       name?: string;
-      role?: 'admin' | 'writer' | 'reader';
       lifespanMs?: number;
       limit?: number;
       isRecord?: boolean;
+      courseId?: string;
     } = body || {};
+
+    // 房間權限由伺服器端依身分決定，不接受呼叫端指定：
+    // 課程老師（或管理員）拿 admin，其他參與者只拿 writer。
+    const access = await verifyClassroomAccess(req.session, courseId);
+    if (courseId && !access.granted) {
+      console.warn(`[Netless] room denied for ${req.session.userId} on course ${courseId}: ${access.reason}`);
+      return NextResponse.json({ error: 'Forbidden: no access to this course' }, { status: 403 });
+    }
+    const role: 'admin' | 'writer' | 'reader' = whiteboardRoleFor(access);
 
     // helper to build HeadersInit with only string values
     const buildHeaders = () => {
@@ -213,3 +226,5 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+
+export const POST = withAuth(handlePost);

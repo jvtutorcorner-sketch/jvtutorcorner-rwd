@@ -4,6 +4,8 @@ import dotenv from 'dotenv';
 dotenv.config({ path: '.env.local' });
 
 const CRON_SECRET = process.env.CRON_SECRET || 'test-secret';
+// /api/workflows/gmail-send、resend-send 自 bd85fe7 起為 withAdminOrHmac；以 x-e2e-secret 取得 system 身分（僅非 production）
+const SYSTEM_HEADERS = { 'x-e2e-secret': process.env.LOGIN_BYPASS_SECRET || '' };
 const TEST_RECIPIENT = process.env.NEXT_PUBLIC_TEST_EMAIL || 'admin@jvtutorcorner.com';
 const BLOCKED_RECIPIENT = 'blocked-user@unknown-domain.com';
 
@@ -21,6 +23,7 @@ test.describe('Email Service Integration', () => {
 
     test('should successfully send an email to a whitelisted recipient', async ({ request }) => {
       const response = await request.post('/api/workflows/gmail-send', {
+        headers: SYSTEM_HEADERS,
         data: {
           to: TEST_RECIPIENT,
           subject: '[Playwright Test] Gmail SMTP Success',
@@ -44,6 +47,7 @@ test.describe('Email Service Integration', () => {
 
     test('should block sending to a non-whitelisted recipient', async ({ request }) => {
       const response = await request.post('/api/workflows/gmail-send', {
+        headers: SYSTEM_HEADERS,
         data: {
           to: BLOCKED_RECIPIENT,
           subject: '[Playwright Test] Should be blocked',
@@ -62,6 +66,7 @@ test.describe('Email Service Integration', () => {
       // Note: In a real scenario, this might still be blocked if the provider checks the domain,
       // but the API logic should allow it past the whitelist check.
       const response = await request.post('/api/workflows/gmail-send', {
+        headers: SYSTEM_HEADERS,
         data: {
           to: 'new-user-test@random.com',
           subject: '[Playwright Test] Verification Bypass',
@@ -80,6 +85,7 @@ test.describe('Email Service Integration', () => {
 
     test('should return 400 for invalid email format', async ({ request }) => {
       const response = await request.post('/api/workflows/gmail-send', {
+        headers: SYSTEM_HEADERS,
         data: {
           to: 'invalid-email',
           subject: 'Test',
@@ -95,6 +101,7 @@ test.describe('Email Service Integration', () => {
 
     test('should successfully send an email via Resend SMTP', async ({ request }) => {
       const response = await request.post('/api/workflows/resend-send', {
+        headers: SYSTEM_HEADERS,
         data: {
           to: TEST_RECIPIENT,
           subject: '[Playwright Test] Resend SMTP Success',
@@ -117,6 +124,7 @@ test.describe('Email Service Integration', () => {
 
     test('should block non-whitelisted recipients on Resend', async ({ request }) => {
       const response = await request.post('/api/workflows/resend-send', {
+        headers: SYSTEM_HEADERS,
         data: {
           to: BLOCKED_RECIPIENT,
           subject: '[Playwright Test] Resend Blocked',
@@ -137,6 +145,7 @@ test.describe('Email Service Integration', () => {
         // We can't easily mock env vars in Playwright request tests without a dedicated mock endpoint,
         // but we can verify the error message structure.
         const response = await request.post('/api/workflows/gmail-send', {
+        headers: SYSTEM_HEADERS,
             data: {
                 to: TEST_RECIPIENT,
                 subject: 'Ping',

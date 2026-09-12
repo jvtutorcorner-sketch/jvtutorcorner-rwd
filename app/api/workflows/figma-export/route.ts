@@ -1,12 +1,13 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { withAdminOrHmac, type AuthedRequest } from '@/lib/auth/apiGuard';
 
 export const runtime = 'nodejs';
 
 /**
- * Figma 設計匯出 API
- * 用於從 Figma 導出設計資源或元件
+ * Figma 設計匯出 API — 目前仍是 TODO/mock stub，尚未串接真正的 Figma API。
+ * 先前完全沒有 auth；即使現在只回傳假資料，仍鎖 admin/HMAC 以免之後補上真正實作時忘記加。
  */
-export async function POST(req: NextRequest) {
+export const POST = withAdminOrHmac('/api/workflows/figma-export', async (req: AuthedRequest) => {
     try {
         const { fileKey, format = 'json' } = await req.json();
 
@@ -47,4 +48,4 @@ export async function POST(req: NextRequest) {
             error: error?.message || 'Figma export failed',
         }, { status: 500 });
     }
-}
+});

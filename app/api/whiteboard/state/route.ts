@@ -1,7 +1,8 @@
-import { NextRequest } from 'next/server';
+import { withAuth, type AuthedRequest } from '@/lib/auth/apiGuard';
 import { getWhiteboardState, normalizeUuid } from '@/lib/whiteboardService';
 
-export async function GET(req: NextRequest) {
+// 先前完全沒有 auth：白板的教材 PDF、房間狀態與事件端點任何人都能存取／改寫。
+async function handleGet(req: AuthedRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const rawUuid = searchParams.get('uuid') || 'default';
@@ -44,3 +45,5 @@ export async function GET(req: NextRequest) {
     return new Response(JSON.stringify({ ok: false, error: String(e) }), { status: 500 });
   }
 }
+
+export const GET = withAuth(handleGet);

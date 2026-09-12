@@ -2,6 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import path from 'path';
 import fs from 'fs';
 
+/**
+ * 只服務「本機開發時寫到 .uploads/whiteboard 的 PDF」。
+ *
+ * whiteboard/pdf 只有在物件儲存不可用時才會把 PDF 寫到本機並產生指向這裡的網址；
+ * 正式環境（Lambda 檔案系統唯讀）不會走到那條路。教材 PDF 的正式讀取一律經過需要登入的
+ * /api/whiteboard/pdf（依 s3Key 從物件儲存讀）。
+ *
+ * 這支路由沒有登入保護，所以刻意「不」加上物件儲存的 fallback——否則 whiteboard/ 下的
+ * 教材 PDF 只要猜到 key 就能匿名下載。
+ */
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ path: string[] }> }
@@ -9,11 +19,12 @@ export async function GET(
   try {
     const resolvedParams = await params;
     const filePath = resolvedParams.path.join('/');
-    const fullPath = path.join(process.cwd(), '.uploads', 'whiteboard', filePath);
+    const uploadsDir = path.resolve(process.cwd(), '.uploads', 'whiteboard');
+    const fullPath = path.resolve(uploadsDir, filePath);
 
-    // Security check: ensure the path is within the uploads directory
-    const uploadsDir = path.join(process.cwd(), '.uploads', 'whiteboard');
-    if (!fullPath.startsWith(uploadsDir)) {
+    // 先前是 path.join + startsWith(uploadsDir)，少了路徑分隔字元：
+    // `../whiteboard-x/a` 會解析到同層的 .uploads/whiteboard-x 並通過檢查。
+    if (fullPath === uploadsDir || !fullPath.startsWith(uploadsDir + path.sep)) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 

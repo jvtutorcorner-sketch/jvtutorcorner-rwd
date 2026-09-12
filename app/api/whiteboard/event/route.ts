@@ -1,7 +1,8 @@
-import { NextRequest } from 'next/server';
+import { withAuth, type AuthedRequest } from '@/lib/auth/apiGuard';
 import { getWhiteboardState, saveWhiteboardState, normalizeUuid } from '@/lib/whiteboardService';
 
-export async function POST(req: NextRequest) {
+// 先前完全沒有 auth：白板的教材 PDF、房間狀態與事件端點任何人都能存取／改寫。
+async function handlePost(req: AuthedRequest) {
   try {
     // Read raw text once and parse robustly. Some Windows clients wrap JSON
     // in extra quotes which makes a direct JSON.parse fail.
@@ -74,3 +75,5 @@ export async function POST(req: NextRequest) {
     return new Response(JSON.stringify({ ok: false, error: String(e) }), { status: 500 });
   }
 }
+
+export const POST = withAuth(handlePost);

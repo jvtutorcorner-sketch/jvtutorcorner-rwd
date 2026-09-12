@@ -3,8 +3,8 @@ name: email-notification-testing
 description: '本 Skill 負責驗證系統內的郵件發送功能與自動化提醒排程。確保通訊模組在不同環境（Local/Amplify）下都能正確運行。'
 argument-hint: '驗證郵件發送與排程提醒的設定與流程'
 metadata:
-  verified-status: '✅ VERIFIED'
-  last-verified-date: '2026-04-22'
+  verified-status: '⚠️ PARTIAL'
+  last-verified-date: '2026-09-11'
   architecture-aligned: true
   latest-fixes:
     - date: '2026-04-22'

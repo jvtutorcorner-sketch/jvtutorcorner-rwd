@@ -11,7 +11,7 @@
  */
 
 import { NextResponse } from 'next/server';
-import licenseService from '@/lib/licenseService';
+import licenseService, { toEpochSeconds } from '@/lib/licenseService';
 import organizationService from '@/lib/organizationService';
 import type { License } from '@/lib/types/b2b';
 import { withAuth } from '@/lib/auth/apiGuard';
@@ -96,13 +96,26 @@ export const POST = withAuth(async (req) => {
       );
     }
 
-    // 未指派的授權不佔席次，但防止備妥超過組織上限的庫存（永遠無法被指派完）
-    const existing = await licenseService.listLicensesByOrg(orgId);
-    if (existing.length + count > org.maxSeats) {
+    if (body.expiresAt !== undefined && body.expiresAt !== null && body.expiresAt !== '') {
+      try {
+        toEpochSeconds(body.expiresAt);
+      } catch {
+        return NextResponse.json({ ok: false, error: 'expiresAt must be an ISO 8601 date or epoch seconds' }, { status: 400 });
+      }
+    }
+
+    // 未指派的授權不佔席次，但防止備妥超過組織上限的庫存（永遠無法被指派完）。
+    // 只算「目前還活著」的容量（org.usedSeats 反映的 active + 尚未指派的 pending）——
+    // 不能用 listLicensesByOrg(orgId) 撈全部歷史記錄，那樣 revoked/expired 的舊授權
+    // （例如成員離職後 DELETE /api/licenses/[id]/assign 留下的 revoked 記錄）會永久佔掉
+    // 核發上限，讓組織在人員流動後即使還有空席次也核發不出新授權。
+    const pending = await licenseService.listLicensesByOrg(orgId, 'pending');
+    const liveCount = org.usedSeats + pending.length;
+    if (liveCount + count > org.maxSeats) {
       return NextResponse.json(
         {
           ok: false,
-          error: `無法核發：目前已有 ${existing.length} 筆授權，加上 ${count} 筆將超過組織席次上限 ${org.maxSeats}`
+          error: `無法核發：目前已使用 ${liveCount} 個席次（含未指派庫存），加上 ${count} 筆將超過組織席次上限 ${org.maxSeats}`
         },
         { status: 409 }
       );

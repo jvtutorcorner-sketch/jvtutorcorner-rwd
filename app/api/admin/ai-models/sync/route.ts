@@ -1,12 +1,15 @@
 import { NextResponse } from 'next/server';
 import { ddbDocClient } from '@/lib/dynamo';
 import { GetCommand } from '@aws-sdk/lib-dynamodb';
+import { withAdmin, type AuthedRequest } from '@/lib/auth/apiGuard';
 
 const TABLE_NAME = process.env.DYNAMODB_TABLE_AI_MODELS || 'jvtutorcorner-ai-models';
 
 export const dynamic = 'force-dynamic';
 
-export async function POST(request: Request) {
+// 先前完全沒有 auth：這支會拿呼叫端傳進來的 apiKey 去打 Google/OpenAI/Anthropic，
+// 等於一個公開的金鑰驗證 oracle。
+async function handleSync(request: AuthedRequest) {
     try {
         const body = await request.json();
         const { provider, apiKey } = body;
@@ -88,3 +91,5 @@ export async function POST(request: Request) {
         );
     }
 }
+
+export const POST = withAdmin(handleSync);

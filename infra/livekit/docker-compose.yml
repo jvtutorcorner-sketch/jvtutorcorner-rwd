@@ -1,0 +1,43 @@
+# infra/livekit/docker-compose.yml
+# 單機 EC2 上的 LiveKit + Caddy（自動 Let's Encrypt TLS）。
+# 放在 /opt/livekit/，由 systemd 或 UserData 以 `docker compose up -d` 啟動。
+#
+# 對外 port 對照（Security Group 需一併開放，見 cloudformation/livekit-ec2.yml）：
+#   443/tcp          wss 信令 + TURN/TLS（Caddy 依 SNI 分流）
+#   80/tcp           ACME HTTP challenge（Caddy 自動導向 https）
+#   7881/tcp         ICE/TCP
+#   3478/udp         TURN/UDP
+#   50000-60000/udp  WebRTC media
+
+services:
+  livekit:
+    image: livekit/livekit-server:v1.8
+    container_name: livekit
+    restart: unless-stopped
+    command: --config /etc/livekit.yaml
+    network_mode: host             # WebRTC 需要直接綁 host UDP port range，勿改 bridge
+    volumes:
+      - /opt/livekit/livekit.yaml:/etc/livekit.yaml:ro
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: ap-northeast-1
+        awslogs-group: /jvtutorcorner/livekit
+        awslogs-stream: livekit-server
+        awslogs-create-group: "true"
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: caddy
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - /opt/livekit/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data           # 憑證持久化，避免重啟重簽被 Let's Encrypt 限流
+      - caddy_config:/config
+    depends_on:
+      - livekit
+
+volumes:
+  caddy_data:
+  caddy_config:

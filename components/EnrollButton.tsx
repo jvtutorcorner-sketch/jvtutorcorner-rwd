@@ -233,14 +233,11 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
         return;
       }
 
-      // Sync enrollment status to PAID if it was a point-based order
-      if (payMethod === 'points' && enrollmentId) {
-        await fetch('/api/enroll', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: enrollmentId, status: 'PAID' }),
-        });
-      }
+      // A points order is created already PAID, and app/api/orders now settles the
+      // matching enrollment (status -> PAID, orderId linked) inside that same
+      // request. The browser used to do it here with its own PATCH /api/enroll,
+      // which is why that endpoint had to accept an unauthenticated grant of
+      // course access. Nothing to do client-side any more.
 
       setIsSuccess(true);
       

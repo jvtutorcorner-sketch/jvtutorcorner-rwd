@@ -3,8 +3,8 @@ name: classroom-room
 description: '檢查 /classroom/room 頁面的影音連線、白板操作、課程工具與結束流程。包含 PDF 同步與倒數精準度驗證。'
 argument-hint: '測試並驗證 /classroom/room 頁面的核心教學功能與穩定性'
 metadata:
-  verified-status: '✅ VERIFIED'
-  last-verified-date: '2026-06-05'
+  verified-status: '⚠️ PARTIAL'
+  last-verified-date: '2026-09-11'
   architecture-aligned: true
 ---
 
@@ -272,3 +272,7 @@ npx playwright test e2e/classroom/ --project=chromium
 ### 倒數偏移 +5 秒
 - **原因**：`ClientClassroom.tsx` 的 session 初始化有 5 秒寬限期 buffer。
 - **修復確認**：`observedSeconds ≤ expectedSeconds + 1`，若 > 1 則需檢查 session 寬限期邏輯。
+
+## 影音／白板供應商
+
+教室使用的 RTC、信令與白板實作可用環境變數切換（Agora 為現行正式路徑；LiveKit、Cloudflare Realtime SFU 為備援），token／session API 的授權與設定檢查見 [classroom-rtc-providers](../classroom-rtc-providers/SKILL.md)。

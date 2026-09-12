@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import LineLoginButton from '@/components/LineLoginButton';
+import { useT } from '@/components/IntlProvider';
 
 interface SessionProfile {
   id: string;
@@ -13,6 +14,7 @@ interface SessionProfile {
 }
 
 export default function QuestionnaireLandingPage() {
+  const t = useT();
   const [profile, setProfile] = useState<SessionProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -31,24 +33,24 @@ export default function QuestionnaireLandingPage() {
       <div className="w-full max-w-md space-y-8">
         <div className="text-center space-y-3">
           <div className="text-5xl">📋</div>
-          <h1 className="text-2xl font-bold text-gray-800">學習需求評估問卷</h1>
+          <h1 className="text-2xl font-bold text-gray-800">{t('questionnaire_landing_title')}</h1>
           <p className="text-gray-500 text-sm leading-relaxed">
-            填寫約 3 分鐘，幫助我們了解您的學習需求，精準媒合最適合的家教老師。
+            {t('questionnaire_landing_desc')}
           </p>
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-4">
-          <h2 className="font-semibold text-gray-800">問卷內容涵蓋</h2>
+          <h2 className="font-semibold text-gray-800">{t('questionnaire_covers_title')}</h2>
           <ul className="space-y-2 text-sm text-gray-600">
             {[
-              ['📚', '科目需求與難易度評估'],
-              ['🎯', '學習目標與考試方向'],
-              ['🕐', '可上課時間與頻率'],
-              ['💰', '預算與老師偏好'],
-            ].map(([emoji, text]) => (
-              <li key={text as string} className="flex items-center gap-2">
+              ['📚', 'questionnaire_covers_subject'],
+              ['🎯', 'questionnaire_covers_goal'],
+              ['🕐', 'questionnaire_covers_time'],
+              ['💰', 'questionnaire_covers_budget'],
+            ].map(([emoji, key]) => (
+              <li key={key} className="flex items-center gap-2">
                 <span>{emoji}</span>
-                <span>{text}</span>
+                <span>{t(key)}</span>
               </li>
             ))}
           </ul>
@@ -62,27 +64,27 @@ export default function QuestionnaireLandingPage() {
                   {profile.pictureUrl && (
                     <img src={profile.pictureUrl} alt={profile.displayName} className="w-8 h-8 rounded-full" />
                   )}
-                  <span>已登入：{profile.displayName || profile.nickname}</span>
+                  <span>{t('questionnaire_signed_in_as', { name: profile.displayName || profile.nickname })}</span>
                 </div>
                 <Link
                   href="/questionnaire/learning"
                   className="block text-center bg-green-500 hover:bg-green-600 text-white font-semibold px-6 py-3 rounded-xl transition-colors text-base"
                 >
-                  開始填寫問卷 →
+                  {t('questionnaire_start')}
                 </Link>
               </div>
             ) : (
               <div className="space-y-3">
                 <p className="text-sm text-gray-500 text-center">
-                  請先使用 LINE 登入，以便接收媒合通知及儲存問卷結果。
+                  {t('questionnaire_login_hint')}
                 </p>
                 <LineLoginButton returnTo="/questionnaire" className="w-full justify-center text-base py-3" />
                 <p className="text-xs text-gray-400 text-center">
-                  或{' '}
+                  {t('questionnaire_or')}{' '}
                   <Link href="/questionnaire/learning" className="underline text-gray-500">
-                    不登入直接填寫
+                    {t('questionnaire_skip_login')}
                   </Link>
-                  （結果不會儲存）
+                  {' '}{t('questionnaire_not_saved')}
                 </p>
               </div>
             )}

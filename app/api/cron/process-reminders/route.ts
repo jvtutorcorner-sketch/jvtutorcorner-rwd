@@ -89,11 +89,14 @@ async function sendReminderEmail(to: string, courseTitle: string, startTime: str
 // ── POST: Logic to process reminders ───────────────────────────────────
 export async function POST(request: NextRequest) {
   try {
-    // 1. Auth check
+    // 1. Auth check —— 正式環境一律要求正確的 CRON_SECRET；
+    //    漏設變數也視為未授權（不能因為沒設定就變成公開端點）。
     const authHeader = request.headers.get('Authorization');
     if (!CRON_SECRET || authHeader !== `Bearer ${CRON_SECRET}`) {
-      // Allow local testing if secret is not set, but warn
       if (process.env.NODE_ENV === 'production') {
+        if (!CRON_SECRET) {
+          console.error('[process-reminders] CRON_SECRET is not set in production — refusing request');
+        }
         return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
       }
       console.warn('[process-reminders] Authorized by non-production mode bypass (missing or mismatching CRON_SECRET)');

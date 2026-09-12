@@ -14,6 +14,20 @@ const BASE_KEY_MAP: Record<string, string> = {
   '/student_courses': 'orders_my_orders',
   '/profile': 'profile_label',
   '/students': 'students_label',
+  '/terms': 'breadcrumb_terms',
+  '/questionnaire': 'breadcrumb_questionnaire',
+  '/login': 'login',
+  '/calendar': 'calendar_label',
+  '/settings': 'settings_label',
+  '/orders': 'orders_my_orders',
+  '/my-courses': 'my_courses',
+  '/teacher_courses': 'breadcrumb_teacher_courses',
+  '/plans': 'menu_pricing',
+  '/redeem': 'breadcrumb_redeem',
+  '/dashboard': 'breadcrumb_dashboard',
+  '/enrollments': 'breadcrumb_enrollments',
+  '/refunds': 'breadcrumb_refunds',
+  '/apps': 'breadcrumb_apps',
 };
 
 export default function PageBreadcrumb() {

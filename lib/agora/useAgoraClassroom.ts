@@ -53,6 +53,8 @@ const VIDEO_QUALITY_PRESETS: Record<VideoQuality, VideoQualityConfig> = {
 
 interface UseAgoraClassroomOptions {
   channelName: string;
+  /** 用來讓 /api/agora/token 驗證呼叫者確實屬於這堂課。 */
+  courseId?: string;
   role: ClassroomRole;
   // 新增：1对1优化
   isOneOnOne?: boolean;
@@ -72,6 +74,7 @@ interface AgoraJoinResponse {
 
 export function useAgoraClassroom({
   channelName,
+  courseId,
   role,
   isOneOnOne = false,
   defaultQuality = 'high'
@@ -206,12 +209,13 @@ export function useAgoraClassroom({
 
       // Retry token fetch up to 2 extra times with backoff to survive Lambda cold-start 500s
       // under high concurrency (6+ groups simultaneously entering the classroom).
-      let res = await fetch(`/api/agora/token?channelName=${encodeURIComponent(channelName)}&uid=${uid}`);
+      const courseIdQuery = courseId ? `&courseId=${encodeURIComponent(courseId)}` : '';
+      let res = await fetch(`/api/agora/token?channelName=${encodeURIComponent(channelName)}&uid=${uid}${courseIdQuery}`);
       for (let attempt = 1; !res.ok && attempt <= 2; attempt++) {
         const retryDelay = attempt * 1500;
         console.warn(`[Agora] Token fetch failed (status ${res.status}), retrying in ${retryDelay}ms (attempt ${attempt}/2)`);
         await new Promise(r => setTimeout(r, retryDelay));
-        res = await fetch(`/api/agora/token?channelName=${encodeURIComponent(channelName)}&uid=${uid}`);
+        res = await fetch(`/api/agora/token?channelName=${encodeURIComponent(channelName)}&uid=${uid}${courseIdQuery}`);
       }
 
       if (!res.ok) {

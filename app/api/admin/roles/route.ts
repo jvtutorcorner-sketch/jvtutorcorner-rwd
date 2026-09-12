@@ -4,6 +4,8 @@ import { savePagePermissions, getPagePermissions } from '@/lib/pagePermissionsSe
 import { withAdmin, AuthedRequest } from '@/lib/auth/apiGuard';
 import { writeAuditLog } from '@/lib/auditLogService';
 
+// GET 故意保持公開：Header（所有訪客）與企業註冊頁的角色下拉選單都靠這支 API 取得角色清單，
+// 內容只有 id/name/description/isActive，不是敏感資料。寫入（POST）才需要 admin，見下方。
 export async function GET() {
   try {
     console.log('[Roles API] 📖 Loading roles...');
