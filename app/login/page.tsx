@@ -96,7 +96,13 @@ export default function LoginPage() {
 
         // 3. If API failed
         if (!res.ok || !data?.ok) {
-          const msg = data?.message ? t(data.message) : t('login_error');
+          let msg = data?.message ? t(data.message) : t('login_error');
+          // 停權 / 封鎖時後端會附上管理員填的原因與到期時間，一併顯示
+          if (data?.reason) msg += `（${data.reason}）`;
+          if (data?.until) {
+            const until = new Date(data.until);
+            if (!Number.isNaN(until.getTime())) msg += ` ${until.toLocaleString()}`;
+          }
           setError(msg);
           await loadCaptcha();
           return;
@@ -195,6 +201,10 @@ export default function LoginPage() {
         setError('此 Google 帳號的網域不在允許清單內，請改用其他帳號或聯繫管理員。');
       } else if (searchParams.get('error') === 'google_sso_not_configured') {
         setError('Google 登入目前尚未設定完成，請改用 Email 登入。');
+      } else if (searchParams.get('error') === 'account_suspended') {
+        setError(t('login_account_suspended'));
+      } else if (searchParams.get('error') === 'account_banned') {
+        setError(t('login_account_banned'));
       }
     };
 

@@ -17,6 +17,12 @@ import { useT } from '@/components/IntlProvider';
  * 先前這個元件是 `{children}` 的「兄弟節點」而非包裹層：判定拒絕時只是在頁面上方
  * 多渲染一塊 403 面板，被保護的內容仍然完整掛載並送出所有 API 請求。現在它會真正
  * 包住內容，拒絕時內容不會被渲染。
+ *
+ * 判定完成前「照常渲染」children：角色存在 localStorage，伺服器端無法得知，
+ * 若在判定前回傳 null，伺服器端永遠停在 checking 狀態，所有頁面的 SSR HTML
+ * 都只剩 header/footer（SEO、課程頁、票券 QR 都因此消失）。伺服器端與第一次
+ * client 渲染輸出相同內容，hydration 才不會不一致；判定為拒絕後才換成 403 面板
+ * 並導回首頁。需要真正擋下的頁面由 server layout 的 pageGuard 在渲染前處理。
  */
 export default function PermissionGuard({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
@@ -145,12 +151,8 @@ export default function PermissionGuard({ children }: { children: React.ReactNod
         }
     }, [checking, authorized, router, pathname]);
 
-    if (loading || checking) {
-        // 尚未判定完成前不渲染內容，避免「先畫出來、發完 API 才跳走」。
-        return null;
-    }
-
-    if (!authorized) {
+    // 判定完成且確定拒絕時才擋下；判定中（含伺服器端渲染）照常輸出內容，理由見上方說明。
+    if (!loading && !checking && !authorized) {
         return (
             <div style={{
                 height: '100vh',

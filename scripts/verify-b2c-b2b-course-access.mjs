@@ -34,6 +34,7 @@ const { ddbDocClient } = await import('../lib/dynamo.ts');
 const { verifyCourseAccess, stripTabId } = await import('../lib/accessControl.ts');
 const { createOrganization, updateOrganization, deleteOrganization } = await import('../lib/organizationService.ts');
 const { createLicense, revokeLicense, deleteLicense } = await import('../lib/licenseService.ts');
+const { PROFILES_TABLE } = await import('../lib/profilesService.ts');
 
 // Matches lib/accessControl.ts's own fallback exactly (not the extra
 // DYNAMODB_TABLE_ENROLLMENTS alias app/api/enroll/route.ts also accepts) —
@@ -105,6 +106,20 @@ async function main() {
     return id;
   }
 
+  // Since 12c668d, verifyCourseAccess only honours a seat whose orgId matches the
+  // holder's current profile.orgId (a license left active after its holder was removed
+  // must not keep granting access). Seat holders therefore need a member profile.
+  const createdProfileIds = [];
+  async function createMemberProfile(userId, orgId) {
+    const now = new Date().toISOString();
+    await ddbDocClient.send(new PutCommand({
+      TableName: PROFILES_TABLE,
+      Item: { id: userId, roid_id: userId, email: `${userId}@${RUN_TAG}.test`, role: 'student', orgId, createdAt: now, updatedAt: now },
+      ConditionExpression: 'attribute_not_exists(id)',
+    }));
+    createdProfileIds.push(userId);
+  }
+
   try {
     // ==================================================================
     // stripTabId — pure function, no DB
@@ -144,6 +159,7 @@ async function main() {
     console.log('\n--- 2. B2B: seat/license-based access ---');
 
     const u5 = testUserId('b2b-orgwide');
+    await createMemberProfile(u5, org.id);
     const lic5 = await createLicense({ orgId: org.id, userId: u5 }); // no courseId -> org-wide seat
     createdLicenseIds.push(lic5.id);
     const r5a = await verifyCourseAccess(u5, courseA);
@@ -152,6 +168,7 @@ async function main() {
     assert(r5b.granted === true && r5b.source === 'B2B_SEAT', 'B2B org-wide seat also grants access to a different course B (not course-scoped)');
 
     const u6 = testUserId('b2b-scoped');
+    await createMemberProfile(u6, org.id);
     const lic6 = await createLicense({ orgId: org.id, userId: u6, courseId: courseA });
     createdLicenseIds.push(lic6.id);
     const r6a = await verifyCourseAccess(u6, courseA);
@@ -178,6 +195,12 @@ async function main() {
     createdLicenseIds.push(lic9.id);
     const r9 = await verifyCourseAccess(u9, courseA);
     assert(r9.granted === false, 'Active license under a SUSPENDED org does not grant access');
+
+    const u10 = testUserId('b2b-not-member');
+    const lic10 = await createLicense({ orgId: org.id, userId: u10 }); // active seat, but no member profile
+    createdLicenseIds.push(lic10.id);
+    const r10 = await verifyCourseAccess(u10, courseA);
+    assert(r10.granted === false, 'Active seat whose holder is not a member of the seat\'s org does not grant access');
 
     // ==================================================================
     // Edge cases
@@ -209,6 +232,13 @@ async function main() {
         await deleteLicense(licenseId, true);
       } catch (e) {
         console.warn(`  ⚠️ failed to delete license ${licenseId}: ${e.message}`);
+      }
+    }
+    for (const profileId of createdProfileIds) {
+      try {
+        await ddbDocClient.send(new DeleteCommand({ TableName: PROFILES_TABLE, Key: { id: profileId } }));
+      } catch (e) {
+        console.warn(`  ⚠️ failed to delete profile ${profileId}: ${e.message}`);
       }
     }
     try {

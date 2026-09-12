@@ -101,6 +101,27 @@ export interface CourseSession {
     { identity: string; role: 'teacher' | 'student' | 'admin'; kind: 'join' | 'leave'; at: string }
   >;
 
+  /**
+   * Cloudflare Realtime SFU 的房間登錄，key = SFU sessionId（見 lib/realtime/registry.ts）。
+   * SFU 沒有房間與參與者的概念，這份登錄就是「誰在場、發佈了哪些軌道」的伺服器真相；
+   * 對方要拉誰的軌道一律從這裡查，不採信瀏覽器互傳的 sessionId。
+   */
+  sfuSessions?: Record<
+    string,
+    {
+      /** `${role}:${userId}`，與 LiveKit identity 同格式。 */
+      identity: string;
+      userId: string;
+      role: 'teacher' | 'student' | 'admin';
+      joinedAt: string;
+      /** 最後一次心跳；超過 REALTIME_HEARTBEAT_TIMEOUT_SEC 視為離開。 */
+      lastSeenAt: string;
+      leftAt?: string;
+      /** 已發佈的本地軌道：trackName → 發佈時間。 */
+      tracks: Record<string, string>;
+    }
+  >;
+
   /** 房間實際開到關的總長（completedAt - startedAt），秒。 */
   actualDurationSec?: number;
   /** 老師在場總時長（多段重連取聯集），秒。 */

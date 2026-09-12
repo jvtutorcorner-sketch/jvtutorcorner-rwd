@@ -1,12 +1,11 @@
 import { NextResponse } from 'next/server';
 import { withAuth, type AuthedRequest } from '@/lib/auth/apiGuard';
 import { verifyClassroomAccess } from '@/lib/auth/classroomAccess';
-import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm';
 
 // Server route to generate Agora RTC token for a given channelName and uid.
 // Usage: GET /api/agora/token?channelName=room1&uid=123
 
-// Cache for credentials to avoid repeated SSM calls
+// Cache for credentials (env lookup + format validation) — 5 minutes
 let cachedCredentials: { appId: string; appCertificate: string; expires: number } | null = null;
 
 async function getAgoraCredentials() {
@@ -37,17 +36,10 @@ async function getAgoraCredentials() {
     return cachedCredentials;
   }
 
-  // Emergency fallback: hardcode credentials for immediate fix
-  console.log('[Agora] Using emergency hardcoded credentials');
-  const hardcodedAppId = '5cbf2f6128cf4e5ea92e046e3c161621';
-  const hardcodedAppCertificate = '3f9ea1c4321646e0a38d634505806bd7';
-
-  cachedCredentials = {
-    appId: hardcodedAppId,
-    appCertificate: hardcodedAppCertificate,
-    expires: Date.now() + 5 * 60 * 1000 // 5 minutes
-  };
-  return cachedCredentials;
+  // 先前這裡有一組寫死在原始碼裡的 App ID / App Certificate 當「緊急 fallback」。
+  // App Certificate 是簽發 RTC token 的祕密，寫進原始碼就等於公開（已進 git 歷史，
+  // 需要在 Agora Console 輪替）。缺少環境變數時改為直接失敗，不再靜默使用外洩的憑證。
+  throw new Error('Agora credentials are not configured (AGORA_APP_ID / AGORA_APP_CERTIFICATE)');
 }
 
 // Agora requires channel names ≤ 64 bytes (ASCII only from allowed charset)

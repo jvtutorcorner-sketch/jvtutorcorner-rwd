@@ -256,12 +256,20 @@ async function main() {
     // ==================================================================
     console.log('\n--- setMemberDeptAdmin (service layer) ---');
 
+    // orgMembershipService.setMemberDeptAdmin 只允許學生身分升為 dept_admin（老師會被拒絕，見下方反向案例）。
     const promotable = await makeProfile('promotable', {
-      role: 'teacher',
+      role: 'student',
       orgId: orgA.id,
       orgUnitId: backendApi.id,
     });
     createdProfileIds.push(promotable.id);
+
+    const teacherMember = await makeProfile('teacherMember', {
+      role: 'teacher',
+      orgId: orgA.id,
+      orgUnitId: backendApi.id,
+    });
+    createdProfileIds.push(teacherMember.id);
 
     const noUnitPromotable = await makeProfile('noUnitPromotable', {
       role: 'student',
@@ -278,19 +286,27 @@ async function main() {
     }
     assert(rejectedNoUnit, 'setMemberDeptAdmin: promoting a member with no orgUnitId is rejected');
 
+    let rejectedTeacher = false;
+    try {
+      await setMemberDeptAdmin({ orgId: orgA.id, profileId: teacherMember.id, isDeptAdmin: true });
+    } catch (e) {
+      rejectedTeacher = /僅學生身分/.test(e.message);
+    }
+    assert(rejectedTeacher, 'setMemberDeptAdmin: promoting a teacher to dept_admin is rejected (students only)');
+
     const promoted = await setMemberDeptAdmin({ orgId: orgA.id, profileId: promotable.id, isDeptAdmin: true });
     assert(promoted.role === 'dept_admin', 'setMemberDeptAdmin: promote sets role to dept_admin');
-    assert(promoted.previousRole === 'teacher', 'setMemberDeptAdmin: promote records previousRole (teacher)');
+    assert(promoted.previousRole === 'student', 'setMemberDeptAdmin: promote records previousRole (student)');
 
     const promotedAgain = await setMemberDeptAdmin({ orgId: orgA.id, profileId: promotable.id, isDeptAdmin: true });
     assert(promotedAgain.role === 'dept_admin', 'setMemberDeptAdmin: promoting an already-dept_admin member is idempotent');
 
     const demoted = await setMemberDeptAdmin({ orgId: orgA.id, profileId: promotable.id, isDeptAdmin: false });
-    assert(demoted.role === 'teacher', 'setMemberDeptAdmin: demote restores previousRole (teacher)');
+    assert(demoted.role === 'student', 'setMemberDeptAdmin: demote restores previousRole (student)');
     assert(demoted.previousRole === undefined, 'setMemberDeptAdmin: demote clears previousRole');
 
     const demotedAgain = await setMemberDeptAdmin({ orgId: orgA.id, profileId: promotable.id, isDeptAdmin: false });
-    assert(demotedAgain.role === 'teacher', 'setMemberDeptAdmin: demoting a non-dept_admin member is idempotent (no-op)');
+    assert(demotedAgain.role === 'student', 'setMemberDeptAdmin: demoting a non-dept_admin member is idempotent (no-op)');
 
     // A member who was already dept_admin before this feature existed (no previousRole
     // on record) should fall back to 'student' on demote, not throw or leave it blank.
@@ -307,9 +323,18 @@ async function main() {
     );
 
     const persisted = await getProfileById(promotable.id);
-    assert(persisted.role === 'teacher', 'setMemberDeptAdmin: role change is actually persisted in DynamoDB, not just returned');
+    assert(persisted.role === 'student', 'setMemberDeptAdmin: role change is actually persisted in DynamoDB, not just returned');
   } finally {
     console.log('\n--- cleanup ---');
+    // 先刪成員 profile：deleteOrgUnit 會拒絕硬刪仍有成員掛著（profile.orgUnitId 指向它）的部門，
+    // 先刪部門再刪 profile 會讓部門殘留在正式資料庫。
+    for (const profileId of createdProfileIds) {
+      try {
+        await ddbDocClient.send(new DeleteCommand({ TableName: PROFILES_TABLE, Key: { id: profileId } }));
+      } catch (e) {
+        console.warn(`  ⚠️ failed to delete profile ${profileId}: ${e.message}`);
+      }
+    }
     const remainingUnitIds = new Set(createdUnitIds);
     for (let pass = 0; pass < 4 && remainingUnitIds.size > 0; pass++) {
       for (const unitId of [...remainingUnitIds].reverse()) {
@@ -330,13 +355,6 @@ async function main() {
       const stillThere = await getOrgUnitById(unitId).catch(() => null);
       if (stillThere) {
         console.warn(`  ⚠️ org unit ${unitId} (${stillThere.name}) could not be cleaned up automatically`);
-      }
-    }
-    for (const profileId of createdProfileIds) {
-      try {
-        await ddbDocClient.send(new DeleteCommand({ TableName: PROFILES_TABLE, Key: { id: profileId } }));
-      } catch (e) {
-        console.warn(`  ⚠️ failed to delete profile ${profileId}: ${e.message}`);
       }
     }
     try {

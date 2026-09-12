@@ -12,6 +12,7 @@ import orgMembershipService from '@/lib/orgMembershipService';
 import { hashPassword } from '@/lib/auth/password';
 import { randomUUID } from 'crypto';
 import { DEFAULT_PLAN_ID, toPlanId } from '@/lib/plans';
+import { checkRateLimit, getClientIp, rateLimitResponse, RATE_LIMIT_RULES } from '@/lib/rateLimit';
 
 
 const PROFILES_TABLE = process.env.DYNAMODB_TABLE_PROFILES || process.env.PROFILES_TABLE || 'jvtutorcorner-profiles';
@@ -39,6 +40,14 @@ export async function POST(req: Request) {
     const { email: rawEmail, password, captchaToken, captchaValue } = body;
     if (!rawEmail || !password) {
       return NextResponse.json({ message: 'Email and password required' }, { status: 400 });
+    }
+
+    // 限流：同一 IP 短時間內大量註冊 = 灌假帳號。放在驗證碼之前，連驗證碼比對的成本都省下來。
+    const clientIp = getClientIp(req);
+    const ipLimit = await checkRateLimit(RATE_LIMIT_RULES.registerPerIp, clientIp);
+    if (!ipLimit.allowed) {
+      console.warn('[register] rate limited by ip', { ip: clientIp, count: ipLimit.count });
+      return rateLimitResponse(ipLimit, 'register_too_many_attempts');
     }
 
 

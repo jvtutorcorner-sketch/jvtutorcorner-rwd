@@ -3,7 +3,7 @@
 
 import crypto from 'crypto';
 import { ddbDocClient } from '@/lib/dynamo';
-import { PutCommand, GetCommand, DeleteCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { PutCommand, GetCommand, DeleteCommand, UpdateCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 
 const SESSIONS_TABLE = process.env.DYNAMODB_TABLE_SESSIONS || 'jvtutorcorner-sessions';
 
@@ -163,6 +163,44 @@ export async function deleteSession(token: string): Promise<void> {
   } catch (err) {
     console.error('[sessionManager] deleteSession error:', err);
   }
+}
+
+/**
+ * 刪除某個使用者的所有 session（停權 / 封鎖時強制下線）。
+ *
+ * sessions 表沒有 userId GSI，這裡用 Scan + FilterExpression。這是管理員手動觸發的低頻操作，
+ * 而且表內資料 24 小時 TTL 自動清除，量不會大到需要為此加索引。
+ * 回傳刪除的 session 數。
+ */
+export async function deleteSessionsForUser(userId: string): Promise<number> {
+  if (!userId) return 0;
+  let deleted = 0;
+  let lastKey: Record<string, unknown> | undefined;
+
+  try {
+    do {
+      const res = await ddbDocClient.send(new ScanCommand({
+        TableName: SESSIONS_TABLE,
+        FilterExpression: 'userId = :u',
+        ExpressionAttributeValues: { ':u': userId },
+        ProjectionExpression: 'sessionId',
+        ExclusiveStartKey: lastKey,
+      }));
+      for (const item of res.Items || []) {
+        if (!item.sessionId) continue;
+        await ddbDocClient.send(new DeleteCommand({
+          TableName: SESSIONS_TABLE,
+          Key: { sessionId: item.sessionId },
+        }));
+        deleted += 1;
+      }
+      lastKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
+    } while (lastKey);
+  } catch (err) {
+    console.error('[sessionManager] deleteSessionsForUser error:', err);
+  }
+
+  return deleted;
 }
 
 /**

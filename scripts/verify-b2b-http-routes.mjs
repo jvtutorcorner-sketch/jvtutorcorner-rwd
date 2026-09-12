@@ -483,8 +483,9 @@ async function main() {
     assert(deptAdminUnit.status === 201, `POST /api/org-units for dept_admin test fixture -> 201 (got ${deptAdminUnit.status})`);
     createdUnitIds.push(deptAdminUnit.data.orgUnit.id);
 
+    // setMemberDeptAdmin 只允許學生身分升為 dept_admin（lib/orgMembershipService.ts），老師會回 400。
     const promotable = await makeActor('promotable', {
-      role: 'teacher', isB2B: true, orgId: orgA.id, orgUnitId: deptAdminUnit.data.orgUnit.id
+      role: 'student', isB2B: true, orgId: orgA.id, orgUnitId: deptAdminUnit.data.orgUnit.id
     });
     const deptAdminA = await makeActor('deptAdminA', {
       role: 'dept_admin', isB2B: true, orgId: orgA.id, orgUnitId: deptAdminUnit.data.orgUnit.id
@@ -518,8 +519,8 @@ async function main() {
     const patchDeptAdminRevokeAsSys = await apiFetch('PATCH', `/api/organizations/${orgA.id}/members/${promotable.id}`, {
       ...sys, body: { isDeptAdmin: false }
     });
-    assert(patchDeptAdminRevokeAsSys.ok && patchDeptAdminRevokeAsSys.data.profile?.role === 'teacher',
-      `PATCH .../members/[id] isDeptAdmin:false as system admin -> 200, role restored to 'teacher' via previousRole (got ${patchDeptAdminRevokeAsSys.status})`);
+    assert(patchDeptAdminRevokeAsSys.ok && patchDeptAdminRevokeAsSys.data.profile?.role === 'student',
+      `PATCH .../members/[id] isDeptAdmin:false as system admin -> 200, role restored to 'student' via previousRole (got ${patchDeptAdminRevokeAsSys.status})`);
 
     // ==================================================================
     // 8. app/api/licenses — list + provision

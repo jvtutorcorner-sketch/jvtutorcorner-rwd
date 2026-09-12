@@ -116,7 +116,9 @@ export async function createOrgUnit(input: CreateOrgUnitInput): Promise<OrgUnit>
     id,
     orgId: input.orgId,
     name: input.name,
-    parentId: input.parentId || null,
+    // 根部門不寫 parentId：GSI byParentId 的鍵值不能是 null（DynamoDB 會拒絕整筆寫入），
+    // 省略欄位則該筆單純不進入這個索引。讀取端一律以 `!unit.parentId` 判斷根部門。
+    ...(input.parentId ? { parentId: input.parentId } : {}),
     path,
     level,
     managerId: input.managerId,
@@ -290,7 +292,8 @@ export async function moveOrgUnit(unitId: string, newParentId: string | null): P
     if (newParentId === unitId) {
       throw new Error('Cannot move unit to itself');
     }
-    if (newParentId === unit.parentId) {
+    // 根部門的 parentId 欄位不存在（undefined），呼叫端傳 null 表示「移到根」，兩者視為相同
+    if ((newParentId || null) === (unit.parentId || null)) {
       console.log(`[OrgUnitService] Unit ${unitId} already under parent ${newParentId}, no-op`);
       return unit;
     }
@@ -357,8 +360,11 @@ export async function moveOrgUnit(unitId: string, newParentId: string | null): P
               // widen every branch to a lowest-common-denominator Record type.
               TableName: ORG_UNITS_TABLE,
               Key: { id: item.id },
+              // 移到根時 REMOVE parentId 而不是 SET 成 null（GSI byParentId 不接受 null 鍵值）。
               UpdateExpression: item.isRoot
-                ? 'SET #path = :newPath, #level = :newLevel, #parentId = :newParentId, #updatedAt = :now'
+                ? newParentId
+                  ? 'SET #path = :newPath, #level = :newLevel, #parentId = :newParentId, #updatedAt = :now'
+                  : 'SET #path = :newPath, #level = :newLevel, #updatedAt = :now REMOVE #parentId'
                 : 'SET #path = :newPath, #level = :newLevel, #updatedAt = :now',
               ConditionExpression: 'attribute_exists(id) AND #path = :expectedOldPath',
               ExpressionAttributeNames: item.isRoot
@@ -368,7 +374,8 @@ export async function moveOrgUnit(unitId: string, newParentId: string | null): P
                 ? {
                     ':newPath': item.path,
                     ':newLevel': item.level,
-                    ':newParentId': newParentId,
+                    // 未被運算式引用的 value 會讓 DynamoDB 拒絕請求，所以只在有 parent 時提供
+                    ...(newParentId ? { ':newParentId': newParentId } : {}),
                     ':now': now,
                     ':expectedOldPath': item.expectedOldPath
                   }

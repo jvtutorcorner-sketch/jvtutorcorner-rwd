@@ -161,6 +161,46 @@ export async function findProfileByEmail(email: string) {
   throw new Error('[profilesService] findProfileByEmail: DynamoDB 查詢失敗，且無 JSON fallback。');
 }
 
+/**
+ * 回傳「所有」使用這個 email 的 profile（正常應該只有一筆，但資料裡確實存在重複 email 的舊帳號）。
+ * 停權這類必須「一個都不能漏」的操作要用這支，不能用只回第一筆的 findProfileByEmail。
+ * 只走 DynamoDB；HTTP / Lambda 版 profiles 服務沒有對應操作。
+ */
+export async function findProfilesByEmail(email: string): Promise<any[]> {
+  email = String(email).toLowerCase();
+  if (!email || !PROFILES_TABLE) return [];
+
+  try {
+    const items: any[] = [];
+    let lastKey: Record<string, unknown> | undefined;
+    do {
+      const res: any = await ddbDocClient.send(new QueryCommand({
+        TableName: PROFILES_TABLE,
+        IndexName: 'EmailIndex',
+        KeyConditionExpression: 'email = :email',
+        ExpressionAttributeValues: { ':email': email },
+        ExclusiveStartKey: lastKey,
+      }));
+      items.push(...(res?.Items || []));
+      lastKey = res?.LastEvaluatedKey;
+    } while (lastKey);
+    return items;
+  } catch (e) {
+    console.warn('[profilesService] findProfilesByEmail query failed, trying scan fallback...', (e as any)?.message || e);
+    try {
+      const scanRes: any = await ddbDocClient.send(new ScanCommand({
+        TableName: PROFILES_TABLE,
+        FilterExpression: 'email = :email',
+        ExpressionAttributeValues: { ':email': email },
+      }));
+      return scanRes?.Items || [];
+    } catch (scanErr) {
+      console.error('[profilesService] findProfilesByEmail scan fallback failed', (scanErr as any)?.message || scanErr);
+      return [];
+    }
+  }
+}
+
 export async function getProfileById(id: string) {
   if (PROFILES_API) {
     try {
