@@ -169,21 +169,24 @@ async function checkS3(): Promise<{ checks: ServiceCheck[]; alerts: HealthAlert[
   const checks: ServiceCheck[] = [];
   const alerts: HealthAlert[] = [];
 
-  const bucketName = process.env.AWS_S3_BUCKET_NAME;
+  // 走 lib/s3.ts 的設定：切到 R2（STORAGE_S3_ENDPOINT）時才會檢查到實際在用的 bucket，
+  // 而不是拿 R2 的 bucket 名稱去問 AWS。
+  const { getStorageBucket, getStorageClient } = await import('./s3');
+  const bucketName = getStorageBucket();
 
   if (!bucketName) {
     checks.push({
       service: 'S3',
       name: 'Bucket',
       status: 'warning',
-      details: 'AWS_S3_BUCKET_NAME 未設定',
+      details: 'AWS_S3_BUCKET_NAME / STORAGE_BUCKET 未設定',
     });
     return { checks, alerts };
   }
 
   try {
-    const { S3Client, HeadBucketCommand } = await import('@aws-sdk/client-s3');
-    const s3 = new S3Client({ region: process.env.AWS_REGION || 'ap-northeast-1' });
+    const { HeadBucketCommand } = await import('@aws-sdk/client-s3');
+    const s3 = getStorageClient();
 
     await s3.send(new HeadBucketCommand({ Bucket: bucketName }));
 

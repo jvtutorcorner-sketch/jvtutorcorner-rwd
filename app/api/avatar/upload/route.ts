@@ -1,9 +1,9 @@
 // app/api/avatar/upload/route.ts
 // Avatar image upload for teacher profiles. Mirrors the carousel upload flow:
-// S3 when configured, local .uploads/avatar otherwise, served back through
-// /api/uploads/avatar/<file>.
+// object storage (S3 or R2, see lib/s3.ts) when configured, local .uploads/avatar
+// otherwise, served back through /api/uploads/avatar/<file>.
 import { NextResponse } from 'next/server';
-import { uploadToS3 } from '@/lib/s3';
+import { uploadToS3, isObjectStorageConfigured } from '@/lib/s3';
 import { withAuth, AuthedRequest } from '@/lib/auth/apiGuard';
 import fs from 'fs';
 import path from 'path';
@@ -20,28 +20,10 @@ const EXTENSION_BY_TYPE: Record<string, string> = {
   'image/gif': 'gif',
 };
 
-// If process.env lacks AWS creds (dev server started earlier), try loading from .env.local
-function loadAwsEnvFromDotenv() {
-  try {
-    const envFile = path.join(process.cwd(), '.env.local');
-    if (!fs.existsSync(envFile)) return;
-    const content = fs.readFileSync(envFile, 'utf8');
-    content.split(/\r?\n/).forEach((line) => {
-      const m = line.match(/^\s*([A-Za-z0-9_]+)\s*=\s*(.*)\s*$/);
-      if (!m) return;
-      const key = m[1];
-      let val = m[2] || '';
-      if (val.startsWith('"') && val.endsWith('"')) val = val.slice(1, -1);
-      process.env[key] = val;
-    });
-  } catch (e) {
-    console.warn('[Avatar Upload API] failed to load .env.local at runtime', (e as any)?.message || e);
-  }
-}
+// 先前每次請求都會重新解析 .env.local 並覆寫 process.env（開發期的權宜之計，卻跟著部署到正式環境）。
+// Next.js 啟動時本來就會載入 .env.local，已移除。
 
 const uploadAvatar = async (request: AuthedRequest) => {
-  loadAwsEnvFromDotenv();
-
   try {
     const formData = await request.formData();
     const file = formData.get('file') as File | null;
@@ -75,27 +57,20 @@ const uploadAvatar = async (request: AuthedRequest) => {
     const key = `avatar/${fileName}`;
     const url = `/api/uploads/avatar/${fileName}`;
 
-    const hasS3Bucket = !!(process.env.AWS_S3_BUCKET_NAME || process.env.CI_AWS_S3_BUCKET_NAME);
-    const hasS3Credentials = !!(process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID);
-    const isProduction = process.env.NODE_ENV === 'production';
-    const useS3 = hasS3Bucket && (isProduction || hasS3Credentials);
+    const useS3 = isObjectStorageConfigured();
 
     if (useS3) {
-      console.log('[Avatar Upload API] Uploading to S3:', key);
+      console.log('[Avatar Upload API] Uploading to object storage:', key);
       await uploadToS3(buffer, key, file.type);
-    }
-
-    // Always keep a local copy so the proxy serves instantly without an S3 round trip.
-    try {
+    } else {
+      // 沒有物件儲存（本機開發）時才寫到 .uploads/avatar，由 /api/uploads/avatar 代理讀取。
+      // 先前是「一律」再寫一份本機副本：serverless 的檔案系統唯讀、各實例也不共享，
+      // 那份副本不是寫失敗就是只存在單一實例，沒有任何作用。
       const uploadsDir = path.resolve(process.cwd(), '.uploads', 'avatar');
       if (!fs.existsSync(uploadsDir)) {
         fs.mkdirSync(uploadsDir, { recursive: true });
       }
       fs.writeFileSync(path.resolve(uploadsDir, fileName), buffer);
-    } catch (saveError) {
-      // On serverless the filesystem may be read-only; S3 still has the object.
-      if (!useS3) throw saveError;
-      console.warn('[Avatar Upload API] ! Failed to cache locally:', saveError);
     }
 
     console.log('[Avatar Upload API] Upload complete:', { key, url, useS3 });

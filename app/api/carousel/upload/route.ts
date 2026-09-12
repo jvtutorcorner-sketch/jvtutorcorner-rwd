@@ -1,7 +1,7 @@
 // app/api/carousel/upload/route.ts
 import { NextResponse } from 'next/server';
 import { withAdmin, type AuthedRequest } from '@/lib/auth/apiGuard';
-import { uploadToS3 } from '@/lib/s3';
+import { uploadToS3, isObjectStorageConfigured } from '@/lib/s3';
 import fs from 'fs';
 import path from 'path';
 
@@ -9,32 +9,12 @@ import path from 'path';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-// If process.env lacks AWS creds (dev server started earlier), try loading from .env.local
-function loadAwsEnvFromDotenv() {
-  try {
-    const envFile = path.join(process.cwd(), '.env.local');
-    if (!fs.existsSync(envFile)) return;
-    const content = fs.readFileSync(envFile, 'utf8');
-    content.split(/\r?\n/).forEach((line) => {
-      const m = line.match(/^\s*([A-Za-z0-9_]+)\s*=\s*(.*)\s*$/);
-      if (!m) return;
-      const key = m[1];
-      let val = m[2] || '';
-      if (val.startsWith('"') && val.endsWith('"')) val = val.slice(1, -1);
-      // Overwrite in development to ensure we pick up changes from .env.local
-      process.env[key] = val;
-    });
-  } catch (e) {
-    console.warn('[Carousel Upload API] failed to load .env.local at runtime', (e as any)?.message || e);
-  }
-}
+// 先前每次請求都會重新解析 .env.local 並覆寫 process.env（開發期的權宜之計，卻跟著部署到正式環境）。
+// Next.js 啟動時本來就會載入 .env.local，已移除。
 
 // 先前完全沒有 auth：任何人都能上傳檔案到輪播用的 S3 bucket。
 async function handleUpload(request: AuthedRequest) {
   console.log('[Carousel Upload API] Request received');
-
-  // Ensure AWS env vars are present when possible (helpful when dev server started earlier)
-  loadAwsEnvFromDotenv();
 
   try {
     const formData = await request.formData();
@@ -76,16 +56,11 @@ async function handleUpload(request: AuthedRequest) {
 
     console.log('[Carousel Upload API] Buffer created, size:', buffer.length);
 
-    // Check if S3 is configured (favoring Bucket Name for IAM Role support)
-    const hasS3Bucket = !!(process.env.AWS_S3_BUCKET_NAME || process.env.CI_AWS_S3_BUCKET_NAME);
-    const hasS3Credentials = !!(process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID);
-    const isProduction = process.env.NODE_ENV === 'production';
-
-    // In production, we assume S3 is available if a bucket is named (IAM Role will handle creds)
-    const useS3 = hasS3Bucket && (isProduction || hasS3Credentials);
+    // 物件儲存（S3 或 R2）是否可用，統一由 lib/s3.ts 判斷。
+    const useS3 = isObjectStorageConfigured();
 
     if (!useS3) {
-      console.log('[Carousel Upload API] S3 not configured or in development without keys, using local storage');
+      console.log('[Carousel Upload API] Object storage not configured, using local storage');
 
       // Generate unique key for local storage
       const timestamp = Date.now();
@@ -124,31 +99,20 @@ async function handleUpload(request: AuthedRequest) {
     const fileExtension = file.name.split('.').pop() || 'jpg';
     const key = `carousel/${timestamp}-${randomId}.${fileExtension}`;
 
-    console.log('[Carousel Upload API] Generated S3 key:', key);
+    console.log('[Carousel Upload API] Generated storage key:', key);
 
-    // Upload to S3 with carousel folder
-    console.log('[Carousel Upload API] Starting S3 upload...');
+    // Upload to object storage with carousel folder
+    console.log('[Carousel Upload API] Starting upload...');
     const uploadResult = await uploadToS3(buffer, key, file.type);
 
-    console.log('[Carousel Upload API] S3 upload successful:', uploadResult);
+    console.log('[Carousel Upload API] Upload successful:', uploadResult);
 
-    // Also save locally so the proxy works instantly without slow S3 fetch
-    try {
-      const uploadsDir = path.resolve(process.cwd(), '.uploads', 'carousel');
-      if (!fs.existsSync(uploadsDir)) {
-        fs.mkdirSync(uploadsDir, { recursive: true });
-      }
-      const localPath = path.resolve(uploadsDir, key.replace('carousel/', ''));
-      fs.writeFileSync(localPath, buffer);
-      console.log('[Carousel Upload API] ✓ Cached to local storage for proxy:', localPath);
-    } catch (saveError) {
-      console.warn('[Carousel Upload API] ! Failed to cache locally:', saveError);
-    }
-
-    const finalUrl = uploadResult.url;
+    // 先前上傳成功後還會再寫一份到 .uploads/carousel「讓代理路由更快」。但回傳給前端、
+    // 存進資料庫的是物件儲存的公開網址，根本不經過代理路由；在 serverless 上那份副本也寫不進
+    // 唯讀的檔案系統。已移除。
 
     const response = {
-      url: finalUrl,
+      url: uploadResult.url,
       key: uploadResult.key,
       alt: alt || file.name,
     };
@@ -167,12 +131,12 @@ async function handleUpload(request: AuthedRequest) {
     if (error instanceof Error) {
       if (error.message.includes('credentials') || error.message.includes('access')) {
         return NextResponse.json({
-          error: 'AWS credentials not configured properly'
+          error: 'Storage credentials not configured properly'
         }, { status: 500 });
       }
-      if (error.message.includes('bucket') || error.message.includes('S3')) {
+      if (error.message.includes('bucket') || error.message.includes('S3') || error.message.includes('STORAGE_')) {
         return NextResponse.json({
-          error: 'S3 bucket configuration error'
+          error: 'Storage bucket configuration error'
         }, { status: 500 });
       }
     }

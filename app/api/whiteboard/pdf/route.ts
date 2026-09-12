@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { withAuth, type AuthedRequest } from '@/lib/auth/apiGuard';
-import { uploadToS3, getObjectBuffer, deleteFromS3 } from '@/lib/s3';
+import { uploadToS3, getObjectBuffer, deleteFromS3, isObjectStorageConfigured, getStorageBucket } from '@/lib/s3';
 import { saveWhiteboardState, getWhiteboardState, normalizeUuid } from '@/lib/whiteboardService';
 import { broadcastToUuid } from '../stream/route';
 import path from 'path';
@@ -25,14 +25,13 @@ async function handlePost(req: AuthedRequest) {
     }
 
     let uploaded: { url: string; key: string } | null = null;
-    let useS3 = !!(process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID || process.env.AWS_S3_BUCKET_NAME);
+    // 物件儲存（S3 或 R2）是否可用，統一由 lib/s3.ts 判斷。
+    let useS3 = isObjectStorageConfigured();
 
-    console.log('[PDF POST] S3 Configuration check:', {
-      hasAccessKey: !!process.env.AWS_ACCESS_KEY_ID,
-      hasCiAccessKey: !!process.env.CI_AWS_ACCESS_KEY_ID,
-      hasBucket: !!process.env.AWS_S3_BUCKET_NAME,
-      useS3: useS3,
-      bucket: process.env.AWS_S3_BUCKET_NAME || process.env.CI_AWS_S3_BUCKET_NAME
+    console.log('[PDF POST] Object storage check:', {
+      useS3,
+      bucket: getStorageBucket(),
+      customEndpoint: !!process.env.STORAGE_S3_ENDPOINT,
     });
 
     // Case 1: PDF already uploaded (e.g., via presigned URL)
@@ -397,7 +396,7 @@ async function handleDelete(req: AuthedRequest) {
     const { s3Key, url } = state.pdf;
     console.log('[PDF DELETE] Found PDF to delete:', { s3Key, url });
 
-    const useS3 = !!(process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID || process.env.AWS_S3_BUCKET_NAME);
+    const useS3 = isObjectStorageConfigured();
 
     // Delete from S3
     if (useS3 && s3Key) {

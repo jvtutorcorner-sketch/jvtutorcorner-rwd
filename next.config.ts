@@ -72,7 +72,11 @@ const nextConfig: any = {
       { protocol: 'https', hostname: 'lh3.googleusercontent.com', pathname: '**' },
       { protocol: 'https', hostname: '**.amazonaws.com' },
       { protocol: 'https', hostname: '**.cloudfront.net' },
-      { protocol: 'https', hostname: '**.googleusercontent.com' }
+      { protocol: 'https', hostname: '**.googleusercontent.com' },
+      // R2 公開網域（STORAGE_PUBLIC_BASE_URL），見 lib/s3.ts
+      ...(process.env.STORAGE_PUBLIC_BASE_URL
+        ? [{ protocol: 'https' as const, hostname: new URL(process.env.STORAGE_PUBLIC_BASE_URL).hostname }]
+        : []),
     ]
   },
 
@@ -118,6 +122,23 @@ const nextConfig: any = {
     //   本機：.env.local 由 Next.js 自動載入至 server runtime，無需行內展開
     CI_AWS_REGION: process.env.CI_AWS_REGION || process.env.AWS_REGION,
     CI_AWS_S3_BUCKET_NAME: process.env.CI_AWS_S3_BUCKET_NAME || process.env.AWS_S3_BUCKET_NAME,
+    // S3 相容物件儲存（Cloudflare R2）。未設定 STORAGE_S3_ENDPOINT 時 lib/s3.ts 維持使用 AWS S3。
+    // R2 無法使用 Amplify SSR 的 IAM Role，所以跟上面「不放 AWS 憑證」的原則不同，這組金鑰必須
+    // 帶進執行期；STORAGE_SECRET_ACCESS_KEY 已列入 scripts/check-bundle-secrets.mjs 的檢查清單。
+    // 長期應改為執行期從 SSM 讀取（見 docs/hybrid-architecture-plan.md Phase 0）。
+    STORAGE_S3_ENDPOINT: process.env.STORAGE_S3_ENDPOINT,
+    STORAGE_S3_REGION: process.env.STORAGE_S3_REGION,
+    STORAGE_BUCKET: process.env.STORAGE_BUCKET,
+    STORAGE_ACCESS_KEY_ID: process.env.STORAGE_ACCESS_KEY_ID,
+    STORAGE_SECRET_ACCESS_KEY: process.env.STORAGE_SECRET_ACCESS_KEY,
+    STORAGE_PUBLIC_BASE_URL: process.env.STORAGE_PUBLIC_BASE_URL,
+    // Cloudflare Realtime SFU（NEXT_PUBLIC_RTC_PROVIDER=cloudflare-sfu，見 lib/realtime/config.ts）。
+    // 兩個 secret 已列入 scripts/check-bundle-secrets.mjs；只有 app/api/realtime/* 在伺服器端讀取。
+    CF_REALTIME_APP_ID: process.env.CF_REALTIME_APP_ID,
+    CF_REALTIME_APP_SECRET: process.env.CF_REALTIME_APP_SECRET,
+    CF_TURN_KEY_ID: process.env.CF_TURN_KEY_ID,
+    CF_TURN_KEY_API_TOKEN: process.env.CF_TURN_KEY_API_TOKEN,
+    REALTIME_HEARTBEAT_TIMEOUT_SEC: process.env.REALTIME_HEARTBEAT_TIMEOUT_SEC,
     // DynamoDB table names used by server APIs
     DYNAMODB_TABLE_COURSES: process.env.DYNAMODB_TABLE_COURSES || 'jvtutorcorner-courses',
     DYNAMODB_TABLE_TEACHERS: process.env.DYNAMODB_TABLE_TEACHERS || 'jvtutorcorner-teachers',

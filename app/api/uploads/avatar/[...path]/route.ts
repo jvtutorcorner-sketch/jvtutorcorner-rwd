@@ -1,20 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import path from 'path';
 import fs from 'fs';
-import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { Readable } from 'stream';
-import { getSignedUrlForKey } from '@/lib/s3';
-
-const getS3Client = () => {
-  const awsRegion = process.env.AWS_REGION || process.env.CI_AWS_REGION;
-  const accessKey = process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID;
-  const secretKey = process.env.AWS_SECRET_ACCESS_KEY || process.env.CI_AWS_SECRET_ACCESS_KEY;
-
-  return new S3Client({
-    region: awsRegion,
-    credentials: accessKey && secretKey ? { accessKeyId: accessKey, secretAccessKey: secretKey } : undefined,
-  });
-};
+import { getSignedUrlForKey, getObjectBuffer, getStorageBucket } from '@/lib/s3';
 
 const CONTENT_TYPE_BY_EXT: Record<string, string> = {
   '.jpg': 'image/jpeg',
@@ -42,7 +30,7 @@ export async function GET(
     const ext = path.extname(filePath).toLowerCase();
     const contentType = CONTENT_TYPE_BY_EXT[ext] || 'application/octet-stream';
 
-    // 1. Local storage first
+    // 1. 本機開發：沒有物件儲存時 avatar/upload 會寫到 .uploads/avatar
     if (fs.existsSync(fullPath)) {
       const stats = fs.statSync(fullPath);
       const webStream = Readable.toWeb(fs.createReadStream(fullPath));
@@ -57,11 +45,11 @@ export async function GET(
       });
     }
 
-    // 2. Fallback: S3
-    const bucketName = process.env.AWS_S3_BUCKET_NAME || process.env.CI_AWS_S3_BUCKET_NAME;
+    // 2. 物件儲存（S3 或 R2，由 lib/s3.ts 依環境變數決定）。
+    //    先前這裡自己 new S3Client，切換到 R2 時會繼續打 AWS。
     const s3Key = `avatar/${filePath}`;
 
-    if (!bucketName) {
+    if (!getStorageBucket()) {
       return NextResponse.json({ error: 'File not found' }, { status: 404 });
     }
 
@@ -76,32 +64,20 @@ export async function GET(
     }
 
     try {
-      const s3Client = getS3Client();
-      const res = await s3Client.send(new GetObjectCommand({ Bucket: bucketName, Key: s3Key }));
+      // 先前這裡還會把物件寫回 .uploads 當快取。serverless 的檔案系統是唯讀、各實例也不共享，
+      // 那份快取不是寫失敗就是只存在單一實例；在本機則會無上限地累積。直接回傳即可。
+      const fileBuf = await getObjectBuffer(s3Key);
 
-      if (!res.Body) throw new Error('S3 response body is empty');
-
-      const byteArray = await res.Body.transformToByteArray();
-
-      try {
-        if (!fs.existsSync(uploadsDir)) {
-          fs.mkdirSync(uploadsDir, { recursive: true });
-        }
-        fs.writeFileSync(fullPath, Buffer.from(byteArray));
-      } catch (cacheErr) {
-        console.warn('[Avatar Proxy GET] ! Failed to cache S3 object:', cacheErr);
-      }
-
-      return new Response(new Uint8Array(byteArray), {
+      return new Response(new Uint8Array(fileBuf), {
         headers: {
           'Content-Type': contentType,
-          'Content-Length': res.ContentLength?.toString() || byteArray.length.toString(),
+          'Content-Length': fileBuf.length.toString(),
           'Cache-Control': 'public, max-age=31536000',
-          'X-Proxy-Cache': 'MISS-CACHED',
+          'X-Proxy-Cache': 'MISS',
         },
       });
     } catch (s3Error: any) {
-      console.warn('[Avatar Proxy GET] ✗ S3 fetch failed:', s3Error.message);
+      console.warn('[Avatar Proxy GET] ✗ Storage fetch failed:', s3Error.message);
       return NextResponse.json({ error: 'File not found' }, { status: 404 });
     }
   } catch (error) {
