@@ -39,8 +39,8 @@ const getAwsConfig = () => {
   return {
     endpoint: undefined,
     awsRegion: process.env.AWS_REGION || process.env.CI_AWS_REGION || 'ap-northeast-1',
-    accessKey: process.env.AWS_ACCESS_KEY_ID,
-    secretKey: process.env.AWS_SECRET_ACCESS_KEY,
+    accessKey: process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID,
+    secretKey: process.env.AWS_SECRET_ACCESS_KEY || process.env.CI_AWS_SECRET_ACCESS_KEY,
     bucketName,
   };
 };

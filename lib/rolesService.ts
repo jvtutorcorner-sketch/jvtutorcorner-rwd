@@ -5,13 +5,13 @@ import { DynamoDBDocumentClient, ScanCommand, BatchWriteCommand, PutCommand, Del
 const ROLES_TABLE = process.env.DYNAMODB_TABLE_ROLES || 'jvtutorcorner-roles';
 
 // 2. 初始化 Client (修正憑證邏輯)
-const region = process.env.AWS_REGION || 'ap-northeast-1';
+const region = process.env.AWS_REGION || process.env.CI_AWS_REGION || 'ap-northeast-1';
 const clientConfig: any = { region };
 
 // 只有在真的有 Access Key 時才設定 credentials (通常是本機開發)
 // 在 Amplify 線上環境，這兩個變數應該是不存在的，這樣 SDK 就會自動去抓 IAM Role
-const accessKeyId = process.env.AWS_ACCESS_KEY_ID;
-const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
+const accessKeyId = process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID;
+const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY || process.env.CI_AWS_SECRET_ACCESS_KEY;
 
 if (accessKeyId && secretAccessKey) {
     clientConfig.credentials = { accessKeyId, secretAccessKey };

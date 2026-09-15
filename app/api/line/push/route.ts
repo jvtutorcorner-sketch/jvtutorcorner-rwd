@@ -4,9 +4,9 @@ import { DynamoDBDocumentClient, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { withAdmin, type AuthedRequest } from '@/lib/auth/apiGuard';
 
 const ddbRegion = process.env.CI_AWS_REGION || process.env.AWS_REGION;
-const ddbExplicitAccessKey = process.env.AWS_ACCESS_KEY_ID;
-const ddbExplicitSecretKey = process.env.AWS_SECRET_ACCESS_KEY;
-const ddbExplicitSessionToken = process.env.AWS_SESSION_TOKEN;
+const ddbExplicitAccessKey = process.env.CI_AWS_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID;
+const ddbExplicitSecretKey = process.env.CI_AWS_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY;
+const ddbExplicitSessionToken = process.env.CI_AWS_SESSION_TOKEN || process.env.AWS_SESSION_TOKEN;
 const ddbExplicitCreds = ddbExplicitAccessKey && ddbExplicitSecretKey ? {
     accessKeyId: ddbExplicitAccessKey as string,
     secretAccessKey: ddbExplicitSecretKey as string,
@@ -21,11 +21,11 @@ const PROFILES_TABLE = process.env.DYNAMODB_TABLE_PROFILES || process.env.PROFIL
 
 const useDynamoForApps =
     typeof APPS_TABLE === 'string' && APPS_TABLE.length > 0 &&
-    (process.env.NODE_ENV === 'production' || !!(process.env.AWS_ACCESS_KEY_ID));
+    (process.env.NODE_ENV === 'production' || !!(process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID));
 
 const useDynamoForProfiles =
     typeof PROFILES_TABLE === 'string' && PROFILES_TABLE.length > 0 &&
-    (process.env.NODE_ENV === 'production' || !!(process.env.AWS_ACCESS_KEY_ID));
+    (process.env.NODE_ENV === 'production' || !!(process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID));
 
 /**
  * 获取 LINE 平台的集成配置（channelAccessToken）

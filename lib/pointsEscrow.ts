@@ -18,7 +18,7 @@ export const useDynamoForEscrow =
   typeof ESCROW_TABLE === 'string' &&
   ESCROW_TABLE.length > 0 &&
   (process.env.NODE_ENV === 'production' ||
-    !!(process.env.AWS_ACCESS_KEY_ID));
+    !!(process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID));
 
 export type EscrowStatus = 'HOLDING' | 'RELEASED' | 'REFUNDED';
 

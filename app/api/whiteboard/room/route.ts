@@ -16,9 +16,9 @@ const region = process.env.AWS_REGION || process.env.CI_AWS_REGION || 'ap-northe
 console.log(`[WhiteboardAPI] Initializing DynamoDB Client in region: ${region}`);
 // Prefer explicit credentials when provided in local/dev environments (mirrors scripts/seed-data.js)
 // Support CI_ prefixed variables used in CI environments.
-const explicitAccessKey = process.env.AWS_ACCESS_KEY_ID;
-const explicitSecretKey = process.env.AWS_SECRET_ACCESS_KEY;
-const explicitSessionToken = process.env.AWS_SESSION_TOKEN;
+const explicitAccessKey = process.env.CI_AWS_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID;
+const explicitSecretKey = process.env.CI_AWS_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY;
+const explicitSessionToken = process.env.CI_AWS_SESSION_TOKEN || process.env.AWS_SESSION_TOKEN;
 const explicitCredentials = explicitAccessKey && explicitSecretKey ? {
   accessKeyId: explicitAccessKey as string,
   secretAccessKey: explicitSecretKey as string,

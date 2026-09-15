@@ -2,21 +2,27 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 
-// Region: explicit > environment > default
-// Credentials: let AWS SDK auto-discover from IAM Role (Amplify) or env vars (.env.local for local dev)
-const awsRegion = process.env.AWS_REGION || process.env.CI_AWS_REGION || 'ap-northeast-1';
+const awsRegion = process.env.AWS_REGION || process.env.CI_AWS_REGION;
+const accessKey = process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID;
+const secretKey = process.env.AWS_SECRET_ACCESS_KEY || process.env.CI_AWS_SECRET_ACCESS_KEY;
+const sessionToken = process.env.AWS_SESSION_TOKEN || process.env.CI_AWS_SESSION_TOKEN;
 
 console.log('[DynamoDB] Initializing with:', {
   region: awsRegion,
-  credentialSource: 'IAM Role or environment auto-discovery',
-  node_env: process.env.NODE_ENV,
+  hasAccessKey: !!accessKey,
+  hasSecretKey: !!secretKey,
+  hasSessionToken: !!sessionToken,
+  isReservedAccessKey: !!process.env.AWS_ACCESS_KEY_ID,
+  isCiAccessKey: !!process.env.CI_AWS_ACCESS_KEY_ID
 });
 
 const client = new DynamoDBClient({
   region: awsRegion,
-  // Omit credentials to let AWS SDK auto-discover:
-  // - Production (Amplify): uses IAM Role
-  // - Local dev: uses AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY from .env.local or ~/.aws/credentials
+  credentials: accessKey && secretKey ? {
+    accessKeyId: accessKey,
+    secretAccessKey: secretKey,
+    ...(sessionToken ? { sessionToken } : {})
+  } : undefined,
 });
 
 export const ddbDocClient = DynamoDBDocumentClient.from(client, {

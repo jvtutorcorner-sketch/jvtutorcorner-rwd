@@ -91,7 +91,7 @@ export async function POST(req: Request) {
 
         const APPS_TABLE = process.env.DYNAMODB_TABLE_APP_INTEGRATIONS || 'jvtutorcorner-app-integrations';
         const useAppsDynamo = typeof APPS_TABLE === 'string' && APPS_TABLE.length > 0 &&
-            (process.env.NODE_ENV === 'production' || !!(process.env.AWS_ACCESS_KEY_ID));
+            (process.env.NODE_ENV === 'production' || !!(process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID));
 
         if (useAppsDynamo) {
             try {

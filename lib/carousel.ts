@@ -76,7 +76,7 @@ export async function addCarouselImage(image: Omit<CarouselImage, 'id' | 'create
       name: error.name,
       tableName: TABLE_NAME,
       region: process.env.AWS_REGION,
-      hasCredentials: !!(process.env.AWS_ACCESS_KEY_ID),
+      hasCredentials: !!(process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID),
       imageData: { ...image, url: image.url?.substring(0, 50) + '...' }
     });
     throw error;

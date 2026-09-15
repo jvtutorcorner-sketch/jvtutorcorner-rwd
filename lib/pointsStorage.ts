@@ -13,7 +13,7 @@ export const useDynamoForPoints =
   typeof POINTS_TABLE === 'string' &&
   POINTS_TABLE.length > 0 &&
   (process.env.NODE_ENV === 'production' ||
-    !!(process.env.AWS_ACCESS_KEY_ID));
+    !!(process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID));
 
 // In-memory fallback for development (shared singleton across all imports in the same process)
 export const LOCAL_POINTS: Record<string, number> = {};
