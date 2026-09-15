@@ -31,9 +31,9 @@ type AIIntegration = {
 };
 
 const ddbRegion = process.env.CI_AWS_REGION || process.env.AWS_REGION;
-const accessKey = process.env.CI_AWS_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID;
-const secretKey = process.env.CI_AWS_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY;
-const sessionToken = process.env.CI_AWS_SESSION_TOKEN || process.env.AWS_SESSION_TOKEN;
+const accessKey = process.env.AWS_ACCESS_KEY_ID;
+const secretKey = process.env.AWS_SECRET_ACCESS_KEY;
+const sessionToken = process.env.AWS_SESSION_TOKEN;
 const client = new DynamoDBClient({
   region: ddbRegion,
   credentials: accessKey && secretKey
@@ -48,7 +48,7 @@ const APPS_TABLE = process.env.DYNAMODB_TABLE_APP_INTEGRATIONS || 'jvtutorcorner
 
 async function getActiveAIIntegration(): Promise<AIIntegration | null> {
   const configuredForAws = process.env.NODE_ENV === 'production' ||
-    !!(process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID);
+    !!(process.env.AWS_ACCESS_KEY_ID);
   if (!configuredForAws) return null;
 
   for (const type of ['OPENAI', 'ANTHROPIC', 'GEMINI']) {

@@ -23,9 +23,9 @@ import { randomUUID } from 'crypto';
 import { withAdmin, type AuthedRequest } from '@/lib/auth/apiGuard';
 
 const ddbRegion = process.env.CI_AWS_REGION || process.env.AWS_REGION;
-const ddbExplicitAccessKey = process.env.CI_AWS_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID;
-const ddbExplicitSecretKey = process.env.CI_AWS_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY;
-const ddbExplicitSessionToken = process.env.CI_AWS_SESSION_TOKEN || process.env.AWS_SESSION_TOKEN;
+const ddbExplicitAccessKey = process.env.AWS_ACCESS_KEY_ID;
+const ddbExplicitSecretKey = process.env.AWS_SECRET_ACCESS_KEY;
+const ddbExplicitSessionToken = process.env.AWS_SESSION_TOKEN;
 const ddbExplicitCreds = ddbExplicitAccessKey && ddbExplicitSecretKey ? {
     accessKeyId: ddbExplicitAccessKey as string,
     secretAccessKey: ddbExplicitSecretKey as string,

@@ -3,20 +3,21 @@ import { DynamoDBDocumentClient, ScanCommand } from '@aws-sdk/lib-dynamodb';
 
 // Initialize DynamoDB Client (Shared Logic)
 function getDBClient() {
-  const REGION = process.env.CI_AWS_REGION || process.env.AWS_REGION || 'ap-northeast-1';
-  
+  const REGION = process.env.AWS_REGION || 'ap-northeast-1';
+
   const clientConfig: any = { region: REGION };
-  
-  const accessKeyId = process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID;
-  const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY || process.env.CI_AWS_SECRET_ACCESS_KEY;
-  
+
+  const accessKeyId = process.env.AWS_ACCESS_KEY_ID;
+  const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
+
   if (accessKeyId && secretAccessKey) {
     clientConfig.credentials = {
       accessKeyId,
       secretAccessKey
     };
   }
-  
+  // When credentials are omitted, AWS SDK auto-discovers from IAM Role (Amplify) or env vars (local dev)
+
   const client = new DynamoDBClient(clientConfig);
   return DynamoDBDocumentClient.from(client);
 }

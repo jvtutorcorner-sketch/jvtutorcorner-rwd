@@ -18,8 +18,8 @@ const region = process.env.AWS_REGION || process.env.CI_AWS_REGION || 'ap-northe
 const clientConfig: any = { region };
 
 // 只有在真的有 Access Key 時才設定 credentials
-const accessKeyId = process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID;
-const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY || process.env.CI_AWS_SECRET_ACCESS_KEY;
+const accessKeyId = process.env.AWS_ACCESS_KEY_ID;
+const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
 
 if (accessKeyId && secretAccessKey) {
   clientConfig.credentials = { accessKeyId, secretAccessKey };

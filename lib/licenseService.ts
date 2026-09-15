@@ -36,8 +36,8 @@ export const LICENSES_TABLE = process.env.DYNAMODB_TABLE_LICENSES || 'jvtutorcor
 function createDynamoClient(): DynamoDBDocumentClient {
   const clientConfig: any = { region: REGION };
 
-  const accessKeyId = process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID;
-  const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY || process.env.CI_AWS_SECRET_ACCESS_KEY;
+  const accessKeyId = process.env.AWS_ACCESS_KEY_ID;
+  const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
 
   if (accessKeyId && secretAccessKey) {
     console.log('[LicenseService] Using explicit AWS credentials (local dev mode)');

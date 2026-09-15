@@ -21,11 +21,11 @@ interface AgoraLog {
 
 const dynamoClient = new DynamoDBClient({
   region: process.env.CI_AWS_REGION || process.env.AWS_REGION || 'ap-northeast-1',
-  credentials: process.env.CI_AWS_ACCESS_KEY_ID
+  credentials: process.env.AWS_ACCESS_KEY_ID
     ? {
-        accessKeyId: process.env.CI_AWS_ACCESS_KEY_ID,
-        secretAccessKey: process.env.CI_AWS_SECRET_ACCESS_KEY || '',
-        sessionToken: process.env.CI_AWS_SESSION_TOKEN,
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || '',
+        sessionToken: process.env.AWS_SESSION_TOKEN,
       }
     : undefined,
 });

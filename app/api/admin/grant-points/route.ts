@@ -10,7 +10,7 @@ const useDynamo =
   typeof POINTS_TABLE === 'string' &&
   POINTS_TABLE.length > 0 &&
   (process.env.NODE_ENV === 'production' ||
-    !!(process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID));
+    !!(process.env.AWS_ACCESS_KEY_ID));
 
 /**
  * POST /api/admin/grant-points
