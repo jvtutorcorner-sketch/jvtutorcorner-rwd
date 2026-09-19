@@ -1,12 +1,21 @@
 import { NextResponse } from 'next/server';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, GetCommand, PutCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
-import { getUserPoints, setUserPoints } from '@/lib/pointsStorage';
-import { refundEscrow } from '@/lib/pointsEscrow';
+import { DynamoDBDocumentClient, GetCommand, PutCommand, DeleteCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { getProfileById, putProfile } from '@/lib/profilesService';
 import { withAuth, withAnyAuth, AuthedRequest } from '@/lib/auth/apiGuard';
 import { writeAuditLog } from '@/lib/auditLogService';
 import { generateHmacHeaders } from '@/lib/auth/hmac';
+import { canManageCourse } from '@/lib/auth/courseOwnership';
+import { COURSES } from '@/data/courses';
+import {
+  decideOrderPatch,
+  isB2bSeatOrder,
+  type OrderRecord,
+  OPEN_REFUND_STATUSES,
+  REFUNDABLE_ORDER_STATUSES,
+  UNPAID_ORDER_STATUSES,
+} from '@/app/api/admin/refunds/refundPolicy';
+import { approveRefund, revokeEnrollment } from '@/app/api/admin/refunds/refundService';
 
 type OrderRouteContext = { params: Promise<{ orderId: string }> };
 
@@ -87,18 +96,99 @@ async function handleGet(request: AuthedRequest, ctx?: OrderRouteContext) {
 
 export const GET = withAuth(handleGet);
 
+/**
+ * 退款申請/退課風險控管（Risk Control）：24 小時內第 2 次警告、第 3 次鎖定 24 小時。
+ * 只套用在「使用者自己」送出的退款申請與取消；管理員核准退款不會累加使用者的計數。
+ */
+async function applyRefundRiskControl(
+  userId: string | undefined
+): Promise<{ blocked: NextResponse } | { blocked: null; warning: string | null }> {
+  if (!userId) return { blocked: null, warning: null };
+  const profile = await getProfileById(userId);
+  if (!profile) return { blocked: null, warning: null };
+
+  const currentTime = new Date();
+
+  // 1. 檢查是否已被鎖定 (Check if locked)
+  if (profile.refundLockoutUntil && new Date(profile.refundLockoutUntil) > currentTime) {
+    return {
+      blocked: NextResponse.json({
+        ok: false,
+        error: '偵測到異常行為：您的退款/退課功能已被暫時鎖定，請於 24 小時後再試。'
+      }, { status: 403 }),
+    };
+  }
+
+  // 2. 檢查 24 小時內的連續次數 (Check consecutive count within 24h)
+  const lastRefundAt = profile.lastRefundAt ? new Date(profile.lastRefundAt) : null;
+  const oneDayMs = 24 * 60 * 60 * 1000;
+  const isWithin24h = lastRefundAt && (currentTime.getTime() - lastRefundAt.getTime() < oneDayMs);
+
+  const counter = isWithin24h ? (profile.refundCounter || 0) + 1 : 1;
+
+  // 3. 處理第 3 次：鎖定並攔截 (3rd time: Lock and intercept)
+  if (counter >= 3) {
+    const lockoutUntil = new Date(currentTime.getTime() + oneDayMs).toISOString();
+    await putProfile({
+      ...profile,
+      refundCounter: counter,
+      lastRefundAt: currentTime.toISOString(),
+      refundLockoutUntil: lockoutUntil
+    });
+    return {
+      blocked: NextResponse.json({
+        ok: false,
+        error: '系統防範異常：24小時內連續退課達3次，您的退款功能已鎖定 24 小時。'
+      }, { status: 403 }),
+    };
+  }
+
+  // 4. 記錄本次行為 (Record this action)
+  await putProfile({
+    ...profile,
+    refundCounter: counter,
+    lastRefundAt: currentTime.toISOString()
+  });
+
+  // 5. 處理第 2 次：加入警告 (2nd time: Add warning)
+  return {
+    blocked: null,
+    warning: counter === 2 ? '因短時間取消課程連續2次，系統防範異常發生第3次將會鎖定您的退款功能24小時' : null,
+  };
+}
+
+/** 呼叫者是不是這筆訂單所屬課程的老師（課程 DB 找不到時退回靜態 COURSES）。 */
+async function isCourseTeacherOfOrder(session: AuthedRequest['session'], order: OrderRecord): Promise<boolean> {
+  if (!order?.courseId) return false;
+  let course: { teacherId?: string | null } | null = null;
+  try {
+    const COURSES_TABLE = process.env.DYNAMODB_TABLE_COURSES || 'jvtutorcorner-courses';
+    const res = await docClient.send(new GetCommand({ TableName: COURSES_TABLE, Key: { id: order.courseId } }));
+    if (res.Item) course = { teacherId: res.Item.teacherId || res.Item.teacherEmail || null };
+  } catch (e) {
+    console.warn('[orders PATCH] course lookup failed:', e instanceof Error ? e.message : e);
+  }
+  if (!course) {
+    const staticCourse = COURSES.find((c) => c.id === order.courseId) as { teacherId?: string; teacherEmail?: string } | undefined;
+    if (staticCourse) course = { teacherId: staticCourse.teacherId || staticCourse.teacherEmail || null };
+  }
+  return canManageCourse(session, course);
+}
+
+function isConditionalFail(err: unknown): boolean {
+  return (err as { name?: string })?.name === 'ConditionalCheckFailedException';
+}
+
 async function handlePatch(request: AuthedRequest, ctx?: OrderRouteContext) {
   try {
     const { orderId } = await ctx!.params;
-    const body = await request.json();
-    const { action, status, payments, payment, remainingSeconds } = body || {};
+    const body = await request.json().catch(() => null);
 
     if (!orderId) {
       return NextResponse.json({ error: 'orderId required' }, { status: 400 });
     }
-
-    if (!status && action !== 'deduct' && typeof remainingSeconds !== 'number') {
-      return NextResponse.json({ error: 'status, action, or remainingSeconds required' }, { status: 400 });
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return NextResponse.json({ error: 'JSON object body required' }, { status: 400 });
     }
 
     const TableName = process.env.DYNAMODB_TABLE_ORDERS || 'jvtutorcorner-orders';
@@ -111,89 +201,141 @@ async function handlePatch(request: AuthedRequest, ctx?: OrderRouteContext) {
     if (!existingRes.Item) {
       return NextResponse.json({ error: 'Order not found' }, { status: 404 });
     }
+    const existingItem = existingRes.Item;
 
-    // 授權：這支端點可以把訂單標記成 PAID、扣課堂數、觸發退點與退課，
-    // 先前完全沒有驗證。規則如下：
-    //   - 一般使用者只能動自己的訂單
-    //   - 只有 admin/system（system = 金流 webhook 的 HMAC 內部呼叫）能標記 PAID，
-    //     否則任何登入者都能把自己的訂單改成已付款，等於免費購買
+    // 授權：這支端點可以把訂單標記成 PAID、扣課堂數、觸發退點與退課。
+    // 先前一般使用者可以直接把自己的訂單設成 REFUNDED（自助退點）、附加任意 payment 紀錄，
+    // 老師則可以改任何人的訂單狀態。現在由 decideOrderPatch（純函式，見
+    // app/api/admin/refunds/refundPolicy.ts）統一判斷：
+    //   - admin/system（system = 金流 webhook 的 HMAC 內部呼叫）：可標記 PAID 等狀態；
+    //     REFUNDED 一律走 approveRefund（資產反轉 + 冪等）
+    //   - 訂單擁有者：只能申請退款（refundStatus=REQUESTED）、取消未付款訂單、同步剩餘秒數
+    //   - 課程老師：只能更新 remainingSeconds / 扣堂數
     const { role, userId: sessionUserId } = request.session;
-    const isStaff = isStaffRole(role);
-    if (!isStaff && existingRes.Item.userId !== sessionUserId) {
-      return NextResponse.json({ ok: false, error: 'Forbidden: not the order owner' }, { status: 403 });
-    }
-    if (status === 'PAID' && role !== 'admin' && role !== 'system') {
-      return NextResponse.json(
-        { ok: false, error: 'Forbidden: only the payment gateway or an admin can mark an order paid' },
-        { status: 403 }
-      );
+    const decision = decideOrderPatch({ role, sessionUserId, order: existingItem, body });
+    if (!decision.ok) {
+      return NextResponse.json({ ok: false, error: decision.error }, { status: decision.httpStatus });
     }
 
     const now = new Date().toISOString();
 
+    // ── admin/system 退款：交給 refundService ──
+    if (decision.mode === 'refund') {
+      const result = await approveRefund({
+        request,
+        orderId,
+        actorId: sessionUserId,
+        note: typeof body.note === 'string' ? body.note : ((body.payment as { note?: unknown } | undefined)?.note as string | undefined) ?? null,
+        manualGatewayRefundRef: typeof body.manualGatewayRefundRef === 'string' ? body.manualGatewayRefundRef : null,
+        payment: body.payment,
+      });
+      if (!result.ok) {
+        return NextResponse.json(
+          { ok: false, error: result.error, outcome: 'outcome' in result ? result.outcome : undefined, order: result.order },
+          { status: result.httpStatus }
+        );
+      }
+      return NextResponse.json({ ok: true, outcome: result.outcome, order: result.order }, { status: 200 });
+    }
+
+    // ── 訂單擁有者：申請退款（不動 status、不動資產）或取消未付款訂單 ──
+    if (decision.mode === 'request_refund' || decision.mode === 'cancel_unpaid') {
+      const risk = await applyRefundRiskControl(existingItem.userId);
+      if (risk.blocked) return risk.blocked;
+
+      const isRequest = decision.mode === 'request_refund';
+      const values: Record<string, unknown> = { ':now': now };
+      const setParts = ['updatedAt = :now'];
+      let condition: string;
+
+      if (isRequest) {
+        setParts.push('refundStatus = :requested', 'refundReason = :reason', 'refundRequestedAt = :now', 'refundRequestedBy = :uid');
+        values[':requested'] = 'REQUESTED';
+        values[':reason'] = decision.reason;
+        values[':uid'] = sessionUserId;
+        const paidKeys = REFUNDABLE_ORDER_STATUSES.map((s, i) => { values[`:paid${i}`] = s; return `:paid${i}`; });
+        const openKeys = OPEN_REFUND_STATUSES.map((s, i) => { values[`:open${i}`] = s; return `:open${i}`; });
+        condition = `#status IN (${paidKeys.join(', ')}) AND (attribute_not_exists(refundStatus) OR NOT refundStatus IN (${openKeys.join(', ')}))`;
+      } else {
+        setParts.push('#status = :cancelled', 'orderNumber = :orderNumber');
+        values[':cancelled'] = 'CANCELLED';
+        values[':orderNumber'] = `${existingItem.userId || 'unknown'}-${now}`;
+        const unpaidKeys = UNPAID_ORDER_STATUSES.map((s, i) => { values[`:unpaid${i}`] = s; return `:unpaid${i}`; });
+        condition = `#status IN (${unpaidKeys.join(', ')})`;
+      }
+      if (risk.warning) {
+        setParts.push('riskWarning = :warning');
+        values[':warning'] = risk.warning;
+      }
+
+      try {
+        const res = await docClient.send(new UpdateCommand({
+          TableName,
+          Key: { orderId },
+          UpdateExpression: `SET ${setParts.join(', ')}`,
+          ConditionExpression: condition,
+          ExpressionAttributeNames: { '#status': 'status' },
+          ExpressionAttributeValues: values,
+          ReturnValues: 'ALL_NEW',
+        }));
+        await writeAuditLog({
+          actorId: sessionUserId,
+          action: isRequest ? 'order.refund.request' : 'order.cancel',
+          targetType: 'order',
+          targetId: orderId,
+          metadata: isRequest ? { reason: decision.reason } : { previousStatus: existingItem.status },
+        });
+        return NextResponse.json({ ok: true, order: res.Attributes }, { status: 200 });
+      } catch (err) {
+        if (isConditionalFail(err)) {
+          return NextResponse.json({ ok: false, error: '訂單狀態已變更，請重新整理後再試' }, { status: 409 });
+        }
+        throw err;
+      }
+    }
+
+    // ── 課程時間進度：擁有者同步剩餘秒數；課程老師可同步秒數並扣堂數 ──
+    if (decision.mode === 'timer') {
+      if (decision.requiresCourseTeacher && !(await isCourseTeacherOfOrder(request.session, existingItem))) {
+        return NextResponse.json(
+          { ok: false, error: 'Forbidden: not the order owner or the course teacher' },
+          { status: 403 }
+        );
+      }
+      const setParts = ['updatedAt = :now'];
+      const values: Record<string, unknown> = { ':now': now };
+      if (decision.deduct) {
+        const rSessions = typeof existingItem.remainingSessions === 'number' ? existingItem.remainingSessions : existingItem.totalSessions || 0;
+        setParts.push('remainingSessions = :rs');
+        values[':rs'] = Math.max(0, rSessions - 1);
+      }
+      if (typeof decision.remainingSeconds === 'number') {
+        setParts.push('remainingSeconds = :secs');
+        values[':secs'] = decision.remainingSeconds;
+      }
+      const res = await docClient.send(new UpdateCommand({
+        TableName,
+        Key: { orderId },
+        UpdateExpression: `SET ${setParts.join(', ')}`,
+        ConditionExpression: 'attribute_exists(orderId)',
+        ExpressionAttributeValues: values,
+        ReturnValues: 'ALL_NEW',
+      }));
+      return NextResponse.json({ ok: true, order: res.Attributes }, { status: 200 });
+    }
+
+    // ── admin/system：沿用整筆更新 ──
+    const { action, status, payments, payment, remainingSeconds } = body as OrderRecord;
+
     // merge payments for Dynamo: append incoming payments/payment
-    const existingItem = existingRes.Item;
     const existingPayments = Array.isArray(existingItem.payments) ? existingItem.payments.slice() : [];
     if (Array.isArray(payments)) existingPayments.push(...payments);
     if (payment) existingPayments.push(payment);
 
-    const updated = { ...existingItem, updatedAt: now, payments: existingPayments } as any;
+    const updated: OrderRecord = { ...existingItem, updatedAt: now, payments: existingPayments };
     if (status) {
       updated.status = status;
       updated.orderNumber = `${existingItem.userId || 'unknown'}-${now}`;
-
-      // --- 退款/退課風險控管 (Risk Control) ---
-      if (status === 'REFUNDED' || status === 'CANCELLED') {
-        const userId = existingItem.userId;
-        if (userId) {
-          const profile = await getProfileById(userId);
-          if (profile) {
-            const currentTime = new Date();
-            
-            // 1. 檢查是否已被鎖定 (Check if locked)
-            if (profile.refundLockoutUntil && new Date(profile.refundLockoutUntil) > currentTime) {
-              return NextResponse.json({ 
-                ok: false, 
-                error: '偵測到異常行為：您的退款/退課功能已被暫時鎖定，請於 24 小時後再試。' 
-              }, { status: 403 });
-            }
-
-            // 2. 檢查 24 小時內的連續次數 (Check consecutive count within 24h)
-            const lastRefundAt = profile.lastRefundAt ? new Date(profile.lastRefundAt) : null;
-            const oneDayMs = 24 * 60 * 60 * 1000;
-            const isWithin24h = lastRefundAt && (currentTime.getTime() - lastRefundAt.getTime() < oneDayMs);
-            
-            const counter = isWithin24h ? (profile.refundCounter || 0) + 1 : 1;
-            
-            // 3. 處理第 3 次：鎖定並攔截 (3rd time: Lock and intercept)
-            if (counter >= 3) {
-              const lockoutUntil = new Date(currentTime.getTime() + oneDayMs).toISOString();
-              await putProfile({
-                ...profile,
-                refundCounter: counter,
-                lastRefundAt: currentTime.toISOString(),
-                refundLockoutUntil: lockoutUntil
-              });
-              return NextResponse.json({ 
-                ok: false, 
-                error: '系統防範異常：24小時內連續退課達3次，您的退款功能已鎖定 24 小時。' 
-              }, { status: 403 });
-            }
-
-            // 4. 記錄本次行為 (Record this action)
-            await putProfile({
-              ...profile,
-              refundCounter: counter,
-              lastRefundAt: currentTime.toISOString()
-            });
-
-            // 5. 處理第 2 次：加入警告 (2nd time: Add warning)
-            if (counter === 2) {
-              updated.riskWarning = "因短時間取消課程連續2次，系統防範異常發生第3次將會鎖定您的退款功能24小時";
-            }
-          }
-        }
-      }
     }
 
     if (action === 'deduct') {
@@ -206,7 +348,21 @@ async function handlePatch(request: AuthedRequest, ctx?: OrderRouteContext) {
       updated.remainingSeconds = Math.max(0, remainingSeconds);
     }
 
-    await docClient.send(new PutCommand({ TableName, Item: updated }));
+    // 條件寫入：退款流程（refundService）可能同時把訂單改成 REFUNDED，整筆覆寫不能把它蓋回去。
+    try {
+      await docClient.send(new PutCommand({
+        TableName,
+        Item: updated,
+        ConditionExpression: 'attribute_not_exists(#status) OR #status <> :refunded',
+        ExpressionAttributeNames: { '#status': 'status' },
+        ExpressionAttributeValues: { ':refunded': 'REFUNDED' },
+      }));
+    } catch (err) {
+      if (isConditionalFail(err)) {
+        return NextResponse.json({ ok: false, error: 'Order is already REFUNDED; it can no longer change' }, { status: 409 });
+      }
+      throw err;
+    }
 
 
     // 如果訂單關聯 enrollmentId，且狀態為 PAID，則嘗試更新 enrollment（先 PAID 再 ACTIVE）
@@ -232,54 +388,12 @@ async function handlePatch(request: AuthedRequest, ctx?: OrderRouteContext) {
       }
     }
 
-    // 處理退款邏輯 (REFUNDED)
-    if (status === 'REFUNDED') {
-      const protocol = request.headers.get('x-forwarded-proto') || 'http';
-      const host = request.headers.get('host') || 'localhost:3000';
-      const base = process.env.NEXT_PUBLIC_BASE_URL || `${protocol}://${host}`;
-      
-      // 1. 如果是點數支付，退還點數
-      if (updated.paymentMethod === 'points' && updated.pointsUsed > 0 && updated.userId) {
-        try {
-          if (updated.pointsEscrowId) {
-            // Points were placed in escrow at order creation (see app/api/orders/route.ts) —
-            // refund through the same escrow record so its status moves HOLDING -> REFUNDED.
-            // Refunding via setUserPoints directly would leave the escrow stuck in HOLDING,
-            // letting a later admin /api/points-escrow refund double-credit the student.
-            console.log(`[Refund] Refunding escrow ${updated.pointsEscrowId} for order ${orderId}`);
-            const result = await refundEscrow(updated.pointsEscrowId);
-            if (!result.ok) {
-              console.error(`[Refund] refundEscrow failed for ${updated.pointsEscrowId}:`, result.error);
-            }
-          } else {
-            // Legacy order with no escrow record — fall back to direct point credit.
-            console.log(`[Refund] Refunding ${updated.pointsUsed} points to ${updated.userId} for order ${orderId}`);
-            const currentPoints = await getUserPoints(updated.userId);
-            await setUserPoints(updated.userId, currentPoints + updated.pointsUsed);
-          }
-        } catch (err) {
-          console.error('[Refund] Failed to refund points:', err);
-        }
-      }
-
-      // 2. 如果有關聯 enrollment，撤銷課程權限
-      if (updated.enrollmentId) {
-        try {
-          console.log(`[Refund] Revoking enrollment ${updated.enrollmentId} due to refund`);
-          const cancelBody = JSON.stringify({ id: updated.enrollmentId, status: 'CANCELLED' });
-          await fetch(`${base}/api/enroll`, {
-            method: 'PATCH',
-            headers: {
-              'Content-Type': 'application/json',
-              ...generateHmacHeaders('PATCH', '/api/enroll', cancelBody),
-            },
-            body: cancelBody,
-          });
-        } catch (err) {
-          console.error('[Refund] Failed to revoke enrollment:', err);
-        }
-      }
+    // B2B 席次訂單沒有款項或點數可退：管理員取消時只取消報名（由 /api/enroll 處理席次）。
+    if (status === 'CANCELLED' && isB2bSeatOrder(existingItem) && existingItem.status !== 'CANCELLED' && updated.enrollmentId) {
+      await revokeEnrollment(request, updated.enrollmentId, orderId);
     }
+
+    // 退款（REFUNDED）的資產反轉與撤銷報名已移到 app/api/admin/refunds/refundService.ts 的 approveRefund。
 
     return NextResponse.json({ ok: true, order: updated }, { status: 200 });
   } catch (err) {

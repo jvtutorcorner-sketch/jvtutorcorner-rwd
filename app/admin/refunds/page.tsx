@@ -1,421 +1,460 @@
 "use client";
 
-import React, { useState } from 'react';
-import { COURSES } from '@/data/courses';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
-// 定義退款政策/設定的型別
-type RefundPolicy = {
-  id: string;
-  name: string;
-  reason: string;
-  refundPercentage: number; // 退款百分比 (1-100)
-  note?: string;
+// 退款管理（管理員）
+//
+// 流程：使用者在 /refunds 送出退款申請（refundStatus=REQUESTED）→ 管理員在這裡核准或駁回。
+// 核准會反轉平台內資產（點數 escrow 退回、購買的點數扣回、撤銷報名）並把訂單改成 REFUNDED；
+// 金流端（Stripe / PayPal / LINE Pay / ECPay）不會自動退款，必須到金流商後台手動處理後回填退款編號。
+
+type GatewayRefund = {
+  mode: 'manual';
+  status: 'PENDING_MANUAL' | 'DONE';
+  reference: string | null;
+  paymentMethod: string | null;
+  gatewayTransactionId: string | null;
+  updatedAt: string;
+  updatedBy: string;
 };
 
-type RefundLog = {
-  id: string;
-  operator: string;
-  timestamp: string;
-  target: string;
-  condition: string;
-  policyName: string;
-  amount: number;
+type RefundOrder = {
+  orderId: string;
+  userId?: string;
+  courseId?: string;
+  courseTitle?: string;
+  itemType?: string;
+  amount?: number;
+  currency?: string;
+  paymentMethod?: string | null;
+  pointsUsed?: number;
+  points?: number;
+  status?: string;
+  refundStatus?: string;
+  refundReason?: string;
+  refundRequestedAt?: string;
+  refundNote?: string;
+  refundManualReviewReason?: string;
+  refundedAt?: string;
+  refundedBy?: string;
+  refundRejectedAt?: string;
+  gatewayRefund?: GatewayRefund;
+  createdAt?: string;
 };
 
-// 假資料: 預設的退款設定
-const DEFAULT_POLICIES: RefundPolicy[] = [
-  { id: 'p1', name: '全額退款 (誤報已修正)', reason: 'User mistaken / Correction', refundPercentage: 100 },
-  { id: 'p2', name: '課程取消補償', reason: 'Course Cancelled', refundPercentage: 100, note: '包含補償學分' },
-  { id: 'p3', name: '7天猶豫期退款', reason: '7-day Policy', refundPercentage: 100 },
-  { id: 'p4', name: '中途退課 (50%)', reason: 'User Quit (Halfway)', refundPercentage: 50 },
-];
+type RowInput = { note: string; gatewayRef: string; assetsHandledManually: boolean };
+
+type ActionLog = { id: string; timestamp: string; orderId: string; action: string; ok: boolean; message: string };
+
+const REFUND_STATUS_LABEL: Record<string, string> = {
+  REQUESTED: '待審核',
+  PROCESSING: '處理中',
+  MANUAL_REVIEW: '人工審查',
+  APPROVED: '已核准',
+  REJECTED: '已駁回',
+};
+
+const REFUND_STATUS_BADGE: Record<string, string> = {
+  REQUESTED: 'bg-yellow-100 text-yellow-800',
+  PROCESSING: 'bg-blue-100 text-blue-800',
+  MANUAL_REVIEW: 'bg-orange-100 text-orange-800',
+  APPROVED: 'bg-green-100 text-green-800',
+  REJECTED: 'bg-gray-200 text-gray-700',
+};
+
+const EMPTY_INPUT: RowInput = { note: '', gatewayRef: '', assetsHandledManually: false };
+
+function fmt(ts?: string) {
+  if (!ts) return '-';
+  const d = new Date(ts);
+  return Number.isNaN(d.getTime()) ? ts : d.toLocaleString();
+}
+
+function paymentLabel(o: RefundOrder) {
+  if (o.paymentMethod === 'points') return `點數 ${o.pointsUsed ?? 0} 點`;
+  return `${o.paymentMethod || '未知金流'} ${o.amount ?? 0} ${o.currency || ''}`.trim();
+}
 
 export default function RefundManagementPage() {
-  // 1. 退款設定管理
-  const [policies, setPolicies] = useState<RefundPolicy[]>(DEFAULT_POLICIES);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [newPolicyName, setNewPolicyName] = useState('');
-  const [newPolicyReason, setNewPolicyReason] = useState('');
-  const [newPolicyPercent, setNewPolicyPercent] = useState<number>(100);
+  const [orders, setOrders] = useState<RefundOrder[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [truncated, setTruncated] = useState(false);
+  const [filter, setFilter] = useState<string>('OPEN');
+  const [inputs, setInputs] = useState<Record<string, RowInput>>({});
+  const [busyOrderId, setBusyOrderId] = useState<string | null>(null);
+  const [resultMessage, setResultMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [logs, setLogs] = useState<ActionLog[]>([]);
 
-  // 2. 退款執行
-  const [targetOrderId, setTargetOrderId] = useState('');
-  const [targetCourseId, setTargetCourseId] = useState('');
-  const [targetPlan, setTargetPlan] = useState('');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [selectedPolicyId, setSelectedPolicyId] = useState<string>('');
-  
-  const [processing, setProcessing] = useState(false);
-  const [resultMessage, setResultMessage] = useState<string | null>(null);
+  // 單一訂單直接退款（沒有使用者申請時，例如客服電話退款）
+  const [directOrderId, setDirectOrderId] = useState('');
 
-  // 3. 退款紀錄
-  const [refundLogs, setRefundLogs] = useState<RefundLog[]>([]);
+  const load = useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const res = await fetch('/api/admin/refunds', { cache: 'no-store' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) throw new Error(data?.error || `載入失敗 (${res.status})`);
+      setOrders(Array.isArray(data.data) ? data.data : []);
+      setTruncated(!!data.truncated);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  // 新增或更新退款設定
-  const handleSavePolicy = () => {
-    if (!newPolicyName || !newPolicyReason) {
-      alert('請填寫完整設定名稱與原因');
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const visibleOrders = useMemo(() => {
+    if (filter === 'ALL') return orders;
+    if (filter === 'OPEN') {
+      return orders.filter((o) => ['REQUESTED', 'MANUAL_REVIEW', 'PROCESSING'].includes(o.refundStatus || ''));
+    }
+    if (filter === 'PENDING_GATEWAY') {
+      return orders.filter((o) => o.status === 'REFUNDED' && o.gatewayRefund?.status === 'PENDING_MANUAL');
+    }
+    return orders.filter((o) => o.refundStatus === filter);
+  }, [orders, filter]);
+
+  const getInput = (orderId: string): RowInput => inputs[orderId] || EMPTY_INPUT;
+  const setInput = (orderId: string, patch: Partial<RowInput>) =>
+    setInputs((prev) => ({ ...prev, [orderId]: { ...(prev[orderId] || EMPTY_INPUT), ...patch } }));
+
+  const runAction = async (orderId: string, action: 'approve' | 'reject' | 'gateway_ref') => {
+    const input = getInput(orderId);
+    const labels = { approve: '核准退款', reject: '駁回申請', gateway_ref: '回填金流退款編號' };
+    if (action === 'gateway_ref' && !input.gatewayRef.trim()) {
+      alert('請輸入金流退款編號');
       return;
     }
+    const confirmText =
+      action === 'approve'
+        ? `確定要核准訂單 ${orderId} 的退款嗎？\n\n系統會反轉點數/撤銷報名並把訂單標記為 REFUNDED。\n金流實際退款不會自動執行，請至金流商後台手動處理。`
+        : `確定要${labels[action]}（訂單 ${orderId}）嗎？`;
+    if (!confirm(confirmText)) return;
 
-    if (editingId) {
-      // 更新
-      setPolicies(prev => prev.map(p => p.id === editingId ? {
-        ...p,
-        name: newPolicyName,
-        reason: newPolicyReason,
-        refundPercentage: Number(newPolicyPercent)
-      } : p));
-      setEditingId(null);
-    } else {
-      // 新增
-      const newPolicy: RefundPolicy = {
-        id: `p${Date.now()}`,
-        name: newPolicyName,
-        reason: newPolicyReason,
-        refundPercentage: Number(newPolicyPercent),
-      };
-      setPolicies([...policies, newPolicy]);
-    }
-
-    setNewPolicyName('');
-    setNewPolicyReason('');
-    setNewPolicyPercent(100);
-  };
-
-  const handleStartEdit = (p: RefundPolicy) => {
-    setEditingId(p.id);
-    setNewPolicyName(p.name);
-    setNewPolicyReason(p.reason);
-    setNewPolicyPercent(p.refundPercentage);
-  };
-
-  const handleCancelEdit = () => {
-    setEditingId(null);
-    setNewPolicyName('');
-    setNewPolicyReason('');
-    setNewPolicyPercent(100);
-  };
-
-  // 執行退款 (模擬)
-  const handleExecuteRefund = async () => {
-    if (!targetOrderId && !targetCourseId && !targetPlan) {
-      alert('請輸入單一訂單 ID，或選擇課程/方案');
-      return;
-    }
-    // 時間區間檢查 (如果是單一訂單則免填日期，否則要填)
-    if (!targetOrderId && (!startDate || !endDate)) {
-      alert('批次操作請設定開始與結束時間區間');
-      return;
-    }
-    if (!selectedPolicyId) {
-      alert('請選擇要套用的退款規則');
-      return;
-    }
-
-    const policy = policies.find(p => p.id === selectedPolicyId);
-    const ok = confirm(`確定要執行退款嗎？\n規則：${policy?.name} (${policy?.refundPercentage}%)\n此操作將會產生退款單據。`);
-    if (!ok) return;
-
-    setProcessing(true);
+    setBusyOrderId(orderId);
     setResultMessage(null);
-
-    // 模擬 API 呼叫延遲
-    await new Promise(r => setTimeout(r, 1500));
-
-    // 模擬結果與卡控邏輯
-    let targetName = '';
-    let mockCount = 0;
-    let skippedCount = 0;
-
-    if (targetOrderId) {
-      targetName = `單一訂單 (ID: ${targetOrderId})`;
-      // 模擬卡控：隨機判斷該訂單是否已付款 (80% 成功率)
-      const isPaid = Math.random() > 0.2;
-      if (!isPaid) {
-        setResultMessage(`
-          執行失敗！
-          --------------------------------
-          目標訂單: ${targetOrderId}
-          原因: 此訂單狀態為「未付款」或「已取消」，無法執行退款卡控。
-          --------------------------------
-          狀態: 終止操作
-        `);
-        setProcessing(false);
-        return;
+    try {
+      const res = await fetch('/api/admin/refunds', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId,
+          action,
+          note: input.note || undefined,
+          manualGatewayRefundRef: input.gatewayRef || undefined,
+          assetsHandledManually: action === 'approve' ? input.assetsHandledManually : undefined,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      const ok = res.ok && !!data?.ok;
+      let text: string;
+      if (ok) {
+        const outcome = data.outcome === 'ALREADY_REFUNDED' ? '（此訂單先前已退款）' : '';
+        text = `${labels[action]}成功${outcome}：${orderId}`;
+        if (action === 'approve' && data.order?.gatewayRefund?.status === 'PENDING_MANUAL') {
+          text += '\n⚠️ 金流退款尚未完成：請至金流商後台退款後回填退款編號。';
+        }
+      } else if (data?.outcome === 'MANUAL_REVIEW') {
+        text = `已轉人工審查（未變更任何資產）：${data.error}`;
+      } else {
+        text = `${labels[action]}失敗：${data?.error || `HTTP ${res.status}`}`;
       }
-      mockCount = 1;
-    } else {
-      targetName = targetCourseId 
-        ? COURSES.find(c => c.id === targetCourseId)?.title || '未知課程'
-        : `方案 ${targetPlan}`;
-      
-      // 模擬批次篩選中的付款狀態卡控
-      const totalFound = Math.floor(Math.random() * 8) + 2; 
-      mockCount = Math.max(1, Math.floor(totalFound * 0.7)); // 假設 70% 是已付款
-      skippedCount = totalFound - mockCount;
+      setResultMessage({ ok, text });
+      setLogs((prev) => [
+        { id: `log-${Date.now()}`, timestamp: new Date().toLocaleString(), orderId, action: labels[action], ok, message: text },
+        ...prev,
+      ]);
+      if (data?.order?.orderId) {
+        setOrders((prev) => {
+          const exists = prev.some((o) => o.orderId === data.order.orderId);
+          return exists ? prev.map((o) => (o.orderId === data.order.orderId ? data.order : o)) : [data.order, ...prev];
+        });
+      }
+      if (ok) setInputs((prev) => ({ ...prev, [orderId]: EMPTY_INPUT }));
+    } catch (err) {
+      setResultMessage({ ok: false, text: `${labels[action]}失敗：${err instanceof Error ? err.message : String(err)}` });
+    } finally {
+      setBusyOrderId(null);
     }
+  };
 
-    setResultMessage(`
-      成功執行！ (付款狀態卡控通過)
-      --------------------------------
-      目標對象: ${targetName}
-      ${targetOrderId ? '' : `時間區間: ${startDate} ~ ${endDate}`}
-      套用設定: ${policy?.name} (${policy?.refundPercentage}%)
-      --------------------------------
-      ✅ 處理退款數: ${mockCount} 筆
-      ${skippedCount > 0 ? `⚠️ 跳過未付款數: ${skippedCount} 筆 (自動過濾)` : ''}
-      狀態: 已建立退款單，進入待審核流程
-    `);
+  const handleDirectApprove = async () => {
+    const id = directOrderId.trim();
+    if (!id) {
+      alert('請輸入訂單 ID');
+      return;
+    }
+    await runAction(id, 'approve');
+  };
 
-    // 加入紀錄
-    const newLog: RefundLog = {
-      id: `log-${Date.now()}`,
-      operator: 'Admin (Demo)', // 實際應從 Auth Context 取得
-      timestamp: new Date().toLocaleString(),
-      target: targetName,
-      condition: targetOrderId ? `單一訂單: ${targetOrderId}` : `${startDate} ~ ${endDate}`,
-      policyName: policy?.name || '未知',
-      amount: mockCount
-    };
-    setRefundLogs(prev => [newLog, ...prev]);
+  const renderActionInputs = (o: RefundOrder) => {
+    const input = getInput(o.orderId);
+    const busy = busyOrderId === o.orderId;
+    const isRefunded = o.status === 'REFUNDED';
+    const canApprove = !isRefunded && o.paymentMethod !== 'b2b_seat' && ['PAID', 'COMPLETED'].includes((o.status || '').toUpperCase());
+    const canReject = ['REQUESTED', 'MANUAL_REVIEW'].includes(o.refundStatus || '');
+    const needsGateway = o.paymentMethod !== 'points' && o.paymentMethod !== 'b2b_seat';
+    const canBackfill = isRefunded && needsGateway;
 
-    setProcessing(false);
+    if (!canApprove && !canReject && !canBackfill) return <span className="text-gray-400 text-xs">無可用操作</span>;
+
+    return (
+      <div className="space-y-2 min-w-[260px]">
+        <input
+          className="w-full border rounded px-2 py-1 text-sm"
+          placeholder="審核備註 (選填)"
+          value={input.note}
+          onChange={(e) => setInput(o.orderId, { note: e.target.value })}
+        />
+        {needsGateway && (canApprove || canBackfill) && (
+          <input
+            className="w-full border rounded px-2 py-1 text-sm"
+            placeholder="金流後台退款編號 (完成後回填)"
+            value={input.gatewayRef}
+            onChange={(e) => setInput(o.orderId, { gatewayRef: e.target.value })}
+          />
+        )}
+        {canApprove && o.refundStatus === 'MANUAL_REVIEW' && (
+          <label className="flex items-center gap-2 text-xs text-orange-800">
+            <input
+              type="checkbox"
+              checked={input.assetsHandledManually}
+              onChange={(e) => setInput(o.orderId, { assetsHandledManually: e.target.checked })}
+            />
+            資產已人工處理（略過自動點數/方案反轉）
+          </label>
+        )}
+        <div className="flex gap-2">
+          {canApprove && (
+            <button
+              className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm disabled:bg-gray-400"
+              disabled={busy}
+              onClick={() => runAction(o.orderId, 'approve')}
+            >
+              {busy ? '處理中...' : '核准退款'}
+            </button>
+          )}
+          {canReject && (
+            <button
+              className="bg-gray-500 hover:bg-gray-600 text-white px-3 py-1 rounded text-sm disabled:bg-gray-400"
+              disabled={busy}
+              onClick={() => runAction(o.orderId, 'reject')}
+            >
+              駁回
+            </button>
+          )}
+          {canBackfill && (
+            <button
+              className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm disabled:bg-gray-400"
+              disabled={busy}
+              onClick={() => runAction(o.orderId, 'gateway_ref')}
+            >
+              回填退款編號
+            </button>
+          )}
+        </div>
+      </div>
+    );
   };
 
   return (
     <div className="container mx-auto px-6 py-8 max-w-[1600px]">
       <h1 className="text-3xl font-bold mb-6">退款管理 (Refund Management)</h1>
 
+      <div className="bg-amber-50 border border-amber-300 text-amber-900 rounded-lg p-4 mb-6 text-sm leading-relaxed">
+        <p className="font-bold mb-1">⚠️ 金流實際退款請至各金流商後台手動處理，並回填退款編號。</p>
+        <p>
+          核准退款只會處理平台內的資產：點數報名退回點數暫存、購買的點數套餐從學員餘額扣回、撤銷課程報名，並把訂單標記為 REFUNDED。
+          系統不會呼叫 Stripe / PayPal / LINE Pay / ECPay 的退款 API。若學員點數不足以扣回，或方案訂單無法自動降級，申請會轉為「人工審查」且不變更任何資產。
+        </p>
+      </div>
+
+      {resultMessage && (
+        <div
+          className={`whitespace-pre-line rounded-lg p-4 mb-6 text-sm border ${
+            resultMessage.ok ? 'bg-green-50 border-green-300 text-green-900' : 'bg-red-50 border-red-300 text-red-900'
+          }`}
+        >
+          {resultMessage.text}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
-        <div className="lg:col-span-3">
-          {/* 區塊 1: 退款設定管理 */}
+        <div className="lg:col-span-4">
+          {/* 區塊 1: 退款申請列表 */}
           <section className="bg-white p-6 rounded-lg shadow mb-8">
-            <h2 className="text-xl font-semibold mb-4 border-b pb-2">
-              1. 常用退款設定 {editingId ? <span className="text-blue-600">(編輯中)</span> : '(Settings)'}
-            </h2>
-            
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4 items-end">
-              <div>
-                <label className="block text-sm font-medium text-gray-700">設定名稱</label>
-                <input 
-                  className="mt-1 block w-full border rounded px-3 py-2"
-                  placeholder="e.g. 報名費用退還"
-                  value={newPolicyName}
-                  onChange={e => setNewPolicyName(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">原因 / 備註</label>
-                <input 
-                  className="mt-1 block w-full border rounded px-3 py-2"
-                  placeholder="Internal Note"
-                  value={newPolicyReason}
-                  onChange={e => setNewPolicyReason(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">退款比例 %</label>
-                <input 
-                  type="number"
-                  min="0"
-                  max="100"
-                  className="mt-1 block w-full border rounded px-3 py-2"
-                  value={newPolicyPercent}
-                  onChange={e => setNewPolicyPercent(Number(e.target.value))}
-                />
-              </div>
-              <div className="md:col-span-2 flex gap-2">
-                <button 
-                  onClick={handleSavePolicy}
-                  className={`${editingId ? 'bg-blue-600 hover:bg-blue-700' : 'bg-green-600 hover:bg-green-700'} text-white px-4 py-2 rounded flex-1 transition`}
+            <div className="flex flex-wrap items-center justify-between gap-4 mb-4 border-b pb-2">
+              <h2 className="text-xl font-semibold">1. 退款申請 (Requests)</h2>
+              <div className="flex items-center gap-2">
+                <select className="border rounded px-3 py-1 bg-white text-sm" value={filter} onChange={(e) => setFilter(e.target.value)}>
+                  <option value="OPEN">待處理（待審核 / 人工審查）</option>
+                  <option value="PENDING_GATEWAY">已退款・待回填金流編號</option>
+                  <option value="APPROVED">已核准</option>
+                  <option value="REJECTED">已駁回</option>
+                  <option value="ALL">全部</option>
+                </select>
+                <button
+                  className="bg-gray-100 hover:bg-gray-200 border px-3 py-1 rounded text-sm"
+                  onClick={load}
+                  disabled={loading}
                 >
-                  {editingId ? '儲存修改' : '+ 新增設定'}
+                  {loading ? '載入中...' : '重新整理'}
                 </button>
-                {editingId && (
-                  <button 
-                    onClick={handleCancelEdit}
-                    className="bg-gray-400 text-white px-4 py-2 rounded hover:bg-gray-500 transition"
-                  >
-                    取消
-                  </button>
-                )}
               </div>
             </div>
 
+            {loadError && <div className="text-red-600 text-sm mb-4">載入失敗：{loadError}</div>}
+            {truncated && (
+              <div className="text-orange-600 text-xs mb-4">資料量過大，僅顯示部分結果。</div>
+            )}
+
             <div className="overflow-x-auto">
-              <table className="min-w-full bg-white border border-gray-200">
+              <table className="min-w-full bg-white border border-gray-200 text-sm">
                 <thead>
                   <tr className="bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    <th className="px-4 py-2">名稱</th>
-                    <th className="px-4 py-2">原因</th>
-                    <th className="px-4 py-2">比例</th>
-                    <th className="px-4 py-2">操作</th>
+                    <th className="px-3 py-2">訂單 / 使用者</th>
+                    <th className="px-3 py-2">付款</th>
+                    <th className="px-3 py-2">狀態</th>
+                    <th className="px-3 py-2">申請原因</th>
+                    <th className="px-3 py-2">金流退款</th>
+                    <th className="px-3 py-2">操作</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {policies.map(p => (
-                    <tr key={p.id} className={editingId === p.id ? 'bg-blue-50' : ''}>
-                      <td className="px-4 py-2">{p.name}</td>
-                      <td className="px-4 py-2 text-gray-500">{p.reason}</td>
-                      <td className="px-4 py-2 font-bold">{p.refundPercentage}%</td>
-                      <td className="px-4 py-2">
-                        <button 
-                          className="text-blue-600 hover:text-blue-800 text-sm font-medium mr-4"
-                          onClick={() => handleStartEdit(p)}
-                        >
-                          編輯
-                        </button>
-                        <button 
-                          className="text-red-500 hover:text-red-700 text-sm"
-                          onClick={() => setPolicies(policies.filter(x => x.id !== p.id))}
-                        >
-                          移除
-                        </button>
+                  {visibleOrders.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="text-center py-10 text-gray-400">
+                        {loading ? '載入中...' : '尚無資料'}
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    visibleOrders.map((o) => (
+                      <tr key={o.orderId} className="align-top">
+                        <td className="px-3 py-2">
+                          <div className="font-mono text-xs break-all">{o.orderId}</div>
+                          <div className="text-gray-500 text-xs">使用者：{o.userId || '-'}</div>
+                          <div className="text-gray-500 text-xs">{o.courseTitle || o.courseId || o.itemType || ''}</div>
+                        </td>
+                        <td className="px-3 py-2">
+                          <div>{paymentLabel(o)}</div>
+                          {o.itemType === 'POINTS' && o.points ? (
+                            <div className="text-gray-500 text-xs">購買點數 {o.points} 點</div>
+                          ) : null}
+                        </td>
+                        <td className="px-3 py-2 space-y-1">
+                          <div className="text-xs">訂單：{o.status || '-'}</div>
+                          {o.refundStatus && (
+                            <span className={`text-xs px-2 py-0.5 rounded font-medium ${REFUND_STATUS_BADGE[o.refundStatus] || 'bg-gray-100'}`}>
+                              {REFUND_STATUS_LABEL[o.refundStatus] || o.refundStatus}
+                            </span>
+                          )}
+                          <div className="text-gray-400 text-xs">申請：{fmt(o.refundRequestedAt)}</div>
+                          {o.refundedAt && <div className="text-gray-400 text-xs">退款：{fmt(o.refundedAt)}</div>}
+                        </td>
+                        <td className="px-3 py-2 max-w-[260px]">
+                          <div className="whitespace-pre-wrap break-words">{o.refundReason || '-'}</div>
+                          {o.refundManualReviewReason && (
+                            <div className="text-orange-700 text-xs mt-1">人工審查原因：{o.refundManualReviewReason}</div>
+                          )}
+                          {o.refundNote && <div className="text-gray-500 text-xs mt-1">備註：{o.refundNote}</div>}
+                        </td>
+                        <td className="px-3 py-2 text-xs">
+                          {o.paymentMethod === 'points' ? (
+                            <span className="text-gray-400">不適用（點數）</span>
+                          ) : o.gatewayRefund ? (
+                            <div className="space-y-1">
+                              <div className={o.gatewayRefund.status === 'DONE' ? 'text-green-700' : 'text-orange-700'}>
+                                {o.gatewayRefund.status === 'DONE' ? '已回填' : '待手動退款'}
+                              </div>
+                              {o.gatewayRefund.reference && <div>編號：{o.gatewayRefund.reference}</div>}
+                              {o.gatewayRefund.gatewayTransactionId && (
+                                <div className="text-gray-500 break-all">交易：{o.gatewayRefund.gatewayTransactionId}</div>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-gray-400">尚未核准</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2">{renderActionInputs(o)}</td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
           </section>
 
-          {/* 區塊 2: 執行操作 */}
+          {/* 區塊 2: 單一訂單直接退款 */}
           <section className="bg-white p-6 rounded-lg shadow">
-            <h2 className="text-xl font-semibold mb-4 border-b pb-2">2. 批次退款執行 (自動卡控已付款訂單)</h2>
-            <p className="text-gray-500 mb-6 text-sm">
-              請選擇目標課程或方案，並指定訂單成立的時間區間。
+            <h2 className="text-xl font-semibold mb-4 border-b pb-2">2. 單一訂單直接退款（無使用者申請）</h2>
+            <p className="text-gray-500 mb-4 text-sm">
+              適用於客服受理等情境。只接受已付款（PAID / COMPLETED）的訂單；金流退款同樣需要到金流商後台手動處理。
             </p>
-
-            <div className="space-y-6 max-w-2xl">
-              {/* 左側：條件選擇 */}
-              <div className="space-y-6">
-                <div className="bg-blue-50 p-5 rounded-lg border border-blue-200 shadow-sm">
-                  <label className="block text-sm font-bold text-blue-800 mb-1">方式 A：指定單一訂單 (Order ID)</label>
-                  <input 
-                    className="w-full border rounded px-3 py-2 bg-white"
-                    placeholder="輸入完整訂單 ID (例如: ord-12345)"
-                    value={targetOrderId}
-                    onChange={e => {
-                      setTargetOrderId(e.target.value);
-                      if (e.target.value) {
-                        setTargetCourseId('');
-                        setTargetPlan('');
-                      }
-                    }}
+            <div className="space-y-3 max-w-2xl">
+              <input
+                className="w-full border rounded px-3 py-2 bg-white"
+                placeholder="輸入完整訂單 ID"
+                value={directOrderId}
+                onChange={(e) => setDirectOrderId(e.target.value)}
+              />
+              {directOrderId.trim() && (
+                <>
+                  <input
+                    className="w-full border rounded px-3 py-2"
+                    placeholder="審核備註 (選填)"
+                    value={getInput(directOrderId.trim()).note}
+                    onChange={(e) => setInput(directOrderId.trim(), { note: e.target.value })}
                   />
-                </div>
-
-                <div className="text-center text-gray-400 text-sm">- 或 -</div>
-
-                <div className={`p-4 rounded border ${targetOrderId ? 'bg-gray-50 opacity-50' : 'bg-gray-50 border-gray-200'}`}>
-                  <label className="block text-sm font-bold text-gray-700 mb-2">方式 B：批次篩選條件</label>
-                  
-                  <div className="space-y-3">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">目標課程 (Course)</label>
-                      <select 
-                        className="w-full border rounded px-3 py-2 bg-white"
-                        disabled={!!targetOrderId}
-                        value={targetCourseId}
-                        onChange={e => { setTargetCourseId(e.target.value); setTargetPlan(''); }}
-                      >
-                        <option value="">-- 請選擇課程 --</option>
-                        {COURSES.map(c => (
-                          <option key={c.id} value={c.id}>{c.title}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="text-center text-gray-400 text-xs">AND</div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">目標方案 (Membership Plan)</label>
-                      <select 
-                        className="w-full border rounded px-3 py-2 bg-white"
-                        disabled={!!targetOrderId}
-                        value={targetPlan}
-                        onChange={e => { setTargetPlan(e.target.value); setTargetCourseId(''); }}
-                      >
-                        <option value="">-- 不指定方案 --</option>
-                        <option value="basic">Basic Plan</option>
-                        <option value="pro">Pro Plan</option>
-                        <option value="elite">Elite Plan</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">訂單日期區間</label>
-                      <div className="flex gap-2">
-                        <input 
-                          type="date" 
-                          className="flex-1 border rounded px-3 py-2"
-                          disabled={!!targetOrderId}
-                          value={startDate}
-                          onChange={e => setStartDate(e.target.value)}
-                        />
-                        <span className="self-center">至</span>
-                        <input 
-                          type="date" 
-                          className="flex-1 border rounded px-3 py-2"
-                          disabled={!!targetOrderId}
-                          value={endDate}
-                          onChange={e => setEndDate(e.target.value)}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">套用設定 (Apply Policy)</label>
-                  <select 
-                    className="w-full border rounded px-3 py-2 bg-white border-blue-300"
-                    value={selectedPolicyId}
-                    onChange={e => setSelectedPolicyId(e.target.value)}
-                  >
-                    <option value="">-- 請選擇退款規則 --</option>
-                    {policies.map(p => (
-                      <option key={p.id} value={p.id}>{p.name} ({p.refundPercentage}%)</option>
-                    ))}
-                  </select>
-                </div>
-
-                <button 
-                  className={`w-full py-3 rounded text-white font-bold text-lg mt-4 
-                    ${processing ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}
-                  `}
-                  onClick={handleExecuteRefund}
-                  disabled={processing}
-                >
-                  {processing ? '處理中...' : '執行退款'}
-                </button>
-              </div>
+                  <input
+                    className="w-full border rounded px-3 py-2"
+                    placeholder="金流後台退款編號 (若已退款可直接填入)"
+                    value={getInput(directOrderId.trim()).gatewayRef}
+                    onChange={(e) => setInput(directOrderId.trim(), { gatewayRef: e.target.value })}
+                  />
+                </>
+              )}
+              <button
+                className={`w-full py-3 rounded text-white font-bold text-lg ${
+                  busyOrderId ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'
+                }`}
+                onClick={handleDirectApprove}
+                disabled={!!busyOrderId}
+              >
+                {busyOrderId ? '處理中...' : '核准退款'}
+              </button>
             </div>
           </section>
         </div>
 
-        {/* 右側：退款紀錄 */}
-        <div className="lg:col-span-2">
+        {/* 右側：本次操作紀錄（完整稽核紀錄寫在 audit log） */}
+        <div className="lg:col-span-1">
           <section className="bg-white p-6 rounded-lg shadow h-full flex flex-col">
-            <h2 className="text-xl font-semibold mb-4 border-b pb-2">退款紀錄 (History)</h2>
+            <h2 className="text-xl font-semibold mb-4 border-b pb-2">操作紀錄 (History)</h2>
+            <p className="text-gray-400 text-xs mb-3">僅顯示本次頁面操作；完整紀錄請見稽核日誌。</p>
             <div className="flex-1 overflow-y-auto space-y-4 max-h-[800px] pr-2">
-              {refundLogs.length === 0 ? (
+              {logs.length === 0 ? (
                 <div className="text-center py-10 text-gray-400">尚無紀錄</div>
               ) : (
-                refundLogs.map(log => (
-                  <div key={log.id} className="border rounded-lg p-4 text-sm bg-gray-50 transition hover:shadow-md">
+                logs.map((log) => (
+                  <div key={log.id} className="border rounded-lg p-3 text-sm bg-gray-50 transition hover:shadow-md">
                     <div className="flex justify-between items-start mb-2">
-                      <span className="bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded font-medium">#{log.amount} 筆</span>
+                      <span
+                        className={`text-xs px-2 py-0.5 rounded font-medium ${
+                          log.ok ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                        }`}
+                      >
+                        {log.action}
+                      </span>
                       <span className="text-gray-400 text-xs">{log.timestamp}</span>
                     </div>
-                    <div className="space-y-1">
-                      <p><strong>人員：</strong> {log.operator}</p>
-                      <p><strong>對象：</strong> {log.target}</p>
-                      <p><strong>條件：</strong> <code className="bg-gray-200 px-1 rounded text-xs">{log.condition}</code></p>
-                      <p><strong>規則：</strong> {log.policyName}</p>
-                    </div>
+                    <p className="font-mono text-xs break-all">{log.orderId}</p>
+                    <p className="text-xs whitespace-pre-line mt-1">{log.message}</p>
                   </div>
                 ))
               )}

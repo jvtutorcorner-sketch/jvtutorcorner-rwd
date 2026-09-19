@@ -1,10 +1,11 @@
-import { requireAdminPage } from '@/lib/auth/pageGuard';
+import { requirePageSession } from '@/lib/auth/pageGuard';
 
 /**
- * 伺服器端存取守衛。先前這個區塊只有 client 端讀 localStorage 的檢查（可偽造），
- * 或完全沒有檢查，頁面會先渲染並送出 API 請求才跳轉。
+ * 伺服器端存取守衛：/refunds 是使用者自己的退款申請頁，只要登入即可。
+ * 真正的授權（只能申請自己的已付款訂單、不能直接退款）由 PATCH /api/orders/[orderId] 強制；
+ * 管理員核准退款請至 /admin/refunds。
  */
 export default async function RefundsLayout({ children }: { children: React.ReactNode }) {
-  await requireAdminPage('refunds');
+  await requirePageSession({ reason: 'refunds' });
   return <>{children}</>;
 }

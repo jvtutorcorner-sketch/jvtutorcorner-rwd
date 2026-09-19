@@ -163,7 +163,15 @@ async function handlePost(request: AuthedRequest) {
       paymentMethod: paymentMethod || null,
       pointsUsed: effectivePointsToDeduct || 0,
       pointsEscrowId: pointsEscrowId || null,
-      status: clientStatus || 'PENDING',
+      // The client never decides whether an order is paid: a points order is PAID only
+      // because deductUserPoints() succeeded above; card/wallet orders stay PENDING until
+      // their webhook confirms. Only admin/system may set a status directly.
+      status:
+        request.session.role === 'admin' || request.session.role === 'system'
+          ? (clientStatus || 'PENDING')
+          : paymentMethod === 'points'
+            ? 'PAID'
+            : 'PENDING',
       startTime: startTime || null,
       endTime: endTime || null,
       createdAt,

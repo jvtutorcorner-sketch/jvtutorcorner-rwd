@@ -127,30 +127,51 @@ test('Order Refund Verification (Points refund + Enrollment cancellation)', asyn
     console.log(`Balance after enroll: ${balanceAfterEnroll}`);
     expect(balanceAfterEnroll).toBe(baselineBalance - pointCost);
 
-    // --- 3. Trigger Refund ---
-    console.log(`Triggering refund for order: ${realOrderId}...`);
-    // Need to trigger the backend logic via PATCH
-    const patchRes = await page.request.patch(`${baseUrl}/api/orders/${realOrderId}`, {
-        data: JSON.stringify({
-            status: 'REFUNDED',
-            payment: {
-                time: new Date().toISOString(),
-                action: 'refund',
-                amount: pointCost,
-                status: 'REFUNDED',
-                note: 'Order refund test'
-            }
-        })
+    // --- 3. Refund: user requests, admin approves ---
+    // 使用者不能再直接把訂單設成 REFUNDED（先前可以自助退點）；只能送出申請，由管理員核准。
+    console.log(`Attempting direct self-refund (must be rejected) for order: ${realOrderId}...`);
+    const selfRefundRes = await page.request.patch(`${baseUrl}/api/orders/${realOrderId}`, {
+        data: JSON.stringify({ status: 'REFUNDED' }),
+        headers: { 'Content-Type': 'application/json' },
     });
-    
-    const patchData = await patchRes.json();
-    console.log("Refund Patch response:", patchData);
-    if (!patchData.ok) {
-        console.error("PATCH FAILED:", patchData.error || patchData);
-    }
-    expect(patchData.ok).toBe(true);
+    expect(selfRefundRes.status()).toBe(403);
 
-    // Wait a bit for backend API patch requests (they are fired and forgotten by /api/orders) to settle
+    console.log(`Requesting refund for order: ${realOrderId}...`);
+    const requestRes = await page.request.patch(`${baseUrl}/api/orders/${realOrderId}`, {
+        data: JSON.stringify({ action: 'request_refund', reason: 'Order refund test' }),
+        headers: { 'Content-Type': 'application/json' },
+    });
+    const requestData = await requestRes.json();
+    console.log("Refund request response:", requestData);
+    expect(requestData.ok).toBe(true);
+    expect(requestData.order?.refundStatus).toBe('REQUESTED');
+    expect(requestData.order?.status).toBe('PAID');
+
+    // 申請本身不動資產
+    expect(await getBalance(baseUrl, page, userId)).toBe(baselineBalance - pointCost);
+
+    // 管理員核准（x-e2e-secret 在非 production 取得 system 身分，可通過 withAdmin）
+    console.log(`Approving refund as admin for order: ${realOrderId}...`);
+    const approveRes = await page.request.post(`${baseUrl}/api/admin/refunds`, {
+        data: JSON.stringify({ orderId: realOrderId, action: 'approve', note: 'Order refund test' }),
+        headers: { 'Content-Type': 'application/json', 'x-e2e-secret': E2E_SECRET },
+    });
+    const approveData = await approveRes.json();
+    console.log("Refund approve response:", approveData);
+    expect(approveData.ok).toBe(true);
+    expect(approveData.order?.status).toBe('REFUNDED');
+    expect(approveData.order?.refundStatus).toBe('APPROVED');
+
+    // 重複核准必須冪等（不可二次退點）
+    const approveAgainRes = await page.request.post(`${baseUrl}/api/admin/refunds`, {
+        data: JSON.stringify({ orderId: realOrderId, action: 'approve' }),
+        headers: { 'Content-Type': 'application/json', 'x-e2e-secret': E2E_SECRET },
+    });
+    const approveAgainData = await approveAgainRes.json();
+    expect(approveAgainData.ok).toBe(true);
+    expect(approveAgainData.outcome).toBe('ALREADY_REFUNDED');
+
+    // Wait a bit for the enrollment revocation (server-to-server PATCH /api/enroll) to settle
     await page.waitForTimeout(4000);
 
     // --- 4. Final Verification ---
