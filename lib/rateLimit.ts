@@ -175,6 +175,11 @@ export const RATE_LIMIT_RULES = {
   loginFailPerEmail: { scope: 'login:fail:email', limit: 8, windowSeconds: 15 * 60 } as RateLimitRule,
   /** 同一 IP 1 小時內最多 5 次註冊（防大量灌假帳號） */
   registerPerIp: { scope: 'register:ip', limit: 5, windowSeconds: 60 * 60 } as RateLimitRule,
+  /**
+   * 企業 CSV 批次註冊（/api/register/batch）：一次請求最多建立 BATCH_MAX_ROWS 個帳號，
+   * 整批只算 registerPerIp 的 1 次，另外再用這條獨立限制批次本身的次數。
+   */
+  registerBatchPerIp: { scope: 'register:batch:ip', limit: 5, windowSeconds: 60 * 60 } as RateLimitRule,
   /** 同一 IP 1 小時內最多 5 次忘記密碼（每次都會寄信並重設密碼，必須嚴格） */
   forgotPasswordPerIp: { scope: 'forgot:ip', limit: 5, windowSeconds: 60 * 60 } as RateLimitRule,
   /** 同一 Email 1 小時內最多 3 次忘記密碼（防止拿別人信箱洗信 / 反覆重設別人密碼） */

@@ -1,7 +1,7 @@
 ---
 name: b2b-enterprise-registration
-description: '企業自助註冊流程驗證技能。涵蓋 /login/register_enterprise（單筆註冊 + CSV 批次匯入）、/api/register 的 orgId 分支（網域驗證、席次競態下的原子性 rollback）、/api/organizations/public 公開組織清單。API 層腳本 + headed 瀏覽器 UI 流程雙軌驗證。'
-argument-hint: '驗證企業自助註冊：單筆註冊、CSV 批次匯入、網域檢查、席次競態 rollback'
+description: '企業自助註冊流程驗證技能。涵蓋 /login/register_enterprise（公開頁，單筆自助註冊）、企業管理後台的 CSV 批次匯入（/admin/organizations/[id] 成員分頁 → /api/register/batch，限企業管理員）、/api/register 的 orgId 分支（網域驗證、席次競態下的原子性 rollback）、/api/organizations/public 公開組織清單。API 層腳本 + headed 瀏覽器 UI 流程雙軌驗證。'
+argument-hint: '驗證企業自助註冊：單筆註冊、CSV 批次匯入（限企業管理員）、網域檢查、席次競態 rollback'
 metadata:
   verified-status: '✅ VERIFIED'
   last-verified-date: '2026-09-12'
@@ -11,12 +11,12 @@ metadata:
 
 # 企業自助註冊驗證技能 (B2B Enterprise Registration Skill)
 
-負責驗證企業戶最前端的入口——`/login/register_enterprise`（單筆註冊 + CSV 批次匯入成員）與其背後的 `/api/register` orgId 分支、`/api/organizations/public` 公開組織清單。這是使用者從「聽過這個平台」到「變成企業帳號」的第一步，壞掉了後面的 `b2b-core-modules`（席次/授權/組織單位/存取閘門）再怎麼正確都沒有意義。
+負責驗證企業戶最前端的入口——`/login/register_enterprise`（公開頁，單筆自助註冊）、企業管理後台的 CSV 批次匯入成員（`/admin/organizations/[id]` 成員分頁），與其背後的 `/api/register` orgId 分支、`/api/organizations/public` 公開組織清單。這是使用者從「聽過這個平台」到「變成企業帳號」的第一步，壞掉了後面的 `b2b-core-modules`（席次/授權/組織單位/存取閘門）再怎麼正確都沒有意義。
 
 跟 `b2b-core-modules`（純 Node 腳本，無頭）不同，本技能延續 `b2b-admin-ui-flow` 的做法，用**兩層**驗證：
 
 1. `scripts/verify-b2b-enterprise-registration.mjs` — 直接打 `POST /api/register`，深度驗證網域檢查、席次上限、併發競態下的原子性 rollback
-2. `e2e/b2b_enterprise_registration_ui_flow.spec.ts` — 真實 headed 瀏覽器把「單筆註冊」與「CSV 批次匯入」兩條路徑都走一遍
+2. `e2e/b2b_enterprise_registration_ui_flow.spec.ts` — 真實 headed 瀏覽器把「單筆註冊」與「CSV 批次匯入」兩條路徑都走一遍（**CSV 那段需改為先以企業管理員登入後進管理後台，尚未更新**）
 
 ## 測試模組
 
@@ -41,6 +41,36 @@ metadata:
 3. **`/api/register` 回傳的 `profile` 是指派組織前的舊快照** — `orgMembershipService.assignMemberWithLicense` 自己會再對 Profiles 表下一次 `UpdateCommand`（設定 `orgId`/`orgUnitId`/`licenseId`/`plan`），但 route handler 回傳的還是交易前建立的那個 `profile` 物件，沒有把交易後的欄位合併回來。修復：`Object.assign(profile, assignResult.profile)`。
 4. **`lib/profilesService.ts` 的 `findProfileByEmail` 對「查詢成功但查無資料」拋錯，而不是回傳 `null`** — 影響範圍不只企業註冊，還包括 `/api/login`（帳密錯誤時）、`/api/forgot-password`（未知 email）、`/api/admin/create-user`（新使用者的重複檢查一定會查無資料）、`/api/licenses/[id]/assign` 與 `/api/organizations/[id]/members`（用 email 加入不存在的成員）。修復：Query/Scan 成功但 `Count === 0` 時明確 `return null`，不落到最下面的 throw。
 
+## 2026-09-17 變更：CSV 批次匯入改為整批原子性、單筆 B2B 註冊不再有孤兒 profile
+
+- **CSV 匯入改打 `POST /api/register/batch`（一次請求）**：先整批驗證（必填欄位、Email 格式、組織網域、批次內重複、已註冊、席次足夠），任何一列不合格就回 `400 batch_validation_failed` + `rowErrors[{index,email,errors}]`，**什麼都不寫**。舊版逐列打 `/api/register`，第 6 列起必吃 `registerPerIp`（5 次/時）429，且成功的列不會回滾。
+- **寫入**：`orgMembershipService.createNewMembersWithLicenses` — profile Put + license Put + 席次遞增放在同一個 TransactWrite；≤ 49 筆 = 單一交易（真正 all-or-nothing）；50–200 筆分段交易，後段失敗時補償前段（條件式刪 profile/license、釋放席次）。補償失敗回 `500 batch_partial` + `partial.profileIds`，log 標記 `REGISTER_BATCH_PARTIAL`。
+- **防濫用**：見下方 2026-09-19 變更（匯入已改為登入後限企業管理員）。單批上限 200 列、每列都檢查組織網域、已註冊檢查 fail-closed。
+- **CSV 解析**：`lib/registerProfileCsv.ts`（RFC 4180：引號、`""`、欄位內換行、CRLF、BOM），錯誤訊息用檔案實際行號。
+- **單筆 B2B 註冊**（`/api/register` 帶 orgId）也改用同一個交易（批次大小 1），不再「先 Put profile、join 失敗再 Delete」，因此不會留下孤兒 profile，也不會把已經拿到席次的 profile 刪掉。profile 在交易提交前 `isB2B=false`。
+- `assignMemberWithLicense`（管理員加成員等仍在用）交易提交後若後續讀取失敗，改回傳剛寫入的值、不再 throw — throw 一律代表「沒提交」。
+- 共用的 profile 建構（欄位白名單、scrypt、驗證信 token）抽到 `lib/registerProfile.ts`，單筆與批次一致。
+- 離線回歸：`node --import ./scripts/lib/register-ts-resolve.mjs scripts/verify-register-batch.mjs`（假 DynamoDB，不連 AWS、不寄信）。
+
+## 2026-09-19 變更：CSV 批次匯入改為登入後限企業管理員
+
+公開頁上的批次匯入只靠驗證碼 + IP 限流把關，而 `verifyCaptcha` 的 token 在 5 分鐘內可重用，
+所以匿名者用單一 IP 每小時就能灌入 5 批 × 200 = 1000 個帳號（席次足夠的組織都會中）。
+
+- **入口搬家**：公開頁 `/login/register_enterprise` 只保留單筆自助註冊；批次匯入改在
+  `/admin/organizations/[id]` 的「成員」分頁（`components/org/OrgCsvImportPanel.tsx`，
+  以 `<details>` 收折，只有系統管理員與該組織 `isOrgAdmin` 看得到）。
+- **API 授權**：`POST /api/register/batch` 改為 `withAuth` + `requireOrgAccess(orgId, 'write')`。
+  未登入 401；一般成員、`dept_admin`、其他組織的企業管理員一律 403。授權跑在 body 與限流之前，
+  所以權限不足時拿到的是 403（不會洩漏席次或網域資訊）。
+- **驗證碼移除**：已登入的管理員不需要人機驗證。`registerBatchPerIp`（5 次/時/IP）保留為爆量上限。
+- **不再計入 `registerPerIp`**：那個計數器是給公開註冊表單用的；共用會讓幾個員工在辦公室自助註冊
+  就把自家管理員的匯入擋掉。
+- **時區工具抽出**：`lib/countryTimezone.ts`（`COUNTRY_TIMEZONES`、`formatLocalIso`、
+  `timezoneForCountry`），原本在三個頁面各有一份副本。
+- 離線回歸：`node --import ./scripts/lib/register-ts-resolve.mjs scripts/verify-register-batch-authz.mjs`
+  （14 項：401 / 403 各情境、授權早於 body 與限流、被拒時不寫入任何 profile）。
+
 ## 已知限制
 
 - 不重複驗證 `b2b-core-modules` 已覆蓋的席次/授權/組織單位邊界案例——本技能只驗「進得來」這一段。
@@ -64,12 +94,15 @@ npx playwright test e2e/b2b_enterprise_registration_ui_flow.spec.ts --project=ch
 ## 相關檔案
 
 ### 驗證
+- [scripts/verify-register-batch.mjs](../../../scripts/verify-register-batch.mjs)（離線，假 DynamoDB）
 - [scripts/verify-b2b-enterprise-registration.mjs](../../../scripts/verify-b2b-enterprise-registration.mjs)
 - [e2e/b2b_enterprise_registration_ui_flow.spec.ts](../../../e2e/b2b_enterprise_registration_ui_flow.spec.ts)
 
 ### 受測程式碼
-- `app/login/register_enterprise/page.tsx`（單筆 + CSV 批次匯入 UI）
-- `app/api/register/route.ts`（orgId 分支：網域驗證、席次前置檢查、`assignMemberWithLicense` + rollback）
+- `app/login/register_enterprise/page.tsx`（公開頁，單筆自助註冊 UI）
+- `components/org/OrgCsvImportPanel.tsx`（企業管理後台的 CSV 批次匯入 UI，掛在 `components/org/OrgMembersPanel.tsx`）
+- `app/api/register/route.ts`（orgId 分支：網域驗證、席次前置檢查、`createNewMembersWithLicenses` 單一交易）
+- `app/api/register/batch/route.ts`、`lib/registerProfile.ts`、`lib/registerProfileCsv.ts`（CSV 批次）
 - `app/api/organizations/public/route.ts`
 - `components/auth/PermissionGuard.tsx`（本次修復頁面權限設定，非改此檔案邏輯）
 - `lib/profilesService.ts`（`findProfileByEmail` 修復）
@@ -85,10 +118,10 @@ npx playwright test e2e/b2b_enterprise_registration_ui_flow.spec.ts --project=ch
 
 **checkbox / submit 按鈕點了沒反應，或莫名其妙跳回首頁** — 不要對這頁用 `.click({force:true})`：坐標式的強制點擊在版面還在微調時可能點到別的元素（曾經意外點中導覽列的首頁 logo 連結）。改用 `locator.dispatchEvent('click')` 直接對目標 DOM 節點觸發點擊，不依賴螢幕座標。
 
-**CSV 匯入又出現 `captcha_incorrect`** — 確認 `app/login/register_enterprise/page.tsx` 的 CSV payload 是否還帶著 `captchaToken`/`captchaValue`（見上方問題 1）；也確認測試腳本在 CSV 匯入的那次頁面載入時，真的有先填過一次驗證碼欄位——CSV 匯入沿用的是「這次頁面載入」的 `captchaValue` 狀態，不是全域的。
+**CSV 匯入回 403 / 401** — 匯入自 2026-09-19 起限企業管理員：確認登入的帳號 `profile.isOrgAdmin === true` 且 `profile.orgId` 等於要匯入的組織（企業管理員的 `role` 通常仍是 `student`，看 role 會誤判）；`dept_admin` 沒有匯入權限。舊的 `captcha_incorrect` 問題已不適用（該路由不再驗證碼）。
 
 **手動點 `/login/register_enterprise` 又被彈回首頁** — 檢查 `/api/admin/settings` 裡 `/login/register_enterprise` 的 Student 角色 `pageVisible` 是否又被改回 `false`（見上方問題 2）。
 
 ---
 
-**最後更新**: 2026-08-08
+**最後更新**: 2026-09-17

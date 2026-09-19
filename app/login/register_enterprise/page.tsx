@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useT } from "@/components/IntlProvider";
 import { COUNTRY_CODES, countryKey } from "@/lib/countryI18n";
+import { formatLocalIso, timezoneForCountry } from "@/lib/countryTimezone";
 import {
   PLAN_LABELS,
   PLAN_DESCRIPTIONS,
@@ -49,15 +50,10 @@ export default function RegisterPage() {
   const [orgs, setOrgs] = useState<Array<{ id: string; name: string; domain?: string; availableSeats: number }>>([]);
   const [selectedOrgId, setSelectedOrgId] = useState<string>("");
   const [orgsLoading, setOrgsLoading] = useState(false);
-  const [csvFile, setCsvFile] = useState<File | null>(null);
-  const [csvError, setCsvError] = useState<string | null>(null);
-  const [csvSuccess, setCsvSuccess] = useState<{ count: number; results: Array<{ email: string; ok: boolean; error?: string }> } | null>(null);
-  const [csvProgress, setCsvProgress] = useState<{ done: number; total: number } | null>(null);
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const [captchaImage, setCaptchaImage] = useState<string | null>(null);
   const [captchaValue, setCaptchaValue] = useState("");
   const [captchaLoading, setCaptchaLoading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Refs for form fields
   const orgRef = useRef<HTMLSelectElement>(null);
@@ -136,59 +132,6 @@ export default function RegisterPage() {
     () => COUNTRY_CODES.map((code) => ({ code, label: t(countryKey(code)) })),
     [t],
   );
-
-  // 國家時區映射
-  const countryTimezones: Record<string, string> = {
-    TW: 'Asia/Taipei',
-    JP: 'Asia/Tokyo',
-    US: 'America/New_York',
-    GB: 'Europe/London',
-    HK: 'Asia/Hong_Kong',
-    MO: 'Asia/Macau',
-    CN: 'Asia/Shanghai',
-    KR: 'Asia/Seoul',
-    SG: 'Asia/Singapore',
-    MY: 'Asia/Kuala_Lumpur',
-    AU: 'Australia/Sydney',
-    NZ: 'Pacific/Auckland',
-    CA: 'America/Toronto',
-    DE: 'Europe/Berlin',
-    FR: 'Europe/Paris',
-    ES: 'Europe/Madrid',
-    IT: 'Europe/Rome',
-    IN: 'Asia/Kolkata',
-    BR: 'America/Sao_Paulo',
-    MX: 'America/Mexico_City',
-    ZA: 'Africa/Johannesburg',
-  };
-
-  // 格式化本地時間為 ISO 格式
-  function formatLocalIso(timezone?: string) {
-    const now = new Date();
-    const utcIso = now.toISOString();
-    if (!timezone) return { utc: utcIso, local: utcIso, timezone: 'UTC' };
-    try {
-      const fmt = new Intl.DateTimeFormat('sv-SE', {
-        timeZone: timezone,
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false,
-      });
-      // 'sv-SE' style yields YYYY-MM-DD HH:MM:SS which we convert to ISO-like
-      const parts = fmt.formatToParts(now).reduce((acc: any, part) => {
-        acc[part.type] = (acc[part.type] || '') + part.value;
-        return acc;
-      }, {});
-      const localIsoLike = `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}`;
-      return { utc: utcIso, local: localIsoLike, timezone };
-    } catch (e) {
-      return { utc: utcIso, local: utcIso, timezone: 'UTC' };
-    }
-  }
 
   async function loadCaptcha() {
     try {
@@ -313,8 +256,7 @@ export default function RegisterPage() {
       return;
     }
 
-    const timezoneName = countryTimezones[country || 'TW'] || 'UTC';
-    const times = formatLocalIso(timezoneName);
+    const times = formatLocalIso(timezoneForCountry(country || 'TW'));
 
     const payload = {
       roid_id: uuid,
@@ -364,396 +306,17 @@ export default function RegisterPage() {
     }
   };
 
-  // Function to download sample CSV
-  const downloadSampleCSV = () => {
-    const headers = ['email', 'password', 'firstName', 'lastName', 'role', 'birthdate', 'gender', 'country'];
-    const sampleData = [
-      ['student@example.com', 'password123', 'John', 'Doe', 'student', '2000-01-01', 'male', 'TW'],
-      ['teacher@example.com', 'password456', 'Jane', 'Smith', 'teacher', '1985-05-15', 'female', 'US'],
-    ];
-
-    const csvContent = [
-      headers.join(','),
-      ...sampleData.map(row => row.join(','))
-    ].join('\n');
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-
-    link.setAttribute('href', url);
-    link.setAttribute('download', 'sample_registration.csv');
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  // Handle file selection
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (!file.name.endsWith('.csv')) {
-      setCsvError(t('csv_error_pick_file'));
-      setCsvFile(null);
-      return;
-    }
-
-    setCsvFile(file);
-    setCsvError(null);
-  };
-
-  // Parse and validate CSV
-  const handleCsvImport = async () => {
-    if (!csvFile) {
-      setCsvError(t('csv_error_no_file'));
-      return;
-    }
-
-    if (!selectedOrgId) {
-      setCsvError(t('csv_error_no_org'));
-      return;
-    }
-
-    try {
-      const text = await csvFile.text();
-      const lines = text.split('\n').filter(line => line.trim());
-
-      if (lines.length < 2) {
-        setCsvError(t('csv_error_format'));
-        return;
-      }
-
-      const headers = lines[0].split(',').map(h => h.trim());
-      const requiredHeaders = ['email', 'password', 'firstName', 'lastName', 'role', 'birthdate', 'gender', 'country'];
-
-      const missingHeaders = requiredHeaders.filter(h => !headers.includes(h));
-      if (missingHeaders.length > 0) {
-        setCsvError(t('csv_error_missing_headers', { fields: missingHeaders.join(', ') }));
-        return;
-      }
-
-      const records = [];
-      const errors = [];
-
-      for (let i = 1; i < lines.length; i++) {
-        const values = lines[i].split(',').map(v => v.trim());
-        const record: any = {};
-
-        headers.forEach((header, index) => {
-          record[header] = values[index] || '';
-        });
-
-        // Validate required fields
-        const rowErrors = [];
-        if (!record.email) rowErrors.push('email');
-        if (!record.password) rowErrors.push('password');
-        if (!record.firstName) rowErrors.push('firstName');
-        if (!record.lastName) rowErrors.push('lastName');
-        if (!record.role) rowErrors.push('role');
-        if (!record.birthdate) rowErrors.push('birthdate');
-        if (!record.gender) rowErrors.push('gender');
-        if (!record.country) rowErrors.push('country');
-
-        if (rowErrors.length > 0) {
-          errors.push(t('csv_error_row_missing', { row: i + 1, fields: rowErrors.join(', ') }));
-        } else {
-          records.push(record);
-        }
-      }
-
-      if (errors.length > 0) {
-        setCsvError(`${t('csv_error_validation')}\n${errors.join('\n')}`);
-        return;
-      }
-
-      // CSV 內部重複 email 偵測 — 提早擋下，避免必定發生的 409 才在中途失敗
-      const emailCounts = new Map<string, number>();
-      records.forEach((r) => {
-        const key = r.email.toLowerCase();
-        emailCounts.set(key, (emailCounts.get(key) || 0) + 1);
-      });
-      const duplicateEmails = Array.from(emailCounts.entries()).filter(([, count]) => count > 1).map(([e]) => e);
-      if (duplicateEmails.length > 0) {
-        setCsvError(`${t('csv_error_duplicate_emails')}\n${duplicateEmails.join('\n')}`);
-        return;
-      }
-
-      // 整批前置校驗 — 用「當下」剩餘席次（重新抓取，不用掛載時的舊快照）比對整批筆數，
-      // 超過就整批拒絕，避免前面幾筆先建立、後面幾筆才失敗的半吊子狀態
-      const freshOrgs = await loadOrgs();
-      const freshOrg = freshOrgs.find((o) => o.id === selectedOrgId);
-      if (!freshOrg) {
-        setCsvError(t('csv_error_org_gone'));
-        return;
-      }
-      if (records.length > freshOrg.availableSeats) {
-        setCsvError(
-          t('csv_error_not_enough_seats', { records: records.length, org: freshOrg.name, seats: freshOrg.availableSeats })
-        );
-        return;
-      }
-
-      // Import records sequentially — the transactional seat-consuming assignment on the
-      // server needs to serialize anyway, and this lets us collect a per-row result.
-      const results: Array<{ email: string; ok: boolean; error?: string }> = [];
-      setCsvProgress({ done: 0, total: records.length });
-
-      for (const record of records) {
-        const timezoneName = countryTimezones[record.country] || 'UTC';
-        const times = formatLocalIso(timezoneName);
-
-        const payload = {
-          roid_id: `csv-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
-          email: record.email.toLowerCase(),
-          password: record.password,
-          firstName: record.firstName,
-          lastName: record.lastName,
-          role: record.role,
-          birthdate: record.birthdate,
-          gender: record.gender,
-          country: record.country,
-          timezone: times.timezone,
-          termsAccepted: true,
-          createdAtUtc: times.utc,
-          createdAtLocal: times.local,
-          updatedAtUtc: times.utc,
-          updatedAtLocal: times.local,
-          orgId: selectedOrgId,
-          // Reuse the captcha solved once at the top of the page — verifyCaptcha's
-          // token is stateless (signature + expiry only, no single-use consumption),
-          // so it's safe to submit against every row in the batch. Without this every
-          // CSV row was rejected with captcha_incorrect since /api/register always
-          // requires it.
-          captchaToken,
-          captchaValue,
-        };
-
-        try {
-          const res = await fetch('/api/register', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-          });
-          const data = await res.json();
-          results.push({ email: record.email, ok: res.ok, error: res.ok ? undefined : (data?.message || t('csv_error_row_failed')) });
-        } catch (rowErr: any) {
-          results.push({ email: record.email, ok: false, error: rowErr?.message || t('csv_error_network') });
-        }
-
-        setCsvProgress((prev) => (prev ? { done: prev.done + 1, total: prev.total } : prev));
-      }
-
-      const successCount = results.filter((r) => r.ok).length;
-      setCsvProgress(null);
-      setCsvSuccess({ count: successCount, results });
-      setCsvFile(null);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-      await loadOrgs();
-
-      // Redirect after 5 seconds only if everything succeeded
-      if (successCount === results.length) {
-        setTimeout(() => {
-          router.push('/login');
-        }, 5000);
-      }
-
-    } catch (err: any) {
-      setCsvProgress(null);
-      setCsvError(t('csv_error_parse', { message: err.message }));
-    }
-  };
-
   return (
     <div className="page">
       <header className="page-header">
         <h1>{t('register_enterprise_title')}</h1>
         <p>{t('register_subtitle')}</p>
 
-        {/* CSV Import Section */}
-        <div style={{ marginTop: 16, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".csv"
-            onChange={handleFileSelect}
-            style={{ display: 'none' }}
-          />
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            style={{
-              padding: '8px 16px',
-              borderRadius: '6px',
-              background: '#6366f1',
-              color: '#fff',
-              border: 'none',
-              cursor: 'pointer',
-              fontWeight: 600
-            }}
-          >
-            📁 {t('register_csv_choose')}
-          </button>
-          <button
-            type="button"
-            onClick={handleCsvImport}
-            disabled={!csvFile}
-            style={{
-              padding: '8px 16px',
-              borderRadius: '6px',
-              background: csvFile ? '#10b981' : '#9ca3af',
-              color: '#fff',
-              border: 'none',
-              cursor: csvFile ? 'pointer' : 'not-allowed',
-              fontWeight: 600
-            }}
-          >
-            📥 {t('register_csv_import')}
-          </button>
-          <button
-            type="button"
-            onClick={downloadSampleCSV}
-            style={{
-              padding: '8px 16px',
-              borderRadius: '6px',
-              background: '#f59e0b',
-              color: '#fff',
-              border: 'none',
-              cursor: 'pointer',
-              fontWeight: 600
-            }}
-          >
-            📄 {t('register_csv_sample')}
-          </button>
-          {csvFile && <span style={{ color: '#059669', fontWeight: 600 }}>✓ {csvFile.name}</span>}
-        </div>
+        {/* 批次匯入成員已移到企業管理後台（登入後 › 企業管理 › 成員分頁，
+            components/org/OrgCsvImportPanel.tsx）。這個公開頁只保留單筆自助註冊：
+            匿名者原本可用同一個 IP 每小時灌入 5 批 × 200 個帳號。 */}
+        <p style={{ marginTop: 12, fontSize: 13, color: '#6b7280' }}>{t('register_csv_moved_hint')}</p>
       </header>
-
-      {/* CSV Error Dialog */}
-      {csvError && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0,0,0,0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 9999
-        }}>
-          <div style={{
-            background: '#fff',
-            padding: 24,
-            borderRadius: 12,
-            maxWidth: 500,
-            boxShadow: '0 20px 40px rgba(0,0,0,0.3)'
-          }}>
-            <h2 style={{ color: '#dc2626', marginBottom: 16 }}>{t('csv_import_error_title')}</h2>
-            <p style={{ whiteSpace: 'pre-line', marginBottom: 20 }}>{csvError}</p>
-            <button
-              onClick={() => setCsvError(null)}
-              style={{
-                padding: '8px 16px',
-                borderRadius: '6px',
-                background: '#2563eb',
-                color: '#fff',
-                border: 'none',
-                cursor: 'pointer',
-                fontWeight: 600
-              }}
-            >
-              {t('confirm_ok')}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* CSV Import Progress */}
-      {csvProgress && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0,0,0,0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 9999
-        }}>
-          <div style={{
-            background: '#fff',
-            padding: 24,
-            borderRadius: 12,
-            maxWidth: 400,
-            boxShadow: '0 20px 40px rgba(0,0,0,0.3)',
-            textAlign: 'center'
-          }}>
-            <p style={{ fontSize: 16, fontWeight: 600 }}>{t('csv_importing', { done: csvProgress.done, total: csvProgress.total })}</p>
-          </div>
-        </div>
-      )}
-
-      {/* CSV Success Dialog */}
-      {csvSuccess && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0,0,0,0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 9999
-        }}>
-          <div style={{
-            background: '#fff',
-            padding: 24,
-            borderRadius: 12,
-            maxWidth: 560,
-            maxHeight: '80vh',
-            overflowY: 'auto',
-            boxShadow: '0 20px 40px rgba(0,0,0,0.3)',
-            textAlign: 'left'
-          }}>
-            <h2 style={{ color: csvSuccess.count === csvSuccess.results.length ? '#10b981' : '#f59e0b', marginBottom: 16, textAlign: 'center' }}>
-              {csvSuccess.count === csvSuccess.results.length ? t('csv_import_done') : t('csv_import_partial')}
-            </h2>
-            <p style={{ fontSize: 18, marginBottom: 12, textAlign: 'center' }}>
-              {t('csv_import_summary', { ok: csvSuccess.count, failed: csvSuccess.results.length - csvSuccess.count })}
-            </p>
-            {csvSuccess.results.some((r) => !r.ok) && (
-              <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: 12, marginBottom: 12 }}>
-                <p style={{ fontWeight: 600, marginBottom: 6 }}>{t('csv_import_failed_list')}</p>
-                <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13 }}>
-                  {csvSuccess.results.filter((r) => !r.ok).map((r, idx) => (
-                    <li key={idx}>{r.email}{t('label_colon')}{r.error}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            <p style={{ color: '#6b7280', textAlign: 'center' }}>
-              {csvSuccess.count === csvSuccess.results.length
-                ? t('csv_import_redirect_hint')
-                : t('csv_import_retry_hint')}
-            </p>
-            <div style={{ textAlign: 'center', marginTop: 12 }}>
-              <button
-                onClick={() => setCsvSuccess(null)}
-                style={{ padding: '8px 16px', borderRadius: 6, background: '#2563eb', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600 }}
-              >
-                {t('close')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       <section className="section">
         <div className="card">

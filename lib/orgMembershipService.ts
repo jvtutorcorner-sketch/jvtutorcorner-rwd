@@ -91,7 +91,7 @@ export interface AssignMemberResult {
   usedSeats: number;
 }
 
-function friendlyTransactionError(error: any, itemLabels: string[]): Error {
+export function friendlyTransactionError(error: any, itemLabels: string[]): Error {
   if (error.name === 'TransactionCanceledException' && Array.isArray(error.CancellationReasons)) {
     const failedIndex = error.CancellationReasons.findIndex((r: any) => r?.Code === 'ConditionalCheckFailed');
     if (failedIndex >= 0 && itemLabels[failedIndex]) {
@@ -122,7 +122,7 @@ function friendlyTransactionError(error: any, itemLabels: string[]): Error {
  * POST /api/register calls in parallel) intermittently surfaced a raw, confusing AWS SDK
  * error message as an HTTP 400 instead of either succeeding or a friendly 409.
  */
-async function sendTransactWriteWithRetry(command: TransactWriteCommand, maxAttempts = 3): Promise<void> {
+export async function sendTransactWriteWithRetry(command: TransactWriteCommand, maxAttempts = 3): Promise<void> {
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       await ddbDocClient.send(command);
@@ -142,9 +142,103 @@ async function sendTransactWriteWithRetry(command: TransactWriteCommand, maxAtte
 }
 
 // ==========================================
+// Shared transact-item builders (single assign + batch registration)
+// ==========================================
+
+/**
+ * Org seat consumption. count === 1 keeps the original `usedSeats < maxSeats` guard.
+ * DynamoDB condition expressions have no arithmetic, so consuming N seats at once
+ * pins the maxSeats value that was just read and compares usedSeats against
+ * (maxSeats - N); a concurrent maxSeats change fails the condition instead of
+ * over-allocating.
+ */
+export function buildSeatConsumeItem(opts: { orgId: string; count: number; now: string; maxSeats?: number }) {
+  const { orgId, count, now } = opts;
+  if (count === 1) {
+    return {
+      Update: {
+        TableName: ORGANIZATIONS_TABLE,
+        Key: { id: orgId },
+        UpdateExpression: 'SET usedSeats = usedSeats + :one, updatedAt = :now',
+        ConditionExpression: 'attribute_exists(id) AND usedSeats < maxSeats',
+        ExpressionAttributeValues: { ':one': 1, ':now': now }
+      }
+    };
+  }
+  if (typeof opts.maxSeats !== 'number' || count < 1) {
+    throw new Error('buildSeatConsumeItem: consuming more than one seat requires the current maxSeats');
+  }
+  return {
+    Update: {
+      TableName: ORGANIZATIONS_TABLE,
+      Key: { id: orgId },
+      UpdateExpression: 'SET usedSeats = usedSeats + :n, updatedAt = :now',
+      ConditionExpression: 'attribute_exists(id) AND maxSeats = :maxSeats AND usedSeats <= :seatLimit',
+      ExpressionAttributeValues: {
+        ':n': count,
+        ':maxSeats': opts.maxSeats,
+        ':seatLimit': opts.maxSeats - count,
+        ':now': now
+      }
+    }
+  };
+}
+
+/** A newly minted, already-assigned license row. */
+export function buildNewLicenseItem(opts: {
+  licenseId: string;
+  orgId: string;
+  userId: string;
+  now: string;
+  courseId?: string;
+  assignedBy?: string;
+  expiresAtEpoch?: number | null;
+}): License {
+  return {
+    id: opts.licenseId,
+    orgId: opts.orgId,
+    userId: opts.userId,
+    courseId: opts.courseId,
+    status: 'active',
+    assignedAt: opts.now,
+    assignedBy: opts.assignedBy,
+    expiresAt: opts.expiresAtEpoch ?? undefined,
+    createdAt: opts.now,
+    updatedAt: opts.now
+  } as License;
+}
+
+/** Profile attributes a member carries once seated (same values the join Update SETs). */
+export function buildMemberJoinFields(opts: {
+  orgId: string;
+  orgUnitId?: string | null;
+  licenseId: string;
+  isOrgAdmin?: boolean;
+  now: string;
+}) {
+  return {
+    orgId: opts.orgId,
+    orgUnitId: opts.orgUnitId || null,
+    isB2B: true,
+    isOrgAdmin: opts.isOrgAdmin === true,
+    licenseId: opts.licenseId,
+    plan: null,
+    updatedAt: opts.now
+  };
+}
+
+// ==========================================
 // Assign member (with seat + license) — single ACID transaction
 // ==========================================
 
+/**
+ * Contract relied on by /api/register's rollback: if this function throws, the
+ * transaction did NOT commit (every throw happens before or inside the transaction
+ * send). Once the transaction commits it always returns — a failing follow-up read
+ * falls back to the values that were just written instead of throwing, because a
+ * caller that treats a throw as "not joined" would otherwise delete a profile that
+ * now holds a seat and a license (leaking the seat).
+ */
 export async function assignMemberWithLicense(input: AssignMemberInput): Promise<AssignMemberResult> {
   const { orgId, profileId } = input;
 
@@ -233,43 +327,40 @@ export async function assignMemberWithLicense(input: AssignMemberInput): Promise
     : {
         Put: {
           TableName: LICENSES_TABLE,
-          Item: {
-            id: licenseId,
+          Item: buildNewLicenseItem({
+            licenseId,
             orgId,
             userId: profileId,
+            now,
             courseId: input.courseId,
-            status: 'active',
-            assignedAt: now,
             assignedBy: input.assignedBy,
-            expiresAt: expiresAtEpoch ?? undefined,
-            createdAt: now,
-            updatedAt: now
-          },
+            expiresAtEpoch
+          }),
           ConditionExpression: 'attribute_not_exists(id)'
         }
       };
 
+  const joinFields = buildMemberJoinFields({
+    orgId,
+    orgUnitId: input.orgUnitId,
+    licenseId,
+    isOrgAdmin: input.isOrgAdmin,
+    now
+  });
+
   const transactItems = [
-    {
-      Update: {
-        TableName: ORGANIZATIONS_TABLE,
-        Key: { id: orgId },
-        UpdateExpression: 'SET usedSeats = usedSeats + :one, updatedAt = :now',
-        ConditionExpression: 'attribute_exists(id) AND usedSeats < maxSeats',
-        ExpressionAttributeValues: { ':one': 1, ':now': now }
-      }
-    },
+    buildSeatConsumeItem({ orgId, count: 1, now }),
     licenseItem,
     buildProfileJoinItem()
   ];
 
   function buildProfileJoinItem() {
     const values: Record<string, any> = {
-      ':orgId': orgId,
-      ':orgUnitId': input.orgUnitId || null,
-      ':true': true,
-      ':isOrgAdmin': input.isOrgAdmin === true,
-      ':licenseId': licenseId,
+      ':orgId': joinFields.orgId,
+      ':orgUnitId': joinFields.orgUnitId,
+      ':true': joinFields.isB2B,
+      ':isOrgAdmin': joinFields.isOrgAdmin,
+      ':licenseId': joinFields.licenseId,
       ':null': null,
       ':now': now
     };
@@ -320,19 +411,242 @@ export async function assignMemberWithLicense(input: AssignMemberInput): Promise
     throw friendlyTransactionError(error, errorLabels);
   }
 
-  const [updatedProfile, license, updatedOrg] = await Promise.all([
-    getProfileById(profileId) as Promise<ProfileB2B>,
-    getLicenseById(licenseId) as Promise<License>,
-    getOrganizationById(orgId)
-  ]);
-
   console.log(`[OrgMembershipService] ✅ Assigned profile ${profileId} to org ${orgId} (license ${licenseId})`);
 
-  return {
-    profile: updatedProfile,
-    license,
-    usedSeats: updatedOrg?.usedSeats ?? org.usedSeats + 1
-  };
+  // The transaction has committed — from here on nothing may throw (see the contract above).
+  const writtenProfile = {
+    ...joiningProfile,
+    ...joinFields,
+    ...(joiningProfile.orgId !== orgId ? { planBeforeOrg: joiningProfile.plan || DEFAULT_B2C_PLAN_ID } : {})
+  } as ProfileB2B;
+  const writtenLicense = (existingLicense
+    ? {
+        ...existingLicense,
+        userId: profileId,
+        status: 'active',
+        assignedAt: now,
+        assignedBy: input.assignedBy || undefined,
+        updatedAt: now
+      }
+    : (licenseItem as { Put: { Item: License } }).Put.Item) as License;
+
+  try {
+    const [updatedProfile, license, updatedOrg] = await Promise.all([
+      getProfileById(profileId) as Promise<ProfileB2B | null>,
+      getLicenseById(licenseId),
+      getOrganizationById(orgId)
+    ]);
+    return {
+      profile: updatedProfile || writtenProfile,
+      license: license || writtenLicense,
+      usedSeats: updatedOrg?.usedSeats ?? org.usedSeats + 1
+    };
+  } catch (readErr: any) {
+    console.warn(
+      `[OrgMembershipService] assignMemberWithLicense committed but the follow-up read failed; returning written values`,
+      readErr?.message || readErr
+    );
+    return { profile: writtenProfile, license: writtenLicense, usedSeats: org.usedSeats + 1 };
+  }
+}
+
+// ==========================================
+// Batch: create brand-new member profiles with seats + licenses
+// ==========================================
+
+/** 1 org seat item + (profile Put + license Put) per member must stay ≤ DynamoDB's 100 actions. */
+export const MAX_NEW_MEMBERS_PER_TRANSACTION = 49;
+
+export interface CreateNewMembersInput {
+  orgId: string;
+  orgUnitId?: string | null;
+  /** Complete, not-yet-persisted profile records (server-generated ids). */
+  profiles: Array<Record<string, unknown> & { id: string }>;
+  assignedBy?: string;
+  /** Members per transaction; clamped to MAX_NEW_MEMBERS_PER_TRANSACTION. */
+  chunkSize?: number;
+}
+
+export interface CreatedMember {
+  profileId: string;
+  licenseId: string;
+}
+
+export type CreateNewMembersResult =
+  | { ok: true; created: CreatedMember[] }
+  | {
+      ok: false;
+      error: string;
+      /** true when every committed chunk was compensated — the DB is back to its pre-batch state. */
+      rolledBack: boolean;
+      /** Members still present after a failed compensation (manual cleanup needed). Empty when rolledBack. */
+      leftBehind: CreatedMember[];
+    };
+
+/**
+ * Create N new profiles, N licenses and consume N seats with all-or-nothing semantics.
+ *
+ * Profiles are written by the transaction itself (Put + attribute_not_exists), so a batch
+ * of ≤ MAX_NEW_MEMBERS_PER_TRANSACTION members is ONE DynamoDB transaction: it either
+ * commits completely or not at all, with no compensation needed. Larger batches are split
+ * into chunks, each its own transaction; when a later chunk fails, every committed chunk
+ * is compensated (profile + license deleted, seats released), conditionally on the rows
+ * still being the ones this batch wrote. If compensation itself fails, the members still
+ * in the DB are returned in `leftBehind` and logged with the REGISTER_BATCH_PARTIAL marker.
+ */
+export async function createNewMembersWithLicenses(input: CreateNewMembersInput): Promise<CreateNewMembersResult> {
+  const { orgId, profiles } = input;
+  const orgUnitId = input.orgUnitId || null;
+  if (profiles.length === 0) return { ok: true, created: [] };
+  const chunkSize = Math.max(1, Math.min(input.chunkSize ?? MAX_NEW_MEMBERS_PER_TRANSACTION, MAX_NEW_MEMBERS_PER_TRANSACTION));
+
+  const committedChunks: CreatedMember[][] = [];
+  let failure: string | null = null;
+
+  for (let start = 0; start < profiles.length; start += chunkSize) {
+    const chunk = profiles.slice(start, start + chunkSize);
+    try {
+      // Fresh read per chunk: the seat condition pins maxSeats, so it must be current.
+      const org = await getOrganizationById(orgId);
+      if (!org) throw new Error('Organization not found');
+      if (org.status !== 'active' && org.status !== 'trial') {
+        throw new Error(`Organization is not active (status: ${org.status})`);
+      }
+
+      const now = new Date().toISOString();
+      const members: CreatedMember[] = [];
+      const transactItems: any[] = [buildSeatConsumeItem({ orgId, count: chunk.length, now, maxSeats: org.maxSeats })];
+      const errorLabels = ['組織席次已滿 (organization has no available seats)'];
+      for (const profile of chunk) {
+        const licenseId = randomUUID();
+        members.push({ profileId: profile.id, licenseId });
+        transactItems.push({
+          Put: {
+            TableName: PROFILES_TABLE,
+            Item: {
+              ...profile,
+              ...buildMemberJoinFields({ orgId, orgUnitId, licenseId, now }),
+              planBeforeOrg: (typeof profile.plan === 'string' && profile.plan) || DEFAULT_B2C_PLAN_ID
+            },
+            ConditionExpression: 'attribute_not_exists(id)'
+          }
+        });
+        errorLabels.push('帳號已存在 (profile id already exists)');
+        transactItems.push({
+          Put: {
+            TableName: LICENSES_TABLE,
+            Item: buildNewLicenseItem({ licenseId, orgId, userId: profile.id, now, assignedBy: input.assignedBy }),
+            ConditionExpression: 'attribute_not_exists(id)'
+          }
+        });
+        errorLabels.push('授權已存在 (license id already exists)');
+      }
+
+      try {
+        await sendTransactWriteWithRetry(new TransactWriteCommand({ TransactItems: transactItems }));
+      } catch (error: any) {
+        // TransactionCanceledException = definitely not committed. Anything else (timeout,
+        // network) leaves the outcome unknown: probe which rows actually landed so they
+        // are compensated along with the committed chunks.
+        if (error?.name !== 'TransactionCanceledException') {
+          const landed = await probeCommittedMembers(members);
+          if (landed.length > 0) committedChunks.push(landed);
+        }
+        throw friendlyTransactionError(error, errorLabels);
+      }
+      committedChunks.push(members);
+    } catch (error: any) {
+      failure = error?.message || 'Transaction failed';
+      console.error(`[OrgMembershipService] ❌ createNewMembersWithLicenses chunk @${start} failed:`, failure);
+      break;
+    }
+  }
+
+  const created = committedChunks.flat();
+  if (!failure) {
+    console.log(`[OrgMembershipService] ✅ Created ${created.length} members in org ${orgId}`);
+    return { ok: true, created };
+  }
+  if (created.length === 0) {
+    return { ok: false, error: failure, rolledBack: true, leftBehind: [] };
+  }
+
+  const leftBehind: CreatedMember[] = [];
+  for (const chunk of committedChunks.reverse()) {
+    if (await compensateMembers(orgId, chunk)) continue;
+    // Chunk-level compensation failed (e.g. one member was already changed) —
+    // fall back to one transaction per member so everything revertible is reverted.
+    for (const member of chunk) {
+      if (!(await compensateMembers(orgId, [member]))) leftBehind.push(member);
+    }
+  }
+  if (leftBehind.length > 0) {
+    console.error(
+      '[OrgMembershipService] REGISTER_BATCH_PARTIAL',
+      JSON.stringify({ orgId, error: failure, leftBehind })
+    );
+  }
+  return { ok: false, error: failure, rolledBack: leftBehind.length === 0, leftBehind };
+}
+
+/** Members of an unknown-outcome chunk whose profile row exists with the license this batch minted. */
+async function probeCommittedMembers(members: CreatedMember[]): Promise<CreatedMember[]> {
+  const landed: CreatedMember[] = [];
+  for (const m of members) {
+    try {
+      const p = (await getProfileById(m.profileId)) as ProfileB2B | null;
+      if (p && p.licenseId === m.licenseId) landed.push(m);
+    } catch {
+      // Can't tell — assume it landed; compensation's conditions make a wrong guess harmless.
+      landed.push(m);
+    }
+  }
+  return landed;
+}
+
+/** Undo members written by createNewMembersWithLicenses. Returns false if the transaction failed. */
+async function compensateMembers(orgId: string, members: CreatedMember[]): Promise<boolean> {
+  const now = new Date().toISOString();
+  const items: any[] = [
+    {
+      Update: {
+        TableName: ORGANIZATIONS_TABLE,
+        Key: { id: orgId },
+        UpdateExpression: 'SET usedSeats = usedSeats - :n, updatedAt = :now',
+        ConditionExpression: 'attribute_exists(id) AND usedSeats >= :n',
+        ExpressionAttributeValues: { ':n': members.length, ':now': now }
+      }
+    }
+  ];
+  for (const m of members) {
+    items.push({
+      Delete: {
+        TableName: PROFILES_TABLE,
+        Key: { id: m.profileId },
+        // Only the exact row this batch wrote: still seated in this org by this license.
+        ConditionExpression: 'orgId = :orgId AND licenseId = :licenseId',
+        ExpressionAttributeValues: { ':orgId': orgId, ':licenseId': m.licenseId }
+      }
+    });
+    items.push({
+      Delete: {
+        TableName: LICENSES_TABLE,
+        Key: { id: m.licenseId },
+        ConditionExpression: 'orgId = :orgId AND userId = :userId',
+        ExpressionAttributeValues: { ':orgId': orgId, ':userId': m.profileId }
+      }
+    });
+  }
+  try {
+    await sendTransactWriteWithRetry(new TransactWriteCommand({ TransactItems: items }));
+    return true;
+  } catch (error: any) {
+    console.error(
+      `[OrgMembershipService] compensation for ${members.length} member(s) failed:`,
+      error?.message || error
+    );
+    return false;
+  }
 }
 
 // ==========================================
@@ -701,11 +1015,14 @@ export async function expireOverdueLicenses(opts?: {
   return result;
 }
 
-export default {
+const orgMembershipService = {
   expireOverdueLicenses,
   assignMemberWithLicense,
+  createNewMembersWithLicenses,
   removeMemberFromOrg,
   changeMemberOrgUnit,
   setMemberOrgAdmin,
   setMemberDeptAdmin
 };
+
+export default orgMembershipService;

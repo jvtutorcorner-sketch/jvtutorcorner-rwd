@@ -15,6 +15,8 @@ export default function Header() {
   const [hydrated, setHydrated] = useState(false);
   const { settings: adminSettings } = useAdminSettings(); // Use global settings
   const [roles, setRoles] = useState<any[]>([]);
+  // 企業管理入口：本人是組織管理員或部門管理員時，連到 /admin/organizations/<orgId>
+  const [orgConsoleHref, setOrgConsoleHref] = useState<string | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
@@ -94,6 +96,38 @@ export default function Header() {
       }
     })();
   }, []);
+
+  // 判斷是否顯示「企業管理」入口。Session 不帶 orgId/isOrgAdmin，因此：
+  //   GET /api/organizations → 非系統管理員只會拿到自己所屬的組織（沒有就不顯示）
+  //   dept_admin 直接顯示；其他角色再以 GET /api/organizations/<id> 是否 200 判斷是否為組織管理員
+  // 實際權限仍由 app/admin/layout.tsx 與 API 在 server 端強制，這裡只是入口顯示，錯誤一律靜默。
+  const userEmail = user?.email;
+  const userRole = user?.role;
+  useEffect(() => {
+    setOrgConsoleHref(null);
+    if (!userEmail || userRole === 'admin' || userRole === 'system') return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch('/api/organizations');
+        if (!r.ok) return;
+        const data = await r.json();
+        const orgId: string | undefined = data?.ok ? data.organizations?.[0]?.id : undefined;
+        if (!orgId) return;
+        const href = `/admin/organizations/${encodeURIComponent(orgId)}`;
+        if (userRole !== 'dept_admin') {
+          const detail = await fetch(`/api/organizations/${encodeURIComponent(orgId)}`);
+          if (!detail.ok) return;
+        }
+        if (!cancelled) setOrgConsoleHref(href);
+      } catch {
+        // ignore
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [userEmail, userRole]);
 
   // listen for role changes dispatched when admin updates roles
   useEffect(() => {
@@ -326,16 +360,28 @@ export default function Header() {
                                 const pc = (adminSettings?.pageConfigs || []).find((x: any) => x.path === ppPath);
                                 const label = (pc && (pc.label || pc.path)) || t('page_permissions_label');
                                 return (
-                                  <li key={ppPath}>
-                                    <span role="menuitem" tabIndex={0} className="menu-link" onClick={() => { setMenuOpen(false); router.push(ppPath); }}>{label}</span>
-                                  </li>
+                                  <>
+                                    <li key={ppPath}>
+                                      <span role="menuitem" tabIndex={0} className="menu-link" onClick={() => { setMenuOpen(false); router.push(ppPath); }}>{label}</span>
+                                    </li>
+                                    <li key="/admin/users">
+                                      <span role="menuitem" tabIndex={0} className="menu-link" onClick={() => { setMenuOpen(false); router.push('/admin/users'); }}>{t('admin_users_label')}</span>
+                                    </li>
+                                  </>
                                 );
                               })() : null
                             }
                             {
+                              orgConsoleHref ? (
+                                <li key="org-admin-console">
+                                  <span role="menuitem" tabIndex={0} className="menu-link" onClick={() => { setMenuOpen(false); router.push(orgConsoleHref); }}>{t('org_admin_console')}</span>
+                                </li>
+                              ) : null
+                            }
+                            {
                               // Unified dynamic dropdown items for all logged-in users
                               (adminSettings?.pageConfigs || [])
-                                .filter((pc: any) => !!pc.path && pc.path !== '/admin/settings/page-permissions')
+                                .filter((pc: any) => !!pc.path && pc.path !== '/admin/settings/page-permissions' && pc.path !== '/admin/users')
                                 .filter((pc: any) => checkVisibility(pc.path, 'dropdown'))
                                 .map((pc: any) => {
                                   const p = pc.path;
@@ -420,17 +466,30 @@ export default function Header() {
                       const pc = (adminSettings?.pageConfigs || []).find((x: any) => x.path === ppPath);
                       const label = (pc && (pc.label || pc.path)) || 'Page 存取權限';
                       return (
-                        <li key={ppPath} style={{ marginBottom: 8 }}>
-                          <Button variant="outline" className="w-full text-left" onClick={() => { setMobileMenuOpen(false); router.push(ppPath); }}>{label}</Button>
-                        </li>
+                        <>
+                          <li key={ppPath} style={{ marginBottom: 8 }}>
+                            <Button variant="outline" className="w-full text-left" onClick={() => { setMobileMenuOpen(false); router.push(ppPath); }}>{label}</Button>
+                          </li>
+                          <li key="/admin/users" style={{ marginBottom: 8 }}>
+                            <Button variant="outline" className="w-full text-left" onClick={() => { setMobileMenuOpen(false); router.push('/admin/users'); }}>{t('admin_users_label')}</Button>
+                          </li>
+                        </>
                       );
                     })() : null
                   }
 
                   {
+                    orgConsoleHref ? (
+                      <li key="org-admin-console" style={{ marginBottom: 8 }}>
+                        <Button variant="outline" className="w-full text-left" onClick={() => { setMobileMenuOpen(false); router.push(orgConsoleHref); }}>{t('org_admin_console')}</Button>
+                      </li>
+                    ) : null
+                  }
+
+                  {
                     // Unified dynamic dropdown items for mobile menu
                     (adminSettings?.pageConfigs || [])
-                      .filter((pc: any) => !!pc.path && pc.path !== '/admin/settings/page-permissions')
+                      .filter((pc: any) => !!pc.path && pc.path !== '/admin/settings/page-permissions' && pc.path !== '/admin/users')
                       .filter((pc: any) => checkVisibility(pc.path, 'dropdown'))
                       .map((pc: any) => {
                         const p = pc.path;

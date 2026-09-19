@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import OrgCsvImportPanel from "@/components/org/OrgCsvImportPanel";
 
 type License = {
   id: string;
@@ -24,13 +25,20 @@ type OrgUnit = { id: string; name: string; level: number; status: string };
 
 interface Props {
   orgId: string;
+  /** 組織網域，僅用於 CSV 匯入面板的提示文字。 */
+  orgDomain?: string;
   usedSeats: number;
   maxSeats: number;
   isSystemAdmin: boolean;
+  /** 可指派/撤銷部門管理員：系統管理員或本組織的組織管理員（API 同規則）。未傳時沿用 isSystemAdmin。 */
+  canManageDeptAdmins?: boolean;
+  /** 可用 CSV 批次建立成員：系統管理員或本組織的組織管理員（POST /api/register/batch 同規則）。 */
+  canImportMembers?: boolean;
   onSeatsChanged: () => void;
 }
 
-export default function OrgMembersPanel({ orgId, usedSeats, maxSeats, isSystemAdmin, onSeatsChanged }: Props) {
+export default function OrgMembersPanel({ orgId, orgDomain, usedSeats, maxSeats, isSystemAdmin, canManageDeptAdmins, canImportMembers, onSeatsChanged }: Props) {
+  const canToggleDeptAdmin = canManageDeptAdmins ?? isSystemAdmin;
   const [members, setMembers] = useState<Member[]>([]);
   const [orgUnits, setOrgUnits] = useState<OrgUnit[]>([]);
   const [loading, setLoading] = useState(false);
@@ -167,6 +175,19 @@ export default function OrgMembersPanel({ orgId, usedSeats, maxSeats, isSystemAd
     <div>
       <h3>成員</h3>
 
+      {canImportMembers && (
+        <OrgCsvImportPanel
+          orgId={orgId}
+          orgDomain={orgDomain}
+          availableSeats={Math.max(0, maxSeats - usedSeats)}
+          orgUnits={orgUnits}
+          onImported={async () => {
+            await load();
+            onSeatsChanged();
+          }}
+        />
+      )}
+
       <form
         onSubmit={handleAdd}
         style={{
@@ -244,7 +265,7 @@ export default function OrgMembersPanel({ orgId, usedSeats, maxSeats, isSystemAd
                         <span style={{ color: '#1565c0', fontWeight: 'bold' }}>部門管理員</span>{' '}
                         <button
                           onClick={() => handleToggleDeptAdmin(m)}
-                          disabled={!isSystemAdmin}
+                          disabled={!canToggleDeptAdmin}
                           style={{ ...btn('#9e9e9e'), padding: '2px 8px' }}
                         >
                           取消
@@ -255,7 +276,7 @@ export default function OrgMembersPanel({ orgId, usedSeats, maxSeats, isSystemAd
                         {m.role}{' '}
                         <button
                           onClick={() => handleToggleDeptAdmin(m)}
-                          disabled={!isSystemAdmin || !m.orgUnitId}
+                          disabled={!canToggleDeptAdmin || !m.orgUnitId}
                           title={!m.orgUnitId ? '請先指派部門' : undefined}
                           style={{ ...btn('#1565c0'), padding: '2px 8px' }}
                         >

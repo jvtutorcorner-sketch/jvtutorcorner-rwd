@@ -1,38 +1,26 @@
 import { NextResponse } from 'next/server';
-import fs from 'fs/promises';
-import path from 'path';
 import { ddbDocClient } from '@/lib/dynamo';
-import { PutCommand, GetCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
-import { findProfileByEmail } from '@/lib/profilesService';
+import { PutCommand } from '@aws-sdk/lib-dynamodb';
 import { verifyCaptcha, getBypassSecret, isBypassAllowed } from '@/lib/captcha';
 import { headers } from 'next/headers';
 import organizationService from '@/lib/organizationService';
 import { getOrgUnitById } from '@/lib/orgUnitService';
 import orgMembershipService from '@/lib/orgMembershipService';
-import { hashPassword } from '@/lib/auth/password';
-import { randomUUID } from 'crypto';
 import { DEFAULT_PLAN_ID, toPlanId } from '@/lib/plans';
 import { checkRateLimit, getClientIp, rateLimitResponse, RATE_LIMIT_RULES } from '@/lib/rateLimit';
+import {
+  SELF_REGISTRATION_PLANS,
+  buildNewProfileRecord,
+  checkEmailAvailability,
+  emailMatchesOrgDomain,
+  pickProfileFields,
+  resolveSelfRegistrationRole,
+  toPublicProfile,
+} from '@/lib/registerProfile';
 
 
 const PROFILES_TABLE = process.env.DYNAMODB_TABLE_PROFILES || process.env.PROFILES_TABLE || 'jvtutorcorner-profiles';
 const TEACHERS_TABLE = process.env.DYNAMODB_TABLE_TEACHERS || process.env.TEACHERS_TABLE || 'jvtutorcorner-teachers';
-
-/** Roles a person may give themselves. admin / dept_admin / custom roles are granted, never self-selected. */
-const SELF_REGISTRATION_ROLES = ['student', 'teacher'] as const;
-
-/**
- * Plans a new account may start on — the NT$0 tiers only ('basic' is the legacy
- * synonym of 'free', 'viewer' is the register page's default). Paid plans are
- * applied by the payment flow (lib/paymentSuccessHandler.ts), never by a form field.
- */
-const SELF_REGISTRATION_PLANS = ['free', 'basic', 'viewer'];
-
-/** Profile fields a registration form may populate. Everything else is server-owned. */
-const PROFILE_TEXT_FIELDS = [
-  'firstName', 'lastName', 'nickname', 'name', 'birthdate', 'gender', 'country',
-  'timezone', 'bio', 'createdAtUtc', 'createdAtLocal', 'updatedAtLocal',
-];
 
 export async function POST(req: Request) {
   try {
@@ -73,14 +61,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: 'bio too long (max 500 chars)' }, { status: 400 });
     }
 
-    // Check existing by email via EmailIndex GSI
-    try {
-      const existing = await findProfileByEmail(email);
-      if (existing) {
-        return NextResponse.json({ message: 'Email already registered' }, { status: 409 });
-      }
-    } catch (e) {
-      console.warn('[register] Email duplicate check failed', (e as any)?.message || e);
+    // Check existing by email via EmailIndex GSI (fail-open on lookup errors, as before)
+    const availability = await checkEmailAvailability(email);
+    if (availability === 'taken') {
+      return NextResponse.json({ message: 'Email already registered' }, { status: 409 });
+    }
+    if (availability === 'lookup_failed') {
+      console.warn('[register] Email duplicate check failed; continuing');
     }
 
     // ── Optional B2B org assignment ──────────────────────────────────
@@ -99,21 +86,18 @@ export async function POST(req: Request) {
       if (org.status !== 'active' && org.status !== 'trial') {
         return NextResponse.json({ message: '此組織目前無法接受新成員註冊' }, { status: 400 });
       }
-      if (org.domain) {
-        const normalizedDomain = org.domain.replace(/^@/, '').toLowerCase();
-        if (!email.endsWith(`@${normalizedDomain}`)) {
-          return NextResponse.json({ message: '此 Email 網域不屬於該組織' }, { status: 400 });
-        }
+      if (!emailMatchesOrgDomain(email, org.domain)) {
+        return NextResponse.json({ message: '此 Email 網域不屬於該組織' }, { status: 400 });
       }
       if (org.usedSeats >= org.maxSeats) {
-        // 前置檢查（advisory）— 實際把關仍在 assignMemberWithLicense 的交易條件式
+        // 前置檢查（advisory）— 實際把關仍在 createNewMembersWithLicenses 的交易條件式
         return NextResponse.json({ message: '組織席次已滿' }, { status: 409 });
       }
 
       if (typeof body.orgUnitId === 'string' && body.orgUnitId.trim()) {
         orgUnitId = String(body.orgUnitId).trim();
         const unit = await getOrgUnitById(orgUnitId);
-        if (!unit || unit.orgId !== orgId) {
+        if (!unit || unit.orgId !== orgId || unit.status === 'archived') {
           return NextResponse.json({ message: '無效的組織單位' }, { status: 400 });
         }
       }
@@ -125,10 +109,10 @@ export async function POST(req: Request) {
     // therefore pass another user's id and overwrite that account (email and password
     // included), or give themselves role 'admin'/'dept_admin', a paid plan,
     // isOrgAdmin, points, emailVerified... The server now picks the id and copies
-    // only the fields below. orgId/orgUnitId still go exclusively through
-    // orgMembershipService.assignMemberWithLicense (seat + license accounting).
-    const role = body.role === undefined || body.role === null || body.role === '' ? 'student' : String(body.role);
-    if (!(SELF_REGISTRATION_ROLES as readonly string[]).includes(role)) {
+    // only the fields in lib/registerProfile.ts. orgId/orgUnitId still go exclusively
+    // through orgMembershipService (seat + license accounting).
+    const role = resolveSelfRegistrationRole(body.role);
+    if (!role) {
       return NextResponse.json({ message: 'invalid_role' }, { status: 400 });
     }
 
@@ -141,84 +125,58 @@ export async function POST(req: Request) {
       plan = requestedPlan;
     }
 
-    const profileFields: Record<string, string | boolean> = {};
-    for (const field of PROFILE_TEXT_FIELDS) {
-      const value = body[field];
-      if (typeof value === 'string' && value.trim()) {
-        profileFields[field] = value.trim().slice(0, field === 'bio' ? 500 : 200);
-      }
-    }
-    if (typeof body.termsAccepted === 'boolean') profileFields.termsAccepted = body.termsAccepted;
-
     // ── Email Verification Setup ─────────────────────────────────────
-    const { generateVerificationToken, sendVerificationEmail } = await import('@/lib/email/verificationService');
+    const { sendVerificationEmail } = await import('@/lib/email/verificationService');
     const { initializeVerificationStatus } = await import('@/lib/email/emailVerificationStatus');
-    
-    const verificationToken = generateVerificationToken();
-    const verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(); // 24 hours
 
-    // Server-generated primary key. roid_id mirrors it (the rest of the app reads
-    // `roid_id || id`); client-supplied ids are ignored.
-    const id = randomUUID();
-
-    // Create profile object
-    const profile: Record<string, unknown> = {
-      ...profileFields,
-      id,
-      roid_id: id,
+    // Same record builder as the CSV batch endpoint (isB2B is false until a seat commits).
+    const { id, profile, verificationToken, verificationExpires } = buildNewProfileRecord({
       email,
+      password: String(password),
       role,
-      password: hashPassword(password),
       plan,
-      isB2B: Boolean(orgId),
-      emailVerified: false,
-      verificationToken,
-      verificationExpires,
-      // Initialize verification tracking fields
-      emailVerificationStatus: 'pending',
-      emailVerificationAttempts: 0,
-      emailVerificationResendCount: 0,
-      createdAt: new Date().toISOString(),
-      updatedAtUtc: new Date().toISOString()
-    };
+      fields: pickProfileFields(body),
+    });
 
     // Persist Profile to DynamoDB
     try {
-      await ddbDocClient.send(new PutCommand({
-        TableName: PROFILES_TABLE,
-        Item: profile,
-        // Never overwrite an existing account, even on a (astronomically unlikely) UUID clash.
-        ConditionExpression: 'attribute_not_exists(id)',
-      }));
-
-      // If this is a B2B registration, atomically mint/consume a license and increment
-      // the org's seat count. On failure, roll back the just-created profile — a B2B
-      // registration must never leave an orphaned account with org fields but no seat.
       let licenseId: string | undefined;
       if (orgId) {
-        try {
-          const assignResult = await orgMembershipService.assignMemberWithLicense({
-            orgId,
-            profileId: id,
-            orgUnitId,
-            assignedBy: 'self-registration'
-          });
-          licenseId = assignResult.license.id;
-          // assignMemberWithLicense's own UpdateCommand sets orgId/orgUnitId/licenseId/plan
-          // on the DB record after the PutCommand above — merge those back in so the
-          // response's `profile` isn't a stale pre-assignment snapshot.
-          Object.assign(profile, assignResult.profile);
-        } catch (assignErr: any) {
-          console.error('[register] Org assignment failed, rolling back profile', assignErr?.message || assignErr);
-          try {
-            await ddbDocClient.send(new DeleteCommand({ TableName: PROFILES_TABLE, Key: { id } }));
-          } catch (rollbackErr) {
-            console.error('[register] Failed to roll back profile after org assignment failure', rollbackErr);
-          }
-          const msg = assignErr?.message || '無法加入組織';
-          const status = /席次已滿|占用|已屬於其他組織|already/i.test(msg) ? 409 : 400;
+        // B2B: the profile Put, the license and the seat increment are ONE transaction.
+        // The old flow Put the profile first and deleted it if the separate join
+        // transaction failed — a failed delete left an orphan account holding the email,
+        // and a join that committed but whose follow-up read threw had its (now seated)
+        // profile deleted, leaking the seat. With a single transaction there is nothing
+        // to roll back.
+        const joined = await orgMembershipService.createNewMembersWithLicenses({
+          orgId,
+          orgUnitId,
+          profiles: [profile],
+          assignedBy: 'self-registration',
+        });
+        if (!joined.ok) {
+          const msg = joined.error || '無法加入組織';
+          console.error('[register] Org registration transaction failed', msg);
+          const status = /席次已滿|占用|已屬於其他組織|already|已存在/i.test(msg) ? 409 : 400;
           return NextResponse.json({ message: msg }, { status });
         }
+        licenseId = joined.created[0]?.licenseId;
+        Object.assign(profile, {
+          orgId,
+          orgUnitId,
+          isB2B: true,
+          isOrgAdmin: false,
+          licenseId,
+          plan: null,
+          planBeforeOrg: 'free',
+        });
+      } else {
+        await ddbDocClient.send(new PutCommand({
+          TableName: PROFILES_TABLE,
+          Item: profile,
+          // Never overwrite an existing account, even on a (astronomically unlikely) UUID clash.
+          ConditionExpression: 'attribute_not_exists(id)',
+        }));
       }
 
       // Initialize verification status and log the SENT event.
@@ -261,8 +219,7 @@ export async function POST(req: Request) {
 
       // Never echo the password hash or the email-verification token: returning the
       // token let a registrant verify an address they do not control.
-      const { password: _pw, verificationToken: _vt, ...publicProfile } = profile;
-      return NextResponse.json({ ok: true, profile: publicProfile, emailSent, orgId: orgId || undefined, licenseId }, { status: 201 });
+      return NextResponse.json({ ok: true, profile: toPublicProfile(profile), emailSent, orgId: orgId || undefined, licenseId }, { status: 201 });
     } catch (e: any) {
       console.error('[register] DynamoDB Profile write failed', e?.message || e);
       return NextResponse.json({ message: 'Failed to write to DB' }, { status: 500 });
