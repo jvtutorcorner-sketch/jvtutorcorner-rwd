@@ -6,7 +6,7 @@ import { useRTC } from '@/lib/providers/rtc/useRTC';
 import { useSignaling } from '@/lib/providers/signaling/useSignaling';
 import { getStoredUser, setStoredUser } from '@/lib/mockAuth';
 import { COURSES } from '@/data/courses';
-import EnhancedWhiteboard from '@/components/EnhancedWhiteboard';
+import EnhancedWhiteboard, { type WbRtcSignal } from '@/components/EnhancedWhiteboard';
 import dynamic from 'next/dynamic';
 import { useT } from '@/components/IntlProvider';
 
@@ -318,6 +318,22 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   const hasWhiteboardAccess = true;
   // const hasWhiteboardAccess = isTeacher || (typeof window !== 'undefined' && ['pro', 'elite'].includes(userPlan));
 
+  // Diagnostic / load-test override for the initial video preset:
+  //   ?vq=low|medium|high|ultra   or   localStorage 'jv_video_quality'
+  // Lets stress tests measure whiteboard/signaling load instead of 20 tabs each
+  // encoding 720p30 fake video. Absent or invalid → the normal default ('high').
+  const videoQualityOverride = useMemo((): 'low' | 'medium' | 'high' | 'ultra' | null => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const raw =
+        new URLSearchParams(window.location.search).get('vq') ??
+        window.localStorage.getItem('jv_video_quality');
+      return raw === 'low' || raw === 'medium' || raw === 'high' || raw === 'ultra' ? raw : null;
+    } catch {
+      return null;
+    }
+  }, []);
+
   const agoraConfig = useMemo(() => ({
     channelName: effectiveChannelName,
     // 讓 /api/agora/token 能驗證這位使用者確實屬於這堂課
@@ -328,8 +344,8 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
         isObserver ? 'student' :
           computedRole,
     isOneOnOne: false, // P3: Disable 1v1 mode to enable small class 2-6 people
-    defaultQuality: 'high' as const // 默认高质量
-  }), [effectiveChannelName, courseId, urlRole, computedRole, isAssistant, isObserver]);
+    defaultQuality: videoQualityOverride ?? ('high' as const) // 默认高质量；壓測可用 ?vq= 覆寫
+  }), [effectiveChannelName, courseId, urlRole, computedRole, isAssistant, isObserver, videoQualityOverride]);
 
   const {
     joined,
@@ -473,6 +489,9 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   const rtmMessageCallbackRef = useRef<((msg: any) => void) | null>(null);
   // Stable ref to rtmSend so it can be called from inside onMessage without stale closure.
   const rtmSendRef = useRef<((type: any, payload: any) => Promise<boolean>) | null>(null);
+  // Whiteboard WebRTC signaling rides RTM 'custom' messages; the canvas board
+  // subscribes here so offer/answer/ICE relay over the classroom's realtime channel.
+  const wbRtcSubRef = useRef<((m: { kind: string; data: unknown; from?: string; epoch?: string }) => void) | null>(null);
 
   const { connected: rtmConnected, sendMessage: rtmSend } = useSignaling({
     channelName: effectiveChannelName,
@@ -503,6 +522,12 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           void rtmSendRef.current?.('page-change', last);
         }
       }
+      // Whiteboard WebRTC signaling (offer/answer/ICE/hello) rides 'custom' messages.
+      // Ignore our own echoes by senderId.
+      if (msg?.type === 'custom' && msg.payload?.wbRtc && msg.senderId !== userId) {
+        const w = msg.payload.wbRtc as { kind: string; data: unknown; from?: string; epoch?: string };
+        wbRtcSubRef.current?.({ kind: w.kind, data: w.data, from: w.from, epoch: w.epoch });
+      }
       // Dispatch to whichever handler is currently registered
       rtmMessageCallbackRef.current?.(msg);
     },
@@ -510,6 +535,19 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   // Keep ref in sync so onMessage (which captures the ref, not the function) can call rtmSend
   // without a stale closure.
   rtmSendRef.current = rtmSend;
+
+  // Stable signaling adapter for the canvas board's WebRTC handshake — rides RTM
+  // (works cross-device, unlike BroadcastChannel), so no DB-polled mailbox in class.
+  const wbRtcSignal = useMemo<WbRtcSignal>(() => ({
+    selfId: presenceId ?? undefined,
+    send: (kind, data, epoch) => {
+      void rtmSendRef.current?.('custom', { wbRtc: { kind, data, epoch, from: presenceId } });
+    },
+    subscribe: (cb) => {
+      wbRtcSubRef.current = cb;
+      return () => { if (wbRtcSubRef.current === cb) wbRtcSubRef.current = null; };
+    },
+  }), [presenceId]);
 
   const firstRemote = useMemo(() => {
     if (!remoteUsers || remoteUsers.length === 0) return null;
@@ -2025,6 +2063,23 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       // 3. Start Whiteboard Cleanup asynchronously (don't block)
       try { (window as any).__wbRoom = null; } catch (e) { }
 
+      // 3.2 Settle the held points to the teacher. The Agora path has no other trigger
+      // (only LiveKit's webhook releases escrow), so without this the escrow stays HOLDING.
+      if (isTeacher) {
+        try {
+          fetch('/api/classroom/complete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ courseId, ...(orderId ? { orderId } : {}) }),
+            keepalive: true,
+          })
+            .then(async (res) => {
+              if (!res.ok) console.warn('[ClientClassroom] class completion settlement failed', res.status, await res.text().catch(() => ''));
+            })
+            .catch(e => console.warn('[ClientClassroom] class completion settlement request failed', e));
+        } catch (e) { }
+      }
+
       // 3.5 Delete PDF from S3
       if (isTeacher) { // redundant check but safe
         try {
@@ -3020,6 +3075,9 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
                   room={undefined}
                   whiteboardRef={whiteboardRef}
                   editable={isTeacher || (isAssistant) || (!isTeacher && !isObserver && canStudentDraw)}
+                  rtcRole={isObserver ? 'observer' : isAssistant ? 'assistant' : isTeacher ? 'teacher' : 'student'}
+                  rtcSelfId={presenceId ?? undefined}
+                  rtcSignal={wbRtcSignal}
                   autoFit={true}
                   className="flex-1"
                   onPdfSelected={(f) => { setSelectedPdf(f); }}
