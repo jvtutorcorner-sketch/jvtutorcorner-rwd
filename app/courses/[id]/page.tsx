@@ -1,40 +1,41 @@
-import { GetCommand } from '@aws-sdk/lib-dynamodb';
-import { ddbDocClient } from '@/lib/dynamo';
-import { COURSES } from '@/data/courses';
+import type { Metadata } from 'next';
 import LocalDate from '@/components/LocalDate';
 import { T } from '@/components/IntlProvider';
 import { EnrollButton } from '@/components/EnrollButton';
 import Link from 'next/link';
+import { pageOpenGraph, toMetaDescription } from '@/lib/seo';
+import { getCourseById } from '../_data';
+
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
+  const { id } = await params;
+  const canonical = `/courses/${encodeURIComponent(id)}`;
+  const course = await getCourseById(id);
+
+  if (!course) {
+    return {
+      title: '找不到課程',
+      alternates: { canonical },
+      robots: { index: false, follow: true },
+    };
+  }
+
+  const title = String(course.title || '課程');
+  const description =
+    toMetaDescription(course.description) ||
+    toMetaDescription([course.subject, course.level, course.teacherName].filter(Boolean).join(' · '));
+
+  return {
+    title,
+    ...(description ? { description } : {}),
+    alternates: { canonical },
+    openGraph: pageOpenGraph({ title, description, url: canonical, type: 'article' }),
+  };
+}
 
 export default async function CourseDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
-  // Fetch course from DynamoDB
-  let course: any = null;
-  try {
-    const COURSES_TABLE = process.env.DYNAMODB_TABLE_COURSES || 'jvtutorcorner-courses';
-    const TEACHERS_TABLE = process.env.DYNAMODB_TABLE_TEACHERS || 'jvtutorcorner-teachers';
-
-    const getCmd = new GetCommand({ TableName: COURSES_TABLE, Key: { id } });
-    const result = await ddbDocClient.send(getCmd);
-    course = result.Item || null;
-
-    if (course && course.teacherId) {
-      try {
-        const tRes = await ddbDocClient.send(new GetCommand({ TableName: TEACHERS_TABLE, Key: { id: course.teacherId } }));
-        if (tRes.Item && (tRes.Item.name || tRes.Item.displayName)) {
-          course.teacherName = tRes.Item.name || tRes.Item.displayName;
-        }
-      } catch (e) { }
-    }
-  } catch (e) {
-    console.error('[CourseDetailPage] DynamoDB get error:', e);
-  }
-
-  // If not in DynamoDB, check bundled COURSES
-  if (!course) {
-    course = COURSES.find((c) => c.id === id);
-  }
+  const course = await getCourseById(id);
 
   if (!course) {
     // 找不到課程，簡單顯示一個提示，並給一個回列表的按鈕

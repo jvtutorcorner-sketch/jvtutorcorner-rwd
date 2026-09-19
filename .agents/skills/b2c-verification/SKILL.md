@@ -4,9 +4,9 @@ description: 'B2C 端到端驗證技能。涵蓋公開頁渲染策略與 SEO、�
 argument-hint: '驗證 B2C 獲客漏斗、公開頁 SSR/SEO、訪客可及性與租戶隔離'
 metadata:
   verified-status: '⚠️ PARTIAL'
-  last-verified-date: '2026-09-11'
+  last-verified-date: '2026-09-17'
   architecture-aligned: false
-  notes: 'M1 的失敗項為架構缺陷（middleware 全站 no-store + 缺 generateMetadata），非測試錯誤；M4 依賴 tenantId 導入後才能執行'
+  notes: 'SEO metadata／robots／sitemap 已於 2026-09-17 補齊（程式已改、尚未對部署環境重跑 M1）；M1.6 CDN 快取仍為架構缺口（公開頁為動態渲染）；M4 依賴 tenantId 導入後才能執行'
 ---
 
 # B2C 驗證技能 (B2C Verification Skill)
@@ -28,17 +28,29 @@ metadata:
 - 驗證 B2C 轉換漏斗每一段交接不斷鏈、扣點正確
 - 驗證 B2C 與 B2B 租戶資料互不可見（待 tenantId 導入）
 
-## 為什麼 M1 現在會失敗（重要）
+## M1 現況與剩餘缺口（重要）
 
-**M1 的多數失敗是「架構缺陷的量化結果」，不是測試寫壞了。請勿為了讓它變綠而調降門檻。**
+**M1 的失敗項是「架構缺陷的量化結果」，不是測試寫壞了。請勿為了讓它變綠而調降門檻。**
+
+2026-09-17 已補齊（程式碼層；尚未對部署環境重跑 M1 確認）：
+
+| 項目 | 位置 | 對應測試 |
+|---|---|---|
+| root `metadataBase`、title template `%s｜JV Tutor Corner`、預設 description、OG | [app/layout.tsx](../../../app/layout.tsx)、[lib/seo.ts](../../../lib/seo.ts) | M1.2、M1.3 |
+| `/courses`、`/teachers` 的 `export const metadata`（含 canonical） | `app/courses/page.tsx`、`app/teachers/page.tsx` | M1.2、M1.3 |
+| `/pricing`、`/about`、`/terms` 為 client page，改由新增的 server `layout.tsx` 提供 metadata + canonical | `app/{pricing,about,terms}/layout.tsx` | M1.2、M1.3 |
+| 課程／老師詳情 `generateMetadata`（title、description、og、canonical；以 React `cache()` 與頁面共用讀取） | `app/courses/[id]/page.tsx` + `app/courses/_data.ts`、`app/teachers/[id]/page.tsx` + `app/teachers/_data.ts` | M1.5 |
+| `robots.txt`、`sitemap.xml`（sitemap 含課程與老師詳情，`revalidate = 3600`，DB 失敗退回靜態清單） | `app/robots.ts`、`app/sitemap.ts` | M1.7 |
+
+仍未修：
 
 | 根因 | 位置 | 影響的測試 |
 |---|---|---|
-| middleware 對 `'/:path*'` 一律送 `no-store` | [middleware.ts:8](../../../middleware.ts) | M1.6 |
-| 除 root layout 外無任何 `generateMetadata` | `app/**/page.tsx` | M1.2、M1.5 |
-| 無 `app/robots.ts`、無 `app/sitemap.ts` | — | M1.7 |
+| 公開頁是動態渲染（root layout 每次請求讀 DynamoDB；`/courses`、`/teachers` 讀 `searchParams`），Next.js 回 `private, no-cache, no-store`；middleware 已只對私有前綴送 `no-store` | `app/layout.tsx`、`app/courses/page.tsx`、`app/teachers/page.tsx` | M1.6 |
 
-修復條件是主計畫的**階段 3：結構與渲染策略**（Route Group 切分 + middleware 收斂 + 補 metadata）。該階段完成後 M1 應全綠，屆時把 `verified-status` 改為 `✅ VERIFIED`、`architecture-aligned` 改為 `true`。
+> ⚠️ `e2e/b2c_verification.spec.ts` 的 `FALLBACK_TITLE` 仍是 `'Tutor Platform'`。root 預設 title 已改為 `JV Tutor Corner｜線上一對一家教`，M1.2 需把常數改成新預設值，否則「頁面沒有自己的 title」不會被抓到。
+
+M1.6 修法方向（未實作，屬渲染策略變更）：把 root layout 的 DynamoDB 讀取改為可快取（`unstable_cache`／`revalidate`）；`/pricing`、`/about`、`/terms` 設 `export const revalidate`；`/courses`、`/teachers` 若要可快取需把篩選改為 client 端或以 CDN 規則處理 query string；課程詳情可用 ISR（`revalidate`）。
 
 ## 測試模組
 
@@ -47,12 +59,12 @@ metadata:
 | # | 驗證項 | 現況 |
 |---|---|---|
 | M1.1 | 公開頁皆回 200 | ✅ 通過 |
-| M1.2 | 每頁有自己的 `<title>`，不得共用 root 預設值 | ❌ 全部共用 `Tutor Platform` |
-| M1.3 | 每頁有 `meta description` | ✅ 通過（但均繼承 root，內容相同） |
+| M1.2 | 每頁有自己的 `<title>`，不得共用 root 預設值 | 🔧 已補 metadata，待重跑（先更新 `FALLBACK_TITLE`） |
+| M1.3 | 每頁有 `meta description` | 🔧 各頁已有專屬 description，待重跑 |
 | M1.4 | `/courses` 課程內容出現在初始 HTML | ❌ 待查（見「已知問題」） |
-| M1.5 | 課程詳情頁有獨立 title + og:title + canonical | ❌ 缺 `generateMetadata` |
-| M1.6 | 公開頁可被 CDN 快取 | ❌ middleware 全站 `no-store` |
-| M1.7 | `robots.txt` / `sitemap.xml` 可取得 | ❌ 兩者皆 404 |
+| M1.5 | 課程詳情頁有獨立 title + og:title + canonical | 🔧 已加 `generateMetadata`，待重跑 |
+| M1.6 | 公開頁可被 CDN 快取 | ❌ 動態渲染頁回 `private, no-store`（見上方） |
+| M1.7 | `robots.txt` / `sitemap.xml` 可取得 | 🔧 `app/robots.ts`、`app/sitemap.ts` 已存在，待重跑 |
 
 **M2 / M3 現況**：M2.1 完整漏斗 ✅ 通過；M3.1–M3.3 ✅ 通過；M3.4 見下方判定標準說明。
 
@@ -147,12 +159,10 @@ curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3000/robots.txt
 
 ### ⚠️ 待修（皆為架構缺陷，非測試問題）
 
-1. **全站共用同一組 SEO metadata** — 所有頁面 title 均為 `Tutor Platform`，搜尋結果無法區分。需在各 `page.tsx` 補 `export const metadata` 或 `generateMetadata`。
-2. **公開頁無法被 CDN 快取** — `middleware.ts` 的 `matcher: '/:path*'` 對全站送 `no-store`。需縮小到 `/api` 與已登入頁面。
-3. **缺 `robots.txt` 與 `sitemap.xml`** — 兩者皆 404。Next.js App Router 原生支援 `app/robots.ts` / `app/sitemap.ts`。
-4. **M1.4 課程內容未出現在初始 HTML** — `app/courses/page.tsx` 確實是 Server Component 且從 DynamoDB 取資料，但斷言未通過。需釐清是「該課程不在第一頁分頁範圍內」還是「內容確實只在 RSC payload 中」。排查前不要調整斷言。
-5. **`app/teacher/[id]` 與 `app/teachers/[id]` 路由重複** — 前者是 `'use client'`、後者是 Server Component。需釐清何者為正、另一者應移除或轉址，否則 SEO 會有重複內容問題。
-6. **受保護頁對訪客回 HTTP 200** — `/student_courses`、`/settings` 雖然正確顯示「請先登入」空狀態（無資料外流），但仍以 200 回應。這代表爬蟲會索引到一批內容單薄且重複的頁面。建議在階段 3 一併處理：對這些路由加上 `noindex`，或改為伺服器端轉址。
+1. **公開頁無法被 CDN 快取（M1.6）** — middleware 已只對私有前綴送 `no-store`，但公開頁本身是動態渲染，Next.js 仍回 `private, no-store`。見上方「M1 現況與剩餘缺口」的修法方向。
+2. **M1.4 課程內容未出現在初始 HTML** — `app/courses/page.tsx` 確實是 Server Component 且從 DynamoDB 取資料，但斷言未通過。需釐清是「該課程不在第一頁分頁範圍內」還是「內容確實只在 RSC payload 中」。排查前不要調整斷言。
+3. **`app/teacher/[id]` 不是 `/teachers/[id]` 的重複頁** — 前者是老師本人的個人資料頁（`app/teacher/layout.tsx` 以 `requireTeacherPage` 擋住，且忽略 URL 的 id、改讀登入者資料），訪客與爬蟲拿不到內容；公開老師頁以 `/teachers/[id]` 為準（canonical 已指向它）。可考慮把 `/teacher/` 加進 `app/robots.ts` 的 disallow。
+4. **受保護頁對訪客回 HTTP 200** — `/student_courses`、`/settings` 雖然正確顯示「請先登入」空狀態（無資料外流），但仍以 200 回應。這代表爬蟲會索引到一批內容單薄且重複的頁面。建議在階段 3 一併處理：對這些路由加上 `noindex`，或改為伺服器端轉址。
 
 ### 🔧 環境配置陷阱（實測踩到，值得記錄）
 
@@ -163,6 +173,8 @@ curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3000/robots.txt
 建議修法：在 `playwright.config.ts` 讀取 `APP_ENV` 前先不要讓 `.env.local` 覆寫它，或在 cleanup spec 開頭加上「BASE_URL 必須是 localhost，否則 abort」的硬性防護。
 
 ### ✅ 已修
+
+- **全站共用同一組 SEO metadata、缺 robots／sitemap、課程詳情缺 `generateMetadata`**（2026-09-17）— 見上方「M1 現況與剩餘缺口」。
 
 - **`registerUserAndVerifyLogin()` 是空殼** — 原函式體只有一個游離的 `6`，沒有執行任何註冊就回傳 email，任何依賴它的測試都會假通過。已補上完整的 `/api/register` → `/api/login` 流程並回傳 `{ email, password }`。
 

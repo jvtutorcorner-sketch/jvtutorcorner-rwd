@@ -14,10 +14,28 @@ import PermissionGuard from '@/components/auth/PermissionGuard';
 import { getAppPermissionsFromDynamoDB } from '@/lib/appPermissionsService';
 import GlobalAIAssistant from '@/components/GlobalAIAssistant';
 import ProductTour from '@/components/ProductTour';
+import { SITE_URL, SITE_NAME, DEFAULT_TITLE, DEFAULT_DESCRIPTION } from '@/lib/seo';
 
 export const metadata: Metadata = {
-  title: 'Tutor Platform',
-  description: 'Online tutoring platform with video and whiteboard.',
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: DEFAULT_TITLE,
+    template: `%s｜${SITE_NAME}`,
+  },
+  description: DEFAULT_DESCRIPTION,
+  applicationName: SITE_NAME,
+  openGraph: {
+    type: 'website',
+    siteName: SITE_NAME,
+    locale: 'zh_TW',
+    title: DEFAULT_TITLE,
+    description: DEFAULT_DESCRIPTION,
+  },
+  twitter: {
+    card: 'summary',
+    title: DEFAULT_TITLE,
+    description: DEFAULT_DESCRIPTION,
+  },
 };
 
 export const viewport: Viewport = {

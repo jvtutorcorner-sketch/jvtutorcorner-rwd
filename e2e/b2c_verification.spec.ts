@@ -39,8 +39,12 @@ const BYPASS_SECRET =
   process.env.QA_CAPTCHA_BYPASS ||
   process.env.NEXT_PUBLIC_LOGIN_BYPASS_SECRET;
 
-/** root layout 的預設 title。公開頁若仍是這個值，代表沒有自己的 metadata。 */
-const FALLBACK_TITLE = 'Tutor Platform';
+/**
+ * root layout 的預設 title。公開頁若仍是這個值，代表沒有自己的 metadata。
+ * 必須與 lib/seo.ts 的 DEFAULT_TITLE 一致（這裡寫死而不 import，是為了不讓 spec
+ * 在執行期依賴 @/ alias 解析）。改 DEFAULT_TITLE 時記得一起改這行。
+ */
+const FALLBACK_TITLE = 'JV Tutor Corner｜線上一對一家教';
 
 // ═════════════════════════════════════════════════════════════
 // M1 — 渲染策略與 SEO

@@ -8,6 +8,19 @@ import Pagination from '@/components/Pagination';
 import { SUBJECTS } from '@/types/questionnaire';
 import { T } from '@/components/IntlProvider';
 import { subjectKey } from '@/lib/subjectI18n';
+import type { Metadata } from 'next';
+import { pageOpenGraph } from '@/lib/seo';
+
+const TEACHERS_META_TITLE = '師資介紹';
+const TEACHERS_META_DESCRIPTION = '認識 JV Tutor Corner 的線上家教老師，依科目與授課語言搜尋，查看老師簡介並預約一對一課程。';
+
+export const metadata: Metadata = {
+  title: TEACHERS_META_TITLE,
+  description: TEACHERS_META_DESCRIPTION,
+  // 篩選/分頁 query string 一律 canonical 回列表本身，避免重複內容
+  alternates: { canonical: '/teachers' },
+  openGraph: pageOpenGraph({ title: TEACHERS_META_TITLE, description: TEACHERS_META_DESCRIPTION, url: '/teachers' }),
+};
 
 export default async function TeachersPage({ searchParams }: { searchParams: Promise<any> }) {
   const spa = await searchParams;

@@ -319,7 +319,7 @@ metadata:
 ### 12. 效能與可訪問性
 
 #### 12.1 SEO 與元資料
-- [ ] 頁面 `<title>` 正確：「Tutor Platform」
+- [ ] 頁面 `<title>` 正確：「JV Tutor Corner｜線上一對一家教」（lib/seo.ts 的 DEFAULT_TITLE）
 - [ ] 頁面 `<meta description>` 存在
 - [ ] `og:title`、`og:image` 等 Open Graph 標籤存在
 

@@ -5,6 +5,19 @@ import { CourseCard } from '@/components/CourseCard';
 import SearchForm from '@/components/SearchForm';
 import Pagination from '@/components/Pagination';
 import { T } from '@/components/IntlProvider';
+import type { Metadata } from 'next';
+import { pageOpenGraph } from '@/lib/seo';
+
+const COURSES_META_TITLE = '線上課程總覽';
+const COURSES_META_DESCRIPTION = '瀏覽 JV Tutor Corner 的線上一對一與小班課程，依科目、語言、老師與上課方式篩選，找到適合你的課程。';
+
+export const metadata: Metadata = {
+  title: COURSES_META_TITLE,
+  description: COURSES_META_DESCRIPTION,
+  // 篩選/分頁 query string 一律 canonical 回列表本身，避免重複內容
+  alternates: { canonical: '/courses' },
+  openGraph: pageOpenGraph({ title: COURSES_META_TITLE, description: COURSES_META_DESCRIPTION, url: '/courses' }),
+};
 
 type CoursesPageProps = {
   searchParams?: {

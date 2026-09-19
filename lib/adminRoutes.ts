@@ -17,6 +17,7 @@ export type AdminRouteGroup =
   | 'reviews'
   | 'tools'
   | 'organizations'
+  | 'users'
   | 'settings'
   | 'roles'
   | 'analytics'
@@ -33,25 +34,26 @@ export interface AdminRouteEntry {
 
 export const ADMIN_ROUTES: AdminRouteEntry[] = [
   // ---- finance ----
-  { key: 'admin.finance.orders', path: '/admin/finance/orders', label: '訂單管理列表', group: 'finance' },
-  { key: 'admin.finance.payments', path: '/admin/finance/payments', label: '💳 收款管理', group: 'finance' },
-  { key: 'admin.finance.refunds', path: '/admin/finance/refunds', label: '退款申請處理', group: 'finance' },
+  { key: 'admin.finance.orders', path: '/admin/orders', label: '訂單管理列表', group: 'finance' },
+  { key: 'admin.finance.payments', path: '/admin/payments', label: '💳 收款管理', group: 'finance' },
+  { key: 'admin.finance.refunds', path: '/admin/refunds', label: '退款申請處理', group: 'finance' },
 
   // ---- reviews ----
-  { key: 'admin.reviews.teacher', path: '/admin/reviews/teacher-reviews', label: '老師審核', group: 'reviews' },
-  { key: 'admin.reviews.course', path: '/admin/reviews/course-reviews', label: '課程審核', group: 'reviews' },
+  { key: 'admin.reviews.teacher', path: '/admin/teacher-reviews', label: '老師審核', group: 'reviews' },
+  { key: 'admin.reviews.course', path: '/admin/course-reviews', label: '課程審核', group: 'reviews' },
 
   // ---- tools ----
-  { key: 'admin.tools.whiteboardAgora', path: '/admin/tools/whiteboard_agora', label: 'Agora 白板 SDK', group: 'tools' },
-  { key: 'admin.tools.whiteboardCanvas', path: '/admin/tools/whiteboard_canvas', label: 'Canvas 白板', group: 'tools' },
-  { key: 'admin.tools.whiteboardSse', path: '/admin/tools/whiteboard_sse', label: '白板 SSE', group: 'tools' },
-  { key: 'admin.tools.makeSettings', path: '/admin/tools/make-settings', label: 'Make.com 整合設定', group: 'tools' },
-  { key: 'admin.tools.migrateReminders', path: '/admin/tools/migrate-reminders', label: '提醒資料遷移工具', group: 'tools' },
-  { key: 'admin.tools.aiChat', path: '/admin/tools/ai-chat', label: 'AI 聊天室', group: 'tools' },
+  { key: 'admin.tools.whiteboardAgora', path: '/admin/whiteboard_agora', label: 'Agora 白板 SDK', group: 'tools' },
+  { key: 'admin.tools.whiteboardCanvas', path: '/admin/whiteboard_canvas', label: 'Canvas 白板', group: 'tools' },
+  { key: 'admin.tools.whiteboardSse', path: '/admin/whiteboard_sse', label: '白板 SSE', group: 'tools' },
+  { key: 'admin.tools.makeSettings', path: '/admin/make-settings', label: 'Make.com 整合設定', group: 'tools' },
+  { key: 'admin.tools.migrateReminders', path: '/admin/migrate-reminders', label: '提醒資料遷移工具', group: 'tools' },
+  { key: 'admin.tools.aiChat', path: '/admin/ai-chat', label: 'AI 聊天室', group: 'tools' },
   { key: 'admin.tools.auditLogs', path: '/admin/audit-logs', label: '稽核紀錄查詢', group: 'tools' },
 
   // ---- untouched groups, catalogued for completeness (this manifest = ALL of app/admin/**) ----
   { key: 'admin.organizations.list', path: '/admin/organizations', label: '企業組織管理', group: 'organizations' },
+  { key: 'admin.users', path: '/admin/users', label: '使用者管理', group: 'users' },
   { key: 'admin.settings.root', path: '/admin/settings', label: '系統設定', group: 'settings' },
   { key: 'admin.settings.menu', path: '/admin/settings/menu', label: 'Menu 設定', group: 'settings' },
   { key: 'admin.settings.dropdown', path: '/admin/settings/dropdown', label: 'Dropdown Menu 設定', group: 'settings' },
@@ -65,7 +67,7 @@ export const ADMIN_ROUTES: AdminRouteEntry[] = [
 ];
 
 // Dynamic-segment helpers — the manifest above only covers static paths.
-export const adminOrderDetailPath = (orderId: string) => `/admin/finance/orders/${orderId}`;
+export const adminOrderDetailPath = (orderId: string) => `/admin/orders/${orderId}`;
 export const adminOrganizationDetailPath = (id: string) => `/admin/organizations/${id}`;
 
 export function getAdminRoute(key: string): AdminRouteEntry | undefined {
