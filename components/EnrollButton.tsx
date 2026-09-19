@@ -54,6 +54,9 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
   const [storedUser, setStoredUserState] = useState<any>(null);
   // 點數相關
   const [userPoints, setUserPoints] = useState<number | null>(null);
+  // 企業席次（B2B）：由伺服器依授權判斷是否可用席次報名，client 不自行推論
+  const [seatEligible, setSeatEligible] = useState(false);
+  const [isCheckingSeat, setIsCheckingSeat] = useState(false);
   const [payMethod, setPayMethod] = useState<'plan' | 'points'>(
     enrollmentType === 'points' || (Number(pointCost) > 0 && enrollmentType !== 'plan') 
       ? 'points' 
@@ -73,6 +76,23 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
     window.addEventListener('tutor:auth-changed', handler);
     return () => window.removeEventListener('tutor:auth-changed', handler);
   }, []);
+
+  // 查詢是否有此課程可用的企業席次（B2B 成員的 profile.plan 為 null，
+  // 不能走方案 / 點數報名，改由 /api/enroll/seat 依授權建立報名）
+  useEffect(() => {
+    if (!storedUser?.email || storedUser.role === 'teacher') {
+      setSeatEligible(false);
+      return;
+    }
+    let cancelled = false;
+    setIsCheckingSeat(true);
+    fetch(`/api/enroll/seat?courseId=${encodeURIComponent(courseId)}`, { cache: 'no-store' })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (!cancelled) setSeatEligible(Boolean(d?.ok && d.eligible)); })
+      .catch(() => { if (!cancelled) setSeatEligible(false); })
+      .finally(() => { if (!cancelled) setIsCheckingSeat(false); });
+    return () => { cancelled = true; };
+  }, [storedUser?.email, storedUser?.role, courseId]);
 
   // 取得使用者點數餘額
   useEffect(() => {
@@ -258,6 +278,53 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
     }
   };
 
+  // 企業席次報名：時間衝突、席次有效性與重複報名都由伺服器驗證
+  const handleSeatEnroll = async () => {
+    if (!storedUser) return;
+    if (!selectedStartTime) {
+      setError(t('enroll_error_select_start_time'));
+      return;
+    }
+    const start = new Date(selectedStartTime);
+    if (Number.isNaN(start.getTime())) {
+      setError(t('enroll_error_select_start_time'));
+      return;
+    }
+    // 與一般報名相同格式：datetime-local 的牆上時間（無時區），伺服器以平台時區解讀
+    const end = new Date(start.getTime() + (durationMinutes || 60) * 60000);
+    const tzoffset = end.getTimezoneOffset() * 60000;
+    const endTime = (new Date(end.getTime() - tzoffset)).toISOString().slice(0, 16);
+
+    try {
+      setIsSubmitting(true);
+      setError(null);
+      const res = await fetch('/api/enroll/seat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          courseId,
+          startTime: selectedStartTime,
+          endTime,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) {
+        setError(data?.error || t('enroll_seat_error_failed'));
+        return;
+      }
+      setIsSuccess(true);
+      setShowStartTimeModal(false);
+      setTimeout(() => {
+        router.push('/student_courses');
+      }, 2000);
+    } catch (err) {
+      console.error('Seat enroll error:', err);
+      setError(t('enroll_error_network'));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const PLAN_LEVELS: Record<string, number> = {
     viewer: 0,
     basic: 1,
@@ -287,9 +354,10 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
   const isDateValid = (!start || now >= start) && (!end || now <= end);
 
   // 按鈕是否可用
+  // 企業席次可用時略過方案等級檢查（B2B 成員的 plan 為 null）
   const isEnrollable = storedUser &&
     storedUser.role !== 'teacher' &&
-    (canUsePlan ? isPlanSufficient : canUsePoints) &&
+    (seatEligible || (canUsePlan ? isPlanSufficient : canUsePoints)) &&
     isDateValid;
 
   console.log('[EnrollButton Render]', {
@@ -302,7 +370,8 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
     userPoints,
     isLoadingPoints,
     payMethod,
-    isPlanSufficient
+    isPlanSufficient,
+    seatEligible
   });
 
   return (
@@ -313,7 +382,7 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
           setError(null);
           setShowStartTimeModal(true);
         }}
-        disabled={!isEnrollable || isSubmitting || isSuccess || isLoadingPoints}
+        disabled={!isEnrollable || isSubmitting || isSuccess || (!seatEligible && isLoadingPoints) || isCheckingSeat}
         title={
           !storedUser
             ? t('enroll_title_login')
@@ -321,18 +390,20 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
               ? t('enroll_title_teacher_blocked')
               : !isDateValid
                 ? t('enroll_title_out_of_period')
-                : !canUsePlan && !canUsePoints
+                : seatEligible
+                  ? t('enroll_seat_title')
+                  : !canUsePlan && !canUsePoints
                   ? t('enroll_title_not_open')
                   : canUsePlan && !isPlanSufficient && !canUsePoints
                     ? t('enroll_title_plan_required').replace('{plan}', requiredPlan.charAt(0).toUpperCase() + requiredPlan.slice(1))
                     : [t('enroll_title_logged_prefix'), storedUser.email, t('enroll_title_logged_suffix')].filter(Boolean).join(' ')
         }
       >
-        {isSubmitting ? t('loading') : isSuccess ? t('enroll_success_redirecting') : !isDateValid ? t('enroll_button_out_of_period') : t('enroll_button_label')}
+        {isSubmitting ? t('loading') : isSuccess ? t('enroll_success_redirecting') : !isDateValid ? t('enroll_button_out_of_period') : seatEligible ? t('enroll_seat_confirm') : t('enroll_button_label')}
       </button>
 
       {/* 點數餘額顯示 */}
-      {storedUser && canUsePoints && userPoints !== null && (
+      {storedUser && !seatEligible && canUsePoints && userPoints !== null && (
         <p style={{ marginTop: 6, fontSize: '0.83rem', color: userPoints >= (pointCost ?? 0) ? '#059669' : '#dc2626' }}>
           {t('enroll_points_balance_label')}{userPoints} {t('unit_points')}{pointCost ? t('enroll_points_balance_required_suffix').replace('{cost}', String(pointCost)) : ''}
         </p>
@@ -344,8 +415,17 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
             <h2 className="text-xl font-bold mb-4">{t('enroll_modal_title')}</h2>
             <p className="mb-4 text-gray-600">{t('enroll_modal_subtitle')}</p>
 
+            {/* 企業席次：不需選擇付款方式 */}
+            {seatEligible && (
+              <div style={{ marginBottom: 16, padding: '10px 14px', backgroundColor: '#ecfdf5', borderRadius: 8, borderLeft: '4px solid #059669' }}>
+                <p style={{ fontSize: '0.88rem', color: '#047857' }}>
+                  {t('enroll_seat_modal_desc')}
+                </p>
+              </div>
+            )}
+
             {/* 付款方式選擇器（只要兩者皆可用才顯示） */}
-            {showMethodSelector && (
+            {!seatEligible && showMethodSelector && (
               <div style={{ marginBottom: 20 }}>
                 <label style={{ display: 'block', fontSize: '0.9rem', fontWeight: 600, color: '#374151', marginBottom: 8 }}>
                   {t('enroll_modal_payment_method_label')}
@@ -392,7 +472,7 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
             )}
 
             {/* 純點數制 - 顯示點數資訊 */}
-            {enrollmentType === 'points' && (
+            {!seatEligible && enrollmentType === 'points' && (
               <div style={{ marginBottom: 16, padding: '10px 14px', backgroundColor: '#f5f3ff', borderRadius: 8, borderLeft: '4px solid #7c3aed' }}>
                 <p style={{ fontSize: '0.88rem', color: '#6d28d9' }}>
                   {t('enroll_modal_pay_with_points')}：{t('enroll_modal_points_only_desc').replace('{cost}', String(pointCost)).replace('{balance}', String(userPoints ?? 0))}
@@ -439,6 +519,15 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
               >
                 {t('cancel')}
               </button>
+              {seatEligible ? (
+              <button
+                onClick={handleSeatEnroll}
+                className="px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors font-medium shadow-md disabled:bg-emerald-300"
+                disabled={isSubmitting || !selectedStartTime}
+              >
+                {isSubmitting ? t('processing') : t('enroll_seat_confirm')}
+              </button>
+              ) : (
               <button
                 onClick={handleEnrollAndOrder}
                 className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium shadow-md disabled:bg-blue-300"
@@ -446,6 +535,7 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
               >
                 {isSubmitting ? t('processing') : payMethod === 'points' ? t('enroll_confirm_with_points').replace('{cost}', String(pointCost)) : t('enroll_confirm_title')}
               </button>
+              )}
             </div>
           </div>
         </Modal>
@@ -461,13 +551,13 @@ export const EnrollButton: React.FC<EnrollButtonProps> = ({
         </p>
       )}
 
-      {storedUser && storedUser.role !== 'teacher' && canUsePlan && !isPlanSufficient && !canUsePoints && (
+      {storedUser && storedUser.role !== 'teacher' && !seatEligible && canUsePlan && !isPlanSufficient && !canUsePoints && (
         <p className="auth-warning" style={{ color: '#d32f2f' }}>
           {t('enroll_warning_plan_insufficient').replace('{userPlan}', userPlan).replace('{requiredPlan}', requiredPlan.charAt(0).toUpperCase() + requiredPlan.slice(1))}
         </p>
       )}
 
-      {storedUser && storedUser.role !== 'teacher' && enrollmentType === 'points' && !canUsePlan && (userPoints ?? 0) < (pointCost ?? 0) && (
+      {storedUser && storedUser.role !== 'teacher' && !seatEligible && enrollmentType === 'points' && !canUsePlan && (userPoints ?? 0) < (pointCost ?? 0) && (
         <p className="auth-warning" style={{ color: '#d32f2f' }}>
           {t('enroll_warning_points_insufficient').replace('{cost}', String(pointCost)).replace('{balance}', String(userPoints ?? 0))}
         </p>

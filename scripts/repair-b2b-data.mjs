@@ -10,9 +10,11 @@
  *   1. enrollments: orgId / orderId / courseSessionId stored as NULL. These are GSI
  *      key attributes (byOrgId / byOrderId); once those indexes exist, re-putting such
  *      a row is rejected, and during backfill the rows are silently left unindexed.
- *      Also rows labelled sourceType 'B2B_SEAT': no code path has ever created a seat
- *      enrollment, so every such row is a personal purchase the old POST /api/enroll
- *      stamped with the buyer's orgId. They become 'B2C' and lose orgId.
+ *      Also rows labelled sourceType 'B2B_SEAT' WITHOUT a licenseId: those are personal
+ *      purchases the old POST /api/enroll stamped with the buyer's orgId. They become
+ *      'B2C' and lose orgId. Rows WITH a licenseId are legitimate seat enrollments
+ *      written by app/api/enroll/seat (orgId is correct there) and are left alone
+ *      apart from NULL index-key cleanup.
  *   2. course-sessions: roomId stored as NULL (byRoomId GSI key).
  *   3. licenses: expiresAt stored as an ISO string by the old PATCH path — converted
  *      to epoch seconds (otherwise the license reads as already expired).
@@ -89,7 +91,10 @@ for (const item of await scanAll(T.enrollments)) {
   const removes = ['orgId', 'orderId', 'courseSessionId'].filter(
     (k) => k in item && (item[k] === null || item[k] === '')
   );
-  const mislabelled = item.sourceType === 'B2B_SEAT';
+  // app/api/enroll/seat writes B2B_SEAT rows carrying licenseId + orgId; those are
+  // real seat enrollments and must not be relabelled. Only the old mislabelled
+  // purchases (no licenseId) are rewritten.
+  const mislabelled = item.sourceType === 'B2B_SEAT' && !item.licenseId;
   if (mislabelled && item.orgId && !removes.includes('orgId')) removes.push('orgId');
   if (removes.length === 0 && !mislabelled) continue;
 

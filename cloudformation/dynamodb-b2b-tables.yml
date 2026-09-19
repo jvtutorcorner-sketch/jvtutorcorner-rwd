@@ -240,15 +240,11 @@ Resources:
   # PK is `id`, and lib/pagePermissionsService.ts sets id === path. Each item is
   # one page carrying an embedded `permissions[]` array of per-role flags.
   #
-  # KNOWN INCONSISTENCY (not fixed here - needs a data migration, not a schema
-  # edit): lib/auth/pagePermissions.ts::queryDbPermission queries a RolePathIndex
-  # on a top-level `roleId` attribute, but the items this table actually stores
-  # have no top-level `roleId` - the role lives inside permissions[]. That query
-  # therefore matches nothing and the caller silently falls back to the built-in
-  # DEFAULT_PAGE_PERMISSIONS matrix. The index is declared below so the query
-  # keeps returning empty rather than throwing, but either the writer must
-  # denormalize one item per (roleId, path), or the reader must switch to a Get
-  # on id and read permissions[]. Pick one before relying on DB overrides.
+  # Reader: lib/auth/pagePermissions.ts::canAccessPage BatchGets by id for each
+  # path prefix (longest first) and reads permissions[].pageVisible. The
+  # RolePathIndex below is legacy (items never carry a top-level roleId, so it
+  # stays empty); nothing queries it any more. Left in place to avoid a GSI
+  # deletion on stack update.
   # ==========================================
   PagePermissionsTable:
     Type: AWS::DynamoDB::Table

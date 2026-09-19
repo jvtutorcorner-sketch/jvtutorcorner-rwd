@@ -3,7 +3,7 @@
 // 進教室授權核心：在簽發 LiveKit Token 之前，先用 DynamoDB 上的紀錄回答三個問題
 //
 //   1. 這個 room 屬於哪一場課？          → jvtutorcorner-course-sessions (PK id / GSI byRoomId)
-//   2. 這個人是這場課的老師還是學生？    → profiles (老師身分) / enrollments (學生報名)
+//   2. 這個人是這場課的老師還是學生？    → profiles (老師身分) / enrollments (學生報名) / licenses (企業席次)
 //   3. 現在可以進去嗎？                  → session.status + startTime/endTime ± 緩衝
 //
 // 這個模組完全不碰 HTTP 與 LiveKit SDK，所以 Next.js route 和獨立 Lambda 都能共用，
@@ -16,7 +16,7 @@
 //     方便前端顯示對應訊息（太早、已結束、未報名…）。
 
 import { getProfileById } from '@/lib/profilesService';
-import { findActiveEnrollment } from '@/lib/enrollmentService';
+import { findPurchasedEnrollment, findValidSeatLicense } from '@/lib/accessControl';
 import {
   findSessionByRoomId,
   getCourseSession,
@@ -191,17 +191,26 @@ export async function authorizeJoin(
     }
     participantRole = 'teacher';
   } else {
-    const enrollment = await findActiveEnrollment(requester.userId, session.courseId);
-    if (!enrollment) {
-      return deny('NOT_ENROLLED', 'You are not enrolled in this course', 403);
-    }
-    // 報名紀錄若指定了梯次，就必須是同一梯次；舊資料（null）視為相容放行。
-    if (enrollment.courseSessionId && enrollment.courseSessionId !== session.id) {
-      return deny(
-        'ENROLLED_IN_OTHER_SESSION',
-        'Your enrollment belongs to a different session of this course',
-        403
-      );
+    // B2C：自行購買的報名紀錄。B2B_SEAT 報名列（app/api/enroll/seat 寫入）在
+    // findPurchasedEnrollment 裡被略過 —— 席次的存取權只看授權（license），
+    // 否則撤銷授權後那筆報名列仍會永久放行。
+    const enrollment = await findPurchasedEnrollment(requester.userId, session.courseId);
+    if (enrollment) {
+      // 報名紀錄若指定了梯次，就必須是同一梯次；舊資料（null）視為相容放行。
+      if (enrollment.courseSessionId && enrollment.courseSessionId !== session.id) {
+        return deny(
+          'ENROLLED_IN_OTHER_SESSION',
+          'Your enrollment belongs to a different session of this course',
+          403
+        );
+      }
+    } else {
+      // B2B：沒有購買紀錄時，改用與 verifyCourseAccess 相同的席次授權判斷。
+      // 席次授權涵蓋整門課（或整個組織），沒有梯次限制，授權有效即放行。
+      const seat = await findValidSeatLicense(requester.userId, session.courseId);
+      if (!seat) {
+        return deny('NOT_ENROLLED', 'You are not enrolled in this course', 403);
+      }
     }
     participantRole = 'student';
   }
