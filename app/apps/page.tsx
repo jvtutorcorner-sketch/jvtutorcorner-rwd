@@ -4,7 +4,7 @@
 // 應用程式後台（重構版）：服務目錄 + 已連線清單（schema 驅動、可完整編輯），
 // 保留 AI 技能 / 平台 Agents / 自動化 分頁（Phase 4 會把技能與 Agents 改為可編輯）。
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useConnections } from './_hooks/useConnections';
@@ -19,7 +19,7 @@ import SkillPreviewModal from './components/SkillPreviewModal';
 
 type Tab = 'connected' | 'catalog' | 'skills' | 'agents' | 'automation';
 
-export default function AppsPage() {
+function AppsPageContent() {
     const router = useRouter();
     const params = useSearchParams();
     const { connections, loading: connLoading, toggleStatus, makeDefault, remove, countByType } = useConnections();
@@ -113,5 +113,15 @@ function Spinner() {
         <div className="flex justify-center items-center h-64">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600" />
         </div>
+    );
+}
+
+// useSearchParams 必須包在 Suspense 內，否則這頁在 build 期預先渲染會失敗
+// （Next.js: missing-suspense-with-csr-bailout）。同專案其他頁面亦採此寫法。
+export default function AppsPage() {
+    return (
+        <Suspense fallback={<Spinner />}>
+            <AppsPageContent />
+        </Suspense>
     );
 }

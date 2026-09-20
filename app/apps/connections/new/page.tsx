@@ -3,7 +3,7 @@
 // app/apps/connections/new/page.tsx
 // 新增連線：?type=STRIPE。同一份 SchemaForm，可在儲存前測試。
 
-import { useMemo, useState } from 'react';
+import { Suspense, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import SchemaForm from '@/components/integrations/SchemaForm';
@@ -11,7 +11,7 @@ import { useCatalog } from '../../_hooks/useCatalog';
 import { useSchemaAux } from '../../_hooks/useSchemaAux';
 import { createConnection, testNewConnection } from '@/lib/integrations/clientApi';
 
-export default function NewConnectionPage() {
+function NewConnectionContent() {
     const router = useRouter();
     const params = useSearchParams();
     const type = (params.get('type') || '').toUpperCase();
@@ -90,5 +90,15 @@ export default function NewConnectionPage() {
                 )}
             </div>
         </div>
+    );
+}
+
+// useSearchParams 必須包在 Suspense 內，否則這頁在 build 期預先渲染會失敗
+// （Next.js: missing-suspense-with-csr-bailout）。同專案其他頁面亦採此寫法。
+export default function NewConnectionPage() {
+    return (
+        <Suspense fallback={<div className="p-6 text-gray-500">載入中…</div>}>
+            <NewConnectionContent />
+        </Suspense>
     );
 }
