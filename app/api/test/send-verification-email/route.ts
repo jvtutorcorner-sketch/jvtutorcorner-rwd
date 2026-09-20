@@ -20,8 +20,14 @@ import { getBypassSecret } from '@/lib/captcha';
  * ⚠️ 診斷完成後應移除或關閉此端點（見 verification 收尾）。
  */
 
+// 收尾：此診斷端點僅供本地/e2e 使用，正式部署（Amplify build 為 NODE_ENV=production）
+// 一律視為不存在，避免長期暴露在 prod。NODE_ENV 能可靠區分 `next dev`（development）
+// 與 Amplify 正式建置（production），不受 .env.local 的 APP_ENV=production 影響。
+const IS_PROD_BUILD = process.env.NODE_ENV === 'production';
+
 /** 驗證請求是否帶了正確的 bypass secret；未設定 secret 時視為不可用（回 false）。 */
 function isAuthorized(req: NextRequest): boolean {
+    if (IS_PROD_BUILD) return false;
     const configured = getBypassSecret();
     if (!configured) return false;
     const provided =
