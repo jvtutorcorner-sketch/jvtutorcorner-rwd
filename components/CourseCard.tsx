@@ -19,10 +19,13 @@ interface CourseCardProps {
 }
 
 /** 依科目字串產生穩定的色相，讓封面配色一致又多樣。 */
-function hueFromString(input: string): number {
+function hueFromString(input: string | null | undefined): number {
+  // DynamoDB records are not guaranteed to carry subject or title, and a
+  // missing cosmetic hue must never take down the page rendering the card.
+  const source = String(input ?? '');
   let hash = 0;
-  for (let i = 0; i < input.length; i++) {
-    hash = (hash * 31 + input.charCodeAt(i)) % 360;
+  for (let i = 0; i < source.length; i++) {
+    hash = (hash * 31 + source.charCodeAt(i)) % 360;
   }
   return hash;
 }

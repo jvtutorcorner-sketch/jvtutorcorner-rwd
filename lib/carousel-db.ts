@@ -36,8 +36,12 @@ export async function getCarouselImages(): Promise<CarouselImage[]> {
     const command = new ScanCommand({ TableName: TABLE_NAME });
     const response = await docClient.send(command);
     
-    const items = (response.Items || []) as CarouselImage[];
-    
+    // A row without a usable url reaches the Carousel as undefined and throws
+    // on slides[index].includes(...), which breaks the whole homepage render.
+    const items = (response.Items || []).filter(
+      (item) => typeof item.url === 'string' && item.url.trim().length > 0
+    ) as CarouselImage[];
+
     // Sort by order
     return items.sort((a, b) => (a.order || 0) - (b.order || 0));
   } catch (error) {

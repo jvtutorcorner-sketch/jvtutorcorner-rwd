@@ -140,7 +140,12 @@ export const listPublicCourses = cache(async (): Promise<CourseRecord[]> => {
  */
 export async function listPublishedCourses(): Promise<CourseRecord[]> {
   const courses = await listPublicCourses();
-  const published = courses.filter((c) => !c.status || c.status === '上架');
+  const published = courses
+    .filter((c) => !c.status || c.status === '上架')
+    // A record with no title cannot render a meaningful card, and leftovers from
+    // classroom/PDF test runs reach here untitled because isTestCourse() only
+    // recognises the test-course-/stress- id prefixes and title keywords.
+    .filter((c) => String(c.title || '').trim().length > 0);
   if (published.length > 0) return published;
   return (COURSES as CourseRecord[]).filter((c) => !c.status || c.status === '上架');
 }
