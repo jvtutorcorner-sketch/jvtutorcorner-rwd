@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { ddbDocClient } from '@/lib/dynamo';
-import { ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { getDefault, getIntegration } from '@/lib/integrations/store';
 import {
     PLATFORM_AGENTS,
     DISPATCH_SYSTEM_PROMPT,
@@ -9,41 +8,22 @@ import {
     getAgentById,
 } from '@/lib/platform-agents';
 
-const APP_INTEGRATIONS_TABLE =
-    process.env.DYNAMODB_TABLE_APP_INTEGRATIONS || 'jvtutorcorner-app-integrations';
-
 /**
  * Get AI config for dispatch (reuses chatroom config or falls back to Gemini).
+ * 透過整合 store 讀取（新表 + 舊表 fallback）。
  */
 async function getDispatchAIConfig() {
     try {
-        const res = await ddbDocClient.send(new ScanCommand({
-            TableName: APP_INTEGRATIONS_TABLE,
-            FilterExpression: '#type = :type AND #status = :active',
-            ExpressionAttributeNames: { '#type': 'type', '#status': 'status' },
-            ExpressionAttributeValues: { ':type': 'AI_CHATROOM', ':active': 'ACTIVE' }
-        }));
-        const chatroom = res.Items?.[0];
+        const chatroom = await getDefault('AI_CHATROOM');
         const targetId = chatroom?.config?.linkedServiceId;
         if (targetId) {
-            const svcRes = await ddbDocClient.send(new ScanCommand({
-                TableName: APP_INTEGRATIONS_TABLE,
-                FilterExpression: 'integrationId = :id',
-                ExpressionAttributeValues: { ':id': targetId }
-            }));
-            const svc = svcRes.Items?.[0];
+            const svc = await getIntegration(targetId);
             if (svc?.config?.apiKey) return { provider: svc.type as string, apiKey: svc.config.apiKey as string };
         }
 
-        // Fallback: any active Gemini
-        const fallRes = await ddbDocClient.send(new ScanCommand({
-            TableName: APP_INTEGRATIONS_TABLE,
-            FilterExpression: '#type = :type AND #status = :active',
-            ExpressionAttributeNames: { '#type': 'type', '#status': 'status' },
-            ExpressionAttributeValues: { ':type': 'GEMINI', ':active': 'ACTIVE' }
-        }));
-        const gem = fallRes.Items?.find((i: any) => i.config?.apiKey);
-        if (gem) return { provider: 'GEMINI', apiKey: gem.config.apiKey as string };
+        // Fallback: active Gemini default
+        const gem = await getDefault('GEMINI');
+        if (gem?.config?.apiKey) return { provider: 'GEMINI', apiKey: gem.config.apiKey as string };
     } catch (_) { /* silent fallback */ }
     return null;
 }

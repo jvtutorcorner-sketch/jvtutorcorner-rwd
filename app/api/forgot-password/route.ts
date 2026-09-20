@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { ddbDocClient } from '@/lib/dynamo';
-import { UpdateCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { getDefault } from '@/lib/integrations/store';
 import { findProfileByEmail } from '@/lib/profilesService';
 import { hashPassword } from '@/lib/auth/password';
 import nodemailer from 'nodemailer';
@@ -80,22 +81,15 @@ export async function POST(req: Request) {
 
         if (useAppsDynamo) {
             try {
-                const scanRes = await ddbDocClient.send(new ScanCommand({
-                    TableName: APPS_TABLE,
-                    FilterExpression: '#typ = :type AND #sts = :status',
-                    ExpressionAttributeNames: { '#typ': 'type', '#sts': 'status' },
-                    ExpressionAttributeValues: { ':type': 'SMTP', ':status': 'ACTIVE' }
-                }));
-                if (scanRes.Items && scanRes.Items.length > 0) {
-                    const smtpApp = scanRes.Items[0];
-                    if (smtpApp.config) {
-                        smtpHost = smtpApp.config.smtpHost || smtpHost;
-                        smtpPort = parseInt(smtpApp.config.smtpPort || String(smtpPort), 10);
-                        smtpUser = smtpApp.config.smtpUser || smtpUser;
-                        smtpPass = smtpApp.config.smtpPass || smtpPass;
-                        fromAddress = smtpApp.config.fromAddress || smtpUser;
-                        console.log('[forgot-password] Using SMTP config from database:', smtpApp.name);
-                    }
+                // 優先讀 SMTP，其次 GMAIL（現行主力）；皆透過整合 store（新表 + fallback）
+                const smtpApp = (await getDefault('SMTP')) || (await getDefault('GMAIL'));
+                if (smtpApp?.config) {
+                    smtpHost = smtpApp.config.smtpHost || smtpHost;
+                    smtpPort = parseInt(smtpApp.config.smtpPort || String(smtpPort), 10);
+                    smtpUser = smtpApp.config.smtpUser || smtpUser;
+                    smtpPass = smtpApp.config.smtpPass || smtpPass;
+                    fromAddress = smtpApp.config.fromAddress || smtpUser;
+                    console.log('[forgot-password] Using SMTP config from database:', smtpApp.name);
                 }
             } catch (err) {
                 console.error('[forgot-password] Error fetching SMTP config from database', err);

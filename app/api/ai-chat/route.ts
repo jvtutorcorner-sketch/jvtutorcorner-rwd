@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { ddbDocClient } from '@/lib/dynamo';
-import { ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { getDefault, getIntegration } from '@/lib/integrations/store';
 import { getSkillById } from '@/lib/ai-skills';
 import { getAgentById } from '@/lib/platform-agents';
 import { PLATFORM_TOOLS, getToolDefinitions } from '@/lib/platform-skills';
@@ -9,47 +8,26 @@ import { getAIModels } from '@/lib/aiModelsService';
 
 import { evaluatePromptComplexity } from '@/lib/smartRouterService';
 
-// Table for app integrations (source of truth for API keys)
-const APP_INTEGRATIONS_TABLE = process.env.DYNAMODB_TABLE_APP_INTEGRATIONS || 'jvtutorcorner-app-integrations';
-
 /**
  * Dynamically retrieves the AI configuration (API Key, Model, Provider).
+ * 透過整合 store 讀取（新表 + 舊表 fallback），尊重每個 type 的預設連線。
  */
 async function getAIConfig(messages: any[] = [], useSmartRouter: boolean = false): Promise<{ provider: string; apiKey: string; model: string; systemInstruction?: string; linkedSkillId?: string; linkedDatabaseId?: string; routingReason?: string } | null> {
     try {
-        const chatroomRes = await ddbDocClient.send(new ScanCommand({
-            TableName: APP_INTEGRATIONS_TABLE,
-            FilterExpression: '#type = :type AND #status = :status',
-            ExpressionAttributeNames: { '#type': 'type', '#status': 'status' },
-            ExpressionAttributeValues: { ':type': 'AI_CHATROOM', ':status': 'ACTIVE' }
-        }));
-
-        const chatroom = chatroomRes.Items?.[0];
+        const chatroom = await getDefault('AI_CHATROOM');
         const targetServiceId = chatroom?.config?.linkedServiceId;
 
         let integration: any = null;
         if (targetServiceId) {
-            const getRes = await ddbDocClient.send(new ScanCommand({
-                TableName: APP_INTEGRATIONS_TABLE,
-                FilterExpression: 'integrationId = :id',
-                ExpressionAttributeValues: { ':id': targetServiceId }
-            }));
-            integration = getRes.Items?.[0];
+            integration = await getIntegration(targetServiceId);
         }
 
         let routingReason: string | undefined = undefined;
         let smartRouterSystemInstruction: string | undefined = undefined;
 
         if (useSmartRouter && (!integration || integration.type !== 'SMART_ROUTER')) {
-            const srRes = await ddbDocClient.send(new ScanCommand({
-                TableName: APP_INTEGRATIONS_TABLE,
-                FilterExpression: '#type = :type AND #status = :status',
-                ExpressionAttributeNames: { '#type': 'type', '#status': 'status' },
-                ExpressionAttributeValues: { ':type': 'SMART_ROUTER', ':status': 'ACTIVE' }
-            }));
-            if (srRes.Items && srRes.Items.length > 0) {
-                integration = srRes.Items[0];
-            }
+            const sr = await getDefault('SMART_ROUTER');
+            if (sr) integration = sr;
         }
 
         if (integration && integration.type === 'SMART_ROUTER') {
@@ -63,27 +41,16 @@ async function getAIConfig(messages: any[] = [], useSmartRouter: boolean = false
             else if (level === 'COMPLEX' && config.complexModelId) selectedChildId = config.complexModelId;
 
             if (selectedChildId) {
-                const getChildRes = await ddbDocClient.send(new ScanCommand({
-                    TableName: APP_INTEGRATIONS_TABLE,
-                    FilterExpression: 'integrationId = :id AND #status = :status',
-                    ExpressionAttributeNames: { '#status': 'status' },
-                    ExpressionAttributeValues: { ':id': selectedChildId, ':status': 'ACTIVE' }
-                }));
-                const childIntegration = getChildRes.Items?.[0];
-                if (childIntegration) {
+                const childIntegration = await getIntegration(selectedChildId);
+                if (childIntegration && childIntegration.status === 'ACTIVE') {
                     integration = childIntegration;
                 }
             }
         }
 
         if (!integration) {
-            const fallbackRes = await ddbDocClient.send(new ScanCommand({
-                TableName: APP_INTEGRATIONS_TABLE,
-                FilterExpression: '#type = :type AND #status = :status',
-                ExpressionAttributeNames: { '#type': 'type', '#status': 'status' },
-                ExpressionAttributeValues: { ':type': 'GEMINI', ':status': 'ACTIVE' }
-            }));
-            integration = fallbackRes.Items?.find(item => item.config?.apiKey);
+            const fallback = await getDefault('GEMINI');
+            if (fallback?.config?.apiKey) integration = fallback;
         }
 
         if (integration) {

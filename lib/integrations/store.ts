@@ -243,11 +243,11 @@ export async function updateIntegration(integrationId: string, patch: UpdatePatc
     else if (patch.customScript != null) merged.customScript = patch.customScript;
     if (patch.scriptEnabled != null) merged.scriptEnabled = patch.scriptEnabled;
 
-    await ddbDocClient.send(new PutCommand({
-        TableName: NEW_TABLE,
-        Item: merged,
-        ConditionExpression: 'attribute_exists(integrationId)',
-    }));
+    // Upsert（不加 attribute_exists 條件）：existing 可能是從舊表 fallback 讀來的，
+    // 尚未存在於新表；此時等於在編輯當下把該筆搬進新表，避免條件式寫入失敗。
+    if (merged.schemaVersion == null) merged.schemaVersion = 2;
+    if (!merged.category) merged.category = getProvider(type)?.category;
+    await ddbDocClient.send(new PutCommand({ TableName: NEW_TABLE, Item: merged }));
     return merged;
 }
 

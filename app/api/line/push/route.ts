@@ -36,18 +36,10 @@ async function getLINEIntegration() {
     }
 
     try {
-        const { Items } = await docClient.send(new ScanCommand({
-            TableName: APPS_TABLE,
-            FilterExpression: '#type = :type AND #status = :status',
-            ExpressionAttributeNames: { '#type': 'type', '#status': 'status' },
-            ExpressionAttributeValues: { ':type': 'LINE', ':status': 'ACTIVE' }
-        }));
-        
-        if (Items && Items.length > 0) {
-            return Items[0];
-        }
+        const { getDefault } = await import('@/lib/integrations/store');
+        return await getDefault('LINE');
     } catch (err) {
-        console.error('[LINE Push] Error scanning apps table:', err);
+        console.error('[LINE Push] Error resolving LINE integration:', err);
     }
 
     return null;

@@ -1,7 +1,6 @@
 import { randomBytes } from 'crypto';
 import nodemailer from 'nodemailer';
-import { ScanCommand } from '@aws-sdk/lib-dynamodb';
-import { ddbDocClient } from '@/lib/dynamo';
+import { getDefault } from '@/lib/integrations/store';
 import { getBaseEmail } from './whitelist';
 
 /** Last-resort base URL for links that leave the system in an email. */
@@ -178,16 +177,10 @@ async function sendViaResend(to: string, subject: string, html: string): Promise
         let fromAddress: string | undefined;
 
         try {
-            const APPS_TABLE = process.env.DYNAMODB_TABLE_APP_INTEGRATIONS || 'jvtutorcorner-app-integrations';
-            const { Items } = await ddbDocClient.send(new ScanCommand({
-                TableName: APPS_TABLE,
-                FilterExpression: '#tp = :tp AND #st = :st',
-                ExpressionAttributeNames: { '#tp': 'type', '#st': 'status' },
-                ExpressionAttributeValues: { ':tp': 'RESEND', ':st': 'ACTIVE' },
-            }));
-            if (Items && Items.length > 0) {
-                apiKey = Items[0].config?.smtpPass;
-                fromAddress = Items[0].config?.fromAddress;
+            const rec = await getDefault('RESEND');
+            if (rec) {
+                apiKey = rec.config?.smtpPass;
+                fromAddress = rec.config?.fromAddress;
                 configSource = 'DynamoDB';
             }
         } catch (dbErr) {
@@ -267,15 +260,9 @@ async function sendViaGmailSmtp(to: string, subject: string, html: string): Prom
         let fromName = process.env.SMTP_FROM || 'JV Tutor Corner';
 
         try {
-            const APPS_TABLE = process.env.DYNAMODB_TABLE_APP_INTEGRATIONS || 'jvtutorcorner-app-integrations';
-            const { Items } = await ddbDocClient.send(new ScanCommand({
-                TableName: APPS_TABLE,
-                FilterExpression: '#tp = :tp AND #st = :st',
-                ExpressionAttributeNames: { '#tp': 'type', '#st': 'status' },
-                ExpressionAttributeValues: { ':tp': 'GMAIL', ':st': 'ACTIVE' },
-            }));
-            if (Items && Items.length > 0) {
-                const config = Items[0].config;
+            const rec = await getDefault('GMAIL');
+            if (rec) {
+                const config = rec.config;
                 smtpUser = config?.smtpUser;
                 smtpPass = config?.smtpPass;
                 if (config?.smtpHost) smtpHost = config.smtpHost;

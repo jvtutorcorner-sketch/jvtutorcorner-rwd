@@ -173,17 +173,11 @@ async function getTransporter() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function getLINEIntegration() {
-    const APPS_TABLE = process.env.DYNAMODB_TABLE_APP_INTEGRATIONS || 'jvtutorcorner-app-integrations';
     try {
-        const { Items } = await ddbDocClient.send(new ScanCommand({
-            TableName: APPS_TABLE,
-            FilterExpression: '#type = :type AND #status = :status',
-            ExpressionAttributeNames: { '#type': 'type', '#status': 'status' },
-            ExpressionAttributeValues: { ':type': 'LINE', ':status': 'ACTIVE' }
-        }));
-        if (Items && Items.length > 0) return Items[0];
+        const { getDefault } = await import('@/lib/integrations/store');
+        return await getDefault('LINE');
     } catch (err) {
-        console.error('[Workflow Engine] Error scanning apps table for LINE:', err);
+        console.error('[Workflow Engine] Error resolving LINE integration:', err);
     }
     return null;
 }
@@ -265,33 +259,21 @@ async function replyToLineWithToken(replyToken: string, text: string, channelAcc
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function findActiveAIIntegrationForLINE(linkedServiceId?: string) {
-    const APPS_TABLE = process.env.DYNAMODB_TABLE_APP_INTEGRATIONS || 'jvtutorcorner-app-integrations';
-    // 1. If specifically linked service is provided, try that first
+    const { getIntegration, getFirstActiveOf } = await import('@/lib/integrations/store');
+    // 1. If a specifically linked service is provided, try that first
     if (linkedServiceId) {
         try {
-            const { Items } = await ddbDocClient.send(new ScanCommand({
-                TableName: APPS_TABLE,
-                FilterExpression: 'integrationId = :id',
-                ExpressionAttributeValues: { ':id': linkedServiceId }
-            }));
-            const linked = Items?.[0];
+            const linked = await getIntegration(linkedServiceId);
             if (linked && ['OPENAI', 'ANTHROPIC', 'GEMINI'].includes(linked.type) && linked.status === 'ACTIVE' && linked.config?.apiKey) {
                 return linked;
             }
         } catch (e) { console.error('[Workflow Engine] findActiveAIIntegrationForLINE linked lookup error:', e); }
     }
     // 2. Fallback: first active AI service (OPENAI > ANTHROPIC > GEMINI)
-    for (const type of ['OPENAI', 'ANTHROPIC', 'GEMINI']) {
-        try {
-            const { Items } = await ddbDocClient.send(new ScanCommand({
-                TableName: APPS_TABLE,
-                FilterExpression: '#typ = :type AND #sts = :status',
-                ExpressionAttributeNames: { '#typ': 'type', '#sts': 'status' },
-                ExpressionAttributeValues: { ':type': type, ':status': 'ACTIVE' }
-            }));
-            if (Items && Items.length > 0 && Items[0].config?.apiKey) return Items[0];
-        } catch (e) { console.error(`[Workflow Engine] findActiveAIIntegrationForLINE ${type} scan error:`, e); }
-    }
+    try {
+        const ai = await getFirstActiveOf(['OPENAI', 'ANTHROPIC', 'GEMINI']);
+        if (ai?.config?.apiKey) return ai;
+    } catch (e) { console.error('[Workflow Engine] findActiveAIIntegrationForLINE fallback error:', e); }
     return null;
 }
 

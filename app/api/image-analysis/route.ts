@@ -29,16 +29,8 @@ async function getAIIntegration(): Promise<any> {
         console.warn('[Image Analysis] DynamoDB not configured for app integrations.');
         return null;
     }
-    for (const type of ['OPENAI', 'ANTHROPIC', 'GEMINI']) {
-        const { Items } = await docClient.send(new ScanCommand({
-            TableName: APPS_TABLE,
-            FilterExpression: '#typ = :type AND #sts = :status',
-            ExpressionAttributeNames: { '#typ': 'type', '#sts': 'status' },
-            ExpressionAttributeValues: { ':type': type, ':status': 'ACTIVE' }
-        }));
-        if (Items && Items.length > 0) return Items[0];
-    }
-    return null;
+    const { getFirstActiveOf } = await import('@/lib/integrations/store');
+    return getFirstActiveOf(['OPENAI', 'ANTHROPIC', 'GEMINI']);
 }
 
 // Multi-provider image analysis

@@ -2,11 +2,10 @@ import { NextResponse } from 'next/server';
 import { GoogleGenerativeAI, FunctionDeclaration, SchemaType } from '@google/generative-ai';
 import { ddbDocClient } from '@/lib/dynamo';
 import { PutCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { getDefault } from '@/lib/integrations/store';
 import { v4 as uuidv4 } from 'uuid';
 import nodemailer from 'nodemailer';
 
-// Table for app integrations
-const APP_INTEGRATIONS_TABLE = process.env.DYNAMODB_TABLE_APP_INTEGRATIONS || 'jvtutorcorner-app-integrations';
 const COURSES_TABLE = process.env.DYNAMODB_TABLE_COURSES || 'jvtutorcorner-courses';
 const TEACHERS_TABLE = process.env.DYNAMODB_TABLE_TEACHERS || 'jvtutorcorner-teachers';
 
@@ -44,44 +43,23 @@ async function getDynamicKnowledgeBase(): Promise<{ courses: any[]; teachers: an
 async function getGeminiConfig(): Promise<{ apiKey: string; model: string; systemInstruction?: string } | null> {
     // 1. Check Database for an active GEMINI integration first (Source of truth)
     try {
-        console.log(`[AI Chat API] Attempting to fetch config from ${APP_INTEGRATIONS_TABLE}...`);
-        const result = await ddbDocClient.send(new ScanCommand({
-            TableName: APP_INTEGRATIONS_TABLE,
-            FilterExpression: '#type = :type AND #status = :status',
-            ExpressionAttributeNames: {
-                '#type': 'type',
-                '#status': 'status'
-            },
-            ExpressionAttributeValues: {
-                ':type': 'GEMINI',
-                ':status': 'ACTIVE'
+        const integration = await getDefault('GEMINI');
+        if (integration?.config?.apiKey) {
+            console.log(`[AI Chat API] Found config from integration: ${integration.name}`);
+
+            // Use the configured model from the 'models' array (stored in /apps page)
+            let model = "gemini-1.5-flash"; // Default fallback if no model selected
+            if (Array.isArray(integration.config.models) && integration.config.models.length > 0) {
+                model = integration.config.models[0];
+            } else if (integration.config.model) {
+                model = integration.config.model;
             }
-        }));
 
-        const items = result.Items || [];
-        if (items.length > 0) {
-            // Find the item that has a config with an apiKey and possibly a selected model
-            const integration = items.find(item => item.config?.apiKey);
-            if (integration) {
-                console.log(`[AI Chat API] Found config from integration: ${integration.name}`);
-
-                // Use the configured model from the 'models' array (stored in /apps page)
-                let model = "gemini-1.5-flash"; // Default fallback if no model selected
-                if (Array.isArray(integration.config.models) && integration.config.models.length > 0) {
-                    model = integration.config.models[0];
-                    console.log(`[AI Chat API] Using model from DB: ${model}`);
-                } else if (integration.config.model) {
-                    // Backwards compatibility or alternative storage
-                    model = integration.config.model;
-                    console.log(`[AI Chat API] Using model (alt field) from DB: ${model}`);
-                }
-
-                return {
-                    apiKey: integration.config.apiKey,
-                    model: model,
-                    systemInstruction: integration.config.systemInstruction
-                };
-            }
+            return {
+                apiKey: integration.config.apiKey,
+                model: model,
+                systemInstruction: integration.config.systemInstruction
+            };
         }
     } catch (dbError: any) {
         console.error('[AI Chat API] Database lookup for config failed:', dbError.message);
@@ -251,22 +229,13 @@ ${customInstruction}
                         let smtpPass = process.env.SMTP_PASS;
                         let fromAddress = process.env.SMTP_USER;
 
-                        const scanRes = await ddbDocClient.send(new ScanCommand({
-                            TableName: APP_INTEGRATIONS_TABLE,
-                            FilterExpression: '#typ = :type AND #sts = :status',
-                            ExpressionAttributeNames: { '#typ': 'type', '#sts': 'status' },
-                            ExpressionAttributeValues: { ':type': 'SMTP', ':status': 'ACTIVE' }
-                        }));
-
-                        if (scanRes.Items && scanRes.Items.length > 0) {
-                            const smtpApp = scanRes.Items[0];
-                            if (smtpApp.config) {
-                                smtpHost = smtpApp.config.smtpHost || smtpHost;
-                                smtpPort = parseInt(smtpApp.config.smtpPort || String(smtpPort), 10);
-                                smtpUser = smtpApp.config.smtpUser || smtpUser;
-                                smtpPass = smtpApp.config.smtpPass || smtpPass;
-                                fromAddress = smtpApp.config.fromAddress || smtpUser;
-                            }
+                        const smtpApp = (await getDefault('SMTP')) || (await getDefault('GMAIL'));
+                        if (smtpApp?.config) {
+                            smtpHost = smtpApp.config.smtpHost || smtpHost;
+                            smtpPort = parseInt(smtpApp.config.smtpPort || String(smtpPort), 10);
+                            smtpUser = smtpApp.config.smtpUser || smtpUser;
+                            smtpPass = smtpApp.config.smtpPass || smtpPass;
+                            fromAddress = smtpApp.config.fromAddress || smtpUser;
                         }
 
                         if (smtpUser && smtpPass) {

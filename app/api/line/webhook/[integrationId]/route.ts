@@ -88,18 +88,14 @@ async function logToWebhook(log: WebhookLog) {
     }
 }
 
-// Helpers to get App Integration config
+// Helpers to get App Integration config — 透過整合 store（新表 PK 查詢，含舊表 fallback）
 async function getAppIntegration(integrationId: string) {
     if (!useDynamoForApps) {
         console.warn('[LINE Webhook] DynamoDB not configured for app integrations.');
         return null;
     }
-    const { Items } = await docClient.send(new ScanCommand({
-        TableName: APPS_TABLE,
-        FilterExpression: 'integrationId = :id',
-        ExpressionAttributeValues: { ':id': integrationId }
-    }));
-    return Items && Items.length > 0 ? Items[0] : null;
+    const { getIntegration } = await import('@/lib/integrations/store');
+    return getIntegration(integrationId);
 }
 
 // Helper to find active AI service (priority: OPENAI > ANTHROPIC > GEMINI)
@@ -108,31 +104,19 @@ async function findActiveAIService() {
         console.warn('[LINE Webhook] DynamoDB not configured for app integrations.');
         return null;
     }
-    for (const type of ['OPENAI', 'ANTHROPIC', 'GEMINI']) {
-        const { Items } = await docClient.send(new ScanCommand({
-            TableName: APPS_TABLE,
-            FilterExpression: '#typ = :type AND #sts = :status',
-            ExpressionAttributeNames: { '#typ': 'type', '#sts': 'status' },
-            ExpressionAttributeValues: { ':type': type, ':status': 'ACTIVE' }
-        }));
-        if (Items && Items.length > 0) return Items[0];
-    }
-    return null;
+    const { getFirstActiveOf } = await import('@/lib/integrations/store');
+    return getFirstActiveOf(['OPENAI', 'ANTHROPIC', 'GEMINI']);
 }
 
 // Helpers to get AI Integration by linkedServiceId or default
 async function getAIIntegrationByLinkedId(linkedServiceId?: string) {
     // If linkedServiceId provided, try to fetch it first
     if (linkedServiceId) {
-        let linkedIntegration = null;
-        
+        let linkedIntegration: any = null;
+
         if (useDynamoForApps) {
-            const { Items } = await docClient.send(new ScanCommand({
-                TableName: APPS_TABLE,
-                FilterExpression: 'integrationId = :id',
-                ExpressionAttributeValues: { ':id': linkedServiceId }
-            }));
-            linkedIntegration = Items && Items.length > 0 ? Items[0] : null;
+            const { getIntegration } = await import('@/lib/integrations/store');
+            linkedIntegration = await getIntegration(linkedServiceId);
         }
 
         // Validate that linkedIntegration is a valid AI service and is active

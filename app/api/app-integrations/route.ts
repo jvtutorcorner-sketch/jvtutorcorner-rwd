@@ -1,227 +1,98 @@
 // app/api/app-integrations/route.ts
 //
-// 通用應用程式串接設定 API。
-// 所有整合類型（LINE、Slack、Teams 等）共用同一張資料表 `jvtutorcorner-app-integrations`，
-// 以 `type` 欄位區分，避免每增加一種應用就建立新資料表。
+// ⚠️ 相容 shim（過渡期）。正式端點已改為 /api/integrations（見 app/api/integrations/*）。
+// 此檔在舊 UI（app/apps 舊版）遷移完成前繼續存在，全部委派給 lib/integrations/store，
+// 因此讀寫落在新表 jvtutorcorner-integrations。Phase 6 會移除本檔。
 //
-// DynamoDB 資料表: jvtutorcorner-app-integrations
-// PK: integrationId (UUID)
-// 建議 GSI (如需要): userId-type-index
-//
-// 與其他資料表完全獨立：
-//   課程訂單 → jvtutorcorner-orders
-//   課程報名 → jvtutorcorner-enrollments
-//   方案升級 → jvtutorcorner-plan-upgrades
-//   應用程式設定 → jvtutorcorner-app-integrations (本檔)
-//   PK: userId (HASH), type (RANGE)
-// ---------------------------------------------------------------------------
+// 相容重點：
+//   - GET 維持 { ok, total, data } 形狀（admin/system 取遮罩完整設定，其他角色取摘要）。
+//   - POST/PUT/DELETE 以 integrationId 對應（PUT/DELETE 需帶 integrationId）。
 
 import { NextResponse } from 'next/server';
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, PutCommand, ScanCommand, GetCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
-import { randomUUID } from 'crypto';
 import { withAuth, withAdmin } from '@/lib/auth/apiGuard';
-import { maskConfig, mergeSecrets } from '@/lib/integrations/mask';
+import {
+    listIntegrations, createIntegration, updateIntegration, deleteIntegration,
+    getIntegration, toPublicView, toSummaryView,
+} from '@/lib/integrations/store';
+import { getProvider } from '@/lib/integrations/registry';
 
 export const dynamic = 'force-dynamic';
 
-const ddbRegion = process.env.CI_AWS_REGION || process.env.AWS_REGION;
-const ddbExplicitAccessKey = process.env.CI_AWS_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID;
-const ddbExplicitSecretKey = process.env.CI_AWS_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY;
-const ddbExplicitSessionToken = process.env.CI_AWS_SESSION_TOKEN || process.env.AWS_SESSION_TOKEN;
-const ddbExplicitCreds = ddbExplicitAccessKey && ddbExplicitSecretKey ? {
-    accessKeyId: ddbExplicitAccessKey as string,
-    secretAccessKey: ddbExplicitSecretKey as string,
-    ...(ddbExplicitSessionToken ? { sessionToken: ddbExplicitSessionToken as string } : {})
-} : undefined;
+const FULL_VIEW_ROLES = new Set(['admin', 'system']);
 
-const client = new DynamoDBClient({ region: ddbRegion, credentials: ddbExplicitCreds });
-const docClient = DynamoDBDocumentClient.from(client);
-
-const TABLE = process.env.DYNAMODB_TABLE_APP_INTEGRATIONS || 'jvtutorcorner-app-integrations';
-
-const useDynamo = typeof TABLE === 'string' && TABLE.length > 0;
-
-if (!useDynamo) {
-    console.warn(`[app-integrations API] DYNAMODB_TABLE_APP_INTEGRATIONS is not set!`);
-} else {
-    console.log(`[app-integrations API] Using DynamoDB Table: ${TABLE}`);
-}
-
-// ---------------------------------------------------------------------------
-// 型別定義
-// ---------------------------------------------------------------------------
-
-/** 所有整合類型共用的基本欄位 */
-export type AppIntegrationRecord = {
-    integrationId: string;     // PK (UUID)
-    userId: string;            // 所屬使用者
-    type: string;              // 整合類型，如 'LINE'、'SLACK'、'TEAMS' 等
-    name: string;              // 顯示名稱
-    // 各類型的專屬設定，以 config 物件存放，擴充時不需改動資料表結構
-    config: Record<string, string>;
-    status: 'ACTIVE' | 'INACTIVE';
-    createdAt: string;
-    updatedAt: string;
-};
-
-/** LINE 整合的 config 欄位 */
-// config.channelAccessToken - 用於發信
-// config.channelSecret      - 用於驗證
-// TODO (production): 敏感欄位（channelAccessToken, channelSecret）應在儲存前
-// 透過 AWS Secrets Manager 或 KMS 加密，避免明文存放於 DynamoDB。
-
-// ---------------------------------------------------------------------------
-// POST - 新增整合（僅 admin）
-// ---------------------------------------------------------------------------
-export const POST = withAdmin(async (request) => {
-    try {
-        const body = await request.json();
-        const { userId, type, name, config } = body || {};
-
-        if (!userId || !type) {
-            return NextResponse.json(
-                { ok: false, error: 'userId and type are required.' },
-                { status: 400 }
-            );
-        }
-
-        if (!config || typeof config !== 'object') {
-            return NextResponse.json(
-                { ok: false, error: 'config object is required.' },
-                { status: 400 }
-            );
-        }
-
-        const now = new Date().toISOString();
-        const item: AppIntegrationRecord = {
-            integrationId: randomUUID(),
-            userId: String(userId),
-            type: String(type).toUpperCase(),
-            name: String(name || `${type} 整合`).trim(),
-            config,
-            status: 'ACTIVE',
-            createdAt: now,
-            updatedAt: now,
-        };
-
-        await docClient.send(new PutCommand({ TableName: TABLE, Item: item }));
-
-        return NextResponse.json({ ok: true, integration: { ...item, config: maskConfig(item.config) } }, { status: 201 });
-    } catch (error: any) {
-        console.error('[app-integrations API] POST error:', error?.message || error);
-        return NextResponse.json({ ok: false, error: 'Failed to create integration.' }, { status: 500 });
-    }
-});
-
-// ---------------------------------------------------------------------------
-// GET - 查詢整合 (支援 ?userId=... 與 ?type=... 篩選)。需登入；secret 欄位遮罩後回傳。
-// ---------------------------------------------------------------------------
 export const GET = withAuth(async (request) => {
     try {
         const { searchParams } = new URL(request.url);
-        const userId = searchParams.get('userId');
-        const type = searchParams.get('type');
-
-        // Removed local JSON fallback, strictly using DynamoDB
-
-        const filters: string[] = [];
-        const ExpressionAttributeValues: Record<string, any> = {};
-
-        if (userId) {
-            filters.push('userId = :userId');
-            ExpressionAttributeValues[':userId'] = userId;
-        }
-        if (type) {
-            filters.push('#type = :type');
-            ExpressionAttributeValues[':type'] = type.toUpperCase();
-        }
-
-        const scanInput: any = { TableName: TABLE };
-        if (filters.length > 0) {
-            scanInput.FilterExpression = filters.join(' AND ');
-            scanInput.ExpressionAttributeValues = ExpressionAttributeValues;
-            if (type) scanInput.ExpressionAttributeNames = { '#type': 'type' };
-        }
-
-        const res = await docClient.send(new ScanCommand(scanInput));
-        const masked = (res.Items || []).map((item: any) => ({ ...item, config: maskConfig(item.config) }));
-        return NextResponse.json({ ok: true, total: res.Count || 0, data: masked });
+        const type = searchParams.get('type') || undefined;
+        const items = await listIntegrations({ type });
+        const isFull = FULL_VIEW_ROLES.has(request.session.role);
+        const data = isFull ? items.map(toPublicView) : items.map(toSummaryView);
+        return NextResponse.json({ ok: true, total: data.length, data });
     } catch (error: any) {
-        console.error('[app-integrations API] GET error:', error?.message || error);
+        console.error('[app-integrations shim] GET error:', error?.message || error);
         return NextResponse.json({ ok: false, error: 'Failed to fetch integrations.' }, { status: 500 });
     }
 });
 
-// ---------------------------------------------------------------------------
-// PUT - 更新整合（僅 admin）。收到的遮罩 / 空 secret 值視為未變更，保留 DB 原值。
-// ---------------------------------------------------------------------------
-export const PUT = withAdmin(async (request) => {
+export const POST = withAdmin(async (request) => {
     try {
         const body = await request.json();
-        const { integrationId, userId, type, config, name, status } = body || {};
-
-        if (!userId || !type) {
-            return NextResponse.json(
-                { ok: false, error: 'userId and type are required for primary key.' },
-                { status: 400 }
-            );
+        const { type, name, config } = body || {};
+        if (!type) return NextResponse.json({ ok: false, error: 'type is required.' }, { status: 400 });
+        if (!config || typeof config !== 'object') {
+            return NextResponse.json({ ok: false, error: 'config object is required.' }, { status: 400 });
         }
-
-        const now = new Date().toISOString();
-
-        const existing = await docClient.send(new GetCommand({
-            TableName: TABLE,
-            Key: { userId: String(userId), type: String(type).toUpperCase() }
-        }));
-
-        if (!existing.Item) {
-            return NextResponse.json({ ok: false, error: '整合項目不存在 (Not found by PK: userId+type)' }, { status: 404 });
+        if (!getProvider(type)) {
+            return NextResponse.json({ ok: false, error: `未知的整合類型: ${type}` }, { status: 400 });
         }
-
-        // 合併密鑰：遮罩 / 空值 → 保留既有；只有明文新值才覆寫
-        const mergedConfig = config
-            ? mergeSecrets(config, existing.Item.config as Record<string, any>)
-            : existing.Item.config;
-
-        const updatedItem = {
-            ...existing.Item,
-            integrationId: integrationId || existing.Item.integrationId,
-            name: name || existing.Item.name,
-            config: mergedConfig,
-            status: status || existing.Item.status,
-            updatedAt: now,
-        };
-
-        await docClient.send(new PutCommand({ TableName: TABLE, Item: updatedItem }));
-        return NextResponse.json({ ok: true, integration: { ...updatedItem, config: maskConfig(updatedItem.config as Record<string, any>) } });
+        const actor = request.session.email || request.session.userId;
+        const record = await createIntegration({ type, name, config }, actor);
+        return NextResponse.json({ ok: true, integration: toPublicView(record) }, { status: 201 });
     } catch (error: any) {
-        console.error('[app-integrations API] PUT error:', error?.message || error);
-        return NextResponse.json({ ok: false, error: `Failed to update integration: ${error.message}` }, { status: 500 });
+        console.error('[app-integrations shim] POST error:', error?.message || error);
+        return NextResponse.json({ ok: false, error: 'Failed to create integration.' }, { status: 500 });
     }
 });
 
-// ---------------------------------------------------------------------------
-// DELETE - 刪除整合（僅 admin）
-// ---------------------------------------------------------------------------
+export const PUT = withAdmin(async (request) => {
+    try {
+        const body = await request.json();
+        const { integrationId, config, name, status } = body || {};
+        if (!integrationId) {
+            return NextResponse.json({ ok: false, error: 'integrationId is required.' }, { status: 400 });
+        }
+        // customScript 舊 UI 塞在 config 內，交給 store 一併處理
+        const updated = await updateIntegration(integrationId, { config, name, status }, request.session.email || request.session.userId);
+        if (!updated) return NextResponse.json({ ok: false, error: '整合項目不存在' }, { status: 404 });
+        return NextResponse.json({ ok: true, integration: toPublicView(updated) });
+    } catch (error: any) {
+        console.error('[app-integrations shim] PUT error:', error?.message || error);
+        return NextResponse.json({ ok: false, error: `Failed to update integration: ${error?.message}` }, { status: 500 });
+    }
+});
+
 export const DELETE = withAdmin(async (request) => {
     try {
         const { searchParams } = new URL(request.url);
-        const userId = searchParams.get('userId');
-        const type = searchParams.get('type');
-
-        if (!userId || !type) {
-            return NextResponse.json({ ok: false, error: 'userId and type (PK) are required for deletion.' }, { status: 400 });
+        let integrationId = searchParams.get('integrationId');
+        if (!integrationId) {
+            // 舊呼叫可能以 userId+type 刪除：先查出對應 integrationId
+            const userId = searchParams.get('userId');
+            const type = searchParams.get('type');
+            if (userId && type) {
+                const items = await listIntegrations({ type });
+                const match = items.find((i) => i.legacy?.userId === userId || i.createdBy === userId);
+                integrationId = match?.integrationId || null;
+            }
         }
-
-        await docClient.send(new DeleteCommand({
-            TableName: TABLE,
-            Key: { userId: String(userId), type: String(type).toUpperCase() }
-        }));
-
+        if (!integrationId) {
+            return NextResponse.json({ ok: false, error: 'integrationId is required for deletion.' }, { status: 400 });
+        }
+        const result = await deleteIntegration(integrationId);
+        if (!result.deleted) return NextResponse.json({ ok: false, error: '整合項目不存在' }, { status: 404 });
         return NextResponse.json({ ok: true, message: 'Integration deleted successfully' });
     } catch (error: any) {
-        console.error('[app-integrations API] DELETE error:', error?.message || error);
-        return NextResponse.json({ ok: false, error: `Failed to delete integration: ${error.message}` }, { status: 500 });
+        console.error('[app-integrations shim] DELETE error:', error?.message || error);
+        return NextResponse.json({ ok: false, error: `Failed to delete integration: ${error?.message}` }, { status: 500 });
     }
 });

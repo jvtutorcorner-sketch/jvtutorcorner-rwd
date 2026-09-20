@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
-import { ScanCommand } from '@aws-sdk/lib-dynamodb';
-import { ddbDocClient } from '@/lib/dynamo';
+import { getDefault } from '@/lib/integrations/store';
 
 export const runtime = 'nodejs';
 
@@ -42,21 +41,15 @@ export async function POST(req: NextRequest) {
         let apiKey: string | undefined;
         let fromAddress: string | undefined;
 
-        // 1. Try active RESEND app-integration from DynamoDB
+        // 1. Try active RESEND integration from the store (new table + fallback)
         try {
-            const APPS_TABLE = process.env.DYNAMODB_TABLE_APP_INTEGRATIONS || 'jvtutorcorner-app-integrations';
-            const { Items } = await ddbDocClient.send(new ScanCommand({
-                TableName: APPS_TABLE,
-                FilterExpression: '#tp = :tp AND #st = :st',
-                ExpressionAttributeNames: { '#tp': 'type', '#st': 'status' },
-                ExpressionAttributeValues: { ':tp': 'RESEND', ':st': 'ACTIVE' },
-            }));
-            if (Items && Items.length > 0) {
-                apiKey = Items[0].config?.smtpPass;       // Resend stores API Key as smtpPass
-                fromAddress = Items[0].config?.fromAddress;
+            const rec = await getDefault('RESEND');
+            if (rec) {
+                apiKey = rec.config?.smtpPass;       // Resend stores API Key as smtpPass
+                fromAddress = rec.config?.fromAddress;
             }
         } catch (dbErr) {
-            console.warn('[resend-send] DynamoDB lookup failed, falling back to env vars:', dbErr);
+            console.warn('[resend-send] integration lookup failed, falling back to env vars:', dbErr);
         }
 
         // 2. Fallback to env vars

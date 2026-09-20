@@ -49,21 +49,12 @@ export async function POST(req: NextRequest) {
         let smtpPort = parseInt(process.env.SMTP_PORT || '587', 10);
         let fromName = process.env.SMTP_FROM || 'JV Tutor Workflow';
 
-        // 1. Try active GMAIL integration from DynamoDB
+        // 1. Try active GMAIL integration from the integrations store (new table + fallback)
         try {
-            const { ScanCommand } = await import('@aws-sdk/lib-dynamodb');
-            const { ddbDocClient } = await import('@/lib/dynamo');
-            const APPS_TABLE = process.env.DYNAMODB_TABLE_APP_INTEGRATIONS || 'jvtutorcorner-app-integrations';
-            
-            const { Items } = await ddbDocClient.send(new ScanCommand({
-                TableName: APPS_TABLE,
-                FilterExpression: '#tp = :tp AND #st = :st',
-                ExpressionAttributeNames: { '#tp': 'type', '#st': 'status' },
-                ExpressionAttributeValues: { ':tp': 'GMAIL', ':st': 'ACTIVE' },
-            }));
-
-            if (Items && Items.length > 0) {
-                const config = Items[0].config;
+            const { getDefault } = await import('@/lib/integrations/store');
+            const rec = await getDefault('GMAIL');
+            if (rec) {
+                const config = rec.config;
                 if (config?.smtpUser) smtpUser = config.smtpUser;
                 if (config?.smtpPass) smtpPass = config.smtpPass;
                 if (config?.smtpHost) smtpHost = config.smtpHost;
@@ -71,7 +62,7 @@ export async function POST(req: NextRequest) {
                 if (config?.fromAddress) fromName = config.fromAddress;
             }
         } catch (dbErr) {
-            console.warn('[gmail-send] DynamoDB lookup failed, falling back to env vars:', dbErr);
+            console.warn('[gmail-send] integration lookup failed, falling back to env vars:', dbErr);
         }
 
         if (!smtpUser || !smtpPass) {

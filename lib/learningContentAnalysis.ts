@@ -1,5 +1,4 @@
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { getFirstActiveOf } from '@/lib/integrations/store';
 
 export const LEARNING_CONTENT_ANALYSIS_PROMPT = `
 你是線上教學平台的教材分析助理。請分析使用者上傳的教材、講義、題目、圖表、投影片或手寫筆記圖片，只描述圖片中能確認的內容，不要猜測看不清楚的文字。
@@ -30,36 +29,15 @@ type AIIntegration = {
   config?: { apiKey?: string; model?: string };
 };
 
-const ddbRegion = process.env.CI_AWS_REGION || process.env.AWS_REGION;
-const accessKey = process.env.CI_AWS_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID;
-const secretKey = process.env.CI_AWS_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY;
-const sessionToken = process.env.CI_AWS_SESSION_TOKEN || process.env.AWS_SESSION_TOKEN;
-const client = new DynamoDBClient({
-  region: ddbRegion,
-  credentials: accessKey && secretKey
-    ? { accessKeyId: accessKey, secretAccessKey: secretKey, ...(sessionToken ? { sessionToken } : {}) }
-    : undefined,
-});
-const docClient = DynamoDBDocumentClient.from(client, {
-  marshallOptions: { removeUndefinedValues: true },
-});
-
-const APPS_TABLE = process.env.DYNAMODB_TABLE_APP_INTEGRATIONS || 'jvtutorcorner-app-integrations';
-
 async function getActiveAIIntegration(): Promise<AIIntegration | null> {
   const configuredForAws = process.env.NODE_ENV === 'production' ||
     !!(process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID);
   if (!configuredForAws) return null;
-
-  for (const type of ['OPENAI', 'ANTHROPIC', 'GEMINI']) {
-    const result = await docClient.send(new ScanCommand({
-      TableName: APPS_TABLE,
-      FilterExpression: '#typ = :type AND #sts = :status',
-      ExpressionAttributeNames: { '#typ': 'type', '#sts': 'status' },
-      ExpressionAttributeValues: { ':type': type, ':status': 'ACTIVE' },
-    }));
-    const integration = result.Items?.[0] as AIIntegration | undefined;
-    if (integration?.config?.apiKey) return integration;
+  try {
+    const integration = await getFirstActiveOf(['OPENAI', 'ANTHROPIC', 'GEMINI']);
+    if (integration?.config?.apiKey) return integration as AIIntegration;
+  } catch (err) {
+    console.warn('[learningContentAnalysis] integration lookup failed', err);
   }
   return null;
 }
