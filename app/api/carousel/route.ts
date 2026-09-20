@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, PutCommand, ScanCommand, DeleteCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 // 如果您有實作 S3 刪除邏輯，請保留這行；如果沒有，可以先註解掉
@@ -85,6 +86,9 @@ export async function POST(request: Request) {
       Item: newItem,
     }));
 
+    // 首頁是 ISR（revalidate 300），不主動失效的話後台改動最多要 5 分鐘才看得到。
+    revalidatePath('/');
+
     return NextResponse.json(newItem);
 
   } catch (error: any) {
@@ -126,6 +130,10 @@ export async function PATCH(request: Request) {
     });
 
     const response = await docClient.send(command);
+
+    // 調整順序後同樣要讓首頁重新產生，否則排序改動要等 ISR 過期。
+    revalidatePath('/');
+
     return NextResponse.json(response.Attributes);
   } catch (error: any) {
     console.error('[Carousel API] PATCH Error:', error);
@@ -159,6 +167,9 @@ export async function DELETE(request: Request) {
     } catch (s3Error) {
         console.warn('[Carousel API] S3 delete failed (ignoring):', s3Error);
     }
+
+    // 刪圖後若不失效，首頁會繼續送出已刪除的圖片（本次就是這樣踩到的）。
+    revalidatePath('/');
 
     return NextResponse.json({ success: true });
   } catch (error: any) {

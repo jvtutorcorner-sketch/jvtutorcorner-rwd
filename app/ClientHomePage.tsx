@@ -44,7 +44,31 @@ export default function ClientHomePage({
   const [showUserQuestionnaire, setShowUserQuestionnaire] = useState(false);
   const [recommendations, setRecommendations] = useState<CourseLike[]>([]);
   const [recsLoading, setRecsLoading] = useState(false);
+  const [carouselImages, setCarouselImages] = useState<string[]>(initialCarouselImages);
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 首頁是 ISR（且 Amplify 上的背景重生並不可靠），SSR 拿到的輪播圖可能是舊快照。
+  // 掛載後再跟 /api/carousel（force-dynamic）對一次，後台改動才會即時反映。
+  // SSR 那份仍當初始值，所以沒有變動時不會有閃爍。
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/carousel')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((items) => {
+        if (cancelled || !Array.isArray(items)) return;
+        const urls = [...items]
+          .sort((a, b) => (a?.order || 0) - (b?.order || 0))
+          .map((it) => it?.url)
+          .filter((url): url is string => typeof url === 'string' && url.length > 0);
+        setCarouselImages(urls);
+      })
+      .catch(() => {
+        /* 抓不到就沿用 SSR 的清單 */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // ── Load user, fetch recommendations, setup idle detection ──────────────────
   useEffect(() => {
@@ -201,9 +225,9 @@ export default function ClientHomePage({
                 <li>{t('hero_highlight_3')}</li>
               </ul>
             </div>
-            {initialCarouselImages.length > 0 ? (
+            {carouselImages.length > 0 ? (
               <div className="hero-premium-carousel">
-                <Carousel slides={initialCarouselImages} isImage />
+                <Carousel slides={carouselImages} isImage />
               </div>
             ) : (
               <div className="hero-premium-visual">
