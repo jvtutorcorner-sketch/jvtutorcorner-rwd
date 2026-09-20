@@ -20,6 +20,10 @@ import { NextResponse } from 'next/server';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, PutCommand, ScanCommand, GetCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
 import { randomUUID } from 'crypto';
+import { withAuth, withAdmin } from '@/lib/auth/apiGuard';
+import { maskConfig, mergeSecrets } from '@/lib/integrations/mask';
+
+export const dynamic = 'force-dynamic';
 
 const ddbRegion = process.env.CI_AWS_REGION || process.env.AWS_REGION;
 const ddbExplicitAccessKey = process.env.CI_AWS_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID;
@@ -68,9 +72,9 @@ export type AppIntegrationRecord = {
 // 透過 AWS Secrets Manager 或 KMS 加密，避免明文存放於 DynamoDB。
 
 // ---------------------------------------------------------------------------
-// POST - 新增整合
+// POST - 新增整合（僅 admin）
 // ---------------------------------------------------------------------------
-export async function POST(request: Request) {
+export const POST = withAdmin(async (request) => {
     try {
         const body = await request.json();
         const { userId, type, name, config } = body || {};
@@ -103,17 +107,17 @@ export async function POST(request: Request) {
 
         await docClient.send(new PutCommand({ TableName: TABLE, Item: item }));
 
-        return NextResponse.json({ ok: true, integration: item }, { status: 201 });
+        return NextResponse.json({ ok: true, integration: { ...item, config: maskConfig(item.config) } }, { status: 201 });
     } catch (error: any) {
         console.error('[app-integrations API] POST error:', error?.message || error);
         return NextResponse.json({ ok: false, error: 'Failed to create integration.' }, { status: 500 });
     }
-}
+});
 
 // ---------------------------------------------------------------------------
-// GET - 查詢整合 (支援 ?userId=... 與 ?type=... 篩選)
+// GET - 查詢整合 (支援 ?userId=... 與 ?type=... 篩選)。需登入；secret 欄位遮罩後回傳。
 // ---------------------------------------------------------------------------
-export async function GET(request: Request) {
+export const GET = withAuth(async (request) => {
     try {
         const { searchParams } = new URL(request.url);
         const userId = searchParams.get('userId');
@@ -141,20 +145,20 @@ export async function GET(request: Request) {
         }
 
         const res = await docClient.send(new ScanCommand(scanInput));
-        return NextResponse.json({ ok: true, total: res.Count || 0, data: res.Items || [] });
+        const masked = (res.Items || []).map((item: any) => ({ ...item, config: maskConfig(item.config) }));
+        return NextResponse.json({ ok: true, total: res.Count || 0, data: masked });
     } catch (error: any) {
         console.error('[app-integrations API] GET error:', error?.message || error);
         return NextResponse.json({ ok: false, error: 'Failed to fetch integrations.' }, { status: 500 });
     }
-}
+});
 
 // ---------------------------------------------------------------------------
-// PUT - 更新整合
+// PUT - 更新整合（僅 admin）。收到的遮罩 / 空 secret 值視為未變更，保留 DB 原值。
 // ---------------------------------------------------------------------------
-export async function PUT(request: Request) {
+export const PUT = withAdmin(async (request) => {
     try {
         const body = await request.json();
-        console.log('[app-integrations API] PUT request body:', body);
         const { integrationId, userId, type, config, name, status } = body || {};
 
         if (!userId || !type) {
@@ -175,28 +179,32 @@ export async function PUT(request: Request) {
             return NextResponse.json({ ok: false, error: '整合項目不存在 (Not found by PK: userId+type)' }, { status: 404 });
         }
 
+        // 合併密鑰：遮罩 / 空值 → 保留既有；只有明文新值才覆寫
+        const mergedConfig = config
+            ? mergeSecrets(config, existing.Item.config as Record<string, any>)
+            : existing.Item.config;
+
         const updatedItem = {
             ...existing.Item,
             integrationId: integrationId || existing.Item.integrationId,
             name: name || existing.Item.name,
-            config: config || existing.Item.config,
+            config: mergedConfig,
             status: status || existing.Item.status,
             updatedAt: now,
         };
 
-        console.log('[app-integrations API] Saving updated item to DynamoDB:', JSON.stringify(updatedItem, null, 2));
         await docClient.send(new PutCommand({ TableName: TABLE, Item: updatedItem }));
-        return NextResponse.json({ ok: true, integration: updatedItem });
+        return NextResponse.json({ ok: true, integration: { ...updatedItem, config: maskConfig(updatedItem.config as Record<string, any>) } });
     } catch (error: any) {
-        console.error('[app-integrations API] PUT error:', error);
+        console.error('[app-integrations API] PUT error:', error?.message || error);
         return NextResponse.json({ ok: false, error: `Failed to update integration: ${error.message}` }, { status: 500 });
     }
-}
+});
 
 // ---------------------------------------------------------------------------
-// DELETE - 刪除整合
+// DELETE - 刪除整合（僅 admin）
 // ---------------------------------------------------------------------------
-export async function DELETE(request: Request) {
+export const DELETE = withAdmin(async (request) => {
     try {
         const { searchParams } = new URL(request.url);
         const userId = searchParams.get('userId');
@@ -213,7 +221,7 @@ export async function DELETE(request: Request) {
 
         return NextResponse.json({ ok: true, message: 'Integration deleted successfully' });
     } catch (error: any) {
-        console.error('[app-integrations API] DELETE error:', error);
+        console.error('[app-integrations API] DELETE error:', error?.message || error);
         return NextResponse.json({ ok: false, error: `Failed to delete integration: ${error.message}` }, { status: 500 });
     }
-}
+});

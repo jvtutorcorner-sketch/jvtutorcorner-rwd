@@ -7,6 +7,43 @@
 import { NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
 import crypto from 'crypto';
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { DynamoDBDocumentClient, ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { withAdmin } from '@/lib/auth/apiGuard';
+import { mergeSecrets, isMaskedValue } from '@/lib/integrations/mask';
+
+export const dynamic = 'force-dynamic';
+
+// 用於在測試前，把前端送來的遮罩密鑰以 DB 原值補回
+const ddbRegion = process.env.CI_AWS_REGION || process.env.AWS_REGION;
+const ddbAccessKey = process.env.CI_AWS_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID;
+const ddbSecretKey = process.env.CI_AWS_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY;
+const ddbSessionToken = process.env.CI_AWS_SESSION_TOKEN || process.env.AWS_SESSION_TOKEN;
+const ddbCreds = ddbAccessKey && ddbSecretKey ? {
+    accessKeyId: ddbAccessKey,
+    secretAccessKey: ddbSecretKey,
+    ...(ddbSessionToken ? { sessionToken: ddbSessionToken } : {}),
+} : undefined;
+const testDocClient = DynamoDBDocumentClient.from(new DynamoDBClient({ region: ddbRegion, credentials: ddbCreds }));
+const INTEGRATIONS_TABLE = process.env.DYNAMODB_TABLE_APP_INTEGRATIONS || 'jvtutorcorner-app-integrations';
+
+/** 依 integrationId 取回既有 config（供遮罩密鑰補值） */
+async function loadExistingConfig(integrationId?: string): Promise<Record<string, any> | null> {
+    if (!integrationId) return null;
+    try {
+        // FilterExpression 是 scan 後過濾，不能用 Limit（會先截斷再過濾）。
+        // app-integrations 表資料量小，整表掃描可接受。
+        const res = await testDocClient.send(new ScanCommand({
+            TableName: INTEGRATIONS_TABLE,
+            FilterExpression: 'integrationId = :id',
+            ExpressionAttributeValues: { ':id': integrationId },
+        }));
+        return (res.Items && res.Items[0]?.config) || null;
+    } catch (e: any) {
+        console.warn('[app-integrations/test] loadExistingConfig failed:', e?.message || e);
+        return null;
+    }
+}
 
 // ---------------------------------------------------------------------------
 // 各服務的驗證邏輯
@@ -686,12 +723,11 @@ const TEST_HANDLERS: Record<string, (config: Record<string, any>, prompt?: strin
 };
 
 // ---------------------------------------------------------------------------
-// POST - 執行測試
+// POST - 執行測試（僅 admin）
 // ---------------------------------------------------------------------------
-export async function POST(request: Request) {
+export const POST = withAdmin(async (request) => {
     try {
         const body = await request.json();
-        console.log('[app-integrations API] TEST request body:', JSON.stringify(body, null, 2));
         const { integrationId, type, config, prompt, emailTest, testParams } = body || {};
 
         if (!type) {
@@ -714,13 +750,19 @@ export async function POST(request: Request) {
             );
         }
 
+        // 若前端送回遮罩過的密鑰，從 DB 以既有值補回，避免拿遮罩字串去連線
+        let effectiveConfig: Record<string, any> = config;
+        const hasMasked = Object.values(config).some((v) => isMaskedValue(v));
+        if (hasMasked) {
+            const existing = await loadExistingConfig(integrationId);
+            if (existing) effectiveConfig = mergeSecrets(config, existing);
+        }
+
         console.log(`[app-integrations/test] Testing ${upperType} for integration ${integrationId || 'N/A'}`);
-        console.log(`[app-integrations/test] Config received:`, JSON.stringify(config, null, 2));
-        if (testParams) console.log(`[app-integrations/test] Test params received:`, JSON.stringify(testParams, null, 2));
 
-        const result = await handler(config, prompt, emailTest, testParams);
+        const result = await handler(effectiveConfig, prompt, emailTest, testParams);
 
-        console.log(`[app-integrations/test] ${upperType} result:`, result.success ? 'SUCCESS' : 'FAIL', result.message);
+        console.log(`[app-integrations/test] ${upperType} result:`, result.success ? 'SUCCESS' : 'FAIL');
 
         return NextResponse.json({
             ok: true,
@@ -735,4 +777,4 @@ export async function POST(request: Request) {
             { status: 500 }
         );
     }
-}
+});

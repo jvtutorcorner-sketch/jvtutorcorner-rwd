@@ -56,16 +56,13 @@ function CheckoutContent() {
             return;
         }
 
-        // Fetch enabled payment methods
+        // Fetch enabled payment methods (public endpoint: only active payment types, no secrets)
         const fetchPaymentMethods = async () => {
             try {
-                const res = await fetch('/api/app-integrations');
+                const res = await fetch('/api/integrations/public/payment-methods');
                 const data = await res.json();
-                if (data.ok && Array.isArray(data.data)) {
-                    const activeTypes = data.data
-                        .filter((app: any) => app.status === 'ACTIVE')
-                        .map((app: any) => app.type);
-                    setActivePaymentMethods(activeTypes);
+                if (data.ok && Array.isArray(data.types)) {
+                    setActivePaymentMethods(data.types);
                 }
             } catch (err) {
                 console.error('Failed to fetch payment methods', err);

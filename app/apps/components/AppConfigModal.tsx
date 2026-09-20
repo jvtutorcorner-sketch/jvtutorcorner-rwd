@@ -139,18 +139,20 @@ export default function AppConfigModal({
             ? editedConfig.models.split(',').filter(Boolean)
             : [];
 
+    // 只在「毫無變更」時停用儲存。模型數量不再鎖死儲存 ——
+    // 舊資料可能沒有 models 陣列，過去因此永遠存不了（Phase 0 修正）。
     const isSaveDisabled =
         isSavingConfig ||
         (JSON.stringify(editedConfig) === JSON.stringify(app.config || {}) &&
             editedName === app.name &&
-            editedStatus === app.status) ||
-        (isNonContainerAI && selectedModels.length > 1) ||
-        (isNonContainerAI && selectedModels.length === 0);
+            editedStatus === app.status);
 
-    const saveLabel = isSavingConfig ? '儲存中...'
-        : (isNonContainerAI && selectedModels.length > 1) ? '模型限選一個'
-            : (isNonContainerAI && selectedModels.length === 0) ? '請選擇模型'
-                : '儲存設定';
+    // 模型數量以提示呈現，不阻擋儲存
+    const modelHint = isNonContainerAI && selectedModels.length > 1 ? '（建議每個服務只選一個模型）'
+        : isNonContainerAI && selectedModels.length === 0 ? '（尚未選擇模型，將使用預設模型）'
+            : '';
+
+    const saveLabel = isSavingConfig ? '儲存中...' : `儲存設定${modelHint}`;
 
     return (
         <div

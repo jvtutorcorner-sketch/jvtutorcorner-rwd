@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAppPermissionsFromDynamoDB, saveAppPermissionsToDynamoDB } from '@/lib/appPermissionsService';
+import { withAdmin } from '@/lib/auth/apiGuard';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,7 +26,7 @@ export async function GET() {
     }
 }
 
-export async function POST(req: Request) {
+export const POST = withAdmin(async (req) => {
     try {
         const body = await req.json();
         console.log('[App Permissions API] 📥 Received save request');
@@ -52,4 +53,4 @@ export async function POST(req: Request) {
             details: process.env.NODE_ENV === 'development' ? err.stack : undefined
         }, { status: 500 });
     }
-}
+});
