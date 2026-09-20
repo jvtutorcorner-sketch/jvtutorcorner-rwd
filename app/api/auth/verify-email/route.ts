@@ -1,18 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ddbDocClient } from '@/lib/dynamo';
 import { ScanCommand } from '@aws-sdk/lib-dynamodb';
-import { 
-  updateEmailVerificationStatus, 
-  clearVerificationToken 
+import {
+  updateEmailVerificationStatus,
+  clearVerificationToken
 } from '@/lib/email/emailVerificationStatus';
+import { resolveEmailLinkBaseUrl } from '@/lib/email/verificationService';
 
 export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const token = searchParams.get('token');
     const email = searchParams.get('email')?.toLowerCase();
 
+    // 導頁一律以「對外網址」為基底，不能用 req.url：在 Amplify 反向代理後方，
+    // route handler 看到的 req.url 主機常是內部的 localhost:3000，若拿它當 redirect
+    // 基底，使用者點了正式站的驗證連結後會被導到 localhost。改由 x-forwarded-host
+    // 推導對外來源，再交給 resolveEmailLinkBaseUrl（擋 loopback、退回 NEXT_PUBLIC_BASE_URL
+    // 或正式站），正式站與各測試站台都會用自己的網址。
+    const fwdProto = req.headers.get('x-forwarded-proto') || undefined;
+    const fwdHost = req.headers.get('x-forwarded-host') || req.headers.get('host') || undefined;
+    const requestOrigin = fwdHost ? `${fwdProto || 'https'}://${fwdHost}` : undefined;
+    const redirectBase = resolveEmailLinkBaseUrl(requestOrigin);
+
     if (!token || !email) {
-        return NextResponse.redirect(new URL('/auth/verify-email?error=invalid_verification_link', req.url));
+        return NextResponse.redirect(new URL('/auth/verify-email?error=invalid_verification_link', redirectBase));
     }
 
     try {
@@ -44,7 +55,7 @@ export async function GET(req: NextRequest) {
                 }
             );
             
-            return NextResponse.redirect(new URL('/auth/verify-email?error=invalid_token', req.url));
+            return NextResponse.redirect(new URL('/auth/verify-email?error=invalid_token', redirectBase));
         }
 
         const profile = Items[0];
@@ -72,12 +83,12 @@ export async function GET(req: NextRequest) {
                 }
             );
 
-            return NextResponse.redirect(new URL('/auth/verify-email?error=token_expired', req.url));
+            return NextResponse.redirect(new URL('/auth/verify-email?error=token_expired', redirectBase));
         }
 
         // 3. Check if already verified
         if (profile.emailVerified) {
-            return NextResponse.redirect(new URL('/auth/verify-email?error=already_verified', req.url));
+            return NextResponse.redirect(new URL('/auth/verify-email?error=already_verified', redirectBase));
         }
 
         // 4. Update profile as verified with detailed tracking
@@ -110,10 +121,10 @@ export async function GET(req: NextRequest) {
         console.log(`[VerifyEmail] ✅ Email ${email} verified successfully by user ${profile.id}`);
 
         // 6. Redirect to verification success page
-        return NextResponse.redirect(new URL('/auth/verify-email?message=email_verified', req.url));
+        return NextResponse.redirect(new URL('/auth/verify-email?message=email_verified', redirectBase));
 
     } catch (error) {
         console.error('[VerifyEmail] Error during verification:', error);
-        return NextResponse.redirect(new URL('/auth/verify-email?error=verification_failed', req.url));
+        return NextResponse.redirect(new URL('/auth/verify-email?error=verification_failed', redirectBase));
     }
 }
