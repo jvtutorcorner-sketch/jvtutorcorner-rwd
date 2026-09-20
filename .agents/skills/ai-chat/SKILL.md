@@ -16,7 +16,7 @@ metadata:
 - 新增或修改平台工具（`lib/platform-skills.ts`）
 - 修改 AI Widget（`components/AIAssistantWidget.tsx`）
 - 修改 Agent 設定（`lib/platform-agents.ts`）
-- 新增 app 串接類型（`app/add-app/page.tsx`）
+- 新增 app 串接類型（在 `lib/integrations/registry/providers/*` 定義 provider 欄位 schema；表單由 `components/integrations/SchemaForm.tsx` 自動渲染，不再手改 `/add-app`）
 - 調整 AI 聊天頁面 UI（`app/apps/ai-chat/page.tsx`）
 
 ## 架構概覽
@@ -48,7 +48,9 @@ lib/platform-agents.ts          ← Agent 設定類型與元資料
 | `lib/platform-agents.ts` | Agent 類型：`AskPlanAgentConfig`、`EXECUTION_ENVIRONMENT_META` |
 | `app/apps/ai-chat/page.tsx` | 聊天室前端頁面，含工具呼叫 log UI |
 | `components/AIAssistantWidget.tsx` | 右下角浮動 AI Widget |
-| `app/add-app/page.tsx` | 新增 App 整合（AI、Database 類型設定）|
+| `app/apps/connections/new/page.tsx` | 新增連線（schema 驅動；`/add-app` 已改為 redirect shim）|
+| `lib/ai/skillsStore.ts` / `lib/ai/agentsStore.ts` | AI 技能 / 平台 Agents 的 DB-backed store（code 當 seed）；ai-chat 以 `getSkill`/`getAgent` 讀取 |
+| `lib/integrations/registry/*` / `lib/integrations/store.ts` | 服務 provider 定義與連線資料層（AI 金鑰來源）|
 
 ## 新增平台工具
 
@@ -105,7 +107,7 @@ export const PLATFORM_TOOLS: PlatformTool[] = [
 `app/apps/ai-chat/page.tsx` 的 `{m.toolCalls && ...}` 區塊負責渲染工具呼叫 log。
 
 ### 新增資料庫整合類型
-在 `app/add-app/page.tsx` 的 `selectedDatabaseType` state 初始化與 config 組裝 `switch/if` 中新增分支。
+在 `lib/integrations/registry/providers/database.ts`（或對應類別檔）新增一個 provider 定義（`fields[]` 宣告欄位），`SchemaForm` 會自動渲染；測試邏輯加到 `lib/integrations/testHandlers.ts`。不再需要改 `/add-app` 的 switch/if。
 
 ## Git Commit 規範
 

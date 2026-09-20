@@ -201,10 +201,10 @@ const modules = [
   },
   {
     id: 'integrations-automation', audience: '共通', name: 'App integration／LINE／Make／自動化', critical: false,
-    evidence: [p('app/add-app/page.tsx', 'ui'), p('app/api/app-integrations/route.ts', 'api'), p('app/api/integration/make-webhook/route.ts', 'api'), p('app/api/line/webhook/[integrationId]/route.ts', 'api'), p('lib/integration', 'service')],
-    tests: ['e2e/line_pay_simulated.spec.ts'],
-    apiGroups: ['app-integrations', 'integration', 'line'],
-    forcedStatus: 'PARTIAL', note: '有整合程式碼，但 Make／LINE webhook／秘密欄位保護缺專用回歸。',
+    evidence: [p('app/apps/connections/new/page.tsx', 'ui'), p('app/api/integrations/route.ts', 'api'), p('lib/integrations/store.ts', 'service'), p('lib/integrations/registry', 'service'), p('app/api/integration/make-webhook/route.ts', 'api'), p('app/api/line/webhook/[integrationId]/route.ts', 'api'), p('lib/integration', 'service')],
+    tests: ['e2e/apps_connections_crud.spec.ts', 'e2e/line_pay_simulated.spec.ts'],
+    apiGroups: ['integrations', 'app-integrations', 'integration', 'line'],
+    forcedStatus: 'PARTIAL', note: '已重構為 registry+store 驅動的可編輯連線（新表 jvtutorcorner-integrations，PK integrationId + GSI byType，支援多連線/預設）；舊 /api/app-integrations 為受保護 shim。仍缺 Make／webhook SSRF host allowlist 的完整回歸。',
   },
   {
     id: 'scheduled-jobs-reminders', audience: '共通', name: '日曆／提醒／Cron／排程工作', critical: true,
@@ -215,19 +215,16 @@ const modules = [
   },
   {
     id: 'app-permissions', audience: '共通/Admin', name: '應用程式權限／整合服務設定', critical: true,
-    evidence: [p('app/apps/page.tsx', 'ui'), p('app/api/apps/permissions/route.ts', 'api'), p('lib/appPermissionsService.ts', 'service'), p('app/api/app-integrations/route.ts', 'api')],
-    tests: ['e2e/enterprise_general_security_contract.spec.ts'],
-    apiGroups: ['apps', 'app-integrations'],
+    evidence: [p('app/apps/page.tsx', 'ui'), p('app/api/apps/permissions/route.ts', 'api'), p('lib/appPermissionsService.ts', 'service'), p('app/api/integrations/route.ts', 'api'), p('lib/integrations/mask.ts', 'service')],
+    tests: ['e2e/apps_auth_rejection.spec.ts', 'e2e/apps_connections_crud.spec.ts', 'e2e/enterprise_general_security_contract.spec.ts'],
+    apiGroups: ['apps', 'integrations', 'app-integrations'],
     forcedStatus: 'PARTIAL',
-    note: '先前這整組完全沒有 auth，已鎖 admin：' +
-      'app/api/app-integrations/route.ts 的 GET 原本匿名 scan 全表就能拿到所有使用者的第三方 ' +
-      'API 金鑰／LINE channelAccessToken／channelSecret（明文存在 config），POST/PUT/DELETE 任何人 ' +
-      '都能寫入/覆寫/刪除任意 userId 的整合設定；app-integrations/test 會拿呼叫端提供的 config 去連線 ' +
-      '外部服務，等同匿名可用的 SSRF/憑證探測工具；apps/permissions 的 GET/POST 能讀寫全站權限矩陣；' +
-      'line/push 不帶 userEmail 時會廣播給所有已綁定 LINE 的使用者；image-analysis 任何人都能觸發 ' +
-      '付費的 AI 視覺模型呼叫（已改用 withAdminOrHmac，因為 workflow 引擎會用 HMAC 呼叫）。全部已補 ' +
-      '匿名拒絕回歸測試（e2e/enterprise_general_security_contract.spec.ts）。仍缺 secret masking（GET ' +
-      '回傳目前仍是明文 config，只是現在多了 admin 門檻）與已登入非 admin 角色的越權測試。',
+    note: '先前這整組完全沒有 auth，已鎖 admin 並在重構中修正：' +
+      'GET 原本匿名 scan 全表就能拿到所有使用者的第三方 API 金鑰／LINE token（明文），POST/PUT/DELETE ' +
+      '任何人都能寫入/覆寫/刪除；test 端點形同匿名 SSRF/憑證探測工具。現在寫入/完整讀取皆需 admin session；' +
+      'GET 回傳的 secret 欄位已由 lib/integrations/mask.ts 遮罩（只寫不讀，寫入時 mergeSecrets 保留原值），' +
+      '另有只回 active 付款類型的公開端點供結帳頁。已補匿名拒絕與 CRUD 回歸（e2e/apps_auth_rejection.spec.ts、' +
+      'apps_connections_crud.spec.ts）。仍缺：at-rest 加密、webhook host allowlist、已登入非 admin 越權的完整測試。',
   },
   {
     id: 'learning-content-analysis', audience: '平台附加', name: '教學教材／內容影像分析與學習問卷', critical: false,

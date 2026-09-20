@@ -218,14 +218,14 @@ NEXT_PUBLIC_BASE_URL=http://localhost:3000
 
 ### 步驟 5：查看 Stripe 配置詳情
 ```
-方法 A：點擊「配置」按鈕
-   1. 點擊 Stripe 列對應的「配置」或「Edit」按鈕
-   2. 會彈出配置模態視窗 (AppConfigModal)
-   3. 確認以下欄位已填入：
-      - Webhook Secret (`<YOUR_STRIPE_WEBHOOK_SECRET>`)
+方法 A：在「已連線」分頁點該筆 Stripe 的「編輯」
+   1. 進入連線詳情頁 `/apps/connections/[id]`（由 SchemaForm 渲染，取代舊的 AppConfigModal）
+   2. 確認以下欄位（secret 欄位以「已設定 ••••」呈現，留空＝不變更）：
       - Secret Key (`<YOUR_STRIPE_SECRET_KEY>`)
       - Publishable Key (`<YOUR_STRIPE_PUBLISHABLE_KEY>`)
-   4. 檢查「Status」為「enabled」或「active」
+      - Connect Account ID（選填）
+   3. 「危險區域」分頁可停用或刪除；列表上的開關可切換啟用狀態
+   4. 在「測試工具」分頁按「測試連線」驗證金鑰
 
 方法 B：點擊「詳細」或「Detail」（若存在）
    1. 導航至 Stripe 的詳細頁面
@@ -354,11 +354,15 @@ app/api/stripe/
 
 ### 管理員端
 ```
-app/apps/page.tsx              # 應用程式與服務管理
+app/apps/page.tsx                       # 分頁殼：已連線 / 服務目錄 / …
 ├── components/
-│   ├── ConnectedAppsList.tsx   # 已連接服務列表
-│   └── AppConfigModal.tsx      # 服務配置模態視窗
-└── _hooks/useAppsPage.ts       # 頁面邏輯與狀態管理
+│   ├── ConnectionsTable.tsx            # 已連線清單（狀態/預設/啟用/刪除）
+│   └── CatalogGrid.tsx                 # 服務目錄（marketplace）
+├── connections/new/page.tsx            # 新增連線
+├── connections/[id]/page.tsx           # 連線詳情（設定/測試工具/進階/危險區域）
+components/integrations/SchemaForm.tsx  # schema 驅動表單（取代 AppConfigModal）
+lib/integrations/{registry,store,clientApi}.ts  # provider 定義 / 資料層 / 前端呼叫
+# API：/api/integrations（+/[id],/[id]/status,/[id]/default,/[id]/test）；舊 /api/app-integrations 為相容 shim
 ```
 
 ## 自動化測試指令
