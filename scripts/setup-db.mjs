@@ -366,47 +366,58 @@ async function updateProfilesTable() {
     await waitForTableActive(PROFILES_TABLE);
   }
 
-  const indexName = 'byOrgId';
-  if (await gsiExists(PROFILES_TABLE, indexName)) {
-    console.log(`✅ [Profiles] GSI "${indexName}" already exists, no update needed`);
-    return;
-  }
+  // DynamoDB only allows one GSI to be created at a time, so this loop waits for
+  // each index to reach ACTIVE before starting the next.
+  const indexes = [
+    { indexName: 'byOrgId', attribute: 'orgId' },
+    // LINE login resolves profiles by lineUid. Without this GSI every lookup
+    // throws ValidationException and silently falls back to a full-table Scan.
+    // Sparse index: profiles with no LINE binding carry no lineUid attribute.
+    { indexName: 'LineUidIndex', attribute: 'lineUid' },
+  ];
 
-  console.log(`📝 [Profiles] Adding GSI: ${indexName}`);
+  for (const { indexName, attribute } of indexes) {
+    if (await gsiExists(PROFILES_TABLE, indexName)) {
+      console.log(`✅ [Profiles] GSI "${indexName}" already exists, no update needed`);
+      continue;
+    }
 
-  const params = {
-    TableName: PROFILES_TABLE,
-    AttributeDefinitions: [
-      { AttributeName: 'orgId', AttributeType: 'S' },
-    ],
-    GlobalSecondaryIndexUpdates: [
-      {
-        Create: {
-          IndexName: indexName,
-          KeySchema: [{ AttributeName: 'orgId', KeyType: 'HASH' }],
-          Projection: { ProjectionType: 'ALL' },
+    console.log(`📝 [Profiles] Adding GSI: ${indexName} (key: ${attribute})`);
+
+    const params = {
+      TableName: PROFILES_TABLE,
+      AttributeDefinitions: [
+        { AttributeName: attribute, AttributeType: 'S' },
+      ],
+      GlobalSecondaryIndexUpdates: [
+        {
+          Create: {
+            IndexName: indexName,
+            KeySchema: [{ AttributeName: attribute, KeyType: 'HASH' }],
+            Projection: { ProjectionType: 'ALL' },
+          },
         },
-      },
-    ],
-  };
+      ],
+    };
 
-  try {
-    await client.send(new UpdateTableCommand(params));
-    console.log(`✅ [Profiles] GSI creation initiated`);
-    await waitForGSIActive(PROFILES_TABLE, indexName);
-  } catch (error) {
-    if (error.message?.includes('already exists')) {
-      console.log(`⚠️  [Profiles] GSI already exists (race condition)`);
-    } else if (error.message?.includes('ResourceInUseException')) {
-      console.log(`⚠️  [Profiles] Table is being updated, GSI may already be creating`);
-      try {
-        await waitForGSIActive(PROFILES_TABLE, indexName);
-      } catch {
-        console.log(`   [Profiles] Could not verify GSI status, please check manually`);
+    try {
+      await client.send(new UpdateTableCommand(params));
+      console.log(`✅ [Profiles] GSI "${indexName}" creation initiated`);
+      await waitForGSIActive(PROFILES_TABLE, indexName);
+    } catch (error) {
+      if (error.message?.includes('already exists')) {
+        console.log(`⚠️  [Profiles] GSI "${indexName}" already exists (race condition)`);
+      } else if (error.message?.includes('ResourceInUseException')) {
+        console.log(`⚠️  [Profiles] Table is being updated, GSI may already be creating`);
+        try {
+          await waitForGSIActive(PROFILES_TABLE, indexName);
+        } catch {
+          console.log(`   [Profiles] Could not verify GSI status, please check manually`);
+        }
+      } else {
+        console.error(`❌ [Profiles] Failed to add GSI "${indexName}":`, error.message);
+        throw error;
       }
-    } else {
-      console.error(`❌ [Profiles] Failed to add GSI:`, error.message);
-      throw error;
     }
   }
 }
@@ -541,15 +552,32 @@ async function main() {
   console.log(`Region: ${REGION}`);
   console.log(`Timestamp: ${new Date().toISOString()}\n`);
 
-  const steps = [
-    { name: 'Organizations Table', fn: createOrganizationsTable },
-    { name: 'Org Units Table', fn: createOrgUnitsTable },
-    { name: 'Licenses Table', fn: createLicensesTable },
-    { name: 'Profiles Table Update', fn: updateProfilesTable },
-    { name: 'Courses Table Verification', fn: verifyCoursesTable },
-    { name: 'Plan Upgrades Table', fn: createPlanUpgradesTable },
-    { name: 'Points Escrow Table', fn: createPointsEscrowTable },
+  const allSteps = [
+    { key: 'organizations', name: 'Organizations Table', fn: createOrganizationsTable },
+    { key: 'org-units', name: 'Org Units Table', fn: createOrgUnitsTable },
+    { key: 'licenses', name: 'Licenses Table', fn: createLicensesTable },
+    { key: 'profiles', name: 'Profiles Table Update', fn: updateProfilesTable },
+    { key: 'courses', name: 'Courses Table Verification', fn: verifyCoursesTable },
+    { key: 'plan-upgrades', name: 'Plan Upgrades Table', fn: createPlanUpgradesTable },
+    { key: 'points-escrow', name: 'Points Escrow Table', fn: createPointsEscrowTable },
   ];
+
+  // --only=<key>[,<key>] narrows the run to specific steps. Against a live account
+  // this keeps the blast radius to the table you actually mean to touch.
+  const onlyArg = process.argv.slice(2).find(a => a.startsWith('--only='));
+  const only = onlyArg ? onlyArg.slice('--only='.length).split(',').map(k => k.trim()).filter(Boolean) : null;
+
+  if (only) {
+    const unknown = only.filter(k => !allSteps.some(s => s.key === k));
+    if (unknown.length) {
+      console.error(`❌ Unknown --only key(s): ${unknown.join(', ')}`);
+      console.error(`   Valid keys: ${allSteps.map(s => s.key).join(', ')}`);
+      process.exit(1);
+    }
+    console.log(`▶️  Running only: ${only.join(', ')}\n`);
+  }
+
+  const steps = only ? allSteps.filter(s => only.includes(s.key)) : allSteps;
 
   let successCount = 0;
   let failureCount = 0;

@@ -81,7 +81,8 @@ export async function findProfileByLineUid(lineUid: string) {
         ExpressionAttributeValues: { ':lineUid': lineUid },
         Limit: 1,
       }));
-      if (queryRes?.Count > 0) return queryRes.Items[0];
+      // A successful query is authoritative: no rows means no such profile, not an outage.
+      return queryRes?.Count > 0 ? queryRes.Items[0] : null;
     } catch (e) {
       console.warn('[profilesService] dynamo lineUid query failed, trying scan fallback...', (e as any)?.message || e);
       try {
@@ -90,7 +91,7 @@ export async function findProfileByLineUid(lineUid: string) {
           FilterExpression: 'lineUid = :lineUid',
           ExpressionAttributeValues: { ':lineUid': lineUid }
         }));
-        if (scanRes?.Count > 0) return scanRes.Items[0];
+        return scanRes?.Count > 0 ? scanRes.Items[0] : null;
       } catch (scanErr) {
         console.error('[profilesService] dynamo lineUid scan fallback failed', (scanErr as any)?.message || scanErr);
       }
@@ -133,7 +134,8 @@ export async function findProfileByEmail(email: string) {
         ExpressionAttributeValues: { ':email': email },
         Limit: 1,
       }));
-      if (queryRes?.Count > 0) return queryRes.Items[0];
+      // A successful query is authoritative: no rows means no such profile, not an outage.
+      return queryRes?.Count > 0 ? queryRes.Items[0] : null;
     } catch (e) {
       console.warn('[profilesService] dynamo email query failed, trying scan fallback...', (e as any)?.message || e);
       try {
@@ -142,7 +144,7 @@ export async function findProfileByEmail(email: string) {
           FilterExpression: 'email = :email',
           ExpressionAttributeValues: { ':email': email }
         }));
-        if (scanRes?.Count > 0) return scanRes.Items[0];
+        return scanRes?.Count > 0 ? scanRes.Items[0] : null;
       } catch (scanErr) {
         console.error('[profilesService] dynamo email scan fallback failed', (scanErr as any)?.message || scanErr);
       }

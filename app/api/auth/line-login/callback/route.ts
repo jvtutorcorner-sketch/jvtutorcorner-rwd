@@ -83,7 +83,13 @@ export async function GET(req: Request) {
   const { userId: lineUid, displayName, pictureUrl } = lineProfile;
 
   // Find or create platform profile
-  let profile = await findProfileByLineUid(lineUid);
+  let profile: any = null;
+  try {
+    profile = await findProfileByLineUid(lineUid);
+  } catch (e) {
+    console.error('[line-login] profile lookup error', e);
+    return NextResponse.redirect(new URL(`/login?error=line_lookup_error`, req.url));
+  }
   if (!profile) {
     const newId = crypto.randomUUID();
     profile = {
