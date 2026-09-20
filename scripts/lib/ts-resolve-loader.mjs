@@ -36,6 +36,18 @@ export async function resolve(specifier, context, nextResolve) {
         }
       }
     }
+    // Directory import (`./registry` -> `./registry/index.ts`): Node reports a
+    // distinct error code, so retry the directory's index file per extension.
+    if (err?.code === 'ERR_UNSUPPORTED_DIR_IMPORT') {
+      const base = specifier.endsWith('/') ? specifier : specifier + '/';
+      for (const ext of CANDIDATE_EXTENSIONS) {
+        try {
+          return await nextResolve(base + 'index' + ext, context);
+        } catch {
+          // try next extension
+        }
+      }
+    }
     throw err;
   }
 }

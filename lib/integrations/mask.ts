@@ -41,7 +41,7 @@ const KNOWN_PUBLIC_KEYS = new Set(
 
 const SECRET_KEY_REGEX = /(secret|token|password|passwd|apikey|api_key|accesstoken|hashiv|hashkey|privatekey)/i;
 
-/** 判斷某個 config key 是否為密鑰欄位 */
+/** 判斷某個 config key 是否為密鑰欄位（Phase 0 後援；store 會改傳 registry 的 secretKeys） */
 export function isSecretKey(key: string): boolean {
     const lower = key.toLowerCase();
     if (KNOWN_PUBLIC_KEYS.has(lower)) return false;
