@@ -1,12 +1,7 @@
 import { NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { getDefault, getIntegration } from '@/lib/integrations/store';
-import {
-    PLATFORM_AGENTS,
-    DISPATCH_SYSTEM_PROMPT,
-    quickDispatch,
-    getAgentById,
-} from '@/lib/platform-agents';
+import { getDispatchPrompt, quickDispatchDb, getAgent, listAgents } from '@/lib/ai/agentsStore';
 
 /**
  * Get AI config for dispatch (reuses chatroom config or falls back to Gemini).
@@ -37,19 +32,20 @@ export async function POST(req: Request) {
         }
 
         // 1. Quick keyword-based dispatch (no AI needed for common cases)
-        const quickResults = quickDispatch(query);
+        const quickResults = await quickDispatchDb(query);
 
         // 2. Try AI-powered dispatch for better accuracy
         let aiDispatch: { dispatch: string[]; primary: string; confidence: number; reason: string; summary: string } | null = null;
 
         const aiConfig = await getDispatchAIConfig();
         if (aiConfig) {
+            const dispatchPrompt = await getDispatchPrompt();
             try {
                 if (aiConfig.provider === 'GEMINI') {
                     const genAI = new GoogleGenerativeAI(aiConfig.apiKey);
                     const model = genAI.getGenerativeModel({
                         model: 'gemini-2.0-flash',
-                        systemInstruction: DISPATCH_SYSTEM_PROMPT,
+                        systemInstruction: dispatchPrompt,
                         generationConfig: { responseMimeType: 'application/json' }
                     });
                     const result = await model.generateContent(query);
@@ -63,7 +59,7 @@ export async function POST(req: Request) {
                         body: JSON.stringify({
                             model: 'gpt-4o-mini',
                             messages: [
-                                { role: 'system', content: DISPATCH_SYSTEM_PROMPT },
+                                { role: 'system', content: dispatchPrompt },
                                 { role: 'user', content: query }
                             ],
                             response_format: { type: 'json_object' },
@@ -83,10 +79,8 @@ export async function POST(req: Request) {
 
         // 3. Build response — AI result wins, fallback to keyword
         if (aiDispatch && aiDispatch.dispatch && aiDispatch.primary) {
-            const agents = (aiDispatch.dispatch as string[])
-                .map(id => getAgentById(id))
-                .filter(Boolean);
-            const primaryAgent = getAgentById(aiDispatch.primary);
+            const agents = (await Promise.all((aiDispatch.dispatch as string[]).map((id) => getAgent(id)))).filter(Boolean);
+            const primaryAgent = await getAgent(aiDispatch.primary);
 
             return NextResponse.json({
                 ok: true,
@@ -117,7 +111,7 @@ export async function POST(req: Request) {
             ok: true,
             mode: 'none',
             primary: null,
-            agents: PLATFORM_AGENTS.slice(0, 4),
+            agents: (await listAgents()).slice(0, 4),
             confidence: 0,
             reason: '無法精確匹配，顯示主要 Agent 供選擇',
             summary: '我目前無法確定最適合的 Agent，以下是所有可用的 Agent，請選擇您需要的：',
@@ -131,9 +125,10 @@ export async function POST(req: Request) {
 
 // ─── GET /api/ai-chat/dispatch — List all agents ──────────────────────────────
 export async function GET() {
+    const agents = await listAgents();
     return NextResponse.json({
         ok: true,
-        agents: PLATFORM_AGENTS.map(a => ({
+        agents: agents.map(a => ({
             id: a.id,
             name: a.name,
             icon: a.icon,

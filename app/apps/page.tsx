@@ -2,7 +2,7 @@
 
 // app/apps/page.tsx
 // 應用程式後台（重構版）：服務目錄 + 已連線清單（schema 驅動、可完整編輯），
-// 保留 AI 技能 / 平台 Agents / 自動化 分頁（Phase 4 會把技能與 Agents 改為可編輯）。
+// AI 技能 / 平台 Agents / 目錄管理（皆 admin 可編輯），以及自動化。
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
@@ -12,36 +12,44 @@ import { useCatalog } from './_hooks/useCatalog';
 import { useAppsPage } from './_hooks/useAppsPage';
 import ConnectionsTable from './components/ConnectionsTable';
 import CatalogGrid from './components/CatalogGrid';
+import CatalogAdmin from './components/CatalogAdmin';
+import SkillsEditor from './components/SkillsEditor';
+import AgentsEditor from './components/AgentsEditor';
 import AutomationSection from './components/sections/AutomationSection';
-import SkillsSection from './components/sections/SkillsSection';
-import PlatformAgentsSection from './components/sections/PlatformAgentsSection';
-import SkillPreviewModal from './components/SkillPreviewModal';
 
-type Tab = 'connected' | 'catalog' | 'skills' | 'agents' | 'automation';
+type Tab = 'connected' | 'catalog' | 'skills' | 'agents' | 'catalog-admin' | 'automation';
 
 export default function AppsPage() {
     const router = useRouter();
     const params = useSearchParams();
     const { connections, loading: connLoading, toggleStatus, makeDefault, remove, countByType } = useConnections();
     const { providers, categories, loading: catLoading, getProvider } = useCatalog();
+    const aux = useAppsPage(); // 自動化分頁仍沿用既有 cron 狀態
 
-    // 保留分頁（技能 / Agents / 自動化）仍沿用既有狀態
-    const aux = useAppsPage();
+    const [isAdmin, setIsAdmin] = useState(false);
+    useEffect(() => {
+        try {
+            const raw = localStorage.getItem('tutor_mock_user');
+            if (raw) setIsAdmin(JSON.parse(raw)?.role === 'admin');
+        } catch { /* ignore */ }
+    }, []);
 
     const [tab, setTab] = useState<Tab>('connected');
     useEffect(() => {
         const t = params.get('tab');
         if (t === 'catalog' || params.get('type')) setTab('catalog');
-        else if (t === 'skills' || t === 'agents' || t === 'automation' || t === 'connected') setTab(t as Tab);
+        else if (['connected', 'skills', 'agents', 'catalog-admin', 'automation'].includes(t || '')) setTab(t as Tab);
     }, [params]);
 
-    const tabs: { id: Tab; label: string }[] = [
+    const allTabs: { id: Tab; label: string; admin?: boolean }[] = [
         { id: 'connected', label: '已連線' },
         { id: 'catalog', label: '服務目錄' },
-        { id: 'skills', label: 'AI 技能' },
-        { id: 'agents', label: '平台 Agents' },
+        { id: 'skills', label: 'AI 技能', admin: true },
+        { id: 'agents', label: '平台 Agents', admin: true },
+        { id: 'catalog-admin', label: '目錄管理', admin: true },
         { id: 'automation', label: '自動化' },
     ];
+    const tabs = allTabs.filter((t) => !t.admin || isAdmin);
 
     return (
         <div className="page p-6 max-w-5xl mx-auto">
@@ -77,13 +85,11 @@ export default function AppsPage() {
                 )
             )}
 
-            {tab === 'catalog' && (
-                catLoading ? <Spinner /> : <CatalogGrid providers={providers} categories={categories} countByType={countByType} />
-            )}
+            {tab === 'catalog' && (catLoading ? <Spinner /> : <CatalogGrid providers={providers} categories={categories} countByType={countByType} />)}
 
-            {tab === 'skills' && <SkillsSection setSelectedSkillPreview={aux.setSelectedSkillPreview} />}
-
-            {tab === 'agents' && <PlatformAgentsSection />}
+            {tab === 'skills' && isAdmin && <SkillsEditor />}
+            {tab === 'agents' && isAdmin && <AgentsEditor />}
+            {tab === 'catalog-admin' && isAdmin && <CatalogAdmin />}
 
             {tab === 'automation' && (
                 <AutomationSection
@@ -93,15 +99,6 @@ export default function AppsPage() {
                     fetchCronStatus={aux.fetchCronStatus}
                     handleCopyToken={aux.handleCopyToken}
                     handleOpenReport={() => router.push('/dashboard/daily-report')}
-                />
-            )}
-
-            {aux.selectedSkillPreview && (
-                <SkillPreviewModal
-                    skill={aux.selectedSkillPreview}
-                    copySuccess={aux.copySuccess}
-                    onClose={() => aux.setSelectedSkillPreview(null)}
-                    onCopyToken={aux.handleCopyToken}
                 />
             )}
         </div>

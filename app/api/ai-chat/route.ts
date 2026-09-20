@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { getDefault, getIntegration } from '@/lib/integrations/store';
-import { getSkillById } from '@/lib/ai-skills';
-import { getAgentById } from '@/lib/platform-agents';
+import { getSkill } from '@/lib/ai/skillsStore';
+import { getAgent } from '@/lib/ai/agentsStore';
 import { PLATFORM_TOOLS, getToolDefinitions } from '@/lib/platform-skills';
 import { getAIModels } from '@/lib/aiModelsService';
 
@@ -107,7 +107,7 @@ export async function POST(req: Request) {
         const latestMessage = messages[messages.length - 1]?.content || "";
         if (!latestMessage && messages.length > 0) return NextResponse.json({ reply: '您好！有什麼我可以幫您的嗎？' });
 
-        const platformAgent = agentId ? getAgentById(agentId) : null;
+        const platformAgent = agentId ? await getAgent(agentId) : null;
         const tools = getToolDefinitions(platformAgent?.allowedTools);
 
         const defaultSystemPrompt = `你是一個智慧、友善且樂於助人的 AI 助理。請以清楚、簡潔且準確的方式回答使用者的問題。
@@ -118,7 +118,7 @@ export async function POST(req: Request) {
             // ... (keep metadata context logic if needed, but tool-calling is better)
         }
 
-        const skill = linkedSkillId ? getSkillById(linkedSkillId) : null;
+        const skill = linkedSkillId ? await getSkill(linkedSkillId) : null;
         const skillPrompt = skill ? `[你的當前技能：${skill.label}]\n${skill.prompt}\n\n` : '';
         const finalSystemPrompt = platformAgent
             ? `${knowledgeContext}${platformAgent.singlePrompt}`

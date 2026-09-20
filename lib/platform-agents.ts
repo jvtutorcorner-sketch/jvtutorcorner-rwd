@@ -729,14 +729,14 @@ export const PLATFORM_AGENTS: PlatformAgent[] = [
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Dispatcher Agent System Prompt
- * Used by AI to classify user intent and recommend the best Platform Agent.
+ * Dispatcher Agent System Prompt 模板。`{{AGENT_LIST}}` 於 runtime 以當前
+ * （可能來自 DB 的）agent 清單填入，讓後台可編輯 agent 而 dispatch 提示自動同步。
  */
-export const DISPATCH_SYSTEM_PROMPT = `你是「jvtutorcorner 語言學習平台」的🧭 AI 調度指揮官。
+export const DISPATCH_PROMPT_TEMPLATE = `你是「jvtutorcorner 語言學習平台」的🧭 AI 調度指揮官。
 你的唯一任務是：**分析用戶的問題，推薦最適合處理此問題的 Platform Agent**。
 
 ## 可用的 Platform Agents：
-${PLATFORM_AGENTS.map(a => `- **${a.icon} ${a.name}** (ID: ${a.id})：${a.desc}\n  關鍵詞：${a.keywords.slice(0, 6).join('、')}`).join('\n')}
+{{AGENT_LIST}}
 
 ## 規則：
 1. 仔細分析用戶問題，匹配最相關的 Agent（可推薦 1-3 個，按相關度排序）。
@@ -755,6 +755,17 @@ ${PLATFORM_AGENTS.map(a => `- **${a.icon} ${a.name}** (ID: ${a.id})：${a.desc}\
 }
 \`\`\`
 `;
+
+/** 由 agent 清單組出 dispatch system prompt（填入 {{AGENT_LIST}}） */
+export function buildDispatchPrompt(agents: PlatformAgent[] = PLATFORM_AGENTS, template: string = DISPATCH_PROMPT_TEMPLATE): string {
+        const list = agents
+                .map(a => `- **${a.icon} ${a.name}** (ID: ${a.id})：${a.desc}\n  關鍵詞：${a.keywords.slice(0, 6).join('、')}`)
+                .join('\n');
+        return template.replace('{{AGENT_LIST}}', list);
+}
+
+/** 向後相容：以 code 內建 agents 組出的預設 dispatch 提示 */
+export const DISPATCH_SYSTEM_PROMPT = buildDispatchPrompt();
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helper Functions
@@ -778,9 +789,9 @@ export const searchAgentsByKeyword = (keyword: string): PlatformAgent[] => {
 /**
  * Simple client-side keyword-based dispatch (no AI needed for quick matching)
  */
-export const quickDispatch = (userInput: string): PlatformAgent[] => {
+export const quickDispatch = (userInput: string, agents: PlatformAgent[] = PLATFORM_AGENTS): PlatformAgent[] => {
         const lower = userInput.toLowerCase();
-        const scores: { agent: PlatformAgent; score: number }[] = PLATFORM_AGENTS.map(agent => {
+        const scores: { agent: PlatformAgent; score: number }[] = agents.map(agent => {
                 let score = 0;
                 agent.keywords.forEach(k => {
                         if (lower.includes(k.toLowerCase())) score += 2;

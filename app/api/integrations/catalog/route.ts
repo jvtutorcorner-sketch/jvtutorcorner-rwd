@@ -7,11 +7,13 @@
 import { NextResponse } from 'next/server';
 import { withAuth } from '@/lib/auth/apiGuard';
 import { listProviders, CATEGORIES } from '@/lib/integrations/registry';
+import { getCatalogOverrides, applyOverrides } from '@/lib/integrations/catalogStore';
 
 export const dynamic = 'force-dynamic';
 
 export const GET = withAuth(async () => {
-    const providers = listProviders().map((p) => ({
+    const { overrides } = await getCatalogOverrides();
+    const providers = applyOverrides(listProviders(), overrides).map((p) => ({
         type: p.type,
         category: p.category,
         defaults: p.defaults,
