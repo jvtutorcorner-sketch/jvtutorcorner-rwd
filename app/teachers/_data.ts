@@ -7,6 +7,7 @@ import { cache } from 'react';
 import { GetCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { ddbDocClient } from '@/lib/dynamo';
 import { TEACHERS } from '@/data/teachers';
+import { isPubliclyVisibleTeacher } from '@/lib/teacherVisibility';
 
 /** DynamoDB item 與 bundled 資料欄位不固定，頁面端以動態欄位存取。 */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -51,3 +52,39 @@ export async function listPublicTeacherIds(): Promise<Array<{ id: string; update
     .filter((t) => t.id && t.status !== 'resigned')
     .map((t) => ({ id: String(t.id), updatedAt: t.updatedAt }));
 }
+
+/**
+ * /teachers 與首頁共用的公開老師清單（DynamoDB Scan + 去重 + bundled 後備）。
+ *
+ * 只做「取回可公開顯示的老師」，搜尋/分頁由呼叫端在記憶體中處理，與改版前
+ * app/teachers/page.tsx 的行為一致。以 React cache() 包裝，同一次請求只查一次 DB。
+ *
+ * - 依 id / roid_id 去重（保留 updatedAt 最新的一筆）
+ * - DynamoDB 無資料時退回 bundled TEACHERS
+ * - 套用 isPubliclyVisibleTeacher（排除 resigned、測試帳號、隱藏名單）
+ *
+ * DB 失敗時回傳 bundled TEACHERS，不拋出。
+ */
+export const listPublicTeachers = cache(async (): Promise<TeacherRecord[]> => {
+  let teachers: TeacherRecord[] = [];
+  try {
+    const result = await ddbDocClient.send(new ScanCommand({ TableName: teachersTable() }));
+    const rawTeachers = result.Items || [];
+    // 依 updatedAt 排序後放入 map，較新的覆蓋較舊的
+    rawTeachers.sort(
+      (a, b) => new Date(a.updatedAt || 0).getTime() - new Date(b.updatedAt || 0).getTime()
+    );
+    const uniqueMap = new Map<string, TeacherRecord>();
+    for (const t of rawTeachers) {
+      const id = t.id || t.roid_id;
+      if (id) uniqueMap.set(String(id), t);
+    }
+    teachers = Array.from(uniqueMap.values());
+  } catch (e) {
+    console.error('[listPublicTeachers] DynamoDB scan error:', e);
+    teachers = [];
+  }
+
+  const source: TeacherRecord[] = teachers.length > 0 ? teachers : (TEACHERS as TeacherRecord[]);
+  return source.filter((t) => isPubliclyVisibleTeacher(t));
+});

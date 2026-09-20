@@ -1,6 +1,4 @@
-import { ScanCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
-import { ddbDocClient } from '@/lib/dynamo';
-import { COURSES } from '@/data/courses';
+import { listPublicCourses } from '@/app/courses/_data';
 import { CourseCard } from '@/components/CourseCard';
 import SearchForm from '@/components/SearchForm';
 import Pagination from '@/components/Pagination';
@@ -21,6 +19,7 @@ export const metadata: Metadata = {
 
 type CoursesPageProps = {
   searchParams?: {
+    q?: string;
     subject?: string;
     language?: string;
     region?: string;
@@ -40,6 +39,7 @@ export default async function CoursesPage(props?: CoursesPageProps) {
     return (raw as any)[key] ?? '';
   }
 
+  const q = String(getParam('q') ?? '');
   const subject = String(getParam('subject') ?? '');
   const language = String(getParam('language') ?? '');
   const teacher = String(getParam('teacher') ?? '');
@@ -48,87 +48,35 @@ export default async function CoursesPage(props?: CoursesPageProps) {
   const limit = parseInt(String(getParam('limit') || '20'), 10);
   const page = parseInt(String(getParam('page') || '1'), 10);
 
+  const qTrim = q.trim().toLowerCase();
   const subjectTrim = subject.trim().toLowerCase();
   const languageTrim = language.trim().toLowerCase();
   const teacherTrim = teacher.trim().toLowerCase();
 
-  // Fetch courses from DynamoDB
-  let persisted: any[] = [];
-  let dbError: string | null = null;
-
-  try {
-    const COURSES_TABLE = process.env.DYNAMODB_TABLE_COURSES || 'jvtutorcorner-courses';
-    const TEACHERS_TABLE = process.env.DYNAMODB_TABLE_TEACHERS || 'jvtutorcorner-teachers';
-
-    console.log('[CoursesPage] Loading courses from table:', COURSES_TABLE);
-
-    const scanCmd = new ScanCommand({ TableName: COURSES_TABLE });
-    const result = await ddbDocClient.send(scanCmd);
-    const dbItems = result.Items || [];
-    
-    // Filter out test courses immediately (exclude test-course-*)
-    persisted = dbItems.filter(c => !String(c.id || '').startsWith('test-course-'));
-    const testCount = dbItems.length - persisted.length;
-
-    console.log(`[CoursesPage] Loaded ${persisted.length} courses from DynamoDB${testCount > 0 ? ` (filtered out ${testCount} test courses)` : ''}`);
-    if (persisted.length > 0) {
-      console.log('[CoursesPage] Real Courses:', persisted.map(c => ({ id: c.id, title: c.title })));
-    }
-
-    // Join teacher names
-    const uniqueTids = Array.from(new Set(persisted.map((i: any) => i.teacherId).filter(Boolean)));
-    if (uniqueTids.length > 0) {
-      const teacherMap: Record<string, string> = {};
-      await Promise.all(uniqueTids.map(async (tid: any) => {
-        try {
-          const tRes = await ddbDocClient.send(new GetCommand({ TableName: TEACHERS_TABLE, Key: { id: tid } }));
-          if (tRes.Item && (tRes.Item.name || tRes.Item.displayName)) {
-            teacherMap[tid] = tRes.Item.name || tRes.Item.displayName;
-          }
-        } catch (e) { }
-      }));
-      persisted.forEach((item: any) => {
-        if (item.teacherId && teacherMap[item.teacherId]) {
-          item.teacherName = teacherMap[item.teacherId];
-        }
-      });
-    }
-  } catch (e) {
-    console.error('[CoursesPage] DynamoDB error:', e);
-    dbError = String(e);
-    persisted = [];
-  }
-
-  // Strategy: Use ONLY DynamoDB data if available; fallback to local data only if DynamoDB is empty
-  let merged: any[] = [];
-
-  if (persisted.length > 0) {
-    // ✅ DynamoDB has data: use it exclusively
-    console.log(`[CoursesPage] Using ${persisted.length} courses from DynamoDB (ignoring local data)`);
-    merged = persisted;
-  } else {
-    // ⚠️ DynamoDB is empty: fallback to local courses.ts
-    console.warn('[CoursesPage] DynamoDB returned no courses, falling back to local COURSES data');
-    merged = COURSES;
-  }
-
-  // DEBUG: expose counts to help diagnose
-  const dbCount = persisted.length;
-  const localCount = COURSES.length;
-  const displayedCount = merged.length;
-  const usingDatabase = persisted.length > 0;
+  // 共用讀取（Scan + 老師名稱 join + bundled 後備 + 報名人數）
+  const merged = await listPublicCourses();
 
   const filtered = merged.filter((c) => {
+    // 僅顯示「上架」課程
+    if (c.status && c.status !== '上架') return false;
     if (subjectTrim && !(c.subject || '').toLowerCase().includes(subjectTrim)) return false;
     if (languageTrim && !(c.language || '').toLowerCase().includes(languageTrim)) return false;
     if (teacherTrim && !(c.teacherName || '').toLowerCase().includes(teacherTrim)) return false;
     if (mode && c.mode !== mode) return false;
-    // 僅顯示「上架」課程
-    if (c.status && c.status !== '上架') return false;
+    if (qTrim) {
+      const haystack = [
+        c.title,
+        c.description,
+        c.teacherName,
+        c.subject,
+        ...(Array.isArray(c.tags) ? c.tags : []),
+      ]
+        .map((v) => String(v || '').toLowerCase())
+        .join(' ');
+      if (!haystack.includes(qTrim)) return false;
+    }
     return true;
   });
-
-  const hasFilter = Boolean(subjectTrim || languageTrim || teacherTrim || mode);
 
   // Pagination logic
   const totalItems = filtered.length;

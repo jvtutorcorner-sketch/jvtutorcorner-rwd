@@ -61,6 +61,17 @@ export default function RegisterPage() {
   const [captchaLoading, setCaptchaLoading] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
 
+  // 首頁「成為老師」CTA 帶 ?role=teacher 進來時，預選老師身分（與下拉選單的行為一致）。
+  useEffect(() => {
+    try {
+      const roleParam = new URLSearchParams(window.location.search).get('role');
+      if (roleParam === 'teacher') {
+        setRole('teacher');
+        setPlan(null);
+      }
+    } catch { /* ignore */ }
+  }, []);
+
 
   // Refs for form fields
   const roleRef = useRef<HTMLSelectElement>(null);

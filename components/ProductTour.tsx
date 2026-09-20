@@ -106,14 +106,6 @@ export default function ProductTour() {
             }
           },
           {
-            element: '#tour-tabs',
-            popover: {
-              title: '快速切換預覽 📚',
-              description: '在這裡，您可以不用切換頁面就能預覽最新的專業師資與熱門課程。',
-              side: 'top', align: 'start'
-            }
-          },
-          {
             element: pickTarget('.main-nav a[href="/teachers"]', '.menu-icon-btn', 'a.logo'),
             popover: {
               title: '即將前往：師資專區 👩‍🏫',

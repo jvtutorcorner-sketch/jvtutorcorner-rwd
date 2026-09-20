@@ -1,9 +1,7 @@
 import React from 'react';
-import { TEACHERS } from '@/data/teachers';
+import { listPublicTeachers } from '@/app/teachers/_data';
 import { TeacherCard } from '@/components/TeacherCard';
 import SearchForm from '@/components/SearchForm';
-import { ScanCommand } from '@aws-sdk/lib-dynamodb';
-import { ddbDocClient } from '@/lib/dynamo';
 import Pagination from '@/components/Pagination';
 import { SUBJECTS } from '@/types/questionnaire';
 import { T } from '@/components/IntlProvider';
@@ -31,32 +29,10 @@ export default async function TeachersPage({ searchParams }: { searchParams: Pro
   const limit = parseInt(spa?.limit || '20', 10);
   const page = parseInt(spa?.page || '1', 10);
 
-  let teachers: any[] = [];
-  try {
-    const TEACHERS_TABLE = process.env.DYNAMODB_TABLE_TEACHERS || 'jvtutorcorner-teachers';
-    const scanCmd = new ScanCommand({ TableName: TEACHERS_TABLE });
-    const result = await ddbDocClient.send(scanCmd);
-
-    // Deduplicate by ID to prevent multiple entries
-    const rawTeachers = result.Items || [];
-    const uniqueMap = new Map();
-    rawTeachers.sort((a, b) => (new Date(a.updatedAt || 0).getTime()) - (new Date(b.updatedAt || 0).getTime()));
-    rawTeachers.forEach(t => {
-      const id = t.id || t.roid_id;
-      if (id) uniqueMap.set(id, t);
-    });
-    teachers = Array.from(uniqueMap.values());
-  } catch (e) {
-    console.error('[TeachersPage] DynamoDB scan error:', e);
-  }
-
-  if (teachers.length === 0) {
-    teachers = TEACHERS;
-  }
+  // 共用讀取（Scan + 去重 + bundled 後備 + 可見性過濾）
+  const teachers = await listPublicTeachers();
 
   const filteredTeachers = teachers.filter(t => {
-    if (t.status === 'resigned') return false;
-
     const name = (t.name || t.displayName || '').toLowerCase();
     const lats = (t.languages || []).map((l: string) => l.toLowerCase());
     const teacherSubjects: string[] = t.subjects || [];

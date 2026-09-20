@@ -14,6 +14,7 @@ import PermissionGuard from '@/components/auth/PermissionGuard';
 import { getAppPermissionsFromDynamoDB } from '@/lib/appPermissionsService';
 import GlobalAIAssistant from '@/components/GlobalAIAssistant';
 import ProductTour from '@/components/ProductTour';
+import Footer from '@/components/Footer';
 import { SITE_URL, SITE_NAME, DEFAULT_TITLE, DEFAULT_DESCRIPTION } from '@/lib/seo';
 
 export const metadata: Metadata = {
@@ -118,9 +119,7 @@ export default async function RootLayout({
             <GlobalAIAssistant initialAppConfigs={appConfigs} />
           </AdminSettingsProvider>
 
-          <footer className="site-footer" suppressHydrationWarning>
-            © {new Date().getFullYear()} Tutor Corner
-          </footer>
+          <Footer />
         </IntlProvider>
       </body>
     </html>

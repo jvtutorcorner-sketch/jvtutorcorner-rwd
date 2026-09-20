@@ -1,73 +1,62 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Carousel } from '@/components/Carousel';
-import { TEACHERS } from '@/data/teachers';
-import { COURSES } from '@/data/courses';
-import type { Course } from '@/data/courses';
 import { TeacherCard } from '@/components/TeacherCard';
 import { CourseCard } from '@/components/CourseCard';
-import Tabs from '@/components/Tabs';
 import { getStoredUser, type StoredUser } from '@/lib/mockAuth';
-import { useT, useIntl } from '@/components/IntlProvider'; // Client-side hook
+import { useT } from '@/components/IntlProvider';
+import { subjectKey } from '@/lib/subjectI18n';
 import OnboardingQuestionnaire from '@/components/OnboardingQuestionnaire';
-import HowItWorks from '@/components/HowItWorks';
-import MedicineIdentificationFlow from '@/components/MedicineIdentificationFlow';
+import ClassroomMock from '@/components/home/ClassroomMock';
+import Reveal from '@/components/home/Reveal';
 
 const GUEST_STORAGE_KEY = 'jv_survey_seeds';
-const GUEST_ANSWERS_KEY = 'jv_survey_answers';
 const IDLE_THRESHOLD_MS = 3 * 60 * 1000; // 3 minutes
 const ONBOARDING_ENABLED = process.env.NEXT_PUBLIC_ENABLE_ONBOARDING_QUESTIONNAIRE === 'true';
 
+/** DynamoDB / bundled 課程與老師都是純物件，這裡以寬鬆型別接收 server 傳來的資料。 */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type CourseLike = Record<string, any>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type TeacherLike = Record<string, any>;
+
+interface ClientHomePageProps {
+  courses: CourseLike[];
+  teachers: TeacherLike[];
+  categories: Array<{ subject: string; count: number }>;
+  coursesHeading: 'popular' | 'latest';
+}
+
 export default function ClientHomePage({
-  initialCarouselImages
-}: {
-  initialCarouselImages: string[];
-}) {
+  courses,
+  teachers,
+  categories,
+  coursesHeading,
+}: ClientHomePageProps) {
   const t = useT();
-  const { ready } = useIntl();
-  const router = useRouter();
   const [user, setUser] = useState<StoredUser | null>(null);
   const [showGuestQuestionnaire, setShowGuestQuestionnaire] = useState(false);
   const [showUserQuestionnaire, setShowUserQuestionnaire] = useState(false);
-  const [recommendations, setRecommendations] = useState<Course[]>([]);
+  const [recommendations, setRecommendations] = useState<CourseLike[]>([]);
   const [recsLoading, setRecsLoading] = useState(false);
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Use initial images if provided, otherwise fallback to defaults (after hydration)
-  const [carouselImages, setCarouselImages] = useState<string[]>(
-    initialCarouselImages.length > 0
-      ? initialCarouselImages
-      : [] // Will likely be updated by useEffect or default if empty
-  );
 
   // ── Load user, fetch recommendations, setup idle detection ──────────────────
   useEffect(() => {
     const u = getStoredUser();
     setUser(u);
 
-    if (initialCarouselImages.length === 0) {
-      setCarouselImages([
-        t('carousel_slide1'),
-        t('carousel_slide2'),
-        t('carousel_slide3'),
-      ]);
-    }
-
-    // Check if user just registered to show onboarding questionnaire
+    // Show onboarding questionnaire right after registration
     if (ONBOARDING_ENABLED && u && localStorage.getItem('jv_just_registered') === 'true') {
       localStorage.removeItem('jv_just_registered');
       setShowUserQuestionnaire(true);
     }
 
-    // Fetch personalised recommendations
     fetchRecommendations(u?.id);
 
     // ── Guest idle detection (3 min) ──────────────────────────────────────────
     if (ONBOARDING_ENABLED && !u) {
-      // Check if guest already completed a survey
       try {
         const existingSeeds = localStorage.getItem(GUEST_STORAGE_KEY);
         if (existingSeeds) return; // already surveyed, skip idle trigger
@@ -75,10 +64,7 @@ export default function ClientHomePage({
 
       const resetIdleTimer = () => {
         if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
-        idleTimerRef.current = setTimeout(() => {
-          setShowGuestQuestionnaire(true);
-        }, IDLE_THRESHOLD_MS);
-
+        idleTimerRef.current = setTimeout(() => setShowGuestQuestionnaire(true), IDLE_THRESHOLD_MS);
       };
 
       const events = ['mousemove', 'keydown', 'scroll', 'click', 'touchstart'];
@@ -94,18 +80,13 @@ export default function ClientHomePage({
         if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
       };
     }
-  }, [initialCarouselImages, t, router]);
+  }, []);
 
   async function fetchRecommendations(userId?: string) {
     setRecsLoading(true);
     try {
-      let url = '/api/recommendations';
       const body: Record<string, unknown> = {};
-
-      if (userId) {
-        url += `?userId=${encodeURIComponent(userId)}`;
-      } else {
-        // Pass guest seeds from localStorage if available
+      if (!userId) {
         try {
           const raw = localStorage.getItem(GUEST_STORAGE_KEY);
           if (raw) body.guestSeeds = JSON.parse(raw);
@@ -113,7 +94,7 @@ export default function ClientHomePage({
       }
 
       const res = userId
-        ? await fetch(url)
+        ? await fetch(`/api/recommendations?userId=${encodeURIComponent(userId)}`)
         : await fetch('/api/recommendations', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -125,22 +106,36 @@ export default function ClientHomePage({
         setRecommendations(data.recommendations ?? []);
       }
     } catch (err) {
-      // Non-fatal – fallback to static courses
       console.warn('[HomePage] recommendations fetch failed:', err);
     } finally {
       setRecsLoading(false);
     }
   }
 
-  const recommendedTeachers = TEACHERS.slice(0, 3);
-  const hotCourses = COURSES.slice(0, 3);
-  // Use personalised recs if available, fall back to static courses
-  const displayRecs: Course[] = recommendations.length > 0 ? (recommendations as unknown as Course[]) : COURSES.slice(0, 3);
+  const userName = user?.firstName || user?.email?.split('@')[0] || t('guest_learner_fallback');
+  // 個人化推薦：有 API 結果用它，否則退回真實課程前三筆
+  const displayRecs: CourseLike[] =
+    recommendations.length > 0 ? recommendations : courses.slice(0, 3);
 
-  // 等待翻译准备好，避免闪烁
-  if (!ready) {
-    return <div className="home home-loading-shell" />;
-  }
+  const FEATURES = [
+    { icon: '🎓', titleKey: 'feature_pro_teachers_title', descKey: 'feature_pro_teachers_desc' },
+    { icon: '💬', titleKey: 'feature_realtime_title', descKey: 'feature_realtime_desc' },
+    { icon: '📚', titleKey: 'feature_diverse_title', descKey: 'feature_diverse_desc' },
+    { icon: '🕐', titleKey: 'feature_anytime_title', descKey: 'feature_anytime_desc' },
+  ];
+
+  const EXPERIENCE_POINTS = [
+    { icon: '🎥', titleKey: 'exp_video_title', descKey: 'exp_video_desc' },
+    { icon: '🖌️', titleKey: 'exp_whiteboard_title', descKey: 'exp_whiteboard_desc' },
+    { icon: '📄', titleKey: 'exp_materials_title', descKey: 'exp_materials_desc' },
+    { icon: '⚡', titleKey: 'exp_live_title', descKey: 'exp_live_desc' },
+  ];
+
+  const HOW_IT_WORKS = [
+    { step: '01', titleKey: 'how_it_works_step1_title', descKey: 'how_it_works_step1_desc' },
+    { step: '02', titleKey: 'how_it_works_step2_title', descKey: 'how_it_works_step2_desc' },
+    { step: '03', titleKey: 'how_it_works_step3_title', descKey: 'how_it_works_step3_desc' },
+  ];
 
   return (
     <div className="home">
@@ -148,19 +143,19 @@ export default function ClientHomePage({
       {showGuestQuestionnaire && (
         <OnboardingQuestionnaire
           mode="lite"
-          onComplete={(_answers, _affinity) => {
+          onComplete={() => {
             setShowGuestQuestionnaire(false);
             fetchRecommendations(undefined);
           }}
           onSkip={() => setShowGuestQuestionnaire(false)}
         />
       )}
-      {/* User questionnaire - modal like */}
+      {/* User questionnaire */}
       {showUserQuestionnaire && user && (
         <OnboardingQuestionnaire
           mode="full"
           userId={user.id || user.roid_id}
-          onComplete={(_answers, _affinity) => {
+          onComplete={() => {
             setShowUserQuestionnaire(false);
             fetchRecommendations(user.id || user.roid_id);
           }}
@@ -168,101 +163,115 @@ export default function ClientHomePage({
         />
       )}
 
-      {/* Hero Section */}
+      {/* ── 1. Hero ─────────────────────────────────────────────── */}
       <section className="home-hero-premium">
         <div className="hero-premium-container">
           <div className="hero-premium-content">
             <div className="hero-premium-text">
               <h1 className="hero-premium-title">
-                {user 
-                  ? `${t('hero_premium_title_user')}！${user.firstName || user.email?.split('@')[0] || t('guest_learner_fallback')}`
-                  : t('hero_premium_title_guest')}
+                {user ? t('hero_title_user', { name: userName }) : t('hero_title_guest')}
               </h1>
               <p className="hero-premium-subtitle">
-                {user
-                  ? t('hero_premium_subtitle_user')
-                  : t('hero_premium_subtitle_guest')}
+                {user ? t('hero_subtitle_user') : t('hero_subtitle_guest')}
               </p>
               <div className="hero-premium-cta">
                 {user ? (
                   <>
-                    <Link href="/courses" className="btn-primary">
-                      {t('browse_all_courses')}
-                    </Link>
-                    <button 
-                      className="btn-secondary"
-                      onClick={() => setShowUserQuestionnaire(true)}
-                    >
+                    <Link href="/courses" className="btn-primary">{t('hero_cta_explore')}</Link>
+                    <button className="btn-secondary" onClick={() => setShowUserQuestionnaire(true)}>
                       {t('update_learning_preferences')}
                     </button>
                   </>
                 ) : (
                   <>
-                    <Link href="/login/register" className="btn-primary">
-                      {t('start_for_free')}
-                    </Link>
-                    <Link href="/courses" className="btn-secondary">
-                      {t('explore_popular_courses')}
+                    <Link href="/courses" className="btn-primary">{t('hero_cta_explore')}</Link>
+                    <Link href="/login/register?role=teacher" className="btn-secondary">
+                      {t('hero_cta_become_teacher')}
                     </Link>
                   </>
                 )}
               </div>
+              <ul className="hero-highlights" aria-hidden="true">
+                <li>{t('hero_highlight_1')}</li>
+                <li>{t('hero_highlight_2')}</li>
+                <li>{t('hero_highlight_3')}</li>
+              </ul>
             </div>
-            <div className="hero-premium-carousel">
-              <Carousel
-                slides={carouselImages}
-                isImage={
-                  carouselImages[0]?.startsWith('data:') ||
-                  carouselImages[0]?.startsWith('http') ||
-                  carouselImages[0]?.startsWith('/')
-                }
+            <div className="hero-premium-visual">
+              <ClassroomMock liveLabel={t('classroom_live_label')} />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── 2. Search ───────────────────────────────────────────── */}
+      <section className="section-white home-search-section">
+        <div className="section-container">
+          <Reveal className="home-search-inner">
+            <h2 className="section-title-large">{t('home_search_title')}</h2>
+            <form className="home-search-form" action="/courses" method="get" role="search">
+              <input
+                type="search"
+                name="q"
+                className="home-search-input"
+                placeholder={t('home_search_placeholder')}
+                aria-label={t('home_search_placeholder')}
               />
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Categories Section - Hidden per user request */}
-      {/*
-      <section className="section-white">
-        <div className="container">
-          <div className="section-header-enhanced text-center" style={{ marginBottom: 40, textAlign: 'center' }}>
-            <h2 className="section-title-large" style={{ fontSize: '2.5rem' }}>探索熱門領域</h2>
-            <p className="section-subtitle">找到最適合您的課程類別</p>
-          </div>
-          <div className="card-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))' }}>
-            {[
-              { name: '語言學習', icon: '🌍', color: '#e0f2fe' },
-              { name: '升學考試', icon: '📝', color: '#fef3c7' },
-              { name: '程式開發', icon: '💻', color: '#dcfce7' },
-              { name: '藝術設計', icon: '🎨', color: '#fce7f3' },
-              { name: '音樂造詣', icon: '🎵', color: '#f3e8ff' },
-              { name: '職場技能', icon: '💼', color: '#ffedd5' },
-            ].map((cat) => (
-              <div key={cat.name} className="category-card" style={{ 
-                background: cat.color, 
-                padding: '30px', 
-                borderRadius: '16px', 
-                textAlign: 'center',
-                transition: 'transform 0.3s ease',
-                cursor: 'pointer'
-              }}>
-                <div style={{ fontSize: '3rem', marginBottom: '12px' }}>{cat.icon}</div>
-                <div style={{ fontWeight: '700', fontSize: '1.1rem' }}>{cat.name}</div>
+              <button type="submit" className="btn-primary home-search-btn">{t('home_search_button')}</button>
+            </form>
+            {categories.length > 0 && (
+              <div className="home-categories">
+                <span className="home-categories-label">{t('home_categories_label')}</span>
+                <div className="home-categories-chips">
+                  {categories.map((cat) => (
+                    <Link
+                      key={cat.subject}
+                      href={`/courses?subject=${encodeURIComponent(cat.subject)}`}
+                      className="home-category-chip"
+                    >
+                      {t(subjectKey(cat.subject))}
+                    </Link>
+                  ))}
+                </div>
               </div>
-            ))}
-          </div>
+            )}
+          </Reveal>
         </div>
       </section>
-      */}
 
-      {/* Recommendations Section */}
-      <section className="section-personalized" id="tour-recommendation">
+      {/* ── 3. Hot / latest courses ─────────────────────────────── */}
+      <section className="section-personalized">
         <div className="section-container">
           <div className="section-header-enhanced">
             <div>
               <h2 className="section-title-large">
-                {user ? `${user.firstName || user.email?.split('@')[0] || t('you')}${t('personalized_recommendations_user_suffix')}` : t('personalized_recommendations_guest')}
+                {coursesHeading === 'popular' ? t('home_hot_courses_title') : t('home_latest_courses_title')}
+              </h2>
+              <p className="section-subtitle">{t('home_hot_courses_subtitle')}</p>
+            </div>
+            <Link href="/courses" className="section-link-cta">{t('view_all_courses_arrow')}</Link>
+          </div>
+          {courses.length > 0 ? (
+            <div className="card-grid card-grid--scroll">
+              {courses.map((course) => (
+                <CourseCard key={course.id} course={course} />
+              ))}
+            </div>
+          ) : (
+            <p className="home-empty">{t('home_courses_empty')}</p>
+          )}
+        </div>
+      </section>
+
+      {/* ── 4. Personalised recommendations (keep #tour-recommendation) ─── */}
+      <section className="section-light" id="tour-recommendation">
+        <div className="section-container">
+          <div className="section-header-enhanced">
+            <div>
+              <h2 className="section-title-large">
+                {user
+                  ? `${userName}${t('personalized_recommendations_user_suffix')}`
+                  : t('personalized_recommendations_guest')}
               </h2>
               <p className="section-subtitle">{t('recommendations_subtitle')}</p>
             </div>
@@ -271,9 +280,9 @@ export default function ClientHomePage({
                 {t('create_account_for_recommendations')}
               </Link>
             ) : (
-               <button className="section-link-cta" onClick={() => setShowUserQuestionnaire(true)} id="tour-questionnaire-btn">
-                 {t('update_learning_preferences_arrow')}
-               </button>
+              <button className="section-link-cta" onClick={() => setShowUserQuestionnaire(true)} id="tour-questionnaire-btn">
+                {t('update_learning_preferences_arrow')}
+              </button>
             )}
           </div>
           {recsLoading ? (
@@ -281,105 +290,121 @@ export default function ClientHomePage({
               <div className="loading-spinner"></div>
               <p>{t('loading_recommendations')}</p>
             </div>
-          ) : (
-            <div className="card-grid">
+          ) : displayRecs.length > 0 ? (
+            <div className="card-grid card-grid--scroll">
               {displayRecs.slice(0, 3).map((course) => (
-                <CourseCard key={course.id} course={course as Course} className="card-personalized" />
+                <CourseCard key={course.id} course={course} className="card-personalized" />
               ))}
             </div>
+          ) : (
+            <p className="home-empty">{t('home_courses_empty')}</p>
           )}
         </div>
       </section>
 
-      {/* Featured Teachers */}
-      <section className="section-teachers">
-        <div className="section-container">
-          <div className="section-header-enhanced">
-            <div>
-              <h2 className="section-title-large">{t('popular_teachers')}</h2>
-              <p className="section-subtitle">{t('popular_teachers_subtitle')}</p>
+      {/* ── 5. Featured teachers ────────────────────────────────── */}
+      {teachers.length > 0 && (
+        <section className="section-teachers">
+          <div className="section-container">
+            <div className="section-header-enhanced">
+              <div>
+                <h2 className="section-title-large">{t('popular_teachers')}</h2>
+                <p className="section-subtitle">{t('popular_teachers_subtitle')}</p>
+              </div>
+              <Link href="/teachers" className="section-link-cta">{t('view_all_teachers_arrow')}</Link>
             </div>
-            <Link href="/teachers" className="section-link-cta">{t('view_all_teachers_arrow')}</Link>
+            <div className="card-grid card-grid--scroll">
+              {teachers.map((teacher) => (
+                <TeacherCard key={teacher.id || teacher.roid_id} teacher={teacher} />
+              ))}
+            </div>
           </div>
-          <div className="card-grid">
-            {recommendedTeachers.map((teacher) => (
-              <TeacherCard key={teacher.id} teacher={teacher} />
+        </section>
+      )}
+
+      {/* ── 6. Platform features ────────────────────────────────── */}
+      <section className="section-white">
+        <div className="section-container">
+          <div className="section-header-enhanced text-center home-section-center">
+            <h2 className="section-title-large">{t('home_features_title')}</h2>
+          </div>
+          <div className="home-features-grid">
+            {FEATURES.map((f, i) => (
+              <Reveal as="div" key={f.titleKey} delay={i * 80} className="home-feature-card">
+                <div className="home-feature-icon" aria-hidden="true">{f.icon}</div>
+                <h3 className="home-feature-title">{t(f.titleKey)}</h3>
+                <p className="home-feature-desc">{t(f.descKey)}</p>
+              </Reveal>
             ))}
           </div>
         </div>
       </section>
 
-      {/* Statistics Section - Hidden per user request */}
-      {/*
-      <section className="section-dark">
-        <div className="container">
-          <div className="about-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '40px', textAlign: 'center' }}>
-            <div className="stat-item">
-              <span className="stat-number" style={{ fontSize: '3rem', fontWeight: '800', color: '#3b82f6', display: 'block' }}>50K+</span>
-              <span className="stat-label" style={{ fontSize: '1.2rem', color: '#94a3b8' }}>活躍學員</span>
-            </div>
-            <div className="stat-item">
-              <span className="stat-number" style={{ fontSize: '3rem', fontWeight: '800', color: '#3b82f6', display: 'block' }}>500+</span>
-              <span className="stat-label" style={{ fontSize: '1.2rem', color: '#94a3b8' }}>專業導師</span>
-            </div>
-            <div className="stat-item">
-              <span className="stat-number" style={{ fontSize: '3rem', fontWeight: '800', color: '#3b82f6', display: 'block' }}>1000+</span>
-              <span className="stat-label" style={{ fontSize: '1.2rem', color: '#94a3b8' }}>精選課程</span>
-            </div>
-            <div className="stat-item">
-              <span className="stat-number" style={{ fontSize: '3rem', fontWeight: '800', color: '#3b82f6', display: 'block' }}>98%</span>
-              <span className="stat-label" style={{ fontSize: '1.2rem', color: '#94a3b8' }}>學員滿意度</span>
+      {/* ── 7. Teaching experience ──────────────────────────────── */}
+      <section className="section-dark home-experience">
+        <div className="section-container">
+          <div className="home-experience-grid">
+            <Reveal className="home-experience-visual">
+              <ClassroomMock size="lg" liveLabel={t('classroom_live_label')} />
+            </Reveal>
+            <div className="home-experience-text">
+              <h2 className="section-title-large">{t('home_experience_title')}</h2>
+              <p className="section-subtitle">{t('home_experience_subtitle')}</p>
+              <ul className="home-experience-list">
+                {EXPERIENCE_POINTS.map((p) => (
+                  <li key={p.titleKey}>
+                    <span className="home-experience-icon" aria-hidden="true">{p.icon}</span>
+                    <div>
+                      <h3 className="home-experience-item-title">{t(p.titleKey)}</h3>
+                      <p className="home-experience-item-desc">{t(p.descKey)}</p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              <Link href="/courses" className="btn-primary">{t('hero_cta_explore')}</Link>
             </div>
           </div>
         </div>
       </section>
-      */}
 
-      {/* How it Works */}
-      <section className="section-white">
+      {/* ── 8. How it works (keep .how-it-works-grid × 3) ───────── */}
+      <section className="section-white" id="how-it-works">
         <div className="section-container">
-          <div className="section-header-enhanced text-center" style={{ textAlign: 'center', marginBottom: '60px' }}>
+          <div className="section-header-enhanced text-center home-section-center">
             <h2 className="section-title-large">{t('how_it_works_title')}</h2>
             <p className="section-subtitle">{t('how_it_works_subtitle')}</p>
           </div>
           <div className="how-it-works-grid">
-            {[
-              { step: '01', titleKey: 'how_it_works_step1_title', descKey: 'how_it_works_step1_desc', icon: '🔍' },
-              { step: '02', titleKey: 'how_it_works_step2_title', descKey: 'how_it_works_step2_desc', icon: '📅' },
-              { step: '03', titleKey: 'how_it_works_step3_title', descKey: 'how_it_works_step3_desc', icon: '🎓' },
-            ].map((step) => (
-              <div key={step.step} className="how-it-works-card" style={{ padding: '40px', textAlign: 'center' }}>
-                <div className="how-it-works-number" style={{ marginBottom: '20px' }}>{step.step}</div>
-                <h3 style={{ fontSize: '1.5rem', marginBottom: '15px' }}>{t(step.titleKey)}</h3>
-                <p style={{ color: '#4b5563' }}>{t(step.descKey)}</p>
-              </div>
+            {HOW_IT_WORKS.map((step, i) => (
+              <Reveal as="div" key={step.step} delay={i * 80} className="how-it-works-card">
+                <div className="how-it-works-number">{step.step}</div>
+                <h3>{t(step.titleKey)}</h3>
+                <p>{t(step.descKey)}</p>
+              </Reveal>
             ))}
           </div>
         </div>
       </section>
 
-      {/* Newsletter */}
-      <section className="section-accent">
-        <div className="section-container">
-          <div className="contact-container text-center" style={{ maxWidth: '600px', margin: '0 auto', textAlign: 'center' }}>
-            <h2 style={{ fontSize: '2.5rem', color: 'white', marginBottom: '16px' }}>{t('subscribe_newsletter_title')}</h2>
-            <p style={{ color: 'rgba(255,255,255,0.8)', marginBottom: '32px' }}>{t('subscribe_newsletter_subtitle')}</p>
-            <form className="contact-form" style={{ display: 'flex', gap: '12px' }} onSubmit={(e) => {
-              e.preventDefault();
-              alert(t('subscribe_success_alert'));
-            }}>
-              <input 
-                type="email" 
-                placeholder={t('email_placeholder_subscribe')} 
-                required 
-                className="form-input"
-                style={{ flex: 1, padding: '14px 20px', borderRadius: '10px' }}
-              />
-              <button type="submit" className="btn-primary" style={{ background: 'white', color: '#4f46e5', boxShadow: 'none' }}>
-                {t('subscribe_now')}
-              </button>
-            </form>
+      {/* ── 9. Become a teacher ─────────────────────────────────── */}
+      <section className="section-accent home-become-teacher">
+        <div className="section-container home-band-inner">
+          <div>
+            <h2 className="home-band-title">{t('become_teacher_title')}</h2>
+            <p className="home-band-subtitle">{t('become_teacher_subtitle')}</p>
           </div>
+          <Link href="/login/register?role=teacher" className="btn-primary home-band-btn">
+            {t('become_teacher_button')}
+          </Link>
+        </div>
+      </section>
+
+      {/* ── 10. Final CTA ───────────────────────────────────────── */}
+      <section className="section-personalized home-final-cta">
+        <div className="section-container home-final-inner">
+          <h2 className="section-title-large">{t('final_cta_title')}</h2>
+          <p className="section-subtitle">{t('final_cta_subtitle')}</p>
+          <Link href="/courses" className="btn-primary">{t('hero_cta_explore')}</Link>
         </div>
       </section>
     </div>
