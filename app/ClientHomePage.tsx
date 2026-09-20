@@ -10,6 +10,7 @@ import { subjectKey } from '@/lib/subjectI18n';
 import OnboardingQuestionnaire from '@/components/OnboardingQuestionnaire';
 import ClassroomMock from '@/components/home/ClassroomMock';
 import Reveal from '@/components/home/Reveal';
+import { Carousel } from '@/components/Carousel';
 
 const GUEST_STORAGE_KEY = 'jv_survey_seeds';
 const IDLE_THRESHOLD_MS = 3 * 60 * 1000; // 3 minutes
@@ -26,6 +27,8 @@ interface ClientHomePageProps {
   teachers: TeacherLike[];
   categories: Array<{ subject: string; count: number }>;
   coursesHeading: 'popular' | 'latest';
+  /** 後台 /carousel 上傳的 Hero 輪播圖網址；空陣列時 Hero 改用純 CSS 的 ClassroomMock。 */
+  initialCarouselImages?: string[];
 }
 
 export default function ClientHomePage({
@@ -33,6 +36,7 @@ export default function ClientHomePage({
   teachers,
   categories,
   coursesHeading,
+  initialCarouselImages = [],
 }: ClientHomePageProps) {
   const t = useT();
   const [user, setUser] = useState<StoredUser | null>(null);
@@ -197,9 +201,15 @@ export default function ClientHomePage({
                 <li>{t('hero_highlight_3')}</li>
               </ul>
             </div>
-            <div className="hero-premium-visual">
-              <ClassroomMock liveLabel={t('classroom_live_label')} />
-            </div>
+            {initialCarouselImages.length > 0 ? (
+              <div className="hero-premium-carousel">
+                <Carousel slides={initialCarouselImages} isImage />
+              </div>
+            ) : (
+              <div className="hero-premium-visual">
+                <ClassroomMock liveLabel={t('classroom_live_label')} />
+              </div>
+            )}
           </div>
         </div>
       </section>
