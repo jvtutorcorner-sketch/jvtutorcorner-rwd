@@ -53,13 +53,45 @@ export function resolveEmailLinkBaseUrl(requestOrigin?: string): string {
     return PRODUCTION_BASE_URL;
 }
 
+/** Per-channel result surfaced by {@link sendVerificationEmailDetailed}. */
+export interface ChannelDiagnosis {
+    success: boolean;
+    error?: string;
+    configSource?: string;
+    messageId?: string;
+}
+
+/**
+ * Structured outcome of an attempt to send a verification email.
+ *
+ * `sendVerificationEmail` only exposes the boolean `success` for callers that
+ * just need to know whether the mail went out. This richer shape carries each
+ * channel's real error so a diagnostic endpoint can report *why* both channels
+ * failed (e.g. "Gmail SMTP not configured" vs. "ETIMEDOUT") — the per-channel
+ * errors otherwise live only in the server console (CloudWatch on Amplify).
+ */
+export interface EmailSendDiagnosis {
+    success: boolean;
+    channel?: 'gmail' | 'resend';
+    baseUrl: string;
+    gmail: ChannelDiagnosis;
+    resend: ChannelDiagnosis;
+}
+
 /**
  * Email Verification Service
  *
  * 直接在服務端發送驗證信，避免內部 API 調用的複雜性和延遲
  * 支援 Gmail SMTP 和 Resend 兩種方式，優先使用資料庫中的動態配置
+ *
+ * 回傳結構化診斷（含各管道的成功/錯誤）。若只需要布林結果，請用
+ * {@link sendVerificationEmail}。
  */
-export async function sendVerificationEmail(email: string, token: string, requestOrigin?: string) {
+export async function sendVerificationEmailDetailed(
+    email: string,
+    token: string,
+    requestOrigin?: string,
+): Promise<EmailSendDiagnosis> {
     const baseUrl = resolveEmailLinkBaseUrl(requestOrigin);
     const verifyUrl = `${baseUrl}/api/auth/verify-email?token=${token}&email=${encodeURIComponent(email)}`;
 
@@ -78,6 +110,9 @@ export async function sendVerificationEmail(email: string, token: string, reques
         </div>
     `;
 
+    const gmail: ChannelDiagnosis = { success: false };
+    const resend: ChannelDiagnosis = { success: false };
+
     try {
         const targetRecipient = getBaseEmail(email);
         if (targetRecipient !== email) {
@@ -86,16 +121,24 @@ export async function sendVerificationEmail(email: string, token: string, reques
 
         // 嘗試使用 Gmail SMTP（優先）
         const gmailResult = await sendViaGmailSmtp(targetRecipient, subject, html);
+        gmail.success = gmailResult.success;
+        gmail.error = gmailResult.error;
+        gmail.configSource = gmailResult.configSource;
+        gmail.messageId = gmailResult.messageId;
         if (gmailResult.success) {
             console.log('[VerificationService] Sent via Gmail SMTP:', gmailResult.messageId);
-            return true;
+            return { success: true, channel: 'gmail', baseUrl, gmail, resend };
         }
-        
+
         // 如果 Gmail SMTP 失敗或未配置，改用 Resend
         const resendResult = await sendViaResend(targetRecipient, subject, html);
+        resend.success = resendResult.success;
+        resend.error = resendResult.error;
+        resend.configSource = resendResult.configSource;
+        resend.messageId = resendResult.messageId;
         if (resendResult.success) {
             console.log('[VerificationService] Sent via Resend:', resendResult.messageId);
-            return true;
+            return { success: true, channel: 'resend', baseUrl, gmail, resend };
         }
 
         // 兩種方式都失敗
@@ -103,22 +146,36 @@ export async function sendVerificationEmail(email: string, token: string, reques
             gmailError: gmailResult.error,
             resendError: resendResult.error
         });
-        return false;
+        return { success: false, baseUrl, gmail, resend };
     } catch (error) {
         console.error('[VerificationService] Critical error sending email:', error);
-        return false;
+        const errorMsg = String(error);
+        if (!gmail.error) gmail.error = errorMsg;
+        if (!resend.error) resend.error = errorMsg;
+        return { success: false, baseUrl, gmail, resend };
     }
+}
+
+/**
+ * 發送驗證信，回傳是否成功（布林）。
+ * register / resend-verification 路由使用此簽章；細節診斷請用
+ * {@link sendVerificationEmailDetailed}。
+ */
+export async function sendVerificationEmail(email: string, token: string, requestOrigin?: string): Promise<boolean> {
+    const result = await sendVerificationEmailDetailed(email, token, requestOrigin);
+    return result.success;
 }
 
 /**
  * 透過 Resend SMTP 發送郵件
  */
-async function sendViaResend(to: string, subject: string, html: string) {
+async function sendViaResend(to: string, subject: string, html: string): Promise<ChannelDiagnosis> {
+    // 宣告在 try 之外，讓 catch 區塊也能在回傳診斷時帶上設定來源
+    let configSource = 'Environment Variables';
     try {
         // 1. 嘗試從 DynamoDB 讀取 Resend 配置
         let apiKey: string | undefined;
         let fromAddress: string | undefined;
-        let configSource = 'Environment Variables';
 
         try {
             const APPS_TABLE = process.env.DYNAMODB_TABLE_APP_INTEGRATIONS || 'jvtutorcorner-app-integrations';
@@ -142,7 +199,7 @@ async function sendViaResend(to: string, subject: string, html: string) {
         if (!fromAddress) fromAddress = process.env.RESEND_FROM || process.env.SMTP_FROM;
 
         if (!apiKey || !fromAddress) {
-            return { success: false, error: 'Resend not configured' };
+            return { success: false, error: 'Resend not configured', configSource };
         }
 
         // 診斷日誌 - 記錄實際使用的配置
@@ -181,24 +238,26 @@ async function sendViaResend(to: string, subject: string, html: string) {
         });
 
         console.log('[VerificationService] Email sent successfully via Resend:', info.messageId);
-        return { success: true, messageId: info.messageId };
+        return { success: true, messageId: info.messageId, configSource };
     } catch (error: any) {
         let errorMsg = String(error);
-        
+
         // 診斷 Resend 特定的錯誤
         if (errorMsg.includes('550') || errorMsg.toLowerCase().includes('domain is not verified')) {
             errorMsg = `Resend 網域未驗證: ${errorMsg}。如果您沒有自訂網域，請將寄件者改為 onboarding@resend.dev。`;
         }
-        
+
         console.warn('[VerificationService] Resend send failed:', errorMsg);
-        return { success: false, error: errorMsg };
+        return { success: false, error: errorMsg, configSource };
     }
 }
 
 /**
  * 透過 Gmail SMTP 發送郵件
  */
-async function sendViaGmailSmtp(to: string, subject: string, html: string) {
+async function sendViaGmailSmtp(to: string, subject: string, html: string): Promise<ChannelDiagnosis> {
+    // 宣告在 try 之外，讓 catch 區塊也能在回傳診斷時帶上設定來源
+    let configSource = 'Environment Variables';
     try {
         // 1. 嘗試從 DynamoDB 讀取 Gmail 配置
         let smtpUser: string | undefined;
@@ -206,7 +265,6 @@ async function sendViaGmailSmtp(to: string, subject: string, html: string) {
         let smtpHost = process.env.SMTP_HOST || 'smtp.gmail.com';
         let smtpPort = parseInt(process.env.SMTP_PORT || '587', 10);
         let fromName = process.env.SMTP_FROM || 'JV Tutor Corner';
-        let configSource = 'Environment Variables';
 
         try {
             const APPS_TABLE = process.env.DYNAMODB_TABLE_APP_INTEGRATIONS || 'jvtutorcorner-app-integrations';
@@ -234,7 +292,7 @@ async function sendViaGmailSmtp(to: string, subject: string, html: string) {
         if (!smtpPass) smtpPass = process.env.SMTP_PASS;
 
         if (!smtpUser || !smtpPass) {
-            return { success: false, error: 'Gmail SMTP not configured' };
+            return { success: false, error: 'Gmail SMTP not configured', configSource };
         }
 
         // 診斷日誌 - 記錄實際使用的配置
@@ -274,17 +332,17 @@ async function sendViaGmailSmtp(to: string, subject: string, html: string) {
         });
 
         console.log('[VerificationService] Email sent successfully via Gmail SMTP:', info.messageId);
-        return { success: true, messageId: info.messageId };
+        return { success: true, messageId: info.messageId, configSource };
     } catch (error: any) {
         let errorMsg = String(error);
-        
+
         // 診斷 Gmail 特定的錯誤
         if (errorMsg.includes('Invalid login') || errorMsg.includes('auth')) {
             errorMsg += ' (若是 Gmail，請確認是否已使用「應用程式密碼」，而非一般密碼)';
         }
-        
+
         console.warn('[VerificationService] Gmail SMTP send failed:', errorMsg);
-        return { success: false, error: errorMsg };
+        return { success: false, error: errorMsg, configSource };
     }
 }
 
