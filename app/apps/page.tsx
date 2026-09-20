@@ -4,7 +4,7 @@
 // 應用程式後台（重構版）：服務目錄 + 已連線清單（schema 驅動、可完整編輯），
 // AI 技能 / 平台 Agents / 目錄管理（皆 admin 可編輯），以及自動化。
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useConnections } from './_hooks/useConnections';
@@ -19,7 +19,7 @@ import AutomationSection from './components/sections/AutomationSection';
 
 type Tab = 'connected' | 'catalog' | 'skills' | 'agents' | 'catalog-admin' | 'automation';
 
-export default function AppsPage() {
+function AppsContent() {
     const router = useRouter();
     const params = useSearchParams();
     const { connections, loading: connLoading, toggleStatus, makeDefault, remove, countByType } = useConnections();
@@ -110,5 +110,14 @@ function Spinner() {
         <div className="flex justify-center items-center h-64">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600" />
         </div>
+    );
+}
+
+// useSearchParams 需包在 Suspense 邊界內，否則 Next.js prod build 會因 CSR bailout 失敗。
+export default function AppsPage() {
+    return (
+        <Suspense fallback={<div className="page p-6 max-w-5xl mx-auto"><Spinner /></div>}>
+            <AppsContent />
+        </Suspense>
     );
 }
