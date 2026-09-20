@@ -21,11 +21,10 @@ export default function Header() {
   const hideHeader = typeof pathname === 'string' && (pathname.startsWith('/classroom') && pathname !== '/classroom/wait' || pathname.startsWith('/checkDevices'));
 
   const MENU_ITEMS = [
-    { href: '/teachers', titleKey: 'menu_teachers_title', labelKey: 'menu_teachers', defaultLabel: '專業師資' },
-    { href: '/pricing', titleKey: 'menu_pricing_title', labelKey: 'menu_pricing', defaultLabel: '方案與價格' },
     { href: '/courses', titleKey: 'menu_courses_title', labelKey: 'menu_courses', defaultLabel: '課程總覽' },
-    { href: '/testimony', titleKey: 'menu_testimony_title', labelKey: 'menu_testimony', defaultLabel: '學員見證' },
-    { href: '/about', titleKey: 'menu_about_title', labelKey: 'menu_about', defaultLabel: '關於我們' },
+    { href: '/teachers', titleKey: 'menu_teachers_title', labelKey: 'menu_teachers', defaultLabel: '專業師資' },
+    { href: '/#how-it-works', titleKey: 'menu_how_it_works_title', labelKey: 'menu_how_it_works', defaultLabel: '如何上課' },
+    { href: '/pricing', titleKey: 'menu_pricing_title', labelKey: 'menu_pricing', defaultLabel: '方案與價格' },
   ];
 
   // Helper to check permissions
@@ -245,6 +244,10 @@ export default function Header() {
     router.push('/login');
   }
 
+  function handleRegister() {
+    router.push('/login/register');
+  }
+
   return (
     <header className={`site-header ${scrolled ? 'scrolled' : ''}`} style={hideHeader ? { display: 'none' } : undefined}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -363,7 +366,10 @@ export default function Header() {
                     </div>
                   </>
                 ) : (
-                  <Button type="button" variant="outline" onClick={handleLogin}>{t('login')}</Button>
+                  <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
+                    <Button type="button" variant="outline" onClick={handleLogin}>{t('login')}</Button>
+                    <Button type="button" variant="primary" onClick={handleRegister}>{t('register')}</Button>
+                  </span>
                 )
               ) : null}
               {hydrated ? (
@@ -458,8 +464,9 @@ export default function Header() {
                   </div>
                 </div>
               ) : (
-                <div>
+                <div style={{ display: 'flex', gap: 8 }}>
                   <Button variant="outline" onClick={() => { setMobileMenuOpen(false); handleLogin(); }}>{t('login')}</Button>
+                  <Button variant="primary" onClick={() => { setMobileMenuOpen(false); handleRegister(); }}>{t('register')}</Button>
                 </div>
               )}
             </div>

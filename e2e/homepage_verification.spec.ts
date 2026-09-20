@@ -227,9 +227,9 @@ test.describe('首頁驗證測試 (Homepage Verification)', () => {
       await page.evaluate(() => localStorage.clear());
       await page.reload({ waitUntil: 'networkidle' });
       
-      const startBtn = page.locator('a, button').filter({ has: page.locator('text=/免費開始使用|Start for Free/') }).first();
+      const startBtn = page.locator('a, button').filter({ has: page.locator('text=/探索課程|Explore Courses/') }).first();
       await expect(startBtn).toBeVisible();
-      
+
       const bbox = await startBtn.boundingBox();
       expect(bbox?.x).toBeGreaterThanOrEqual(0);
       expect(bbox?.x).toBeLessThanOrEqual(DEVICE_SIZES.desktop.width);
@@ -242,9 +242,9 @@ test.describe('首頁驗證測試 (Homepage Verification)', () => {
       await page.evaluate(() => localStorage.clear());
       await page.reload({ waitUntil: 'networkidle' });
       
-      const startBtn = page.locator('a, button').filter({ has: page.locator('text=/免費開始使用|Start/') }).first();
+      const startBtn = page.locator('a, button').filter({ has: page.locator('text=/探索課程|Explore Courses/') }).first();
       await expect(startBtn).toBeVisible();
-      
+
       const bbox = await startBtn.boundingBox();
       expect(bbox?.height).toBeGreaterThanOrEqual(40);
     });
@@ -343,35 +343,32 @@ test.describe('首頁驗證測試 (Homepage Verification)', () => {
     });
   });
 
-  // ========== 6. Carousel 響應式驗證 ==========
-  test.describe('6. Carousel 響應式驗證', () => {
-    
-    test('6.1 桌面版 - Carousel 寬度', async ({ page }) => {
+  // ========== 6. Hero 視覺（線上教室示意）響應式驗證 ==========
+  // 改版後 Hero 右側改為純 CSS 的「線上教室」示意圖（.cm），取代原本的輪播圖。
+  test.describe('6. Hero 視覺響應式驗證', () => {
+
+    test('6.1 桌面版 - 教室示意寬度', async ({ page }) => {
       await page.setViewportSize(DEVICE_SIZES.desktop);
       await page.goto(baseUrl, { waitUntil: 'networkidle' });
-      
-      const carousel = page.locator('[class*="carousel"], .Carousel').first();
-      if (await carousel.isVisible()) {
-        await carousel.scrollIntoViewIfNeeded();
-        
-        const bbox = await carousel.boundingBox();
-        expect(bbox?.width).toBeLessThanOrEqual(DEVICE_SIZES.desktop.width);
-      }
+
+      const visual = page.locator('.home-hero-premium .cm').first();
+      await expect(visual).toBeVisible();
+      await visual.scrollIntoViewIfNeeded();
+
+      const bbox = await visual.boundingBox();
+      expect(bbox?.width).toBeLessThanOrEqual(DEVICE_SIZES.desktop.width);
     });
 
-    test('6.1m 手機版 - Carousel 全寬', async ({ page }) => {
+    test('6.1m 手機版 - 教室示意不溢出', async ({ page }) => {
       await page.setViewportSize(DEVICE_SIZES.mobile);
       await page.goto(baseUrl, { waitUntil: 'networkidle' });
-      
-      const carousel = page.locator('[class*="carousel"], .Carousel').first();
-      if (await carousel.isVisible()) {
-        await carousel.scrollIntoViewIfNeeded();
-        
-        const bbox = await carousel.boundingBox();
-        // Carousel is inside a padded container; allow up to 100px total horizontal margin
-        // (24px padding on each side from .carousel class + parent container padding)
-        expect(bbox?.width).toBeGreaterThan(DEVICE_SIZES.mobile.width - 100);
-      }
+
+      const visual = page.locator('.home-hero-premium .cm').first();
+      await expect(visual).toBeVisible();
+      await visual.scrollIntoViewIfNeeded();
+
+      const bbox = await visual.boundingBox();
+      expect(bbox?.width).toBeLessThanOrEqual(DEVICE_SIZES.mobile.width);
     });
   });
 
