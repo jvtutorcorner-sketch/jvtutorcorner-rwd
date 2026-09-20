@@ -254,9 +254,10 @@ function AddAppForm() {
         setAiData({ ...aiData, [e.target.name]: e.target.value });
     };
 
-    // For Email
+    // For Email — Resend 已移除，僅支援 Gmail SMTP，預設即為 GMAIL。
+    // 即使網址帶 ?provider=RESEND 也一律導向 GMAIL，避免再新增到已停用的 Resend。
     const [selectedEmailProvider, setSelectedEmailProvider] = useState(
-        ['RESEND', 'GMAIL'].includes(providerFromUrl) ? providerFromUrl : 'RESEND'
+        providerFromUrl === 'GMAIL' ? 'GMAIL' : 'GMAIL'
     );
     const [emailData, setEmailData] = useState({
         name: '',
@@ -1796,7 +1797,6 @@ function AddAppForm() {
                                             onChange={(e) => setSelectedEmailProvider(e.target.value)}
                                             className="w-full pl-4 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-yellow-500 focus:border-yellow-500 sm:text-sm rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white"
                                         >
-                                            <option value="RESEND">Resend 郵件服務 (推薦)</option>
                                             <option value="GMAIL">Gmail SMTP (個人/公司)</option>
                                         </select>
                                     </div>

@@ -17,7 +17,9 @@ export interface TestResult {
 
 export const PAYMENT_TYPES = ['ECPAY', 'PAYPAL', 'STRIPE', 'LINEPAY', 'JKOPAY'];
 export const CHANNEL_TYPES = ['LINE', 'TELEGRAM', 'WHATSAPP', 'MESSENGER', 'SLACK', 'TEAMS', 'DISCORD', 'WECHAT'];
-export const EMAIL_TYPES = ['RESEND', 'GMAIL'];
+// Resend 已移除：僅保留 Gmail SMTP 作為郵件服務供應商。
+// EMAIL_META 仍保留 RESEND 條目，供尚未清除的歷史記錄在列表中顯示名稱。
+export const EMAIL_TYPES = ['GMAIL'];
 export const DATABASE_TYPES = ['DYNAMODB', 'MONGODB', 'POSTGRESQL', 'MYSQL', 'REDIS', 'QDRANT'];
 export const AI_CONTAINER_TYPES = ['AI_CHATROOM', 'ASK_PLAN_AGENT', 'SMART_ROUTER'];
 

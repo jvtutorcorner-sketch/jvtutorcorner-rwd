@@ -12,7 +12,7 @@ interface EmailSectionProps {
     openModal: (app: AppIntegration) => void;
 }
 
-export default function EmailSection({ apps, getConnectedApps }: EmailSectionProps) {
+export default function EmailSection({ apps, getConnectedApps, openModal }: EmailSectionProps) {
     return (
         <>
             <div className="flex justify-between items-center mb-6 border-b border-gray-200 dark:border-gray-700 pb-2">
@@ -80,6 +80,27 @@ export default function EmailSection({ apps, getConnectedApps }: EmailSectionPro
                                         <span>已設定: <strong className="text-yellow-600 dark:text-yellow-400">{activeCount}</strong></span>
                                         <span>未設定: <strong className="text-orange-600 dark:text-orange-400">{inactiveCount}</strong></span>
                                     </div>
+                                </div>
+                            )}
+
+                            {/* 已連接的整合清單 — 提供編輯入口（開啟設定 Modal） */}
+                            {connected.length > 0 && (
+                                <div className="mb-3 space-y-1.5">
+                                    {connected.map((app) => (
+                                        <div key={app.integrationId} className="flex items-center justify-between gap-2 px-2.5 py-1.5 bg-gray-50 dark:bg-gray-700/40 rounded-lg border border-gray-100 dark:border-gray-700">
+                                            <div className="min-w-0 flex items-center gap-1.5">
+                                                <span className={`inline-block h-2 w-2 rounded-full shrink-0 ${app.status === 'ACTIVE' ? 'bg-green-500' : 'bg-gray-400'}`} />
+                                                <span className="text-xs text-gray-700 dark:text-gray-300 truncate">{app.name}</span>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => openModal(app)}
+                                                className="shrink-0 text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 dark:hover:bg-blue-900/50 font-medium py-1 px-2.5 rounded-md transition-colors"
+                                            >
+                                                編輯
+                                            </button>
+                                        </div>
+                                    ))}
                                 </div>
                             )}
 
