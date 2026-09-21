@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { withAuth, type AuthedRequest } from '@/lib/auth/apiGuard';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { getDefault, getIntegration } from '@/lib/integrations/store';
 import { getSkill } from '@/lib/ai/skillsStore';
@@ -84,7 +85,9 @@ async function getAIConfig(messages: any[] = [], useSmartRouter: boolean = false
 
 const promptCache = new Map<string, { data: any, timestamp: number }>();
 
-export async function POST(req: Request) {
+export const POST = withAuth(postHandler);
+
+async function postHandler(req: AuthedRequest) {
     try {
         const { messages, agentId, useSmartRouter, usePromptCache } = await req.json();
 

@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
 import { getDefault } from '@/lib/integrations/store';
+import { withAdminOrHmac, type AuthedRequest } from '@/lib/auth/apiGuard';
 
 export const runtime = 'nodejs';
 
@@ -11,7 +12,9 @@ export const runtime = 'nodejs';
  *
  * 若 DynamoDB 查無 RESEND 整合，fallback 至環境變數 RESEND_API_KEY + RESEND_FROM。
  */
-export async function POST(req: NextRequest) {
+export const POST = withAdminOrHmac('/api/workflows/resend-send', postHandler);
+
+async function postHandler(req: AuthedRequest) {
     try {
         const { to, subject, body, html, purpose } = await req.json();
 

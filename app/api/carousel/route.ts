@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
+import { withAdmin, type AuthedRequest } from '@/lib/auth/apiGuard';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, PutCommand, ScanCommand, DeleteCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 // 如果您有實作 S3 刪除邏輯，請保留這行；如果沒有，可以先註解掉
@@ -60,7 +61,9 @@ export async function GET() {
 // ==========================================
 // 🔵 POST: 儲存圖片 (上傳後)
 // ==========================================
-export async function POST(request: Request) {
+export const POST = withAdmin(postHandler);
+
+async function postHandler(request: AuthedRequest) {
   try {
     const body = await request.json();
     const { url, alt, order } = body;
@@ -104,7 +107,9 @@ export async function POST(request: Request) {
 // ==========================================
 // � PATCH: 更新圖片 (例如順序)
 // ==========================================
-export async function PATCH(request: Request) {
+export const PATCH = withAdmin(patchHandler);
+
+async function patchHandler(request: AuthedRequest) {
   try {
     const body = await request.json();
     const { id, order } = body;
@@ -144,7 +149,9 @@ export async function PATCH(request: Request) {
 // ==========================================
 // �🔴 DELETE: 刪除圖片
 // ==========================================
-export async function DELETE(request: Request) {
+export const DELETE = withAdmin(deleteHandler);
+
+async function deleteHandler(request: AuthedRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');

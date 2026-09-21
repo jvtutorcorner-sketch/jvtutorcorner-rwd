@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { withAdmin, type AuthedRequest } from '@/lib/auth/apiGuard';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, ScanCommand } from '@aws-sdk/lib-dynamodb';
 
@@ -111,7 +112,10 @@ async function sendLinePushMessage(lineUid: string, messages: any[], channelAcce
  *   "title"?: string,               // 可选：标题（用于增强显示）
  * }
  */
-export async function POST(request: Request) {
+// Admin-only: broadcasting to every LINE user must not be callable anonymously.
+export const POST = withAdmin(postHandler);
+
+async function postHandler(request: AuthedRequest) {
     try {
         const { userEmail, message, title } = await request.json();
 

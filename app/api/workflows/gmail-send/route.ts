@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
+import { withAdminOrHmac, type AuthedRequest } from '@/lib/auth/apiGuard';
 
 export const runtime = 'nodejs';
 
@@ -15,7 +16,9 @@ export const runtime = 'nodejs';
  *   SMTP_PORT  — SMTP 連接埠，預設 587
  *   SMTP_FROM  — 顯示名稱，預設 "JV Tutor Workflow"
  */
-export async function POST(req: NextRequest) {
+export const POST = withAdminOrHmac('/api/workflows/gmail-send', postHandler);
+
+async function postHandler(req: AuthedRequest) {
     try {
         const { to, subject, body, html, purpose } = await req.json();
 

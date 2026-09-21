@@ -7,6 +7,7 @@ import { cache } from 'react';
 import { GetCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { ddbDocClient } from '@/lib/dynamo';
 import { COURSES } from '@/data/courses';
+import { decorateCoursesWithSeats } from '@/lib/seatAccounting';
 import { isTestTeacherEmail, isTestTeacherName } from '@/lib/teacherVisibility';
 
 /**
@@ -127,7 +128,14 @@ export const listPublicCourses = cache(async (): Promise<CourseRecord[]> => {
   }
 
   const source: CourseRecord[] = persisted.length > 0 ? persisted : (COURSES as CourseRecord[]);
-  return source;
+
+  // 以真實報名人數覆蓋 seatsLeft，並附上 seatsOccupied（供首頁排序與「已有 N 人報名」）
+  try {
+    return await decorateCoursesWithSeats(source as Array<CourseRecord & { id: string }>);
+  } catch (e) {
+    console.warn('[listPublicCourses] seat decoration failed, returning raw courses:', e);
+    return source;
+  }
 });
 
 /**

@@ -13,13 +13,9 @@ import {
 import { PLAN_PRICES, PLAN_FEATURES } from "@/lib/mockAuth";
 import OnboardingQuestionnaire from "@/components/OnboardingQuestionnaire";
 import { useT } from "@/components/IntlProvider";
+import { COUNTRY_CODES, countryKey } from "@/lib/countryI18n";
 
 const ONBOARDING_ENABLED = process.env.NEXT_PUBLIC_ENABLE_ONBOARDING_QUESTIONNAIRE === 'true';
-
-const COUNTRY_CODES = [
-  "TW", "JP", "US", "GB", "HK", "MO", "CN", "KR", "SG", "MY",
-  "AU", "NZ", "CA", "DE", "FR", "ES", "IT", "IN", "BR", "MX", "ZA",
-] as const;
 
 function simpleMarkdownToHtml(md: string) {
   if (!md) return "";
@@ -35,8 +31,8 @@ function simpleMarkdownToHtml(md: string) {
 }
 
 export default function RegisterPage() {
-  const t = useT();
   const router = useRouter();
+  const t = useT();
   const [role, setRole] = useState<"student" | "teacher" | null>("student");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -100,8 +96,9 @@ export default function RegisterPage() {
 
   // plan selection moved to user settings; registration defaults to 'viewer'
 
+  // 標籤走翻譯 key，code 才是存進資料庫的值。清單集中在 lib/countryI18n.ts。
   const countries = useMemo(
-    () => COUNTRY_CODES.map((code) => ({ code, label: t(`country_${code}`) })),
+    () => COUNTRY_CODES.map((code) => ({ code, label: t(countryKey(code)) })),
     [t],
   );
 
@@ -198,7 +195,7 @@ export default function RegisterPage() {
 
     // 優先檢查服務條款同意
     if (!termsAccepted) {
-      setFormError(t('register_error_terms_required'));
+      setFormError(t('register_terms_required'));
       setTimeout(() => {
         // 滾動到服務條款區域
         const termsSection = document.querySelector('input[name="terms"]') as HTMLInputElement | null;
@@ -215,7 +212,7 @@ export default function RegisterPage() {
     const fieldRefs: { [key: string]: React.RefObject<any> } = {};
 
     if (!role) {
-      errors.push(t('register_error_field_role'));
+      errors.push(t('register_field_identity'));
       fieldRefs['role'] = roleRef;
     }
 
@@ -230,40 +227,40 @@ export default function RegisterPage() {
     }
 
     if (!email.trim()) {
-      errors.push(t('email'));
+      errors.push('Email');
       fieldRefs['email'] = emailRef;
     }
 
     if (!password) {
-      errors.push(t('password'));
+      errors.push(t('register_field_password'));
       fieldRefs['password'] = passwordRef;
     }
 
     if (!confirmPassword) {
-      errors.push(t('register_confirm_password_label'));
+      errors.push(t('register_field_confirm_password'));
       fieldRefs['confirmPassword'] = confirmPasswordRef;
     } else if (password !== confirmPassword) {
-      errors.push(t('register_error_password_mismatch_field'));
+      errors.push(t('register_field_password_mismatch'));
       fieldRefs['confirmPassword'] = confirmPasswordRef;
     }
 
     if (!birthdate) {
-      errors.push(t('birthdate_label'));
+      errors.push(t('register_field_birthdate'));
       fieldRefs['birthdate'] = birthdateRef;
     }
 
     if (!gender) {
-      errors.push(t('gender_label'));
+      errors.push(t('register_field_gender'));
       fieldRefs['gender'] = genderRef;
     }
 
     if (!country) {
-      errors.push(t('country_label'));
+      errors.push(t('register_field_country'));
       fieldRefs['country'] = countryRef;
     }
 
     if (errors.length > 0) {
-      const errorMessage = `${t('register_error_required_fields_prefix')}\n• ${errors.join('\n• ')}`;
+      const errorMessage = `${t('register_required_fields')}\n• ${errors.join('\n• ')}`;
       setFormError(errorMessage);
 
       // Scroll to first error field or error message
@@ -315,7 +312,7 @@ export default function RegisterPage() {
         // show server message inline instead of throwing an exception
         const message = data?.message === 'captcha_incorrect'
           ? t('register_error_captcha_incorrect')
-          : (data?.message || t('register_error_register_failed'));
+          : (data?.message || t('register_failed'));
         setFormError(message);
         if (data?.message === 'captcha_incorrect') {
           // 驗證碼失效後畫面上的舊圖片/token 已無法通過驗證，必須重新取得
@@ -348,7 +345,7 @@ export default function RegisterPage() {
 
     } catch (err: any) {
       console.error(err);
-      setFormError(err?.message || t('save_failed'));
+      setFormError(err?.message || t('register_save_failed'));
       loadCaptcha();
     }
 
@@ -358,26 +355,26 @@ export default function RegisterPage() {
     <div className="page">
       <header className="page-header">
         <h1>{t('create_account')}</h1>
-        <p>{t('register_subtitle_before')}<strong>{t('register_subtitle_bold')}</strong>{t('register_subtitle_after')}<span style={{ color: 'red' }}>*</span>{t('register_subtitle_after_asterisk')}</p>
+        <p>{t('register_subtitle')}</p>
       </header>
 
       <section className="section">
         <div className="card">
-          <h2>{t('register_basic_info_title')}</h2>
+          <h2>{t('register_basic_info')}</h2>
             {saved ? (
               <div style={{ textAlign: 'center', padding: '40px 20px' }}>
                 <div style={{ fontSize: '64px', marginBottom: '20px' }}>{emailSendFailed ? '⚠️' : '📧'}</div>
                 <h2 style={{ color: emailSendFailed ? '#b45309' : '#059669', marginBottom: '16px' }}>
-                  {emailSendFailed ? t('register_success_title_email_failed') : t('register_success_title_email_sent')}
+                  {emailSendFailed ? t('register_verify_failed_title') : t('register_verify_success_title')}
                 </h2>
                 {emailSendFailed ? (
                   <>
                     <p style={{ fontSize: '18px', color: '#4b5563', lineHeight: '1.6', marginBottom: '24px' }}>
-                      {t('register_email_failed_message_prefix')} <strong>{email}</strong>{t('register_email_failed_message_suffix')}<br />
-                      {t('register_email_failed_message_line2')}
+                      {t('register_verify_failed_body', { email })}<br />
+                      {t('register_verify_failed_hint')}
                     </p>
                     <div style={{ padding: '16px', backgroundColor: '#fffbeb', borderRadius: '8px', border: '1px solid #fde68a', color: '#92400e', fontSize: '14px', marginBottom: '24px' }}>
-                      {t('register_whitelist_hint')}
+                      {t('register_verify_whitelist_hint')}
                     </div>
                     <button
                       type="button"
@@ -394,14 +391,14 @@ export default function RegisterPage() {
                           });
                           const data = await res.json();
                           if (res.ok && data.success) {
-                            setResendMsg(data.message || t('register_resend_success_default'));
+                            setResendMsg(data.message || t('register_resend_success'));
                           } else if (res.status === 429 && data.retryAfter) {
-                            setResendError(t('register_resend_wait_seconds').replace('{seconds}', String(data.retryAfter)));
+                            setResendError(t('register_resend_wait', { seconds: data.retryAfter }));
                           } else {
-                            setResendError(data?.message || t('register_resend_failed_default'));
+                            setResendError(data?.message || t('register_resend_failed'));
                           }
                         } catch (e: any) {
-                          setResendError(e?.message || t('register_resend_failed_default'));
+                          setResendError(e?.message || t('register_resend_failed'));
                         } finally {
                           setResendLoading(false);
                         }
@@ -409,7 +406,7 @@ export default function RegisterPage() {
                       className="modal-button primary"
                       style={{ display: 'inline-block', width: 'auto', padding: '12px 32px', marginBottom: '16px', cursor: resendLoading ? 'not-allowed' : 'pointer' }}
                     >
-                      {resendLoading ? t('register_resend_sending') : t('register_resend_button')}
+                      {resendLoading ? t('register_resend_sending') : t('resend_verification')}
                     </button>
                     {resendMsg && <p style={{ color: '#059669', marginBottom: '16px' }}>{resendMsg}</p>}
                     {resendError && <p style={{ color: '#dc2626', marginBottom: '16px' }}>{resendError}</p>}
@@ -422,10 +419,11 @@ export default function RegisterPage() {
                 ) : (
                   <>
                     <p style={{ fontSize: '18px', color: '#4b5563', lineHeight: '1.6', marginBottom: '24px' }}>
-                      {t('register_email_sent_message_prefix')} <strong>{email}</strong>{t('register_email_sent_message_suffix')}
+                      {t('register_verify_sent', { email })}<br />
+                      {t('register_verify_sent_hint')}
                     </p>
                     <div style={{ padding: '16px', backgroundColor: '#ecfdf5', borderRadius: '8px', border: '1px solid #d1fae5', color: '#065f46', fontSize: '14px', marginBottom: '32px' }}>
-                      {t('register_whitelist_hint')}
+                      {t('register_verify_whitelist_hint')}
                     </div>
                     <Link href="/login" className="modal-button primary" style={{ display: 'inline-block', width: 'auto', padding: '12px 32px' }}>
                       {t('register_back_to_login')}
@@ -436,7 +434,7 @@ export default function RegisterPage() {
             ) : (
               <form onSubmit={handleSubmit} className="modal-form">
             <div className="field">
-              <label>{t('register_role_label')} <span style={{ color: 'red' }}>*</span></label>
+              <label>{t('register_identity')} <span style={{ color: 'red' }}>*</span></label>
               <select
                 ref={roleRef}
                 value={role || ""}
@@ -452,9 +450,9 @@ export default function RegisterPage() {
                 }}
                 style={{ cursor: 'pointer' }}
               >
-                <option value="">{t('register_select_role_placeholder')}</option>
-                <option value="student">{t('role_student')}</option>
-                <option value="teacher">{t('role_teacher')}</option>
+                <option value="">{t('register_select_identity')}</option>
+                <option value="student">{t('student')}</option>
+                <option value="teacher">{t('teacher')}</option>
               </select>
             </div>
 
@@ -470,7 +468,7 @@ export default function RegisterPage() {
             </div>
 
             <div className="field">
-              <label>{t('email')} <span style={{ color: 'red' }}>*</span></label>
+              <label>Email <span style={{ color: 'red' }}>*</span></label>
               <input ref={emailRef} type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="example@domain.com" />
             </div>
 
@@ -494,7 +492,7 @@ export default function RegisterPage() {
             </div>
 
             <div className="field">
-              <label>{t('register_confirm_password_label')} <span style={{ color: 'red' }}>*</span></label>
+              <label>{t('register_confirm_password')} <span style={{ color: 'red' }}>*</span></label>
               <input
                 ref={confirmPasswordRef}
                 type={showPasswords ? 'text' : 'password'}
@@ -541,12 +539,12 @@ export default function RegisterPage() {
             </div>
 
             <div className="field" style={{ display: 'none' }}>
-              <label>{t('register_auto_id_label')}</label>
+              <label>{t('register_auto_id')}</label>
               <input
                 value={uuid}
                 readOnly
                 disabled
-                aria-label={t('register_auto_id_aria')}
+                aria-label={t('register_auto_id_locked')}
                 style={{ background: '#f3f4f6', cursor: 'not-allowed' }}
               />
             </div>
@@ -601,13 +599,13 @@ export default function RegisterPage() {
                       appearance: 'checkbox'
                     }}
                   />
-                  {t('register_terms_agree_label')}
+                  {t('register_terms_agree')}
                 </label>
               </div>
             </div>
             {/* Captcha Section */}
             <div className="field">
-              <label>{t('captcha_label')} <span style={{ color: "red" }}>*</span></label>
+              <label>{t('register_captcha_label')} <span style={{ color: "red" }}>*</span></label>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
                 {captchaImage ? (
                   <img src={captchaImage} alt="captcha" style={{ height: 48, border: "1px solid #ddd", borderRadius: 4 }} />
@@ -621,7 +619,7 @@ export default function RegisterPage() {
               <input
                 type="text"
                 value={captchaValue}
-                placeholder={t('register_captcha_input_placeholder')}
+                placeholder={t('register_captcha_placeholder')}
                 onChange={(e) => setCaptchaValue(e.target.value)}
                 autoComplete="off"
               />

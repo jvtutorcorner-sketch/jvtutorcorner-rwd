@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { withAuth, type AuthedRequest } from '@/lib/auth/apiGuard';
 import { GoogleGenerativeAI, FunctionDeclaration, SchemaType } from '@google/generative-ai';
 import { ddbDocClient } from '@/lib/dynamo';
 import { PutCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
@@ -94,7 +95,9 @@ const notifyDepartmentDeclaration: FunctionDeclaration = {
 
 const tools = [{ functionDeclarations: [notifyDepartmentDeclaration] }];
 
-export async function POST(req: Request) {
+export const POST = withAuth(postHandler);
+
+async function postHandler(req: AuthedRequest) {
     try {
         const config = await getGeminiConfig();
 

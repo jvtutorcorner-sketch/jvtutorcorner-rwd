@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { withAuth, type AuthedRequest } from '@/lib/auth/apiGuard';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { getDefault, getIntegration } from '@/lib/integrations/store';
 import { getDispatchPrompt, quickDispatchDb, getAgent, listAgents } from '@/lib/ai/agentsStore';
@@ -24,7 +25,9 @@ async function getDispatchAIConfig() {
 }
 
 // ─── POST /api/ai-chat/dispatch ───────────────────────────────────────────────
-export async function POST(req: Request) {
+export const POST = withAuth(postHandler);
+
+async function postHandler(req: AuthedRequest) {
     try {
         const { query } = await req.json();
         if (!query?.trim()) {
@@ -124,7 +127,9 @@ export async function POST(req: Request) {
 }
 
 // ─── GET /api/ai-chat/dispatch — List all agents ──────────────────────────────
-export async function GET() {
+export const GET = withAuth(getHandler);
+
+async function getHandler() {
     const agents = await listAgents();
     return NextResponse.json({
         ok: true,

@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { getLineLoginConfig } from '@/lib/auth/lineLoginConfig';
 import { findProfileByLineUid, putProfile } from '@/lib/profilesService';
 import { createSession } from '@/lib/auth/sessionManager';
+import { getAccountBlock } from '@/lib/auth/accountStatus';
 
 function parseCookie(cookieHeader: string | null, name: string): string | null {
   if (!cookieHeader) return null;
@@ -112,6 +113,15 @@ export async function GET(req: Request) {
     // Keep pictureUrl fresh
     profile = { ...profile, pictureUrl, updatedAtUtc: new Date().toISOString() };
     await putProfile(profile);
+  }
+
+  // 停權 / 封鎖的帳號不得透過 LINE 登入繞過
+  const block = getAccountBlock(profile);
+  if (block) {
+    console.warn('[line-login] blocked account attempted login', { lineUid, status: block.status });
+    return NextResponse.redirect(
+      new URL(`/login?error=${block.status === 'banned' ? 'account_banned' : 'account_suspended'}`, req.url)
+    );
   }
 
   // Create session (same system as email login)
