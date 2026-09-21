@@ -48,7 +48,7 @@ export const CourseCard: React.FC<CourseCardProps> = ({ course, className = "" }
     : '';
 
   // 封面配色（無真實封面圖，用科目漸層 + 科目字樣）
-  const hue = hueFromString(subjectValue || title);
+  const hue = hueFromString(subjectValue || title || course.id || '');
   const coverStyle = {
     background: `linear-gradient(135deg, hsl(${hue} 70% 62%), hsl(${(hue + 40) % 360} 72% 48%))`,
   };
