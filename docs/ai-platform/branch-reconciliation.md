@@ -3,6 +3,29 @@
 > 產出於 2026-09-21。**本文件不執行任何 merge**;僅盤點 `main` ↔ `integration/b2b-security-merge` ↔ `stash@{0}` 的差異,並提出建議的合併批次順序,交由使用者確認。
 > 對應計畫:`docs/ai-platform/architecture-and-cost-plan-2026-09-21.md` §13 Phase 0a、§14 工單 0a-1…0a-9。
 
+---
+
+## ✅ 執行結果(2026-09-21,已在 `reconcile/platform-onto-main` 完成,待 PR 併入 main)
+
+實際執行時,原本規劃的 B1→B7 逐批因平台檔互相 import + integration tip 引用 stash 符號(`addUserPoints`/`WbRtcSignal`/`rtcRole`)而無法各自獨立編譯,故收斂為 4 個綠燈 commit:
+
+| commit | 內容 | 驗證 |
+|---|---|---|
+| `eddda1f` B0 | package.json 加 5 相依(livekit-server-sdk/client、jose、html5-qrcode、qrcode.react)+ integration 工具 scripts | npm ci、tsc baseline |
+| `f2ddf98` 平台+stash landing | 442 個「取 integration」檔一次帶入 + stash 套用(白板 DataChannel、escrow TransactWrite、addUserPoints)+ 還原 WT-only 叢集(class-summary、realtime policies)。schema profiles 補 LineUidIndex+EmailIndex;classSummaries 納入 STEP_KEYS/setup-db/verifier | tsc 0;verify-{strip-tabid,escrow-settlement,whiteboard-rtc,rtc-connection-policy,rtc-quality-policy,ice-servers,class-summary,class-summary-process,course-sessions-index} 全過;verify-schema --template 過 |
+| `dffe3e0` 19 衝突檔 | 9 路由 auth guard 嫁接(withAuth/withAdmin/withAdminOrHmac);forgot-password/line-login/Header 用 git merge-file 三方合併;register 取 integration(含 main role 預選);courses/_data 手併(過濾+席次);locales 三檔 key 聯集(+247,零衝突) | tsc 0 |
+| `c5acca1` B8 | translate 加 withAuth;next.config env 補新表;刪 debug-env/debug/env/test-db 等洩漏/測試路由;api_registry 重建(205 路由聯集) | tsc 0;**APP_ENV=local next build 成功** |
+
+**首頁事實 2 已確認**:integration 的 register/首頁其實與 main 幾乎相同或為超集;首頁相關檔取 main(bf6b39c)。
+
+**待你決定 / 後續(未在本次改動)**:
+1. **apiGuard 的 `x-e2e-secret` bypass** 目前用 NODE_ENV 閘門(prod 需 `LOGIN_BYPASS_SECRET`);計畫曾提 APP_ENV=local,但改動會影響 e2e-against-prod → 保留現狀待你確認。
+2. `scripts/audit-…-module-matrix.mjs`、`.agents/skills/ai-chat/SKILL.md` 保留 main 版(integration 的 audit 規格與模型路由文件段延後 fold-in,非 build-critical)。
+3. `app/api/shared/*`(仍被 admin/subscriptions 引用)與 `app/api/token`(重複 agora token)未刪,待引用檢查後再議。
+4. **prod 建表/GSI**(course-sessions 已存在;enrollments byCourseId/byOrderId/byOrgId、courses byTeacherId、rate-limits、class-summaries)以 `setup-db --only=` 執行——母計畫 0b-6,逐次徵得同意,遵守「先部署程式再建 GSI、GSI 鍵不寫 null」。
+5. 你需親自:Agora Console 輪替 App Certificate(已外洩 git 歷史)。
+6. 三個簡報二進位(`docs/*.pdf/.pptx`、根目錄 `.pptx`)未進版控(留在磁碟)。
+
 ## 0. 關鍵事實:這是**雙向**分歧,不是「integration 領先」
 
 - 合併基準(merge-base):`d1f22d4 fix(i18n): wire up translations on the create-account and enterprise registration pages`。
