@@ -15,17 +15,24 @@ export interface AuditLogEntry {
   action: string;
   targetType: string;
   targetId: string;
+  /**
+   * Owning organisation, top-level so org-scoped audit queries do not have to dig
+   * through the free-form metadata bag. Set it on every B2B mutation.
+   */
+  orgId?: string | null;
   metadata?: Record<string, unknown>;
 }
 
 export async function writeAuditLog(entry: AuditLogEntry): Promise<void> {
   try {
+    const { orgId, ...rest } = entry;
     await ddbDocClient.send(new PutCommand({
       TableName: AUDIT_LOG_TABLE,
       Item: {
         auditId: randomUUID(),
         createdAt: new Date().toISOString(),
-        ...entry,
+        ...rest,
+        ...(orgId ? { orgId } : {}),
       },
     }));
   } catch (err) {

@@ -1,15 +1,25 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { generateCheckMacValue, generateMerchantTradeNo, ECPAY_API_URL, getBaseEcpayParams } from '@/lib/ecpay';
+import { withAuth, type AuthedRequest } from '@/lib/auth/apiGuard';
+import { resolvePayableOrderForSession } from '@/lib/payments/payableOrder';
 
-export async function POST(req: NextRequest) {
+async function handleEcpayCheckout(req: AuthedRequest) {
     try {
         const body = await req.json();
-        const { amount, itemName, userId, orderId } = body;
+        const { orderId } = body;
 
         // Validation
-        if (!amount || !itemName || !orderId) {
-            return NextResponse.json({ error: 'Missing amount, itemName or orderId' }, { status: 400 });
+        if (!orderId) {
+            return NextResponse.json({ error: 'Missing orderId' }, { status: 400 });
         }
+
+        // 金額與品名以伺服器端的訂單紀錄為準；先前是直接採信呼叫端送來的 amount。
+        const resolved = await resolvePayableOrderForSession(orderId, req.session);
+        if (!resolved.ok) {
+            return NextResponse.json({ error: resolved.error }, { status: resolved.status });
+        }
+        const { amount, itemName } = resolved.order;
+        const userId = resolved.order.userId;
 
         if (process.env.NEXT_PUBLIC_PAYMENT_MOCK_MODE === 'true') {
             console.log('[ECPay Checkout] Mock Mode Active');
@@ -106,3 +116,5 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }
+
+export const POST = withAuth(handleEcpayCheckout);

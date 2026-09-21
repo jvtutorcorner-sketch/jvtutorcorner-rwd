@@ -2,6 +2,27 @@
 
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { getStoredUser } from '@/lib/mockAuth';
+import {
+  electOfferer,
+  encodePointsDelta,
+  applyPointsDelta,
+  chunkState,
+  assembleState,
+  mergeStateById,
+  CTL_LABEL,
+  PTS_LABEL,
+  type WbRtcRole,
+  type StateChunk,
+} from '@/lib/whiteboard/rtcProtocol';
+
+/** Injectable realtime signaling for the whiteboard's WebRTC handshake. When the
+ *  classroom provides this, offers/answers/candidates ride the existing RTM/WS
+ *  channel instead of the DB-polled mailbox. */
+export interface WbRtcSignal {
+  send: (kind: string, data: unknown, epoch: string) => void;
+  subscribe: (cb: (msg: { kind: string; data: unknown; from?: string; epoch?: string }) => void) => () => void;
+  selfId?: string;
+}
 
 export interface WhiteboardProps {
   room?: any; // Netless whiteboard room (if provided, use it; otherwise use canvas fallback)
@@ -18,6 +39,9 @@ export interface WhiteboardProps {
   hasMic?: boolean;
   onLeave?: () => void;
   editable?: boolean; // whether the current client may draw/interact
+  rtcRole?: WbRtcRole; // deterministic role for offerer election (defaults from editable)
+  rtcSelfId?: string; // stable cross-tab identity for tie-breaking (e.g. presenceId)
+  rtcSignal?: WbRtcSignal | null; // classroom realtime signaling; null → DB-polled mailbox
 }
 
 type Stroke = { points: number[]; stroke: string; strokeWidth: number; mode: 'draw' | 'erase'; page?: number; id?: string; timestamp?: number };
@@ -37,11 +61,35 @@ export default function EnhancedWhiteboard({
   hasMic,
   onLeave
   , editable = true
+  , rtcRole
+  , rtcSelfId
+  , rtcSignal
 }: WhiteboardProps) {
   const bcRef = useRef<BroadcastChannel | null>(null);
   const clientIdRef = useRef<string>(`c_${Math.random().toString(36).slice(2)}`);
   const applyingRemoteRef = useRef(false);
   const verboseLogging = typeof window !== 'undefined' && window.location.pathname === '/classroom/test';
+  // Snapshot mode: instead of persisting every stroke/point event, the editing
+  // client debounces and pushes ONE full-board snapshot, so the DB holds a single
+  // overwritten item per room (like Agora keeps only a scene snapshot) rather than
+  // an event stream. Set via NEXT_PUBLIC_WHITEBOARD_SNAPSHOT=1 (build-time).
+  const SNAPSHOT_MODE = process.env.NEXT_PUBLIC_WHITEBOARD_SNAPSHOT === '1';
+  const snapshotTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSnapshotAtRef = useRef(0);
+  const scheduleSnapshotRef = useRef<() => void>(() => {});
+  // WebRTC DataChannel transport (NEXT_PUBLIC_WHITEBOARD_RTC=1): live strokes go
+  // peer-to-peer over UDP (SCTP/DTLS) — smooth, sub-50ms, and NEVER touch the DB.
+  // Persistence falls back to the snapshot path (late-join / before the channel opens).
+  const RTC_MODE = process.env.NEXT_PUBLIC_WHITEBOARD_RTC === '1';
+  const pcRef = useRef<RTCPeerConnection | null>(null);
+  const dcRef = useRef<RTCDataChannel | null>(null); // reliable control channel (wb-ctl) — the "is RTC live?" signal
+  const dcPtsRef = useRef<RTCDataChannel | null>(null); // unreliable point-delta channel (wb-pts)
+  // How many points of each in-progress stroke we've already sent over wb-pts, so
+  // we only ship the new tail (never the whole growing array) on the unreliable path.
+  const sentPointsRef = useRef<Map<string, number>>(new Map());
+  const rtcSelfIdRef = useRef<string>(rtcSelfId || clientIdRef.current);
+  rtcSelfIdRef.current = rtcSelfId || clientIdRef.current;
+  const isOffererRef = useRef(false); // only the offerer persists snapshots (single writer)
   
   // REMOVED: Debounced state sync - causes flickering and lag
   // We now only sync state when necessary (undo/redo/clear) to avoid triggering drawAll useEffect
@@ -63,6 +111,49 @@ export default function EnhancedWhiteboard({
 
   // helper to POST events to server relay
   const postEventToServer = useCallback(async (event: any) => {
+    // RTC transport: while the reliable control channel is open, live strokes go
+    // P2P over UDP and never hit the DB. In-progress point batches ride the
+    // unreliable channel as deltas (fire-and-forget); everything else — including
+    // the FINAL stroke-update, which repairs any dropped deltas — rides the
+    // reliable channel. (Before the channel opens, fall through to snapshot/DB.)
+    if (RTC_MODE) {
+      const ctl = dcRef.current;
+      const pts = dcPtsRef.current;
+      if (ctl && ctl.readyState === 'open') {
+        try {
+          const ev: any = event;
+          if (ev.type === 'stroke-update' && !ev.final && pts && pts.readyState === 'open' && Array.isArray(ev.points)) {
+            const from = sentPointsRef.current.get(ev.strokeId) || 0;
+            const delta = encodePointsDelta(ev.strokeId, ev.points, from);
+            if (delta) {
+              pts.send(JSON.stringify(delta));
+              sentPointsRef.current.set(ev.strokeId, ev.points.length);
+            }
+          } else {
+            if (ev.type === 'stroke-start' && ev.stroke?.id) {
+              sentPointsRef.current.set(ev.stroke.id, ev.stroke.points?.length || 0);
+            } else if (ev.type === 'stroke-update' && ev.final) {
+              sentPointsRef.current.set(ev.strokeId, ev.points?.length || 0);
+            } else if (ev.type === 'clear') {
+              sentPointsRef.current.clear();
+            }
+            ctl.send(JSON.stringify({ ...ev, clientId: clientIdRef.current, t: Date.now() }));
+          }
+        } catch (e) {
+          /* fall through to persistence on send failure */
+        }
+        // Persistence: only the offerer keeps a debounced snapshot so a refresh /
+        // late-join / cold start can recover — DB still holds one item per room.
+        if (SNAPSHOT_MODE && isOffererRef.current) scheduleSnapshotRef.current();
+        return;
+      }
+    }
+    // Snapshot mode: skip per-event persistence; coalesce into one debounced
+    // full-board snapshot write instead (keeps the DB to a single item per room).
+    if (SNAPSHOT_MODE) {
+      scheduleSnapshotRef.current();
+      return;
+    }
     try {
       // Use channelName as uuid for consistency with PDF and session
       const uuid = channelName || 'default';
@@ -230,6 +321,44 @@ export default function EnhancedWhiteboard({
   const lastDrawnPointMapRef = useRef<Map<string, number>>(new Map());
   // Track IDs of strokes that have been confirmed by the server to distinguish "new peer strokes" from "deleted strokes"
   const syncedStrokeIdsRef = useRef<Set<string>>(new Set());
+
+  // Snapshot pusher (SNAPSHOT_MODE): debounced write of the whole current board as
+  // a single 'snapshot' event → the server overwrites one item per room. No
+  // per-stroke / per-point rows ever hit the DB.
+  const pushSnapshot = useCallback(async () => {
+    try {
+      const uuid = channelName || 'default';
+      await fetch('/api/whiteboard/event', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          uuid,
+          event: { type: 'snapshot', strokes: strokesRef.current, pdf: null, clientId: clientIdRef.current },
+        }),
+      });
+    } catch (e) {
+      console.warn('[WB SNAPSHOT] push failed', e);
+    }
+  }, [channelName]);
+  // Throttle + trailing edge: fire immediately if it has been >= MAXWAIT since the
+  // last snapshot, otherwise ensure exactly one trailing write lands at the window
+  // boundary. This bounds peer latency to ~MAXWAIT during continuous drawing while
+  // still coalescing bursts (and a final trailing snapshot lands after drawing stops).
+  scheduleSnapshotRef.current = () => {
+    // In RTC mode the snapshot is only a recovery backstop (live sync is P2P), so
+    // write far less often; otherwise it is the live transport and must be prompt.
+    const MAXWAIT = RTC_MODE ? 5000 : 1500;
+    const fire = () => {
+      if (snapshotTimerRef.current) { clearTimeout(snapshotTimerRef.current); snapshotTimerRef.current = null; }
+      lastSnapshotAtRef.current = Date.now();
+      void pushSnapshot();
+    };
+    const since = Date.now() - lastSnapshotAtRef.current;
+    if (since >= MAXWAIT) { fire(); return; }
+    if (!snapshotTimerRef.current) {
+      snapshotTimerRef.current = setTimeout(fire, MAXWAIT - since);
+    }
+  };
 
   useEffect(() => { setMounted(true); }, []);
 
@@ -488,6 +617,8 @@ export default function EnhancedWhiteboard({
       (window as any).__wb_undo = () => undo();
       (window as any).__wb_redo = () => redo();
       (window as any).__wb_clear = () => clearAll();
+      (window as any).__wb_setWidth = (n: number) => { if (Number.isFinite(n) && n > 0) setStrokeWidth(Number(n)); };
+      (window as any).__wb_strokeCount = () => strokesRef.current.length; // test hook (late-join / reconnect)
     } catch (e) {
       // ignore
     }
@@ -499,6 +630,8 @@ export default function EnhancedWhiteboard({
         delete (window as any).__wb_undo;
         delete (window as any).__wb_redo;
         delete (window as any).__wb_clear;
+        delete (window as any).__wb_setWidth;
+        delete (window as any).__wb_strokeCount;
       } catch (e) {}
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -741,12 +874,14 @@ export default function EnhancedWhiteboard({
     try {
       const sid = currentStrokeIdRef.current;
       if (sid) {
-        // ensure final update is sent immediately
-        const pending = pendingUpdatesRef.current.get(sid);
-        if (pending) {
-          try { postEventToServer({ type: 'stroke-update', strokeId: sid, points: pending.points }); } catch (e) {}
-          pendingUpdatesRef.current.delete(sid);
+        // Send the FINAL, complete points over the reliable path (final:true) so any
+        // dropped unreliable deltas are repaired on the peer.
+        const stroke = strokesRef.current.find((st) => (st as any).id === sid);
+        const points = stroke ? stroke.points : pendingUpdatesRef.current.get(sid)?.points;
+        if (points) {
+          try { postEventToServer({ type: 'stroke-update', strokeId: sid, points, final: true }); } catch (e) {}
         }
+        pendingUpdatesRef.current.delete(sid);
       }
     } catch (e) {}
   }, []);
@@ -882,181 +1017,176 @@ export default function EnhancedWhiteboard({
     handlePointerUp();
   }, [handlePointerUp]);
 
+  // Apply a remote whiteboard event to the local canvas. Shared by BroadcastChannel,
+  // SSE, and the WebRTC DataChannel so every transport renders identically. `reply`
+  // lets a transport answer a 'request-state' back over itself; `opts.mergeById`
+  // merges a received full state by stroke id (used for RTC late-join, keeping any
+  // local strokes the peer hasn't seen). Kept in a ref so transports stay stable.
+  const applyRemoteEvent = (data: any, reply?: (msg: any) => void, opts?: { mergeById?: boolean }) => {
+    if (!data || data.clientId === clientIdRef.current) return; // ignore our own
+    try {
+      if (data.type === 'setColor') {
+        try {
+          if (data.color) {
+            if (Array.isArray(data.color)) {
+              const c = data.color as number[];
+              setColor(`#${((1 << 24) + (c[0] << 16) + (c[1] << 8) + c[2]).toString(16).slice(1)}`);
+            } else {
+              setColor(String(data.color));
+            }
+          }
+        } catch (e) {}
+        return;
+      }
+      if (data.type === 'setTool') {
+        try { if (data.tool === 'eraser') setTool('eraser'); else setTool('pencil'); } catch (e) {}
+        return;
+      }
+      if (data.type === 'setWidth') {
+        try { if (typeof data.width === 'number') setStrokeWidth(Number(data.width)); } catch (e) {}
+        return;
+      }
+      if (data.type === 'set-page') {
+        if (typeof data.page === 'number') setCurrentPage(data.page);
+        return;
+      }
+      if (data.type === 'pdf-set') {
+        (async () => {
+          try {
+            const resp = await fetch(data.dataUrl);
+            const blob = await resp.blob();
+            const file = new File([blob], data.name || 'remote.pdf', { type: blob.type });
+            setSelectedFileName(file.name);
+            setLocalPdfFile(file);
+          } catch (e) {
+            console.error('[WB] Failed to apply remote PDF', e);
+          }
+        })();
+        return;
+      }
+      if (data.type === 'pts') {
+        // Unreliable point delta (DataChannel only). Append the new tail; a gap
+        // (earlier packet lost) is ignored — the reliable final stroke-update repairs it.
+        const idx = strokesRef.current.findIndex((st) => (st as any).id === data.strokeId);
+        if (idx >= 0) {
+          const stroke = strokesRef.current[idx];
+          const res = applyPointsDelta(stroke.points, data);
+          if (res.applied) {
+            stroke.points = res.points;
+            const lastCount = lastDrawnPointMapRef.current.get(data.strokeId) || 0;
+            if (res.points.length > lastCount) {
+              drawIncremental(stroke, lastCount);
+              lastDrawnPointMapRef.current.set(data.strokeId, res.points.length);
+            }
+          }
+        }
+        return;
+      }
+      if (data.type === 'stroke-start') {
+        applyingRemoteRef.current = true;
+        const stroke = data.stroke;
+        const id = data.strokeId || stroke.id;
+        if (!strokesRef.current.some(st => (st as any).id === id)) {
+          strokesRef.current.push(stroke);
+          drawIncremental(stroke, 0);
+          if (id) lastDrawnPointMapRef.current.set(id, stroke.points.length);
+          lastDrawnStrokeCountRef.current = strokesRef.current.length;
+          setStrokes([...strokesRef.current]);
+        }
+        applyingRemoteRef.current = false;
+      } else if (data.type === 'stroke-update') {
+        applyingRemoteRef.current = true;
+        const strokeId = data.strokeId;
+        const points = data.points;
+        const malformed = !Array.isArray(points) || points.some((p: any) => typeof p !== 'number' || Number.isNaN(p));
+        if (malformed) {
+          if (verboseLogging) logAnomaly('received malformed stroke-update (points invalid)', { strokeId, points });
+        } else {
+          const strokes = strokesRef.current;
+          const idx = strokes.findIndex((st) => (st as any).id === strokeId);
+          if (idx >= 0) {
+            const stroke = strokes[idx];
+            stroke.points = points; // final/full points repair any dropped deltas
+            const lastCount = lastDrawnPointMapRef.current.get(strokeId) || 0;
+            if (points.length > lastCount) {
+              drawIncremental(stroke, lastCount);
+              lastDrawnPointMapRef.current.set(strokeId, points.length);
+            }
+          } else if (verboseLogging) {
+            logAnomaly('orphaned stroke-update ignored', { strokeId });
+          }
+        }
+        applyingRemoteRef.current = false;
+      } else if (data.type === 'undo') {
+        applyingRemoteRef.current = true;
+        const next = strokesRef.current.filter((st) => (st as any).id !== data.strokeId);
+        strokesRef.current = next;
+        lastDrawnPointMapRef.current.delete(data.strokeId);
+        lastDrawnStrokeCountRef.current = 0;
+        setStrokes(next);
+        applyingRemoteRef.current = false;
+      } else if (data.type === 'redo') {
+        applyingRemoteRef.current = true;
+        strokesRef.current.push(data.stroke);
+        lastDrawnStrokeCountRef.current = 0;
+        setStrokes([...strokesRef.current]);
+        applyingRemoteRef.current = false;
+      } else if (data.type === 'clear') {
+        applyingRemoteRef.current = true;
+        strokesRef.current = [];
+        lastDrawnPointMapRef.current.clear();
+        lastDrawnStrokeCountRef.current = 0;
+        syncedStrokeIdsRef.current.clear();
+        setStrokes([]);
+        setUndone([]);
+        const canvas = canvasRef.current;
+        if (canvas) {
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.globalCompositeOperation = 'source-over';
+          }
+        }
+        applyingRemoteRef.current = false;
+      } else if (data.type === 'request-state') {
+        reply?.({ type: 'state', strokes: strokesRef.current, page: currentPageRef.current, clientId: clientIdRef.current });
+      } else if (data.type === 'state') {
+        if (typeof data.page === 'number') setCurrentPage(data.page);
+        applyingRemoteRef.current = true;
+        if (opts?.mergeById && Array.isArray(data.strokes)) {
+          // RTC late-join: remote wins per id, keep local-only strokes.
+          const merged = mergeStateById(strokesRef.current as any[], data.strokes) as Stroke[];
+          strokesRef.current = merged;
+          lastDrawnPointMapRef.current.clear();
+          lastDrawnStrokeCountRef.current = 0; // force full redraw
+          setStrokes(merged);
+        } else {
+          setStrokes((local) => {
+            if (local.length === 0 && Array.isArray(data.strokes)) return data.strokes;
+            return local;
+          });
+        }
+        applyingRemoteRef.current = false;
+      }
+    } catch (e) {
+      console.error('[WB apply] Error handling incoming event:', e);
+      if (verboseLogging) { pushError('[WB apply] Error handling incoming event'); logAnomaly('apply handler error', e); }
+    }
+  };
+  const applyRemoteEventRef = useRef(applyRemoteEvent);
+  applyRemoteEventRef.current = applyRemoteEvent;
+
   // BroadcastChannel setup for canvas sync (per-page channel)
   useEffect(() => {
     if (useNetlessWhiteboard) return;
     if (typeof window === 'undefined') return;
     try {
-      const params = new URLSearchParams(window.location.search);
       const bcName = `whiteboard_${channelName || 'default'}`;
       const ch = new BroadcastChannel(bcName);
       bcRef.current = ch;
       ch.onmessage = (ev: MessageEvent) => {
-        const data = ev.data as any;
-        if (!data || data.clientId === clientIdRef.current) return; // ignore our own
-        try {
-          // support admin-driven tool/color/width events
-          if (data.type === 'setColor') {
-            try {
-              if (data.color) {
-                if (Array.isArray(data.color)) {
-                  const c = data.color as number[];
-                  setColor(`#${((1 << 24) + (c[0] << 16) + (c[1] << 8) + c[2]).toString(16).slice(1)}`);
-                } else {
-                  setColor(String(data.color));
-                }
-              }
-            } catch (e) {}
-            return;
-          }
-          if (data.type === 'setTool') {
-            try { if (data.tool === 'eraser') setTool('eraser'); else setTool('pencil'); } catch (e) {}
-            return;
-          }
-          if (data.type === 'setWidth') {
-            try { if (typeof data.width === 'number') setStrokeWidth(Number(data.width)); } catch (e) {}
-            return;
-          }
-          if (data.type === 'set-page') {
-            if (typeof data.page === 'number') setCurrentPage(data.page);
-            return;
-          }
-          if (data.type === 'pdf-set') {
-            // data: { type: 'pdf-set', name, dataUrl, clientId }
-            (async () => {
-              try {
-                const resp = await fetch(data.dataUrl);
-                const blob = await resp.blob();
-                const file = new File([blob], data.name || 'remote.pdf', { type: blob.type });
-                setSelectedFileName(file.name);
-                setLocalPdfFile(file);
-              } catch (e) {
-                console.error('[WB] Failed to apply remote PDF', e);
-              }
-            })();
-            return;
-          }
-          if (data.type === 'stroke-start') {
-            applyingRemoteRef.current = true;
-            const stroke = data.stroke;
-            const id = data.strokeId || stroke.id;
-            
-            // DEBUG: Log received stroke
-            console.log('[WB BC] stroke-start:', { id, mode: stroke.mode, strokeWidth: stroke.strokeWidth });
-            
-            // Sync Ref - Avoid duplicates
-            if (!strokesRef.current.some(st => (st as any).id === id)) {
-                strokesRef.current.push(stroke);
-                
-                // CRITICAL FIX: Draw incrementally immediately to avoid full redraw (flicker)
-                drawIncremental(stroke, 0);
-                if (id) lastDrawnPointMapRef.current.set(id, stroke.points.length);
-                
-                // Update tracking ref to prevent drawAll from running needlessly when state syncs
-                lastDrawnStrokeCountRef.current = strokesRef.current.length;
-                
-                // REMOTE UPDATE: Must sync state to trigger student-side redraw
-                setStrokes([...strokesRef.current]);
-            }
-            applyingRemoteRef.current = false;
-          } else if (data.type === 'stroke-update') {
-            applyingRemoteRef.current = true;
-            const strokeId = data.strokeId;
-            const points = data.points;
-            
-            // Validate points
-            const malformed = !Array.isArray(points) || points.some((p: any) => typeof p !== 'number' || Number.isNaN(p));
-            if (malformed) {
-               if (verboseLogging) logAnomaly('BC received malformed stroke-update (points invalid)', { strokeId, points });
-               console.warn('[WB BC] Malformed stroke-update, ignoring:', strokeId);
-            } else {
-               const strokes = strokesRef.current;
-               const idx = strokes.findIndex((st) => (st as any).id === strokeId);
-               
-               if (idx >= 0) {
-                   const stroke = strokes[idx];
-                   stroke.points = points; // in-place update of ref content
-                   
-                   // Incremental draw
-                   const lastCount = lastDrawnPointMapRef.current.get(strokeId) || 0;
-                   if (points.length > lastCount) {
-                       drawIncremental(stroke, lastCount);
-                       lastDrawnPointMapRef.current.set(strokeId, points.length);
-                   }
-                   
-                   // NO state sync - only draw incrementally to avoid flickering
-               } else {
-                   // CRITICAL FIX: Do NOT create default black stroke for unknown IDs.
-                   // This causes "eraser turns into black line" bugs if stroke-start is missed.
-                   // Ignoring the orphan update is safer than drawing incorrect artifacts.
-                   console.warn('[WB BC] Ignored orphan stroke-update (missing start):', strokeId);
-                   if (verboseLogging) logAnomaly('BC orphaned stroke-update ignored', { strokeId });
-               }
-            }
-            applyingRemoteRef.current = false;
-          } else if (data.type === 'undo') {
-            applyingRemoteRef.current = true;
-            const next = strokesRef.current.filter((st) => (st as any).id !== data.strokeId);
-            strokesRef.current = next;
-            lastDrawnPointMapRef.current.delete(data.strokeId);
-            lastDrawnStrokeCountRef.current = 0; // Force full redraw
-            setStrokes(next);
-            applyingRemoteRef.current = false;
-          } else if (data.type === 'redo') {
-            applyingRemoteRef.current = true;
-            strokesRef.current.push(data.stroke);
-            lastDrawnStrokeCountRef.current = 0; // Force full redraw
-            setStrokes([...strokesRef.current]);
-            applyingRemoteRef.current = false;
-          } else if (data.type === 'clear') {
-            applyingRemoteRef.current = true;
-            strokesRef.current = [];
-            lastDrawnPointMapRef.current.clear();
-            lastDrawnStrokeCountRef.current = 0;
-            syncedStrokeIdsRef.current.clear();
-            setStrokes([]);
-            setUndone([]);
-            
-            // Clear canvas immediately with proper reset
-            const canvas = canvasRef.current;
-            if (canvas) {
-              const ctx = canvas.getContext('2d');
-              if (ctx) {
-                ctx.setTransform(1, 0, 0, 1, 0, 0);
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                ctx.globalCompositeOperation = 'source-over';
-              }
-            }
-            applyingRemoteRef.current = false;
-          } else if (data.type === 'request-state') {
-            // reply with full state
-            try { ch.postMessage({ type: 'state', strokes: strokesRef.current, page: currentPageRef.current, clientId: clientIdRef.current }); } catch (e) {}
-          } else if (data.type === 'state') {
-            if (typeof data.page === 'number') setCurrentPage(data.page);
-            // Avoid applying stale state that would overwrite recent local strokes.
-            // Only apply if local is empty AND we're not currently applying remote events.
-            // This prevents old state snapshots from overwriting newly drawn strokes.
-            applyingRemoteRef.current = true;
-            setStrokes((local) => {
-              if (local.length === 0 && Array.isArray(data.strokes)) {
-                console.log('[WB BC] Applying state snapshot:', data.strokes.length, 'strokes');
-                return data.strokes;
-              }
-              if (local.length > 0) {
-                if (verboseLogging) logAnomaly('BC state ignored due to local strokes', { localCount: local.length, remoteCount: data.strokes?.length });
-                console.log('[WB BC] Ignoring state snapshot because local strokes exist:', local.length);
-              }
-              return local;
-            });
-            applyingRemoteRef.current = false;
-          }
-        } catch (e) {
-          console.error('[WB BC] Error handling incoming message:', e);
-          if (verboseLogging) {
-            pushError('[WB BC] Error handling incoming message');
-            logAnomaly('BroadcastChannel message handler error', e);
-          }
-        }
+        applyRemoteEventRef.current(ev.data, (m) => { try { ch.postMessage(m); } catch (e) {} });
       };
 
       // ask for state from others (store timer so it can be cleared if channel closes)
@@ -1084,6 +1214,217 @@ export default function EnhancedWhiteboard({
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [useNetlessWhiteboard, setStrokes, setUndone]);
+
+  // WebRTC DataChannel transport (RTC_MODE): a P2P connection carries live strokes
+  // over UDP for Agora-like smoothness, with zero DB writes on the data path.
+  // - Deterministic offerer election (teacher offers; tie → lexicographic id) so two
+  //   editable peers never both offer.
+  // - Two channels: wb-ctl (reliable) for control + final strokes; wb-pts
+  //   (unreliable, no retransmit) for in-progress point deltas — lost packets are
+  //   never retransmitted, and the reliable final update repairs any gap.
+  // - Late-join: on open the peer requests the board, answered as chunked state.
+  // - Reconnect: connection failure re-handshakes with exponential backoff.
+  // - Signaling: the classroom's realtime channel (rtcSignal) when provided, else a
+  //   DB-polled mailbox. ICE (STUN/TURN) from /api/whiteboard/ice; real networks add
+  //   Cloudflare TURN (shares the 1TB); localhost uses host candidates.
+  useEffect(() => {
+    if (!RTC_MODE || useNetlessWhiteboard || typeof window === 'undefined') return;
+    const channel = channelName || 'default';
+    const selfRole: WbRtcRole = rtcRole ?? (editable ? 'teacher' : 'student');
+    const selfId = rtcSelfIdRef.current;
+    const forceRelay = process.env.NEXT_PUBLIC_WHITEBOARD_RTC_FORCE_RELAY === '1';
+    let stopped = false;
+    let gen = 0;
+    let active: { pc: RTCPeerConnection; cleanup: () => void } | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let backoff = 1000;
+    // Persist across reconnects so already-processed mailbox messages (old offers /
+    // candidates) are never replayed onto a fresh peer connection.
+    const seen = new Set<string>();
+
+    const getIce = async (): Promise<RTCIceServer[]> => {
+      try {
+        const r = await fetch('/api/whiteboard/ice');
+        const j = await r.json();
+        return Array.isArray(j?.iceServers) ? j.iceServers : [];
+      } catch { return []; }
+    };
+
+    const scheduleReconnect = () => {
+      if (stopped || reconnectTimer) return;
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        backoff = Math.min(30000, backoff * 2);
+        start();
+      }, backoff);
+    };
+
+    const start = async () => {
+      if (stopped) return;
+      gen += 1;
+      const myGen = gen;
+      if (active) { try { active.cleanup(); } catch {} active = null; }
+
+      const iceServers = await getIce();
+      if (stopped || myGen !== gen) return;
+      const pc = new RTCPeerConnection({
+        iceServers: iceServers.length ? iceServers : [{ urls: 'stun:stun.cloudflare.com:3478' }],
+        ...(forceRelay ? { iceTransportPolicy: 'relay' as RTCIceTransportPolicy } : {}),
+      });
+      pcRef.current = pc;
+
+      let peerRole: WbRtcRole | null = null;
+      let peerId: string | null = null;
+      let offering = false;
+      let stateChunks: StateChunk[] = [];
+      let pollTimer: ReturnType<typeof setTimeout> | null = null;
+      let unsub: (() => void) | null = null;
+
+      const send = (kind: string, data: unknown) => {
+        if (rtcSignal) { try { rtcSignal.send(kind, data, String(myGen)); } catch {} return; }
+        fetch('/api/whiteboard/signal', {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ channel, role: selfId, kind, data, epoch: String(myGen), mid: `${selfId}-${kind}-${Date.now()}-${Math.random().toString(36).slice(2)}` }),
+        }).catch(() => {});
+      };
+
+      const wireCtl = (dc: RTCDataChannel) => {
+        dcRef.current = dc;
+        dc.onopen = () => {
+          console.log('[WB RTC] datachannel OPEN (role=' + selfRole + ')');
+          backoff = 1000;
+          try { dc.send(JSON.stringify({ type: 'request-state', clientId: clientIdRef.current })); } catch {}
+        };
+        dc.onclose = () => { if (dcRef.current === dc) dcRef.current = null; };
+        dc.onmessage = (ev) => {
+          let data: any;
+          try { data = JSON.parse(ev.data); } catch { return; }
+          if (data?.type === 'stroke-start' && typeof data.t === 'number') {
+            console.log('[WB RTC] stroke synced, latency(ms)=', Date.now() - data.t);
+          }
+          if (data?.type === 'request-state') {
+            const chunks = chunkState(strokesRef.current as unknown[], { sid: `${selfId}-${Date.now()}`, page: currentPageRef.current });
+            for (const c of chunks) { try { dc.send(JSON.stringify(c)); } catch {} }
+            return;
+          }
+          if (data?.type === 'state-chunk') {
+            stateChunks.push(data);
+            const asm = assembleState(stateChunks);
+            if (asm) { stateChunks = []; applyRemoteEventRef.current({ type: 'state', strokes: asm.strokes, page: asm.page }, undefined, { mergeById: true }); }
+            return;
+          }
+          applyRemoteEventRef.current(data, (m) => { try { dc.send(JSON.stringify(m)); } catch {} }, { mergeById: true });
+        };
+      };
+      const wirePts = (dc: RTCDataChannel) => {
+        dcPtsRef.current = dc;
+        dc.onmessage = (ev) => { try { applyRemoteEventRef.current(JSON.parse(ev.data)); } catch {} };
+      };
+
+      pc.ondatachannel = (ev) => {
+        if (ev.channel.label === CTL_LABEL) wireCtl(ev.channel);
+        else if (ev.channel.label === PTS_LABEL) wirePts(ev.channel);
+      };
+      pc.onicecandidate = (ev) => { if (ev.candidate) send('candidate', ev.candidate.toJSON()); };
+      pc.onconnectionstatechange = () => {
+        const st = pc.connectionState;
+        if (st === 'failed') { if (myGen === gen) scheduleReconnect(); }
+        else if (st === 'disconnected') {
+          setTimeout(() => {
+            if (!stopped && myGen === gen && (pc.connectionState === 'disconnected' || pc.connectionState === 'failed')) scheduleReconnect();
+          }, 5000);
+        }
+      };
+
+      const maybeOffer = async () => {
+        if (offering || stopped || myGen !== gen) return;
+        if (!electOfferer({ selfRole, selfId, peerRole, peerId })) return;
+        offering = true;
+        isOffererRef.current = true;
+        sentPointsRef.current.clear();
+        wireCtl(pc.createDataChannel(CTL_LABEL, { ordered: true }));
+        wirePts(pc.createDataChannel(PTS_LABEL, { ordered: false, maxRetransmits: 0 }));
+        try {
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          send('offer', { type: pc.localDescription?.type, sdp: pc.localDescription?.sdp });
+        } catch (e) { console.warn('[WB RTC] offer failed', e); }
+      };
+
+      const onSignal = async (m: { kind: string; data: any; from?: string; epoch?: string }) => {
+        try {
+          if (m.kind === 'hello') {
+            peerRole = m.data?.role ?? null;
+            peerId = m.data?.id ?? m.from ?? null;
+            await maybeOffer();
+          } else if (m.kind === 'offer') {
+            if (offering) return; // glare guard: we already decided to offer
+            await pc.setRemoteDescription(m.data);
+            const ans = await pc.createAnswer();
+            await pc.setLocalDescription(ans);
+            send('answer', { type: pc.localDescription?.type, sdp: pc.localDescription?.sdp });
+          } else if (m.kind === 'answer') {
+            if (pc.signalingState === 'have-local-offer') await pc.setRemoteDescription(m.data);
+          } else if (m.kind === 'candidate') {
+            try { await pc.addIceCandidate(m.data); } catch {}
+          }
+        } catch (e) { console.warn('[WB RTC] signal handle failed', e); }
+      };
+
+      if (rtcSignal) {
+        unsub = rtcSignal.subscribe((msg) => { void onSignal(msg); });
+      } else {
+        const poll = async () => {
+          if (stopped || myGen !== gen) return;
+          try {
+            const r = await fetch(`/api/whiteboard/signal?channel=${encodeURIComponent(channel)}`);
+            const j = await r.json();
+            for (const m of j?.msgs ?? []) {
+              if (m.role === selfId || seen.has(m.mid)) continue;
+              seen.add(m.mid);
+              await onSignal({ kind: m.kind, data: m.data, from: m.role, epoch: m.epoch });
+            }
+          } catch {}
+          if (!stopped && myGen === gen) pollTimer = setTimeout(poll, 300);
+        };
+        poll();
+      }
+
+      // Announce ourselves; the peer's hello triggers offerer election. As a fallback
+      // (peer already announced, or its hello was lost), the elected offerer also tries
+      // after a short beat — with no peer info only the teacher offers.
+      send('hello', { role: selfRole, id: selfId });
+      setTimeout(() => { if (!stopped && myGen === gen) void maybeOffer(); }, 800);
+
+      active = {
+        pc,
+        cleanup: () => {
+          try { unsub?.(); } catch {}
+          if (pollTimer) clearTimeout(pollTimer);
+          try { dcRef.current?.close(); } catch {}
+          try { dcPtsRef.current?.close(); } catch {}
+          try { pc.close(); } catch {}
+          if (pcRef.current === pc) pcRef.current = null;
+          dcRef.current = null;
+          dcPtsRef.current = null;
+        },
+      };
+    };
+
+    // e2e hook: force a drop to exercise reconnect.
+    (window as any).__wb_rtc_debug = { drop: () => { try { active?.pc.close(); } catch {} scheduleReconnect(); } };
+
+    void start();
+
+    return () => {
+      stopped = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (active) { try { active.cleanup(); } catch {} active = null; }
+      isOffererRef.current = false;
+      try { delete (window as any).__wb_rtc_debug; } catch {}
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [RTC_MODE, channelName, useNetlessWhiteboard, rtcRole, rtcSelfId, rtcSignal]);
 
   // Attach non-passive touch listeners to prevent page scroll while drawing on mobile
   useEffect(() => {
@@ -1209,15 +1550,33 @@ export default function EnhancedWhiteboard({
     try {
       // Use channelName as uuid for consistency
       const uuid = channelName || 'default';
-      // In production (Amplify) long-lived SSE often fails; skip SSE there.
-      const isProduction = window.location.hostname === 'www.jvtutorcorner.com' || window.location.hostname === 'jvtutorcorner.com';
-      if (isProduction) {
-        console.log('[WB SSE] Production detected - skipping SSE. Falling back to /api/whiteboard/state polling.');
-        console.log('[WB POLL] Using uuid:', uuid);
-        // Try fetching persisted state immediately and then poll periodically
-        let pollId: number | null = null;
-        let lastRemoteHash = '';
-        const fetchAndApply = async () => {
+      // SSE cannot deliver live strokes here: each Next.js route module (event vs
+      // stream) has its own memory, so POST /api/whiteboard/event persists to
+      // DynamoDB but broadcastToUuid() from other routes reaches a *different*
+      // in-memory clients map than the one the SSE stream registered — the stream
+      // only ever emits its initial state. DynamoDB is the shared source of truth,
+      // so use the /api/whiteboard/state polling path (what production already
+      // uses) on localhost/dev too. Opt back into raw SSE only via an explicit flag.
+      const host = window.location.hostname;
+      const isProduction = host === 'www.jvtutorcorner.com' || host === 'jvtutorcorner.com';
+      const forceSse = process.env.NEXT_PUBLIC_WHITEBOARD_TRANSPORT === 'sse';
+      const usePolling = !forceSse && (isProduction || host === 'localhost' || host === '127.0.0.1' || host === '[::1]');
+      if (usePolling) {
+        console.log('[WB POLL] Using DynamoDB-state polling transport (shared source of truth). uuid:', uuid);
+        // Adaptive polling: fast while the board is changing or the local user is
+        // drawing, easing off when idle. Sync stays near-instant during use but the
+        // steady request rate (Lambda + DynamoDB reads) collapses when the board is
+        // quiet — the dominant idle case in 1:1 tutoring — so cost no longer grows
+        // linearly with wall-clock. `updatedAt` is bumped by every stroke add/append
+        // (lib/whiteboardService), so it is an exact change signal.
+        let pollTimer: ReturnType<typeof setTimeout> | null = null;
+        let stopped = false;
+        let intervalMs = 400;
+        const ACTIVE_MS = 400;
+        const IDLE_MAX_MS = 2500;
+        let lastUpdatedAt = 0;
+        const fetchAndApply = async (): Promise<boolean> => {
+          let changed = false;
           try {
             const resp = await fetch(`/api/whiteboard/state?uuid=${encodeURIComponent(uuid)}`);
               if (!resp.ok) {
@@ -1227,10 +1586,12 @@ export default function EnhancedWhiteboard({
                   pushError(`[WB POLL] /api/whiteboard/state returned non-ok ${resp.status}`);
                   logAnomaly('Production /state returned non-ok', { status: resp.status, bodyPreview: txt?.slice(0,200) });
                 }
-                return;
+                return false;
               }
             const j = await resp.json();
             const s = j?.state;
+            const upd = Number(s?.updatedAt ?? j?.state?.updatedAt ?? 0);
+            if (upd > lastUpdatedAt) { changed = true; lastUpdatedAt = upd; }
             if (s && Array.isArray(s.strokes)) {
               // INTELLIGENT MERGE STRATEGY: Avoid mutual overwrite cycles
               const localStrokes = strokesRef.current;
@@ -1252,7 +1613,7 @@ export default function EnhancedWhiteboard({
                 }
                 if (!hasContentChange) {
                   // No actual changes, skip update to avoid flickering
-                  return;
+                  return changed;
                 }
               }
               
@@ -1261,7 +1622,7 @@ export default function EnhancedWhiteboard({
               // This prevents remote updates from interfering with active local strokes
               if (isDrawing) {
                 // Skip merge while drawing to avoid disrupting user experience
-                return;
+                return changed;
               }
               
               // 1. Start with remote strokes (authoritative for others' actions)
@@ -1416,15 +1777,44 @@ export default function EnhancedWhiteboard({
                 logAnomaly('Production /state fetch failed', { error: errStack });
               }
           }
+          return changed;
         };
 
-        // initial fetch
-        fetchAndApply();
-        // Balanced polling (500ms = 2x per second) sufficient for smooth sync without server overload
-        try { pollId = window.setInterval(fetchAndApply, 500) as unknown as number; } catch (e) { pollId = null; }
+        // Self-scheduling adaptive loop (setTimeout, not setInterval): the next
+        // delay depends on whether the last poll saw a change or we are drawing.
+        const scheduleNext = () => {
+          if (stopped || document.hidden) { pollTimer = null; return; }
+          pollTimer = setTimeout(tick, intervalMs);
+        };
+        const tick = async () => {
+          if (stopped) return;
+          // While the RTC DataChannel is delivering live strokes, skip the DB read
+          // entirely and just idle-poll as a cheap fallback probe.
+          if (RTC_MODE && dcRef.current && dcRef.current.readyState === 'open') {
+            intervalMs = IDLE_MAX_MS;
+            scheduleNext();
+            return;
+          }
+          let changed = false;
+          try { changed = await fetchAndApply(); } catch (e) {}
+          intervalMs = (changed || isDrawingRef.current)
+            ? ACTIVE_MS
+            : Math.min(IDLE_MAX_MS, Math.round(intervalMs * 1.5));
+          scheduleNext();
+        };
+        // Pause entirely while the tab is hidden (nobody is watching); resume fast
+        // on return so a peer's strokes appear promptly.
+        const onVisibility = () => {
+          if (!document.hidden && !stopped && pollTimer === null) { intervalMs = ACTIVE_MS; tick(); }
+        };
+        try { document.addEventListener('visibilitychange', onVisibility); } catch (e) {}
+        // prime immediately, then self-schedule adaptively
+        tick();
 
         return () => {
-          try { if (pollId) window.clearInterval(pollId); } catch (e) {}
+          stopped = true;
+          try { if (pollTimer) clearTimeout(pollTimer); } catch (e) {}
+          try { document.removeEventListener('visibilitychange', onVisibility); } catch (e) {}
         };
       }
 

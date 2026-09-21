@@ -2,7 +2,7 @@
 
 > 本文件是產品功能、程式架構與測試覆蓋的共同索引。所有模組都按照「UI、API、Service、Data、Auth／Tenant、Test」分層記錄，避免只看到頁面或 route 存在就誤判為功能完成。
 >
-> 最近盤點：2026-08-08。重新產生報告：`node scripts/audit-enterprise-general-module-matrix.mjs`。
+> 最近盤點：2026-09-17。重新產生報告：`node scripts/audit-enterprise-general-module-matrix.mjs`。
 
 ## 1. 閱讀方式與狀態定義
 
@@ -38,19 +38,18 @@
 
 目前共 32 個模組、57 個 API domain，未映射 API domain 為 0：
 
-> 2026-08-23 更新：B2B-06／07／08 的狀態已依實測結果更正（見各模組說明）；其餘模組的
-> `COVERED` 標記仍沿用 2026-08-08 的稽核結果，其中 B2B-01／02／04／05 引用的部分測試檔案
-> （`scripts/verify-b2b-enterprise-registration.mjs`、`scripts/verify-b2b-http-routes.mjs`
-> 等）經人工確認並不存在，`COVERED` 標記本身不完全可信，之後盤點時應一併修正。
+> 2026-09-17 盤點：各模組「測試」欄引用的檔案已逐一確認存在於 repo（先前 2026-08-23 註記「部分測試檔案不存在」已不成立）；
+> B2B-06／07／08 依實際程式與測試更新，B2B-09 由 `NOT_IMPLEMENTED` 改為 `PARTIAL`（手動帳單已實作）。
+> `node scripts/audit-enterprise-general-module-matrix.mjs` 內建的模組狀態與備註部分落後於本文件（例如仍把 B2B-09 標為 `NOT_IMPLEMENTED`、B2B-07 標為 `BLOCKED`），以本文件為準。
 
 | 分組 | 模組數 | `COVERED` | `PARTIAL` | `BLOCKED` | `UNTESTED` | `NOT_IMPLEMENTED` |
 |---|---:|---:|---:|---:|---:|---:|
-| 企業 B2B | 9 | 6 | 1 | 0 | 0 | 2 |
+| 企業 B2B | 9 | 6 | 3 | 0 | 0 | 0 |
 | 一般學員 B2C | 7 | 5 | 2 | 0 | 0 | 0 |
 | 老師／管理員 | 4 | 0 | 4 | 0 | 0 | 0 |
 | B2B／B2C 共用 | 4 | 3 | 1 | 0 | 0 | 0 |
 | 平台共通／附加 | 8 | 1 | 7 | 0 | 0 | 0 |
-| **合計** | **32** | **15** | **15** | **0** | **0** | **2** |
+| **合計** | **32** | **15** | **17** | **0** | **0** | **0** |
 
 > 分組中的共用模組會以實際使用者範圍標記；因此同一個模組可能同時服務 B2B 與 B2C，但只計入一次。
 
@@ -59,12 +58,12 @@
 ### B2B-01 企業註冊／公開組織／CSV 批次匯入
 
 - **責任**：企業建立 Organization、驗證企業網域、CSV 匯入成員，以及公開組織清單。
-- **UI**：[企業註冊頁](../app/login/register_enterprise/page.tsx)
-- **API／Service**：`app/api/register/route.ts`、`app/api/organizations/public/route.ts`、`lib/organizationService.ts`
+- **UI**：[企業註冊頁](../app/login/register_enterprise/page.tsx)（公開，單筆自助註冊）、[CSV 批次匯入面板](../components/org/OrgCsvImportPanel.tsx)（`/admin/organizations/[id]` 成員分頁，限企業管理員）
+- **API／Service**：`app/api/register/route.ts`、`app/api/register/batch/route.ts`（`withAuth` + `requireOrgAccess` write）、`app/api/organizations/public/route.ts`、`lib/organizationService.ts`、`lib/registerProfile.ts`
 - **主要驗證**：單筆註冊、網域驗證、CSV 格式錯誤、席次不足、競態註冊 rollback、公開清單不洩漏私有資料。
-- **測試**：`scripts/verify-b2b-enterprise-registration.mjs`、`e2e/b2b_enterprise_registration_ui_flow.spec.ts`
+- **測試**：`scripts/verify-b2b-enterprise-registration.mjs`、`scripts/verify-register-batch.mjs`、`scripts/verify-register-batch-authz.mjs`、`e2e/b2b_enterprise_registration_ui_flow.spec.ts`（CSV 那段仍走舊的公開頁流程，待更新）
 - **狀態**：`COVERED`
-- **仍需注意**：測試涉及環境資料、網域與 CAPTCHA bypass fixture，執行前要確認環境與清理策略。
+- **仍需注意**：測試涉及環境資料、網域與 CAPTCHA bypass fixture，執行前要確認環境與清理策略。CSV 匯入自 2026-09-19 起需先以企業管理員登入（公開頁已移除該入口）。
 
 ### B2B-02 組織／成員管理與 HTTP 權限
 
@@ -109,8 +108,9 @@
 - **UI**：`components/org/OrgMembersPanel.tsx`（成員列表的「部門管理員」欄位，勾選即以該成員目前所屬部門為管理範圍）
 - **資料模型**：`ProfileB2B.isDeptAdmin` / `ProfileB2B.deptAdminUnitId`（2026-08-23 新增）。範圍判斷用 `orgUnit.path` 前綴比對，不是寫死的單位清單——部門被搬移後，管理範圍自動重算，不用重新授權。
 - **主要驗證**：本部門允許、子部門允許、兄弟部門拒絕、跨組織拒絕、不能自行提升權限（含不能把 `isDeptAdmin` 授予別人）、移動部門後範圍重新計算。
-- **測試**：`e2e/b2b_dept_admin_scope.spec.ts`（真實 HTTP API，22 個子步驟，含「組織管理員移動部門後、部門管理員範圍自動涵蓋新子部門」的動態重算驗證）
+- **測試**：`e2e/b2b_dept_admin_scope.spec.ts`（真實 HTTP API，22 個子步驟，含「組織管理員移動部門後、部門管理員範圍自動涵蓋新子部門」的動態重算驗證）、`scripts/verify-b2b-dept-admin-scope.mjs`（guard 函式層）、`e2e/b2b_dept_admin_ui_flow.spec.ts`、`e2e/b2b_dept_admin_and_billing_ui_flow.spec.ts`（瀏覽器 UI 流程）
 - **狀態**：`COVERED`
+- **後台頁面層（2026-09-17）**：`app/admin/layout.tsx` 的 `canAccessPage` 已改為真的讀取 `/admin/settings/page-permissions` 的設定（先前 DB 覆寫永遠不命中）；`dept_admin` 可進入哪些 `/admin/*` 子頁現在可由後台勾選調整，資料範圍仍由 API guard 強制。
 - **仍需注意**：v1 只允許系統管理員／組織管理員授予或收回 `isDeptAdmin`，部門管理員之間不能互相授權或移除彼此，避免範圍混亂；如需部門管理員自助委派子部門管理權，需要另外設計。
 
 ### B2B-07 跨租戶隔離／Org A-B／DSAR
@@ -126,17 +126,20 @@
 ### B2B-08 Google SSO／企業網域白名單
 
 - **責任**：authorization code 登入、state／nonce CSRF 防護、Google token 驗證、email verified 與企業網域白名單。
-- **API**：`app/api/auth/callback/google/route.ts`
-- **狀態說明（2026-08-23 更正）**：先前把這個模組標成 `PARTIAL`，並引用 `app/api/auth/google/start/route.ts`、`lib/auth/googleSSO.ts`、`e2e/enterprise_general_security_contract.spec.ts` 作為證據——這三個檔案在 git 歷史裡從來沒存在過。實際程式碼是一支明寫 `STUB` 的路由：收到任何 `code` 查詢參數就當作登入成功，沒有 token exchange、沒有 JWT 驗證、沒有 state/nonce，而且 UI 上完全沒有「使用 Google 登入」的按鈕能導向這條路徑——只能靠手動組網址觸發。已於 2026-08-23 移除這個假成功路徑：路由現在一律導回登入頁並帶錯誤訊息，前端也不再信任 URL 帶的 `google_auth_success`／`email` 參數建立本機 session。密碼登入不受影響。
-- **狀態**：`NOT_IMPLEMENTED`（安全性已修復，但真正的 Google OAuth 整合——token exchange、JWT 驗證、網域白名單——需要使用者提供 Google Cloud OAuth client ID/secret 才能開始做）
+- **UI／API／Service**：`app/login/page.tsx`、`app/api/auth/google/start/route.ts`、`app/api/auth/callback/google/route.ts`、`lib/auth/googleSSO.ts`
+- **主要驗證**：偽造 code、state、issuer、audience、nonce、未驗證 email、非白名單網域都必須拒絕且不建立 session；成功登入要正確建立組織關聯。
+- **測試**：`e2e/enterprise_general_security_contract.spec.ts`
+- **狀態**：`PARTIAL`
+- **缺口**：拒絕邊界已有驗證，但環境沒有真正 Google client credentials，尚無成功登入路徑的完整 E2E。
 
 ### B2B-09 企業帳單／合約／續約／發票
 
 - **責任**：企業層級付款、席次計價、合約起訖、月／年週期、續約、發票、webhook 與欠款處理。
-- **目前證據**：`lib/types/b2b.ts`、`app/api/organizations/route.ts` 僅有 Organization billing 欄位。
-- **應有驗證**：建立帳單客戶、席次變更計價、付款成功／失敗、webhook idempotency、續約、合約到期、發票權限與退款。
-- **測試狀態**：目前沒有組織層級 billing route、service 或專用測試。
-- **狀態**：`NOT_IMPLEMENTED`
+- **目前實作（手動帳單）**：`lib/orgBillingService.ts`（`createInvoice`／`listInvoicesByOrg`／`markInvoicePaid`／`voidInvoice`／`renewOrganizationContract`／`getOrgBillingStatus`）、`app/api/organizations/[id]/invoices/**`、`app/api/organizations/[id]/renew/route.ts`、`app/api/organizations/[id]/billing-status/route.ts`、UI `components/org/OrgBillingPanel.tsx`（`OrganizationDetailManager` 的「帳單」分頁）、資料表 `cloudformation/dynamodb-org-invoices-table.yml`。由系統管理員依線下合約／報價手動開立發票、手動標記已付款或作廢、手動續約；**刻意不串金流**。
+- **應有驗證**：發票建立／標記付款／作廢的狀態轉換、只有系統管理員能開立與改狀態、組織管理員只能看自己組織、續約後合約狀態（`active`／`expiring_soon`／`expired`）正確。
+- **測試**：`scripts/verify-b2b-org-billing.mjs`（service 層；腳本註明撰寫時 `jvtutorcorner-org-invoices` 表尚未部署、尚未真的跑過）、`e2e/b2b_dept_admin_and_billing_ui_flow.spec.ts`（帳單分頁 UI；建立發票步驟在表未部署時預期顯示錯誤訊息）
+- **狀態**：`PARTIAL`
+- **缺口**：沒有金流閘道、自動扣款、席次變更自動計價、webhook 與欠款處理；發票表部署與腳本的第一次真實通過紀錄仍待補。
 
 ## 4. B2C 一般功能
 
@@ -152,11 +155,12 @@
 ### B2C-02 公開頁／課程目錄／老師目錄／SEO
 
 - **責任**：訪客首頁、課程列表與詳情、老師列表、公開導覽、metadata、cache、robots／sitemap。
-- **UI／API／Service**：`app/page.tsx`、`app/courses/**`、`app/teachers/page.tsx`、`app/api/courses/route.ts`、`app/api/teachers/route.ts`、`middleware.ts`
+- **UI／API／Service**：`app/page.tsx`、`app/courses/**`、`app/teachers/**`、`app/robots.ts`、`app/sitemap.ts`、`lib/seo.ts`、`app/api/courses/route.ts`、`app/api/teachers/route.ts`、`middleware.ts`
 - **主要驗證**：未登入可瀏覽、無資料時畫面穩定、課程詳情不洩漏草稿、語系與 cache 正確、SEO metadata／robots／sitemap 可被搜尋引擎讀取。
 - **測試**：`e2e/b2c_verification.spec.ts`、`e2e/homepage_verification.spec.ts`
 - **狀態**：`PARTIAL`
-- **缺口**：SEO metadata、cache、robots／sitemap 仍有已知缺口；既有測試含資料不存在與 bypass secret 的 skip，需分開統計。
+- **SEO 現況（2026-09-17）**：root layout 已有 `metadataBase`／title template／OG（`lib/seo.ts`）；`/courses`、`/teachers`、`/pricing`、`/about`、`/terms` 各有 title／description／canonical；`/courses/[id]`、`/teachers/[id]` 有 `generateMetadata`（標題、描述、OG、canonical）；`app/robots.ts`、`app/sitemap.ts` 存在，sitemap 含課程與老師詳情頁。
+- **缺口**：公開頁仍非 CDN 可快取（M1.6：頁面為動態渲染，回應帶 `no-store`/`private`）；既有測試含資料不存在與 bypass secret 的 skip，需分開統計。
 
 ### B2C-03 課程瀏覽／報名／學生課程／學習進度
 
@@ -359,7 +363,7 @@
 | `register`、`login`、`logout`、`auth`、`forgot-password`、`captcha`、`profile` | B2C-01；Google SSO 屬 B2B-08 |
 | `organizations`、`org-units`、`licenses` | B2B-02～B2B-06 |
 | `courses`、`teachers`、`enroll` | B2C-02、B2C-03、TEACHER-01、ADMIN-01、SHARED-01 |
-| `stripe`、`paypal`、`linepay`、`ecpay`、`payments`、`plan-upgrades`、`orders` | B2C-04、B2C-05；企業帳單預留 B2B-09 |
+| `stripe`、`paypal`、`linepay`、`ecpay`、`payments`、`plan-upgrades`、`orders` | B2C-04、B2C-05（企業帳單不走這些金流，見 B2B-09 的 `organizations/[id]/invoices`、`renew`、`billing-status`） |
 | `points`、`points-escrow` | B2C-06 |
 | `classroom`、`speed-test`、`agora`、`signaling`、`token`、`whiteboard`、`netless` | SHARED-01～SHARED-04 |
 | `questionnaire`、`recommendations`、`survey`、`tracking`、`carousel`、`i18n` | B2C-02、B2C-07 |

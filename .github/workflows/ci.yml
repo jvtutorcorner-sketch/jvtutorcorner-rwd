@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Blocking gates. These run in parallel; none waits on the build. ──
+
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: 'npm' }
+      - run: npm ci
+      # Two projects: tsconfig.json (app) and tsconfig.e2e.json (the 92 Playwright
+      # files, which tsconfig.json deliberately excludes so `next build` never
+      # typechecks the test suite). Baseline is 0 errors in both, so this is
+      # blocking from day one.
+      - run: npm run typecheck
+
+  lint:
+    name: Lint (zero-tolerance zone)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: 'npm' }
+      - run: npm ci
+      # Blocking on lib/ + types/ only: those are at 0 errors / 109 warnings today,
+      # so the gate is real rather than aspirational. app/ (1018 errors) and
+      # components/ (287) stay advisory below until their backlog is burned down.
+      # The warning ceiling is a ratchet — lower it after each cleanup PR.
+      - run: npm run lint:ci
+
+  build:
+    name: Build & Bundle Secret Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: 'npm' }
+      - run: npm ci
+      # next.config.ts assertRequiredSecrets() only requires these two to exist and
+      # not be the revoked values; CI builds but never deploys, so dummies suffice.
+      - run: npm run build
+        env:
+          SESSION_SECRET: ci-build-only-dummy-session-secret-value
+          API_HMAC_SECRET: ci-build-only-dummy-hmac-secret-value
+      - run: npm run check:bundle-secrets
+
+  # ── Advisory. Reported, never blocking, until the backlog is cleared. ──
+
+  lint-full:
+    name: Lint (full report, advisory)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: 'npm' }
+      - run: npm ci
+      - run: npm run lint:report
+
+  audit:
+    name: Coverage & Module Matrix Audit (advisory)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      # Zero-dependency node:fs readers — no npm ci needed.
+      # NOT blocking yet: --strict fails today with 15 critical modules below
+      # COVERED (notably cross-tenant isolation, which is BLOCKED). That is a
+      # pre-existing state, not a regression. Flip to blocking once those are
+      # addressed, or once --strict grows a count ratchet.
+      - run: npm run test:audit-coverage:strict
+      - run: npm run test:audit-module-matrix:strict

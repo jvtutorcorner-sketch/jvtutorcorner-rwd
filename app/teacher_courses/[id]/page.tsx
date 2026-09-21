@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { useT } from '@/components/IntlProvider';
+import { useDateFormat } from '@/lib/hooks/useDateFormat';
 
 type Order = {
   orderId?: string;
@@ -20,6 +22,8 @@ type Order = {
 export default function TeacherOrderDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const t = useT();
+  const dateFmt = useDateFormat();
   const orderId = params?.id as string | undefined;
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(false);
@@ -46,7 +50,7 @@ export default function TeacherOrderDetailPage() {
   if (!orderId) {
     return (
       <div className="page">
-        <p>找不到訂單 ID。</p>
+        <p>{t('order_detail_no_id')}</p>
       </div>
     );
   }
@@ -55,22 +59,22 @@ export default function TeacherOrderDetailPage() {
     <div className="page">
       <section className="section">
         <button className="card-button" onClick={() => router.back()} style={{ marginBottom: 12 }}>
-          返回
+          {t('back')}
         </button>
 
         {loading ? (
-          <p>讀取中…</p>
+          <p>{t('loading')}</p>
         ) : error ? (
-          <p style={{ color: 'red' }}>讀取失敗：{error}</p>
+          <p style={{ color: 'red' }}>{t('order_detail_load_failed')}{error}</p>
         ) : !order ? (
-          <p>找不到訂單資料。</p>
+          <p>{t('order_detail_not_found')}</p>
         ) : (
           <div className="card">
-            <h2>訂單細節</h2>
+            <h2>{t('order_detail_title')}</h2>
             <div style={{ marginTop: 8 }}>
               {/* Workflow visualization */}
               <div style={{ marginBottom: 12 }}>
-                <h3 style={{ margin: '8px 0' }}>訂單流程</h3>
+                <h3 style={{ margin: '8px 0' }}>{t('order_detail_flow')}</h3>
                 {
                   (() => {
                     const mainSteps = ['Created', 'Pending', 'Paid', 'Completed'];
@@ -168,28 +172,28 @@ export default function TeacherOrderDetailPage() {
                         {terminal.includes(status) && (
                           <div style={{ marginLeft: 8, padding: '6px 10px', background: '#fee', border: '1px solid #f99', borderRadius: 6 }}>
                             <strong>{status}</strong>
-                            <div style={{ fontSize: 12 }}>此訂單處於終止狀態，最終動作：{status === 'REFUNDED' ? '已退款' : '失敗'}</div>
+                            <div style={{ fontSize: 12 }}>{t('order_detail_terminal_note', { action: status === 'REFUNDED' ? t('order_detail_terminal_refunded') : t('order_detail_terminal_failed') })}</div>
                           </div>
                         )}
                       </div>
                     );
                   })()
                 }
-                <div style={{ marginTop: 8, fontSize: 13 }}><strong>最後動作：</strong> {order.status || '-'} • {order.updatedAt ? new Date(order.updatedAt).toLocaleString() : (order.createdAt ? new Date(order.createdAt).toLocaleString() : '-')}</div>
+                <div style={{ marginTop: 8, fontSize: 13 }}><strong>{t('order_detail_last_action')}</strong> {order.status || '-'} • {order.updatedAt ? dateFmt.formatDateTime(order.updatedAt) : (order.createdAt ? dateFmt.formatDateTime(order.createdAt) : '-')}</div>
               </div>
-              <div><strong>訂單編號：</strong> {order.orderNumber || order.orderId}</div>
-              <div><strong>Order ID：</strong> {order.orderId}</div>
-              <div><strong>使用者：</strong> {order.userId || '-'}</div>
-              <div><strong>Enrollment ID：</strong> {order.enrollmentId || '-'}</div>
-              <div><strong>課程 ID：</strong> {order.courseId || '-'}</div>
-              <div><strong>金額：</strong> {order.amount != null ? `${order.amount} ${order.currency || 'TWD'}` : '-'}</div>
-              <div><strong>狀態：</strong> {order.status || '-'}</div>
-              <div><strong>建立時間：</strong> {order.createdAt ? new Date(order.createdAt).toLocaleString() : '-'}</div>
-              <div><strong>更新時間：</strong> {order.updatedAt ? new Date(order.updatedAt).toLocaleString() : '-'}</div>
+              <div><strong>{t('student_courses_order_number')}{t('label_colon')}</strong> {order.orderNumber || order.orderId}</div>
+              <div><strong>Order ID{t('label_colon')}</strong> {order.orderId}</div>
+              <div><strong>{t('user')}{t('label_colon')}</strong> {order.userId || '-'}</div>
+              <div><strong>{t('enrollment_id')}{t('label_colon')}</strong> {order.enrollmentId || '-'}</div>
+              <div><strong>{t('course_id')}{t('label_colon')}</strong> {order.courseId || '-'}</div>
+              <div><strong>{t('student_courses_amount')}{t('label_colon')}</strong> {order.amount != null ? `${order.amount} ${order.currency || 'TWD'}` : '-'}</div>
+              <div><strong>{t('student_courses_status')}{t('label_colon')}</strong> {order.status || '-'}</div>
+              <div><strong>{t('student_courses_created_at')}{t('label_colon')}</strong> {order.createdAt ? dateFmt.formatDateTime(order.createdAt) : '-'}</div>
+              <div><strong>{t('update_time')}{t('label_colon')}</strong> {order.updatedAt ? dateFmt.formatDateTime(order.updatedAt) : '-'}</div>
 
               {/* Payment history table */}
               <div style={{ marginTop: 12 }}>
-                <h3>付款紀錄</h3>
+                <h3>{t('order_detail_payments')}</h3>
                 {
                   (() => {
                     type PayRow = { time?: string; action?: string; amount?: number; currency?: string; status?: string; note?: string };
@@ -211,18 +215,18 @@ export default function TeacherOrderDetailPage() {
                       }
                     }
 
-                    if (!rows || rows.length === 0) return <div>沒有付款紀錄。</div>;
+                    if (!rows || rows.length === 0) return <div>{t('order_detail_no_payments')}</div>;
 
                     return (
                       <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #ddd', marginTop: 8 }}>
                         <thead>
                           <tr>
-                            <th style={{ border: '1px solid #ddd', padding: '6px' }}>時間</th>
-                            <th style={{ border: '1px solid #ddd', padding: '6px' }}>事件</th>
-                            <th style={{ border: '1px solid #ddd', padding: '6px' }}>金額</th>
-                            <th style={{ border: '1px solid #ddd', padding: '6px' }}>幣別</th>
-                            <th style={{ border: '1px solid #ddd', padding: '6px' }}>狀態</th>
-                            <th style={{ border: '1px solid #ddd', padding: '6px' }}>備註</th>
+                            <th style={{ border: '1px solid #ddd', padding: '6px' }}>{t('time')}</th>
+                            <th style={{ border: '1px solid #ddd', padding: '6px' }}>{t('event')}</th>
+                            <th style={{ border: '1px solid #ddd', padding: '6px' }}>{t('student_courses_amount')}</th>
+                            <th style={{ border: '1px solid #ddd', padding: '6px' }}>{t('currency_label')}</th>
+                            <th style={{ border: '1px solid #ddd', padding: '6px' }}>{t('student_courses_status')}</th>
+                            <th style={{ border: '1px solid #ddd', padding: '6px' }}>{t('notes')}</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -246,7 +250,7 @@ export default function TeacherOrderDetailPage() {
 
             {order.metadata && (
               <div style={{ marginTop: 12 }}>
-                <h3>其他資料</h3>
+                <h3>{t('order_detail_other_data')}</h3>
                 <pre style={{ whiteSpace: 'pre-wrap' }}>{JSON.stringify(order.metadata, null, 2)}</pre>
               </div>
             )}

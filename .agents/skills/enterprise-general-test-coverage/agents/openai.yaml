@@ -1,0 +1,4 @@
+interface:
+  display_name: "Enterprise and General Test Coverage"
+  short_description: "Audit B2B and B2C feature test coverage"
+  default_prompt: "Audit enterprise and general-user features, classify missing or skipped tests, and add focused verification scripts."

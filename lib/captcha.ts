@@ -94,11 +94,15 @@ export function getBypassSecret(): string | undefined {
 
 /**
  * Checks if the captcha bypass is allowed for the current request.
- * Bypass is allowed in all environments (including production hosted domains)
- * as long as the correct bypass secret is provided.
+ *
+ * 這個 bypass 是給自動化測試用的。先前這裡直接 `return true`，等於正式環境也照收
+ * bypass secret —— 只要那個環境變數存在（或被猜到），註冊/登入的驗證碼就形同虛設。
+ * 現在正式環境一律不允許，除非明確設定 ALLOW_CAPTCHA_BYPASS_IN_PRODUCTION=true
+ * （只有在對正式環境跑冒煙測試時才該短暫開啟）。
  */
 export async function isBypassAllowed(): Promise<boolean> {
-  return true;
+  if (process.env.NODE_ENV !== 'production') return true;
+  return process.env.ALLOW_CAPTCHA_BYPASS_IN_PRODUCTION === 'true';
 }
 
 export async function verifyCaptcha(token: string | undefined, value: string | undefined) {

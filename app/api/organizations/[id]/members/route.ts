@@ -13,8 +13,7 @@ import { findProfilesByOrgId, findProfileByEmail, getProfileById } from '@/lib/p
 import licenseService from '@/lib/licenseService';
 import orgMembershipService from '@/lib/orgMembershipService';
 import { withAuth } from '@/lib/auth/apiGuard';
-import { requireOrgOrDeptAccess, requireOrgUnitAccess, resolveDeptScopeUnitIds } from '@/lib/auth/orgAccess';
-import { getOrgUnitById } from '@/lib/orgUnitService';
+import { requireOrgAccess, requireMemberScopeAccess, filterMembersForActor, resolveOrgActor } from '@/lib/auth/orgAccess';
 import { writeAuditLog } from '@/lib/auditLogService';
 
 export const dynamic = 'force-dynamic';
@@ -33,11 +32,13 @@ function mapAssignError(error: any): { status: number; message: string } {
     message.includes('占用') ||
     message.includes('已屬於其他組織') ||
     message.includes('already assigned') ||
-    message.includes('already belongs')
+    message.includes('already belongs') ||
+    message.includes('已持有有效授權') ||
+    message.includes('already holds')
   ) {
     return { status: 409, message };
   }
-  if (message.includes('not active') || message.includes('archived')) {
+  if (message.includes('not active') || message.includes('archived') || message.includes('Invalid license expiresAt')) {
     return { status: 400, message };
   }
   return { status: 500, message };
@@ -50,24 +51,29 @@ export const GET = withAuth(async (req, context) => {
   try {
     const { id: orgId } = await (context as { params: Promise<{ id: string }> }).params;
 
-    const guard = await requireOrgOrDeptAccess(req, orgId, 'read');
-    if (!guard.ok) return guard.response;
+    // 系統管理員／組織管理員讀整組織成員；dept_admin 讀不到就用範圍過濾而不是直接 403，
+    // 才能支撐「dept_admin 可見 /admin/learners 且僅列出自己部門下學員」的需求。
+    const orgGuard = await requireOrgAccess(req, orgId, 'read');
+    const actor = orgGuard.ok ? orgGuard.actor : await resolveOrgActor(req);
+    if (!orgGuard.ok && !(actor.isDeptAdmin && actor.orgId === orgId)) {
+      return orgGuard.response;
+    }
 
-    const [allProfiles, activeLicenses] = await Promise.all([
+    const [profiles, activeLicenses] = await Promise.all([
       findProfilesByOrgId(orgId),
       licenseService.listLicensesByOrg(orgId, 'active')
     ]);
 
-    // 部門管理員只看得到自己與子孫單位裡的成員；沒有部門的成員（orgUnitId 未設）一律排除。
-    const scope = await resolveDeptScopeUnitIds(guard.actor);
-    const profiles = scope ? allProfiles.filter((p: any) => p.orgUnitId && scope.has(p.orgUnitId)) : allProfiles;
-
     const licenseByUserId = new Map(activeLicenses.map((l) => [l.userId, l]));
 
-    const members = profiles.map((profile: any) => ({
-      ...sanitizeProfile(profile),
-      license: licenseByUserId.get(profile.id) || null
-    }));
+    const members = await filterMembersForActor(
+      actor,
+      orgId,
+      profiles.map((profile: any) => ({
+        ...sanitizeProfile(profile),
+        license: licenseByUserId.get(profile.id) || null
+      }))
+    );
 
     return NextResponse.json({ ok: true, members, count: members.length });
   } catch (error: any) {
@@ -86,33 +92,18 @@ export const POST = withAuth(async (req, context) => {
   try {
     const { id: orgId } = await (context as { params: Promise<{ id: string }> }).params;
 
-    const guard = await requireOrgOrDeptAccess(req, orgId, 'write');
-    if (!guard.ok) return guard.response;
-
     const body = await req.json();
     const { email, profileId: bodyProfileId, orgUnitId, isOrgAdmin, courseId, expiresAt } = body;
+
+    // dept_admin 只能把新成員指派進自己子樹內的部門（沒填 orgUnitId 一律拒絕，不能塞進「無部門」）。
+    const guard = await requireMemberScopeAccess(req, orgId, orgUnitId ?? null);
+    if (!guard.ok) return guard.response;
 
     if (isOrgAdmin === true && !guard.actor.isSystemAdmin) {
       return NextResponse.json(
         { ok: false, error: 'Forbidden: only system administrators may grant org-admin' },
         { status: 403 }
       );
-    }
-
-    if (guard.actor.isDeptAdmin && !guard.actor.isOrgAdmin && !guard.actor.isSystemAdmin) {
-      // 部門管理員一定要把新成員放進自己範圍內的單位，不能加到組織層級（無部門）或別的部門。
-      if (!orgUnitId) {
-        return NextResponse.json(
-          { ok: false, error: 'Forbidden: department admins must assign members into their own scope (orgUnitId is required)' },
-          { status: 403 }
-        );
-      }
-      const targetUnit = await getOrgUnitById(orgUnitId);
-      if (!targetUnit) {
-        return NextResponse.json({ ok: false, error: '無效的組織單位' }, { status: 400 });
-      }
-      const unitGuard = await requireOrgUnitAccess(req, targetUnit, 'write');
-      if (!unitGuard.ok) return unitGuard.response;
     }
 
     let profileId = bodyProfileId as string | undefined;
@@ -147,10 +138,11 @@ export const POST = withAuth(async (req, context) => {
 
     await writeAuditLog({
       actorId: guard.actor.session.userId,
-      action: 'member.assign',
-      targetType: 'organization',
-      targetId: orgId,
-      metadata: { profileId, orgUnitId: orgUnitId || null, isOrgAdmin: isOrgAdmin === true, licenseId: result.license?.id }
+      action: 'org.member.add',
+      targetType: 'profile',
+      targetId: profileId!,
+      orgId,
+      metadata: { licenseId: result.license.id, orgUnitId: orgUnitId || null, isOrgAdmin: isOrgAdmin === true },
     });
 
     return NextResponse.json(

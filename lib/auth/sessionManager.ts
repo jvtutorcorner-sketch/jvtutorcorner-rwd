@@ -3,14 +3,45 @@
 
 import crypto from 'crypto';
 import { ddbDocClient } from '@/lib/dynamo';
-import { PutCommand, GetCommand, DeleteCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { PutCommand, GetCommand, DeleteCommand, UpdateCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 
 const SESSIONS_TABLE = process.env.DYNAMODB_TABLE_SESSIONS || 'jvtutorcorner-sessions';
-const sessionSecretFromEnv = process.env.SESSION_SECRET || process.env.API_HMAC_SECRET;
-if (!sessionSecretFromEnv) {
+
+/**
+ * 解析簽 session token 用的金鑰。
+ *
+ * 先前漏設時會靜默退回「每個 process 各自隨機產生」的金鑰。在 serverless 上這代表
+ * 每個容器都有自己的金鑰：A 容器發出的 token 到 B 容器就驗不過，使用者會隨機被登出，
+ * 而且問題只會出現在 log 的一行 warning 裡。正式環境改為直接啟動失敗。
+ *
+ * 注意：這裡沿用 API_HMAC_SECRET 作為 fallback，等於 session 簽章與服務間 HMAC
+ * 共用同一把金鑰。建議另外設定 SESSION_SECRET 把兩個信任域分開。
+ */
+function resolveSessionSecret(): string {
+  const explicit = process.env.SESSION_SECRET;
+  if (explicit) return explicit;
+
+  const sharedHmacSecret = process.env.API_HMAC_SECRET;
+  if (sharedHmacSecret) {
+    console.warn(
+      '[sessionManager] SESSION_SECRET is not set; falling back to API_HMAC_SECRET. ' +
+      'Set a dedicated SESSION_SECRET so session signing and service-to-service HMAC use separate keys.'
+    );
+    return sharedHmacSecret;
+  }
+
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      '[sessionManager] SESSION_SECRET (或 API_HMAC_SECRET) 必須在正式環境設定。' +
+      '缺少時每個執行實例會各自產生金鑰，導致 session 在實例之間互不認得。'
+    );
+  }
+
   console.warn('[sessionManager] SESSION_SECRET is not set. Using ephemeral in-memory secret; sessions reset on restart.');
+  return crypto.randomBytes(48).toString('hex');
 }
-const SESSION_SECRET = sessionSecretFromEnv || crypto.randomBytes(48).toString('hex');
+
+const SESSION_SECRET = resolveSessionSecret();
 const SESSION_TTL_SECONDS = 60 * 60 * 24; // 24 hours
 
 export interface SessionPayload {
@@ -132,6 +163,44 @@ export async function deleteSession(token: string): Promise<void> {
   } catch (err) {
     console.error('[sessionManager] deleteSession error:', err);
   }
+}
+
+/**
+ * 刪除某個使用者的所有 session（停權 / 封鎖時強制下線）。
+ *
+ * sessions 表沒有 userId GSI，這裡用 Scan + FilterExpression。這是管理員手動觸發的低頻操作，
+ * 而且表內資料 24 小時 TTL 自動清除，量不會大到需要為此加索引。
+ * 回傳刪除的 session 數。
+ */
+export async function deleteSessionsForUser(userId: string): Promise<number> {
+  if (!userId) return 0;
+  let deleted = 0;
+  let lastKey: Record<string, unknown> | undefined;
+
+  try {
+    do {
+      const res = await ddbDocClient.send(new ScanCommand({
+        TableName: SESSIONS_TABLE,
+        FilterExpression: 'userId = :u',
+        ExpressionAttributeValues: { ':u': userId },
+        ProjectionExpression: 'sessionId',
+        ExclusiveStartKey: lastKey,
+      }));
+      for (const item of res.Items || []) {
+        if (!item.sessionId) continue;
+        await ddbDocClient.send(new DeleteCommand({
+          TableName: SESSIONS_TABLE,
+          Key: { sessionId: item.sessionId },
+        }));
+        deleted += 1;
+      }
+      lastKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
+    } while (lastKey);
+  } catch (err) {
+    console.error('[sessionManager] deleteSessionsForUser error:', err);
+  }
+
+  return deleted;
 }
 
 /**

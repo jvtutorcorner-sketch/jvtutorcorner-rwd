@@ -1,0 +1,247 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  JV Tutor Corner - LiveKit media server on a single EC2 instance (Docker + Caddy TLS).
+  Phase 1 of the video-core migration. Secrets are read from SSM Parameter Store at boot.
+
+# ── 使用方式 ─────────────────────────────────────────────────────────────────
+# 1. 先在 SSM Parameter Store 建立三個 SecureString：
+#      /jvtutorcorner/livekit/api-key      (e.g. APIjvtc0001)
+#      /jvtutorcorner/livekit/api-secret   (>= 32 chars, `openssl rand -base64 48`)
+#      /jvtutorcorner/livekit/webhook-url  (Phase 4 的 API Gateway URL；先放 https://example.invalid)
+# 2. aws cloudformation deploy --stack-name jvtc-livekit \
+#      --template-file cloudformation/livekit-ec2.yml \
+#      --capabilities CAPABILITY_IAM \
+#      --parameter-overrides VpcId=vpc-xxx SubnetId=subnet-xxx DomainName=livekit.jvtutorcorner.com
+# 3. 把 Output 的 ElasticIp 設成 DomainName 的 A 記錄，等 Caddy 拿到憑證（約 1 分鐘）。
+# 4. 驗證：curl https://livekit.jvtutorcorner.com/  → 應回 "OK"
+#
+# 網路建議：
+#   * Public subnet + Elastic IP（WebRTC 需要固定公網 IP 當 ICE candidate）
+#   * 不要放在 NLB/ALB 後面：UDP port range 無法經由 ALB，NLB 也會讓 ICE 變複雜且加費
+#   * 多節點（> 60 堂同時上課）再改 ECS + Redis，見 docs/livekit-migration/README.md
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Description: A PUBLIC subnet (route to IGW) in the VPC above.
+  DomainName:
+    Type: String
+    Description: FQDN that will point to the Elastic IP (e.g. livekit.jvtutorcorner.com)
+    AllowedPattern: '^[a-z0-9.-]+$'
+  InstanceType:
+    Type: String
+    Default: c6i.large
+    AllowedValues: [t3.medium, c6i.large, c6i.xlarge, c7i.large]
+    Description: c6i.large handles ~40 concurrent 1-on-1 rooms at 720p. Avoid burstable t3 for production.
+  AmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+  SsmPrefix:
+    Type: String
+    Default: /jvtutorcorner/livekit
+  AllowedSshCidr:
+    Type: String
+    Default: 127.0.0.1/32
+    Description: Leave as loopback and use SSM Session Manager instead of SSH.
+
+Resources:
+  # ── Security Group ──────────────────────────────────────────────────────────
+  LiveKitSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: LiveKit media server
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - { IpProtocol: tcp, FromPort: 80,    ToPort: 80,    CidrIp: 0.0.0.0/0, Description: ACME challenge / redirect }
+        - { IpProtocol: tcp, FromPort: 443,   ToPort: 443,   CidrIp: 0.0.0.0/0, Description: WSS signaling via Caddy }
+        - { IpProtocol: tcp, FromPort: 7881,  ToPort: 7881,  CidrIp: 0.0.0.0/0, Description: ICE over TCP }
+        - { IpProtocol: udp, FromPort: 3478,  ToPort: 3478,  CidrIp: 0.0.0.0/0, Description: TURN UDP }
+        - { IpProtocol: udp, FromPort: 50000, ToPort: 60000, CidrIp: 0.0.0.0/0, Description: WebRTC media }
+        - { IpProtocol: tcp, FromPort: 22,    ToPort: 22,    CidrIp: !Ref AllowedSshCidr, Description: SSH (prefer SSM) }
+      SecurityGroupEgress:
+        - { IpProtocol: '-1', CidrIp: 0.0.0.0/0 }
+      Tags:
+        - { Key: Name, Value: jvtc-livekit-sg }
+
+  # ── IAM：讀 SSM 參數 + 寫 CloudWatch Logs，不給其他權限 ─────────────────────
+  InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ec2.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore   # Session Manager
+      Policies:
+        - PolicyName: livekit-runtime
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [ssm:GetParameter, ssm:GetParameters, ssm:GetParametersByPath]
+                Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${SsmPrefix}/*
+              - Effect: Allow
+                Action: [kms:Decrypt]
+                Resource: '*'
+                Condition:
+                  StringEquals: { 'kms:ViaService': !Sub 'ssm.${AWS::Region}.amazonaws.com' }
+              - Effect: Allow
+                Action: [logs:CreateLogGroup, logs:CreateLogStream, logs:PutLogEvents, logs:DescribeLogStreams]
+                Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/jvtutorcorner/livekit*
+
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles: [!Ref InstanceRole]
+
+  # ── Elastic IP：ICE candidate 必須是固定公網 IP ──────────────────────────────
+  ElasticIp:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags:
+        - { Key: Name, Value: jvtc-livekit-eip }
+
+  EipAssociation:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      AllocationId: !GetAtt ElasticIp.AllocationId
+      InstanceId: !Ref LiveKitInstance
+
+  # ── EC2 ─────────────────────────────────────────────────────────────────────
+  LiveKitInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref AmiId
+      InstanceType: !Ref InstanceType
+      SubnetId: !Ref SubnetId
+      IamInstanceProfile: !Ref InstanceProfile
+      SecurityGroupIds: [!Ref LiveKitSecurityGroup]
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs: { VolumeSize: 30, VolumeType: gp3, Encrypted: true }
+      Tags:
+        - { Key: Name, Value: jvtc-livekit }
+        - { Key: Project, Value: jvtutorcorner }
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -euxo pipefail
+          dnf install -y docker gettext jq
+          systemctl enable --now docker
+          mkdir -p /usr/local/lib/docker/cli-plugins
+          curl -fsSL https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64 \
+            -o /usr/local/lib/docker/cli-plugins/docker-compose
+          chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+
+          # 讀取 SSM 機密（SecureString 以 --with-decryption 解密）
+          export LIVEKIT_DOMAIN="${DomainName}"
+          export LIVEKIT_API_KEY="$(aws ssm get-parameter --with-decryption --name ${SsmPrefix}/api-key --query Parameter.Value --output text --region ${AWS::Region})"
+          export LIVEKIT_API_SECRET="$(aws ssm get-parameter --with-decryption --name ${SsmPrefix}/api-secret --query Parameter.Value --output text --region ${AWS::Region})"
+          export LIVEKIT_WEBHOOK_URL="$(aws ssm get-parameter --with-decryption --name ${SsmPrefix}/webhook-url --query Parameter.Value --output text --region ${AWS::Region})"
+
+          mkdir -p /opt/livekit
+          # 範本檔案內容內嵌於此，與 repo 的 infra/livekit/* 保持同步
+          cat > /opt/livekit/livekit.yaml.tpl <<'TPL'
+          port: 7880
+          rtc:
+            tcp_port: 7881
+            port_range_start: 50000
+            port_range_end: 60000
+            use_external_ip: true
+          room:
+            auto_create: true
+            empty_timeout: 300
+            departure_timeout: 20
+            enabled_codecs:
+              - mime: audio/opus
+              - mime: video/vp8
+              - mime: video/h264
+          keys:
+            ${!LIVEKIT_API_KEY}: ${!LIVEKIT_API_SECRET}
+          webhook:
+            api_key: ${!LIVEKIT_API_KEY}
+            urls:
+              - ${!LIVEKIT_WEBHOOK_URL}
+          turn:
+            enabled: true
+            domain: ${!LIVEKIT_DOMAIN}
+            udp_port: 3478
+          logging:
+            level: info
+            json: true
+          prometheus_port: 6789
+          TPL
+          envsubst '$LIVEKIT_API_KEY $LIVEKIT_API_SECRET $LIVEKIT_WEBHOOK_URL $LIVEKIT_DOMAIN' \
+            < /opt/livekit/livekit.yaml.tpl > /opt/livekit/livekit.yaml
+          chmod 600 /opt/livekit/livekit.yaml
+
+          cat > /opt/livekit/Caddyfile <<CADDY
+          ${DomainName} {
+            reverse_proxy localhost:7880
+            handle /healthz {
+              respond "ok" 200
+            }
+            log {
+              output stdout
+              format json
+            }
+          }
+          CADDY
+
+          cat > /opt/livekit/docker-compose.yml <<'COMPOSE'
+          services:
+            livekit:
+              image: livekit/livekit-server:v1.8
+              restart: unless-stopped
+              command: --config /etc/livekit.yaml
+              network_mode: host
+              volumes:
+                - /opt/livekit/livekit.yaml:/etc/livekit.yaml:ro
+              logging:
+                driver: awslogs
+                options:
+                  awslogs-region: ${AWS::Region}
+                  awslogs-group: /jvtutorcorner/livekit
+                  awslogs-stream: livekit-server
+                  awslogs-create-group: "true"
+            caddy:
+              image: caddy:2-alpine
+              restart: unless-stopped
+              network_mode: host
+              volumes:
+                - /opt/livekit/Caddyfile:/etc/caddy/Caddyfile:ro
+                - caddy_data:/data
+                - caddy_config:/config
+          volumes:
+            caddy_data:
+            caddy_config:
+          COMPOSE
+
+          cd /opt/livekit && docker compose up -d
+
+          # 核心 sysctl：UDP buffer 放大，避免高峰時掉包
+          cat > /etc/sysctl.d/90-livekit.conf <<SYSCTL
+          net.core.rmem_max=26214400
+          net.core.wmem_max=26214400
+          net.core.rmem_default=1048576
+          net.core.wmem_default=1048576
+          SYSCTL
+          sysctl --system
+
+Outputs:
+  ElasticIp:
+    Description: Point the DNS A record for DomainName here.
+    Value: !Ref ElasticIp
+  LiveKitUrl:
+    Description: Value for LIVEKIT_URL / NEXT_PUBLIC_LIVEKIT_URL
+    Value: !Sub wss://${DomainName}
+  InstanceId:
+    Value: !Ref LiveKitInstance
+  SecurityGroupId:
+    Value: !Ref LiveKitSecurityGroup

@@ -12,7 +12,11 @@ export default function DedicatedTeacherEditPage() {
     const [teacher, setTeacher] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    // 訊息的成功/失敗要用明確狀態表示。原本靠 messageOk 判斷，
+    // 訊息一翻成英文就永遠比對不到，所有提示都會被畫成錯誤樣式。
     const [message, setMessage] = useState<string | null>(null);
+    const [messageOk, setMessageOk] = useState(false);
+    const notify = (text: string, ok = false) => { setMessage(text); setMessageOk(ok); };
 
     // Form fields
     const [name, setName] = useState('');
@@ -41,7 +45,7 @@ export default function DedicatedTeacherEditPage() {
                 const fallbackName = `${effectiveProfile.lastName || ''}${effectiveProfile.firstName || ''}`.trim();
 
                 if (!tid) {
-                    setMessage('無法識別您的老師身分');
+                    notify(t('teacher_profile_edit_msg_no_identity'));
                     setLoading(false);
                     return;
                 }
@@ -59,17 +63,17 @@ export default function DedicatedTeacherEditPage() {
                     setSubjects(tData.subjects?.join(', ') || '');
                     setLanguages(tData.languages?.join(', ') || '');
                     if (tData.profileReviewStatus === 'PENDING') {
-                        setMessage('您有一筆變更申請正在審核中，新的提交會覆蓋它。');
+                        notify(t('teacher_profile_edit_msg_pending'));
                     }
                 } else if (res.status === 404) {
                     // Initialize name from session if profile doesn't exist yet
                     setName(fallbackName);
                     console.log('Profile not found, allowing creation');
                 } else {
-                    setMessage('找不到您的老師資料');
+                    notify(t('teacher_profile_edit_msg_not_found'));
                 }
             } catch (err) {
-                setMessage('載入失敗');
+                notify(t('teacher_profile_edit_msg_load_failed'));
             } finally {
                 setLoading(false);
             }
@@ -98,15 +102,15 @@ export default function DedicatedTeacherEditPage() {
             });
             const data = await res.json();
             if (data.ok) {
-                setMessage('✨ 提交成功！請等待管理員審核。系統將在 5 秒後自動返回首頁...');
+                notify(t('teacher_profile_edit_msg_success'), true);
                 setTimeout(() => {
                     router.push('/');
                 }, 5000);
             } else {
-                setMessage(data.message || '❌ 提交失敗');
+                notify(data.message || t('teacher_profile_edit_msg_submit_failed'));
             }
         } catch (err) {
-            setMessage('❌ 連線失敗');
+            notify(t('teacher_profile_edit_msg_network_failed'));
         } finally {
             setSaving(false);
         }
@@ -114,7 +118,7 @@ export default function DedicatedTeacherEditPage() {
 
     if (loading) return (
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: 'linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)' }}>
-            <div style={{ fontSize: '1.5rem', color: '#4f46e5', fontWeight: 'bold', animation: 'pulse 2s infinite' }}>載入中...</div>
+            <div style={{ fontSize: '1.5rem', color: '#4f46e5', fontWeight: 'bold', animation: 'pulse 2s infinite' }}>{t('loading')}</div>
         </div>
     );
 
@@ -136,9 +140,9 @@ export default function DedicatedTeacherEditPage() {
                         WebkitTextFillColor: 'transparent',
                         marginBottom: '8px'
                     }}>
-                        編輯教學資訊
+                        {t('teacher_profile_edit_title')}
                     </h1>
-                    <p style={{ color: '#64748b', fontSize: '1.1rem' }}>更新您的教學科目、語言與自我介紹</p>
+                    <p style={{ color: '#64748b', fontSize: '1.1rem' }}>{t('teacher_profile_edit_subtitle')}</p>
                 </header>
 
                 <div style={{
@@ -152,47 +156,47 @@ export default function DedicatedTeacherEditPage() {
                     <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
 
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                            <label style={{ color: '#1e293b', fontWeight: '600', fontSize: '0.95rem' }}>顯示名稱</label>
+                            <label style={{ color: '#1e293b', fontWeight: '600', fontSize: '0.95rem' }}>{t('teacher_profile_edit_display_name')}</label>
                             <input
                                 type="text"
                                 value={name}
                                 onChange={(e) => setName(e.target.value)}
                                 style={inputStyle}
-                                placeholder="您的姓名或暱稱"
+                                placeholder={t('teacher_profile_edit_display_name_placeholder')}
                             />
                         </div>
 
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                <label style={{ color: '#1e293b', fontWeight: '600', fontSize: '0.95rem' }}>教學科目 (以逗號隔開)</label>
+                                <label style={{ color: '#1e293b', fontWeight: '600', fontSize: '0.95rem' }}>{t('teacher_profile_edit_subjects')}</label>
                                 <input
                                     type="text"
                                     value={subjects}
                                     onChange={(e) => setSubjects(e.target.value)}
                                     style={inputStyle}
-                                    placeholder="e.g. 英文會話, 雅思寫作"
+                                    placeholder={t('teacher_profile_edit_subjects_placeholder')}
                                 />
                             </div>
 
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                <label style={{ color: '#1e293b', fontWeight: '600', fontSize: '0.95rem' }}>教學語言 (以逗號隔開)</label>
+                                <label style={{ color: '#1e293b', fontWeight: '600', fontSize: '0.95rem' }}>{t('teacher_profile_edit_languages')}</label>
                                 <input
                                     type="text"
                                     value={languages}
                                     onChange={(e) => setLanguages(e.target.value)}
                                     style={inputStyle}
-                                    placeholder="e.g. 中文, 英文, 日文"
+                                    placeholder={t('teacher_profile_edit_languages_placeholder')}
                                 />
                             </div>
                         </div>
 
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                            <label style={{ color: '#1e293b', fontWeight: '600', fontSize: '0.95rem' }}>自我介紹</label>
+                            <label style={{ color: '#1e293b', fontWeight: '600', fontSize: '0.95rem' }}>{t('teacher_profile_edit_intro')}</label>
                             <textarea
                                 value={intro}
                                 onChange={(e) => setIntro(e.target.value)}
                                 style={{ ...inputStyle, minHeight: '350px', resize: 'none' }}
-                                placeholder="詳細描述您的教學背景、獲得過的獎項，或是教學理念。"
+                                placeholder={t('teacher_profile_edit_intro_placeholder')}
                             />
                         </div>
 
@@ -215,7 +219,7 @@ export default function DedicatedTeacherEditPage() {
                                     opacity: saving ? 0.7 : 1,
                                 }}
                             >
-                                {saving ? '送出中...' : '送出提交變更'}
+                                {saving ? t('teacher_profile_edit_submitting') : t('teacher_profile_edit_submit')}
                             </button>
                             {teacherId && (
                                 <Link
@@ -232,7 +236,7 @@ export default function DedicatedTeacherEditPage() {
                                         border: '1px solid #e2e8f0'
                                     }}
                                 >
-                                    取消
+                                    {t('teacher_profile_edit_cancel')}
                                 </Link>
                             )}
                         </div>
@@ -243,9 +247,9 @@ export default function DedicatedTeacherEditPage() {
                                 borderRadius: '16px',
                                 textAlign: 'center',
                                 fontWeight: '600',
-                                background: message.includes('成功') ? '#ecfdf5' : '#fff1f2',
-                                color: message.includes('成功') ? '#059669' : '#e11d48',
-                                border: message.includes('成功') ? '1px solid #10b981' : '1px solid #f43f5e',
+                                background: messageOk ? '#ecfdf5' : '#fff1f2',
+                                color: messageOk ? '#059669' : '#e11d48',
+                                border: messageOk ? '1px solid #10b981' : '1px solid #f43f5e',
                                 animation: 'slideUp 0.4s ease-out'
                             }}>
                                 {message}

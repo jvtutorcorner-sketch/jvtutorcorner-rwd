@@ -1,12 +1,14 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { withAdminOrHmac, type AuthedRequest } from '@/lib/auth/apiGuard';
 
 export const runtime = 'nodejs';
 
 /**
  * 檔案匯入 API
  * 用於解析上傳的檔案內容（JSON、CSV、XML、TXT）
+ * 先前完全沒有 auth，這裡加上 admin session 或 HMAC（workflow 引擎）門檻。
  */
-export async function POST(req: NextRequest) {
+export const POST = withAdminOrHmac('/api/workflows/import-file', async (req: AuthedRequest) => {
     try {
         const { fileContent, fileName, fileType = 'json' } = await req.json();
 
@@ -80,5 +82,5 @@ export async function POST(req: NextRequest) {
             error: error?.message || 'File import failed',
         }, { status: 500 });
     }
-}
+});
 

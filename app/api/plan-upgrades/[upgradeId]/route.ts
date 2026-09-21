@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { ddbDocClient as docClient } from '@/lib/dynamo';
 import { UpdateCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
-import { withAuth, AuthedRequest } from '@/lib/auth/apiGuard';
+import { withAuth, withAnyAuth, AuthedRequest } from '@/lib/auth/apiGuard';
 import { handlePaymentSuccess } from '@/lib/paymentSuccessHandler';
 import { IS_LOCAL } from '@/lib/envConfig';
 
@@ -9,13 +9,25 @@ const UPGRADES_TABLE = process.env.DYNAMODB_TABLE_PLAN_UPGRADES || 'jvtutorcorne
 
 export const runtime = 'nodejs';
 
-export async function PATCH(request: Request, { params }: { params: Promise<{ upgradeId: string }> }) {
+// 先前完全沒有 auth：任何人送一個 upgradeId 就能把方案升級單改成 PAID。
+// 現在需要 session 或 HMAC，且只有付款權威（admin/system，含金流回調的內部簽章呼叫）
+// 能標記為 PAID。
+async function handlePatch(request: AuthedRequest, ctx?: { params: Promise<{ upgradeId: string }> }) {
     try {
-        const { upgradeId } = await params;
+        const { upgradeId } = await ctx!.params;
         const { status } = await request.json();
 
         if (!status) {
             return NextResponse.json({ error: 'Status is required' }, { status: 400 });
+        }
+
+        const { role, userId: sessionUserId } = request.session;
+        const isPrivileged = role === 'admin' || role === 'system';
+        if (status === 'PAID' && !isPrivileged) {
+            return NextResponse.json(
+                { error: 'Forbidden: only the payment gateway or an admin can mark an upgrade paid' },
+                { status: 403 }
+            );
         }
 
         const updatedAt = new Date().toISOString();
@@ -27,6 +39,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ up
         });
         const getRes = await docClient.send(getCmd);
         const oldUpgrade = getRes.Item;
+
+        if (!oldUpgrade) {
+            return NextResponse.json({ error: 'Upgrade not found' }, { status: 404 });
+        }
+        if (!isPrivileged && oldUpgrade.userId !== sessionUserId) {
+            return NextResponse.json({ error: 'Forbidden: not the owner of this upgrade' }, { status: 403 });
+        }
 
         // 1. Update the upgrade record status
         const command = new UpdateCommand({
@@ -53,14 +72,18 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ up
     }
 }
 
-export async function GET(request: Request, { params }: { params: Promise<{ upgradeId: string }> }) {
+async function handleGet(request: AuthedRequest, ctx?: { params: Promise<{ upgradeId: string }> }) {
     try {
-        const { upgradeId } = await params;
+        const { upgradeId } = await ctx!.params;
         const res = await docClient.send(new GetCommand({
             TableName: UPGRADES_TABLE,
             Key: { upgradeId },
         }));
         if (!res.Item) {
+            return NextResponse.json({ ok: false, error: 'Upgrade not found' }, { status: 404 });
+        }
+        const { role, userId } = request.session;
+        if (role !== 'admin' && role !== 'system' && res.Item.userId !== userId) {
             return NextResponse.json({ ok: false, error: 'Upgrade not found' }, { status: 404 });
         }
         return NextResponse.json({ ok: true, upgrade: res.Item }, { status: 200 });
@@ -150,3 +173,7 @@ const _POST = withAuth(
 );
 
 export const POST = _POST;
+
+// withAnyAuth：使用者用 session 查/改自己的升級單；金流回調用 HMAC 簽章以 system 身分回寫。
+export const PATCH = withAnyAuth('/api/plan-upgrades/[upgradeId]', handlePatch);
+export const GET = withAuth(handleGet);

@@ -17,7 +17,7 @@ export interface HomepageSettings {
 }
 
 const DEFAULT_SETTINGS: HomepageSettings = {
-  showRecommendations: true,
+  showRecommendations: false,
 };
 
 export async function getHomepageSettings(): Promise<HomepageSettings> {

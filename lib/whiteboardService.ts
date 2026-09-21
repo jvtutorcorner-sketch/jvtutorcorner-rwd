@@ -4,6 +4,22 @@ import { GetCommand, PutCommand, DeleteCommand, UpdateCommand } from '@aws-sdk/l
 const TABLE_NAME = process.env.WHITEBOARD_TABLE || 'jvtutorcorner-whiteboard';
 const TTL_SECONDS = 60 * 60 * 24; // 24 hours
 
+// Opt-in DynamoDB capacity measurement (WB_CAP_LOG=1). Logs the real consumed
+// RCU/WCU per op so the whiteboard's per-stroke DynamoDB cost can be measured
+// instead of estimated. Off by default; no effect on behavior.
+const WB_CAP_LOG = process.env.WB_CAP_LOG === '1';
+function logCap(op: string, cc: any, extra?: Record<string, unknown>) {
+  if (!WB_CAP_LOG) return;
+  try {
+    console.log(
+      `[WBCAP] op=${op} cu=${cc?.CapacityUnits ?? '?'} rcu=${cc?.ReadCapacityUnits ?? ''} wcu=${cc?.WriteCapacityUnits ?? ''}` +
+        (extra ? ' ' + JSON.stringify(extra) : '')
+    );
+  } catch {
+    /* ignore */
+  }
+}
+
 export interface WhiteboardState {
   strokes: any[];
   pdf: any | null;
@@ -16,12 +32,15 @@ export async function getWhiteboardState(uuid: string): Promise<WhiteboardState 
       TableName: TABLE_NAME,
       Key: { id: uuid },
       ConsistentRead: true, // CRITICAL: Force strongly consistent read to see recent writes immediately
+      ReturnConsumedCapacity: 'TOTAL' as const,
     };
     console.log('[WhiteboardService] ===== QUERYING DYNAMODB =====');
     console.log('[WhiteboardService] Table:', TABLE_NAME);
     console.log('[WhiteboardService] ID (uuid):', uuid);
     const startTime = Date.now();
-    const { Item } = await ddbDocClient.send(new GetCommand(params));
+    const resp = await ddbDocClient.send(new GetCommand(params));
+    const Item = resp.Item;
+    logCap('get', resp.ConsumedCapacity, { uuid, strokes: (Item as any)?.strokes?.length ?? 0 });
     const duration = Date.now() - startTime;
     if (Item) {
       console.log('[WhiteboardService] ✓ Item FOUND:', { uuid, strokeCount: (Item as any).strokes?.length || 0, hasPdf: !!(Item as any).pdf, duration: `${duration}ms` });
@@ -84,6 +103,7 @@ export async function saveWhiteboardState(uuid: string, strokes: any[], pdf: any
         updatedAt: now,
         ttl,
       },
+      ReturnConsumedCapacity: 'TOTAL' as const,
     };
     console.log('[WhiteboardService] ===== SAVING TO DYNAMODB =====');
     console.log('[WhiteboardService] Table:', TABLE_NAME);
@@ -94,7 +114,8 @@ export async function saveWhiteboardState(uuid: string, strokes: any[], pdf: any
       console.log('[WhiteboardService] PDF details:', { name: pdf.name, s3Key: pdf.s3Key, url: pdf.url });
     }
     const startTime = Date.now();
-    await ddbDocClient.send(new PutCommand(params));
+    const putResp = await ddbDocClient.send(new PutCommand(params));
+    logCap('put', putResp.ConsumedCapacity, { uuid, strokes: strokes.length });
     const duration = Date.now() - startTime;
     console.log('[WhiteboardService] State saved successfully (Put):', { uuid, strokeCount: strokes.length, duration: `${duration}ms` });
   } catch (error) {
@@ -122,9 +143,11 @@ export async function addStrokeAtomic(uuid: string, stroke: any): Promise<void> 
         ':empty_list': [],
         ':now': now,
         ':ttl': ttl
-      }
+      },
+      ReturnConsumedCapacity: 'TOTAL' as const,
     };
-    await ddbDocClient.send(new UpdateCommand(params));
+    const addResp = await ddbDocClient.send(new UpdateCommand(params));
+    logCap('stroke-start', addResp.ConsumedCapacity, { uuid });
     console.log('[WhiteboardService] Atomic stroke added:', { uuid, strokeId: stroke.id });
   } catch (error) {
     console.error('[WhiteboardService] Error in addStrokeAtomic:', { uuid, error: String(error) });
@@ -160,11 +183,13 @@ export async function updateStrokeInList(uuid: string, strokeId: string, points:
           ':points': points,
           ':now': now,
           ':strokeId': strokeId
-        }
+        },
+        ReturnConsumedCapacity: 'TOTAL' as const,
       };
 
       try {
-        await ddbDocClient.send(new UpdateCommand(params));
+        const updResp = await ddbDocClient.send(new UpdateCommand(params));
+        logCap('stroke-update', updResp.ConsumedCapacity, { uuid, strokes: state.strokes.length });
       } catch (err: any) {
         if (err.name === 'ConditionalCheckFailedException') {
           // If index shifted (rare), we could retry, but for high-freq updates we can skip

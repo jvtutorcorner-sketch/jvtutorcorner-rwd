@@ -1,12 +1,30 @@
 #!/usr/bin/env node
 /**
- * DynamoDB Setup Script for B2B/B2C Hybrid LMS Platform (JavaScript version)
- * 
- * Purpose: Initialize and update DynamoDB tables with proper idempotency
- * 
+ * DynamoDB Setup Script for the B2B/B2C Hybrid LMS Platform.
+ *
+ * Purpose: create and update DynamoDB tables idempotently.
+ *
+ * This script is the SOURCE OF TRUTH for table shapes, and it gets that status
+ * from scripts/lib/schema.mjs: every CreateTable / UpdateTable call below is
+ * built from those declarations rather than from params typed out inline.
+ * cloudformation/dynamodb-b2b-tables.yml mirrors the same declarations, and
+ * `node scripts/verify-schema.mjs` diffs a live account (and that template)
+ * against them.
+ *
  * Usage:
- *   node scripts/setup-db.mjs
- * 
+ *   node scripts/setup-db.mjs                                  # every table / index
+ *   node scripts/setup-db.mjs --only=courseSessions            # one step only
+ *   node scripts/setup-db.mjs --only=courseSessions,pointsEscrow
+ *   node scripts/setup-db.mjs --only=courseSessions --dry-run  # report, change nothing
+ *
+ *   Step keys: organizations, orgUnits, licenses, enrollments, courseSessions, classSummaries,
+ *              planUpgrades, pointsEscrow, profiles, courses
+ *
+ *   Use --only whenever some declared index must NOT be created yet. An index on
+ *   an attribute that deployed code still writes as NULL makes every write to
+ *   that table fail ("Type mismatch for Index Key"); see
+ *   .agents/skills/db-ops-migrations/SKILL.md for the deploy order.
+ *
  * Environment Variables:
  *   AWS_REGION - AWS region (default: ap-northeast-1)
  *   AWS_ACCESS_KEY_ID - For local dev only
@@ -25,23 +43,45 @@ import {
 import dotenv from 'dotenv';
 import path from 'path';
 
+import {
+  TABLES,
+  REQUIRED_INDEXES_ON_EXISTING_TABLES,
+  resolveTableName,
+  createTableParams,
+  indexKeySchema,
+} from './lib/schema.mjs';
+import {
+  STEP_KEYS,
+  parseOnlyArg,
+  parseDryRunArg,
+  selectSteps,
+  unknownArgs,
+} from './lib/setup-steps.mjs';
+
+// Parse flags before anything talks to AWS, so a typo exits with no side effects.
+let ONLY;
+let DRY_RUN;
+try {
+  const argv = process.argv.slice(2);
+  const unknown = unknownArgs(argv);
+  if (unknown.length) throw new Error(`unknown argument(s): ${unknown.join(' ')}`);
+  ONLY = parseOnlyArg(argv);
+  DRY_RUN = parseDryRunArg(argv);
+  // Validate step keys now (throws on a typo), not after the client exists.
+  selectSteps(ONLY, STEP_KEYS.map((key) => ({ key, name: key })));
+} catch (error) {
+  console.error(`❌ ${error.message}`);
+  process.exit(1);
+}
+
 // Load .env.local
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
-
 
 // ==========================================
 // Configuration
 // ==========================================
 
 const REGION = process.env.AWS_REGION || process.env.CI_AWS_REGION || 'ap-northeast-1';
-
-const ORGANIZATIONS_TABLE = process.env.DYNAMODB_TABLE_ORGANIZATIONS || 'jvtutorcorner-organizations';
-const ORG_UNITS_TABLE = process.env.DYNAMODB_TABLE_ORG_UNITS || 'jvtutorcorner-org-units';
-const LICENSES_TABLE = process.env.DYNAMODB_TABLE_LICENSES || 'jvtutorcorner-licenses';
-const PROFILES_TABLE = process.env.DYNAMODB_TABLE_PROFILES || 'jvtutorcorner-profiles';
-const COURSES_TABLE = process.env.DYNAMODB_TABLE_COURSES || 'jvtutorcorner-courses';
-const PLAN_UPGRADES_TABLE = process.env.DYNAMODB_TABLE_PLAN_UPGRADES || 'jvtutorcorner-plan-upgrades';
-const POINTS_ESCROW_TABLE = process.env.DYNAMODB_TABLE_POINTS_ESCROW || 'jvtutorcorner-points-escrow';
 
 // ==========================================
 // DynamoDB Client Setup
@@ -171,375 +211,158 @@ async function waitForGSIActive(tableName, indexName, maxWaitSeconds = 300) {
   throw new Error(`Timeout waiting for GSI ${indexName} on table ${tableName} to become ACTIVE`);
 }
 
-// ==========================================
-// Table Creation Functions
-// ==========================================
+/**
+ * Idempotently add one GSI to an existing table.
+ *
+ * DynamoDB permits only ONE GSI creation per UpdateTable call and refuses any
+ * further update while an index is still backfilling, so indexes must be added
+ * one at a time with a wait between them. That is what this does.
+ */
+async function ensureGSI(tableName, index) {
+  const indexName = index.name;
 
-async function createOrganizationsTable() {
-  console.log(`\n📦 [Organizations] Creating table: ${ORGANIZATIONS_TABLE}`);
-
-  if (await tableExists(ORGANIZATIONS_TABLE)) {
-    console.log(`⚠️  [Organizations] Table already exists, skipping creation`);
-    return;
+  if (!(await tableExists(tableName))) {
+    console.log(`⚠️  [${tableName}] Table does not exist yet, skipping GSI "${indexName}"`);
+    console.log(`   Note: create the table first, then re-run this script`);
+    return false;
   }
 
-  const params = {
-    TableName: ORGANIZATIONS_TABLE,
-    BillingMode: 'PAY_PER_REQUEST',
-    AttributeDefinitions: [
-      { AttributeName: 'id', AttributeType: 'S' },
-      { AttributeName: 'billingEmail', AttributeType: 'S' },
-      { AttributeName: 'status', AttributeType: 'S' },
-    ],
-    KeySchema: [
-      { AttributeName: 'id', KeyType: 'HASH' },
-    ],
-    GlobalSecondaryIndexes: [
-      {
-        IndexName: 'BillingEmailIndex',
-        KeySchema: [{ AttributeName: 'billingEmail', KeyType: 'HASH' }],
-        Projection: { ProjectionType: 'ALL' },
-      },
-      {
-        IndexName: 'StatusIndex',
-        KeySchema: [{ AttributeName: 'status', KeyType: 'HASH' }],
-        Projection: { ProjectionType: 'ALL' },
-      },
-    ],
-    StreamSpecification: {
-      StreamEnabled: true,
-      StreamViewType: 'NEW_AND_OLD_IMAGES',
-    },
-    SSESpecification: { Enabled: true },
-    Tags: [
-      { Key: 'Project', Value: 'jvtutorcorner' },
-      { Key: 'Purpose', Value: 'B2B-Organizations' },
-    ],
-  };
-
-  try {
-    await client.send(new CreateTableCommand(params));
-    console.log(`✅ [Organizations] Table creation initiated`);
-    await waitForTableActive(ORGANIZATIONS_TABLE);
-  } catch (error) {
-    if (error instanceof ResourceInUseException) {
-      console.log(`⚠️  [Organizations] Table already exists (race condition)`);
-    } else {
-      console.error(`❌ [Organizations] Failed to create table:`, error.message);
-      throw error;
-    }
-  }
-}
-
-async function createOrgUnitsTable() {
-  console.log(`\n📦 [OrgUnits] Creating table: ${ORG_UNITS_TABLE}`);
-
-  if (await tableExists(ORG_UNITS_TABLE)) {
-    console.log(`⚠️  [OrgUnits] Table already exists, skipping creation`);
-    return;
-  }
-
-  const params = {
-    TableName: ORG_UNITS_TABLE,
-    BillingMode: 'PAY_PER_REQUEST',
-    AttributeDefinitions: [
-      { AttributeName: 'id', AttributeType: 'S' },
-      { AttributeName: 'orgId', AttributeType: 'S' },
-      { AttributeName: 'parentId', AttributeType: 'S' },
-      { AttributeName: 'path', AttributeType: 'S' },
-    ],
-    KeySchema: [
-      { AttributeName: 'id', KeyType: 'HASH' },
-    ],
-    GlobalSecondaryIndexes: [
-      {
-        IndexName: 'byOrgId',
-        KeySchema: [
-          { AttributeName: 'orgId', KeyType: 'HASH' },
-          { AttributeName: 'path', KeyType: 'RANGE' },
-        ],
-        Projection: { ProjectionType: 'ALL' },
-      },
-      {
-        IndexName: 'byParentId',
-        KeySchema: [{ AttributeName: 'parentId', KeyType: 'HASH' }],
-        Projection: { ProjectionType: 'ALL' },
-      },
-    ],
-    StreamSpecification: {
-      StreamEnabled: true,
-      StreamViewType: 'NEW_AND_OLD_IMAGES',
-    },
-    SSESpecification: { Enabled: true },
-    Tags: [
-      { Key: 'Project', Value: 'jvtutorcorner' },
-      { Key: 'Purpose', Value: 'B2B-OrgUnits' },
-    ],
-  };
-
-  try {
-    await client.send(new CreateTableCommand(params));
-    console.log(`✅ [OrgUnits] Table creation initiated`);
-    await waitForTableActive(ORG_UNITS_TABLE);
-  } catch (error) {
-    if (error instanceof ResourceInUseException) {
-      console.log(`⚠️  [OrgUnits] Table already exists (race condition)`);
-    } else {
-      console.error(`❌ [OrgUnits] Failed to create table:`, error.message);
-      throw error;
-    }
-  }
-}
-
-async function createLicensesTable() {
-  console.log(`\n📦 [Licenses] Creating table: ${LICENSES_TABLE}`);
-
-  if (await tableExists(LICENSES_TABLE)) {
-    console.log(`⚠️  [Licenses] Table already exists, skipping creation`);
-    return;
-  }
-
-  const params = {
-    TableName: LICENSES_TABLE,
-    BillingMode: 'PAY_PER_REQUEST',
-    AttributeDefinitions: [
-      { AttributeName: 'id', AttributeType: 'S' },
-      { AttributeName: 'orgId', AttributeType: 'S' },
-      { AttributeName: 'userId', AttributeType: 'S' },
-      { AttributeName: 'status', AttributeType: 'S' },
-    ],
-    KeySchema: [
-      { AttributeName: 'id', KeyType: 'HASH' },
-    ],
-    GlobalSecondaryIndexes: [
-      {
-        IndexName: 'byOrgId',
-        KeySchema: [
-          { AttributeName: 'orgId', KeyType: 'HASH' },
-          { AttributeName: 'status', KeyType: 'RANGE' },
-        ],
-        Projection: { ProjectionType: 'ALL' },
-      },
-      {
-        IndexName: 'byUserId',
-        KeySchema: [{ AttributeName: 'userId', KeyType: 'HASH' }],
-        Projection: { ProjectionType: 'ALL' },
-      },
-    ],
-    StreamSpecification: {
-      StreamEnabled: true,
-      StreamViewType: 'NEW_AND_OLD_IMAGES',
-    },
-    SSESpecification: { Enabled: true },
-    Tags: [
-      { Key: 'Project', Value: 'jvtutorcorner' },
-      { Key: 'Purpose', Value: 'B2B-Licenses' },
-    ],
-  };
-
-  try {
-    await client.send(new CreateTableCommand(params));
-    console.log(`✅ [Licenses] Table creation initiated`);
-    await waitForTableActive(LICENSES_TABLE);
-  } catch (error) {
-    if (error instanceof ResourceInUseException) {
-      console.log(`⚠️  [Licenses] Table already exists (race condition)`);
-    } else {
-      console.error(`❌ [Licenses] Failed to create table:`, error.message);
-      throw error;
-    }
-  }
-}
-
-async function updateProfilesTable() {
-  console.log(`\n🔄 [Profiles] Updating table: ${PROFILES_TABLE}`);
-
-  if (!(await tableExists(PROFILES_TABLE))) {
-    console.log(`⚠️  [Profiles] Table does not exist yet, skipping GSI update`);
-    console.log(`   Note: Create the Profiles table first, then re-run this script`);
-    return;
-  }
-
-  const status = await getTableStatus(PROFILES_TABLE);
+  const status = await getTableStatus(tableName);
   if (status !== 'ACTIVE') {
-    console.log(`⏳ [Profiles] Table is ${status}, waiting for ACTIVE state...`);
-    await waitForTableActive(PROFILES_TABLE);
+    console.log(`⏳ [${tableName}] Table is ${status}, waiting for ACTIVE state...`);
+    await waitForTableActive(tableName);
   }
 
-  // DynamoDB only allows one GSI to be created at a time, so this loop waits for
-  // each index to reach ACTIVE before starting the next.
-  const indexes = [
-    { indexName: 'byOrgId', attribute: 'orgId' },
-    // LINE login resolves profiles by lineUid. Without this GSI every lookup
-    // throws ValidationException and silently falls back to a full-table Scan.
-    // Sparse index: profiles with no LINE binding carry no lineUid attribute.
-    { indexName: 'LineUidIndex', attribute: 'lineUid' },
-  ];
-
-  for (const { indexName, attribute } of indexes) {
-    if (await gsiExists(PROFILES_TABLE, indexName)) {
-      console.log(`✅ [Profiles] GSI "${indexName}" already exists, no update needed`);
-      continue;
+  if (await gsiExists(tableName, indexName)) {
+    // An index still backfilling also "exists". Re-running after a wait timeout
+    // must keep waiting, not report success while DynamoDB is still building it.
+    const gsiStatus = await getGSIStatus(tableName, indexName);
+    if (gsiStatus && gsiStatus !== 'ACTIVE') {
+      if (DRY_RUN) {
+        console.log(`🔎 [${tableName}] GSI "${indexName}" exists but is ${gsiStatus} (dry run: not waiting)`);
+        return false;
+      }
+      console.log(`⏳ [${tableName}] GSI "${indexName}" exists but is ${gsiStatus}; waiting for ACTIVE`);
+      await waitForGSIActive(tableName, indexName);
+      return false;
     }
+    console.log(`✅ [${tableName}] GSI "${indexName}" already exists`);
+    return false;
+  }
 
-    console.log(`📝 [Profiles] Adding GSI: ${indexName} (key: ${attribute})`);
+  if (DRY_RUN) {
+    console.log(`🔎 [${tableName}] would add GSI: ${indexName} [${indexKeySchema(index).map((k) => `${k.AttributeName}:${k.KeyType}`).join(', ')}]`);
+    return false;
+  }
 
-    const params = {
-      TableName: PROFILES_TABLE,
-      AttributeDefinitions: [
-        { AttributeName: attribute, AttributeType: 'S' },
-      ],
+  console.log(`📝 [${tableName}] Adding GSI: ${indexName}`);
+
+  // Only the attributes this index keys on need declaring on an UpdateTable.
+  const attributeDefinitions = Object.entries(index.attributes || {}).map(
+    ([AttributeName, AttributeType]) => ({ AttributeName, AttributeType })
+  );
+
+  try {
+    await client.send(new UpdateTableCommand({
+      TableName: tableName,
+      AttributeDefinitions: attributeDefinitions,
       GlobalSecondaryIndexUpdates: [
         {
           Create: {
             IndexName: indexName,
-            KeySchema: [{ AttributeName: attribute, KeyType: 'HASH' }],
+            KeySchema: indexKeySchema(index),
             Projection: { ProjectionType: 'ALL' },
           },
         },
       ],
-    };
-
-    try {
-      await client.send(new UpdateTableCommand(params));
-      console.log(`✅ [Profiles] GSI "${indexName}" creation initiated`);
-      await waitForGSIActive(PROFILES_TABLE, indexName);
-    } catch (error) {
-      if (error.message?.includes('already exists')) {
-        console.log(`⚠️  [Profiles] GSI "${indexName}" already exists (race condition)`);
-      } else if (error.message?.includes('ResourceInUseException')) {
-        console.log(`⚠️  [Profiles] Table is being updated, GSI may already be creating`);
-        try {
-          await waitForGSIActive(PROFILES_TABLE, indexName);
-        } catch {
-          console.log(`   [Profiles] Could not verify GSI status, please check manually`);
-        }
-      } else {
-        console.error(`❌ [Profiles] Failed to add GSI "${indexName}":`, error.message);
-        throw error;
+    }));
+    console.log(`✅ [${tableName}] GSI "${indexName}" creation initiated`);
+    await waitForGSIActive(tableName, indexName);
+    return true;
+  } catch (error) {
+    if (error.message?.includes('already exists')) {
+      console.log(`⚠️  [${tableName}] GSI "${indexName}" already exists (race condition)`);
+      return false;
+    }
+    if (error.name === 'ResourceInUseException' || error.message?.includes('ResourceInUseException')) {
+      console.log(`⚠️  [${tableName}] Table busy; GSI "${indexName}" may already be creating`);
+      try {
+        await waitForGSIActive(tableName, indexName);
+        return true;
+      } catch {
+        console.log(`   [${tableName}] Could not verify GSI status, please check manually`);
+        return false;
       }
     }
+    console.error(`❌ [${tableName}] Failed to add GSI "${indexName}":`, error.message);
+    throw error;
   }
 }
 
-async function verifyCoursesTable() {
-  console.log(`\n🔍 [Courses] Verifying table: ${COURSES_TABLE}`);
+// ==========================================
+// Table Creation
+// ==========================================
 
-  if (await tableExists(COURSES_TABLE)) {
-    console.log(`✅ [Courses] Table exists`);
-    const status = await getTableStatus(COURSES_TABLE);
-    console.log(`   Status: ${status}`);
-  } else {
-    console.log(`⚠️  [Courses] Table does not exist yet`);
-    console.log(`   Note: This table should be created separately`);
-  }
-}
+/**
+ * Create one table from its declaration, or bring an existing one up to spec by
+ * adding any missing GSI. Both directions matter: a table created before an
+ * index was declared is otherwise silently missing it, which is how the
+ * enrollments table ended up with no indexes and every caller scanning it.
+ */
+async function ensureTable(def) {
+  const tableName = resolveTableName(def);
+  console.log(`\n📦 [${def.label}] Ensuring table: ${tableName}`);
 
-async function createPlanUpgradesTable() {
-  console.log(`\n📦 [PlanUpgrades] Creating table: ${PLAN_UPGRADES_TABLE}`);
-
-  if (await tableExists(PLAN_UPGRADES_TABLE)) {
-    console.log(`⚠️  [PlanUpgrades] Table already exists, skipping creation`);
+  if (await tableExists(tableName)) {
+    console.log(`⚠️  [${def.label}] Table already exists, checking indexes...`);
+    for (const index of def.indexes || []) {
+      // On an existing table the index's key attributes must be declared.
+      const attributes = {};
+      attributes[index.hash] = def.attributes[index.hash];
+      if (index.range) attributes[index.range] = def.attributes[index.range];
+      await ensureGSI(tableName, { ...index, attributes });
+    }
     return;
   }
 
-  const params = {
-    TableName: PLAN_UPGRADES_TABLE,
-    BillingMode: 'PAY_PER_REQUEST',
-    AttributeDefinitions: [
-      { AttributeName: 'upgradeId', AttributeType: 'S' },
-      { AttributeName: 'userId', AttributeType: 'S' },
-    ],
-    KeySchema: [
-      { AttributeName: 'upgradeId', KeyType: 'HASH' },
-    ],
-    GlobalSecondaryIndexes: [
-      {
-        IndexName: 'byUserId',
-        KeySchema: [{ AttributeName: 'userId', KeyType: 'HASH' }],
-        Projection: { ProjectionType: 'ALL' },
-      },
-    ],
-    SSESpecification: { Enabled: true },
-    Tags: [
-      { Key: 'Project', Value: 'jvtutorcorner' },
-      { Key: 'Purpose', Value: 'Plan-Upgrades' },
-    ],
-  };
+  if (DRY_RUN) {
+    const params = createTableParams(def);
+    console.log(`🔎 [${def.label}] would create table ${tableName} with GSIs: ${(params.GlobalSecondaryIndexes || []).map((g) => g.IndexName).join(', ') || '(none)'}`);
+    return;
+  }
 
   try {
-    await client.send(new CreateTableCommand(params));
-    console.log(`✅ [PlanUpgrades] Table creation initiated`);
-    await waitForTableActive(PLAN_UPGRADES_TABLE);
+    await client.send(new CreateTableCommand(createTableParams(def)));
+    console.log(`✅ [${def.label}] Table creation initiated`);
+    await waitForTableActive(tableName);
   } catch (error) {
     if (error instanceof ResourceInUseException) {
-      console.log(`⚠️  [PlanUpgrades] Table already exists (race condition)`);
+      console.log(`⚠️  [${def.label}] Table already exists (race condition)`);
     } else {
-      console.error(`❌ [PlanUpgrades] Failed to create table:`, error.message);
+      console.error(`❌ [${def.label}] Failed to create table:`, error.message);
       throw error;
     }
   }
 }
 
+/**
+ * Add the indexes this application needs to a table it does not own
+ * (profiles, courses). The table itself is created elsewhere.
+ */
+async function ensureIndexesOnExistingTable(def) {
+  const tableName = resolveTableName(def);
+  console.log(`\n🔄 [${def.label}] Updating table: ${tableName}`);
 
-async function createPointsEscrowTable() {
-  console.log(`\n📦 [PointsEscrow] Creating table: ${POINTS_ESCROW_TABLE}`);
-
-  if (await tableExists(POINTS_ESCROW_TABLE)) {
-    console.log(`⚠️  [PointsEscrow] Table already exists, skipping creation`);
+  if (!(await tableExists(tableName))) {
+    console.log(`⚠️  [${def.label}] Table does not exist yet, skipping index updates`);
+    console.log(`   Note: create the ${def.label} table first, then re-run this script`);
     return;
   }
 
-  const params = {
-    TableName: POINTS_ESCROW_TABLE,
-    BillingMode: 'PAY_PER_REQUEST',
-    AttributeDefinitions: [
-      { AttributeName: 'escrowId', AttributeType: 'S' },
-      { AttributeName: 'orderId',  AttributeType: 'S' },
-      { AttributeName: 'studentId', AttributeType: 'S' },
-      { AttributeName: 'teacherId', AttributeType: 'S' },
-    ],
-    KeySchema: [
-      { AttributeName: 'escrowId', KeyType: 'HASH' },
-    ],
-    GlobalSecondaryIndexes: [
-      {
-        IndexName: 'byOrderId',
-        KeySchema: [{ AttributeName: 'orderId', KeyType: 'HASH' }],
-        Projection: { ProjectionType: 'ALL' },
-      },
-      {
-        IndexName: 'byStudentId',
-        KeySchema: [{ AttributeName: 'studentId', KeyType: 'HASH' }],
-        Projection: { ProjectionType: 'ALL' },
-      },
-      {
-        IndexName: 'byTeacherId',
-        KeySchema: [{ AttributeName: 'teacherId', KeyType: 'HASH' }],
-        Projection: { ProjectionType: 'ALL' },
-      },
-    ],
-    SSESpecification: { Enabled: true },
-    Tags: [
-      { Key: 'Project', Value: 'jvtutorcorner' },
-      { Key: 'Purpose', Value: 'Points-Escrow' },
-    ],
-  };
-
-  try {
-    await client.send(new CreateTableCommand(params));
-    console.log(`✅ [PointsEscrow] Table creation initiated`);
-    await waitForTableActive(POINTS_ESCROW_TABLE);
-  } catch (error) {
-    if (error instanceof ResourceInUseException) {
-      console.log(`⚠️  [PointsEscrow] Table already exists (race condition)`);
-    } else {
-      console.error(`❌ [PointsEscrow] Failed to create table:`, error.message);
-      throw error;
-    }
+  for (const index of def.indexes) {
+    await ensureGSI(tableName, index);
   }
 }
-
 
 // ==========================================
 // Main Execution
@@ -552,32 +375,35 @@ async function main() {
   console.log(`Region: ${REGION}`);
   console.log(`Timestamp: ${new Date().toISOString()}\n`);
 
+  // `key` must match STEP_KEYS in scripts/lib/setup-steps.mjs (verified offline by
+  // scripts/verify-course-sessions-index.mjs).
   const allSteps = [
-    { key: 'organizations', name: 'Organizations Table', fn: createOrganizationsTable },
-    { key: 'org-units', name: 'Org Units Table', fn: createOrgUnitsTable },
-    { key: 'licenses', name: 'Licenses Table', fn: createLicensesTable },
-    { key: 'profiles', name: 'Profiles Table Update', fn: updateProfilesTable },
-    { key: 'courses', name: 'Courses Table Verification', fn: verifyCoursesTable },
-    { key: 'plan-upgrades', name: 'Plan Upgrades Table', fn: createPlanUpgradesTable },
-    { key: 'points-escrow', name: 'Points Escrow Table', fn: createPointsEscrowTable },
+    { key: 'organizations', name: 'Organizations Table', fn: () => ensureTable(TABLES.organizations) },
+    { key: 'orgUnits', name: 'Org Units Table', fn: () => ensureTable(TABLES.orgUnits) },
+    { key: 'licenses', name: 'Licenses Table', fn: () => ensureTable(TABLES.licenses) },
+    { key: 'enrollments', name: 'Enrollments Table', fn: () => ensureTable(TABLES.enrollments) },
+    { key: 'courseSessions', name: 'Course Sessions Table', fn: () => ensureTable(TABLES.courseSessions) },
+    { key: 'classSummaries', name: 'Class Summaries Table', fn: () => ensureTable(TABLES.classSummaries) },
+    { key: 'planUpgrades', name: 'Plan Upgrades Table', fn: () => ensureTable(TABLES.planUpgrades) },
+    { key: 'pointsEscrow', name: 'Points Escrow Table', fn: () => ensureTable(TABLES.pointsEscrow) },
+    {
+      key: 'profiles',
+      name: 'Profiles Table Indexes',
+      fn: () => ensureIndexesOnExistingTable(REQUIRED_INDEXES_ON_EXISTING_TABLES.profiles),
+    },
+    {
+      key: 'courses',
+      name: 'Courses Table Indexes',
+      fn: () => ensureIndexesOnExistingTable(REQUIRED_INDEXES_ON_EXISTING_TABLES.courses),
+    },
   ];
 
-  // --only=<key>[,<key>] narrows the run to specific steps. Against a live account
-  // this keeps the blast radius to the table you actually mean to touch.
-  const onlyArg = process.argv.slice(2).find(a => a.startsWith('--only='));
-  const only = onlyArg ? onlyArg.slice('--only='.length).split(',').map(k => k.trim()).filter(Boolean) : null;
-
-  if (only) {
-    const unknown = only.filter(k => !allSteps.some(s => s.key === k));
-    if (unknown.length) {
-      console.error(`❌ Unknown --only key(s): ${unknown.join(', ')}`);
-      console.error(`   Valid keys: ${allSteps.map(s => s.key).join(', ')}`);
-      process.exit(1);
-    }
-    console.log(`▶️  Running only: ${only.join(', ')}\n`);
+  const { selected: steps, skipped } = selectSteps(ONLY, allSteps);
+  if (DRY_RUN) console.log('🔎 DRY RUN — no table or index will be created\n');
+  if (ONLY) {
+    console.log(`▶️  Running ${steps.length}/${allSteps.length} steps (--only=${ONLY.join(',')})`);
+    console.log(`⏭️  Skipped: ${skipped.map((s) => s.name).join(', ') || '(none)'}\n`);
   }
-
-  const steps = only ? allSteps.filter(s => only.includes(s.key)) : allSteps;
 
   let successCount = 0;
   let failureCount = 0;
@@ -609,14 +435,18 @@ async function main() {
     process.exit(1);
   }
 
+  if (DRY_RUN) {
+    console.log('🔎 Dry run finished. Nothing was changed. Re-run without --dry-run to apply.\n');
+    return;
+  }
+
   console.log('🎉 All steps completed successfully!\n');
   console.log('Next steps:');
-  console.log('  1. Verify tables in AWS Console');
-  console.log('  2. Update environment variables in your .env.local:');
-  console.log(`     DYNAMODB_TABLE_ORGANIZATIONS=${ORGANIZATIONS_TABLE}`);
-  console.log(`     DYNAMODB_TABLE_ORG_UNITS=${ORG_UNITS_TABLE}`);
-  console.log(`     DYNAMODB_TABLE_LICENSES=${LICENSES_TABLE}`);
-  console.log(`     DYNAMODB_TABLE_POINTS_ESCROW=${POINTS_ESCROW_TABLE}`);
+  console.log('  1. Verify with: node scripts/verify-schema.mjs');
+  console.log('  2. Set these in your .env.local if you use non-default names:');
+  for (const def of Object.values(TABLES)) {
+    console.log(`     ${def.envVar}=${resolveTableName(def)}`);
+  }
   console.log('  3. Deploy your application\n');
 }
 

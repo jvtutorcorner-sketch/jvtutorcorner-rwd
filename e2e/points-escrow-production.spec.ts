@@ -50,7 +50,7 @@ const teacherEmail = process.env.QA_TEACHER_EMAIL || 'lin@test.com';
 const teacherPassword = requireEnv('QA_TEACHER_PASSWORD', 'TEST_TEACHER_PASSWORD');
 const bypassSecret = requireEnv('QA_CAPTCHA_BYPASS', 'LOGIN_BYPASS_SECRET', 'NEXT_PUBLIC_LOGIN_BYPASS_SECRET');
 
-function localISO(timestamp) {
+function localISO(timestamp: number | string | Date) {
   return new Date(timestamp).toISOString().slice(0, 19);
 }
 
@@ -213,8 +213,8 @@ test.describe('點數暫存驗證 — 正式環境版本', () => {
       await injectDeviceCheckBypass(pageStudent);
 
       // 進入等待室
-      const goWaitTeacher = goToWaitRoom(pageTeacher, courseId, 'teacher', orderId, bypassSecret);
-      const goWaitStudent = goToWaitRoom(pageStudent, courseId, 'student', orderId, bypassSecret);
+      const goWaitTeacher = goToWaitRoom(pageTeacher, courseId, 'teacher');
+      const goWaitStudent = goToWaitRoom(pageStudent, courseId, 'student');
       await Promise.all([goWaitTeacher, goWaitStudent]);
 
       console.log(`   ✅ 老師已在等待室`);
@@ -222,15 +222,15 @@ test.describe('點數暫存驗證 — 正式環境版本', () => {
 
       // 準備好
       console.log(`\n📝 Step 7: 雙方按準備好...`);
-      await clickReadyButton(pageTeacher, 3000);
+      await clickReadyButton(pageTeacher, 'teacher');
       await pageTeacher.waitForTimeout(500); // 避免 race condition
-      await clickReadyButton(pageStudent, 3000);
+      await clickReadyButton(pageStudent, 'student');
       console.log(`   ✅ 雙方已按準備好`);
 
       // 進入教室
       console.log(`\n📝 Step 8: 雙方進入教室...`);
-      const enterTeacher = waitAndEnterClassroom(pageTeacher, courseId, 'teacher');
-      const enterStudent = waitAndEnterClassroom(pageStudent, courseId, 'student');
+      const enterTeacher = waitAndEnterClassroom(pageTeacher, 'teacher');
+      const enterStudent = waitAndEnterClassroom(pageStudent, 'student');
       await Promise.all([enterTeacher, enterStudent]);
 
       console.log(`   ✅ [student] Entered /classroom/room`);
@@ -238,7 +238,7 @@ test.describe('點數暫存驗證 — 正式環境版本', () => {
 
       // 白板繪圖
       console.log(`\n📝 Step 9: 老師在白板隨機繪圖...`);
-      await drawOnWhiteboard(pageTeacher, 5);
+      await drawOnWhiteboard(pageTeacher);
       await pageTeacher.waitForTimeout(1000);
 
       const teacherHasContent = await hasDrawingContent(pageTeacher);

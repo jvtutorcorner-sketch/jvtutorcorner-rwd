@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import OrgCsvImportPanel from "@/components/org/OrgCsvImportPanel";
 
 type License = {
   id: string;
@@ -17,8 +18,6 @@ type Member = {
   role: string;
   orgUnitId?: string | null;
   isOrgAdmin?: boolean;
-  isDeptAdmin?: boolean;
-  deptAdminUnitId?: string | null;
   license: License | null;
 };
 
@@ -26,13 +25,20 @@ type OrgUnit = { id: string; name: string; level: number; status: string };
 
 interface Props {
   orgId: string;
+  /** 組織網域，僅用於 CSV 匯入面板的提示文字。 */
+  orgDomain?: string;
   usedSeats: number;
   maxSeats: number;
   isSystemAdmin: boolean;
+  /** 可指派/撤銷部門管理員：系統管理員或本組織的組織管理員（API 同規則）。未傳時沿用 isSystemAdmin。 */
+  canManageDeptAdmins?: boolean;
+  /** 可用 CSV 批次建立成員：系統管理員或本組織的組織管理員（POST /api/register/batch 同規則）。 */
+  canImportMembers?: boolean;
   onSeatsChanged: () => void;
 }
 
-export default function OrgMembersPanel({ orgId, usedSeats, maxSeats, isSystemAdmin, onSeatsChanged }: Props) {
+export default function OrgMembersPanel({ orgId, orgDomain, usedSeats, maxSeats, isSystemAdmin, canManageDeptAdmins, canImportMembers, onSeatsChanged }: Props) {
+  const canToggleDeptAdmin = canManageDeptAdmins ?? isSystemAdmin;
   const [members, setMembers] = useState<Member[]>([]);
   const [orgUnits, setOrgUnits] = useState<OrgUnit[]>([]);
   const [loading, setLoading] = useState(false);
@@ -128,34 +134,24 @@ export default function OrgMembersPanel({ orgId, usedSeats, maxSeats, isSystemAd
     }
   }
 
-  function unitNameFor(orgUnitId?: string | null) {
-    return orgUnits.find((u) => u.id === orgUnitId)?.name || orgUnitId || '';
-  }
-
   async function handleToggleDeptAdmin(member: Member) {
-    const name = `${member.firstName || ''} ${member.lastName || ''}`.trim() || member.email;
-    const nextValue = !member.isDeptAdmin;
-
-    if (nextValue && !member.orgUnitId) {
-      alert('請先為此成員指定部門，才能設為部門管理員——部門管理員的管理範圍就是他目前所屬的部門（含子部門）。');
+    const promoting = member.role !== 'dept_admin';
+    if (promoting && !member.orgUnitId) {
+      alert('請先在「部門」欄位為此成員指派部門，才能設為部門管理員。');
       return;
     }
-    if (nextValue && !confirm(`確定要把「${name}」設為「${unitNameFor(member.orgUnitId)}」的部門管理員嗎？\n他將能管理這個部門與其子部門的成員和組織單位。`)) {
-      return;
-    }
-
     try {
       const res = await fetch(`/api/organizations/${orgId}/members/${member.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          isDeptAdmin: nextValue,
-          deptAdminUnitId: nextValue ? member.orgUnitId : undefined
-        })
+        body: JSON.stringify({ isDeptAdmin: promoting })
       });
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data?.error || '更新部門管理員狀態失敗');
       await load();
+      if (promoting) {
+        alert('已設定為部門管理員。此變更需要該成員重新登入才會生效。');
+      }
     } catch (err: any) {
       alert(err?.message || String(err));
     }
@@ -178,6 +174,19 @@ export default function OrgMembersPanel({ orgId, usedSeats, maxSeats, isSystemAd
   return (
     <div>
       <h3>成員</h3>
+
+      {canImportMembers && (
+        <OrgCsvImportPanel
+          orgId={orgId}
+          orgDomain={orgDomain}
+          availableSeats={Math.max(0, maxSeats - usedSeats)}
+          orgUnits={orgUnits}
+          onImported={async () => {
+            await load();
+            onSeatsChanged();
+          }}
+        />
+      )}
 
       <form
         onSubmit={handleAdd}
@@ -241,7 +250,6 @@ export default function OrgMembersPanel({ orgId, usedSeats, maxSeats, isSystemAd
                 <th style={th}>角色</th>
                 <th style={th}>部門</th>
                 <th style={th}>組織管理員</th>
-                <th style={th}>部門管理員</th>
                 <th style={th}>授權狀態</th>
                 <th style={th}>操作</th>
               </tr>
@@ -251,7 +259,32 @@ export default function OrgMembersPanel({ orgId, usedSeats, maxSeats, isSystemAd
                 <tr key={m.id}>
                   <td style={td}>{`${m.firstName || ''} ${m.lastName || ''}`.trim() || '-'}</td>
                   <td style={td}>{m.email}</td>
-                  <td style={td}>{m.role}</td>
+                  <td style={td}>
+                    {m.role === 'dept_admin' ? (
+                      <>
+                        <span style={{ color: '#1565c0', fontWeight: 'bold' }}>部門管理員</span>{' '}
+                        <button
+                          onClick={() => handleToggleDeptAdmin(m)}
+                          disabled={!canToggleDeptAdmin}
+                          style={{ ...btn('#9e9e9e'), padding: '2px 8px' }}
+                        >
+                          取消
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        {m.role}{' '}
+                        <button
+                          onClick={() => handleToggleDeptAdmin(m)}
+                          disabled={!canToggleDeptAdmin || !m.orgUnitId}
+                          title={!m.orgUnitId ? '請先指派部門' : undefined}
+                          style={{ ...btn('#1565c0'), padding: '2px 8px' }}
+                        >
+                          設為部門管理員
+                        </button>
+                      </>
+                    )}
+                  </td>
                   <td style={td}>
                     <select
                       value={m.orgUnitId || ''}
@@ -273,20 +306,6 @@ export default function OrgMembersPanel({ orgId, usedSeats, maxSeats, isSystemAd
                       disabled={!isSystemAdmin}
                       onChange={() => handleToggleOrgAdmin(m)}
                     />
-                  </td>
-                  <td style={td}>
-                    <input
-                      type="checkbox"
-                      checked={!!m.isDeptAdmin}
-                      disabled={!isSystemAdmin}
-                      onChange={() => handleToggleDeptAdmin(m)}
-                      title={m.isDeptAdmin ? `管理範圍：${unitNameFor(m.deptAdminUnitId)}（含子部門）` : undefined}
-                    />
-                    {m.isDeptAdmin && (
-                      <span style={{ marginLeft: 6, fontSize: 12, color: '#666' }}>
-                        {unitNameFor(m.deptAdminUnitId)}
-                      </span>
-                    )}
                   </td>
                   <td style={td}>
                     {m.license ? (

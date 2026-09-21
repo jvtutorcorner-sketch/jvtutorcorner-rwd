@@ -493,12 +493,12 @@ function StudentCoursesContent() {
                 type="text"
                 value={searchInputCourse}
                 onChange={(e) => setSearchInputCourse(e.target.value)}
-                placeholder={`搜尋課程...`}
+                placeholder={t('courses_search_placeholder')}
                 style={{ padding: '8px', border: '1px solid #ccc', borderRadius: '4px', minWidth: '150px' }}
               />
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              <label style={{ fontSize: '14px', fontWeight: 'bold' }}>開始區間 (起)</label>
+              <label style={{ fontSize: '14px', fontWeight: 'bold' }}>{t('courses_range_from')}</label>
               <input
                 type="datetime-local"
                 step="1"
@@ -508,7 +508,7 @@ function StudentCoursesContent() {
               />
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              <label style={{ fontSize: '14px', fontWeight: 'bold' }}>開始區間 (迄)</label>
+              <label style={{ fontSize: '14px', fontWeight: 'bold' }}>{t('courses_range_to')}</label>
               <input
                 type="datetime-local"
                 step="1"
@@ -541,8 +541,8 @@ function StudentCoursesContent() {
                   <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>{t('student_courses_course_name')}</th>
                   <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>{t('student_courses_teacher')}</th>
                   <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>{t('session_duration_label')}</th>
-                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>剩餘課程數</th>
-                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>剩餘時間 (分)</th>
+                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>{t('courses_col_remaining_sessions')}</th>
+                  <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>{t('courses_col_remaining_minutes')}</th>
                   <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>{t('start_time_label')}</th>
                   <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>{t('end_time_label')}</th>
                   <th style={{ border: '2px solid #ccc', padding: '8px', textAlign: 'left' }}>{t('enter_classroom')}</th>
@@ -554,7 +554,7 @@ function StudentCoursesContent() {
                 ) : error ? (
                   <tr><td colSpan={9} style={{ textAlign: 'center', padding: '16px', color: '#d32f2f' }}>{t('load_error')}: {error}</td></tr>
                 ) : paginatedOrders.length === 0 ? (
-                  <tr><td colSpan={9} style={{ textAlign: 'center', padding: '16px', color: '#666' }}>目前沒有符合條件的訂單。</td></tr>
+                  <tr><td colSpan={9} style={{ textAlign: 'center', padding: '16px', color: '#666' }}>{t('courses_empty_orders')}</td></tr>
                 ) : paginatedOrders.map((o) => (
                   <tr key={o.orderId} data-course-id={o.courseId}>
                     <td data-label={t('student_courses_student')} style={{ border: '2px solid #ccc', padding: '6px' }}>{o.userId ? (userMap[o.userId]?.firstName && userMap[o.userId]?.lastName ? `${userMap[o.userId].firstName} ${userMap[o.userId].lastName}` : o.userId) : '-'}</td>
@@ -589,7 +589,7 @@ function StudentCoursesContent() {
                         '-'
                       )}
                     </td>
-                    <td data-label="剩餘課程數" style={{ border: '2px solid #ccc', padding: '6px' }}>
+                    <td data-label={t('courses_col_remaining_sessions')} style={{ border: '2px solid #ccc', padding: '6px' }}>
                       {(() => {
                         if (typeof (o as any).remainingSessions === 'number') {
                           return `${(o as any).remainingSessions}`;
@@ -597,7 +597,7 @@ function StudentCoursesContent() {
                         return '--';
                       })()}
                     </td>
-                    <td data-label="剩餘時間 (分)" style={{ border: '2px solid #ccc', padding: '6px' }}>
+                    <td data-label={t('courses_col_remaining_minutes')} style={{ border: '2px solid #ccc', padding: '6px' }}>
                       {(() => {
                         if (typeof (o as any).remainingSeconds === 'number') {
                           const sess = typeof (o as any).remainingSessions === 'number' ? (o as any).remainingSessions : 1;
@@ -666,7 +666,7 @@ function StudentCoursesContent() {
                             {t('enter_classroom')}
                           </a>
                         ) : (
-                          <span title={`分類外課堂時間。開始時間: ${courseMap[o.courseId]?.startTime || 'N/A'}, 結束時間: ${courseMap[o.courseId]?.endTime || 'N/A'}`}>-</span>
+                          <span title={t('student_courses_outside_window_title', { start: courseMap[o.courseId]?.startTime || 'N/A', end: courseMap[o.courseId]?.endTime || 'N/A' })}>-</span>
                         )
                       ) : (
                         '-'

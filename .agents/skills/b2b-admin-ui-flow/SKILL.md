@@ -4,7 +4,7 @@ description: '用真實瀏覽器（非無頭）走一遍 B2B 企業管理後台�
 argument-hint: '用 headed 瀏覽器驗證 /admin/organizations 的建組織、部門、成員操作流程'
 metadata:
   verified-status: '✅ VERIFIED'
-  last-verified-date: '2026-08-08'
+  last-verified-date: '2026-09-12'
   architecture-aligned: true
   notes: '單一 Playwright spec，headed 執行約 15 秒跑完。撰寫過程中發現並修正一個測試自身的清理 bug（見下方「常見坑」）。'
 ---

@@ -7,6 +7,7 @@ import { useEffect, useState, Fragment, useCallback, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useT } from '@/components/IntlProvider';
+import { useDateFormat } from '@/lib/hooks/useDateFormat';
 import {
   PLAN_LABELS,
   PLAN_DESCRIPTIONS,
@@ -30,6 +31,7 @@ type PlanConfig = {
 
 function PricingContent() {
   const t = useT();
+  const dateFmt = useDateFormat();
   const searchParams = useSearchParams();
   const [user, setUser] = useState<StoredUser | null>(null);
   const [plan, setPlan] = useState<PlanId | ''>('');
@@ -182,14 +184,7 @@ function PricingContent() {
   const dynamicPointsPlans = settings?.pointPackages?.filter((p: any) => p.isActive).sort((a: any, b: any) => a.order - b.order) || [];
   const appPlansFromSettings = settings?.appPlans || [];
 
-  const formatDate = (d?: Date | string) => {
-    if (!d) return '';
-    try {
-      return new Date(d).toLocaleDateString('zh-TW');
-    } catch (e) {
-      return String(d);
-    }
-  };
+  const formatDate = (d?: Date | string) => dateFmt.formatDate(d);
 
   const PLANS: any[] = mergedPlans.length > 0 ? mergedPlans.map((p: any) => ({
     id: p.id,
@@ -264,7 +259,10 @@ function PricingContent() {
       price: p.price,
       priceHint: `NT$ ${p.price}`,
       target: p.description || '',
-      features: [`${p.points} 點${p.manualDiscount ? ` (已省 NT$ ${p.manualDiscount})` : ''}`],
+      features: [
+        t('points_amount', { count: p.points }) +
+          (p.manualDiscount ? ` (${t('pricing_points_saved', { amount: p.manualDiscount })})` : ''),
+      ],
       badge: p.badge,
       description: p.description,
       discountPlan: discountPlan,
@@ -282,7 +280,7 @@ function PricingContent() {
     {
       id: 'points_500',
       priceHint: PLAN_PRICES['points_500'],
-      badge: '熱門選擇',
+      badge: t('badge_popular'),
       target: PLAN_TARGETS['points_500'],
       features: PLAN_FEATURES['points_500'],
     },
@@ -343,27 +341,27 @@ function PricingContent() {
             <div>
               <div className="font-bold text-lg">{user.displayName || user.email.split('@')[0] || user.email}</div>
               <div className="text-sm text-gray-500">{user.email}</div>
-              <div className="text-sm text-gray-500">方案：{user.plan}</div>
+              <div className="text-sm text-gray-500">{t('plan_label')}{user.plan}</div>
             </div>
             <div className="text-right">
-              <div className="text-sm text-gray-500">點數餘額</div>
+              <div className="text-sm text-gray-500">{t('points_balance')}</div>
               <div className="text-2xl font-bold text-indigo-600">
-                {userPoints !== null ? `${userPoints} 點` : pointsError ? (
-                  <span className="text-sm text-orange-500">⚠️ 請<button onClick={() => fetchUserPoints(user.roid_id || user.id || user.email)} className="underline ml-1">重新整理</button></span>
-                ) : '載入中...'}
+                {userPoints !== null ? t('points_amount', { count: userPoints }) : pointsError ? (
+                  <span className="text-sm text-orange-500">⚠️ <button onClick={() => fetchUserPoints(user.roid_id || user.id || user.email)} className="underline ml-1">{t('refresh')}</button></span>
+                ) : t('loading')}
               </div>
             </div>
           </div>
         ) : (
-          <div className="text-sm text-gray-600">請登入以檢視帳戶與點數資訊。 <Link href="/login" className="underline">登入</Link></div>
+          <div className="text-sm text-gray-600">{t('pricing_login_notice')} <Link href="/login" className="underline">{t('login')}</Link></div>
         )}
       </div>
 
       {mergedPlans.length > 0 && (
         <section className="section">
           <header className="page-header" style={{ marginBottom: '2rem' }}>
-            <h2>訂閱方案</h2>
-            <p>訂閱方案可享有特定期間內的完整功能與服務。</p>
+            <h2>{t('pricing_subscription_title')}</h2>
+            <p>{t('pricing_subscription_desc')}</p>
           </header>
           <div className="card-grid">
             {PLANS.filter(p => p.id !== 'viewer').map((plan) => {
@@ -400,7 +398,9 @@ function PricingContent() {
                             <span className="text-sm text-gray-400 line-through">NT$ {originalPrice}</span>
                             <p className="text-green-600 font-bold">{plan.priceHint}</p>
                             <span className="text-xs text-green-500 mt-0.5">
-                              {discountPlan.type === 'percentage' ? `${discountPlan.value}% 折扣` : `省 NT$ ${discountPlan.value}`}
+                              {discountPlan.type === 'percentage'
+                                ? t('pricing_discount_percent', { value: discountPlan.value })
+                                : t('pricing_discount_amount', { value: discountPlan.value })}
                             </span>
                           </div>
                         );
@@ -448,7 +448,7 @@ function PricingContent() {
 
                   {plan.appPlanIds && plan.appPlanIds.length > 0 && (
                     <div className="mt-3">
-                      <h3 className="text-sm font-medium text-gray-600">綁定應用服務</h3>
+                      <h3 className="text-sm font-medium text-gray-600">{t('pricing_bound_apps')}</h3>
                       <ul className="text-sm text-gray-700 mt-1">
                         {plan.appPlanIds.map((apid: string) => {
                           const ap = appPlansFromSettings.find((a: any) => a.id === apid);
@@ -465,7 +465,7 @@ function PricingContent() {
                             <li key={apid} className="truncate">
                               {ap?.name || apid}{ap?.appName ? ` — ${ap.appName}` : ''}
                               {period && <div className="text-xs text-gray-500">{period}</div>}
-                              {pointsCost && pointsCost > 0 && <div className="text-xs text-orange-500">💰 需消耗 {pointsCost} 點</div>}
+                              {pointsCost && pointsCost > 0 && <div className="text-xs text-orange-500">💰 {t('pricing_points_cost', { count: pointsCost })}</div>}
                             </li>
                           );
                         })}
@@ -482,8 +482,8 @@ function PricingContent() {
       {POINTS_PLANS.length > 0 && (
         <section className="section" style={{ marginTop: '2rem' }}>
           <header className="page-header" style={{ marginBottom: '2rem' }}>
-            <h2>點數方案</h2>
-            <p>單次購買點數，依特定課程需求彈性扣點，免綁約更自在。</p>
+            <h2>{t('pricing_points_title')}</h2>
+            <p>{t('pricing_points_desc')}</p>
           </header>
 
           <div className="card-grid">
@@ -511,7 +511,7 @@ function PricingContent() {
                   ) : (
                     <p>{plan.priceHint}</p>
                   )}
-                  <small>一次性付費</small>
+                  <small>{t('pricing_one_time_payment')}</small>
                 </div>
 
                 <div className="card-actions mb-4">
@@ -521,7 +521,7 @@ function PricingContent() {
                       className="card-button primary"
                       data-testid={`points-package-${plan.id}`}
                     >
-                      購買點數
+                      {t('pricing_buy_points')}
                     </Link>
                   ) : (
                     <Link
@@ -549,7 +549,7 @@ function PricingContent() {
 
                 {plan.appPlanIds && plan.appPlanIds.length > 0 && (
                   <div className="mt-3">
-                    <h3 className="text-sm font-medium text-gray-600">綁定應用服務</h3>
+                    <h3 className="text-sm font-medium text-gray-600">{t('pricing_bound_apps')}</h3>
                     <ul className="text-sm text-gray-700 mt-1">
                       {plan.appPlanIds.map((apid: string) => {
                         const ap = appPlansFromSettings.find((a: any) => a.id === apid);
@@ -566,7 +566,7 @@ function PricingContent() {
                           <li key={apid} className="truncate">
                             {ap?.name || apid}{ap?.appName ? ` — ${ap.appName}` : ''}
                             {period && <div className="text-xs text-gray-500">{period}</div>}
-                            {pointsCost && pointsCost > 0 && <div className="text-xs text-orange-500">💰 需消耗 {pointsCost} 點</div>}
+                            {pointsCost && pointsCost > 0 && <div className="text-xs text-orange-500">💰 {t('pricing_points_cost', { count: pointsCost })}</div>}
                           </li>
                         );
                       })}
@@ -575,7 +575,11 @@ function PricingContent() {
                     {/* 顯示點數購買前消耗和購買後剩餘 */}
                     {plan.prePurchasePointsCost && plan.prePurchasePointsCost > 0 && (
                       <div className="mt-2 text-xs text-orange-600 bg-orange-50 p-2 rounded">
-                        購買前消耗 {plan.prePurchasePointsCost} 點 → 購買 {plan.points} 點後可用 {Math.max(0, (plan.points || 0) - (plan.prePurchasePointsCost || 0))} 點
+                        {t('pricing_points_preview', {
+                          cost: plan.prePurchasePointsCost,
+                          points: plan.points,
+                          remaining: Math.max(0, (plan.points || 0) - (plan.prePurchasePointsCost || 0)),
+                        })}
                       </div>
                     )}
                   </div>
@@ -591,8 +595,9 @@ function PricingContent() {
 }
 
 export default function PricingPage() {
+  const t = useT();
   return (
-    <Suspense fallback={<div className="page section"><p>載入中...</p></div>}>
+    <Suspense fallback={<div className="page section"><p>{t('loading')}</p></div>}>
       <PricingContent />
     </Suspense>
   );

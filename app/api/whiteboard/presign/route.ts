@@ -1,8 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { withAuth, type AuthedRequest } from '@/lib/auth/apiGuard';
 import { getPresignedPutUrl } from '@/lib/s3';
 import { normalizeUuid } from '../stream/route';
 
-export async function POST(req: NextRequest) {
+// 先前完全沒有 auth：白板的教材 PDF、房間狀態與事件端點任何人都能存取／改寫。
+async function handlePost(req: AuthedRequest) {
   try {
     const body = await req.json();
     const { uuid: rawUuid, fileName, contentType, orderId } = body;
@@ -32,3 +34,5 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Failed to generate presigned URL' }, { status: 500 });
   }
 }
+
+export const POST = withAuth(handlePost);

@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
+import { withAdmin, type AuthedRequest } from '@/lib/auth/apiGuard';
 import fs from 'fs';
 import path from 'path';
 
-export async function POST(req: Request) {
+// 先前完全沒有 auth，而且會把內容寫進伺服器的 .agents/workflows/ —— 等於公開的任意檔案寫入。
+async function handlePost(req: AuthedRequest) {
     try {
         const { content, filename = 'generated-workflow' } = await req.json();
 
@@ -48,3 +50,5 @@ ${content}`;
         return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
     }
 }
+
+export const POST = withAdmin(handlePost);

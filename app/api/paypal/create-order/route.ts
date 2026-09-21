@@ -1,13 +1,22 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { generateAccessToken, PAYPAL_API } from '@/lib/paypal';
+import { withAuth, type AuthedRequest } from '@/lib/auth/apiGuard';
+import { resolvePayableOrderForSession } from '@/lib/payments/payableOrder';
 
-export async function POST(req: NextRequest) {
+async function handleCreateOrder(req: AuthedRequest) {
     try {
-        const { amount, currency, itemName, orderId } = await req.json();
+        const { orderId } = await req.json();
 
-        if (amount === undefined || !itemName || !orderId) {
+        if (!orderId) {
             return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
         }
+
+        // 金額與品名以伺服器端的訂單紀錄為準；先前是直接採信呼叫端送來的 amount。
+        const resolved = await resolvePayableOrderForSession(orderId, req.session);
+        if (!resolved.ok) {
+            return NextResponse.json({ error: resolved.error }, { status: resolved.status });
+        }
+        const { amount, currency, itemName } = resolved.order;
 
         if (process.env.NEXT_PUBLIC_PAYMENT_MOCK_MODE === 'true') {
             console.log('[PayPal Create Order] Mock Mode Active');
@@ -69,3 +78,5 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }
+
+export const POST = withAuth(handleCreateOrder);

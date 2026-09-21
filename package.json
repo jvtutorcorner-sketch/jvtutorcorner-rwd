@@ -39,6 +39,7 @@
     "db:setup": "node scripts/setup-db.mjs",
     "db:verify": "node scripts/verify-schema.mjs",
     "db:verify:template": "node scripts/verify-schema.mjs --template",
+    "verify:course-sessions-index": "node --import ./scripts/lib/register-ts-resolve.mjs scripts/verify-course-sessions-index.mjs",
     "db:migrate:teacher-ids": "node scripts/migrate-teacher-ids.mjs",
     "test:audit-coverage": "node scripts/audit-enterprise-general-test-coverage.mjs",
     "test:audit-coverage:strict": "node scripts/audit-enterprise-general-test-coverage.mjs --strict",

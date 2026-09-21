@@ -1,0 +1,20 @@
+{
+  // Separate project so `next build` and the Next TS plugin never typecheck the
+  // Playwright suite (tsconfig.json deliberately keeps "exclude": [... "e2e"]),
+  // while `npm run typecheck` still covers it. `extends` inherits baseUrl/paths
+  // so the @/* alias resolves the same way it does in app code.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "incremental": false,
+    "types": ["node"],
+    "module": "esnext",
+    "moduleResolution": "bundler"
+  },
+  "include": [
+    "e2e/**/*.ts",
+    "playwright.config.ts",
+    "playwright.phase1.config.ts"
+  ],
+  "exclude": ["node_modules"]
+}

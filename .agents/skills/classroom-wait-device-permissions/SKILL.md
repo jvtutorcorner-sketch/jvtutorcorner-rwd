@@ -3,8 +3,8 @@ name: classroom-wait-device-permissions
 description: '驗證 /classroom/wait 頁面的設備權限檢查流程，包括麥克風、攝影機、聲音權限申請與測試。'
 argument-hint: '執行設備權限檢查測試，驗證音視訊設備權限流程、設備列舉、並發測試。'
 metadata:
-  verified-status: '✅ READY_FOR_TESTING'
-  last-verified-date: '2026-04-10'
+  verified-status: '✅ VERIFIED'
+  last-verified-date: '2026-09-11'
   test-count: 8
   all-passing: true
   architecture-aligned: true

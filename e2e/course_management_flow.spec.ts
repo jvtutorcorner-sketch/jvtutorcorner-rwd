@@ -137,7 +137,8 @@ test.describe('課程管理流程驗證 - 老師建立→審核→管理員核�
         if (await submitBtn.count() > 0) {
             await submitBtn.click();
             console.log(`  ✓ 提交課程表單`);
-            await page.waitForTimeout(3000);
+            // POST /api/courses 直接以 status '待審核' 建立；只有成功才會顯示這段訊息
+            await expect(page.getByText('課程已提交審核')).toBeVisible({ timeout: 15000 });
         } else {
             console.log(`  ⚠️  未找到提交按鈕`);
         }
@@ -302,6 +303,8 @@ test.describe('課程管理流程驗證 - 老師建立→審核→管理員核�
     }
 
     test('完整課程管理流程: 老師建立 → 申請上架 → 管理員核准', async ({ browser }) => {
+        // 三階段（老師建立、老師列表確認、管理員核准）的 UI 流程在 next dev 下超過全域 60 秒
+        test.setTimeout(180_000);
         const courseData = {
             title: `自動化測試課程-${new Date().getTime()}`,
             description: '這是由自動化測試產生的課程',
@@ -331,6 +334,7 @@ test.describe('課程管理流程驗證 - 老師建立→審核→管理員核�
             console.log('='.repeat(60));
 
             const approvalResult = await requestCourseApproval(teacherPage, courseTitle);
+            expect(approvalResult, `老師課程列表找不到剛建立的課程「${courseTitle}」`).not.toBeNull();
             await teacherContext.close();
 
             // ========== PHASE 3: 管理員登入並審核 ==========

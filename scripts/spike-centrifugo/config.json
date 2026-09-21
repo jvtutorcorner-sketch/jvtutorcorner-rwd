@@ -1,0 +1,22 @@
+{
+  "token_hmac_secret_key": "spike-secret-do-not-use-in-prod",
+  "allowed_origins": ["*"],
+  "engine": "redis",
+  "redis_address": "redis://valkey:6379",
+  "namespaces": [
+    {
+      "name": "room",
+      "allow_subscribe_for_client": true,
+      "presence": true,
+      "join_leave": true,
+      "force_push_join_leave": true,
+      "allow_publish_for_subscriber": true,
+      "allow_presence_for_subscriber": true,
+      "allow_history_for_subscriber": true,
+      "history_size": 20,
+      "history_ttl": "300s",
+      "force_recovery": true
+    }
+  ],
+  "log_level": "info"
+}

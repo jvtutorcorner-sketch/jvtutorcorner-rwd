@@ -1,29 +1,42 @@
 import React from 'react';
-import { TEACHERS } from '@/data/teachers';
+import type { Metadata } from 'next';
 import { ServerT } from '@/components/IntlProvider';
 import Link from 'next/link';
-import { GetCommand } from '@aws-sdk/lib-dynamodb';
-import { ddbDocClient } from '@/lib/dynamo';
 import TeacherEditButton from '@/components/auth/TeacherEditButton';
 import AutoTranslateText from '@/components/AutoTranslateText';
+import { pageOpenGraph, toMetaDescription } from '@/lib/seo';
+import { getTeacherById } from '../_data';
+
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
+  const { id } = await params;
+  const canonical = `/teachers/${encodeURIComponent(id)}`;
+  const teacher = await getTeacherById(id);
+
+  if (!teacher) {
+    return {
+      title: '找不到老師',
+      alternates: { canonical },
+      robots: { index: false, follow: true },
+    };
+  }
+
+  const name = String(teacher.name || teacher.displayName || '老師');
+  const subjects = Array.isArray(teacher.subjects) ? teacher.subjects.join(' · ') : '';
+  const title = subjects ? `${name}（${subjects}）` : name;
+  const description = toMetaDescription(teacher.intro) || toMetaDescription(`${name} 的線上家教課程：${subjects}`);
+
+  return {
+    title,
+    ...(description ? { description } : {}),
+    alternates: { canonical },
+    openGraph: pageOpenGraph({ title, description, url: canonical, type: 'profile' }),
+  };
+}
 
 export default async function TeacherDetailPage({ params }: { params: any }) {
   const { id } = await params;
 
-  let teacher: any = null;
-  try {
-    const TEACHERS_TABLE = process.env.DYNAMODB_TABLE_TEACHERS || 'jvtutorcorner-teachers';
-    const getCmd = new GetCommand({ TableName: TEACHERS_TABLE, Key: { id } });
-    const result = await ddbDocClient.send(getCmd);
-    teacher = result.Item || null;
-  } catch (e) {
-    console.error('[TeacherDetailPage] DynamoDB get error:', e);
-  }
-
-  // Fallback to static data
-  if (!teacher) {
-    teacher = TEACHERS.find(t => t.id === id);
-  }
+  const teacher = await getTeacherById(id);
 
   if (!teacher) {
     return (

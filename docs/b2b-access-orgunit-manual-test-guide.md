@@ -5,9 +5,27 @@
 > 對應自動化腳本：[scripts/verify-b2b-access-orgunits.mjs](../scripts/verify-b2b-access-orgunits.mjs)
 > 另兩個 B2B 核心模組（席次/授權、成員增刪）見：[docs/b2b-seat-membership-manual-test-guide.md](./b2b-seat-membership-manual-test-guide.md)
 
-## 已知範圍限制：dept_admin 子部門範圍尚未實作
+## dept_admin 子部門範圍（已實作）
 
-`.agents/skills/b2b-tenant-isolation/SKILL.md` 的 M2「dept_admin 限本部門」描述的 `apiGuard scope:'orgUnit'` 機制**在程式碼中不存在**：`lib/auth/apiGuard.ts` 沒有 `scope` 參數，`lib/auth/orgAccess.ts` 只查 `profile.isOrgAdmin` 與 `profile.orgId`，完全不讀 `orgUnitId`。目前只有「系統管理員」與「組織管理員（僅限本組織）」兩層授權是真的實作，本文件與自動化腳本都只驗證這兩層。若之後真的實作了 dept_admin 子部門範圍限制，才需要回頭補這塊的測試。
+`.agents/skills/b2b-tenant-isolation/SKILL.md` 的 M2「dept_admin 限本部門」現在有實作：不是
+`apiGuard` 的通用 `scope` 參數，而是 `lib/auth/orgAccess.ts` 新增的
+`requireOrgUnitAccess` / `filterOrgUnitsForActor` / `requireMemberScopeAccess` /
+`filterMembersForActor`，接在 `profile.role === 'dept_admin'` + `profile.orgUnitId`
+（dept_admin 自己管的那個 orgUnit）之上，用 `OrgUnit.path` 前綴比對限制在子樹內：
+
+- `app/api/org-units/route.ts`、`app/api/org-units/[id]/route.ts`、
+  `app/api/org-units/[id]/move/route.ts` 都改用 `requireOrgUnitAccess`／
+  `filterOrgUnitsForActor`：dept_admin 可讀寫自己 unit + 子孫，讀不到兄弟/父層/別組織的 unit，
+  也不能把自己的 unit 搬去子樹外或搬到根層。
+- `app/api/organizations/[id]/members/**` 改用 `requireMemberScopeAccess`／
+  `filterMembersForActor`：dept_admin 只能看到/管理 `orgUnitId` 落在自己子樹內的成員；沒有
+  `orgUnitId` 的成員一律視為範圍外。
+- 系統管理員／該組織的 `isOrgAdmin` 不受影響，仍然全權。
+- dept_admin 依然完全通不過 `requireOrgAccess`（組織層級的 billing/`isOrgAdmin` 授予閘門），
+  所以既有「組織管理員才能碰計費欄位／授予 isOrgAdmin」的行為沒有改變。
+
+對應自動化腳本：`scripts/verify-b2b-dept-admin-scope.mjs`（18 項斷言，直接呼叫上述函式，會
+建立/清理真的 orgA/orgB 與多層 orgUnit）。
 
 ## 前置準備
 
@@ -72,7 +90,7 @@ node --import ./scripts/lib/register-ts-resolve.mjs scripts/verify-b2b-access-or
 2. 同一個 A 組織管理員，改開 B 組織的 `/admin/organizations/<B的id>`（或直接呼叫 `GET /api/organizations/<B的id>`）—— 預期 403。
 3. 用 **A 組織一般成員**（`isOrgAdmin=false`）登入，嘗試開啟 A 組織自己的 `/admin/organizations/<A的id>` —— 預期同樣是 403（這是目前程式碼的真實行為，一般成員完全不能經由這組 API 讀取組織資訊，即使是自己所屬的組織）。
 4. 用 **A 組織管理員** 嘗試呼叫任何計費/席次上限相關的操作（`level: 'system'` 的操作，例如變更 `maxSeats`）—— 預期 403，即使是自己的組織，也只有系統管理員能動。
-5. 不用測 dept_admin 子部門範圍 —— 目前沒有實作，測了也沒有意義。
+5. dept_admin 子部門範圍請執行 `node --import ./scripts/lib/register-ts-resolve.mjs scripts/verify-b2b-dept-admin-scope.mjs`（已實作，見上方新章節），UI 上暫無專屬畫面可手動操作。
 
 ## 清理
 

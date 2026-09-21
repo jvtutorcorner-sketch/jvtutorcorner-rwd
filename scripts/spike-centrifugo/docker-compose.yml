@@ -1,0 +1,31 @@
+name: centrifugo-spike
+services:
+  valkey:
+    image: valkey/valkey:8
+    command: ["valkey-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "6399:6379"
+  cent-a:
+    image: centrifugo/centrifugo:v5
+    depends_on: [valkey]
+    command: ["centrifugo", "-c", "/centrifugo/config.json"]
+    volumes:
+      - ./config.json:/centrifugo/config.json:ro
+    ports:
+      - "8801:8000"
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+  cent-b:
+    image: centrifugo/centrifugo:v5
+    depends_on: [valkey]
+    command: ["centrifugo", "-c", "/centrifugo/config.json"]
+    volumes:
+      - ./config.json:/centrifugo/config.json:ro
+    ports:
+      - "8802:8000"
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536

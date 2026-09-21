@@ -8,6 +8,7 @@ import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { getTestConfig, TestConfig, ADMIN_EMAIL, ADMIN_PASSWORD } from '../test_data/whiteboard_test_data';
+import { hasAnyInk } from './canvas_probe';
 
 export interface DrawingPoint {
   x: number;
@@ -873,24 +874,19 @@ export async function drawOnWhiteboard(page: Page): Promise<void> {
   console.log(`   ✅ Drew ${numLines} lines on whiteboard`);
 }
 
+/**
+ * Smoke check: does the whiteboard show ANY ink? (binary; cannot see dropped strokes)
+ * For real draw-sync measurement use e2e/helpers/draw_workload.ts.
+ *
+ * Kept backward compatible: a cross-origin tainted canvas still counts as "has
+ * content" here, but it is now logged, because such a pass proves nothing.
+ */
 export async function hasDrawingContent(page: Page): Promise<boolean> {
-  return page.evaluate(() => {
-    const canvas = Array.from(document.querySelectorAll('canvas')).find(
-      (c) => getComputedStyle(c).visibility === 'visible' && getComputedStyle(c).display !== 'none'
-    ) as HTMLCanvasElement | undefined;
-    if (!canvas) return false;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return false;
-    try {
-      const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-      for (let i = 3; i < data.length; i += 4) {
-        if (data[i] > 10) return true;
-      }
-    } catch {
-      return true; // cross-origin fallback
-    }
-    return false;
-  });
+  const r = await hasAnyInk(page, { strict: false });
+  if (r.tainted) {
+    console.warn('   ⚠️ hasDrawingContent: whiteboard canvas is tainted; treating as "has content" (unverifiable)');
+  }
+  return r.hasInk;
 }
 
 // ─────────────────────────────────────────────────────────────────────

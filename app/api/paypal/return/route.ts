@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateAccessToken, PAYPAL_API } from '@/lib/paypal';
 import { handlePaymentSuccess } from '@/lib/paymentSuccessHandler';
+import { internalFetch } from '@/lib/auth/internalFetch';
 
 export async function GET(req: NextRequest) {
     const url = new URL(req.url);
@@ -20,18 +21,18 @@ export async function GET(req: NextRequest) {
             try {
                 console.log(`[PayPal Return Mock] Attempting to update order ${mockOrderId} status...`);
                 // First try plan-upgrades API
-                let res = await fetch(`${baseURL}/api/plan-upgrades/${encodeURIComponent(mockOrderId)}`, {
+                let res = await internalFetch(`/api/plan-upgrades/${encodeURIComponent(mockOrderId)}`, {
                     method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ status: 'PAID' }),
+                    originRequest: req,
                 });
                 
                 if (!res.ok) {
                     if (res.status === 404) {
-                        res = await fetch(`${baseURL}/api/orders/${encodeURIComponent(mockOrderId)}`, {
+                        res = await internalFetch(`/api/orders/${encodeURIComponent(mockOrderId)}`, {
                             method: 'PATCH',
-                            headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ status: 'PAID' }),
+                            originRequest: req,
                         });
                         if (!res.ok) console.error('[PayPal Return Mock] Failed to update order');
                         else console.log(`[PayPal Return Mock] Successfully updated order ${mockOrderId} to PAID`);
@@ -71,20 +72,20 @@ export async function GET(req: NextRequest) {
                 try {
                     console.log(`[PayPal Return] Attempting to update order ${orderId} status...`);
                     // First try plan-upgrades API
-                    let res = await fetch(`${baseURL}/api/plan-upgrades/${encodeURIComponent(orderId)}`, {
+                    let res = await internalFetch(`/api/plan-upgrades/${encodeURIComponent(orderId)}`, {
                         method: 'PATCH',
-                        headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ status: 'PAID' }),
+                        originRequest: req,
                     });
                     
                     if (res.ok) {
                         console.log(`[PayPal Return] Successfully updated plan-upgrade ${orderId} to PAID API`);
                     } else if (res.status === 404) {
                         console.log(`[PayPal Return] Order ${orderId} not found in plan-upgrades, trying standard orders API...`);
-                        res = await fetch(`${baseURL}/api/orders/${encodeURIComponent(orderId)}`, {
+                        res = await internalFetch(`/api/orders/${encodeURIComponent(orderId)}`, {
                             method: 'PATCH',
-                            headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ status: 'PAID' }),
+                            originRequest: req,
                         });
                         if (!res.ok) {
                             console.error('[PayPal Return] Failed to update order status via API', res.status);

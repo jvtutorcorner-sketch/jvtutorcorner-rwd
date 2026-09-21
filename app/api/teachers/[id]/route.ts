@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { ddbDocClient } from '@/lib/dynamo';
 import { GetCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { withAuth, type AuthedRequest } from '@/lib/auth/apiGuard';
+import { resolveOwnTeacherIds } from '@/lib/auth/courseOwnership';
 
 const TEACHERS_TABLE = process.env.DYNAMODB_TABLE_TEACHERS || 'jvtutorcorner-teachers';
 
@@ -18,10 +20,26 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     }
 }
 
-export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+// GET 維持公開（老師檔案頁）。PATCH 先前完全沒有 auth，也沒有擁有權檢查：
+// 任何人都能改寫任何一位老師的姓名、簡介、時薪、頭像與在職狀態。
+async function handlePatch(req: AuthedRequest, ctx?: { params: Promise<{ id: string }> }) {
     try {
-        const { id } = await params;
+        const { id } = await ctx!.params;
         const body = await req.json();
+
+        const { role } = req.session;
+        const isAdmin = role === 'admin' || role === 'system';
+        if (!isAdmin) {
+            const ownIds = await resolveOwnTeacherIds(req.session);
+            if (!ownIds.has(String(id))) {
+                return NextResponse.json({ ok: false, message: 'Forbidden: not your teacher profile' }, { status: 403 });
+            }
+        }
+
+        // 在職狀態屬於管理端決定，老師不能自己改。
+        if (!isAdmin && Object.prototype.hasOwnProperty.call(body, 'status')) {
+            return NextResponse.json({ ok: false, message: 'Forbidden: status is managed by admins' }, { status: 403 });
+        }
 
         const allowedFields = ['intro', 'languages', 'subjects', 'name', 'avatarUrl', 'hourlyRate', 'location', 'status'];
         const updateExpression: string[] = [];
@@ -58,3 +76,5 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         return NextResponse.json({ ok: false, message: err?.message || 'Update failed' }, { status: 500 });
     }
 }
+
+export const PATCH = withAuth(handlePatch);

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, ScanCommand, BatchWriteCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
+import { withAdmin, type AuthedRequest } from '@/lib/auth/apiGuard';
 
 type WhiteboardPermission = {
   roleId: string;
@@ -31,7 +32,8 @@ const ddbDocClient = DynamoDBDocumentClient.from(client);
  * GET /api/admin/whiteboard-permissions
  * 獲取所有白板權限設定
  */
-export async function GET(request: NextRequest) {
+// 先前 GET/POST 都沒有 auth：任何人都能讀取並覆寫白板角色權限設定。
+async function handleGet(request: AuthedRequest) {
   console.log('[Whiteboard Permissions API] GET - 開始獲取白板權限設定');
 
   if (!PERMISSIONS_TABLE) {
@@ -69,7 +71,7 @@ export async function GET(request: NextRequest) {
  * POST /api/admin/whiteboard-permissions
  * 保存白板權限設定
  */
-export async function POST(request: NextRequest) {
+async function handlePost(request: AuthedRequest) {
   console.log('[Whiteboard Permissions API] POST - 開始保存白板權限設定');
   console.log('[Whiteboard Permissions API] 使用表名:', PERMISSIONS_TABLE);
 
@@ -139,3 +141,6 @@ export async function POST(request: NextRequest) {
     }, { status: 500 });
   }
 }
+
+export const GET = withAdmin(handleGet);
+export const POST = withAdmin(handlePost);

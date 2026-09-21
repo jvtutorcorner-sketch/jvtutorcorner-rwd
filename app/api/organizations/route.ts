@@ -17,6 +17,8 @@ import type { CreateOrganizationInput } from '@/lib/types/b2b';
 import { withAuth } from '@/lib/auth/apiGuard';
 import { resolveOrgActor, requireSystemAdmin } from '@/lib/auth/orgAccess';
 import { writeAuditLog } from '@/lib/auditLogService';
+import { getProfileById } from '@/lib/profilesService';
+import orgMembershipService from '@/lib/orgMembershipService';
 
 export const dynamic = 'force-dynamic';
 
@@ -97,13 +99,39 @@ export const POST = withAuth(async (req) => {
       );
     }
 
+    const domain = organizationService.normalizeOrgDomain(body.domain);
+    if (domain) {
+      const clash = await organizationService.findOrganizationByDomain(domain);
+      if (clash) {
+        return NextResponse.json(
+          { ok: false, error: `Email domain "${domain}" is already used by organization "${clash.name}"` },
+          { status: 409 }
+        );
+      }
+    }
+
+    // adminUserId used to be stored as a bare string with no effect on the profile
+    // (no orgId, no isOrgAdmin), while members DELETE treated it as the protected
+    // primary admin. It must now name an existing user who is not in another org;
+    // they are seated as an org admin right after the organization is created.
+    const adminUserId = body.adminUserId ? String(body.adminUserId) : undefined;
+    if (adminUserId) {
+      const adminProfile = (await getProfileById(adminUserId)) as { orgId?: string | null } | null;
+      if (!adminProfile) {
+        return NextResponse.json({ ok: false, error: 'adminUserId does not match an existing user' }, { status: 400 });
+      }
+      if (adminProfile.orgId) {
+        return NextResponse.json({ ok: false, error: 'adminUserId already belongs to an organization' }, { status: 409 });
+      }
+    }
+
     const input: CreateOrganizationInput = {
       name: name.trim(),
-      domain: body.domain?.trim(),
+      domain: domain || undefined,
       planTier,
       maxSeats: parseInt(maxSeats, 10),
       billingEmail: billingEmail.toLowerCase().trim(),
-      adminUserId: body.adminUserId,
+      adminUserId,
       industry: body.industry,
       country: body.country,
       taxId: body.taxId
@@ -116,12 +144,31 @@ export const POST = withAuth(async (req) => {
       action: 'organization.create',
       targetType: 'organization',
       targetId: organization.id,
+      orgId: organization.id,
       metadata: { name: organization.name, planTier: organization.planTier },
     });
+
+    let adminLink: { ok: boolean; licenseId?: string; error?: string } | undefined;
+    if (adminUserId) {
+      try {
+        const seated = await orgMembershipService.assignMemberWithLicense({
+          orgId: organization.id,
+          profileId: adminUserId,
+          isOrgAdmin: true,
+          assignedBy: guard.actor.session.userId,
+        });
+        adminLink = { ok: true, licenseId: seated.license.id };
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        console.error('[OrganizationsAPI] could not seat adminUserId as org admin:', message);
+        adminLink = { ok: false, error: message || 'Failed to seat admin user' };
+      }
+    }
 
     return NextResponse.json({
       ok: true,
       organization,
+      adminLink,
       message: `Organization "${organization.name}" created successfully`
     }, { status: 201 });
   } catch (error: any) {

@@ -1,4 +1,8 @@
-import { getFirstActiveOf } from '@/lib/integrations/store';
+// Image-based learning-content analysis. The multi-provider fan-out and app-integration
+// key resolution now live in lib/ai/llmClient.ts (shared with the class-summary feature);
+// this file keeps the prompt and the JSON parsing. Request shapes are unchanged.
+
+import { getActiveAIIntegration, generateJson } from '@/lib/ai/llmClient';
 
 export const LEARNING_CONTENT_ANALYSIS_PROMPT = `
 你是線上教學平台的教材分析助理。請分析使用者上傳的教材、講義、題目、圖表、投影片或手寫筆記圖片，只描述圖片中能確認的內容，不要猜測看不清楚的文字。
@@ -24,24 +28,6 @@ export const LEARNING_CONTENT_ANALYSIS_PROMPT = `
 4. suggestedQuestions 最多 3 題，若內容不足可以回傳空陣列。
 `;
 
-type AIIntegration = {
-  type: string;
-  config?: { apiKey?: string; model?: string };
-};
-
-async function getActiveAIIntegration(): Promise<AIIntegration | null> {
-  const configuredForAws = process.env.NODE_ENV === 'production' ||
-    !!(process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID);
-  if (!configuredForAws) return null;
-  try {
-    const integration = await getFirstActiveOf(['OPENAI', 'ANTHROPIC', 'GEMINI']);
-    if (integration?.config?.apiKey) return integration as AIIntegration;
-  } catch (err) {
-    console.warn('[learningContentAnalysis] integration lookup failed', err);
-  }
-  return null;
-}
-
 function parseJsonResponse(text: string): unknown | null {
   try {
     return JSON.parse(text);
@@ -56,89 +42,18 @@ function parseJsonResponse(text: string): unknown | null {
   }
 }
 
-async function analyzeWithGemini(imageBase64: string, mimeType: string, apiKey: string, prompt: string, model?: string) {
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model || 'gemini-1.5-flash'}:generateContent?key=${apiKey}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }, { inlineData: { mimeType, data: imageBase64 } }] }],
-      generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 2048 },
-    }),
-  });
-  if (!response.ok) return null;
-  const data = await response.json();
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  return text ? parseJsonResponse(text) : null;
-}
-
-async function analyzeWithOpenAI(imageBase64: string, mimeType: string, apiKey: string, prompt: string, model?: string) {
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({
-      model: model || 'gpt-4o-mini',
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'text', text: prompt },
-          { type: 'image_url', image_url: { url: `data:${mimeType};base64,${imageBase64}` } },
-        ],
-      }],
-      max_tokens: 2048,
-      response_format: { type: 'json_object' },
-    }),
-  });
-  if (!response.ok) return null;
-  const data = await response.json();
-  const text = data.choices?.[0]?.message?.content;
-  return text ? parseJsonResponse(text) : null;
-}
-
-async function analyzeWithAnthropic(imageBase64: string, mimeType: string, apiKey: string, prompt: string, model?: string) {
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: model || 'claude-3-5-sonnet-20241022',
-      max_tokens: 2048,
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'image', source: { type: 'base64', media_type: mimeType, data: imageBase64 } },
-          { type: 'text', text: `${prompt}\n\n請只回傳 JSON。` },
-        ],
-      }],
-    }),
-  });
-  if (!response.ok) return null;
-  const data = await response.json();
-  const text = data.content?.[0]?.text;
-  return text ? parseJsonResponse(text) : null;
-}
-
 export async function analyzeLearningContentImage(
   imageBase64: string,
   mimeType = 'image/jpeg',
-  prompt = LEARNING_CONTENT_ANALYSIS_PROMPT,
+  prompt = LEARNING_CONTENT_ANALYSIS_PROMPT
 ) {
   const integration = await getActiveAIIntegration();
   if (!integration?.config?.apiKey) {
     return { result: null, reason: 'AI learning-content analysis is not configured' };
   }
-
-  const type = integration.type;
-  const apiKey = integration.config?.apiKey;
-  const model = integration.config?.model;
-  if (!apiKey) return { result: null, reason: 'AI learning-content analysis is not configured' };
   try {
-    let result: unknown | null = null;
-    if (type === 'GEMINI') result = await analyzeWithGemini(imageBase64, mimeType, apiKey, prompt, model);
-    if (type === 'OPENAI') result = await analyzeWithOpenAI(imageBase64, mimeType, apiKey, prompt, model);
-    if (type === 'ANTHROPIC') result = await analyzeWithAnthropic(imageBase64, mimeType, apiKey, prompt, model);
+    const text = await generateJson({ integration, prompt, images: [{ base64: imageBase64, mimeType }] });
+    const result = text ? parseJsonResponse(text) : null;
     return result ? { result } : { result: null, reason: 'AI provider returned no valid JSON result' };
   } catch (error: any) {
     console.error('[learning-content-analysis] provider error:', error?.message || error);

@@ -1,12 +1,13 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { withAdminOrHmac, type AuthedRequest } from '@/lib/auth/apiGuard';
 
 export const runtime = 'nodejs';
 
 /**
- * NotebookLM 文檔建立 API
- * 用於建立新的 NotebookLM 文檔
+ * NotebookLM 文檔建立 API — 目前仍是 TODO/mock stub，尚未串接真正的 NotebookLM API。
+ * 先前完全沒有 auth；即使現在只回傳假資料，仍鎖 admin/HMAC 以免之後補上真正實作時忘記加。
  */
-export async function POST(req: NextRequest) {
+export const POST = withAdminOrHmac('/api/workflows/notebooklm-create', async (req: AuthedRequest) => {
     try {
         const { title, content } = await req.json();
 
@@ -43,4 +44,4 @@ export async function POST(req: NextRequest) {
             error: error?.message || 'NotebookLM document creation failed',
         }, { status: 500 });
     }
-}
+});

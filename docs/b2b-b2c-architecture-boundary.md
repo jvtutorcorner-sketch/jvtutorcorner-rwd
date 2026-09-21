@@ -121,3 +121,27 @@ B2B 在個人 Profile 之上增加 Organization、OrgUnit 與 License 關聯。�
 
 - `strict` 目前預期會失敗，因為 critical 模組仍有 `PARTIAL`、`BLOCKED` 或 `NOT_IMPLEMENTED`；這是目前產品狀態的反映。
 - 涉及 DynamoDB、真實金流、Google SSO、外部 AI、LINE／Make 或 headed browser 的測試，必須先確認目標環境與資料清理策略。
+
+## 6. 2026-09-10 資料結構修正紀錄
+
+| 問題 | 修正 | 位置 |
+|---|---|---|
+| Enrollment / CourseSession 把 `null` 寫進 GSI key（`orgId`、`orderId`、`roomId`），補上索引後寫入會被 DynamoDB 拒絕 | 缺值一律不寫該屬性（`stripEmptyIndexKeys`），PATCH 重寫舊資料時也會清掉 | `lib/enrollmentService.ts`、`app/api/enroll/route.ts`、`lib/courseSessionService.ts` |
+| 同一成員可重複指派到同組織，產生多張 active License；移出時只撤銷一張 | 一人一張有效授權（交易條件式鎖 `profile.licenseId`）；移出時撤銷該成員在該組織的全部授權並依張數釋放席次；存取判定額外要求授權所屬組織＝成員目前組織 | `lib/orgMembershipService.ts`、`lib/accessControl.ts` |
+| `/api/register` 接受 client 指定主鍵並整包寫入 body（可覆寫他人帳號、自封 admin／付費方案），回應還帶出 `verificationToken` | 伺服器產生 UUID＋`attribute_not_exists(id)`；欄位白名單；角色限 student／teacher；方案限 NT$0 方案；回應移除密碼雜湊與驗證 token | `app/api/register/route.ts` |
+| `License.expiresAt` 被 PATCH 存成 ISO 字串，數值比較後一律視為過期；`expired` 狀態從未寫入、過期仍佔席次 | 一律存 epoch 秒（`toEpochSeconds`）；新增到期掃描把過期授權轉 `expired` 並釋放席次 | `lib/licenseService.ts`、`POST /api/licenses/expire` |
+| 加入組織把付費方案清成 null、移出硬設 `'free'` | 加入時記下 `planBeforeOrg`，移出時還原；移出時一併還原 `dept_admin` 角色 | `lib/orgMembershipService.ts` |
+| 老師升為 `dept_admin` 會失去老師權限（role 單值） | 暫時只允許學生升級；多重角色需另行設計 session／頁面權限 | `lib/orgMembershipService.ts` |
+| `profilesService.PROFILES_TABLE` 預設空字串，與 register 不一致 | 預設值統一為 `jvtutorcorner-profiles`；刪除繞過席次計算的 `assignProfileToOrg`／`removeProfileFromOrg` | `lib/profilesService.ts` |
+| 組織硬刪除、部門硬刪除留下孤兒；網域可重複；`adminUserId` 未連動 Profile；`maxSeats` 可低於 `usedSeats` | 硬刪除前須無成員與授權；網域唯一；`adminUserId` 須為成員並設為 org admin（僅系統管理員可改）；`maxSeats` 不得低於已用席次；封存部門不再給 dept_admin 範圍 | `app/api/organizations/**`、`lib/orgUnitService.ts`、`lib/auth/orgAccess.ts` |
+| 課程 PATCH 只改 `seatsLeft`，`capacity` 不更新 | 同時寫入 `capacity` 與 `seatsLeft` | `app/api/courses/[id]/route.ts` |
+| AuditLog 沒有頂層 `orgId`，成員異動無稽核 | `writeAuditLog` 新增 `orgId`；成員新增／修改／移除、組織修改、授權到期都寫稽核 | `lib/auditLogService.ts` 與各 route |
+
+### 部署順序（必須依序）
+
+1. 部署本次程式碼。`bd85fe7` 版的 `/api/enroll` 會寫 `orgId: null`，若該版本在線上時補索引，B2C 報名會全部失敗。2026-09-10 盤點時線上 1,164 筆 enrollment 尚無任何 `orgId` 屬性，所以目前資料是乾淨的，風險只在部署順序。
+2. `node --import ./scripts/lib/ts-resolve-hook.mjs scripts/repair-b2b-data.mjs` 先 dry run，確認後加 `--apply`。
+3. `node scripts/setup-db.mjs` 補上 enrollments 的 `byCourseId`／`byOrderId`／`byOrgId` 與 courses 的 `byTeacherId`，再以 `node scripts/verify-schema.mjs` 確認。
+4. 排程每日呼叫 `POST /api/licenses/expire`（`Authorization: Bearer $CRON_SECRET`）。
+
+`scripts/verify-b2b-*.mjs` 直接 import `lib/*.ts`，而 lib 內相對路徑沒有副檔名，純 `node` 無法解析。請以 `node --import ./scripts/lib/ts-resolve-hook.mjs <script>` 執行。

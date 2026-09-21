@@ -3,9 +3,11 @@
 
 import React from 'react';
 import { useT } from '@/components/IntlProvider';
+import { useDateFormat } from '@/lib/hooks/useDateFormat';
 
 export default function TestimonyPage() {
   const t = useT();
+  const dateFmt = useDateFormat();
 
   const testimonials = [
     {
@@ -56,7 +58,7 @@ export default function TestimonyPage() {
                   <p className="text-blue-600 text-sm">{item.role}</p>
                   {item.createdAt && (
                     <p className="text-gray-500 text-xs" style={{ marginTop: 4 }}>
-                      {t('testimony_published_on')}{new Date(item.createdAt).toLocaleString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                      {t('testimony_published_on')}{dateFmt.formatDateTime(item.createdAt)}
                     </p>
                   )}
               </div>

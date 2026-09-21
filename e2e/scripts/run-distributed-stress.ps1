@@ -14,6 +14,15 @@
 # Environment variables forwarded from caller (override defaults):
 #   BASE_URL, STRESS_RUN_TS, SKIP_CLEANUP, REUSE_STRESS_SETUP, HEADLESS
 #   TEST_TEACHER_PASSWORD, TEST_STUDENT_PASSWORD, ADMIN_PASSWORD, LOGIN_BYPASS_SECRET
+#
+# Realistic draw workload (e2e/helpers/draw_workload.ts) — set on EVERY machine:
+#   DRAW_DURATION_SEC, DRAW_STROKES_PER_MIN, DRAW_PPS, DRAW_CLEAR_EVERY, DRAW_ERASER_RATIO,
+#   DRAW_PAGE_TURNS, DRAW_SEED, DRAW_STAGGER_MS, DRAW_P95_SLO_MS, DRAW_LOSS_SLO,
+#   DRAW_MAX_WAIT_MS, NO_PDF_MODE, TEST_VIDEO_QUALITY (e.g. low)
+#   merge-distributed-results.ps1 computes the global stroke p95 from every group's raw latencies.
+#
+# Record host CPU/RAM alongside the run (separate window, same machine):
+#   powershell -ExecutionPolicy Bypass -File e2e/scripts/sample-host-metrics.ps1 -OutFile host-A.csv
 
 param(
   [string]$MachineId    = "A",

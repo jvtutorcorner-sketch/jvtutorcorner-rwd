@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useDateFormat } from '@/lib/hooks/useDateFormat';
 
 type Organization = {
   id: string;
@@ -62,6 +63,7 @@ const EMPTY_FORM: FormState = {
 };
 
 export default function OrganizationsManager() {
+  const dateFmt = useDateFormat();
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -351,7 +353,7 @@ export default function OrganizationsManager() {
                       </div>
                     </td>
                     <td style={td}>{org.billingEmail}</td>
-                    <td style={{ ...td, fontSize: 12 }}>{new Date(org.createdAt).toLocaleDateString('zh-TW')}</td>
+                    <td style={{ ...td, fontSize: 12 }}>{dateFmt.formatDate(org.createdAt)}</td>
                     <td style={td}>
                       <Link
                         href={`/admin/organizations/${org.id}`}

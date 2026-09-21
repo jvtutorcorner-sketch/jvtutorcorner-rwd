@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
 import { getAppPermissionsFromDynamoDB, saveAppPermissionsToDynamoDB } from '@/lib/appPermissionsService';
-import { withAdmin } from '@/lib/auth/apiGuard';
+import { withAdmin, type AuthedRequest } from '@/lib/auth/apiGuard';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+// 先前完全沒有 auth：任何人都能讀取／覆寫全站的 app 權限設定（哪些角色能看到哪些整合分類）。
+export const GET = withAdmin(async (_request: AuthedRequest) => {
     try {
         console.log('📖 [App Permissions API] Loading app permissions...');
         const appConfigs = await getAppPermissionsFromDynamoDB();
@@ -24,9 +25,9 @@ export async function GET() {
             details: process.env.NODE_ENV === 'development' ? err.stack : undefined
         }, { status: 500 });
     }
-}
+});
 
-export const POST = withAdmin(async (req) => {
+export const POST = withAdmin(async (req: AuthedRequest) => {
     try {
         const body = await req.json();
         console.log('[App Permissions API] 📥 Received save request');

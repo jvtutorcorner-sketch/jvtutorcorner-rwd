@@ -1,7 +1,8 @@
-import { NextRequest } from 'next/server';
+import { withAuth, type AuthedRequest } from '@/lib/auth/apiGuard';
 import { getWhiteboardState, saveWhiteboardState, normalizeUuid } from '@/lib/whiteboardService';
 
-export async function POST(req: NextRequest) {
+// 先前完全沒有 auth：白板的教材 PDF、房間狀態與事件端點任何人都能存取／改寫。
+async function handlePost(req: AuthedRequest) {
   try {
     // Read raw text once and parse robustly. Some Windows clients wrap JSON
     // in extra quotes which makes a direct JSON.parse fail.
@@ -34,7 +35,38 @@ export async function POST(req: NextRequest) {
     if (!event) {
       return new Response(JSON.stringify({ ok: false, error: 'no event' }), { status: 400 });
     }
-    
+
+    // Snapshot write: overwrite the single room item with the whole board. In
+    // snapshot mode this is the ONLY write — one item per room, no per-stroke /
+    // per-point event rows ever persisted (the DB stays a scene snapshot, not a log).
+    if (event.type === 'snapshot') {
+      try {
+        await saveWhiteboardState(uuid, Array.isArray(event.strokes) ? event.strokes : [], event.pdf ?? null);
+      } catch (e) {
+        console.error('[WB Event Server] snapshot write failed:', { uuid, error: String(e) });
+      }
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    }
+
+    // Append-only path (WB_APPEND_ONLY=1): one small item per stroke, so each
+    // write is ~1 WCU regardless of board size (vs the legacy single-growing-item
+    // model whose writes cost WCU ∝ board size).
+    if (process.env.WB_APPEND_ONLY === '1') {
+      try {
+        const s = await import('@/lib/whiteboardStrokes');
+        if (event.type === 'stroke-start' && event.stroke?.id) {
+          await s.appendStroke(uuid, event.stroke);
+        } else if (event.type === 'stroke-update') {
+          await s.updateStrokePoints(uuid, event.strokeId, event.points);
+        } else if (event.type === 'clear') {
+          await s.clearStrokes(uuid);
+        }
+      } catch (e) {
+        console.error('[WB Event Server] append-only path failed:', { uuid, error: String(e) });
+      }
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    }
+
     // Update DynamoDB using Atomic Operations to prevent race conditions in Lambda
     try {
       if (event.type === 'stroke-start') {
@@ -74,3 +106,5 @@ export async function POST(req: NextRequest) {
     return new Response(JSON.stringify({ ok: false, error: String(e) }), { status: 500 });
   }
 }
+
+export const POST = withAuth(handlePost);

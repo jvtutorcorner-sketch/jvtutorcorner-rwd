@@ -13,6 +13,7 @@
  */
 
 import type { Page } from '@playwright/test';
+import { hasAnyInk } from './canvas_probe';
 
 // ─────────────────────────────────────────────────────────────────────
 // Types
@@ -178,21 +179,13 @@ export async function measureSyncLatency(
 
   while (Date.now() - start < maxWaitMs) {
     intervals++;
-    await studentPage.waitForTimeout(pollIntervalMs);
 
-    const hasContent = await studentPage.evaluate(() => {
-      const canvas = Array.from(document.querySelectorAll('canvas')).find(
-        c => getComputedStyle(c).visibility === 'visible' && getComputedStyle(c).display !== 'none'
-      ) as HTMLCanvasElement | undefined;
-      if (!canvas) return false;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return false;
-      try {
-        const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-        for (let i = 3; i < data.length; i += 4) if (data[i] > 10) return true;
-      } catch { return true; } // cross-origin = treat as has content
-      return false;
-    }).catch(() => false);
+    // Check first, then wait: sleeping before the first read made one poll
+    // interval the floor of every measured latency.
+    // Legacy semantics (tainted canvas counts as content) via the shared probe.
+    const hasContent = await hasAnyInk(studentPage, { strict: false })
+      .then((r) => r.hasInk)
+      .catch(() => false);
 
     if (hasContent) {
       const latencyMs = Date.now() - start;
@@ -203,6 +196,7 @@ export async function measureSyncLatency(
         exceededSLO: latencyMs > SYNC_LATENCY_SLO_MS,
       };
     }
+    await studentPage.waitForTimeout(pollIntervalMs);
   }
 
   return { latencyMs: null, synced: false, pollIntervals: intervals, exceededSLO: true };
@@ -230,19 +224,9 @@ export async function collectHeartbeat(
   const apiHealthOk = (res?.status() ?? 0) < 500;
 
   // Check canvas
-  const canvasHasContent = await page.evaluate(() => {
-    const canvas = Array.from(document.querySelectorAll('canvas')).find(
-      c => getComputedStyle(c).visibility === 'visible'
-    ) as HTMLCanvasElement | undefined;
-    if (!canvas) return false;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return false;
-    try {
-      const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-      for (let i = 3; i < data.length; i += 4) if (data[i] > 10) return true;
-    } catch { return true; }
-    return false;
-  }).catch(() => false);
+  const canvasHasContent = await hasAnyInk(page, { strict: false })
+    .then((r) => r.hasInk)
+    .catch(() => false);
 
   // Check SSE / poll: verify page is still on /classroom/room
   const syncAlive = await page.evaluate(() =>

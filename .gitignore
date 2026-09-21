@@ -91,3 +91,10 @@ playwright-report/
 .debugcopy/
 .debugheaded/
 .claude/
+
+# sensitive data exports / backups (never commit — see teachers-backup-2026-08-01 incident)
+*-backup-*.json
+teachers-backup-*.json
+agora_test_info.txt
+carousel-source/
+carousel-shots/

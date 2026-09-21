@@ -60,11 +60,13 @@ foreach ($file in $resultFiles) {
 }
 
 # ── Compute combined metrics ───────────────────────────────────────────────────
-$totalGroups   = $allGroups.Count
-$totalEnrolled = ($allGroups | Where-Object { $_.enrolled }).Count
-$totalUploaded = ($allGroups | Where-Object { $_.uploaded }).Count
-$totalEntered  = ($allGroups | Where-Object { $_.entered }).Count
-$totalSynced   = ($allGroups | Where-Object { $_.synced }).Count
+# @() forces an array: in Windows PowerShell 5.1 a single matching PSCustomObject has no
+# .Count, so "exactly one group synced" used to print blank and compute a 0% success rate.
+$totalGroups   = @($allGroups).Count
+$totalEnrolled = @($allGroups | Where-Object { $_.enrolled }).Count
+$totalUploaded = @($allGroups | Where-Object { $_.uploaded }).Count
+$totalEntered  = @($allGroups | Where-Object { $_.entered }).Count
+$totalSynced   = @($allGroups | Where-Object { $_.synced }).Count
 
 if ($totalGroups -eq 0) {
   Write-Host ""
@@ -97,8 +99,48 @@ if ($passed) {
 Write-Host "═══════════════════════════════════════════════════════════════════" -ForegroundColor Cyan
 Write-Host ""
 
+# ── Draw workload (DRAW_DURATION_SEC > 0) — true global percentiles ───────────
+# Each group ships its raw per-stroke latencies (drawLatenciesMs), so the p95 here
+# is computed over ALL strokes from ALL machines, not averaged from group p95s.
+$drawGroups = @($allGroups | Where-Object { $_.draw })
+if ($drawGroups.Count -gt 0) {
+  $latencies = New-Object System.Collections.Generic.List[double]
+  $verifiable = 0; $lostOrPartial = 0; $strokes = 0; $api5xx = 0
+  foreach ($g in $drawGroups) {
+    if ($g.drawLatenciesMs) { foreach ($v in $g.drawLatenciesMs) { $latencies.Add([double]$v) } }
+    $verifiable    += [int]$g.draw.totals.verifiable
+    $lostOrPartial += [int]$g.draw.totals.lost + [int]$g.draw.totals.partial
+    $strokes       += [int]$g.draw.totals.drawn
+    $api5xx        += [int]$g.draw.http.api5xx
+  }
+  $sorted = [double[]]($latencies | Sort-Object)
+  function Get-NearestRank([double[]]$arr, [double]$p) {
+    if (-not $arr -or $arr.Count -eq 0) { return $null }
+    $rank = [Math]::Ceiling(($p / 100) * $arr.Count)
+    return $arr[[Math]::Max(0, $rank - 1)]
+  }
+  $p50 = Get-NearestRank $sorted 50
+  $p95 = Get-NearestRank $sorted 95
+  $max = if ($sorted.Count) { $sorted[$sorted.Count - 1] } else { $null }
+  $loss = if ($verifiable -gt 0) { [Math]::Round($lostOrPartial / $verifiable * 100, 2) } else { $null }
+  $failedDraw = @($drawGroups | Where-Object { $_.draw.sloViolations.Count -gt 0 })
+
+  Write-Host "  DRAW WORKLOAD ($($drawGroups.Count) groups)" -ForegroundColor Cyan
+  Write-Host "    Strokes:     $strokes (verifiable $verifiable)"
+  Write-Host "    Loss:        $loss% ($lostOrPartial lost/partial)"
+  Write-Host "    Latency:     p50=$p50 ms  p95=$p95 ms  max=$max ms  (n=$($sorted.Count))"
+  Write-Host "    App API 5xx: $api5xx"
+  if ($failedDraw.Count -gt 0) {
+    Write-Host "    SLO failed:  $($failedDraw.Count) group(s)" -ForegroundColor Yellow
+    foreach ($g in $failedDraw) {
+      Write-Host "      [$($g.groupId)] $($g.draw.sloViolations -join '; ')" -ForegroundColor Yellow
+    }
+  }
+  Write-Host ""
+}
+
 # ── Per-group failure analysis ─────────────────────────────────────────────────
-$failed = $allGroups | Where-Object { -not $_.synced }
+$failed = @($allGroups | Where-Object { -not $_.synced })
 if ($failed.Count -gt 0) {
   Write-Host "  Failed group breakdown:" -ForegroundColor Yellow
   $phaseCounts = $failed | Group-Object -Property { if ($_.phase) { $_.phase } else { "unknown" } }

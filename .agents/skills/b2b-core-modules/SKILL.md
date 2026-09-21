@@ -4,9 +4,9 @@ description: 'B2B 企業戶核心模組驗證技能。用 Node 腳本直接打�
 argument-hint: '驗證 B2B 席次/授權、成員管理、組織單位階層、orgAccess 授權範圍、B2C/B2B 共用課程存取閘門'
 metadata:
   verified-status: '✅ VERIFIED'
-  last-verified-date: '2026-08-08'
+  last-verified-date: '2026-09-12'
   architecture-aligned: true
-  notes: '涵蓋 32c5977 commit 點名的四個核心模組；過程中發現並修復 4 個問題（見下）。不含 dept_admin 子部門範圍限制（未實作）與跨租戶 SSO 隔離（見 b2b-tenant-isolation，待階段 2-2）。'
+  notes: '涵蓋 32c5977 commit 點名的四個核心模組；過程中發現並修復 5 個問題（見下），最新一個是 2026-08-08 複驗時發現的併發 TransactionConflict 未重試 bug。不含 dept_admin 子部門範圍限制（未實作）與跨租戶 SSO 隔離（見 b2b-tenant-isolation，待階段 2-2）。'
 ---
 
 # B2B 企業戶核心模組驗證技能 (B2B Core Modules Skill)
@@ -59,12 +59,13 @@ metadata:
 
 ## 已發現並修復的問題
 
-寫這些腳本的過程中連續挖到 4 個先前沒有任何測試覆蓋到的真實問題（不是測試寫錯），都已修復並在腳本裡留了對應的回歸斷言：
+寫這些腳本的過程中連續挖到 5 個先前沒有任何測試覆蓋到的真實問題（不是測試寫錯），都已修復並在腳本裡留了對應的回歸斷言：
 
 1. **`orgMembershipService.ts`：`plan` 保留字未加別名** — `assignMemberWithLicense`/`removeMemberFromOrg` 的 UpdateExpression 直接寫 `plan = :xxx`，`plan` 是 DynamoDB 保留字，兩個函式呼叫必定丟 `ValidationException`。指派/移除成員在修復前於正式環境完全壞掉。
 2. **`orgMembershipService.ts`：`orgId` 是 GSI key 卻用 `SET ... = :null`** — DynamoDB 不允許把 GSI key 屬性 SET 成 NULL 型別，`removeMemberFromOrg` 改用 `REMOVE orgId`（與 `licenseService.revokeLicense` 對 `userId` 的既有處理一致）。
 3. **`accessControl.ts`：B2C 分支欄位名對不上真實 schema** — Scan filter 寫 `studentID`/`courseID`，但 `app/api/enroll/route.ts` 寫入的真實欄位是 `userId`/`courseId`（camelCase，已對正式環境資料驗證）。這個 filter 修復前**永遠不會 match 任何真實 enrollment 記錄**，B2C 學員的課程存取會一路 fallthrough 到 B2B 檢查再被拒絕。
 4. **正式環境 DynamoDB：Licenses 表缺少 `byUserId` GSI** — `accessControl.ts` 的 B2B 分支唯一依賴的 `listLicensesByUser` 查詢直接回 `The table does not have the specified index: byUserId`，代表**企業戶席次式課程存取在修復前完全是壞的**（`verifyCourseAccess` fail-closed 吞掉這個錯誤直接拒絕，不會噴 500，所以肉眼看不出來）。修復工具 `scripts/setup-db.ts` 的 `updateLicensesTable()` 早就寫好了（commit 32c5977 就提到 idempotent GSI provisioning），只是沒有真的對正式環境跑過；已執行補上。
+5. **`orgMembershipService.ts`：併發下 `TransactionConflict` 沒被當成可重試的暫時性衝突，直接洩漏成原始 AWS 錯誤訊息** — `friendlyTransactionError()` 原本只認 `CancellationReasons` 裡的 `ConditionalCheckFailed`（真的違反業務條件，例如席次真的滿了），對 `TransactionConflict`（純粹是另一個併發的 `TransactWriteItems` 同時碰到同一筆資料，不代表條件不成立）完全沒處理，會把 AWS SDK 的原始錯誤訊息（`"Transaction cancelled, please refer cancellation reasons for specific reasons [TransactionConflict, None, None]"`）整包丟出去，被上層 route 的關鍵字比對規則判成 400（而不是可重試的 409）。用 `scripts/verify-b2b-enterprise-registration.mjs` 的「5 個併發搶 3 個席次」測試連續跑 5 次**每次都 100% 重現**（兩個輸家都拿到這個原始錯誤，不是 409）。修復：新增 `sendTransactWriteWithRetry()`，對 `TransactionConflict`（不含 `ConditionalCheckFailed`）做最多 3 次、20–80ms jitter 的重試——這個檔案裡所有 `ConditionExpression` 都是對即時資料狀態求值（相對遞增、`attribute_exists` 等，不是用預先讀到的舊值），盲重試是安全的：條件仍成立就重試成功，條件真的不成立就正確落到 `ConditionalCheckFailed`。`friendlyTransactionError()` 也補上重試耗盡後的保底訊息，確保仍會被上層規則判成 409。`assignMemberWithLicense`/`removeMemberFromOrg` 都套用了這個 wrapper。
 
 ## 已知限制
 

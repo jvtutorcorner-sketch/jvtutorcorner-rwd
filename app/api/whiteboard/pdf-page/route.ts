@@ -1,8 +1,9 @@
-import { NextRequest } from 'next/server';
+import { withAuth, type AuthedRequest } from '@/lib/auth/apiGuard';
 import { broadcastToUuid, normalizeUuid } from '../stream/route';
 import { getWhiteboardState, saveWhiteboardState } from '@/lib/whiteboardService';
 
-export async function POST(req: NextRequest) {
+// 先前完全沒有 auth：白板的教材 PDF、房間狀態與事件端點任何人都能存取／改寫。
+async function handlePost(req: AuthedRequest) {
   try {
     const body = await req.json();
     const { uuid: rawUuid, page } = body;
@@ -40,3 +41,5 @@ export async function POST(req: NextRequest) {
     return new Response(JSON.stringify({ ok: false, error: String(e) }), { status: 500 });
   }
 }
+
+export const POST = withAuth(handlePost);

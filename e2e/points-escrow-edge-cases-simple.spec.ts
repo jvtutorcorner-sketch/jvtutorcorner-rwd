@@ -39,6 +39,15 @@ const BYPASS_SECRET = requireEnv('QA_CAPTCHA_BYPASS', 'LOGIN_BYPASS_SECRET', 'NE
 // ─────────────────────────────────────────────────────────
 // API-only 登入（繞開 UI 驗證碼）
 // ─────────────────────────────────────────────────────────
+// /api/points 以 canonical id（profile.roid_id || profile.id）為 key，且只允許 admin／system 修改；
+// 用 email 當 userId 會寫到另一個點數桶。apiLogin 會把 email → canonical id 記在這裡。
+const canonicalIds = new Map<string, string>();
+function idOf(email: string): string {
+    const id = canonicalIds.get(email);
+    if (!id) throw new Error(`No canonical id for ${email}; call apiLogin first`);
+    return id;
+}
+
 async function apiLogin(page: Page, email: string, password: string): Promise<void> {
     const bypassSecret = BYPASS_SECRET;
     
@@ -58,6 +67,8 @@ async function apiLogin(page: Page, email: string, password: string): Promise<vo
 
         const loginData = await loginRes.json();
         const profile = loginData?.profile || loginData?.data || loginData;
+        const canonicalId = String(profile?.roid_id || profile?.id || '');
+        if (canonicalId) canonicalIds.set(email, canonicalId);
         const role = email.includes('lin@') ? 'teacher' : 'student';
 
         // 設定 localStorage
@@ -102,19 +113,19 @@ test.describe('Points Escrow Edge Cases (Simplified)', () => {
         // 初始化為 10000 點
         const resetRes = await page.request.post(`${BASE_URL}/api/points`, {
             data: JSON.stringify({
-                userId: studentEmail,
+                userId: idOf(studentEmail),
                 action: 'set',
                 amount: 10000,
                 reason: 'Initialize for full E2E testing',
             }),
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'x-e2e-secret': BYPASS_SECRET },
         });
 
         if (!resetRes.ok()) {
             console.warn(`   ⚠️  點數初始化失敗（HTTP ${resetRes.status()}），繼續執行測試`);
         } else {
             const verifyRes = await page.request.get(
-                `${BASE_URL}/api/points?userId=${encodeURIComponent(studentEmail)}`
+                `${BASE_URL}/api/points?userId=${encodeURIComponent(idOf(studentEmail))}`, { headers: { 'x-e2e-secret': BYPASS_SECRET } }
             );
             const pointsData = await verifyRes.json().catch(() => ({}));
             console.log(`   ✅ 學生點數初始化完成：${pointsData?.balance || 10000} 點`);
@@ -161,19 +172,19 @@ test.describe('Points Escrow Edge Cases (Simplified)', () => {
         // 2a. 對於 E1 測試，明確將學生點數設為 0（測試點數不足的情況）
         const resetPointsRes = await page.request.post(`${BASE_URL}/api/points`, {
             data: JSON.stringify({
-                userId: studentEmail,
+                userId: idOf(studentEmail),
                 action: 'set',
                 amount: 0,
                 reason: 'Test: Reset for E1 insufficient points scenario',
             }),
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'x-e2e-secret': BYPASS_SECRET },
         });
         if (!resetPointsRes.ok()) {
             console.log(`   ⚠️  點數重置失敗（非致命）: ${resetPointsRes.status()}`);
         }
         
         const studentPointsRes = await page.request.get(
-            `${BASE_URL}/api/points?userId=${encodeURIComponent(studentEmail)}`
+            `${BASE_URL}/api/points?userId=${encodeURIComponent(idOf(studentEmail))}`, { headers: { 'x-e2e-secret': BYPASS_SECRET } }
         );
         const studentPointsData = await studentPointsRes.json().catch(() => ({}));
         const studentBalance = studentPointsData?.balance ?? 0;
@@ -216,7 +227,7 @@ test.describe('Points Escrow Edge Cases (Simplified)', () => {
                 // 查詢報名後的點數
                 await page.waitForTimeout(500);
                 const balanceAfterRes = await page.request.get(
-                    `${BASE_URL}/api/points?userId=${encodeURIComponent(studentEmail)}`
+                    `${BASE_URL}/api/points?userId=${encodeURIComponent(idOf(studentEmail))}`, { headers: { 'x-e2e-secret': BYPASS_SECRET } }
                 );
                 const balanceAfter = (await balanceAfterRes.json().catch(() => ({}))).balance ?? 0;
                 console.log(`      → 報名後點數：${balanceAfter}（原始：${studentBalance}）`);
@@ -270,17 +281,17 @@ test.describe('Points Escrow Edge Cases (Simplified)', () => {
         await apiLogin(page, studentEmail, DEFAULT_TEST_PASSWORD);
         const setPointsRes = await page.request.post(`${BASE_URL}/api/points`, {
             data: JSON.stringify({
-                userId: studentEmail,
+                userId: idOf(studentEmail),
                 action: 'set',
                 amount: 10,
                 reason: 'E2 test: Set balance = course cost',
             }),
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'x-e2e-secret': BYPASS_SECRET },
         });
         
         // 4. 查詢學生點數
         const balanceRes = await page.request.get(
-            `${BASE_URL}/api/points?userId=${encodeURIComponent(studentEmail)}`
+            `${BASE_URL}/api/points?userId=${encodeURIComponent(idOf(studentEmail))}`, { headers: { 'x-e2e-secret': BYPASS_SECRET } }
         );
         const balance = (await balanceRes.json().catch(() => ({}))).balance ?? 0;
         console.log(`   ✅ 學生點數：${balance} (設定為 = 課程點數 10)`);
@@ -306,7 +317,7 @@ test.describe('Points Escrow Edge Cases (Simplified)', () => {
 
                 // 驗證點數轉為 0
                 const balanceAfter = await page.request.get(
-                    `${BASE_URL}/api/points?userId=${encodeURIComponent(studentEmail)}`
+                    `${BASE_URL}/api/points?userId=${encodeURIComponent(idOf(studentEmail))}`, { headers: { 'x-e2e-secret': BYPASS_SECRET } }
                 );
                 const newBalance = (await balanceAfter.json().catch(() => ({}))).balance ?? 0;
                 if (newBalance === 0) {
@@ -355,17 +366,17 @@ test.describe('Points Escrow Edge Cases (Simplified)', () => {
         await apiLogin(page, studentEmail, DEFAULT_TEST_PASSWORD);
         const setPointsRes = await page.request.post(`${BASE_URL}/api/points`, {
             data: JSON.stringify({
-                userId: studentEmail,
+                userId: idOf(studentEmail),
                 action: 'set',
                 amount: 0,
                 reason: 'E3 test: Test zero balance enrollment',
             }),
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'x-e2e-secret': BYPASS_SECRET },
         });
 
         // 4. 查詢學生點數
         const balanceRes = await page.request.get(
-            `${BASE_URL}/api/points?userId=${encodeURIComponent(studentEmail)}`
+            `${BASE_URL}/api/points?userId=${encodeURIComponent(idOf(studentEmail))}`, { headers: { 'x-e2e-secret': BYPASS_SECRET } }
         );
         const balance = (await balanceRes.json().catch(() => ({}))).balance ?? 0;
         console.log(`   ✅ 學生點數：${balance} (設定為 0)`);
@@ -405,7 +416,7 @@ test.describe('Points Escrow Edge Cases (Simplified)', () => {
         
         // 記錄教師初始點數
         const teacherInitRes = await page.request.get(
-            `${BASE_URL}/api/points?userId=${encodeURIComponent(teacherEmail)}`
+            `${BASE_URL}/api/points?userId=${encodeURIComponent(idOf(teacherEmail))}`, { headers: { 'x-e2e-secret': BYPASS_SECRET } }
         );
         const teacherInitBalance = (await teacherInitRes.json().catch(() => ({}))).balance ?? 0;
         console.log(`   📊 教師初始點數：${teacherInitBalance}`);
@@ -429,16 +440,16 @@ test.describe('Points Escrow Edge Cases (Simplified)', () => {
         await apiLogin(page, studentEmail, DEFAULT_TEST_PASSWORD);
         const setPointsRes = await page.request.post(`${BASE_URL}/api/points`, {
             data: JSON.stringify({
-                userId: studentEmail,
+                userId: idOf(studentEmail),
                 action: 'set',
                 amount: 5,
                 reason: 'E5 test: Test escrow release',
             }),
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'x-e2e-secret': BYPASS_SECRET },
         });
         
         const balanceRes = await page.request.get(
-            `${BASE_URL}/api/points?userId=${encodeURIComponent(studentEmail)}`
+            `${BASE_URL}/api/points?userId=${encodeURIComponent(idOf(studentEmail))}`, { headers: { 'x-e2e-secret': BYPASS_SECRET } }
         );
         const studentBalance = (await balanceRes.json().catch(() => ({}))).balance ?? 0;
         console.log(`   📊 學生點數：${studentBalance}`);
@@ -468,7 +479,7 @@ test.describe('Points Escrow Edge Cases (Simplified)', () => {
 
         // 驗證學生點數已扣除
         const studentAfterEnrollRes = await page.request.get(
-            `${BASE_URL}/api/points?userId=${encodeURIComponent(studentEmail)}`
+            `${BASE_URL}/api/points?userId=${encodeURIComponent(idOf(studentEmail))}`, { headers: { 'x-e2e-secret': BYPASS_SECRET } }
         );
         const studentAfterBalance = (await studentAfterEnrollRes.json().catch(() => ({}))).balance ?? 0;
         console.log(`   📊 報名後學生點數：${studentAfterBalance} (應為 0)`);
@@ -481,7 +492,7 @@ test.describe('Points Escrow Edge Cases (Simplified)', () => {
         // 4. 手動釋放 Escrow（教師端調用）
         const releaseRes = await page.request.post(`${BASE_URL}/api/points-escrow`, {
             data: JSON.stringify({ action: 'release', escrowId }),
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'x-e2e-secret': BYPASS_SECRET },
         });
 
         if (!releaseRes.ok()) {
@@ -535,16 +546,16 @@ test.describe('Points Escrow Edge Cases (Simplified)', () => {
         await apiLogin(page, studentEmail, DEFAULT_TEST_PASSWORD);
         const setPointsRes = await page.request.post(`${BASE_URL}/api/points`, {
             data: JSON.stringify({
-                userId: studentEmail,
+                userId: idOf(studentEmail),
                 action: 'set',
                 amount: 5,
                 reason: 'E6 test: Test escrow refund',
             }),
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'x-e2e-secret': BYPASS_SECRET },
         });
         
         const balanceInitRes = await page.request.get(
-            `${BASE_URL}/api/points?userId=${encodeURIComponent(studentEmail)}`
+            `${BASE_URL}/api/points?userId=${encodeURIComponent(idOf(studentEmail))}`, { headers: { 'x-e2e-secret': BYPASS_SECRET } }
         );
         const balanceInit = (await balanceInitRes.json().catch(() => ({}))).balance ?? 0;
         console.log(`   📊 報名前點數：${balanceInit}`);
@@ -577,7 +588,7 @@ test.describe('Points Escrow Edge Cases (Simplified)', () => {
 
         // 記錄報名後點數
         const balanceAfterEnrollRes = await page.request.get(
-            `${BASE_URL}/api/points?userId=${encodeURIComponent(studentEmail)}`
+            `${BASE_URL}/api/points?userId=${encodeURIComponent(idOf(studentEmail))}`, { headers: { 'x-e2e-secret': BYPASS_SECRET } }
         );
         const balanceAfterEnroll = (await balanceAfterEnrollRes.json().catch(() => ({}))).balance;
         console.log(`   📊 報名後點數：${balanceAfterEnroll} (應為 0)`);
@@ -585,7 +596,7 @@ test.describe('Points Escrow Edge Cases (Simplified)', () => {
         // 4. 手動退款
         const refundRes = await page.request.post(`${BASE_URL}/api/points-escrow`, {
             data: JSON.stringify({ action: 'refund', escrowId }),
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'x-e2e-secret': BYPASS_SECRET },
         });
 
         if (!refundRes.ok()) {
@@ -597,7 +608,7 @@ test.describe('Points Escrow Edge Cases (Simplified)', () => {
         // 5. 驗證點數恢復
         await page.waitForTimeout(500);
         const balanceAfterRefundRes = await page.request.get(
-            `${BASE_URL}/api/points?userId=${encodeURIComponent(studentEmail)}`
+            `${BASE_URL}/api/points?userId=${encodeURIComponent(idOf(studentEmail))}`, { headers: { 'x-e2e-secret': BYPASS_SECRET } }
         );
         const balanceAfterRefund = (await balanceAfterRefundRes.json().catch(() => ({}))).balance;
         console.log(`   📊 退款後點數：${balanceAfterRefund} (應為 5)`);
@@ -627,7 +638,7 @@ test.describe('Points Escrow Edge Cases (Simplified)', () => {
 
         // 記錄教師初始點數
         const teacherInitRes = await page.request.get(
-            `${BASE_URL}/api/points?userId=${encodeURIComponent(teacherEmail)}`
+            `${BASE_URL}/api/points?userId=${encodeURIComponent(idOf(teacherEmail))}`, { headers: { 'x-e2e-secret': BYPASS_SECRET } }
         );
         const teacherInit = (await teacherInitRes.json().catch(() => ({}))).balance ?? 0;
         console.log(`   📊 教師初始點數：${teacherInit}`);
@@ -651,12 +662,12 @@ test.describe('Points Escrow Edge Cases (Simplified)', () => {
         await apiLogin(page, studentEmail, DEFAULT_TEST_PASSWORD);
         const setPointsRes = await page.request.post(`${BASE_URL}/api/points`, {
             data: JSON.stringify({
-                userId: studentEmail,
+                userId: idOf(studentEmail),
                 action: 'set',
                 amount: 5,
                 reason: 'E10 test: Test idempotent release',
             }),
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'x-e2e-secret': BYPASS_SECRET },
         });
 
         // 3. 學生報名
@@ -688,14 +699,14 @@ test.describe('Points Escrow Edge Cases (Simplified)', () => {
 
         // 記錄教師初始點數（用於驗證 idempotent）
         const balanceBeforeRes = await page.request.get(
-            `${BASE_URL}/api/points?userId=${encodeURIComponent(teacherEmail)}`
+            `${BASE_URL}/api/points?userId=${encodeURIComponent(idOf(teacherEmail))}`, { headers: { 'x-e2e-secret': BYPASS_SECRET } }
         );
         const balanceBefore = (await balanceBeforeRes.json().catch(() => ({}))).balance ?? 0;
 
         // 4. 第一次釋放
         const release1 = await page.request.post(`${BASE_URL}/api/points-escrow`, {
             data: JSON.stringify({ action: 'release', escrowId }),
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'x-e2e-secret': BYPASS_SECRET },
         });
 
         if (!release1.ok()) {
@@ -705,7 +716,7 @@ test.describe('Points Escrow Edge Cases (Simplified)', () => {
         console.log(`   ✅ 第 1 次釋放成功`);
 
         const balanceAfter1Res = await page.request.get(
-            `${BASE_URL}/api/points?userId=${encodeURIComponent(teacherEmail)}`
+            `${BASE_URL}/api/points?userId=${encodeURIComponent(idOf(teacherEmail))}`, { headers: { 'x-e2e-secret': BYPASS_SECRET } }
         );
         const balanceAfter1 = (await balanceAfter1Res.json().catch(() => ({}))).balance ?? 0;
         console.log(`   📊 第 1 次釋放後教師點數：${balanceBefore} → ${balanceAfter1}`);
@@ -713,11 +724,11 @@ test.describe('Points Escrow Edge Cases (Simplified)', () => {
         // 5. 第二次釋放（應 idempotent，不增加點數）
         const release2 = await page.request.post(`${BASE_URL}/api/points-escrow`, {
             data: JSON.stringify({ action: 'release', escrowId }),
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'x-e2e-secret': BYPASS_SECRET },
         });
 
         const balanceAfter2Res = await page.request.get(
-            `${BASE_URL}/api/points?userId=${encodeURIComponent(teacherEmail)}`
+            `${BASE_URL}/api/points?userId=${encodeURIComponent(idOf(teacherEmail))}`, { headers: { 'x-e2e-secret': BYPASS_SECRET } }
         );
         const balanceAfter2 = (await balanceAfter2Res.json().catch(() => ({}))).balance ?? 0;
         console.log(`   ✅ 第 2 次釋放後教師點數：${balanceAfter1} → ${balanceAfter2}`);

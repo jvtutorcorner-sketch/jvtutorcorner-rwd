@@ -2,8 +2,11 @@ import { NextResponse } from 'next/server';
 import { listWorkflows, createWorkflow } from '@/lib/workflowService';
 import { v4 as uuidv4 } from 'uuid';
 import { WorkflowDefinition } from '@/lib/types/workflow';
+import { withAdmin } from '@/lib/auth/apiGuard';
 
-export async function GET() {
+// /workflows 頁面本身只有前端 `user.role !== 'admin'` 擋（見 app/workflows/page.tsx），
+// API 層先前完全沒有 auth；工作流程定義本身可執行任意設定好的動作，等同後台功能，鎖 admin。
+export const GET = withAdmin(async () => {
     try {
         const workflows = await listWorkflows();
         return NextResponse.json({ ok: true, workflows });
@@ -11,9 +14,9 @@ export async function GET() {
         console.error('[workflows GET] error:', error);
         return NextResponse.json({ ok: false, message: 'Failed to fetch workflows' }, { status: 500 });
     }
-}
+});
 
-export async function POST(req: Request) {
+export const POST = withAdmin(async (req) => {
     try {
         const body = await req.json();
         if (!body || !body.name) {
@@ -38,4 +41,4 @@ export async function POST(req: Request) {
         console.error('[workflows POST] error:', error);
         return NextResponse.json({ ok: false, message: 'Failed to create workflow' }, { status: 500 });
     }
-}
+});

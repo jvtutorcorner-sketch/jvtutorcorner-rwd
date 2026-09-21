@@ -77,9 +77,9 @@ class SkillStatusUpdater {
     lines.forEach(line => {
       if (line.trim().startsWith('metadata:')) {
         inMetadata = true;
-      } else if (inMetadata && line.match(/^\s{2}\w+:/)) {
+      } else if (inMetadata && line.match(/^\s{2}[\w-]+:/)) {
         // metadata 內的欄位
-        const match = line.match(/^\s{2}(\w+):\s*(.+)/);
+        const match = line.match(/^\s{2}([\w-]+):\s*(.+)/);
         if (match) {
           const key = match[1];
           let value = match[2].trim();
@@ -127,9 +127,9 @@ class SkillStatusUpdater {
       if (line.trim().startsWith('metadata:')) {
         inMetadata = true;
         result.push(newMetadata);
-      } else if (inMetadata && line.match(/^\s{2}\w+:/)) {
+      } else if (inMetadata && line.match(/^\s{2}[\w-]+:/)) {
         // 跳過舊的 metadata 行
-      } else if (line.match(/^\s{2}\w+:/)) {
+      } else if (line.match(/^\s{2}[\w-]+:/)) {
         // 非 metadata 欄位
         result.push(line);
         inMetadata = false;

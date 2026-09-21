@@ -63,7 +63,7 @@ export default function Pagination({
                     ))}
                 </select>
                 <span style={{ marginLeft: '8px', color: '#666' }}>
-                    共 {totalItems} 筆
+                    {t('pagination_total', { count: totalItems })}
                 </span>
             </div>
 

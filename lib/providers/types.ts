@@ -94,6 +94,14 @@ export interface RTCProviderOptions {
   role: ClassroomRole;
   isOneOnOne?: boolean;
   defaultQuality?: VideoQuality;
+  /** Force TURN relay for testing the firewall path (SFU: iceTransportPolicy:'relay'). */
+  forceRelay?: boolean;
+  /** Invoked when self-healing has exhausted its budget, so the caller can fall back
+   *  to Agora (A4). Optional: providers without a fallback simply never call it. */
+  onProviderFallback?: (reason: string) => void;
+  /** Server-side kill switch (from /api/classroom/ready → forceProvider): force a
+   *  specific RTC provider for everyone without a redeploy. */
+  serverForceProvider?: string;
 }
 
 // ─── Whiteboard ───────────────────────────────────────────────────────────────

@@ -1,21 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import path from 'path';
 import fs from 'fs';
-import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { Readable } from 'stream';
-import { getSignedUrlForKey } from '@/lib/s3';
-
-// Reuse S3 config logic or just direct client for simplicity here
-const getS3Client = () => {
-  const awsRegion = process.env.AWS_REGION || process.env.CI_AWS_REGION;
-  const accessKey = process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID;
-  const secretKey = process.env.AWS_SECRET_ACCESS_KEY || process.env.CI_AWS_SECRET_ACCESS_KEY;
-
-  return new S3Client({
-    region: awsRegion,
-    credentials: accessKey && secretKey ? { accessKeyId: accessKey, secretAccessKey: secretKey } : undefined,
-  });
-};
+import { getSignedUrlForKey, getObjectBuffer, getStorageBucket } from '@/lib/s3';
 
 export async function GET(
   req: NextRequest,
@@ -28,8 +15,11 @@ export async function GET(
     const uploadsDir = path.resolve(process.cwd(), '.uploads', 'carousel');
     const fullPath = path.resolve(uploadsDir, filePath);
 
-    console.log('[Carousel Proxy GET] Requested path:', filePath);
-    console.log('[Carousel Proxy GET] Full absolute path:', fullPath);
+    // 先前只在「讀本機檔」時做了不含路徑分隔字元的 startsWith 檢查，而 S3 回源後的
+    // 寫入快取（已移除）完全沒檢查——`../` 可以寫到 .uploads/carousel 之外。
+    if (fullPath !== uploadsDir && !fullPath.startsWith(uploadsDir + path.sep)) {
+      return NextResponse.json({ error: 'Invalid path' }, { status: 400 });
+    }
 
     // Determine content type based on file extension
     const ext = path.extname(filePath).toLowerCase();
@@ -39,32 +29,27 @@ export async function GET(
     else if (ext === '.gif') contentType = 'image/gif';
     else if (ext === '.webp') contentType = 'image/webp';
 
-    // 1. Try local storage first
+    // 1. 本機開發：沒有物件儲存時 carousel/upload 會寫到 .uploads/carousel
     if (fs.existsSync(fullPath)) {
-      if (fullPath.startsWith(uploadsDir)) {
-        console.log('[Carousel Proxy GET] ✓ Local HIT:', filePath);
-        const stats = fs.statSync(fullPath);
-        const nodeStream = fs.createReadStream(fullPath);
-        // Convert Node stream to Web Stream for Next.js 13+ response
-        const webStream = Readable.toWeb(nodeStream);
+      const stats = fs.statSync(fullPath);
+      // Convert Node stream to Web Stream for Next.js 13+ response
+      const webStream = Readable.toWeb(fs.createReadStream(fullPath));
 
-        return new Response(webStream as any, {
-          headers: {
-            'Content-Type': contentType,
-            'Content-Length': stats.size.toString(),
-            'Cache-Control': 'public, max-age=31536000',
-            'X-Proxy-Cache': 'HIT',
-          },
-        });
-      }
+      return new Response(webStream as any, {
+        headers: {
+          'Content-Type': contentType,
+          'Content-Length': stats.size.toString(),
+          'Cache-Control': 'public, max-age=31536000',
+          'X-Proxy-Cache': 'HIT',
+        },
+      });
     }
 
-    // 2. Fallback: Try S3
-    const bucketName = process.env.AWS_S3_BUCKET_NAME || process.env.CI_AWS_S3_BUCKET_NAME;
+    // 2. 物件儲存（S3 或 R2，由 lib/s3.ts 依環境變數決定）。
+    //    先前這裡自己 new S3Client，切換到 R2 時會繼續打 AWS。
     const s3Key = `carousel/${filePath}`;
-    console.log('[Carousel Proxy GET] ⚠ Local MISS, trying S3:', s3Key);
 
-    if (!bucketName) {
+    if (!getStorageBucket()) {
       return NextResponse.json({ error: 'S3 not configured' }, { status: 500 });
     }
 
@@ -72,7 +57,6 @@ export async function GET(
     // This is the most robust way to serve large images (>5MB) in Amplify/Vercel
     if (process.env.NODE_ENV === 'production' || process.env.USE_S3_REDIRECT === 'true') {
       try {
-        console.log('[Carousel Proxy GET] ➔ Production Redirect to S3:', s3Key);
         const signedUrl = await getSignedUrlForKey(s3Key, 3600);
         return NextResponse.redirect(signedUrl);
       } catch (redirectErr) {
@@ -82,41 +66,20 @@ export async function GET(
     }
 
     try {
-      const s3Client = getS3Client();
-      const cmd = new GetObjectCommand({ Bucket: bucketName, Key: s3Key });
-      const res = await s3Client.send(cmd);
+      // 先前這裡還會把物件寫回 .uploads 當快取。serverless 的檔案系統是唯讀、各實例也不共享，
+      // 那份快取不是寫失敗就是只存在單一實例；在本機則會無上限地累積。直接回傳即可。
+      const fileBuf = await getObjectBuffer(s3Key);
 
-      if (!res.Body) {
-        throw new Error('S3 response body is empty');
-      }
-
-      console.log('[Carousel Proxy GET] ✓ S3 success, streaming to client:', s3Key);
-
-      // We should also cache it locally in the background so next time it's a HIT
-      // (Non-blocking but we need the data)
-      // For large files, transformToByteArray is safer than full buffer if we have to read it all for caching
-      const byteArray = await res.Body.transformToByteArray();
-
-      try {
-        if (!fs.existsSync(uploadsDir)) {
-          fs.mkdirSync(uploadsDir, { recursive: true });
-        }
-        fs.writeFileSync(fullPath, Buffer.from(byteArray));
-        console.log('[Carousel Proxy GET] ✓ S3 object cached locally for next time');
-      } catch (cacheErr) {
-        console.warn('[Carousel Proxy GET] ! Failed to cache S3 object:', cacheErr);
-      }
-
-      return new Response(new Uint8Array(byteArray), {
+      return new Response(new Uint8Array(fileBuf), {
         headers: {
           'Content-Type': contentType,
-          'Content-Length': res.ContentLength?.toString() || byteArray.length.toString(),
+          'Content-Length': fileBuf.length.toString(),
           'Cache-Control': 'public, max-age=31536000',
-          'X-Proxy-Cache': 'MISS-CACHED',
+          'X-Proxy-Cache': 'MISS',
         },
       });
     } catch (s3Error: any) {
-      console.warn('[Carousel Proxy GET] ✗ S3 fetch failed:', s3Error.message);
+      console.warn('[Carousel Proxy GET] ✗ Storage fetch failed:', s3Error.message);
       return NextResponse.json({ error: 'File not found' }, { status: 404 });
     }
   } catch (error) {

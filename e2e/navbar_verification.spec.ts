@@ -39,13 +39,14 @@ test('Navbar Verification After Registration (Auto-Login)', async ({ page }) => 
 
     // 2. Fill registration form
     // Select Identity: Student
-    await page.selectOption('select:has-text("請選擇身份")', { label: 'Student' });
+    // 選項文字改由 i18n 提供（學生／老師），以 value 選擇
+    await page.selectOption('select:has-text("請選擇身份")', { value: 'student' });
     
     // Fill First Name (find input following the label)
-    await page.locator('label:has-text("First Name") + input').fill(testFirstName);
+    await page.locator('input[name="firstName"]').fill(testFirstName);
     
     // Fill Last Name
-    await page.locator('label:has-text("Last Name") + input').fill(testLastName);
+    await page.locator('input[name="lastName"]').fill(testLastName);
     
     // Fill Email
     await page.locator('label:has-text("Email") + input').fill(testEmail);
@@ -64,7 +65,7 @@ test('Navbar Verification After Registration (Auto-Login)', async ({ page }) => 
     await page.selectOption('label:has-text("性別") + select', { label: '男' });
     
     // Select Country
-    await page.selectOption('label:has-text("國家") + select', { label: '台灣 TW' });
+    await page.selectOption('select[name="country"]', { value: 'TW' });
     
     // Accept Terms
     await page.check('input[name="terms"]');
@@ -295,13 +296,14 @@ test('Navbar Verification After Registration (Teacher Role)', async ({ page }) =
 
     // 2. Fill registration form for TEACHER
     // Select Identity: Teacher
-    await page.selectOption('select:has-text("請選擇身份")', { label: 'Teacher' });
+    // 選項文字改由 i18n 提供（學生／老師），以 value 選擇
+    await page.selectOption('select:has-text("請選擇身份")', { value: 'teacher' });
     
     // Fill First Name
-    await page.locator('label:has-text("First Name") + input').fill(testFirstName);
+    await page.locator('input[name="firstName"]').fill(testFirstName);
     
     // Fill Last Name
-    await page.locator('label:has-text("Last Name") + input').fill(testLastName);
+    await page.locator('input[name="lastName"]').fill(testLastName);
     
     // Fill Email
     await page.locator('label:has-text("Email") + input').fill(testEmail);
@@ -320,7 +322,7 @@ test('Navbar Verification After Registration (Teacher Role)', async ({ page }) =
     await page.selectOption('label:has-text("性別") + select', { label: '女' });
     
     // Select Country
-    await page.selectOption('label:has-text("國家") + select', { label: '台灣 TW' });
+    await page.selectOption('select[name="country"]', { value: 'TW' });
     
     // Accept Terms
     await page.check('input[name="terms"]');

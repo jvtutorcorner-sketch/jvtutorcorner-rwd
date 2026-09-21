@@ -143,7 +143,8 @@ test.describe('Teacher Earnings & Admin Dashboard', () => {
         // Verify 狀態 cell shows valid status
         const statusCell = firstRow.locator('td').nth(10);
         const statusText = await statusCell.textContent();
-        const validStatuses = ['已入帳', '等待釋放', '已退款'];
+        // UI 標籤見 components/TeacherEscrowManager.tsx（HOLDING 顯示為「課程進行中」）
+        const validStatuses = ['已入帳', '課程進行中', '已退款'];
         expect(validStatuses.some(s => statusText?.includes(s))).toBeTruthy();
 
         // === Verify Detail Section ===

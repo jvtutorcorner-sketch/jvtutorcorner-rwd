@@ -50,10 +50,12 @@ const NetworkSpeedMonitor: React.FC<NetworkSpeedMonitorProps> = ({
     const start = Date.now();
     try {
       const response = await fetch(testUrl, { cache: 'no-cache' });
-      await response.blob(); // Consume the response
+      const blob = await response.blob(); // Consume the response
       const duration = (Date.now() - start) / 1000; // in seconds
-      const bytes = 1024 * 1024; // Assume 1MB test file
-      const speedMbps = (bytes * 8) / (duration * 1000000); // Convert to Mbps
+      // Measure the ACTUAL bytes received — `?size=small` returns ~64KB, not 1MB, so
+      // the old hard-coded 1MB inflated the reported Mbps by ~16×.
+      const bytes = blob.size || 64 * 1024;
+      const speedMbps = duration > 0 ? (bytes * 8) / (duration * 1000000) : -1; // Convert to Mbps
       return speedMbps;
     } catch (e) {
       console.warn('Download speed measurement failed', e);

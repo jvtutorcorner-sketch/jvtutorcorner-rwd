@@ -1,4 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { withAuth, type AuthedRequest } from '@/lib/auth/apiGuard';
+import { verifyClassroomAccess } from '@/lib/auth/classroomAccess';
 import { sdkToken, roomToken, TokenRole } from 'netless-token';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, GetCommand, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
@@ -78,7 +80,7 @@ function generateRoomToken(roomUuid: string) {
 // In-memory cache for fast lookups (per container/lambda instance)
 const ROOM_CACHE = new Map<string, string>();
 
-export async function POST(req: NextRequest) {
+async function handlePost(req: AuthedRequest) {
   try {
     const body = await req.json();
     const userId = body.userId?.trim();
@@ -86,7 +88,7 @@ export async function POST(req: NextRequest) {
     const requestedRoomUuid = body.roomUuid?.trim();
     const courseId = body.courseId?.trim();
     const lookupOnly = body.lookupOnly;
-    const requestedRole = body.role?.trim(); // 'teacher' | 'student' from client
+    // body.role 已不再採信：主持權改由 verifyClassroomAccess 依 session 與課程擁有者判定。
 
     console.log('[WhiteboardAPI] Request received:', { userId: '[REDACTED]', channelName, requestedRoomUuid: '[REDACTED]', courseId });
 
@@ -138,60 +140,25 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing channelName or courseId' }, { status: 400 });
     }
 
-    // 🔒 Security Check: Verify User Access
-    // Only check if userId and courseId are present (skips anonymous/test flows if needed, but best to enforce)
-    if (userId && courseId) {
-      const { verifyCourseAccess, stripTabId } = await import('@/lib/accessControl');
-
-      const orderId = body.orderId?.trim();
-      const cleanUserId = stripTabId(userId);
-
-      // Bypass for: teachers/admins identifiable by userId pattern, local test env,
-      // or when orderId is provided (user already has a verified booking via orders table)
-      const isTeacherOrAdmin = userId.startsWith('teacher') || userId.includes('admin') || userId.includes('t1@');
-      const isLocalTest = process.env.NODE_ENV !== 'production' || !process.env.DYNAMODB_TABLE_ORDERS;
-      const hasOrderId = !!orderId; // If orderId is passed, booking was already verified at order creation
-
-      // Verify teacher claim: check if cleanUserId matches the course's teacherId in DynamoDB
-      let isVerifiedTeacher = false;
-      if (requestedRole === 'teacher' && !isTeacherOrAdmin && !isLocalTest) {
-        const coursesTableName = process.env.DYNAMODB_TABLE_COURSES || 'jvtutorcorner-courses';
-        try {
-          const { GetCommand: CourseGetCmd } = await import('@aws-sdk/lib-dynamodb');
-          const courseResult = await docClient.send(new CourseGetCmd({
-            TableName: coursesTableName,
-            Key: { id: courseId }
-          }));
-          const courseTeacherId = courseResult.Item?.teacherId;
-          if (courseTeacherId && (cleanUserId === courseTeacherId || userId === courseTeacherId)) {
-            isVerifiedTeacher = true;
-            console.log(`[WhiteboardAPI] ✅ Teacher role verified via course record for ${cleanUserId}`);
-          } else {
-            console.warn(`[WhiteboardAPI] ⚠️ Teacher claim unverified for ${cleanUserId} on course ${courseId} (course teacherId: ${courseTeacherId})`);
-          }
-        } catch (e: any) {
-          console.warn('[WhiteboardAPI] Course teacher lookup failed, falling through to enrollment check:', e.message);
-        }
-      }
-
-      if (isTeacherOrAdmin || isLocalTest || hasOrderId || isVerifiedTeacher) {
-        console.log(`[WhiteboardAPI] ⚠️ Bypassing access control for ${cleanUserId} (Role bypass, Local Test, orderId, or verified teacher)`);
-      } else {
-        const access = await verifyCourseAccess(userId, courseId);
-
-        if (!access.granted) {
-          console.warn(`[WhiteboardAPI] ⛔ Access Denied for user ${userId} on course ${courseId}. Reason: ${access.reason}`);
-          return NextResponse.json({
-            error: 'Access Denied',
-            message: 'You do not have permission to access this course.',
-            detail: access.reason
-          }, { status: 403 });
-        }
-        console.log(`[WhiteboardAPI] ✅ Access Granted for user ${userId} on course ${courseId} (Source: ${access.source})`);
-      }
-    } else {
-      console.warn('[WhiteboardAPI] ⚠️ Warning: userId or courseId missing, skipping access control check. This should be blocked in production.');
-    } // TODO: Enforce strict check when all clients are updated
+    // 🔒 存取控制：身分一律取自 session。
+    //
+    // 先前這段是拿 request body 的 userId 再套一連串 bypass，全部都可由呼叫端操控：
+    //   - `userId.startsWith('teacher') || userId.includes('admin') || userId.includes('t1@')`
+    //     —— 把 userId 取成含 'admin' 的字串就能拿到老師權限
+    //   - `NODE_ENV !== 'production' || !DYNAMODB_TABLE_ORDERS`
+    //     —— 正式環境只要漏設那個表名變數，整段檢查就跳過
+    //   - `hasOrderId` —— 隨便帶一個 orderId 字串就跳過
+    const access = await verifyClassroomAccess(req.session, courseId);
+    if (!access.granted) {
+      console.warn(`[WhiteboardAPI] ⛔ Access denied for ${req.session.userId} on course ${courseId}: ${access.reason}`);
+      return NextResponse.json({
+        error: 'Access Denied',
+        message: 'You do not have permission to access this course.',
+        detail: access.reason,
+      }, { status: 403 });
+    }
+    const isHost = access.isHost;
+    console.log(`[WhiteboardAPI] ✅ Access granted for ${req.session.userId} on course ${courseId} (host=${isHost})`);
 
     let roomUuid: string | undefined;
 
@@ -378,3 +345,5 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+
+export const POST = withAuth(handlePost);

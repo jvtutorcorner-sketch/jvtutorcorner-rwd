@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { withAuth, type AuthedRequest } from '@/lib/auth/apiGuard';
 import { createHmac } from 'crypto';
 
 /**
@@ -18,7 +19,8 @@ import { createHmac } from 'crypto';
 
 const TOKEN_LIFETIME_MS = 60_000;
 
-export async function POST(req: NextRequest) {
+// 先前完全沒有 auth：任何人都能取得可連上 signaling WebSocket 的簽名 token。
+async function handlePost(req: AuthedRequest) {
   // Validate request fields first (400 takes priority over 503)
   let channelName: string;
   let userId: string;
@@ -48,3 +50,5 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ token, expiresAt: expiry });
 }
+
+export const POST = withAuth(handlePost);

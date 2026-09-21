@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getWorkflow, updateWorkflow, deleteWorkflow } from '@/lib/workflowService';
+import { withAdmin } from '@/lib/auth/apiGuard';
 
-export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
-    const { id } = await params;
+// 個別 workflow 的 CRUD，先前完全沒有 auth；比照 app/api/workflows/route.ts 鎖 admin。
+export const GET = withAdmin(async (req, context) => {
+    const { id } = await (context as { params: Promise<{ id: string }> }).params;
     try {
         if (!id) {
             return NextResponse.json({ ok: false, message: 'Workflow ID missing' }, { status: 400 });
@@ -18,10 +20,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         console.error(`[workflow GET ${id || 'unknown'}] error:`, error);
         return NextResponse.json({ ok: false, message: 'Failed to fetch workflow' }, { status: 500 });
     }
-}
+});
 
-export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
-    const { id } = await params;
+export const PUT = withAdmin(async (req, context) => {
+    const { id } = await (context as { params: Promise<{ id: string }> }).params;
     try {
         if (!id) {
             return NextResponse.json({ ok: false, message: 'Workflow ID missing' }, { status: 400 });
@@ -38,10 +40,10 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
         console.error(`[workflow PUT ${id || 'unknown'}] error:`, error);
         return NextResponse.json({ ok: false, message: 'Failed to update workflow' }, { status: 500 });
     }
-}
+});
 
-export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
-    const { id } = await params;
+export const DELETE = withAdmin(async (req, context) => {
+    const { id } = await (context as { params: Promise<{ id: string }> }).params;
     try {
         if (!id) {
             return NextResponse.json({ ok: false, message: 'Workflow ID missing' }, { status: 400 });
@@ -53,4 +55,4 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
         console.error(`[workflow DELETE ${id || 'unknown'}] error:`, error);
         return NextResponse.json({ ok: false, message: 'Failed to delete workflow' }, { status: 500 });
     }
-}
+});

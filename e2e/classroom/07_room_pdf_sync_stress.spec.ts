@@ -51,6 +51,22 @@ import {
   hasDrawingContent,
 } from '../helpers/whiteboard_helpers';
 import { getTestConfig, getStressGroupConfigs, ADMIN_EMAIL, ADMIN_PASSWORD } from '../test_data/whiteboard_test_data';
+import {
+  aggregateDrawReports,
+  drawWorkloadEnabled,
+  DRAW_STAGGER_MS,
+  formatDrawReport,
+  readDrawWorkloadEnv,
+  runDrawWorkload,
+  type DrawWorkloadReport,
+} from '../helpers/draw_workload';
+import {
+  purchasePointsSimulated,
+  enrollWithOwnPoints,
+  getPointsBalance,
+  waitForEscrowStatus,
+  endClassAsTeacher,
+} from '../helpers/full_journey';
 
 const GROUP_COUNT = parseInt(process.env.CONCURRENT_GROUPS || '3', 10);
 const SUCCESS_THRESHOLD = parseFloat(process.env.SUCCESS_THRESHOLD || '0.75');
@@ -59,7 +75,14 @@ const SUCCESS_THRESHOLD = parseFloat(process.env.SUCCESS_THRESHOLD || '0.75');
 // 0 = no sync wait (default for single-machine runs).
 const SYNC_START_TIME = parseInt(process.env.SYNC_START_TIME || '0', 10);
 const STRESS_COURSE_DURATION_MINUTES = parseInt(process.env.STRESS_COURSE_DURATION_MINUTES || '10', 10);
-const TEST_TIMEOUT_MS = Math.max(600_000, GROUP_COUNT * 120_000 + 300_000);
+// Realistic draw workload (e2e/helpers/draw_workload.ts): DRAW_DURATION_SEC > 0 replaces the
+// 3–5-line smoke probe in NO_PDF mode and adds Phase 7b after PDF sync in PDF mode.
+const DRAW_DURATION_MS = Math.max(0, parseFloat(process.env.DRAW_DURATION_SEC || '0')) * 1000;
+// Optional initial video preset for every classroom page (low|medium|high|ultra), so the
+// load rig spends CPU on whiteboard traffic rather than encoding 720p30 fake video.
+const TEST_VIDEO_QUALITY = process.env.TEST_VIDEO_QUALITY || '';
+const TEST_TIMEOUT_MS = Math.max(600_000, GROUP_COUNT * 120_000 + 300_000)
+  + (DRAW_DURATION_MS > 0 ? DRAW_DURATION_MS + GROUP_COUNT * DRAW_STAGGER_MS() + 180_000 : 0);
 // Per-group force-close timeout: if PDF sync takes longer than this, navigate away from the
 // classroom to break any stuck waitForFunction, then mark the group as failed. Defaults to
 // 5 minutes so a hung page never blocks the entire test from producing results.
@@ -73,6 +96,10 @@ const REUSE_APPROVALS = REUSE_STRESS_SETUP || process.env.REUSE_APPROVALS === '1
 const REUSE_ENROLLMENTS = REUSE_STRESS_SETUP || process.env.REUSE_ENROLLMENTS === '1';
 const REUSE_PDF_UPLOADS = REUSE_STRESS_SETUP || process.env.REUSE_PDF_UPLOADS === '1';
 const NO_PDF_MODE = process.env.NO_PDF_MODE === '1';
+// MVP acceptance (docs/MVP.md §6.1): buy points with the simulated gateway, enroll with
+// those points (no admin grant), and after sync have the teacher end the class and
+// verify the escrow is RELEASED. A group only counts as passed if settlement succeeds.
+const FULL_JOURNEY = process.env.FULL_JOURNEY === '1';
 const NO_PDF_STABILITY_MS = parseInt(process.env.NO_PDF_STABILITY_MS || '60000', 10);
 
 function resolveHeadless(defaultValue: boolean): boolean {
@@ -362,6 +389,31 @@ interface GroupResult {
     roomReadyMs?: number;
     pdfSceneCreatedMs?: number;
     studentSyncedMs?: number;
+    drawStrokes?: number;
+    drawLossRate?: number | null;
+    drawP50Ms?: number | null;
+    drawP95Ms?: number | null;
+    drawAchievedPps?: number | null;
+    clearP95Ms?: number | null;
+    eraseP95Ms?: number | null;
+    pageTurnP95Ms?: number | null;
+    teacherCpuPct?: number | null;
+    studentCpuPct?: number | null;
+  };
+  /** Compact draw workload report (per-stroke detail omitted). */
+  draw?: Omit<DrawWorkloadReport, 'strokes' | 'latenciesMs' | 'config'> & { configSummary: string };
+  /** Raw per-stroke latencies so distributed merges can compute a true global p95. */
+  drawLatenciesMs?: number[];
+  /** FULL_JOURNEY=1 only: purchase, enrollment deduction and escrow settlement. */
+  journey?: {
+    purchasedPoints?: number;
+    orderId?: string;
+    pointsUsed?: number;
+    escrowHolding?: boolean;
+    escrowPoints?: number;
+    teacherId?: string;
+    teacherBalanceDelta?: number;
+    settled?: boolean;
   };
 }
 
@@ -388,8 +440,17 @@ function printStressSummary(results: GroupResult[], groupCount: number, noPdfMod
     const uploadPart = noPdfMode ? '' : ` uploaded=${r.uploaded}`;
     const syncLabel = noPdfMode ? 'stable' : 'sync';
     console.log(`  ${statusIcon} [${r.groupId}] enrolled=${r.enrolled}${uploadPart} entered=${r.entered} ${syncLabel}=${r.synced}${failPhase}`);
-    if (r.timings) {
+    if (r.timings && !noPdfMode) {
       console.log(`       timings: roomReady=${r.timings.roomReadyMs ?? '?'}ms sceneCreated=${r.timings.pdfSceneCreatedMs ?? '?'}ms studentSynced=${r.timings.studentSyncedMs ?? '?'}ms`);
+    }
+    if (r.timings?.drawStrokes !== undefined) {
+      const t = r.timings;
+      const pct = (v: number | null | undefined) => (v === null || v === undefined ? '?' : `${(v * 100).toFixed(1)}%`);
+      console.log(`       draw: strokes=${t.drawStrokes} loss=${pct(t.drawLossRate)} p50=${t.drawP50Ms ?? '?'}ms p95=${t.drawP95Ms ?? '?'}ms pps≈${t.drawAchievedPps ?? '?'} clearP95=${t.clearP95Ms ?? '?'}ms cpu T/S=${t.teacherCpuPct ?? '?'}%/${t.studentCpuPct ?? '?'}%`);
+    }
+    if (r.journey) {
+      const j = r.journey;
+      console.log(`       journey: bought=${j.purchasedPoints ?? '?'} order=${j.orderId ?? '?'} used=${j.pointsUsed ?? '?'} holding=${j.escrowHolding ?? '?'} settled=${j.settled ?? '?'} teacher+=${j.teacherBalanceDelta ?? '?'}/${j.escrowPoints ?? '?'}`);
     }
     if (r.error) console.log(`       ↳ ${r.error}`);
   }
@@ -442,10 +503,101 @@ async function verifyNoPdfRoomStability(
   }));
 }
 
+/**
+ * Realistic continuous draw workload per group (DRAW_DURATION_SEC > 0).
+ * NO_PDF mode: replaces the smoke probe and decides `synced`.
+ * PDF mode (Phase 7b): runs on already-synced groups; an SLO violation un-syncs the group.
+ */
+async function runDrawWorkloadPhase(
+  sessions: Array<{ idx: number; teacherPage: Page; studentPage: Page }>,
+  results: GroupResult[],
+  mode: 'no_pdf' | 'pdf',
+): Promise<void> {
+  const sample = readDrawWorkloadEnv('summary');
+  const configSummary = `${sample.durationSec}s × ${sample.strokesPerMinute} strokes/min × ${sample.pointsPerSecond} pps, clear every ${sample.clearEvery}, eraser ${sample.eraserRatio}, page turns ${mode === 'pdf' ? sample.pageTurnsPerMinute : 0}/min, SLO p95≤${sample.p95SloMs}ms loss≤${sample.lossSlo}`;
+  console.log(`\n📍 Phase ${mode === 'pdf' ? '7b' : '8'}: Realistic draw workload (${configSummary})`);
+
+  const stagger = DRAW_STAGGER_MS();
+  const reports = await Promise.all(sessions.map(async (s, order) => {
+    const r = results[s.idx];
+    const cfg = readDrawWorkloadEnv(r.groupId, {
+      startDelayMs: order * stagger,
+      ...(mode === 'no_pdf' ? { pageTurnsPerMinute: 0 } : {}),
+    });
+    const report = await runDrawWorkload(s.teacherPage, s.studentPage, cfg);
+
+    r.timings = {
+      ...(r.timings ?? {}),
+      drawStrokes: report.totals.drawn,
+      drawLossRate: report.lossRate,
+      drawP50Ms: report.latency.p50Ms,
+      drawP95Ms: report.latency.p95Ms,
+      drawAchievedPps: report.achievedPpsMean,
+      clearP95Ms: report.clears.latency.p95Ms,
+      eraseP95Ms: report.erases.latency.p95Ms,
+      pageTurnP95Ms: report.pageTurns.latency.p95Ms,
+      teacherCpuPct: report.cpu.teacherMainThreadPct,
+      studentCpuPct: report.cpu.studentMainThreadPct,
+    };
+    r.draw = {
+      label: report.label,
+      startedAt: report.startedAt,
+      durationMs: report.durationMs,
+      calibration: report.calibration,
+      totals: report.totals,
+      lossRate: report.lossRate,
+      latency: report.latency,
+      achievedPpsMean: report.achievedPpsMean,
+      clears: report.clears,
+      erases: report.erases,
+      pageTurns: report.pageTurns,
+      http: report.http,
+      cpu: report.cpu,
+      tainted: report.tainted,
+      errors: report.errors.slice(0, 20),
+      fatal: report.fatal,
+      sloViolations: report.sloViolations,
+      configSummary,
+    };
+    r.drawLatenciesMs = report.latenciesMs;
+
+    const failed = report.sloViolations.length > 0;
+    console.log(`   ${failed ? '❌' : '✅'} [${r.groupId}] ${formatDrawReport(report)}`);
+    if (failed) {
+      r.synced = false;
+      r.phase = 'draw_workload';
+      r.error = `Draw workload: ${report.sloViolations.join('; ')}`;
+      if (report.http.samples.length) console.log(`       5xx samples: ${report.http.samples.join(' || ')}`);
+      await Promise.all([
+        s.teacherPage.screenshot({ path: `test-results/${r.groupId}-teacher-draw-workload-fail.png`, fullPage: true }).catch(() => {}),
+        s.studentPage.screenshot({ path: `test-results/${r.groupId}-student-draw-workload-fail.png`, fullPage: true }).catch(() => {}),
+      ]);
+    } else if (mode === 'no_pdf') {
+      r.synced = true;
+    }
+    return report;
+  }));
+
+  if (reports.length) {
+    const agg = aggregateDrawReports(reports);
+    const pct = agg.lossRate === null ? '?' : `${(agg.lossRate * 100).toFixed(2)}%`;
+    console.log(`   📊 All groups: strokes=${agg.strokes} verifiable=${agg.verifiable} loss=${pct} p50=${agg.latency.p50Ms ?? '?'}ms p95=${agg.latency.p95Ms ?? '?'}ms max=${agg.latency.maxMs ?? '?'}ms api5xx=${agg.api5xx} failedGroups=${agg.failedGroups.length ? agg.failedGroups.join(',') : 'none'}`);
+  }
+}
+
 async function verifyNoPdfDrawSync(
   sessions: Array<{ idx: number; teacherPage: Page; studentPage: Page }>,
   results: GroupResult[],
 ): Promise<void> {
+  if (drawWorkloadEnabled()) {
+    await runDrawWorkloadPhase(
+      sessions.filter(s => results[s.idx].entered && !results[s.idx].phase),
+      results,
+      'no_pdf',
+    );
+    return;
+  }
+
   console.log('\n📍 Phase 8: No-PDF Whiteboard Draw Sync');
 
   await Promise.allSettled(sessions.map(async s => {
@@ -546,6 +698,10 @@ test.describe(`[stress-${NO_PDF_MODE ? 'no-pdf' : 'pdf'}-${GROUP_COUNT}x] Concur
     console.log(`  Reuse enrollments: ${REUSE_ENROLLMENTS ? 'yes' : 'no'}`);
     console.log(`  Reuse PDF uploads: ${REUSE_PDF_UPLOADS ? 'yes' : 'no'}`);
     console.log(`  Enrollment propagation wait: ${process.env.ENROLLMENT_PROPAGATION_WAIT_MS ?? '8000'}ms`);
+    console.log(`  Full journey (purchase → points enrollment → settlement): ${FULL_JOURNEY ? 'yes' : 'no'}`);
+    if (FULL_JOURNEY && (REUSE_POINTS || REUSE_ENROLLMENTS)) {
+      console.warn('  ⚠️ FULL_JOURNEY=1 ignores REUSE_POINTS / REUSE_ENROLLMENTS: every group buys and enrolls fresh.');
+    }
     if ((REUSE_STRESS_SETUP || process.env.STRESS_RUN_TS) && !process.env.SKIP_CLEANUP) {
       console.warn('  ⚠️ Reusable setup requested without SKIP_CLEANUP=1; generated data will be deleted at cleanup.');
     }
@@ -567,7 +723,32 @@ test.describe(`[stress-${NO_PDF_MODE ? 'no-pdf' : 'pdf'}-${GROUP_COUNT}x] Concur
       await preSetupCtx.close();
     }
 
-    if (REUSE_POINTS) {
+    if (FULL_JOURNEY) {
+      // B1: each student buys points through the simulated gateway instead of an admin grant.
+      console.log('\n📍 Phase 0b: Simulated point purchase (FULL_JOURNEY=1)');
+      for (let i = 0; i < groupConfigs.length; i++) {
+        const g = groupConfigs[i];
+        const r = results[i];
+        const purchaseCtx = await browser.newContext();
+        const purchasePage = await purchaseCtx.newPage();
+        try {
+          const bought = await purchasePointsSimulated(
+            purchasePage,
+            config.baseUrl,
+            { email: g.studentEmail, password: g.studentPassword },
+            config.bypassSecret
+          );
+          r.journey = { purchasedPoints: bought.balanceAfter - bought.balanceBefore };
+          console.log(`   ✅ [${g.groupId}] Bought points ${bought.balanceBefore} → ${bought.balanceAfter}`);
+        } catch (err) {
+          r.error = `Point purchase: ${(err as Error).message}`;
+          r.phase = 'point_purchase';
+          console.error(`   ❌ [${g.groupId}] ${r.error}`);
+        } finally {
+          await purchaseCtx.close();
+        }
+      }
+    } else if (REUSE_POINTS) {
       console.log('   ♻️ Reusing existing point balances (REUSE_POINTS=1)');
     } else {
       const preAdminCtx = await browser.newContext();
@@ -661,6 +842,37 @@ test.describe(`[stress-${NO_PDF_MODE ? 'no-pdf' : 'pdf'}-${GROUP_COUNT}x] Concur
       const r = results[i];
       if (r.phase) continue;
       try {
+        if (FULL_JOURNEY) {
+          // B2/B3: enroll with the purchased points, then confirm the escrow is HOLDING.
+          const enrollCtx = await browser.newContext();
+          const enrollPage = await enrollCtx.newPage();
+          try {
+            const enrolled = await enrollWithOwnPoints(
+              enrollPage,
+              config.baseUrl,
+              g.courseId,
+              { email: g.studentEmail, password: g.studentPassword },
+              config.bypassSecret
+            );
+            const escrow = await waitForEscrowStatus(enrollPage.request, config.baseUrl, enrolled.orderId, 'HOLDING', config.bypassSecret, 30000);
+            if (Number(escrow.points) !== enrolled.pointsUsed) {
+              throw new Error(`B3: escrow holds ${escrow.points} points but the order used ${enrolled.pointsUsed}`);
+            }
+            r.journey = {
+              ...r.journey,
+              orderId: enrolled.orderId,
+              pointsUsed: enrolled.pointsUsed,
+              escrowHolding: true,
+              escrowPoints: Number(escrow.points),
+              teacherId: escrow.teacherId,
+            };
+            console.log(`   ✅ [${g.groupId}] Enrolled with own points ${enrolled.balanceBefore} − ${enrolled.pointsUsed} = ${enrolled.balanceAfter}; escrow HOLDING`);
+          } finally {
+            await enrollCtx.close();
+          }
+          r.enrolled = true;
+          continue;
+        }
         const existingOrder = REUSE_ENROLLMENTS
           ? await findActiveOrderForCourse(enrollmentCheckPage, config.baseUrl, g.courseId)
           : null;
@@ -678,6 +890,11 @@ test.describe(`[stress-${NO_PDF_MODE ? 'no-pdf' : 'pdf'}-${GROUP_COUNT}x] Concur
       }
     }
     await enrollmentCheckCtx.close();
+    if (FULL_JOURNEY) {
+      // runEnrollmentFlow waits per group; the own-points path waits once for GSI propagation.
+      const propagationWaitMs = Number(process.env.ENROLLMENT_PROPAGATION_WAIT_MS ?? 8000);
+      if (propagationWaitMs > 0) await new Promise(resolve => setTimeout(resolve, propagationWaitMs));
+    }
 
     // ── Distributed sync gate ────────────────────────────────────────
     // When SYNC_START_TIME is set, all machines wait until that Unix timestamp
@@ -721,6 +938,15 @@ test.describe(`[stress-${NO_PDF_MODE ? 'no-pdf' : 'pdf'}-${GROUP_COUNT}x] Concur
 
       const teacherPage = teacherRec.page;
       const studentPage = studentRec.page;
+
+      if (TEST_VIDEO_QUALITY) {
+        // Read by ClientClassroom (localStorage 'jv_video_quality') as the initial video preset.
+        for (const ctx of [teacherRec.ctx, studentRec.ctx]) {
+          await ctx.addInitScript((q: string) => {
+            try { window.localStorage.setItem('jv_video_quality', q); } catch { /* storage blocked */ }
+          }, TEST_VIDEO_QUALITY);
+        }
+      }
 
       // Capture browser logs for diagnostic
       teacherPage.on('console', msg => {
@@ -974,6 +1200,48 @@ test.describe(`[stress-${NO_PDF_MODE ? 'no-pdf' : 'pdf'}-${GROUP_COUNT}x] Concur
           if (forceCloseTimer !== null) clearTimeout(forceCloseTimer);
         }
       }));
+
+      // ── Phase 7b: Realistic draw workload on PDF pages (optional) ────
+      if (drawWorkloadEnabled()) {
+        await runDrawWorkloadPhase(sessions.filter(s => results[s.idx].synced), results, 'pdf');
+      }
+    }
+
+    // ── Phase 9: Teacher ends class → escrow settlement (FULL_JOURNEY) ──
+    if (FULL_JOURNEY) {
+      console.log('\n📍 Phase 9: Teacher ends class and escrow is released');
+      await Promise.allSettled(sessions.map(async s => {
+        const g = groupConfigs[s.idx];
+        const r = results[s.idx];
+        if (!r.synced || !r.journey?.orderId || !r.journey.teacherId) return;
+        try {
+          const teacherBefore = await getPointsBalance(s.teacherPage.request, config.baseUrl, r.journey.teacherId, config.bypassSecret);
+          await endClassAsTeacher(s.teacherPage);
+          const released = await waitForEscrowStatus(s.teacherPage.request, config.baseUrl, r.journey.orderId, 'RELEASED', config.bypassSecret);
+          const teacherAfter = await getPointsBalance(s.teacherPage.request, config.baseUrl, r.journey.teacherId, config.bypassSecret);
+          r.journey.teacherBalanceDelta = teacherAfter - teacherBefore;
+          if (r.journey.teacherBalanceDelta !== Number(released.points)) {
+            throw new Error(`F3: teacher balance changed by ${r.journey.teacherBalanceDelta}, escrow released ${released.points}`);
+          }
+          r.journey.settled = true;
+          console.log(`   ✅ [${g.groupId}] Escrow RELEASED, teacher +${r.journey.teacherBalanceDelta}`);
+        } catch (err) {
+          r.journey!.settled = false;
+          r.synced = false;
+          r.error = `Settlement: ${(err as Error).message}`;
+          r.phase = 'settlement';
+          console.error(`   ❌ [${g.groupId}] ${r.error}`);
+        }
+      }));
+
+      // S2: points conservation across all settled groups.
+      const settled = results.filter(r => r.journey?.settled);
+      const totalUsed = settled.reduce((sum, r) => sum + (r.journey?.pointsUsed ?? 0), 0);
+      const totalEscrow = settled.reduce((sum, r) => sum + (r.journey?.escrowPoints ?? 0), 0);
+      const totalTeacher = settled.reduce((sum, r) => sum + (r.journey?.teacherBalanceDelta ?? 0), 0);
+      console.log(`   📊 S2 points conservation: students used ${totalUsed} = escrow ${totalEscrow} = teachers received ${totalTeacher}`);
+      expect(totalEscrow, 'S2: escrow total must equal points deducted from students').toBe(totalUsed);
+      expect(totalTeacher, 'S2: teacher credit total must equal escrow total').toBe(totalEscrow);
     }
 
     // ── Cleanup ──────────────────────────────────────────────────────

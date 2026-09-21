@@ -108,12 +108,13 @@ export default async function RootLayout({
           <AdminSettingsProvider>
             <Header />
             <ProductTour />
-            <PermissionGuard />
 
-            <main>
-              <PageBreadcrumb />
-              {children}
-            </main>
+            <PermissionGuard>
+              <main>
+                <PageBreadcrumb />
+                {children}
+              </main>
+            </PermissionGuard>
 
             <GlobalAIAssistant initialAppConfigs={appConfigs} />
           </AdminSettingsProvider>

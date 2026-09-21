@@ -2,11 +2,15 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { getStoredUser } from "@/lib/mockAuth";
 import OrgUnitTreePanel from "@/components/org/OrgUnitTreePanel";
 import OrgMembersPanel from "@/components/org/OrgMembersPanel";
 import OrgLicensesPanel from "@/components/org/OrgLicensesPanel";
 import OrgBillingPanel from "@/components/org/OrgBillingPanel";
+// viewerScope 由 server page（app/admin/organizations/[id]/page.tsx）依 profile 判定，與 API 權限一致：
+//   - system    ：全部分頁與操作
+//   - org_admin ：自己組織全部分頁；計費建立/續約、組織管理員指派等仍為系統管理員專屬
+//   - dept_admin：只有組織單位 / 成員（API 只開放部門子樹），無法讀取組織、授權、帳單 API
+import type { OrgViewerScope } from "@/app/admin/organizations/orgViewerScope";
 
 type Organization = {
   id: string;
@@ -16,10 +20,14 @@ type Organization = {
   status: 'active' | 'suspended' | 'trial' | 'cancelled';
   maxSeats: number;
   usedSeats: number;
-  billingEmail: string;
+  billingEmail?: string;
   contractStartDate?: string;
   contractEndDate?: string;
 };
+
+/** Server 端提供給 dept_admin 的組織摘要（不含計費資訊）。 */
+export type OrganizationSummary = Pick<Organization, 'id' | 'name' | 'planTier' | 'status' | 'maxSeats' | 'usedSeats'>;
+
 
 type Tab = 'overview' | 'units' | 'members' | 'licenses' | 'billing';
 
@@ -32,16 +40,21 @@ const STATUS_LABEL: Record<Organization['status'], string> = {
 
 interface Props {
   orgId: string;
+  viewerScope: OrgViewerScope;
+  initialOrg?: OrganizationSummary | null;
 }
 
-export default function OrganizationDetailManager({ orgId }: Props) {
-  const [org, setOrg] = useState<Organization | null>(null);
+export default function OrganizationDetailManager({ orgId, viewerScope, initialOrg }: Props) {
+  const isSystemAdmin = viewerScope === 'system';
+  const isDeptAdminView = viewerScope === 'dept_admin';
+  const [org, setOrg] = useState<Organization | null>(initialOrg ?? null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<Tab>('overview');
-  const [isSystemAdmin, setIsSystemAdmin] = useState(false);
+  const [tab, setTab] = useState<Tab>(isDeptAdminView ? 'units' : 'overview');
 
   async function loadOrg() {
+    // dept_admin 無權呼叫 GET /api/organizations/[id]，改用 server 提供的摘要（不再重新載入）。
+    if (isDeptAdminView) return;
     setLoading(true);
     setError(null);
     try {
@@ -58,22 +71,22 @@ export default function OrganizationDetailManager({ orgId }: Props) {
 
   useEffect(() => {
     loadOrg();
-    const user = getStoredUser();
-    setIsSystemAdmin(user?.role === 'admin');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orgId]);
 
   if (loading) return <p>載入中...</p>;
   if (error) return <p style={{ color: '#d32f2f' }}>{error}</p>;
-  if (!org) return null;
+  if (!org) return isDeptAdminView ? <p style={{ color: '#d32f2f' }}>無法載入組織資料</p> : null;
 
   const seatPct = org.maxSeats > 0 ? Math.min(100, Math.round((org.usedSeats / org.maxSeats) * 100)) : 0;
 
   return (
     <div>
-      <Link href="/admin/organizations" style={{ color: '#1565c0', fontSize: 13 }}>
-        ← 返回組織列表
-      </Link>
+      {isSystemAdmin && (
+        <Link href="/admin/organizations" style={{ color: '#1565c0', fontSize: 13 }}>
+          ← 返回組織列表
+        </Link>
+      )}
 
       <div
         style={{
@@ -92,7 +105,7 @@ export default function OrganizationDetailManager({ orgId }: Props) {
           <div style={{ fontSize: 13, color: '#555' }}>
             {org.domain && <span style={{ marginRight: 12 }}>網域：{org.domain}</span>}
             <span style={{ marginRight: 12 }}>方案：{org.planTier}</span>
-            <span>計費信箱：{org.billingEmail}</span>
+            {org.billingEmail && <span>計費信箱：{org.billingEmail}</span>}
           </div>
           {(org.contractStartDate || org.contractEndDate) && (
             <div style={{ fontSize: 13, color: '#777', marginTop: 4 }}>
@@ -129,13 +142,13 @@ export default function OrganizationDetailManager({ orgId }: Props) {
       </div>
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 16, borderBottom: '2px solid #eee' }}>
-        {([
+        {(([
           ['overview', '概覽'],
           ['units', '組織單位'],
           ['members', '成員'],
           ['licenses', '授權'],
           ['billing', '帳單']
-        ] as [Tab, string][]).map(([key, label]) => (
+        ] as [Tab, string][]).filter(([key]) => !isDeptAdminView || key === 'units' || key === 'members')).map(([key, label]) => (
           <button
             key={key}
             onClick={() => setTab(key)}
@@ -153,7 +166,7 @@ export default function OrganizationDetailManager({ orgId }: Props) {
         ))}
       </div>
 
-      {tab === 'overview' && (
+      {tab === 'overview' && !isDeptAdminView && (
         <div>
           <p>
             這個企業註冊入口的邀請連結：
@@ -166,14 +179,17 @@ export default function OrganizationDetailManager({ orgId }: Props) {
       {tab === 'members' && (
         <OrgMembersPanel
           orgId={orgId}
+          orgDomain={org.domain}
           usedSeats={org.usedSeats}
           maxSeats={org.maxSeats}
           isSystemAdmin={isSystemAdmin}
+          canManageDeptAdmins={viewerScope === 'system' || viewerScope === 'org_admin'}
+          canImportMembers={viewerScope === 'system' || viewerScope === 'org_admin'}
           onSeatsChanged={loadOrg}
         />
       )}
-      {tab === 'licenses' && <OrgLicensesPanel orgId={orgId} onSeatsChanged={loadOrg} />}
-      {tab === 'billing' && <OrgBillingPanel orgId={orgId} isSystemAdmin={isSystemAdmin} />}
+      {tab === 'licenses' && !isDeptAdminView && <OrgLicensesPanel orgId={orgId} onSeatsChanged={loadOrg} />}
+      {tab === 'billing' && !isDeptAdminView && <OrgBillingPanel orgId={orgId} isSystemAdmin={isSystemAdmin} />}
     </div>
   );
 }

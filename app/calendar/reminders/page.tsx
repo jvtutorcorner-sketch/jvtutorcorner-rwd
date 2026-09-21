@@ -3,10 +3,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { format, differenceInMinutes, isSameDay, parseISO } from 'date-fns';
-import { zhTW } from 'date-fns/locale';
+import { useLocale } from '@/components/IntlProvider';
+import { getDateFnsLocale, getDateFormats } from '@/lib/dateLocale';
 import { getStoredUser } from '@/lib/mockAuth';
 import { useT } from '@/components/IntlProvider';
 import Button from '@/components/UI/Button';
+import { useDateFormat } from '@/lib/hooks/useDateFormat';
 import { COURSES } from '@/data/courses';
 
 // DB 儲存的精簡結構（無名稱欄位）
@@ -34,6 +36,10 @@ interface EnrichedReminder extends CalendarReminder {
 
 export default function RemindersPage() {
   const t = useT();
+  const dateFmt = useDateFormat();
+  const locale = useLocale();
+  const dateFnsLocale = getDateFnsLocale(locale);
+  const dateFormats = getDateFormats(locale);
   const router = useRouter();
   const [reminders, setReminders] = useState<EnrichedReminder[]>([]);
   const [loading, setLoading] = useState(true);
@@ -79,7 +85,7 @@ export default function RemindersPage() {
           const course = COURSES.find(c => c.id === r.courseId);
           return {
             ...r,
-            courseName: course?.title || (r.courseId ? `課程 ${r.courseId}` : '未知課程'),
+            courseName: course?.title || (r.courseId ? t('reminders_course_fallback', { id: r.courseId }) : t('reminders_unknown_course')),
             teacherName: (course as any)?.teacherName || '',
             studentLabel: r.userId,
           };
@@ -102,7 +108,7 @@ export default function RemindersPage() {
   }, [user, limitFilter]);
 
   const handleDelete = async (id: string) => {
-    if (!confirm('確定要刪除此提醒嗎？')) return;
+    if (!confirm(t('reminders_delete_confirm'))) return;
     
     try {
       const params = new URLSearchParams();
@@ -119,11 +125,11 @@ export default function RemindersPage() {
         // Refresh list
         fetchReminders();
       } else {
-        alert('刪除失敗：' + data.error);
+        alert(t('reminders_delete_failed') + data.error);
       }
     } catch (error) {
       console.error('Error deleting reminder:', error);
-      alert('刪除失敗');
+      alert(t('reminders_delete_error'));
     }
   };
 
@@ -176,7 +182,7 @@ export default function RemindersPage() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex items-center justify-center">
         <div className="text-center">
-          <p className="text-gray-700">請先登入...</p>
+          <p className="text-gray-700">{t('auth_not_logged_in')}</p>
         </div>
       </div>
     );
@@ -196,7 +202,7 @@ export default function RemindersPage() {
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
-                <span>返回</span>
+                <span>{t('back')}</span>
               </button>
               <div className="flex items-center space-x-3">
                 <div className="p-3 bg-indigo-100 rounded-xl">
@@ -205,9 +211,9 @@ export default function RemindersPage() {
                   </svg>
                 </div>
                 <div>
-                  <h1 className="text-3xl font-bold text-gray-900">課程提醒管理</h1>
+                  <h1 className="text-3xl font-bold text-gray-900">{t('reminders_title')}</h1>
                   <p className="text-sm text-gray-700 mt-1">
-                    {user.role === 'admin' ? '管理所有課程提醒' : '管理您的課程提醒通知'}
+                    {user.role === 'admin' ? t('reminders_subtitle_admin') : t('reminders_subtitle_user')}
                   </p>
                 </div>
               </div>
@@ -215,7 +221,7 @@ export default function RemindersPage() {
             <div className="flex items-center space-x-2">
               <div className="px-4 py-2 bg-indigo-100 rounded-lg">
                 <span className="text-2xl font-bold text-indigo-600">{reminders.length}</span>
-                <span className="text-sm text-indigo-600 ml-2">個提醒</span>
+                <span className="text-sm text-indigo-600 ml-2">{t('reminders_count_suffix')}</span>
               </div>
             </div>
           </div>
@@ -229,30 +235,30 @@ export default function RemindersPage() {
             <svg className="w-5 h-5 mr-2 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
-            搜尋與篩選
+            {t('reminders_search_filter')}
           </h2>
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
             {/* Order ID */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">訂單編號</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{t('reminders_order_id_label')}</label>
               <input
                 type="text"
                 value={orderIdFilter}
                 onChange={(e) => setOrderIdFilter(e.target.value)}
-                placeholder="輸入訂單編號"
+                placeholder={t('reminders_order_id_placeholder')}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
               />
             </div>
 
             {/* Course */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">課程</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{t('course')}</label>
               <input
                 type="text"
                 value={courseFilter}
                 onChange={(e) => setCourseFilter(e.target.value)}
-                placeholder="輸入課程名稱"
+                placeholder={t('reminders_course_placeholder')}
                 list="courses-list"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
               />
@@ -265,12 +271,12 @@ export default function RemindersPage() {
 
             {/* Teacher */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">老師</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{t('teacher')}</label>
               <input
                 type="text"
                 value={teacherFilter}
                 onChange={(e) => setTeacherFilter(e.target.value)}
-                placeholder="輸入老師姓名"
+                placeholder={t('reminders_teacher_placeholder')}
                 list="teachers-list"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
               />
@@ -283,12 +289,12 @@ export default function RemindersPage() {
 
             {/* Student */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">學生</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{t('student')}</label>
               <input
                 type="text"
                 value={studentFilter}
                 onChange={(e) => setStudentFilter(e.target.value)}
-                placeholder="輸入學生姓名"
+                placeholder={t('reminders_student_placeholder')}
                 list="students-list"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
               />
@@ -301,7 +307,7 @@ export default function RemindersPage() {
 
             {/* Start Date */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">開始日期</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{t('start_date')}</label>
               <input
                 type="date"
                 value={startDateFilter}
@@ -312,7 +318,7 @@ export default function RemindersPage() {
 
             {/* End Date */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">結束日期</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{t('end_date')}</label>
               <input
                 type="date"
                 value={endDateFilter}
@@ -325,17 +331,17 @@ export default function RemindersPage() {
           {/* Limit & Actions */}
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
-              <label className="text-sm font-medium text-gray-700">顯示筆數：</label>
+              <label className="text-sm font-medium text-gray-700">{t('reminders_limit_label')}</label>
               <select
                 value={limitFilter}
                 onChange={(e) => setLimitFilter(e.target.value)}
                 className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
               >
-                <option value="10">10 筆</option>
-                <option value="25">25 筆</option>
-                <option value="50">50 筆</option>
-                <option value="100">100 筆</option>
-                <option value="200">200 筆</option>
+                <option value="10">{t('reminders_limit_option', { n: 10 })}</option>
+                <option value="25">{t('reminders_limit_option', { n: 25 })}</option>
+                <option value="50">{t('reminders_limit_option', { n: 50 })}</option>
+                <option value="100">{t('reminders_limit_option', { n: 100 })}</option>
+                <option value="200">{t('reminders_limit_option', { n: 200 })}</option>
               </select>
             </div>
 
@@ -345,7 +351,7 @@ export default function RemindersPage() {
                 variant="outline"
                 className="px-6"
               >
-                重置
+                {t('reset')}
               </Button>
               <Button
                 onClick={handleSearch}
@@ -355,7 +361,7 @@ export default function RemindersPage() {
                 <svg className="w-5 h-5 mr-2 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
-                搜尋
+                {t('search')}
               </Button>
             </div>
           </div>
@@ -373,8 +379,8 @@ export default function RemindersPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
               </svg>
             </div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">沒有符合條件的提醒</h2>
-            <p className="text-gray-700 mb-8">請調整搜尋條件或前往行事曆設定新提醒</p>
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">{t('reminders_empty_title')}</h2>
+            <p className="text-gray-700 mb-8">{t('reminders_empty_desc')}</p>
             <Button
               onClick={() => router.push('/calendar')}
               variant="primary"
@@ -383,7 +389,7 @@ export default function RemindersPage() {
               <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
               </svg>
-              前往行事曆
+              {t('reminders_go_calendar')}
             </Button>
           </div>
         ) : (
@@ -407,33 +413,33 @@ export default function RemindersPage() {
                         <h3 className="text-xl font-bold text-gray-900">{reminder.courseName}</h3>
                         {isPast && (
                           <span className="px-3 py-1 bg-gray-100 text-gray-800 text-xs font-semibold rounded-full">
-                            已過期
+                            {t('reminders_badge_expired')}
                           </span>
                         )}
                         {isToday && !isPast && (
                           <span className="px-3 py-1 bg-blue-100 text-blue-700 text-xs font-semibold rounded-full animate-pulse">
-                            今天
+                            {t('reminders_badge_today')}
                           </span>
                         )}
                         {isImminent && !isPast && (
                           <span className="px-3 py-1 bg-orange-100 text-orange-700 text-xs font-semibold rounded-full animate-pulse">
-                            即將開始
+                            {t('reminders_badge_imminent')}
                           </span>
                         )}
                         {!isPast && !isToday && !isImminent && (
                           <span className="px-3 py-1 bg-green-100 text-green-700 text-xs font-semibold rounded-full">
-                            即將到來
+                            {t('reminders_badge_upcoming')}
                           </span>
                         )}
                         {/* Email 發送狀態徽章 */}
                         {(!reminder.emailStatus || reminder.emailStatus === 'pending') ? (
-                          <span className="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs rounded-full">✉ 待發送</span>
+                          <span className="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs rounded-full">✉ {t('reminders_email_pending')}</span>
                         ) : reminder.emailStatus === 'sent' ? (
-                          <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full" title={reminder.emailSentAt ? `發送時間: ${new Date(reminder.emailSentAt).toLocaleString('zh-TW')}` : ''}>✓ Email已發送</span>
+                          <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full" title={reminder.emailSentAt ? t('reminders_email_sent_title', { time: dateFmt.formatDateTime(reminder.emailSentAt) }) : ''}>✓ {t('reminders_email_sent')}</span>
                         ) : reminder.emailStatus === 'failed' ? (
-                          <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs rounded-full" title={reminder.emailError || ''}>✗ 發送失敗</span>
+                          <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs rounded-full" title={reminder.emailError || ''}>✗ {t('reminders_email_failed')}</span>
                         ) : (
-                          <span className="px-2 py-0.5 bg-gray-100 text-gray-700 text-xs rounded-full">未發送</span>
+                          <span className="px-2 py-0.5 bg-gray-100 text-gray-700 text-xs rounded-full">{t('reminders_email_not_sent')}</span>
                         )}
                       </div>
 
@@ -444,7 +450,7 @@ export default function RemindersPage() {
                             <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                             </svg>
-                            Email 已於 {new Date(reminder.emailSentAt).toLocaleString('zh-TW')} 發送
+                            {t('reminders_email_sent_at', { time: dateFmt.formatDateTime(reminder.emailSentAt) })}
                           </div>
                         )}
                         {reminder.emailStatus === 'failed' && reminder.emailError && (
@@ -452,16 +458,16 @@ export default function RemindersPage() {
                             <svg className="w-4 h-4 mr-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                             </svg>
-                            錯誤：{reminder.emailError}
+                            {t('reminders_error_prefix')}{reminder.emailError}
                           </div>
                         )}
                         <div className="flex items-center">
                           <svg className="w-4 h-4 mr-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                           </svg>
-                          <span className="font-medium">課程時間：</span>
+                          <span className="font-medium">{t('reminders_course_time_label')}</span>
                           <span className="ml-1">
-                            {format(eventTime, 'yyyy/MM/dd (E) HH:mm', { locale: zhTW })}
+                            {format(eventTime, dateFormats.eventTime, { locale: dateFnsLocale })}
                           </span>
                         </div>
 
@@ -469,9 +475,9 @@ export default function RemindersPage() {
                           <svg className="w-4 h-4 mr-2 text-gray-600" fill="currentColor" viewBox="0 0 20 20">
                             <path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z" />
                           </svg>
-                          <span className="font-medium">提醒時間：</span>
+                          <span className="font-medium">{t('reminders_reminder_time_label')}</span>
                           <span className="ml-1 text-indigo-600 font-semibold">
-                            課前 {reminder.reminderMinutes} 分鐘
+                            {t('reminders_minutes_before', { minutes: reminder.reminderMinutes })}
                           </span>
                         </div>
 
@@ -480,7 +486,7 @@ export default function RemindersPage() {
                             <svg className="w-4 h-4 mr-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                             </svg>
-                            <span className="font-medium">{t('teacher')}：</span>
+                            <span className="font-medium">{t('reminders_teacher_label')}</span>
                             <span className="ml-1">{reminder.teacherName}</span>
                           </div>
                         )}
@@ -490,7 +496,7 @@ export default function RemindersPage() {
                             <svg className="w-4 h-4 mr-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
                             </svg>
-                            <span className="font-medium">{t('student')}：</span>
+                            <span className="font-medium">{t('reminders_student_label')}</span>
                             <span className="ml-1">{reminder.studentLabel}</span>
                           </div>
                         )}
@@ -500,7 +506,7 @@ export default function RemindersPage() {
                             <svg className="w-4 h-4 mr-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                             </svg>
-                            <span className="font-medium">訂單編號：</span>
+                            <span className="font-medium">{t('reminders_order_id_label')}</span>
                             <span className="ml-1 font-mono text-xs">{reminder.orderId}</span>
                           </div>
                         )}
@@ -510,7 +516,7 @@ export default function RemindersPage() {
                             <svg className="w-4 h-4 mr-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
                             </svg>
-                            <span className="font-medium">課程 ID：</span>
+                            <span className="font-medium">{t('reminders_course_id_label')}</span>
                             <span className="ml-1 font-mono text-xs">{reminder.courseId}</span>
                           </div>
                         )}
@@ -522,13 +528,13 @@ export default function RemindersPage() {
                         onClick={() => router.push('/calendar')}
                         className="px-4 py-2 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition-colors font-medium text-sm"
                       >
-                        檢視課程
+                        {t('reminders_view_course')}
                       </button>
                       <button
                         onClick={() => handleDelete(reminder.id)}
                         className="px-4 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors font-medium text-sm"
                       >
-                        刪除提醒
+                        {t('reminders_delete')}
                       </button>
                     </div>
                   </div>

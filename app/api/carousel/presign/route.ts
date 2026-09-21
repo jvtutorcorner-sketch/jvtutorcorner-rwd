@@ -1,35 +1,14 @@
 // app/api/carousel/presign/route.ts
-import { NextRequest, NextResponse } from 'next/server';
-import { getPresignedPutUrl } from '@/lib/s3';
-import fs from 'fs';
-import path from 'path';
+import { NextResponse } from 'next/server';
+import { withAdmin, type AuthedRequest } from '@/lib/auth/apiGuard';
+import { getPresignedPutUrl, getStorageBucket, isObjectStorageConfigured } from '@/lib/s3';
 
-// If the running process didn't pick up .env.local (e.g. started earlier),
-// try to load minimal AWS-related vars at runtime so dev can use S3 without restart.
-function loadAwsEnvFromDotenv() {
-  try {
-    const envFile = path.join(process.cwd(), '.env.local');
-    if (!fs.existsSync(envFile)) return;
-    const content = fs.readFileSync(envFile, 'utf8');
-    content.split(/\r?\n/).forEach((line) => {
-      const m = line.match(/^\s*([A-Za-z0-9_]+)\s*=\s*(.*)\s*$/);
-      if (!m) return;
-      const key = m[1];
-      let val = m[2] || '';
-      if (val.startsWith('"') && val.endsWith('"')) val = val.slice(1, -1);
-      // Overwrite in development to ensure we pick up changes from .env.local
-      process.env[key] = val;
-    });
-  } catch (e) {
-    console.warn('[Carousel Presign API] failed to load .env.local at runtime', (e as any)?.message || e);
-  }
-}
+// 先前每次請求都會重新解析 .env.local 並覆寫 process.env（開發期的權宜之計，卻跟著部署到正式環境）。
+// Next.js 啟動時本來就會載入 .env.local，已移除。
 
-export async function POST(request: NextRequest) {
+// 先前完全沒有 auth：任何人都能取得 S3 上傳用的預簽網址。
+async function handlePresign(request: AuthedRequest) {
   console.log('[Carousel Presign API] Request received');
-
-  // Ensure AWS env vars are present when possible (helpful when dev server started earlier)
-  loadAwsEnvFromDotenv();
 
   try {
     const body = await request.json();
@@ -52,16 +31,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'File size must be less than 20MB' }, { status: 400 });
     }
 
-    // Check if S3 is configured (favoring Bucket Name for IAM Role support)
-    const hasS3Bucket = !!(process.env.AWS_S3_BUCKET_NAME || process.env.CI_AWS_S3_BUCKET_NAME);
-    const hasS3Credentials = !!(process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID);
     const isProduction = process.env.NODE_ENV === 'production';
 
-    // In production, we assume S3 is available if a bucket is named (IAM Role will handle creds)
-    const useS3 = hasS3Bucket && (isProduction || hasS3Credentials);
-
-    if (!useS3) {
-      console.log('[Carousel Presign API] S3 not configured or in development without keys, returning error to trigger fallback');
+    // 物件儲存（S3 或 R2）是否可用，統一由 lib/s3.ts 判斷。
+    if (!isObjectStorageConfigured()) {
+      console.log('[Carousel Presign API] Object storage not configured, returning error to trigger fallback');
       return NextResponse.json({
         error: 'S3 not configured, use upload API instead'
       }, { status: 400 });
@@ -81,16 +55,9 @@ export async function POST(request: NextRequest) {
     const fileExtension = fileName.split('.').pop() || 'jpg';
     const key = `carousel/${timestamp}-${randomId}.${fileExtension}`;
 
-    console.log('[Carousel Presign API] Generated key:', key);
-    // Generate presigned URL
-    console.log('[Carousel Presign API] About to call getPresignedPutUrl with:', { key, mimeType });
-    console.log('[Carousel Presign API] Environment check:', {
-      hasRegion: !!process.env.AWS_REGION,
-      hasAccessKey: !!process.env.AWS_ACCESS_KEY_ID,
-      hasSecretKey: !!process.env.AWS_SECRET_ACCESS_KEY,
-      hasBucket: !!process.env.AWS_S3_BUCKET_NAME,
-      region: process.env.AWS_REGION,
-      bucket: process.env.AWS_S3_BUCKET_NAME
+    console.log('[Carousel Presign API] Generated key:', key, {
+      bucket: getStorageBucket(),
+      customEndpoint: !!process.env.STORAGE_S3_ENDPOINT,
     });
 
     try {
@@ -107,7 +74,7 @@ export async function POST(request: NextRequest) {
         url: presignedData.url,
         key: presignedData.key,
         publicUrl: presignedData.publicUrl,
-        bucket: process.env.AWS_S3_BUCKET_NAME || process.env.CI_AWS_S3_BUCKET_NAME
+        bucket: getStorageBucket()
       });
     } catch (s3Error) {
       console.error('[Carousel Presign API] getPresignedPutUrl failed:', s3Error);
@@ -121,3 +88,5 @@ export async function POST(request: NextRequest) {
     }, { status: 500 });
   }
 }
+
+export const POST = withAdmin(handlePresign);

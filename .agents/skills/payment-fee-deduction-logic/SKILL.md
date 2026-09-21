@@ -4,7 +4,7 @@ description: '驗證點數購買有勾選應用程式方案的扣點邏輯。確
 argument-hint: '執行點數扣除邏輯驗證測試'
 metadata:
   verified-status: '✅ VERIFIED'
-  last-verified-date: '2026-04-30'
+  last-verified-date: '2026-09-11'
   architecture-aligned: true
   notes: 'paymentSuccessHandler 冪等性確保重複 webhook 不會導致二次扣費'
 ---

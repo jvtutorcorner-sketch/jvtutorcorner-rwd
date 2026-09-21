@@ -2,6 +2,20 @@ import { listPublicCourses } from '@/app/courses/_data';
 import { CourseCard } from '@/components/CourseCard';
 import SearchForm from '@/components/SearchForm';
 import Pagination from '@/components/Pagination';
+import { T } from '@/components/IntlProvider';
+import type { Metadata } from 'next';
+import { pageOpenGraph } from '@/lib/seo';
+
+const COURSES_META_TITLE = '線上課程總覽';
+const COURSES_META_DESCRIPTION = '瀏覽 JV Tutor Corner 的線上一對一與小班課程，依科目、語言、老師與上課方式篩選，找到適合你的課程。';
+
+export const metadata: Metadata = {
+  title: COURSES_META_TITLE,
+  description: COURSES_META_DESCRIPTION,
+  // 篩選/分頁 query string 一律 canonical 回列表本身，避免重複內容
+  alternates: { canonical: '/courses' },
+  openGraph: pageOpenGraph({ title: COURSES_META_TITLE, description: COURSES_META_DESCRIPTION, url: '/courses' }),
+};
 
 type CoursesPageProps = {
   searchParams?: {
@@ -71,7 +85,7 @@ export default async function CoursesPage(props?: CoursesPageProps) {
 
   return (
     <main style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
-      <h1 style={{ marginBottom: '24px' }}>所有課程</h1>
+      <h1 style={{ marginBottom: '24px' }}><T k="courses_all_title" /></h1>
 
       {/* 搜尋表單（移到課程總覽頁面） */}
       <section style={{ marginBottom: '32px' }}>
@@ -83,7 +97,7 @@ export default async function CoursesPage(props?: CoursesPageProps) {
 
       <section>
         {paginatedCourses.length === 0 ? (
-          <p>目前沒有符合篩選條件的課程，請調整搜尋條件再試試。</p>
+          <p><T k="courses_empty_filtered" /></p>
         ) : (
           <>
             <div className="card-grid">

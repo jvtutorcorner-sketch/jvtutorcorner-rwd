@@ -153,15 +153,21 @@ test.describe(`點數暫存驗證 — ${DURATION_MINUTES} 分鐘課程`, () => {
         const { profile: teacherProfile } = await apiLogin(
           teacherPage, config.teacherEmail, config.teacherPassword, baseURL
         );
-        await apiLogin(studentPage, config.studentEmail, config.studentPassword, baseURL);
+        const { profile: studentProfile } = await apiLogin(
+          studentPage, config.studentEmail, config.studentPassword, baseURL
+        );
 
         teacherId = teacherProfile?.id || teacherProfile?.userId || '';
         console.log(`   👩‍🏫 teacherId: ${teacherId}`);
+        // /api/points 與訂單都以 canonical id（roid_id || id）為 key，session.userId 也是它，不是 email。
+        const teacherUserId = String(teacherProfile?.roid_id || teacherProfile?.id || '');
+        const studentId = String(studentProfile?.roid_id || studentProfile?.id || '');
+        if (!teacherUserId || !studentId) throw new Error('Login response has no roid_id/id');
 
         // ─── Step 2: 記錄老師目前點數基準 ──────────────────────────
         console.log('\n📝 Step 2: 記錄老師目前點數基準...');
         const teacherPointsRes = await teacherPage.request.get(
-          `${baseURL}/api/points?userId=${encodeURIComponent(config.teacherEmail)}`
+          `${baseURL}/api/points?userId=${encodeURIComponent(teacherUserId)}`
         );
         const teacherPointsData = await teacherPointsRes.json().catch(() => ({}));
         teacherPointsBefore = teacherPointsData?.balance ?? teacherPointsData?.points ?? 0;
@@ -207,12 +213,13 @@ test.describe(`點數暫存驗證 — ${DURATION_MINUTES} 分鐘課程`, () => {
         console.log(`\n📝 Step 3.5: 設定學生點數為 100（避免點數不足）...`);
         const setPointsRes = await studentPage.request.post(`${baseURL}/api/points`, {
           data: JSON.stringify({
-            userId: config.studentEmail,
+            userId: studentId,
             action: 'set',
             amount: 100,
             reason: 'escrow quick release test baseline',
           }),
-          headers: { 'Content-Type': 'application/json' },
+          // 以 x-e2e-secret 取得 system 身分設定測試基準點數（僅非 production），不依賴「本人可自行 set 點數」
+          headers: { 'Content-Type': 'application/json', 'x-e2e-secret': process.env.LOGIN_BYPASS_SECRET || '' },
         });
         const setPointsData = await setPointsRes.json().catch(() => ({}));
         if (!setPointsRes.ok() || !setPointsData?.ok) {
@@ -227,7 +234,7 @@ test.describe(`點數暫存驗證 — ${DURATION_MINUTES} 分鐘課程`, () => {
           data: JSON.stringify({
             courseId,
             enrollmentId,
-            userId: config.studentEmail,
+            userId: studentId,
             startTime: localISO(testStartTime - 60000),                          // 1 分鐘前開始
             endTime: localISO(testStartTime + (DURATION_MINUTES + 30) * 60000), // +30 min buffer
             paymentMethod: 'points',
@@ -374,7 +381,8 @@ test.describe(`點數暫存驗證 — ${DURATION_MINUTES} 分鐘課程`, () => {
         if (escrowId) {
           const releaseRes = await teacherPage.request.post(`${baseURL}/api/points-escrow`, {
             data: JSON.stringify({ action: 'release', escrowId }),
-            headers: { 'Content-Type': 'application/json' },
+            // POST /api/points-escrow 只限 admin／system（withAdmin）；以 x-e2e-secret 取得 system 身分（僅非 production）
+            headers: { 'Content-Type': 'application/json', 'x-e2e-secret': process.env.LOGIN_BYPASS_SECRET || '' },
           });
           const releaseData = await releaseRes.json().catch(() => ({}));
           releaseOk = releaseRes.ok();
@@ -412,7 +420,7 @@ test.describe(`點數暫存驗證 — ${DURATION_MINUTES} 分鐘課程`, () => {
         // ─── Step 13: 驗證老師點數增加 ─────────────────────────────
         console.log('\n📝 Step 13: 驗證老師點數增加...');
         const teacherAfterRes = await teacherPage.request.get(
-          `${baseURL}/api/points?userId=${encodeURIComponent(config.teacherEmail)}`
+          `${baseURL}/api/points?userId=${encodeURIComponent(teacherUserId)}`
         );
         const teacherAfterData = await teacherAfterRes.json().catch(() => ({}));
         const teacherPointsAfter = teacherAfterData?.balance ?? teacherAfterData?.points ?? 0;

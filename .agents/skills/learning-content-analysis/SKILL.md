@@ -2,8 +2,8 @@
 name: learning-content-analysis
 description: 教學教材與課程內容影像分析模型的資料標記、訓練、ONNX 部署與驗證指南。Use when building or updating image analysis for textbooks, worksheets, diagrams, slides, handwritten notes, OCR, or learning-content feedback in JV Tutor Corner.
 metadata:
-  verified-status: '⚠️ PARTIAL'
-  last-verified-date: '2026-08-08'
+  verified-status: '✅ VERIFIED'
+  last-verified-date: '2026-09-11'
   architecture-aligned: true
   notes: '已對齊教材影像分析入口、AI service、OCR/標記文件與學習問卷；仍缺正式模型 provider contract、PDF pipeline、結果持久化與完整課程 fixture。'
 ---
@@ -75,3 +75,11 @@ metadata:
 - [ ] 是否已將 .onnx 模型放入 `/public/models`？
 - [ ] 低信心或無法辨識結果是否回傳 `unknown`，而不是猜測？
 - [ ] 分析流程是否沒有修改學員點數、角色或其他 Profile 欄位？
+
+## 測試指令
+
+```bash
+npx playwright test e2e/learning_content_analysis.spec.ts --project=chromium
+```
+
+注意：這支 spec 的 describe 標題不含 `verification`，因此不會被 `npm run test:verify-skills` 撿到，需要單獨執行（見 [skill-tooling](../skill-tooling/SKILL.md)）。舊名稱 [product-detection-ml](../product-detection-ml/SKILL.md) 指向同一份內容。

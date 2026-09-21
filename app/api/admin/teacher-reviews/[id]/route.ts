@@ -2,12 +2,14 @@ import { NextResponse } from 'next/server';
 import { ddbDocClient } from '@/lib/dynamo';
 import { GetCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { createReviewRecord } from '@/lib/teacherReviewService';
+import { withAdmin, type AuthedRequest } from '@/lib/auth/apiGuard';
 
 const TEACHERS_TABLE = process.env.DYNAMODB_TABLE_TEACHERS || 'jvtutorcorner-teachers';
 
-export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+// 先前完全沒有 auth：任何人都能核准／退回任何老師的檔案修改審核。
+async function handleTeacherReview(req: AuthedRequest, ctx?: { params: Promise<{ id: string }> }) {
     try {
-        const { id } = await params;
+        const { id } = await ctx!.params;
         const { action, reviewedBy, notes } = await req.json();
 
         if (action !== 'approve' && action !== 'reject') {
@@ -216,3 +218,5 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
     return NextResponse.json({ ok: false, message: 'Unknown error' }, { status: 500 });
 }
+
+export const POST = withAdmin(handleTeacherReview);

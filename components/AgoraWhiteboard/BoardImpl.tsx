@@ -355,11 +355,15 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
                     };
                     // Attach lightweight handlers to trigger a recalculation
                     // before the SDK receives input events.
+                    //
+                    // Only on stroke START (touchstart / pointerdown) plus layout
+                    // shifts (scroll / resize). Not on touchmove / pointermove: the
+                    // layout cannot shift mid-stroke, and refreshViewSize() forces a
+                    // layout read on every point of every stroke (~60–120 per second
+                    // while writing), which dominated teacher-side CPU under load.
                     try {
                         targetDiv.addEventListener('touchstart', pointerFixHandler, { passive: true });
-                        targetDiv.addEventListener('touchmove', pointerFixHandler, { passive: true });
                         targetDiv.addEventListener('pointerdown', pointerFixHandler as any);
-                        targetDiv.addEventListener('pointermove', pointerFixHandler as any);
                         // Also listen to window scroll/resize events which shift layout
                         if (window) {
                             window.addEventListener('scroll', pointerFixHandler, { capture: true, passive: true });
@@ -369,9 +373,7 @@ const BoardImpl = forwardRef<AgoraWhiteboardRef, AgoraWhiteboardProps>((props, r
                         // Some older environments may not support options param
                         try {
                             targetDiv.addEventListener('touchstart', pointerFixHandler as any);
-                            targetDiv.addEventListener('touchmove', pointerFixHandler as any);
                             targetDiv.addEventListener('pointerdown', pointerFixHandler as any);
-                            targetDiv.addEventListener('pointermove', pointerFixHandler as any);
                         } catch (ee) { /* ignore */ }
                     }
                 }, 100));

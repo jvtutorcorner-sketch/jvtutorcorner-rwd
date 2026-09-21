@@ -1,10 +1,13 @@
 import { NextResponse } from 'next/server';
 import { ddbDocClient } from '@/lib/dynamo';
 import { GetCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { withAdmin, type AuthedRequest } from '@/lib/auth/apiGuard';
 
 const COURSES_TABLE = process.env.DYNAMODB_TABLE_COURSES || 'jvtutorcorner-courses';
 
-export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+// 先前完全沒有 auth：任何人都能核准／退回任何課程的上架審核。
+async function handleCourseReview(req: AuthedRequest, ctx?: { params: Promise<{ id: string }> }) {
+  const params = ctx!.params;
     try {
         const { id } = await params;
         const { action } = await req.json();
@@ -75,4 +78,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         console.error('[admin/course-reviews POST] error:', err);
         return NextResponse.json({ ok: false, message: err?.message || 'Failed to process review' }, { status: 500 });
     }
+
+    return NextResponse.json({ ok: false, message: 'Unknown error' }, { status: 500 });
 }
+
+export const POST = withAdmin(handleCourseReview);

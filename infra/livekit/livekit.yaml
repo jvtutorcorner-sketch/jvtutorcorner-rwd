@@ -1,0 +1,54 @@
+# infra/livekit/livekit.yaml
+# LiveKit Server 設定檔（單機 EC2 部署）。
+# 由 cloudformation/livekit-ec2.yml 的 UserData 複製到 /opt/livekit/livekit.yaml，
+# 其中 ${LIVEKIT_API_KEY} / ${LIVEKIT_API_SECRET} / ${LIVEKIT_WEBHOOK_URL} 由 envsubst 於開機時代入
+# （值來自 SSM Parameter Store，不寫死在 AMI 或 repo 中）。
+#
+# 完整選項：https://github.com/livekit/livekit/blob/master/config-sample.yaml
+
+port: 7880            # HTTP / WebSocket 信令（由 Caddy 反向代理成 wss://）
+
+rtc:
+  tcp_port: 7881      # ICE over TCP，UDP 被封鎖時的退路
+  port_range_start: 50000
+  port_range_end: 60000
+  use_external_ip: true   # EC2 在 NAT 後面，必須靠 STUN 取得 Elastic IP 當 ICE candidate
+  # 單機部署不需要 node_ip；多節點時改用 redis + 各自 node_ip
+
+# 1 對 1 教室用的預設值；token route 的 ensureClassroomRoom() 會再逐房覆寫
+room:
+  auto_create: true
+  empty_timeout: 300          # 無人 5 分鐘自動關房 → 觸發 room_finished webhook
+  departure_timeout: 20       # 最後一人離開後 20 秒關房（重連容忍）
+  max_participants: 0         # 0 = 不限；由 createRoom 逐房設定
+  enabled_codecs:
+    - mime: audio/opus
+    - mime: video/vp8
+    - mime: video/h264        # iOS Safari 硬體解碼
+    - mime: video/vp9
+
+# 不要把 key 寫進版控：以 envsubst 代入
+keys:
+  ${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}
+
+# Phase 4：房間 / 參與者事件回呼。用同一組 api_key 簽 JWT，Lambda 端用 WebhookReceiver 驗證
+webhook:
+  api_key: ${LIVEKIT_API_KEY}
+  urls:
+    - ${LIVEKIT_WEBHOOK_URL}
+
+# 內建 TURN：讓企業網路 / 嚴格 NAT 的學生也連得上
+# TLS 由 Caddy 終結，所以這裡只開 UDP relay；TURN/TLS(443) 需要額外 cert，見 README「TURN over TLS」
+turn:
+  enabled: true
+  domain: ${LIVEKIT_DOMAIN}
+  udp_port: 3478
+  external_tls: true       # TLS 由前面的 Caddy 處理
+  tls_port: 5349
+
+logging:
+  level: info
+  json: true               # CloudWatch Logs 好查詢
+
+# 建議開啟：Prometheus 指標（CloudWatch agent 可抓）
+prometheus_port: 6789

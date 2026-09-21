@@ -1,7 +1,8 @@
-import { NextRequest } from 'next/server';
+import { withAuth, type AuthedRequest } from '@/lib/auth/apiGuard';
 import { getWhiteboardState, normalizeUuid } from '@/lib/whiteboardService';
 
-export async function GET(req: NextRequest) {
+// 先前完全沒有 auth：白板的教材 PDF、房間狀態與事件端點任何人都能存取／改寫。
+async function handleGet(req: AuthedRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const rawUuid = searchParams.get('uuid') || 'default';
@@ -11,14 +12,27 @@ export async function GET(req: NextRequest) {
     let state: any = { strokes: [], pdf: null };
     let source = 'none';
 
-    try {
-      const dbState = await getWhiteboardState(uuid);
-      if (dbState) {
-        state = dbState;
-        source = 'dynamodb';
+    if (process.env.WB_APPEND_ONLY === '1') {
+      // Append-only read: one Query on the room partition, reconstruct the strokes.
+      try {
+        const { listStrokes } = await import('@/lib/whiteboardStrokes');
+        const strokes = await listStrokes(uuid);
+        const updatedAt = strokes.reduce((m: number, s: any) => Math.max(m, Number(s.updatedAt ?? s.timestamp ?? 0)), 0);
+        state = { strokes, pdf: null, updatedAt };
+        source = 'append-only';
+      } catch (e) {
+        console.warn('[WB State] append-only read failed:', e);
       }
-    } catch (e) {
-      console.warn('[WB State] DB Fetch error:', e);
+    } else {
+      try {
+        const dbState = await getWhiteboardState(uuid);
+        if (dbState) {
+          state = dbState;
+          source = 'dynamodb';
+        }
+      } catch (e) {
+        console.warn('[WB State] DB Fetch error:', e);
+      }
     }
 
     // Safely serialize state to avoid throwing on circular references or huge data URLs.
@@ -44,3 +58,5 @@ export async function GET(req: NextRequest) {
     return new Response(JSON.stringify({ ok: false, error: String(e) }), { status: 500 });
   }
 }
+
+export const GET = withAuth(handleGet);

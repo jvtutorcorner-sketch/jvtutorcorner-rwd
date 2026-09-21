@@ -46,6 +46,13 @@ export function useAwsApigwSignaling({
   const retryCountRef = useRef(0);
   const isDestroyedRef = useRef(false);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // connect() and scheduleRetry() are mutually recursive: connect's ws.onclose needs to
+  // schedule a retry, and scheduleRetry needs to call connect. Calling scheduleRetry
+  // directly from connect meant connect closed over the FIRST scheduleRetry forever
+  // (it is not in connect's dependency array), so after any dependency change the retry
+  // path kept calling a stale connect. Going through a ref breaks the cycle and always
+  // reaches the current implementation.
+  const scheduleRetryRef = useRef<() => void>(() => {});
   const sendSeqRef = useRef(0);
   const onMessageRef = useRef(onMessage);
   const onConnectionChangeRef = useRef(onConnectionChange);
@@ -109,7 +116,7 @@ export function useAwsApigwSignaling({
       wsRef.current = null;
       if (isDestroyedRef.current) return;
       updateState('disconnected');
-      scheduleRetry();
+      scheduleRetryRef.current();
     };
   }, [_wsUrl, channelName, userId, updateState]);
 
@@ -126,8 +133,19 @@ export function useAwsApigwSignaling({
     }, delay);
   }, [connect, updateState]);
 
+  // Must be an effect, not a render-time assignment: writing a ref during render
+  // is a side effect (react-hooks/refs) and is unsafe under concurrent rendering.
+  useEffect(() => {
+    scheduleRetryRef.current = scheduleRetry;
+  }, [scheduleRetry]);
+
   useEffect(() => {
     if (!enabled) {
+      // Resetting to 'idle' when the provider is disabled is a one-shot transition, not a
+      // render loop: this effect only re-runs when `enabled` or `connect` changes. Deriving
+      // the state instead would mean restructuring the whole connect/retry state machine,
+      // and this provider (NEXT_PUBLIC_SIGNALING_PROVIDER=aws-apigw) has no test coverage.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setConnectionState('idle');
       return;
     }

@@ -3,8 +3,8 @@ name: navbar-verification
 description: '驗證建立帳戶後的導覽列（Navbar）狀態與自動登入流程。'
 argument-hint: '驗證註冊後的導覽列、自動登入與 Product Tour 功能'
 metadata:
-  verified-status: '✅ VERIFIED'
-  last-verified-date: '2026-03-28'
+  verified-status: '⚠️ PARTIAL'
+  last-verified-date: '2026-09-11'
   architecture-aligned: true
 ---
 

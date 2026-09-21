@@ -3,7 +3,7 @@
 // Provides a consistent backend (DynamoDB in production, in-memory in dev)
 // so all routes always read/write from the same storage layer.
 
-import { GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
+import { GetCommand, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { ddbDocClient } from '@/lib/dynamo';
 
 export const POINTS_TABLE =
@@ -50,6 +50,31 @@ export async function setUserPoints(userId: string, balance: number): Promise<vo
     return;
   }
   LOCAL_POINTS[userId] = balance;
+}
+
+/**
+ * Atomically add `delta` points to a user's balance (creates the row if missing).
+ *
+ * Unlike getUserPoints + setUserPoints, this is a single DynamoDB `ADD`, so two
+ * concurrent credits to the same user can never overwrite each other.
+ * Returns the new balance.
+ */
+export async function addUserPoints(userId: string, delta: number): Promise<number> {
+  if (useDynamoForPoints) {
+    const res = await ddbDocClient.send(
+      new UpdateCommand({
+        TableName: POINTS_TABLE,
+        Key: { userId },
+        UpdateExpression: 'ADD #bal :d SET updatedAt = :u',
+        ExpressionAttributeNames: { '#bal': 'balance' },
+        ExpressionAttributeValues: { ':d': delta, ':u': new Date().toISOString() },
+        ReturnValues: 'UPDATED_NEW',
+      })
+    );
+    return typeof res.Attributes?.balance === 'number' ? res.Attributes.balance : delta;
+  }
+  LOCAL_POINTS[userId] = (LOCAL_POINTS[userId] ?? 0) + delta;
+  return LOCAL_POINTS[userId];
 }
 
 /**

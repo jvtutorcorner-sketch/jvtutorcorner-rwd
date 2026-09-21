@@ -12,6 +12,7 @@
 import { ddbDocClient } from '@/lib/dynamo';
 import { GetCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { getUserPoints, setUserPoints } from '@/lib/pointsStorage';
+import { assertPlanId, classifyCatalogueId } from '@/lib/plans';
 
 const ORDERS_TABLE = process.env.DYNAMODB_TABLE_ORDERS || 'jvtutorcorner-orders';
 const UPGRADES_TABLE = process.env.DYNAMODB_TABLE_PLAN_UPGRADES || 'jvtutorcorner-plan-upgrades';
@@ -112,7 +113,7 @@ export async function handlePaymentSuccess(
           TableName: PROFILES_TABLE,
           Key: { id: userId },
         }));
-        let profile = getProfileRes.Item;
+        const profile = getProfileRes.Item;
         
         if (profile) {
           const existingPlans = Array.isArray(profile.activeAppPlanIds) ? profile.activeAppPlanIds : [];
@@ -151,20 +152,48 @@ export async function handlePaymentSuccess(
         return { ok: false, error: errMsg };
       }
     } else if (itemType === 'PLAN' && orderItem.planId) {
-      try {
+      planUpdate: try {
+        // profile.plan is a controlled vocabulary (lib/plans.ts). This used to
+        // write orderItem.planId straight through, which meant a catalogue id
+        // ('plan_viewer') landed in a column every reader compares against the
+        // short form ('viewer') — the plan was paid for and then invisible.
+        //
+        // An EXTENSION purchase also arrives here with itemType 'PLAN' (see
+        // app/api/plan-upgrades/route.ts, which labels anything not prefixed
+        // 'points_' as a PLAN). Extensions are add-ons recorded in
+        // activeAppPlanIds; writing one into profile.plan would replace the
+        // user's real plan with an accessory id. Skip those rather than
+        // corrupting the column or failing the payment.
+        const kind = await classifyCatalogueId(orderItem.planId);
+        if (kind === 'EXTENSION') {
+          console.log(
+            `[Payment Success Handler] ${orderItem.planId} is an extension, not a plan — leaving profile.plan unchanged`
+          );
+          break planUpdate;
+        }
+
+        const planId = await assertPlanId(orderItem.planId);
+
         await ddbDocClient.send(new UpdateCommand({
           TableName: PROFILES_TABLE,
           Key: { id: userId },
           UpdateExpression: 'SET #plan = :planId, updatedAt = :updatedAt',
           ExpressionAttributeNames: { '#plan': 'plan' },
           ExpressionAttributeValues: {
-            ':planId': orderItem.planId,
+            ':planId': planId,
             ':updatedAt': new Date().toISOString(),
           },
         }));
-        console.log(`[Payment Success Handler] Updated profile plan for ${userId} → ${orderItem.planId}`);
+        console.log(`[Payment Success Handler] Updated profile plan for ${userId} → ${planId}`);
       } catch (err: any) {
+        // An unknown plan id is a configuration fault, not a transient one:
+        // surface it rather than leaving the profile silently on its old plan
+        // after a successful payment.
         console.error(`[Payment Success Handler] Failed to update profile plan:`, err?.message || err);
+        return {
+          ok: false,
+          error: `Payment captured but plan could not be applied: ${err?.message || err}`,
+        };
       }
     } else if ((itemType === 'COURSE' || itemType === 'course') && enrollmentId) {
       try {

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useDateFormat } from '@/lib/hooks/useDateFormat';
 
 interface MakeConfigStatus {
   configured: boolean;
@@ -11,6 +12,7 @@ interface MakeConfigStatus {
 }
 
 export default function MakeSettingsPage() {
+  const dateFmt = useDateFormat();
   const [status, setStatus] = useState<MakeConfigStatus | null>(null);
   const [webhookUrl, setWebhookUrl] = useState('');
   const [webhookSecret, setWebhookSecret] = useState('');
@@ -139,7 +141,7 @@ export default function MakeSettingsPage() {
               )}
               {status.updatedAt && (
                 <p className="text-gray-400 text-xs">
-                  最後更新：{new Date(status.updatedAt).toLocaleString('zh-TW')}
+                  最後更新：{dateFmt.formatDateTime(status.updatedAt)}
                 </p>
               )}
             </div>

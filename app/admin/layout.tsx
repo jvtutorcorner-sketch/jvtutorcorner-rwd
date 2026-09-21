@@ -1,0 +1,69 @@
+import { cookies, headers } from 'next/headers';
+import { redirect } from 'next/navigation';
+import { getSession } from '@/lib/auth/sessionManager';
+import { canAccessPage } from '@/lib/auth/pagePermissions';
+import { extractOrgIdFromAdminPath, resolveOrgViewerScope } from '@/app/admin/organizations/orgViewerScope';
+
+/**
+ * Admin 區域共用 layout（server component）。
+ *
+ * 進入任何 /admin/* 頁面前：
+ *   1. 驗證 session cookie 有效性（HMAC 簽名 + DynamoDB 查表）
+ *   2. 限制可進入 admin 區域的角色：admin / dept_admin / system
+ *      例外（組織範圍規則）：/admin/organizations/<orgId>（含子路徑）改查 profile ——
+ *      該組織的 isOrgAdmin（通常 role 仍是 student）與該組織的 dept_admin 可進入自己組織的頁面，
+ *      其他組織一律拒絕。admin / system 不受此規則影響，照常走 page permission。
+ *   3. 依 page permission 矩陣檢查 path 層級可見性
+ *      - dept_admin 僅可見所屬部門相關子路徑（見 DEFAULT_PAGE_PERMISSIONS）
+ *      - 真正的資料存取隔離由 API 層 lib/auth/orgAccess.ts 的 requireOrgUnitAccess /
+ *        requireMemberScopeAccess 強制
+ *
+ * 未登入 → redirect /login。
+ * 已登入但無權限 → redirect /dashboard?forbidden=1。
+ */
+
+const ALLOWED_ADMIN_ROLES = new Set(['admin', 'dept_admin', 'system']);
+
+export default async function AdminLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const cookieStore = await cookies();
+  const token = cookieStore.get('session')?.value;
+
+  if (!token) {
+    redirect('/login?reason=admin_no_session');
+  }
+
+  const session = await getSession(token);
+  if (!session) {
+    redirect('/login?reason=admin_invalid_session');
+  }
+
+  // 取得當前 pathname（由 middleware 注入 x-pathname）
+  const headerStore = await headers();
+  const pathname = headerStore.get('x-pathname') || '/admin';
+
+  // 組織範圍規則：非系統管理員進入 /admin/organizations/<orgId> 時，以 profile 的
+  // orgId / isOrgAdmin / role 判斷（與 API 層 lib/auth/orgAccess.ts 一致），不看 page permission 矩陣。
+  const scopedOrgId = extractOrgIdFromAdminPath(pathname);
+  if (scopedOrgId && session.role !== 'admin' && session.role !== 'system') {
+    const scope = await resolveOrgViewerScope(session, scopedOrgId);
+    if (!scope) {
+      redirect('/dashboard?forbidden=1');
+    }
+    return <>{children}</>;
+  }
+
+  if (!ALLOWED_ADMIN_ROLES.has(session.role)) {
+    redirect('/dashboard?forbidden=1');
+  }
+
+  const access = await canAccessPage(session.role, pathname);
+  if (!access.allowed) {
+    redirect('/dashboard?forbidden=1');
+  }
+
+  return <>{children}</>;
+}

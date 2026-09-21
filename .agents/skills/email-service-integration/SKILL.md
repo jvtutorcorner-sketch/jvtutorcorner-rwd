@@ -3,8 +3,8 @@ name: email-service-integration
 description: '本 Skill 負責管理 JV Tutor Corner 的電子郵件通訊體系，為內部組件提供統一的通知與自動化郵件發送介面。本服務深度整合 Next.js (App Router) 與 AWS Amplify 雲端架構，確保高可用性與通訊安全性。'
 argument-hint: '說明與設定 Email 通訊與排程在 Amplify/Next.js 環境的實作方式與注意事項'
 metadata:
-  verified-status: '✅ VERIFIED'
-  last-verified-date: '2026-04-22'
+  verified-status: '⚠️ PARTIAL'
+  last-verified-date: '2026-09-11'
   architecture-aligned: true
   latest-fixes:
     - date: '2026-04-22'
@@ -211,3 +211,11 @@ graph TD
 在 DNS 中新增一條 TXT 紀錄以加強保護：
 - **Host**: `_dmarc`
 - **Value**: `v=DMARC1; p=none; rua=mailto:your-admin@domain.com`
+
+## 信件連結的 Base URL
+
+驗證信、重設密碼信中的連結必須指向正確網域（不能是 localhost 或 Amplify 預設網域）。
+
+- [app/api/debug/email-link/](../../../app/api/debug/email-link/)：回傳目前環境會產生的連結，用於檢查。
+- 測試：`npx playwright test e2e/email_link_base_url.spec.ts --project=chromium`（[e2e/email_link_base_url.spec.ts](../../../e2e/email_link_base_url.spec.ts)）。
+- 登入相關的寄信流程見 [auth-sso](../auth-sso/SKILL.md)；排程寄信見 [scheduled-jobs](../scheduled-jobs/SKILL.md)。

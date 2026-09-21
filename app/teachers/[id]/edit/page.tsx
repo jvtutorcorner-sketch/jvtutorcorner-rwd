@@ -13,7 +13,10 @@ export default function TeacherEditPage() {
     const [teacher, setTeacher] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    // 明確的成功狀態：原本靠 messageOk 判斷樣式，訊息翻成英文後永遠不成立。
     const [message, setMessage] = useState<string | null>(null);
+    const [messageOk, setMessageOk] = useState(false);
+    const notify = (text: string, ok = false) => { setMessage(text); setMessageOk(ok); };
 
     // Form fields
     const [name, setName] = useState('');
@@ -46,10 +49,10 @@ export default function TeacherEditPage() {
                     setSubjects(t.subjects?.join(', ') || '');
                     setLanguages(t.languages?.join(', ') || '');
                 } else {
-                    setMessage('找不到老師資料');
+                    notify(t('teacher_edit_msg_not_found'));
                 }
             } catch (err) {
-                setMessage('載入失敗');
+                notify(t('teacher_profile_edit_msg_load_failed'));
             } finally {
                 setLoading(false);
             }
@@ -80,13 +83,13 @@ export default function TeacherEditPage() {
             });
             const data = await res.json();
             if (data.ok) {
-                setMessage('✨ 更新成功！正在返回個人頁面...');
+                notify(t('teacher_edit_msg_success'), true);
                 setTimeout(() => router.push(`/teachers/${id}`), 1500);
             } else {
-                setMessage(data.message || '❌ 更新失敗');
+                notify(data.message || t('teacher_edit_msg_failed'));
             }
         } catch (err) {
-            setMessage('❌ 連線失敗');
+            notify(t('teacher_profile_edit_msg_network_failed'));
         } finally {
             setSaving(false);
         }
@@ -94,7 +97,7 @@ export default function TeacherEditPage() {
 
     if (loading) return (
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: 'linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)' }}>
-            <div style={{ fontSize: '1.5rem', color: '#4f46e5', fontWeight: 'bold', animation: 'pulse 2s infinite' }}>載入中...</div>
+            <div style={{ fontSize: '1.5rem', color: '#4f46e5', fontWeight: 'bold', animation: 'pulse 2s infinite' }}>{t('loading')}</div>
         </div>
     );
 
@@ -116,9 +119,9 @@ export default function TeacherEditPage() {
                         WebkitTextFillColor: 'transparent',
                         marginBottom: '8px'
                     }}>
-                        編輯老師個人檔案
+                        {t('teacher_edit_title')}
                     </h1>
-                    <p style={{ color: '#64748b', fontSize: '1.1rem' }}>完善您的資訊，讓更多學生認識您</p>
+                    <p style={{ color: '#64748b', fontSize: '1.1rem' }}>{t('teacher_edit_subtitle')}</p>
                 </header>
 
                 <div style={{
@@ -134,18 +137,18 @@ export default function TeacherEditPage() {
                         {/* Left Column: Basic Info */}
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                <label style={{ color: '#1e293b', fontWeight: '600', fontSize: '0.95rem' }}>顯示名稱</label>
+                                <label style={{ color: '#1e293b', fontWeight: '600', fontSize: '0.95rem' }}>{t('teacher_profile_edit_display_name')}</label>
                                 <input
                                     type="text"
                                     value={name}
                                     onChange={(e) => setName(e.target.value)}
                                     style={inputStyle}
-                                    placeholder="您的姓名或暱稱"
+                                    placeholder={t('teacher_profile_edit_display_name_placeholder')}
                                 />
                             </div>
 
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                <label style={{ color: '#1e293b', fontWeight: '600', fontSize: '0.95rem' }}>大頭照 URL</label>
+                                <label style={{ color: '#1e293b', fontWeight: '600', fontSize: '0.95rem' }}>{t('teacher_edit_avatar_url')}</label>
                                 <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
                                     <img
                                         src={avatarUrl || 'https://avatars.githubusercontent.com/u/1?v=4'}
@@ -164,7 +167,7 @@ export default function TeacherEditPage() {
 
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                    <label style={{ color: '#1e293b', fontWeight: '600', fontSize: '0.95rem' }}>時薪 (TWD)</label>
+                                    <label style={{ color: '#1e293b', fontWeight: '600', fontSize: '0.95rem' }}>{t('teacher_edit_hourly_rate')}</label>
                                     <input
                                         type="number"
                                         value={hourlyRate}
@@ -173,36 +176,36 @@ export default function TeacherEditPage() {
                                     />
                                 </div>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                    <label style={{ color: '#1e293b', fontWeight: '600', fontSize: '0.95rem' }}>地點</label>
+                                    <label style={{ color: '#1e293b', fontWeight: '600', fontSize: '0.95rem' }}>{t('teacher_edit_location')}</label>
                                     <input
                                         type="text"
                                         value={location}
                                         onChange={(e) => setLocation(e.target.value)}
                                         style={inputStyle}
-                                        placeholder="e.g. 線上 / 台北"
+                                        placeholder={t('teacher_edit_location_placeholder')}
                                     />
                                 </div>
                             </div>
 
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                <label style={{ color: '#1e293b', fontWeight: '600', fontSize: '0.95rem' }}>教學科目 (以逗號隔開)</label>
+                                <label style={{ color: '#1e293b', fontWeight: '600', fontSize: '0.95rem' }}>{t('teacher_profile_edit_subjects')}</label>
                                 <input
                                     type="text"
                                     value={subjects}
                                     onChange={(e) => setSubjects(e.target.value)}
                                     style={inputStyle}
-                                    placeholder="e.g. 英文會話, 雅思寫作"
+                                    placeholder={t('teacher_profile_edit_subjects_placeholder')}
                                 />
                             </div>
 
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                <label style={{ color: '#1e293b', fontWeight: '600', fontSize: '0.95rem' }}>教學語言 (以逗號隔開)</label>
+                                <label style={{ color: '#1e293b', fontWeight: '600', fontSize: '0.95rem' }}>{t('teacher_profile_edit_languages')}</label>
                                 <input
                                     type="text"
                                     value={languages}
                                     onChange={(e) => setLanguages(e.target.value)}
                                     style={inputStyle}
-                                    placeholder="e.g. 中文, 英文, 日文"
+                                    placeholder={t('teacher_profile_edit_languages_placeholder')}
                                 />
                             </div>
                         </div>
@@ -210,12 +213,12 @@ export default function TeacherEditPage() {
                         {/* Right Column: Intro */}
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
-                                <label style={{ color: '#1e293b', fontWeight: '600', fontSize: '0.95rem' }}>自我介紹</label>
+                                <label style={{ color: '#1e293b', fontWeight: '600', fontSize: '0.95rem' }}>{t('teacher_profile_edit_intro')}</label>
                                 <textarea
                                     value={intro}
                                     onChange={(e) => setIntro(e.target.value)}
                                     style={{ ...inputStyle, minHeight: '350px', resize: 'none' }}
-                                    placeholder="詳細描述您的教學背景、獲得過的獎項，或是教學理念。良好的介紹能增加學生預約的意願！"
+                                    placeholder={t('teacher_edit_intro_placeholder_long')}
                                 />
                             </div>
                         </div>
@@ -242,7 +245,7 @@ export default function TeacherEditPage() {
                                 onMouseOver={(e) => e.currentTarget.style.transform = 'translateY(-2px) scale(1.02)'}
                                 onMouseOut={(e) => e.currentTarget.style.transform = 'translateY(0) scale(1)'}
                             >
-                                {saving ? '處理中...' : '儲存變更'}
+                                {saving ? t('teacher_edit_saving') : t('teacher_edit_save')}
                             </button>
                             <Link
                                 href={`/teachers/${id}`}
@@ -261,7 +264,7 @@ export default function TeacherEditPage() {
                                 onMouseOver={(e) => e.currentTarget.style.background = '#e2e8f0'}
                                 onMouseOut={(e) => e.currentTarget.style.background = '#f1f5f9'}
                             >
-                                取消
+                                {t('teacher_profile_edit_cancel')}
                             </Link>
                         </div>
 
@@ -272,9 +275,9 @@ export default function TeacherEditPage() {
                                 borderRadius: '16px',
                                 textAlign: 'center',
                                 fontWeight: '600',
-                                background: message.includes('成功') ? '#ecfdf5' : '#fff1f2',
-                                color: message.includes('成功') ? '#059669' : '#e11d48',
-                                border: message.includes('成功') ? '1px solid #10b981' : '1px solid #f43f5e',
+                                background: messageOk ? '#ecfdf5' : '#fff1f2',
+                                color: messageOk ? '#059669' : '#e11d48',
+                                border: messageOk ? '1px solid #10b981' : '1px solid #f43f5e',
                                 animation: 'slideUp 0.4s ease-out'
                             }}>
                                 {message}

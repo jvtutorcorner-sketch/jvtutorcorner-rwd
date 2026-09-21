@@ -3,18 +3,15 @@
 import { useEffect, useMemo, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useT } from "@/components/IntlProvider";
+import { COUNTRY_CODES, countryKey } from "@/lib/countryI18n";
+import { formatLocalIso, timezoneForCountry } from "@/lib/countryTimezone";
 import {
   PLAN_LABELS,
   PLAN_DESCRIPTIONS,
   PlanId,
 } from "@/lib/mockAuth";
 import { PLAN_PRICES, PLAN_FEATURES } from "@/lib/mockAuth";
-import { useT } from "@/components/IntlProvider";
-
-const COUNTRY_CODES = [
-  "TW", "JP", "US", "GB", "HK", "MO", "CN", "KR", "SG", "MY",
-  "AU", "NZ", "CA", "DE", "FR", "ES", "IT", "IN", "BR", "MX", "ZA",
-] as const;
 
 function simpleMarkdownToHtml(md: string) {
   if (!md) return "";
@@ -53,15 +50,10 @@ export default function RegisterPage() {
   const [orgs, setOrgs] = useState<Array<{ id: string; name: string; domain?: string; availableSeats: number }>>([]);
   const [selectedOrgId, setSelectedOrgId] = useState<string>("");
   const [orgsLoading, setOrgsLoading] = useState(false);
-  const [csvFile, setCsvFile] = useState<File | null>(null);
-  const [csvError, setCsvError] = useState<string | null>(null);
-  const [csvSuccess, setCsvSuccess] = useState<{ count: number; results: Array<{ email: string; ok: boolean; error?: string }> } | null>(null);
-  const [csvProgress, setCsvProgress] = useState<{ done: number; total: number } | null>(null);
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const [captchaImage, setCaptchaImage] = useState<string | null>(null);
   const [captchaValue, setCaptchaValue] = useState("");
   const [captchaLoading, setCaptchaLoading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Refs for form fields
   const orgRef = useRef<HTMLSelectElement>(null);
@@ -135,63 +127,11 @@ export default function RegisterPage() {
 
   // plan selection moved to user settings; registration defaults to 'viewer'
 
+  // 標籤走翻譯 key，code 才是存進資料庫的值。
   const countries = useMemo(
-    () => COUNTRY_CODES.map((code) => ({ code, label: t(`country_${code}`) })),
+    () => COUNTRY_CODES.map((code) => ({ code, label: t(countryKey(code)) })),
     [t],
   );
-
-  // 國家時區映射
-  const countryTimezones: Record<string, string> = {
-    TW: 'Asia/Taipei',
-    JP: 'Asia/Tokyo',
-    US: 'America/New_York',
-    GB: 'Europe/London',
-    HK: 'Asia/Hong_Kong',
-    MO: 'Asia/Macau',
-    CN: 'Asia/Shanghai',
-    KR: 'Asia/Seoul',
-    SG: 'Asia/Singapore',
-    MY: 'Asia/Kuala_Lumpur',
-    AU: 'Australia/Sydney',
-    NZ: 'Pacific/Auckland',
-    CA: 'America/Toronto',
-    DE: 'Europe/Berlin',
-    FR: 'Europe/Paris',
-    ES: 'Europe/Madrid',
-    IT: 'Europe/Rome',
-    IN: 'Asia/Kolkata',
-    BR: 'America/Sao_Paulo',
-    MX: 'America/Mexico_City',
-    ZA: 'Africa/Johannesburg',
-  };
-
-  // 格式化本地時間為 ISO 格式
-  function formatLocalIso(timezone?: string) {
-    const now = new Date();
-    const utcIso = now.toISOString();
-    if (!timezone) return { utc: utcIso, local: utcIso, timezone: 'UTC' };
-    try {
-      const fmt = new Intl.DateTimeFormat('sv-SE', {
-        timeZone: timezone,
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false,
-      });
-      // 'sv-SE' style yields YYYY-MM-DD HH:MM:SS which we convert to ISO-like
-      const parts = fmt.formatToParts(now).reduce((acc: any, part) => {
-        acc[part.type] = (acc[part.type] || '') + part.value;
-        return acc;
-      }, {});
-      const localIsoLike = `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}`;
-      return { utc: utcIso, local: localIsoLike, timezone };
-    } catch (e) {
-      return { utc: utcIso, local: utcIso, timezone: 'UTC' };
-    }
-  }
 
   async function loadCaptcha() {
     try {
@@ -228,7 +168,7 @@ export default function RegisterPage() {
 
     // 優先檢查服務條款同意
     if (!termsAccepted) {
-      setFormError(t('register_error_terms_required'));
+      setFormError(t('register_terms_required'));
       setTimeout(() => {
         // 滾動到服務條款區域
         const termsSection = document.querySelector('input[name="terms"]') as HTMLInputElement | null;
@@ -245,12 +185,12 @@ export default function RegisterPage() {
     const fieldRefs: { [key: string]: React.RefObject<any> } = {};
 
     if (!selectedOrgId) {
-      errors.push(t('register_enterprise_org_label'));
+      errors.push(t('register_field_org'));
       fieldRefs['org'] = orgRef;
     }
 
     if (!role) {
-      errors.push(t('register_error_field_role'));
+      errors.push(t('register_field_identity'));
       fieldRefs['role'] = roleRef;
     }
 
@@ -265,40 +205,40 @@ export default function RegisterPage() {
     }
 
     if (!email.trim()) {
-      errors.push(t('email'));
+      errors.push('Email');
       fieldRefs['email'] = emailRef;
     }
 
     if (!password) {
-      errors.push(t('password'));
+      errors.push(t('register_field_password'));
       fieldRefs['password'] = passwordRef;
     }
 
     if (!confirmPassword) {
-      errors.push(t('register_confirm_password_label'));
+      errors.push(t('register_field_confirm_password'));
       fieldRefs['confirmPassword'] = confirmPasswordRef;
     } else if (password !== confirmPassword) {
-      errors.push(t('register_error_password_mismatch_field'));
+      errors.push(t('register_field_password_mismatch'));
       fieldRefs['confirmPassword'] = confirmPasswordRef;
     }
 
     if (!birthdate) {
-      errors.push(t('birthdate_label'));
+      errors.push(t('register_field_birthdate'));
       fieldRefs['birthdate'] = birthdateRef;
     }
 
     if (!gender) {
-      errors.push(t('gender_label'));
+      errors.push(t('register_field_gender'));
       fieldRefs['gender'] = genderRef;
     }
 
     if (!country) {
-      errors.push(t('country_label'));
+      errors.push(t('register_field_country'));
       fieldRefs['country'] = countryRef;
     }
 
     if (errors.length > 0) {
-      const errorMessage = `${t('register_error_required_fields_prefix')}\n• ${errors.join('\n• ')}`;
+      const errorMessage = `${t('register_required_fields')}\n• ${errors.join('\n• ')}`;
       setFormError(errorMessage);
 
       // Scroll to first error field or error message
@@ -316,8 +256,7 @@ export default function RegisterPage() {
       return;
     }
 
-    const timezoneName = countryTimezones[country || 'TW'] || 'UTC';
-    const times = formatLocalIso(timezoneName);
+    const times = formatLocalIso(timezoneForCountry(country || 'TW'));
 
     const payload = {
       roid_id: uuid,
@@ -348,7 +287,7 @@ export default function RegisterPage() {
       const data = await res.json();
       if (!res.ok) {
         // show server message inline instead of throwing an exception
-        const message = data?.message || t('register_error_register_failed');
+        const message = data?.message || t('register_failed');
         setFormError(message);
         // focus email for duplicate-email errors
         try {
@@ -363,204 +302,7 @@ export default function RegisterPage() {
       setTimeout(() => router.push('/login'), 900);
     } catch (err: any) {
       console.error(err);
-      setFormError(err?.message || t('save_failed'));
-    }
-  };
-
-  // Function to download sample CSV
-  const downloadSampleCSV = () => {
-    const headers = ['email', 'password', 'firstName', 'lastName', 'role', 'birthdate', 'gender', 'country'];
-    const sampleData = [
-      ['student@example.com', 'password123', 'John', 'Doe', 'student', '2000-01-01', 'male', 'TW'],
-      ['teacher@example.com', 'password456', 'Jane', 'Smith', 'teacher', '1985-05-15', 'female', 'US'],
-    ];
-
-    const csvContent = [
-      headers.join(','),
-      ...sampleData.map(row => row.join(','))
-    ].join('\n');
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-
-    link.setAttribute('href', url);
-    link.setAttribute('download', 'sample_registration.csv');
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  // Handle file selection
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (!file.name.endsWith('.csv')) {
-      setCsvError(t('register_enterprise_csv_error_invalid_file'));
-      setCsvFile(null);
-      return;
-    }
-
-    setCsvFile(file);
-    setCsvError(null);
-  };
-
-  // Parse and validate CSV
-  const handleCsvImport = async () => {
-    if (!csvFile) {
-      setCsvError(t('register_enterprise_csv_error_no_file'));
-      return;
-    }
-
-    if (!selectedOrgId) {
-      setCsvError(t('register_enterprise_csv_error_no_org'));
-      return;
-    }
-
-    try {
-      const text = await csvFile.text();
-      const lines = text.split('\n').filter(line => line.trim());
-
-      if (lines.length < 2) {
-        setCsvError(t('register_enterprise_csv_error_format'));
-        return;
-      }
-
-      const headers = lines[0].split(',').map(h => h.trim());
-      const requiredHeaders = ['email', 'password', 'firstName', 'lastName', 'role', 'birthdate', 'gender', 'country'];
-
-      const missingHeaders = requiredHeaders.filter(h => !headers.includes(h));
-      if (missingHeaders.length > 0) {
-        setCsvError(t('register_enterprise_csv_error_missing_headers').replace('{headers}', missingHeaders.join(', ')));
-        return;
-      }
-
-      const records = [];
-      const errors = [];
-
-      for (let i = 1; i < lines.length; i++) {
-        const values = lines[i].split(',').map(v => v.trim());
-        const record: any = {};
-
-        headers.forEach((header, index) => {
-          record[header] = values[index] || '';
-        });
-
-        // Validate required fields
-        const rowErrors = [];
-        if (!record.email) rowErrors.push('email');
-        if (!record.password) rowErrors.push('password');
-        if (!record.firstName) rowErrors.push('firstName');
-        if (!record.lastName) rowErrors.push('lastName');
-        if (!record.role) rowErrors.push('role');
-        if (!record.birthdate) rowErrors.push('birthdate');
-        if (!record.gender) rowErrors.push('gender');
-        if (!record.country) rowErrors.push('country');
-
-        if (rowErrors.length > 0) {
-          errors.push(t('register_enterprise_csv_row_missing_fields').replace('{row}', String(i + 1)).replace('{fields}', rowErrors.join(', ')));
-        } else {
-          records.push(record);
-        }
-      }
-
-      if (errors.length > 0) {
-        setCsvError(`${t('register_enterprise_csv_validation_failed')}\n${errors.join('\n')}`);
-        return;
-      }
-
-      // CSV 內部重複 email 偵測 — 提早擋下，避免必定發生的 409 才在中途失敗
-      const emailCounts = new Map<string, number>();
-      records.forEach((r) => {
-        const key = r.email.toLowerCase();
-        emailCounts.set(key, (emailCounts.get(key) || 0) + 1);
-      });
-      const duplicateEmails = Array.from(emailCounts.entries()).filter(([, count]) => count > 1).map(([e]) => e);
-      if (duplicateEmails.length > 0) {
-        setCsvError(`${t('register_enterprise_csv_duplicate_emails')}\n${duplicateEmails.join('\n')}`);
-        return;
-      }
-
-      // 整批前置校驗 — 用「當下」剩餘席次（重新抓取，不用掛載時的舊快照）比對整批筆數，
-      // 超過就整批拒絕，避免前面幾筆先建立、後面幾筆才失敗的半吊子狀態
-      const freshOrgs = await loadOrgs();
-      const freshOrg = freshOrgs.find((o) => o.id === selectedOrgId);
-      if (!freshOrg) {
-        setCsvError(t('register_enterprise_csv_org_gone'));
-        return;
-      }
-      if (records.length > freshOrg.availableSeats) {
-        setCsvError(
-          t('register_enterprise_csv_seats_exceeded')
-            .replace('{count}', String(records.length))
-            .replace('{orgName}', freshOrg.name)
-            .replace('{seats}', String(freshOrg.availableSeats))
-        );
-        return;
-      }
-
-      // Import records sequentially — the transactional seat-consuming assignment on the
-      // server needs to serialize anyway, and this lets us collect a per-row result.
-      const results: Array<{ email: string; ok: boolean; error?: string }> = [];
-      setCsvProgress({ done: 0, total: records.length });
-
-      for (const record of records) {
-        const timezoneName = countryTimezones[record.country] || 'UTC';
-        const times = formatLocalIso(timezoneName);
-
-        const payload = {
-          roid_id: `csv-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
-          email: record.email.toLowerCase(),
-          password: record.password,
-          firstName: record.firstName,
-          lastName: record.lastName,
-          role: record.role,
-          birthdate: record.birthdate,
-          gender: record.gender,
-          country: record.country,
-          timezone: times.timezone,
-          termsAccepted: true,
-          createdAtUtc: times.utc,
-          createdAtLocal: times.local,
-          updatedAtUtc: times.utc,
-          updatedAtLocal: times.local,
-          orgId: selectedOrgId,
-        };
-
-        try {
-          const res = await fetch('/api/register', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-          });
-          const data = await res.json();
-          results.push({ email: record.email, ok: res.ok, error: res.ok ? undefined : (data?.message || t('register_enterprise_csv_row_import_failed')) });
-        } catch (rowErr: any) {
-          results.push({ email: record.email, ok: false, error: rowErr?.message || t('register_enterprise_csv_network_error') });
-        }
-
-        setCsvProgress((prev) => (prev ? { done: prev.done + 1, total: prev.total } : prev));
-      }
-
-      const successCount = results.filter((r) => r.ok).length;
-      setCsvProgress(null);
-      setCsvSuccess({ count: successCount, results });
-      setCsvFile(null);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-      await loadOrgs();
-
-      // Redirect after 5 seconds only if everything succeeded
-      if (successCount === results.length) {
-        setTimeout(() => {
-          router.push('/login');
-        }, 5000);
-      }
-
-    } catch (err: any) {
-      setCsvProgress(null);
-      setCsvError(`${t('register_enterprise_csv_parse_failed')}${err.message}`);
+      setFormError(err?.message || t('register_save_failed'));
     }
   };
 
@@ -568,222 +310,42 @@ export default function RegisterPage() {
     <div className="page">
       <header className="page-header">
         <h1>{t('register_enterprise_title')}</h1>
-        <p>{t('register_subtitle_before')}<strong>{t('register_subtitle_bold')}</strong>{t('register_subtitle_after')}<span style={{ color: 'red' }}>*</span>{t('register_subtitle_after_asterisk')}</p>
+        <p>{t('register_subtitle')}</p>
 
-        {/* CSV Import Section */}
-        <div style={{ marginTop: 16, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".csv"
-            onChange={handleFileSelect}
-            style={{ display: 'none' }}
-          />
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            style={{
-              padding: '8px 16px',
-              borderRadius: '6px',
-              background: '#6366f1',
-              color: '#fff',
-              border: 'none',
-              cursor: 'pointer',
-              fontWeight: 600
-            }}
-          >
-            {t('register_enterprise_select_file')}
-          </button>
-          <button
-            type="button"
-            onClick={handleCsvImport}
-            disabled={!csvFile}
-            style={{
-              padding: '8px 16px',
-              borderRadius: '6px',
-              background: csvFile ? '#10b981' : '#9ca3af',
-              color: '#fff',
-              border: 'none',
-              cursor: csvFile ? 'pointer' : 'not-allowed',
-              fontWeight: 600
-            }}
-          >
-            {t('register_enterprise_import_csv')}
-          </button>
-          <button
-            type="button"
-            onClick={downloadSampleCSV}
-            style={{
-              padding: '8px 16px',
-              borderRadius: '6px',
-              background: '#f59e0b',
-              color: '#fff',
-              border: 'none',
-              cursor: 'pointer',
-              fontWeight: 600
-            }}
-          >
-            {t('register_enterprise_download_sample_csv')}
-          </button>
-          {csvFile && <span style={{ color: '#059669', fontWeight: 600 }}>✓ {csvFile.name}</span>}
-        </div>
+        {/* 批次匯入成員已移到企業管理後台（登入後 › 企業管理 › 成員分頁，
+            components/org/OrgCsvImportPanel.tsx）。這個公開頁只保留單筆自助註冊：
+            匿名者原本可用同一個 IP 每小時灌入 5 批 × 200 個帳號。 */}
+        <p style={{ marginTop: 12, fontSize: 13, color: '#6b7280' }}>{t('register_csv_moved_hint')}</p>
       </header>
-
-      {/* CSV Error Dialog */}
-      {csvError && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0,0,0,0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 9999
-        }}>
-          <div style={{
-            background: '#fff',
-            padding: 24,
-            borderRadius: 12,
-            maxWidth: 500,
-            boxShadow: '0 20px 40px rgba(0,0,0,0.3)'
-          }}>
-            <h2 style={{ color: '#dc2626', marginBottom: 16 }}>{t('register_enterprise_import_error_title')}</h2>
-            <p style={{ whiteSpace: 'pre-line', marginBottom: 20 }}>{csvError}</p>
-            <button
-              onClick={() => setCsvError(null)}
-              style={{
-                padding: '8px 16px',
-                borderRadius: '6px',
-                background: '#2563eb',
-                color: '#fff',
-                border: 'none',
-                cursor: 'pointer',
-                fontWeight: 600
-              }}
-            >
-              {t('register_enterprise_ok_button')}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* CSV Import Progress */}
-      {csvProgress && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0,0,0,0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 9999
-        }}>
-          <div style={{
-            background: '#fff',
-            padding: 24,
-            borderRadius: 12,
-            maxWidth: 400,
-            boxShadow: '0 20px 40px rgba(0,0,0,0.3)',
-            textAlign: 'center'
-          }}>
-            <p style={{ fontSize: 16, fontWeight: 600 }}>{t('register_enterprise_importing_progress').replace('{done}', String(csvProgress.done)).replace('{total}', String(csvProgress.total))}</p>
-          </div>
-        </div>
-      )}
-
-      {/* CSV Success Dialog */}
-      {csvSuccess && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0,0,0,0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 9999
-        }}>
-          <div style={{
-            background: '#fff',
-            padding: 24,
-            borderRadius: 12,
-            maxWidth: 560,
-            maxHeight: '80vh',
-            overflowY: 'auto',
-            boxShadow: '0 20px 40px rgba(0,0,0,0.3)',
-            textAlign: 'left'
-          }}>
-            <h2 style={{ color: csvSuccess.count === csvSuccess.results.length ? '#10b981' : '#f59e0b', marginBottom: 16, textAlign: 'center' }}>
-              {csvSuccess.count === csvSuccess.results.length ? t('register_enterprise_import_complete_title') : t('register_enterprise_import_partial_fail_title')}
-            </h2>
-            <p style={{ fontSize: 18, marginBottom: 12, textAlign: 'center' }}>
-              {t('register_enterprise_import_result_summary')
-                .replace('{success}', String(csvSuccess.count))
-                .replace('{fail}', String(csvSuccess.results.length - csvSuccess.count))}
-            </p>
-            {csvSuccess.results.some((r) => !r.ok) && (
-              <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: 12, marginBottom: 12 }}>
-                <p style={{ fontWeight: 600, marginBottom: 6 }}>{t('register_enterprise_fail_list_title')}</p>
-                <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13 }}>
-                  {csvSuccess.results.filter((r) => !r.ok).map((r, idx) => (
-                    <li key={idx}>{r.email}：{r.error}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            <p style={{ color: '#6b7280', textAlign: 'center' }}>
-              {csvSuccess.count === csvSuccess.results.length
-                ? t('register_enterprise_redirect_notice')
-                : t('register_enterprise_fix_and_retry_notice')}
-            </p>
-            <div style={{ textAlign: 'center', marginTop: 12 }}>
-              <button
-                onClick={() => setCsvSuccess(null)}
-                style={{ padding: '8px 16px', borderRadius: 6, background: '#2563eb', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600 }}
-              >
-                {t('dismiss')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       <section className="section">
         <div className="card">
-          <h2>{t('register_basic_info_title')}</h2>
+          <h2>{t('register_basic_info')}</h2>
           <form onSubmit={handleSubmit} className="modal-form">
             <div className="field">
-              <label>{t('register_enterprise_org_label')} <span style={{ color: 'red' }}>*</span></label>
+              <label>{t('register_org_label')} <span style={{ color: 'red' }}>*</span></label>
               <select
                 ref={orgRef}
                 value={selectedOrgId}
                 onChange={(e) => setSelectedOrgId(e.target.value)}
                 style={{ cursor: 'pointer' }}
               >
-                <option value="">{orgsLoading ? t('loading') : t('register_enterprise_select_org_placeholder')}</option>
+                <option value="">{orgsLoading ? t('loading') : t('register_org_select')}</option>
                 {orgs.map((o) => (
                   <option key={o.id} value={o.id} disabled={o.availableSeats <= 0}>
-                    {o.name}{o.availableSeats <= 0 ? t('register_enterprise_seats_full') : ` ${t('register_enterprise_seats_remaining').replace('{seats}', String(o.availableSeats))}`}
+                    {o.name}{o.availableSeats <= 0 ? t('register_org_seats_full') : t('register_org_seats_left', { count: o.availableSeats })}
                   </option>
                 ))}
               </select>
               {!orgsLoading && orgs.length === 0 && (
                 <p style={{ color: '#c33', fontSize: 13, marginTop: 4 }}>
-                  {t('register_enterprise_no_orgs_available')}
+                  {t('register_org_none')}
                 </p>
               )}
             </div>
 
             <div className="field">
-              <label>{t('register_role_label')} <span style={{ color: 'red' }}>*</span></label>
+              <label>{t('register_identity')} <span style={{ color: 'red' }}>*</span></label>
               <select
                 ref={roleRef}
                 value={role || ""}
@@ -799,7 +361,7 @@ export default function RegisterPage() {
                 }}
                 style={{ cursor: 'pointer' }}
               >
-                <option value="">{t('register_select_role_placeholder')}</option>
+                <option value="">{t('register_select_identity')}</option>
                 {roles.map((r) => (
                   <option key={r.id} value={r.id}>
                     {r.name}
@@ -820,13 +382,11 @@ export default function RegisterPage() {
             </div>
 
             <div className="field">
-              <label>{t('email')} <span style={{ color: 'red' }}>*</span></label>
+              <label>Email <span style={{ color: 'red' }}>*</span></label>
               <input ref={emailRef} type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="example@domain.com" />
               {emailDomainMismatch && (
                 <div style={{ color: '#c33', fontSize: 13, marginTop: 4, fontWeight: 'bold' }}>
-                  ⚠️ {t('register_enterprise_email_domain_mismatch')
-                    .replace('{orgName}', selectedOrg?.name || '')
-                    .replace('{domain}', selectedOrg?.domain?.replace(/^@/, '') || '')}
+                  {t('register_email_domain_mismatch', { org: selectedOrg?.name ?? '', domain: selectedOrg?.domain?.replace(/^@/, '') ?? '' })}
                 </div>
               )}
             </div>
@@ -851,7 +411,7 @@ export default function RegisterPage() {
             </div>
 
             <div className="field">
-              <label>{t('register_confirm_password_label')} <span style={{ color: 'red' }}>*</span></label>
+              <label>{t('register_confirm_password')} <span style={{ color: 'red' }}>*</span></label>
               <input
                 ref={confirmPasswordRef}
                 type={showPasswords ? 'text' : 'password'}
@@ -898,12 +458,12 @@ export default function RegisterPage() {
             </div>
 
             <div className="field" style={{ display: 'none' }}>
-              <label>{t('register_auto_id_label')}</label>
+              <label>{t('register_auto_id')}</label>
               <input
                 value={uuid}
                 readOnly
                 disabled
-                aria-label={t('register_auto_id_aria')}
+                aria-label={t('register_auto_id_locked')}
                 style={{ background: '#f3f4f6', cursor: 'not-allowed' }}
               />
             </div>
@@ -958,14 +518,14 @@ export default function RegisterPage() {
                       appearance: 'checkbox'
                     }}
                   />
-                  {t('register_terms_agree_label')}
+                  {t('register_terms_agree')}
                 </label>
               </div>
             </div>
 
             {/* Captcha Section */}
             <div className="field">
-              <label>{t('captcha_label')} <span style={{ color: "red" }}>*</span></label>
+              <label>{t('register_captcha_label')} <span style={{ color: "red" }}>*</span></label>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
                 {captchaImage ? (
                   <img src={captchaImage} alt="captcha" style={{ height: 48, border: "1px solid #ddd", borderRadius: 4 }} />
@@ -979,7 +539,7 @@ export default function RegisterPage() {
               <input
                 type="text"
                 value={captchaValue}
-                placeholder={t('register_captcha_input_placeholder')}
+                placeholder={t('register_captcha_placeholder')}
                 onChange={(e) => setCaptchaValue(e.target.value)}
                 autoComplete="off"
               />
@@ -1008,7 +568,7 @@ export default function RegisterPage() {
               <Link href="/login" className="modal-button secondary">{t('register_back_to_login')}</Link>
             </div>
 
-            {saved && <p className="form-success">{t('register_enterprise_saved_notice')}</p>}
+            {saved && <p className="form-success">{t('register_saved_simulated')}</p>}
           </form>
         </div>
       </section>

@@ -62,6 +62,28 @@ node scripts/setup-db.mjs
 
 ## Usage
 
+### Scoped runs and dry runs (read this before touching production)
+
+Without flags the script brings EVERY declared table and index up to spec. In production that
+is only safe once every declared index can be created. An index whose key attribute is still
+written as `null` by deployed code makes every write to that table fail
+(`Type mismatch for Index Key`).
+
+```bash
+# Show what would happen, change nothing
+node scripts/setup-db.mjs --only=courseSessions --dry-run
+
+# Run only the listed steps (comma separated, declaration order is kept)
+node scripts/setup-db.mjs --only=courseSessions
+```
+
+Step keys: `organizations`, `orgUnits`, `licenses`, `enrollments`, `courseSessions`,
+`planUpgrades`, `pointsEscrow`, `profiles`, `courses`. An unknown key or argument exits 1
+before any AWS call.
+
+GSI creation often takes longer than the 300 s wait, even on an empty table. The backfill keeps
+running in AWS; re-run the same command and the script waits for the index to become ACTIVE.
+
 ### Option 1: JavaScript Version (No Compilation)
 
 ```bash

@@ -4,7 +4,7 @@ description: '檢查 /teacher_courses 頁面的學生資訊、進入教室按鈕
 argument-hint: '測試並驗證 /teacher_courses 頁面的所有功能'
 metadata:
   verified-status: '✅ VERIFIED'
-  last-verified-date: '2026-03-15'
+  last-verified-date: '2026-09-11'
   architecture-aligned: true
 ---
 

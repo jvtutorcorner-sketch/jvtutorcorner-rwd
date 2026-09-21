@@ -1,12 +1,14 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { withAdminOrHmac, type AuthedRequest } from '@/lib/auth/apiGuard';
 
 export const runtime = 'nodejs';
 
 /**
  * Context7 文檔檢索 API
  * 用於從 Context7 MCP 服務中查詢特定庫的文檔
+ * 只有 workflow 引擎（HMAC 簽名）或 admin session 能呼叫 —— 先前完全沒有 auth。
  */
-export async function POST(req: NextRequest) {
+export const POST = withAdminOrHmac('/api/workflows/context7-retrieve', async (req: AuthedRequest) => {
     try {
         const { query, libraryId } = await req.json();
 
@@ -45,4 +47,4 @@ export async function POST(req: NextRequest) {
             error: error?.message || 'Context7 retrieval failed',
         }, { status: 500 });
     }
-}
+});

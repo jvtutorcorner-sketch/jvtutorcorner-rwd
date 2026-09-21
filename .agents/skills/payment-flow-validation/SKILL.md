@@ -3,8 +3,8 @@ name: payment-flow-validation
 description: '自動化驗證點數與方案（訂閱/組合包）購買流程，包含模擬支付、真實支付跳轉、點數扣除邏輯與餘額同步。'
 argument-hint: '執行點數或方案購買流程測試 (模擬 vs 真實)'
 metadata:
-  verified-status: '✅ VERIFIED'
-  last-verified-date: '2026-04-06'
+  verified-status: '⚠️ PARTIAL'
+  last-verified-date: '2026-09-11'
   architecture-aligned: true
 ---
 
