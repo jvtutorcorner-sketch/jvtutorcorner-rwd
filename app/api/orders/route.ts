@@ -3,7 +3,8 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, PutCommand, ScanCommand, QueryCommand, GetCommand, DeleteCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { randomUUID } from 'crypto';
 import { COURSES } from '@/data/courses';
-import { deductUserPoints } from '@/lib/pointsStorage';
+import { deductUserPoints, applyPointsDelta } from '@/lib/pointsStorage';
+import { hasPlanAccess } from '@/lib/planAccess';
 import { createEscrow } from '@/lib/pointsEscrow';
 import { withAuth, withAdmin, AuthedRequest } from '@/lib/auth/apiGuard';
 import { writeAuditLog } from '@/lib/auditLogService';
@@ -53,6 +54,7 @@ async function handlePost(request: AuthedRequest) {
     let courseEndTime = '';
     let coursePointCost = 0;
     let courseTeacherId = '';
+    let courseRequiredPlan = '';
 
     try {
       if (courseId) {
@@ -64,6 +66,7 @@ async function handlePost(request: AuthedRequest) {
           totalSessions = res.Item.totalSessions || 1;
           courseTitle = res.Item.title || '';
           coursePointCost = Number(res.Item.pointCost) || 0;
+          courseRequiredPlan = res.Item.requiredPlan || '';
           courseTeacherId = res.Item.teacherId || res.Item.teacherEmail || '';
           courseTeacherName = res.Item.teacherName || '';
           courseStartDate = res.Item.startDate || res.Item.nextStartDate || '';
@@ -75,6 +78,7 @@ async function handlePost(request: AuthedRequest) {
           totalSessions = course?.totalSessions || 1;
           courseTitle = course?.title || '';
           coursePointCost = Number((course as any)?.pointCost) || 0;
+          courseRequiredPlan = (course as any)?.requiredPlan || '';
           courseTeacherId = (course as any)?.teacherId || (course as any)?.teacherEmail || '';
           courseTeacherName = (course as any)?.teacherName || '';
           courseStartDate = (course as any)?.startDate || '';
@@ -84,6 +88,18 @@ async function handlePost(request: AuthedRequest) {
       }
     } catch (e) {
       console.warn('[orders API] Failed to fetch course data:', e);
+    }
+
+    // 🔒 Server-side plan entitlement (the client check in EnrollButton is UX-only
+    // and bypassable). Only gates courses that declare a requiredPlan; admins /
+    // teachers / system are exempt. Courses without requiredPlan are ungated.
+    if (courseRequiredPlan && !['admin', 'teacher', 'system'].includes(request.session.role)) {
+      if (!hasPlanAccess(request.session.plan, courseRequiredPlan)) {
+        return NextResponse.json(
+          { ok: false, error: `此課程需要 ${courseRequiredPlan} 方案`, requiredPlan: courseRequiredPlan },
+          { status: 403 }
+        );
+      }
     }
 
     // 🟢 Point Deduction Logic (server-authoritative: use coursePointCost from DB, not client-provided value)
@@ -97,7 +113,16 @@ async function handlePost(request: AuthedRequest) {
 
     if (paymentMethod === 'points') {
       if (effectivePointsToDeduct > 0) {
-        const deductResult = await deductUserPoints(userId, effectivePointsToDeduct);
+        // Atomic deduct + ledger row (type enroll_hold), keyed on orderId so a
+        // retried enrollment POST can't double-charge the student.
+        const deductResult = await applyPointsDelta({
+          userId,
+          amount: -effectivePointsToDeduct,
+          type: 'enroll_hold',
+          refType: 'order',
+          refId: orderId,
+          idempotencyKey: `enroll:${orderId}`,
+        });
         if (!deductResult.ok) {
           return NextResponse.json({
             error: deductResult.error,

@@ -161,6 +161,10 @@ const nextConfig: any = {
     DYNAMODB_TABLE_ORG_UNITS: process.env.DYNAMODB_TABLE_ORG_UNITS || 'jvtutorcorner-org-units',
     DYNAMODB_TABLE_LICENSES: process.env.DYNAMODB_TABLE_LICENSES || 'jvtutorcorner-licenses',
     DYNAMODB_TABLE_ORG_INVOICES: process.env.DYNAMODB_TABLE_ORG_INVOICES || 'jvtutorcorner-org-invoices',
+    // Billing foundation (Phase 0b): point ledger + AI/RTC cost meter.
+    DYNAMODB_TABLE_POINT_TRANSACTIONS: process.env.DYNAMODB_TABLE_POINT_TRANSACTIONS || 'jvtutorcorner-point-transactions',
+    DYNAMODB_TABLE_AI_USAGE_LEDGER: process.env.DYNAMODB_TABLE_AI_USAGE_LEDGER || 'jvtutorcorner-ai-usage-ledger',
+    DYNAMODB_TABLE_COST_ROLLUPS: process.env.DYNAMODB_TABLE_COST_ROLLUPS || 'jvtutorcorner-cost-rollups',
     // Auth & HMAC Secrets
     // ⚠️ 絕對不要在此加上 `|| '<字串>'` 的 fallback：
     //    偽造的 HMAC 會讓 withAnyAuth 直接發出 role:'system' 的 session（等同完整後台權限）。

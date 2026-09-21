@@ -152,6 +152,55 @@ export const TABLES = {
     ],
     stream: false,
   },
+
+  // Append-only point ledger. Every balance mutation writes one row here in the
+  // same transaction as the user-points update, so a balance can always be
+  // reconstructed and reconciled. See lib/pointsLedger.ts.
+  pointTransactions: {
+    envVar: 'DYNAMODB_TABLE_POINT_TRANSACTIONS',
+    defaultName: 'jvtutorcorner-point-transactions',
+    label: 'PointTransactions',
+    purpose: 'Points-Ledger',
+    partitionKey: 'userId',
+    sortKey: 'sk', // `${createdAt}#${txId}`
+    attributes: { userId: S, sk: S, refId: S },
+    // byRef: look up every ledger row for an order/escrow/reservation.
+    indexes: [{ name: 'byRef', hash: 'refId' }],
+    stream: false,
+  },
+
+  // Per-request AI/RTC usage ledger (cost meter). Written by the AI Gateway
+  // (Phase 2) and the RTC cost meter (Phase 1). Amounts are integer micro-USD.
+  aiUsageLedger: {
+    envVar: 'DYNAMODB_TABLE_AI_USAGE_LEDGER',
+    defaultName: 'jvtutorcorner-ai-usage-ledger',
+    label: 'AiUsageLedger',
+    purpose: 'AI-Usage-Ledger',
+    partitionKey: 'pk', // date bucket `yyyy-mm-dd` (or `tenant#yyyy-mm-dd`)
+    sortKey: 'sk', // `${ts}#${requestId}`
+    attributes: { pk: S, sk: S, sessionId: S, userId: S, tenantMonth: S },
+    indexes: [
+      { name: 'bySession', hash: 'sessionId' },
+      { name: 'byUser', hash: 'userId', range: 'sk' },
+      { name: 'byTenantMonth', hash: 'tenantMonth' },
+    ],
+    stream: false,
+  },
+
+  // Pre-aggregated cost counters (per lesson/tenant/teacher/course/student/
+  // feature/global). Updated with atomic ADD in the same transaction as the
+  // ledger write, so dashboards and per-lesson budget checks read one item
+  // instead of scanning the ledger.
+  costRollups: {
+    envVar: 'DYNAMODB_TABLE_COST_ROLLUPS',
+    defaultName: 'jvtutorcorner-cost-rollups',
+    label: 'CostRollups',
+    purpose: 'Cost-Rollups',
+    partitionKey: 'scopeKey', // e.g. LESSON#<id> | TENANT#<id>#yyyymm | GLOBAL#yyyymm
+    attributes: { scopeKey: S },
+    indexes: [],
+    stream: false,
+  },
 };
 
 /**

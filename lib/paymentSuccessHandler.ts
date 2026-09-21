@@ -11,7 +11,7 @@
 
 import { ddbDocClient } from '@/lib/dynamo';
 import { GetCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
-import { getUserPoints, setUserPoints } from '@/lib/pointsStorage';
+import { getUserPoints, setUserPoints, applyPointsDelta } from '@/lib/pointsStorage';
 import { assertPlanId, classifyCatalogueId } from '@/lib/plans';
 
 const ORDERS_TABLE = process.env.DYNAMODB_TABLE_ORDERS || 'jvtutorcorner-orders';
@@ -138,14 +138,23 @@ export async function handlePaymentSuccess(
 
     if (itemType === 'POINTS' && pointsAmount > 0) {
       try {
-        // 🟢 直接調用庫函數，避免認證問題
-        const currentPoints = await getUserPoints(userId);
-        const newBalance = currentPoints + pointsAmount;
-        
-        await setUserPoints(userId, newBalance);
+        // Atomic credit + ledger row, keyed on orderId so a re-run of the
+        // handler (webhook retry) can never double-credit the purchase.
+        const res = await applyPointsDelta({
+          userId,
+          amount: pointsAmount,
+          type: 'purchase',
+          refType: 'order',
+          refId: orderId,
+          idempotencyKey: `purchase:${orderId}`,
+        });
+        if (!res.ok) {
+          const errMsg = `Error adding points: ${res.error}`;
+          console.error(`[Payment Success Handler] ${errMsg}`);
+          return { ok: false, error: errMsg };
+        }
         pointsAdded = pointsAmount;
-        
-        console.log(`[Payment Success Handler] Successfully added ${pointsAdded} points to ${userId} (${currentPoints} -> ${newBalance})`);
+        console.log(`[Payment Success Handler] Credited ${pointsAdded} points to ${userId} (new balance: ${res.newBalance}${res.duplicate ? ', duplicate no-op' : ''})`);
       } catch (err: any) {
         const errMsg = `Error adding points: ${err.message}`;
         console.error(`[Payment Success Handler] ${errMsg}`, err);

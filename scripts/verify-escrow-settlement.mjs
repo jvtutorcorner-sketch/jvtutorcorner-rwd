@@ -33,13 +33,19 @@ process.env.AWS_SECRET_ACCESS_KEY = 'verify-escrow-fake';
 process.env.AWS_REGION = process.env.AWS_REGION || 'ap-northeast-1';
 process.env.DYNAMODB_TABLE_POINTS_ESCROW = 'verify-escrow-table';
 process.env.DYNAMODB_TABLE_USER_POINTS = 'verify-points-table';
+process.env.DYNAMODB_TABLE_POINT_TRANSACTIONS = 'verify-point-tx-table';
 
 const ESCROW_TABLE = 'verify-escrow-table';
 const POINTS_TABLE = 'verify-points-table';
+const POINT_TX_TABLE = 'verify-point-tx-table';
 
 // ── 假 DynamoDB ──────────────────────────────────────────────────────────────
 const tables = new Map(); // tableName -> Map(keyJson -> item)
 const keyOf = (key) => JSON.stringify(Object.entries(key).sort());
+// Key-field extraction so a Put (whose input is a full item) resolves to the same
+// key string as an Update (whose input is a key object).
+const KEY_FIELDS = { [ESCROW_TABLE]: ['escrowId'], [POINTS_TABLE]: ['userId'], [POINT_TX_TABLE]: ['userId', 'sk'] };
+const keyFromItem = (name, item) => keyOf(Object.fromEntries((KEY_FIELDS[name] ?? ['userId']).map((k) => [k, item[k]])));
 const table = (name) => {
   if (!tables.has(name)) tables.set(name, new Map());
   return tables.get(name);
@@ -103,9 +109,7 @@ async function fakeSend(cmd) {
   }
 
   if (kind === 'PutCommand') {
-    const keyFields = input.TableName === ESCROW_TABLE ? ['escrowId'] : ['userId'];
-    const key = Object.fromEntries(keyFields.map((k) => [k, input.Item[k]]));
-    table(input.TableName).set(keyOf(key), clone(input.Item));
+    table(input.TableName).set(keyFromItem(input.TableName, input.Item), clone(input.Item));
     return {};
   }
 
@@ -127,10 +131,11 @@ async function fakeSend(cmd) {
     const items = input.TransactItems ?? [];
     // 原子性：先同步檢查全部條件，再同步套用全部更新（中間沒有 await）
     const reasons = items.map((entry) => {
-      const u = entry.Update;
-      if (!u) throw new Error('fake ddb: only Update is supported inside TransactWrite');
-      const current = table(u.TableName).get(keyOf(u.Key));
-      const ok = checkCondition(current, u.ConditionExpression, u.ExpressionAttributeNames, u.ExpressionAttributeValues);
+      const op = entry.Update || entry.Put;
+      if (!op) throw new Error('fake ddb: only Update/Put supported inside TransactWrite');
+      const k = entry.Put ? keyFromItem(op.TableName, op.Item) : keyOf(op.Key);
+      const current = table(op.TableName).get(k);
+      const ok = checkCondition(current, op.ConditionExpression, op.ExpressionAttributeNames, op.ExpressionAttributeValues);
       return { Code: ok ? 'None' : 'ConditionalCheckFailed' };
     });
     if (reasons.some((r) => r.Code !== 'None')) {
@@ -140,6 +145,10 @@ async function fakeSend(cmd) {
       throw err;
     }
     for (const entry of items) {
+      if (entry.Put) {
+        table(entry.Put.TableName).set(keyFromItem(entry.Put.TableName, entry.Put.Item), clone(entry.Put.Item));
+        continue;
+      }
       const u = entry.Update;
       const t = table(u.TableName);
       const k = keyOf(u.Key);

@@ -216,9 +216,9 @@ check('--dry-run=false 被拒（不會靜默變成套用）', throws(() => parse
 check('unknownArgs 抓到拼錯的旗標', eq(unknownArgs(['--only=x', '--dryrun', 'foo']), ['--dryrun', 'foo']));
 
 const allSel = selectSteps(null, fake);
-check('null → 全部 10 步、順序不變', allSel.selected.length === 10 && eq(allSel.selected.map((s) => s.key), STEP_KEYS) && allSel.skipped.length === 0);
+check('null → 全部 13 步、順序不變', allSel.selected.length === 13 && eq(allSel.selected.map((s) => s.key), STEP_KEYS) && allSel.skipped.length === 0);
 const one = selectSteps(['courseSessions'], fake);
-check('courseSessions → 1 步、9 步略過', eq(one.selected.map((s) => s.key), ['courseSessions']) && one.skipped.length === 9);
+check('courseSessions → 1 步、12 步略過', eq(one.selected.map((s) => s.key), ['courseSessions']) && one.skipped.length === 12);
 const two = selectSteps(['pointsEscrow', 'courseSessions'], fake);
 check('多個 key 保持宣告順序', eq(two.selected.map((s) => s.key), ['courseSessions', 'pointsEscrow']));
 check('大小寫不敏感 + 去重', eq(selectSteps(['COURSESESSIONS', 'courseSessions'], fake).selected.map((s) => s.key), ['courseSessions']));

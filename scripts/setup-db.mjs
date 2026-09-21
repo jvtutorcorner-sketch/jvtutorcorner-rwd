@@ -18,6 +18,7 @@
  *   node scripts/setup-db.mjs --only=courseSessions --dry-run  # report, change nothing
  *
  *   Step keys: organizations, orgUnits, licenses, enrollments, courseSessions, classSummaries,
+ *              pointTransactions, aiUsageLedger, costRollups,
  *              planUpgrades, pointsEscrow, profiles, courses
  *
  *   Use --only whenever some declared index must NOT be created yet. An index on
@@ -386,6 +387,9 @@ async function main() {
     { key: 'classSummaries', name: 'Class Summaries Table', fn: () => ensureTable(TABLES.classSummaries) },
     { key: 'planUpgrades', name: 'Plan Upgrades Table', fn: () => ensureTable(TABLES.planUpgrades) },
     { key: 'pointsEscrow', name: 'Points Escrow Table', fn: () => ensureTable(TABLES.pointsEscrow) },
+    { key: 'pointTransactions', name: 'Point Transactions Table', fn: () => ensureTable(TABLES.pointTransactions) },
+    { key: 'aiUsageLedger', name: 'AI Usage Ledger Table', fn: () => ensureTable(TABLES.aiUsageLedger) },
+    { key: 'costRollups', name: 'Cost Rollups Table', fn: () => ensureTable(TABLES.costRollups) },
     {
       key: 'profiles',
       name: 'Profiles Table Indexes',

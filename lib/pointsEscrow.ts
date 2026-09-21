@@ -9,11 +9,29 @@
 import { GetCommand, PutCommand, UpdateCommand, ScanCommand, QueryCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 import { randomUUID } from 'crypto';
 import { ddbDocClient } from '@/lib/dynamo';
-import { getUserPoints, addUserPoints, POINTS_TABLE, useDynamoForPoints } from '@/lib/pointsStorage';
+import { getUserPoints, addUserPoints, applyPointsDelta, POINTS_TABLE, useDynamoForPoints } from '@/lib/pointsStorage';
+import { POINT_TX_TABLE, buildLedgerItem } from '@/lib/pointsLedger';
 import { resolveCanonicalTeacherId } from '@/lib/teacherIdentity';
 
 export const ESCROW_TABLE =
   process.env.DYNAMODB_TABLE_POINTS_ESCROW || 'jvtutorcorner-points-escrow';
+
+// The account that accrues the platform's commission (in the same user-points
+// table). Its balance is platform revenue in points, not a real user.
+export const PLATFORM_REVENUE_ACCOUNT_ID =
+  process.env.PLATFORM_REVENUE_ACCOUNT_ID || 'platform-revenue';
+
+/**
+ * Platform commission rate applied to a release (0–1). Default 0 → the teacher
+ * keeps 100% (current behaviour). Set PLATFORM_FEE_RATE=0.30 to take 30%.
+ * Kept as an env switch so activating commission is a config change, not a code
+ * change; can later move to the pricing config for live editing.
+ */
+export function getPlatformFeeRate(): number {
+  const raw = Number.parseFloat(process.env.PLATFORM_FEE_RATE ?? '0');
+  if (!Number.isFinite(raw) || raw <= 0) return 0;
+  return Math.min(raw, 1);
+}
 
 export const useDynamoForEscrow =
   typeof ESCROW_TABLE === 'string' &&
@@ -273,33 +291,64 @@ async function settleEscrow(escrowId: string, target: SettleTarget): Promise<Set
     return { ok: false, error: `Escrow ${escrowId} has invalid points: ${String(record.points)}` };
   }
 
+  // Commission split (RELEASED only). Default rate 0 → platformAmount 0 →
+  // payee gets 100%, identical to the pre-commission behaviour.
+  const feeRate = target === 'RELEASED' ? getPlatformFeeRate() : 0;
+  const platformAmount = feeRate > 0 ? Math.round(record.points * feeRate) : 0;
+  const payeeAmount = record.points - platformAmount;
+  const ledgerType: 'escrow_release' | 'refund' = target === 'RELEASED' ? 'escrow_release' : 'refund';
+  const payeeLeg = buildLedgerItem(
+    { userId: payeeId, amount: payeeAmount, type: ledgerType, refType: 'escrow', refId: escrowId, idempotencyKey: `${target}:${escrowId}` },
+    settlementToken,
+    now
+  );
+  const feeLeg = buildLedgerItem(
+    { userId: PLATFORM_REVENUE_ACCOUNT_ID, amount: platformAmount, type: 'platform_fee', refType: 'escrow', refId: escrowId, idempotencyKey: `fee:${escrowId}` },
+    `${settlementToken}-fee`,
+    now
+  );
+
   if (useDynamoForEscrow && useDynamoForPoints) {
-    try {
-      await ddbDocClient.send(
-        new TransactWriteCommand({
-          TransactItems: [
-            {
-              Update: {
-                TableName: ESCROW_TABLE,
-                Key: { escrowId },
-                UpdateExpression: `SET #status = :s, ${stampField} = :at, updatedAt = :at, settlementToken = :tok`,
-                ConditionExpression: '#status = :holding',
-                ExpressionAttributeNames: { '#status': 'status' },
-                ExpressionAttributeValues: { ':s': target, ':at': now, ':holding': 'HOLDING', ':tok': settlementToken },
-              },
-            },
-            {
-              Update: {
-                TableName: POINTS_TABLE,
-                Key: { userId: payeeId },
-                UpdateExpression: 'ADD #bal :pts SET updatedAt = :at',
-                ExpressionAttributeNames: { '#bal': 'balance' },
-                ExpressionAttributeValues: { ':pts': record.points, ':at': now },
-              },
-            },
-          ],
-        })
+    // The escrow status flip (HOLDING→target, guarded) is the idempotency gate
+    // for the whole transaction, so the ledger legs never double-write.
+    const transactItems: object[] = [
+      {
+        Update: {
+          TableName: ESCROW_TABLE,
+          Key: { escrowId },
+          UpdateExpression: `SET #status = :s, ${stampField} = :at, updatedAt = :at, settlementToken = :tok`,
+          ConditionExpression: '#status = :holding',
+          ExpressionAttributeNames: { '#status': 'status' },
+          ExpressionAttributeValues: { ':s': target, ':at': now, ':holding': 'HOLDING', ':tok': settlementToken },
+        },
+      },
+      {
+        Update: {
+          TableName: POINTS_TABLE,
+          Key: { userId: payeeId },
+          UpdateExpression: 'ADD #bal :pts SET updatedAt = :at',
+          ExpressionAttributeNames: { '#bal': 'balance' },
+          ExpressionAttributeValues: { ':pts': payeeAmount, ':at': now },
+        },
+      },
+      { Put: { TableName: POINT_TX_TABLE, Item: payeeLeg } },
+    ];
+    if (platformAmount > 0) {
+      transactItems.push(
+        {
+          Update: {
+            TableName: POINTS_TABLE,
+            Key: { userId: PLATFORM_REVENUE_ACCOUNT_ID },
+            UpdateExpression: 'ADD #bal :pts SET updatedAt = :at',
+            ExpressionAttributeNames: { '#bal': 'balance' },
+            ExpressionAttributeValues: { ':pts': platformAmount, ':at': now },
+          },
+        },
+        { Put: { TableName: POINT_TX_TABLE, Item: feeLeg } }
       );
+    }
+    try {
+      await ddbDocClient.send(new TransactWriteCommand({ TransactItems: transactItems }));
     } catch (err) {
       if (!isConditionalCancel(err)) throw err;
       const latest = await getEscrow(escrowId);
@@ -324,7 +373,11 @@ async function settleEscrow(escrowId: string, target: SettleTarget): Promise<Set
       return { ok: false, error: `Escrow ${escrowId} is already ${current?.status ?? 'settled'}` };
     }
     LOCAL_ESCROW[escrowId] = { ...current, status: target, [stampField]: now, updatedAt: now };
-    const payeeNewBalance = await addUserPoints(payeeId, record.points);
+    const payeeRes = await applyPointsDelta({ userId: payeeId, amount: payeeAmount, type: ledgerType, refType: 'escrow', refId: escrowId, idempotencyKey: `${target}:${escrowId}` });
+    if (platformAmount > 0) {
+      await applyPointsDelta({ userId: PLATFORM_REVENUE_ACCOUNT_ID, amount: platformAmount, type: 'platform_fee', refType: 'escrow', refId: escrowId, idempotencyKey: `fee:${escrowId}` });
+    }
+    const payeeNewBalance = payeeRes.ok ? payeeRes.newBalance : await getUserPoints(payeeId);
     return { ok: true, payeeId, points: record.points, payeeNewBalance };
   }
 
@@ -348,7 +401,8 @@ async function settleEscrow(escrowId: string, target: SettleTarget): Promise<Set
     }
     throw err;
   }
-  const payeeNewBalance = await addUserPoints(payeeId, record.points);
+  const payeeNewBalance = await addUserPoints(payeeId, payeeAmount);
+  if (platformAmount > 0) await addUserPoints(PLATFORM_REVENUE_ACCOUNT_ID, platformAmount);
   return { ok: true, payeeId, points: record.points, payeeNewBalance };
 }
 

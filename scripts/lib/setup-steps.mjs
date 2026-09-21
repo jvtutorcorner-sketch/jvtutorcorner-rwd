@@ -22,6 +22,9 @@ export const STEP_KEYS = Object.freeze([
   'classSummaries',
   'planUpgrades',
   'pointsEscrow',
+  'pointTransactions',
+  'aiUsageLedger',
+  'costRollups',
   'profiles',
   'courses',
 ]);
