@@ -154,6 +154,13 @@ const nextConfig: any = {
     DYNAMODB_TABLE_WHITEBOARD_PERMISSIONS: process.env.DYNAMODB_TABLE_WHITEBOARD_PERMISSIONS || 'jvtutorcorner-whiteboard-permissions',
     DYNAMODB_TABLE_AGORA_LOGS: process.env.DYNAMODB_TABLE_AGORA_LOGS || 'jvtutorcorner-agora-logs',
     DYNAMODB_TABLE_CALENDAR_REMINDERS: process.env.DYNAMODB_TABLE_CALENDAR_REMINDERS || 'jvtutorcorner-calendar-reminders',
+    // Platform reconciliation (integration/b2b-security-merge): new tables.
+    DYNAMODB_TABLE_COURSE_SESSIONS: process.env.DYNAMODB_TABLE_COURSE_SESSIONS || 'jvtutorcorner-course-sessions',
+    DYNAMODB_TABLE_CLASS_SUMMARIES: process.env.DYNAMODB_TABLE_CLASS_SUMMARIES || 'jvtutorcorner-class-summaries',
+    DYNAMODB_TABLE_ORGANIZATIONS: process.env.DYNAMODB_TABLE_ORGANIZATIONS || 'jvtutorcorner-organizations',
+    DYNAMODB_TABLE_ORG_UNITS: process.env.DYNAMODB_TABLE_ORG_UNITS || 'jvtutorcorner-org-units',
+    DYNAMODB_TABLE_LICENSES: process.env.DYNAMODB_TABLE_LICENSES || 'jvtutorcorner-licenses',
+    DYNAMODB_TABLE_ORG_INVOICES: process.env.DYNAMODB_TABLE_ORG_INVOICES || 'jvtutorcorner-org-invoices',
     // Auth & HMAC Secrets
     // ⚠️ 絕對不要在此加上 `|| '<字串>'` 的 fallback：
     //    偽造的 HMAC 會讓 withAnyAuth 直接發出 role:'system' 的 session（等同完整後台權限）。

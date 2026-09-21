@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { withAuth, type AuthedRequest } from '@/lib/auth/apiGuard';
 
 const LOCALE_NAMES: Record<string, string> = {
   'zh-TW': 'Traditional Chinese (Taiwan)',
@@ -9,7 +10,9 @@ const LOCALE_NAMES: Record<string, string> = {
 
 const MAX_LENGTH = 2000;
 
-export async function POST(req: Request) {
+export const POST = withAuth(postHandler);
+
+async function postHandler(req: AuthedRequest) {
   try {
     const { text, targetLocale } = await req.json();
 
