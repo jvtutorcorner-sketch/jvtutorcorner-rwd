@@ -3,6 +3,7 @@ import { listPublishedCourses, type CourseRecord } from '@/app/courses/_data';
 import { listPublicTeachers, type TeacherRecord } from '@/app/teachers/_data';
 import { pageOpenGraph } from '@/lib/seo';
 import { getCarouselImages } from '@/lib/carousel-db';
+import { getHomepageSettings } from '@/lib/homepageSettingsService';
 import ClientHomePage from './ClientHomePage';
 
 // Server Component。首頁內容以真實課程/老師為主，可短期快取。
@@ -31,10 +32,11 @@ function courseRecency(c: CourseRecord): number {
 }
 
 export default async function HomePage() {
-  const [courses, teachers, carouselImages] = await Promise.all([
+  const [courses, teachers, carouselImages, homepageSettings] = await Promise.all([
     listPublishedCourses(),
     listPublicTeachers(),
     getCarouselImages(),
+    getHomepageSettings(),
   ]);
 
   // 熱門課程：有人報名 → 依報名數；全為 0 → 依最新上架，並改用「最新課程」標題
@@ -81,6 +83,7 @@ export default async function HomePage() {
       categories={categories}
       coursesHeading={coursesHeading}
       initialCarouselImages={carouselImages.map((img) => img.url)}
+      showRecommendations={homepageSettings.showRecommendations}
     />
   );
 }

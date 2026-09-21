@@ -64,6 +64,9 @@ type DynamoPreviewData = {
 export default function AdminSettingsPage() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [saving, setSaving] = useState(false);
+  const [homepageShowRecommendations, setHomepageShowRecommendations] = useState(true);
+  const [homepageSaving, setHomepageSaving] = useState(false);
+  const [homepageMsg, setHomepageMsg] = useState<string | null>(null);
   const [selectedMenuRows, setSelectedMenuRows] = useState<string[]>([]);
   const [selectedDropdownRows, setSelectedDropdownRows] = useState<string[]>([]);
   const [selectedPageRows, setSelectedPageRows] = useState<string[]>([]);
@@ -172,7 +175,44 @@ export default function AdminSettingsPage() {
   useEffect(() => {
     loadSettings();
     loadRoles();
+    loadHomepageSettings();
   }, []);
+
+  async function loadHomepageSettings() {
+    try {
+      const res = await fetch('/api/admin/homepage-settings');
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        setHomepageShowRecommendations(!!data.settings?.showRecommendations);
+      }
+    } catch (error) {
+      console.error('Failed to load homepage settings:', error);
+    }
+  }
+
+  async function saveHomepageSettings(nextValue: boolean) {
+    setHomepageSaving(true);
+    setHomepageMsg(null);
+    try {
+      const res = await fetch('/api/admin/homepage-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ showRecommendations: nextValue }),
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.ok) {
+        setHomepageShowRecommendations(nextValue);
+        setHomepageMsg('已儲存');
+      } else {
+        setHomepageMsg('儲存失敗：' + (data?.error || res.statusText || '未知錯誤'));
+      }
+    } catch (err: any) {
+      setHomepageMsg('網路錯誤：' + (err?.message || String(err)));
+    } finally {
+      setHomepageSaving(false);
+      setTimeout(() => setHomepageMsg(null), 3000);
+    }
+  }
 
   async function loadSettings() {
     try {
@@ -402,6 +442,29 @@ export default function AdminSettingsPage() {
       <section style={{ marginTop: 12 }}>
         <h2>Page 基本設定</h2>
         <PageSettings settings={settings} setSettings={setSettings} roles={roles} />
+      </section>
+
+      <section style={{ marginTop: 24, border: '1px solid #ddd', padding: '16px', borderRadius: '8px', backgroundColor: '#f0f7ff' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <h3 style={{ margin: 0 }}>首頁設定</h3>
+            <p style={{ color: '#666', fontSize: '14px', margin: '4px 0 0 0' }}>控制首頁「個人化推薦」區塊是否顯示。</p>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <input
+                type="checkbox"
+                checked={homepageShowRecommendations}
+                disabled={homepageSaving}
+                onChange={(e) => saveHomepageSettings(e.target.checked)}
+              />
+              顯示個人化推薦區塊
+            </label>
+            {homepageMsg && (
+              <span style={{ color: homepageMsg.startsWith('已儲存') ? '#0b6' : '#c00', fontSize: '13px' }}>{homepageMsg}</span>
+            )}
+          </div>
+        </div>
       </section>
 
       <section style={{ marginTop: 24, border: '1px solid #ddd', padding: '16px', borderRadius: '8px', backgroundColor: '#f0f7ff' }}>

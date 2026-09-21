@@ -29,6 +29,8 @@ interface ClientHomePageProps {
   coursesHeading: 'popular' | 'latest';
   /** 後台 /carousel 上傳的 Hero 輪播圖網址；空陣列時 Hero 改用純 CSS 的 ClassroomMock。 */
   initialCarouselImages?: string[];
+  /** 後台 /admin/settings 控制的開關；關閉時不渲染個人化推薦區塊、也不打 /api/recommendations。 */
+  showRecommendations?: boolean;
 }
 
 export default function ClientHomePage({
@@ -37,6 +39,7 @@ export default function ClientHomePage({
   categories,
   coursesHeading,
   initialCarouselImages = [],
+  showRecommendations = true,
 }: ClientHomePageProps) {
   const t = useT();
   const [user, setUser] = useState<StoredUser | null>(null);
@@ -81,7 +84,7 @@ export default function ClientHomePage({
       setShowUserQuestionnaire(true);
     }
 
-    fetchRecommendations(u?.id);
+    if (showRecommendations) fetchRecommendations(u?.id);
 
     // ── Guest idle detection (3 min) ──────────────────────────────────────────
     if (ONBOARDING_ENABLED && !u) {
@@ -173,7 +176,7 @@ export default function ClientHomePage({
           mode="lite"
           onComplete={() => {
             setShowGuestQuestionnaire(false);
-            fetchRecommendations(undefined);
+            if (showRecommendations) fetchRecommendations(undefined);
           }}
           onSkip={() => setShowGuestQuestionnaire(false)}
         />
@@ -185,7 +188,7 @@ export default function ClientHomePage({
           userId={user.id || user.roid_id}
           onComplete={() => {
             setShowUserQuestionnaire(false);
-            fetchRecommendations(user.id || user.roid_id);
+            if (showRecommendations) fetchRecommendations(user.id || user.roid_id);
           }}
           onSkip={() => setShowUserQuestionnaire(false)}
         />
@@ -297,44 +300,46 @@ export default function ClientHomePage({
         </div>
       </section>
 
-      {/* ── 4. Personalised recommendations (keep #tour-recommendation) ─── */}
-      <section className="section-light" id="tour-recommendation">
-        <div className="section-container">
-          <div className="section-header-enhanced">
-            <div>
-              <h2 className="section-title-large">
-                {user
-                  ? `${userName}${t('personalized_recommendations_user_suffix')}`
-                  : t('personalized_recommendations_guest')}
-              </h2>
-              <p className="section-subtitle">{t('recommendations_subtitle')}</p>
+      {/* ── 4. Personalised recommendations (keep #tour-recommendation); admin-controlled via /admin/settings ─── */}
+      {showRecommendations && (
+        <section className="section-light" id="tour-recommendation">
+          <div className="section-container">
+            <div className="section-header-enhanced">
+              <div>
+                <h2 className="section-title-large">
+                  {user
+                    ? `${userName}${t('personalized_recommendations_user_suffix')}`
+                    : t('personalized_recommendations_guest')}
+                </h2>
+                <p className="section-subtitle">{t('recommendations_subtitle')}</p>
+              </div>
+              {!user ? (
+                <Link href="/login/register" className="section-link-cta">
+                  {t('create_account_for_recommendations')}
+                </Link>
+              ) : (
+                <button className="section-link-cta" onClick={() => setShowUserQuestionnaire(true)} id="tour-questionnaire-btn">
+                  {t('update_learning_preferences_arrow')}
+                </button>
+              )}
             </div>
-            {!user ? (
-              <Link href="/login/register" className="section-link-cta">
-                {t('create_account_for_recommendations')}
-              </Link>
+            {recsLoading ? (
+              <div className="loading-state">
+                <div className="loading-spinner"></div>
+                <p>{t('loading_recommendations')}</p>
+              </div>
+            ) : displayRecs.length > 0 ? (
+              <div className="card-grid card-grid--scroll">
+                {displayRecs.slice(0, 3).map((course) => (
+                  <CourseCard key={course.id} course={course} className="card-personalized" />
+                ))}
+              </div>
             ) : (
-              <button className="section-link-cta" onClick={() => setShowUserQuestionnaire(true)} id="tour-questionnaire-btn">
-                {t('update_learning_preferences_arrow')}
-              </button>
+              <p className="home-empty">{t('home_courses_empty')}</p>
             )}
           </div>
-          {recsLoading ? (
-            <div className="loading-state">
-              <div className="loading-spinner"></div>
-              <p>{t('loading_recommendations')}</p>
-            </div>
-          ) : displayRecs.length > 0 ? (
-            <div className="card-grid card-grid--scroll">
-              {displayRecs.slice(0, 3).map((course) => (
-                <CourseCard key={course.id} course={course} className="card-personalized" />
-              ))}
-            </div>
-          ) : (
-            <p className="home-empty">{t('home_courses_empty')}</p>
-          )}
-        </div>
-      </section>
+        </section>
+      )}
 
       {/* ── 5. Featured teachers ────────────────────────────────── */}
       {teachers.length > 0 && (
