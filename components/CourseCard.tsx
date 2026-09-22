@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useT } from './IntlProvider';
 import { subjectKey } from '@/lib/subjectI18n';
+import { getStoredUser } from '@/lib/mockAuth';
+import { trackCourseClick, type CourseClickEvent } from '@/lib/trackingUtils';
 
 /**
  * 課程卡可能來自 bundled COURSES、DynamoDB（含 seatsOccupied）或推薦 API
@@ -16,6 +18,8 @@ type CourseLike = Record<string, any>;
 interface CourseCardProps {
   course: CourseLike;
   className?: string;
+  /** Where the card is shown, recorded as the click signal's source. */
+  trackSource?: CourseClickEvent['source'];
 }
 
 /** 依科目字串產生穩定的色相，讓封面配色一致又多樣。 */
@@ -30,9 +34,24 @@ function hueFromString(input: string | null | undefined): number {
   return hash;
 }
 
-export const CourseCard: React.FC<CourseCardProps> = ({ course, className = "" }) => {
+export const CourseCard: React.FC<CourseCardProps> = ({ course, className = "", trackSource = 'homepage' }) => {
   const router = useRouter();
   const t = useT();
+
+  // Fire a click signal for logged-in users only (guests use survey seeds).
+  // Fire-and-forget: never blocks navigating to the course page.
+  const handleCardClick = () => {
+    try {
+      if (!getStoredUser()) return;
+      const tags = Array.isArray(course.tags) ? course.tags.filter((x: unknown) => typeof x === 'string') : [];
+      void trackCourseClick({
+        courseId: String(course.id),
+        courseName: course.title,
+        tags,
+        source: trackSource,
+      });
+    } catch { /* tracking must never break the click */ }
+  };
   const tt = (key: string, fallback: string) => {
     const v = t(key);
     return v === key ? fallback : v;
@@ -67,7 +86,7 @@ export const CourseCard: React.FC<CourseCardProps> = ({ course, className = "" }
     : `/teachers?teacher=${encodeURIComponent(String(course.teacherName || ''))}`;
 
   return (
-    <Link href={`/courses/${course.id}`} className={`card course-card ${className}`}>
+    <Link href={`/courses/${course.id}`} className={`card course-card ${className}`} onClick={handleCardClick}>
       <div className="course-card-cover" style={coverStyle}>
         <span className="course-card-cover-subject">{subjectLabel || title}</span>
         {enrolled > 0 && (

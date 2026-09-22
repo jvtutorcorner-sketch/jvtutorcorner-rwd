@@ -18,9 +18,9 @@ metadata:
 | 檔案 | 功能 |
 |---|---|
 | [lib/qdrant.ts](../../../lib/qdrant.ts) | `qdrantClient`、`ensureCollection(name, vectorSize)` |
-| [lib/embeddings.ts](../../../lib/embeddings.ts) | `getEmbedding(text)`／`getEmbeddings(texts)`，使用 Gemini |
-| [lib/knowledge-base.ts](../../../lib/knowledge-base.ts) | `parseKnowledgeFile()` 解析知識檔、`syncKnowledgeItem()` 寫入向量、`searchKnowledge(query, limit)` 檢索 |
-| [app/api/workflows/qdrant-knowledge-base/](../../../app/api/workflows/qdrant-knowledge-base/) | 工作流程 node（`withAdminOrHmac`） |
+| [lib/embeddings.ts](../../../lib/embeddings.ts) | `getEmbedding(text)`／`getEmbeddings(texts)`，使用 Gemini（保留供未來 course-knowledge；目前無 runtime 匯入者） |
+| ~~lib/knowledge-base.ts~~ | 已於 2026-09-22 刪除（零匯入者的死碼）。實際的 RAG 上載/檢索由下方工作流程 node 負責 |
+| [app/api/workflows/qdrant-knowledge-base/](../../../app/api/workflows/qdrant-knowledge-base/) | 工作流程 node（`withAdminOrHmac`）— 唯一實際使用 Qdrant 的路徑 |
 | [cloudformation/dynamodb-rag-tables.yml](../../../cloudformation/dynamodb-rag-tables.yml) | RAG 相關的 DynamoDB 表 |
 
 ## 測試指令

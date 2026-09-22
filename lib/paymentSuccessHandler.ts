@@ -13,11 +13,47 @@ import { ddbDocClient } from '@/lib/dynamo';
 import { GetCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { getUserPoints, setUserPoints, applyPointsDelta } from '@/lib/pointsStorage';
 import { assertPlanId, classifyCatalogueId } from '@/lib/plans';
+import { buildInteractionItems, putInteractions } from '@/lib/interactionsStore';
+import { SUBJECT_TO_TAGS } from '@/lib/surveyTagMap';
 
 const ORDERS_TABLE = process.env.DYNAMODB_TABLE_ORDERS || 'jvtutorcorner-orders';
 const UPGRADES_TABLE = process.env.DYNAMODB_TABLE_PLAN_UPGRADES || 'jvtutorcorner-plan-upgrades';
 const ENROLLMENTS_TABLE = process.env.ENROLLMENTS_TABLE || process.env.DYNAMODB_TABLE_ENROLLMENTS || 'jvtutorcorner-enrollments';
 const PROFILES_TABLE = process.env.DYNAMODB_TABLE_PROFILES || 'jvtutorcorner-profiles';
+const COURSES_TABLE = process.env.DYNAMODB_TABLE_COURSES || 'jvtutorcorner-courses';
+
+/**
+ * Record a course purchase as a behavioural signal for the recommender (highest
+ * weight, 2.0). Server-side + best-effort: any failure is swallowed so it can
+ * never block the payment flow. Tags come from the course's own tags + subject.
+ */
+async function trackCoursePurchase(userId: string, enrollmentId: string, planType: string): Promise<void> {
+  try {
+    if (!userId || !enrollmentId) return;
+    const enroll = await ddbDocClient.send(new GetCommand({ TableName: ENROLLMENTS_TABLE, Key: { id: enrollmentId } }));
+    const courseId = enroll.Item?.courseId;
+    if (!courseId) return;
+    const course = await ddbDocClient.send(new GetCommand({ TableName: COURSES_TABLE, Key: { id: courseId } }));
+    const c = course.Item || {};
+    const tags = [
+      ...(Array.isArray(c.tags) ? c.tags.filter((t: unknown) => typeof t === 'string') : []),
+      ...(SUBJECT_TO_TAGS[c.subject] ?? []),
+    ];
+    const items = buildInteractionItems({
+      userId,
+      kind: 'purchase',
+      courseId: String(courseId),
+      courseName: c.title,
+      tags,
+      weight: 2.0,
+      source: `purchase_${planType}`,
+      metadata: { subject: c.subject, enrollmentId },
+    });
+    await putInteractions(items);
+  } catch (e) {
+    console.warn('[Payment Success Handler] purchase tracking failed (non-fatal)', e);
+  }
+}
 
 export interface PaymentSuccessHandlerParams {
   orderId: string;
@@ -221,6 +257,8 @@ export async function handlePaymentSuccess(
         });
         await ddbDocClient.send(enrollUpdateCmd);
         console.log(`[Payment Success Handler] Successfully activated enrollment ${enrollmentId}`);
+        // Behavioural signal for the recommender (best-effort, never blocks).
+        await trackCoursePurchase(userId, enrollmentId, itemType);
       } catch (enrollErr: any) {
         console.error(`[Payment Success Handler] Failed to activate enrollment ${enrollmentId}:`, enrollErr);
         // We will continue to mark order as COMPLETED anyway to not block the flow
