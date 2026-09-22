@@ -550,7 +550,7 @@ AI 服務設定來自 App Integrations 與 AI Models 設定。支援 Gemini、Op
 | Whiteboard | `/api/whiteboard/pdf`, `/api/whiteboard/pdf-page`, `/api/whiteboard/room`, `/api/whiteboard/state`, `/api/whiteboard/stream`, `/api/whiteboard/presign` |
 | Admin | `/api/admin/settings`, `/api/admin/roles`, `/api/admin/teacher-reviews`, `/api/admin/payments`, `/api/admin/refunds`, `/api/admin/stats` |
 | Apps | `/api/app-integrations`, `/api/app-integrations/test`, `/api/apps/permissions` |
-| AI | `/api/ai-chat`, `/api/ai-chat/dispatch`, `/api/admin/ai-models`, `/api/shared/ai-models` |
+| AI | `/api/ai-chat`, `/api/ai-chat/dispatch`, `/api/admin/ai-models` |
 | Workflow | `/api/workflows`, `/api/workflows/[id]`, `/api/workflows/execute`, `/api/workflows/*` |
 | Recommendation | `/api/questionnaire`, `/api/questionnaire/match`, `/api/recommendations`, `/api/survey/seeds`, `/api/tracking/*` |
 

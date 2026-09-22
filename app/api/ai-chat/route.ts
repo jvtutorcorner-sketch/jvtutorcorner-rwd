@@ -8,7 +8,7 @@ import { PLATFORM_TOOLS, getToolDefinitions } from '@/lib/platform-skills';
 import { getAIModels } from '@/lib/aiModelsService';
 
 import { evaluatePromptComplexity } from '@/lib/smartRouterService';
-import { randomUUID } from 'crypto';
+import { randomUUID, createHash } from 'crypto';
 import { recordUsage } from '@/lib/ai/gateway/ledger';
 import { usageToMusd } from '@/lib/ai/gateway/pricing';
 
@@ -91,6 +91,8 @@ async function getAIConfig(messages: any[] = [], useSmartRouter: boolean = false
 }
 
 const promptCache = new Map<string, { data: any, timestamp: number }>();
+const PROMPT_CACHE_TTL_MS = 1000 * 60 * 10; // 10 minutes
+const PROMPT_CACHE_MAX = 200;
 
 export const POST = withAuth(postHandler);
 
@@ -98,14 +100,17 @@ async function postHandler(req: AuthedRequest) {
     try {
         const { messages, agentId, useSmartRouter, usePromptCache } = await req.json();
 
-        const cacheKeyHash = Buffer.from(encodeURI(JSON.stringify({ messages, agentId, useSmartRouter }))).toString('base64');
-        if (usePromptCache && promptCache.has(cacheKeyHash)) {
+        // Cache key is scoped to the caller — otherwise one user's reply can be
+        // served to another. Sweep expired entries on read; cap size on write.
+        const cacheKeyHash = createHash('sha256')
+            .update(JSON.stringify({ userId: req.session.userId, agentId, useSmartRouter, messages }))
+            .digest('hex');
+        if (usePromptCache) {
             const cached = promptCache.get(cacheKeyHash);
-            if (cached && Date.now() - cached.timestamp < 1000 * 60 * 10) { // 10 mins TTL
+            if (cached && Date.now() - cached.timestamp < PROMPT_CACHE_TTL_MS) {
                 return NextResponse.json({ ...cached.data, isCached: true });
-            } else {
-                promptCache.delete(cacheKeyHash);
             }
+            if (cached) promptCache.delete(cacheKeyHash);
         }
 
         const config = await getAIConfig(messages, useSmartRouter);
@@ -282,6 +287,10 @@ async function postHandler(req: AuthedRequest) {
         };
 
         if (usePromptCache) {
+            if (promptCache.size >= PROMPT_CACHE_MAX) {
+                const oldestKey = promptCache.keys().next().value;
+                if (oldestKey !== undefined) promptCache.delete(oldestKey);
+            }
             promptCache.set(cacheKeyHash, { data: responseData, timestamp: Date.now() });
         }
 

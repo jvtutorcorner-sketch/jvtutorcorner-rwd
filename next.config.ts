@@ -176,6 +176,8 @@ const nextConfig: any = {
     DYNAMODB_TABLE_GPU_JOBS: process.env.DYNAMODB_TABLE_GPU_JOBS || 'jvtutorcorner-gpu-jobs',
     // Phase 6 (Enterprise): per-tenant / global AI spend budgets.
     DYNAMODB_TABLE_AI_BUDGETS: process.env.DYNAMODB_TABLE_AI_BUDGETS || 'jvtutorcorner-ai-budgets',
+    // Recommendations: behavioural signal store (survey seeds + click/purchase/feedback).
+    DYNAMODB_TABLE_USER_INTERACTIONS: process.env.DYNAMODB_TABLE_USER_INTERACTIONS || 'jvtutorcorner-user-interactions',
     // Phase 3b: client gate for the (inert) recording-consent UI. Unset = off.
     // Recording ALSO needs the server flag CLASS_SUMMARY_ENABLED + both-party
     // consent before anything is captured.

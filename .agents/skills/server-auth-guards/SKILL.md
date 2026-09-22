@@ -79,10 +79,10 @@ node scripts/verify-course-ownership-scope.mjs
 - **HMAC 簽章正確卻 401**：確認簽的是 `pathname+query`（不含 origin）、時間戳是毫秒、body 與送出的字串完全相同。
 - **已修正（2026-09-11）**：`POST /api/points` 先前對「本人」放行 add／deduct／set，任何登入學生都能自設點數；現改為只允許 admin／system（含 HMAC）。回歸案例在 `e2e/server_auth_guards_verification.spec.ts` 的「/api/points」區塊。
 - **已修正（2026-09-11）**：`components/auth/PermissionGuard.tsx` 在判定完成前回傳 null，伺服器端永遠停在 checking，所有頁面的 SSR HTML 只剩 header/footer；現改為判定前照常渲染、確定拒絕後才換成 403 面板。它仍只是介面層控制，真正的擋下由 server layout 的 pageGuard 負責。
+- **已修正（2026-09-22）**：`app/api/line/webhook/[integrationId]` 的 `x-simulation: true`（跳過 LINE 簽章驗證）已加環境閘門 `isLineSimulationAllowed`：非 production 一律允許；production 需 `ALLOW_LINE_SIMULATION_IN_PRODUCTION=true` 或帶 admin／system session（`/apps` 診斷工具用管理員 session 觸發）。
 - **已知缺口**（盤點時發現，尚未修）：
-  1. `app/api/line/webhook/[integrationId]` 的 `x-simulation: true` header 可跳過 LINE 簽章驗證。
-  2. `app/api/whiteboard/stream` SSE 未驗證，以 uuid 曝露白板狀態。
-  3. `app/api/integration/make-{config,sync}` 的手寫 `requireAdmin` 對錯誤角色回 401（應為 403）。
+  1. `app/api/whiteboard/stream` SSE 未驗證，以 uuid 曝露白板狀態。
+  2. `app/api/integration/make-{config,sync}` 的手寫 `requireAdmin` 對錯誤角色回 401（應為 403）。
 
 ## 相關技能
 

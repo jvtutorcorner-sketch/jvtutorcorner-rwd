@@ -3,8 +3,23 @@ import crypto from 'crypto';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, GetCommand, ScanCommand, PutCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
 import { executeWebhookScript } from '@/lib/scriptExecutor';
+import { extractTokenFromRequest, getSession } from '@/lib/auth/sessionManager';
 import { LEARNING_CONTENT_ANALYSIS_PROMPT } from '@/lib/learningContentAnalysis';
 import { runWithIntegration } from '@/lib/ai/gateway/gateway';
+
+async function isLineSimulationAllowed(request: Request): Promise<boolean> {
+    if (process.env.NODE_ENV !== 'production') return true;
+    if (process.env.ALLOW_LINE_SIMULATION_IN_PRODUCTION === 'true') return true;
+    try {
+        const token = extractTokenFromRequest(request);
+        if (!token) return false;
+        const session = await getSession(token);
+        return !!session && (session.role === 'admin' || session.role === 'system');
+    } catch {
+        return false;
+    }
+}
+
 
 const ddbRegion = process.env.CI_AWS_REGION || process.env.AWS_REGION;
 const ddbExplicitAccessKey = process.env.CI_AWS_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID;
@@ -384,7 +399,11 @@ export async function POST(request: Request, context: { params: Promise<{ integr
         // Get raw body for verification
         const rawBody = await request.text();
         const signature = request.headers.get('x-line-signature') || '';
-        const isSimulation = request.headers.get('x-simulation') === 'true';
+        // `x-simulation` skips LINE signature verification, so it must be gated.
+        // Non-prod: always allowed. Prod: explicit opt-in env, or an admin session
+        // (the /apps console fires simulation with the admin's own session).
+        const simulationRequested = request.headers.get('x-simulation') === 'true';
+        const isSimulation = simulationRequested && (await isLineSimulationAllowed(request));
 
         // In simulation mode, skip local file fallback (DynamoDB is required)
         if (isSimulation && (!appInfo || appInfo.type !== 'LINE' || !appInfo.config)) {
