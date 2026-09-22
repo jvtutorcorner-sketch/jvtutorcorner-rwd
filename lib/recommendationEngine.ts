@@ -20,6 +20,13 @@ export interface CourseCandidate {
   teacherName?: string;
   tags: string[];          // normalised tags including subject-derived tags
   createdAt?: string;
+  /**
+   * Group-popularity prior, normalised to [0,1]. Acts as a cold-start floor:
+   * when the user has no matching tags it drives ranking, but it is dominated by
+   * personalised `tagScores` once real interaction signal accumulates.
+   * Undefined is treated as 0 (neutral).
+   */
+  popularityScore?: number;
   [key: string]: unknown;
 }
 
@@ -35,6 +42,7 @@ export interface RecommendationConfig {
   newBoostDays?: number;    // new-item boost window in days (default 14)
   maxPerCategory?: number;  // frequency cap per category (default 3)
   maxPerTeacher?: number;   // frequency cap per teacher (default 2)
+  popularityWeight?: number; // weight of the group-popularity prior (default 0.6)
 }
 
 export interface RecommendationResult {
@@ -51,7 +59,10 @@ const DEFAULTS = {
   newBoostDays: 14,
   maxPerCategory: 3,
   maxPerTeacher: 2,
+  popularityWeight: 0.6,
 } satisfies Required<RecommendationConfig>;
+
+const clamp01 = (n: number): number => (Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0);
 
 // ─── Step 2: TagScore (Log Smoothing + Time Decay) ────────────────────────────
 
@@ -103,10 +114,18 @@ function newBoostFactor(createdAt: string | undefined, boostDays: number): numbe
 function computeRelevance(
   course: CourseCandidate,
   tagScores: Record<string, number>,
-  boostDays: number
+  boostDays: number,
+  popularityWeight: number
 ): number {
   const base = course.tags.reduce((sum, tag) => sum + (tagScores[tag] ?? 0), 0);
-  return base * newBoostFactor(course.createdAt, boostDays);
+  // Cold-start floor: blend in the group-popularity prior so a user with no matching
+  // tags is ranked by what the crowd actually engages with, not by new-item boost
+  // alone. `base` grows with real personalisation and quickly dominates this term.
+  // Skip the prior when `base` is negative (explicit dislike) so popularity can't
+  // resurrect a course the user downranked.
+  const pop = clamp01(course.popularityScore ?? 0);
+  const relevance = base < 0 ? base : base + popularityWeight * pop;
+  return relevance * newBoostFactor(course.createdAt, boostDays);
 }
 
 // ─── Step 4: Jaccard similarity (for MMR) ─────────────────────────────────────
@@ -192,7 +211,7 @@ export function generateRecommendations(
 
   const relevances = new Map<string, number>();
   for (const c of candidates) {
-    relevances.set(c.id, computeRelevance(c, tagScores, cfg.newBoostDays));
+    relevances.set(c.id, computeRelevance(c, tagScores, cfg.newBoostDays, cfg.popularityWeight));
   }
 
   // Produce 30 MMR candidates then apply hard caps

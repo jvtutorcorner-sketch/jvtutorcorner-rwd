@@ -38,6 +38,42 @@ function toCourseCandidate(course: Course): CourseCandidate {
   };
 }
 
+/**
+ * PLACEHOLDER group-popularity proxy → normalised [0,1] per courseId.
+ *
+ * The course catalogue has no enrolment / completion / rating / view aggregates yet,
+ * so we derive a rough *demand* signal from remaining seats: fewer seats left ⇒ more
+ * already enrolled ⇒ more popular. This gives the recommendation engine a cold-start
+ * floor so guests are ranked by crowd demand instead of new-item boost alone.
+ *
+ * Limitations: biased against intentionally small classes; ignores completion & rating;
+ * `seatsLeft` is manually maintained. Courses with no `seatsLeft` get a neutral 0.5.
+ * TODO: replace with a real popularity table (Bayesian-smoothed enrolments + completion
+ * rate + rating), keyed by courseId, computed from the interactions / enrolment stores.
+ */
+function computePopularityProxy(courses: Course[]): Map<string, number> {
+  const scores = new Map<string, number>();
+  const seats = courses
+    .map((c) => c.seatsLeft)
+    .filter((s): s is number => typeof s === 'number' && Number.isFinite(s));
+
+  if (seats.length === 0) return scores; // no signal → leave undefined (engine treats as 0)
+
+  const min = Math.min(...seats);
+  const max = Math.max(...seats);
+  const span = max - min;
+
+  for (const c of courses) {
+    if (typeof c.seatsLeft !== 'number' || !Number.isFinite(c.seatsLeft) || span === 0) {
+      scores.set(c.id, 0.5); // unknown / undifferentiated demand → neutral prior
+    } else {
+      // Invert: fewer seats left → higher popularity.
+      scores.set(c.id, 1 - (c.seatsLeft - min) / span);
+    }
+  }
+  return scores;
+}
+
 async function fetchInteractionsFromDynamo(userId: string): Promise<UserInteraction[]> {
   try {
     const res = await ddbDocClient.send(
@@ -59,7 +95,13 @@ async function fetchInteractionsFromDynamo(userId: string): Promise<UserInteract
 }
 
 function buildResponse(userId: string | undefined, interactions: UserInteraction[]) {
-  const activeCourses = COURSES.filter((c) => c.status !== '下架').map(toCourseCandidate);
+  const activeRaw = COURSES.filter((c) => c.status !== '下架');
+  const popularityById = computePopularityProxy(activeRaw);
+  const activeCourses = activeRaw.map((raw) => {
+    const candidate = toCourseCandidate(raw);
+    candidate.popularityScore = popularityById.get(raw.id);
+    return candidate;
+  });
 
   // Pinned: newest course = slot-4 "new feature" stand-in; last course = slot-10 editorial
   const byRecency = [...activeCourses].sort(
@@ -82,6 +124,15 @@ function buildResponse(userId: string | undefined, interactions: UserInteraction
         .sort((a, b) => b[1] - a[1])
         .slice(0, 5)
         .map(([tag, score]) => ({ tag, score: Math.round(score * 100) / 100 })),
+      // Group-popularity prior used as the cold-start floor (proxy for now – see
+      // computePopularityProxy). Ordered to match `recommendations`; null = no signal.
+      popularity: result.courses.map((c) => ({
+        id: c.id,
+        score:
+          typeof c.popularityScore === 'number'
+            ? Math.round(c.popularityScore * 100) / 100
+            : null,
+      })),
     },
   });
 }
