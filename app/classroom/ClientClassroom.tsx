@@ -21,10 +21,13 @@ const PdfViewer = dynamic(() => import('@/components/PdfViewer'), { ssr: false }
 const ConsoleLogViewer = dynamic(() => import('@/components/ConsoleLogViewer'), { ssr: false });
 const NetworkSpeedMonitor = dynamic(() => import('@/components/NetworkSpeedMonitor'), { ssr: false });
 
-// Phase 3a — AI live teaching (markers / Timeline / Tutor).
+// Phase 3a/3b — AI live teaching (markers / Timeline / Tutor / Copilot / recording).
 import { useLessonSession } from '@/lib/classroom/useLessonSession';
+import { useClassRecording } from '@/lib/classroom/useClassRecording';
 import LessonMarkerBar from '@/components/classroom/LessonMarkerBar';
 import StudentTutorPanel from '@/components/classroom/StudentTutorPanel';
+import TeacherCopilotPanel from '@/components/classroom/TeacherCopilotPanel';
+import RecordingConsentDialog from '@/components/classroom/RecordingConsentDialog';
 
 type Role = 'teacher' | 'student' | 'assistant' | 'observer';
 
@@ -574,6 +577,15 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   });
   // Let onMessage relay remote markers into the hook without a stale closure.
   lessonMarkerRxRef.current = lessonApi.pushRemoteMarker;
+
+  // Phase 3b — recording consent → segmented recorder. INERT unless
+  // NEXT_PUBLIC_CLASS_SUMMARY_ENABLED === 'true' (and the server flag + both-party
+  // consent). Off by default: no dialog shown, nothing recorded.
+  const classRecording = useClassRecording({
+    courseId,
+    orderId: lessonApi.orderId,
+    startTime: lessonApi.startTime,
+  });
 
   const firstRemote = useMemo(() => {
     if (!remoteUsers || remoteUsers.length === 0) return null;
@@ -2802,6 +2814,14 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
 
       {/* Phase 3a — student AI Tutor (floating; gated server-side by plan) */}
       {!isTeacher && <StudentTutorPanel sessionId={lessonApi.sessionId} />}
+
+      {/* Phase 3b — teacher Copilot (floating; gated server-side by plan) */}
+      {isTeacher && lessonApi.ready && <TeacherCopilotPanel sessionId={lessonApi.sessionId} />}
+
+      {/* Phase 3b — recording consent (INERT unless NEXT_PUBLIC_CLASS_SUMMARY_ENABLED) */}
+      {classRecording.showConsentDialog && classRecording.dialogProps && (
+        <RecordingConsentDialog {...classRecording.dialogProps} />
+      )}
 
       {/* Duplicate detected modal removed entirely */}
 

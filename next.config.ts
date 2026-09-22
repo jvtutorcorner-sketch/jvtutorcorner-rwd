@@ -169,6 +169,10 @@ const nextConfig: any = {
     // AI live teaching (Phase 3): lesson events + derived segments.
     DYNAMODB_TABLE_LESSON_EVENTS: process.env.DYNAMODB_TABLE_LESSON_EVENTS || 'jvtutorcorner-lesson-events',
     DYNAMODB_TABLE_LESSON_SEGMENTS: process.env.DYNAMODB_TABLE_LESSON_SEGMENTS || 'jvtutorcorner-lesson-segments',
+    // Phase 3b: client gate for the (inert) recording-consent UI. Unset = off.
+    // Recording ALSO needs the server flag CLASS_SUMMARY_ENABLED + both-party
+    // consent before anything is captured.
+    NEXT_PUBLIC_CLASS_SUMMARY_ENABLED: process.env.NEXT_PUBLIC_CLASS_SUMMARY_ENABLED || '',
     // Auth & HMAC Secrets
     // ⚠️ 絕對不要在此加上 `|| '<字串>'` 的 fallback：
     //    偽造的 HMAC 會讓 withAnyAuth 直接發出 role:'system' 的 session（等同完整後台權限）。

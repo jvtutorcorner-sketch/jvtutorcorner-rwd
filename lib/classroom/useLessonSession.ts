@@ -29,6 +29,9 @@ export interface UseLessonSessionOptions {
 export interface LessonSessionApi {
   sessionId: string | null;
   ready: boolean;
+  /** Resolved order + scheduled start (from /resolve) — for the consent flow's summaryId. */
+  orderId: string | null;
+  startTime: string | null;
   recentMarkers: RemoteMarker[];
   sendMarker: (type: MarkerType, note?: string) => Promise<boolean>;
   reportSystemEvent: (type: SystemEventType, payload?: Record<string, unknown>) => void;
@@ -42,6 +45,8 @@ const FLUSH_MS = 15_000;
 export function useLessonSession(opts: UseLessonSessionOptions): LessonSessionApi {
   const { courseId, orderId, isHost, enabled = true, rtmSend } = opts;
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [resolvedOrderId, setResolvedOrderId] = useState<string | null>(null);
+  const [startTime, setStartTime] = useState<string | null>(null);
   const [recentMarkers, setRecentMarkers] = useState<RemoteMarker[]>([]);
 
   const sessionIdRef = useRef<string | null>(null);
@@ -66,6 +71,8 @@ export function useLessonSession(opts: UseLessonSessionOptions): LessonSessionAp
         if (!cancelled && res.ok && j?.ok && typeof j.sessionId === 'string') {
           sessionIdRef.current = j.sessionId;
           setSessionId(j.sessionId);
+          if (typeof j.orderId === 'string') setResolvedOrderId(j.orderId);
+          if (typeof j.startTime === 'string') setStartTime(j.startTime);
         } else if (!cancelled) {
           console.warn('[useLessonSession] resolve failed', res.status, j?.error);
         }
@@ -155,5 +162,15 @@ export function useLessonSession(opts: UseLessonSessionOptions): LessonSessionAp
     void flush();
   }, [reportSystemEvent, flush]);
 
-  return { sessionId, ready: !!sessionId, recentMarkers, sendMarker, reportSystemEvent, pushRemoteMarker, endLesson };
+  return {
+    sessionId,
+    ready: !!sessionId,
+    orderId: resolvedOrderId ?? orderId,
+    startTime,
+    recentMarkers,
+    sendMarker,
+    reportSystemEvent,
+    pushRemoteMarker,
+    endLesson,
+  };
 }

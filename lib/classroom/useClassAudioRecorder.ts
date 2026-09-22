@@ -10,8 +10,7 @@
 // happens until start() is called and stops on unmount.
 
 import { useCallback, useEffect, useRef } from 'react';
-
-const SEGMENT_MS = 60_000;
+import { SEGMENT_MS, segmentMeta } from './recorderRotation';
 
 function pickMimeType(): string | null {
   if (typeof MediaRecorder === 'undefined') return null;
@@ -36,15 +35,18 @@ export function useClassAudioRecorder(opts: ClassAudioRecorderOptions) {
   const { summaryId, enabled, audioDeviceId } = opts;
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const rotateTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const mimeTypeRef = useRef<string>('audio/webm');
+  const recordingStartRef = useRef(0);
   const seqRef = useRef(0);
-  const startedAtRef = useRef(0);
   const activeRef = useRef(false);
 
   const uploadSegment = useCallback(
-    async (blob: Blob, mimeType: string) => {
+    async (blob: Blob, mimeType: string, segmentStartMs: number) => {
       if (!summaryId || blob.size === 0) return;
-      const seq = seqRef.current++;
-      const startMs = Math.max(0, Date.now() - startedAtRef.current - SEGMENT_MS);
+      // Segment metadata from the segment's ACTUAL start timestamp — correct for a
+      // short final segment and immune to upload-time drift (see recorderRotation).
+      const { seq, startMs } = segmentMeta(recordingStartRef.current, segmentStartMs, seqRef.current++);
       try {
         const res = await fetch('/api/class-summaries/presign', {
           method: 'POST',
@@ -62,11 +64,30 @@ export function useClassAudioRecorder(opts: ClassAudioRecorderOptions) {
     [summaryId]
   );
 
+  // Start one fresh recorder for one segment. Without a timeslice, MediaRecorder
+  // emits exactly one self-contained blob when it is stopped.
+  const startOneSegment = useCallback(() => {
+    const stream = streamRef.current;
+    if (!stream) return;
+    const mimeType = mimeTypeRef.current;
+    const rec = new MediaRecorder(stream, { mimeType, audioBitsPerSecond: 24_000 });
+    const segmentStartMs = Date.now();
+    rec.ondataavailable = (e) => {
+      if (e.data && e.data.size > 0) void uploadSegment(e.data, mimeType, segmentStartMs);
+    };
+    rec.start(); // no timeslice → a single complete file emitted on stop()
+    recorderRef.current = rec;
+  }, [uploadSegment]);
+
   const stop = useCallback(() => {
     activeRef.current = false;
+    if (rotateTimerRef.current) {
+      clearInterval(rotateTimerRef.current);
+      rotateTimerRef.current = null;
+    }
     try {
       const rec = recorderRef.current;
-      if (rec && rec.state !== 'inactive') rec.stop();
+      if (rec && rec.state !== 'inactive') rec.stop(); // flushes the final segment
     } catch {
       /* ignore */
     }
@@ -88,19 +109,23 @@ export function useClassAudioRecorder(opts: ClassAudioRecorderOptions) {
         },
       });
       streamRef.current = stream;
-      const rec = new MediaRecorder(stream, { mimeType, audioBitsPerSecond: 24_000 });
-      rec.ondataavailable = (e) => {
-        if (e.data && e.data.size > 0) void uploadSegment(e.data, mimeType);
-      };
-      rec.start(SEGMENT_MS); // emit a blob every SEGMENT_MS
-      recorderRef.current = rec;
-      startedAtRef.current = Date.now();
+      mimeTypeRef.current = mimeType;
+      recordingStartRef.current = Date.now();
       seqRef.current = 0;
       activeRef.current = true;
+      startOneSegment();
+      // Rotate every SEGMENT_MS: stop the current recorder (flushes a complete
+      // file) and immediately start a new one on the same stream.
+      rotateTimerRef.current = setInterval(() => {
+        if (!activeRef.current) return;
+        const rec = recorderRef.current;
+        if (rec && rec.state !== 'inactive') rec.stop();
+        startOneSegment();
+      }, SEGMENT_MS);
     } catch (e) {
       console.warn('[class-audio] could not start recording', e);
     }
-  }, [enabled, summaryId, audioDeviceId, uploadSegment]);
+  }, [enabled, summaryId, audioDeviceId, startOneSegment]);
 
   // Stop cleanly on unmount.
   useEffect(() => () => stop(), [stop]);
