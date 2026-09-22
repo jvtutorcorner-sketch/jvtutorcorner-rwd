@@ -37,8 +37,24 @@ export const MODEL_PRICES: Record<string, ModelPrice> = {
 // Conservative fallback for an unpriced model (mid-tier rates).
 export const DEFAULT_PRICE: ModelPrice = { inPerM: 1.0, outPerM: 5.0, audioInPerM: 1.0 };
 
+/**
+ * Normalise a provider model id to its bare form so OpenRouter-namespaced ids
+ * (e.g. `google/gemini-2.5-flash`, `openai/gpt-4o-mini:free`) resolve to the
+ * same price row as the bare id. Otherwise every OpenRouter call fell through to
+ * DEFAULT_PRICE. Pure.
+ */
+export function normalizeModelId(model: string): string {
+  let m = (model || '').toLowerCase().trim();
+  if (m.startsWith('models/')) m = m.slice('models/'.length);
+  const slash = m.lastIndexOf('/');
+  if (slash >= 0) m = m.slice(slash + 1); // strip vendor prefix
+  const colon = m.indexOf(':');
+  if (colon >= 0) m = m.slice(0, colon); // strip :free / :nitro / :beta suffix
+  return m;
+}
+
 export function priceForModel(model: string): ModelPrice {
-  return MODEL_PRICES[model] ?? DEFAULT_PRICE;
+  return MODEL_PRICES[model] ?? MODEL_PRICES[normalizeModelId(model)] ?? DEFAULT_PRICE;
 }
 
 const MUSD_PER_USD = 1_000_000;
@@ -78,7 +94,7 @@ export const EMBEDDING_PRICES: Record<string, number> = {
 
 /** Integer micro-USD for an embedding call (input tokens only). */
 export function embeddingUsageToMusd(model: string, inputTokens: number): number {
-  const perM = EMBEDDING_PRICES[model] ?? 0.15;
+  const perM = EMBEDDING_PRICES[model] ?? EMBEDDING_PRICES[normalizeModelId(model)] ?? 0.15;
   return Math.round(inputTokens * perM); // = inputTokens * perM/1e6 USD * 1e6 µ$
 }
 

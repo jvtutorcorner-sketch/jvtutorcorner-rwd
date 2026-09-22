@@ -76,7 +76,7 @@ export interface RunContext {
 }
 
 export type RunResult =
-  | { ok: true; result: GenerateResult; costMusd: number; requestId: string; provider: ProviderName; model: string; duplicate: boolean }
+  | { ok: true; result: GenerateResult; costMusd: number; requestId: string; provider: ProviderName; model: string; duplicate: boolean; metered: boolean }
   | { ok: false; error: string; requestId: string };
 
 async function callWithTimeout(
@@ -170,7 +170,12 @@ export async function runModel(policy: ModelPolicy, req: GenerateRequest, ctx: R
           status: 'ok',
           meta: ctx.meta,
         });
-        return { ok: true, result, costMusd, requestId, provider: result.provider, model: result.model, duplicate: rec.duplicate };
+        if (!rec.ok) {
+          // Provider succeeded but the ledger write failed → unmetered spend.
+          // Surface it loudly and flag the result; never fail the call for it.
+          console.error('[gateway] recordUsage failed — unmetered spend', { requestId, feature: ctx.feature, model: result.model, provider: result.provider, error: rec.error });
+        }
+        return { ok: true, result, costMusd, requestId, provider: result.provider, model: result.model, duplicate: rec.duplicate, metered: rec.ok };
       } catch (err) {
         lastErr = (err as Error)?.message || String(err);
         const aborted = (err as Error)?.name === 'AbortError';

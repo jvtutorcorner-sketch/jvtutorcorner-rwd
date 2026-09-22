@@ -16,6 +16,7 @@ const { ddbDocClient } = await import('../lib/dynamo.ts');
 const budgets = new Map(); // scopeKey -> BudgetConfig
 const rollups = new Map(); // scopeKey -> rollup
 let transactWrites = 0;
+let throwOnTransact = false;
 ddbDocClient.send = async (cmd) => {
   const n = cmd?.constructor?.name;
   const inp = cmd?.input || {};
@@ -26,6 +27,7 @@ ddbDocClient.send = async (cmd) => {
     return { Item: undefined };
   }
   if (n === 'TransactWriteCommand') {
+    if (throwOnTransact) throw new Error('ddb transact down');
     transactWrites++;
     return {};
   }
@@ -111,6 +113,18 @@ console.log('\n[3] gateway runModel enforces tenant budget before calling provid
   const ok = await runModel(resolvePolicy('tutor'), { prompt: '幫我解題' }, { feature: 'tutor', orgId: 'o1', resolveKey: async () => ({ apiKey: 'k' }) });
   check('未超額 → 正常成功', ok.ok === true, ok.ok ? '' : ok.error);
   check('有呼叫 provider + 計費一次', adapterCalls === 1 && transactWrites === 1);
+  check('metered=true', ok.ok === true && ok.metered === true);
+
+  // B3: ledger write fails → call still ok but metered=false (unmetered spend flagged)
+  reset();
+  _resetBreakers();
+  adapterCalls = 0;
+  budgets.set('TENANT#o1', { scopeKey: 'TENANT#o1', monthlyCapMusd: 100_000_000, hardStop: true });
+  throwOnTransact = true;
+  const unmetered = await runModel(resolvePolicy('tutor'), { prompt: 'x' }, { feature: 'tutor', orgId: 'o1', resolveKey: async () => ({ apiKey: 'k' }) });
+  throwOnTransact = false;
+  check('ledger 寫入失敗 → 仍回 ok:true', unmetered.ok === true, unmetered.ok ? '' : unmetered.error);
+  check('ledger 寫入失敗 → metered=false', unmetered.ok === true && unmetered.metered === false);
 
   reset();
   _resetBreakers();

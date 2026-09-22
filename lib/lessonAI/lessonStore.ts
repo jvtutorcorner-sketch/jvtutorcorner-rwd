@@ -88,9 +88,13 @@ export async function appendLessonEvents(
  */
 export async function listLessonEvents(
   sessionId: string,
-  opts?: { sinceSk?: string; limit?: number }
+  opts?: { sinceSk?: string; limit?: number; latest?: boolean }
 ): Promise<StoredLessonEvent[]> {
   if (!sessionId) return [];
+  // `latest` fetches the newest events (descending scan) — needed when a limit is
+  // set, otherwise `limit` returns the OLDEST N. Callers still get chronological
+  // (ascending) order, so downstream code is unchanged.
+  const latest = !!opts?.latest;
   const items: StoredLessonEvent[] = [];
   let exclusiveStartKey: any = undefined;
   const useSince = opts?.sinceSk && opts.sinceSk.length > 0;
@@ -102,16 +106,19 @@ export async function listLessonEvents(
         ExpressionAttributeValues: useSince
           ? { ':s': sessionId, ':since': opts!.sinceSk }
           : { ':s': sessionId },
-        ScanIndexForward: true,
+        ScanIndexForward: !latest,
         ...(opts?.limit ? { Limit: opts.limit } : {}),
         ...(exclusiveStartKey ? { ExclusiveStartKey: exclusiveStartKey } : {}),
       })
     );
     items.push(...((res.Items || []) as StoredLessonEvent[]));
     exclusiveStartKey = res.LastEvaluatedKey;
-    if (opts?.limit && items.length >= opts.limit) return items.slice(0, opts.limit);
+    if (opts?.limit && items.length >= opts.limit) {
+      const capped = items.slice(0, opts.limit);
+      return latest ? capped.reverse() : capped;
+    }
   } while (exclusiveStartKey);
-  return items;
+  return latest ? items.reverse() : items;
 }
 
 export interface StoredLessonSegment extends Omit<DerivedSegment, 'seq'> {

@@ -48,6 +48,7 @@ console.log('[1] 成功 + 計費');
   check('provider GEMINI', r.ok && r.provider === 'GEMINI');
   check('costMusd = usageToMusd', r.ok && r.costMusd === usageToMusd('gemini-2.5-flash', USAGE), r.ok ? `got ${r.costMusd}` : '');
   check('recordUsage 被呼叫(LOCAL_USAGE +1)', LOCAL_USAGE.length === before + 1);
+  check('metered=true(ledger 寫入成功)', r.ok && r.metered === true);
 }
 
 console.log('\n[2] primary 拋錯 → fallback');

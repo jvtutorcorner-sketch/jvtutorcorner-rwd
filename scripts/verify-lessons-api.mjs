@@ -123,6 +123,16 @@ console.log('\n[2] ordering + since filter');
   check('依 sk 時序回傳', eq(all.map((r) => r.eventId), ['a', 'b', 'c']), JSON.stringify(all.map((r) => r.eventId)));
   const since = await store.listLessonEvents(sid, { sinceSk: all[0].sk });
   check('since= 只回較新的', eq(since.map((r) => r.eventId), ['b', 'c']));
+
+  // B5: latest:true + limit returns the NEWEST N, still in chronological order.
+  await store.appendLessonEvents(sid, [
+    { eventId: 'd', source: 'system', type: 'tick', offsetSec: 240, ts: 4000 },
+    { eventId: 'e', source: 'system', type: 'tick', offsetSec: 300, ts: 5000 },
+  ]);
+  const oldest2 = await store.listLessonEvents(sid, { limit: 2 });
+  check('limit 無 latest → 最舊 2 筆', eq(oldest2.map((r) => r.eventId), ['a', 'b']), JSON.stringify(oldest2.map((r) => r.eventId)));
+  const latest2 = await store.listLessonEvents(sid, { limit: 2, latest: true });
+  check('limit + latest → 最新 2 筆且時序升冪', eq(latest2.map((r) => r.eventId), ['d', 'e']), JSON.stringify(latest2.map((r) => r.eventId)));
 }
 
 console.log('\n[3] finalize writes segments');

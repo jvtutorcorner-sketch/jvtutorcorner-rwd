@@ -59,6 +59,13 @@ export interface UsageEntry {
 export const LOCAL_USAGE: Record<string, unknown>[] = [];
 export const LOCAL_ROLLUPS: Record<string, Record<string, number>> = {};
 
+let warnedLocalLedger = false;
+function warnLocalLedgerOnce(): void {
+  if (warnedLocalLedger || process.env.NODE_ENV === 'test') return;
+  warnedLocalLedger = true;
+  console.warn('[ledger] no AWS credentials — usage metering is in-memory only (LOCAL_USAGE); nothing is persisted. Set AWS credentials in a real deployment.');
+}
+
 /** Scope keys a usage entry rolls up into. Pure. */
 export function rollupScopeKeys(e: UsageEntry, yyyymm: string): string[] {
   const keys: string[] = [`GLOBAL#${yyyymm}`, `FEATURE#${e.feature ?? 'unknown'}#${yyyymm}`];
@@ -137,7 +144,9 @@ export async function recordUsage(e: UsageEntry): Promise<{ ok: boolean; duplica
     }
   }
 
-  // In-memory (dev)
+  // In-memory (dev / offline). Warn once so a missing-credentials misconfig in a
+  // real deployment doesn't silently drop all usage metering.
+  warnLocalLedgerOnce();
   if (LOCAL_USAGE.some((r) => r.requestId === e.requestId)) return { ok: true, duplicate: true };
   LOCAL_USAGE.push(ledgerItem);
   for (const scopeKey of scopeKeys) {

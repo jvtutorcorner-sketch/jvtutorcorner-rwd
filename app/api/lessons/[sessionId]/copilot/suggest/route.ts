@@ -47,12 +47,12 @@ async function handlePost(req: AuthedRequest, ctx: { params: Promise<{ sessionId
   }
   const focus = typeof body.focus === 'string' ? body.focus.slice(0, 300) : undefined;
 
-  // Recent context: last ~30 events + current segments.
+  // Recent context: the NEWEST ~30 events (chronological) + current segments.
   const [events, segments] = await Promise.all([
-    listLessonEvents(sessionId, { limit: 30 }),
+    listLessonEvents(sessionId, { limit: 30, latest: true }),
     listLessonSegments(sessionId),
   ]);
-  const recentEvents = events.slice(-30).map((e) => ({ offsetSec: e.offsetSec, source: e.source, type: e.type, note: e.note }));
+  const recentEvents = events.map((e) => ({ offsetSec: e.offsetSec, source: e.source, type: e.type, note: e.note }));
   const segLite = segments.map((s) => ({ index: s.index, topic: s.topic, boundaryType: s.boundaryType }));
 
   const res = await runCopilot({

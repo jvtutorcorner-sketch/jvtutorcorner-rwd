@@ -3,7 +3,7 @@
  * AI Gateway 定價/成本換算純函式測試。
  * 用法: node --import ./scripts/lib/register-ts-resolve.mjs scripts/verify-ai-pricing.mjs
  */
-const { usageToMusd, estimateMusd, estimateTokens, priceForModel, DEFAULT_PRICE } =
+const { usageToMusd, estimateMusd, estimateTokens, priceForModel, normalizeModelId, DEFAULT_PRICE } =
   await import('../lib/ai/gateway/pricing.ts');
 
 let failed = 0, passed = 0;
@@ -38,6 +38,19 @@ check('estimateMusd 用 maxTokens 當 output 上限',
 
 check('值皆整數 micro-USD',
   Number.isInteger(usageToMusd('gpt-4o-mini', { inputTokens: 333, outputTokens: 777, reasoningTokens: 11 })));
+
+// --- OpenRouter namespaced ids resolve to the bare price row (B4) ---
+const U = { inputTokens: 1000, outputTokens: 500, reasoningTokens: 0 };
+check('normalizeModelId 去 vendor 前綴', normalizeModelId('google/gemini-2.5-flash') === 'gemini-2.5-flash', normalizeModelId('google/gemini-2.5-flash'));
+check('normalizeModelId 去 :free 後綴', normalizeModelId('openai/gpt-4o-mini:free') === 'gpt-4o-mini', normalizeModelId('openai/gpt-4o-mini:free'));
+check('normalizeModelId 去 models/ 前綴', normalizeModelId('models/gemini-1.5-pro') === 'gemini-1.5-pro', normalizeModelId('models/gemini-1.5-pro'));
+check('OpenRouter id 與裸 id 同價(flash=1550µ$)',
+  usageToMusd('google/gemini-2.5-flash', U) === usageToMusd('gemini-2.5-flash', U) && usageToMusd('google/gemini-2.5-flash', U) === 1550,
+  String(usageToMusd('google/gemini-2.5-flash', U)));
+check('openai/gpt-4o-mini:free 與 gpt-4o-mini 同價',
+  usageToMusd('openai/gpt-4o-mini:free', U) === usageToMusd('gpt-4o-mini', U),
+  `${usageToMusd('openai/gpt-4o-mini:free', U)} vs ${usageToMusd('gpt-4o-mini', U)}`);
+check('未知 vendor id → DEFAULT_PRICE', priceForModel('vendor/does-not-exist') === DEFAULT_PRICE);
 
 console.log(`\n${failed === 0 ? '✅ 全部通過' : '❌ 有失敗'} — passed ${passed}, failed ${failed}`);
 process.exit(failed === 0 ? 0 : 1);
