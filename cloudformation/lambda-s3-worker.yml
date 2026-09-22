@@ -1,0 +1,88 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  S3 ObjectCreated → Lambda worker (Phase 2.8 toolchain, template for Phase 3 L1
+  event detection: a class-audio segment lands in S3 → detect events). Lambda +
+  SQS DLQ + IAM + the S3 invoke permission.
+
+  ⚠ Wiring the trigger: an existing bucket's NotificationConfiguration can only be
+  set by the stack that owns the bucket, so this template does NOT attach the
+  notification to the shared uploads bucket. Two supported options, both gated:
+    (a) add a NotificationConfiguration (prefix class-audio/) to the bucket's own
+        stack pointing at this function, or
+    (b) front it with an SQS queue: bucket → SQS → Lambda event-source mapping.
+  Kept generic so the wiring choice is made at deploy time.
+
+Parameters:
+  WorkerName:
+    Type: String
+    Default: jvtutor-ai-l1-detector
+  CodeS3Bucket:
+    Type: String
+    Description: S3 bucket holding the bundled Lambda zip.
+  CodeS3Key:
+    Type: String
+    Description: S3 key of the zip, e.g. lambdas/ai-l1-detector.zip
+  UploadsBucketArn:
+    Type: String
+    Description: ARN of the bucket whose ObjectCreated events invoke this Lambda (the uploads bucket).
+
+Resources:
+  DeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${WorkerName}-dlq'
+      MessageRetentionPeriod: 1209600
+
+  WorkerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${WorkerName}-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: S3ReadAndDlq
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [s3:GetObject]
+                Resource: !Sub '${UploadsBucketArn}/*'
+              - Effect: Allow
+                Action: [sqs:SendMessage]
+                Resource: !GetAtt DeadLetterQueue.Arn
+
+  WorkerFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Ref WorkerName
+      Runtime: nodejs20.x
+      Handler: index.handler
+      Timeout: 120
+      MemorySize: 512
+      Role: !GetAtt WorkerRole.Arn
+      DeadLetterConfig:
+        TargetArn: !GetAtt DeadLetterQueue.Arn
+      Code:
+        S3Bucket: !Ref CodeS3Bucket
+        S3Key: !Ref CodeS3Key
+
+  # Allows S3 to invoke the function (used by option (a) direct bucket notification).
+  S3InvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref WorkerFunction
+      Action: lambda:InvokeFunction
+      Principal: s3.amazonaws.com
+      SourceArn: !Ref UploadsBucketArn
+
+Outputs:
+  FunctionArn:
+    Value: !GetAtt WorkerFunction.Arn
+  DlqArn:
+    Value: !GetAtt DeadLetterQueue.Arn

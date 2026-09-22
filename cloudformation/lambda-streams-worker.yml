@@ -1,0 +1,106 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  DynamoDB Streams → Lambda worker (Phase 2.8 toolchain, template for Phase 3
+  L2/L4 analysis). A stream event-source mapping with a change-type filter,
+  bounded retries, bisect-on-error, and an SQS on-failure destination (DLQ) so a
+  poison record can never block a shard for 24h. Deploy is a gated AWS action;
+  this template + scripts/build-lambda.mjs are the reusable pieces.
+
+Parameters:
+  WorkerName:
+    Type: String
+    Default: jvtutor-ai-segment
+    Description: Logical name for this stream worker.
+  CodeS3Bucket:
+    Type: String
+    Description: S3 bucket holding the bundled Lambda zip (from `npm run lambda:build -- --zip` then upload).
+  CodeS3Key:
+    Type: String
+    Description: S3 key of the zip, e.g. lambdas/ai-segment.zip
+  StreamArn:
+    Type: String
+    Description: DynamoDB table StreamArn (e.g. the lesson-segments / class-summaries stream).
+  FilterEnabled:
+    Type: String
+    AllowedValues: ['true', 'false']
+    Default: 'true'
+    Description: When true, only MODIFY events whose new `status` is CLOSED/PENDING are delivered.
+
+Conditions:
+  UseFilter: !Equals [!Ref FilterEnabled, 'true']
+
+Resources:
+  DeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub '${WorkerName}-dlq'
+      MessageRetentionPeriod: 1209600 # 14 days
+
+  WorkerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${WorkerName}-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: StreamsAndDlq
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetRecords
+                  - dynamodb:GetShardIterator
+                  - dynamodb:DescribeStream
+                  - dynamodb:ListStreams
+                Resource: !Ref StreamArn
+              - Effect: Allow
+                Action: [sqs:SendMessage]
+                Resource: !GetAtt DeadLetterQueue.Arn
+              # NOTE: add the app's DynamoDB read/write + integrations-table access
+              # the real worker needs (kept out of the template so it stays generic).
+
+  WorkerFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Ref WorkerName
+      Runtime: nodejs20.x
+      Handler: index.handler
+      Timeout: 300
+      MemorySize: 512
+      Role: !GetAtt WorkerRole.Arn
+      Code:
+        S3Bucket: !Ref CodeS3Bucket
+        S3Key: !Ref CodeS3Key
+
+  StreamMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      FunctionName: !Ref WorkerFunction
+      EventSourceArn: !Ref StreamArn
+      StartingPosition: LATEST
+      BatchSize: 5
+      MaximumBatchingWindowInSeconds: 10
+      MaximumRetryAttempts: 3
+      BisectBatchOnFunctionError: true
+      MaximumRecordAgeInSeconds: 3600
+      DestinationConfig:
+        OnFailure:
+          Destination: !GetAtt DeadLetterQueue.Arn
+      FilterCriteria: !If
+        - UseFilter
+        - Filters:
+            - Pattern: '{"eventName":["MODIFY"],"dynamodb":{"NewImage":{"status":{"S":["CLOSED","PENDING"]}}}}'
+        - !Ref AWS::NoValue
+
+Outputs:
+  FunctionArn:
+    Value: !GetAtt WorkerFunction.Arn
+  DlqUrl:
+    Value: !Ref DeadLetterQueue
