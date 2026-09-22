@@ -389,6 +389,7 @@ async function main() {
     { key: 'pointsEscrow', name: 'Points Escrow Table', fn: () => ensureTable(TABLES.pointsEscrow) },
     { key: 'pointTransactions', name: 'Point Transactions Table', fn: () => ensureTable(TABLES.pointTransactions) },
     { key: 'aiUsageLedger', name: 'AI Usage Ledger Table', fn: () => ensureTable(TABLES.aiUsageLedger) },
+    { key: 'aiFeatureConfig', name: 'AI Feature Config Table', fn: () => ensureTable(TABLES.aiFeatureConfig) },
     { key: 'costRollups', name: 'Cost Rollups Table', fn: () => ensureTable(TABLES.costRollups) },
     {
       key: 'profiles',

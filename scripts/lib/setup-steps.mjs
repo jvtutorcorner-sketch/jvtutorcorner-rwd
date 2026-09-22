@@ -24,6 +24,7 @@ export const STEP_KEYS = Object.freeze([
   'pointsEscrow',
   'pointTransactions',
   'aiUsageLedger',
+  'aiFeatureConfig',
   'costRollups',
   'profiles',
   'courses',

@@ -187,6 +187,21 @@ export const TABLES = {
     stream: false,
   },
 
+  // 7-layer AI feature flag / entitlement config. One row per (featureId, scope);
+  // resolveFeature() reads the up-to-7 scope rows and resolves tri-state
+  // on|off|inherit (+locked) + params. See lib/ai/entitlements.ts.
+  aiFeatureConfig: {
+    envVar: 'DYNAMODB_TABLE_AI_FEATURE_CONFIG',
+    defaultName: 'jvtutorcorner-ai-feature-config',
+    label: 'AiFeatureConfig',
+    purpose: 'AI-Feature-Flags',
+    partitionKey: 'featureId',
+    sortKey: 'scope', // GLOBAL | TENANT#<id> | PLAN#<id> | TEACHER#<id> | COURSE#<id> | LESSON#<id> | USER#<id>
+    attributes: { featureId: S, scope: S },
+    indexes: [],
+    stream: false,
+  },
+
   // Pre-aggregated cost counters (per lesson/tenant/teacher/course/student/
   // feature/global). Updated with atomic ADD in the same transaction as the
   // ledger write, so dashboards and per-lesson budget checks read one item
