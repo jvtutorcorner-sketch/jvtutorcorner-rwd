@@ -4,7 +4,7 @@ import { DynamoDBDocumentClient, GetCommand, PutCommand, DeleteCommand } from '@
 import { getUserPoints, setUserPoints } from '@/lib/pointsStorage';
 import { refundEscrow } from '@/lib/pointsEscrow';
 import { getProfileById, putProfile } from '@/lib/profilesService';
-import { withAuth, AuthedRequest } from '@/lib/auth/apiGuard';
+import { withAuth, withAnyAuth, AuthedRequest } from '@/lib/auth/apiGuard';
 import { writeAuditLog } from '@/lib/auditLogService';
 
 const ddbRegion = process.env.CI_AWS_REGION || process.env.AWS_REGION;
@@ -70,7 +70,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ orde
   }
 }
 
-export async function PATCH(request: Request, { params }: { params: Promise<{ orderId: string }> }) {
+async function handlePatch(request: AuthedRequest, { params }: { params: Promise<{ orderId: string }> }) {
   try {
     const { orderId } = await params as { orderId: string };
     const body = await request.json();
@@ -93,6 +93,26 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ or
 
     if (!existingRes.Item) {
       return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+    }
+
+    // R4 — 授權。此端點過去是 `export async function PATCH`（完全無驗證），任何人只要知道
+    // orderId 就能改任意訂單狀態：設 REFUNDED 觸發退點/退 escrow、設 PAID 讓報名免費生效。
+    // 現在包在 withAnyAuth 下：登入者用 session、金流 webhook 用 HMAC 簽名以 system 身分回寫。
+    //   - 非 admin/system 只能操作自己的訂單；
+    //   - 牽涉金流與資產的狀態（PAID / REFUNDED / COMPLETED）只有 admin / system 可設定，
+    //     一般擁有者不能自行退款或把自己的訂單標記為已付款。
+    const { role, userId: sessionUserId } = request.session;
+    const isPrivileged = role === 'admin' || role === 'system';
+    const isOwner = !!existingRes.Item.userId && existingRes.Item.userId === sessionUserId;
+    if (!isPrivileged && !isOwner) {
+      return NextResponse.json({ ok: false, error: 'Forbidden: not the order owner' }, { status: 403 });
+    }
+    const PRIVILEGED_STATUS = new Set(['PAID', 'REFUNDED', 'COMPLETED']);
+    if (status && PRIVILEGED_STATUS.has(String(status).toUpperCase()) && !isPrivileged) {
+      return NextResponse.json(
+        { ok: false, error: 'Forbidden: this order status can only be set by an admin or the payment gateway' },
+        { status: 403 },
+      );
     }
 
     const now = new Date().toISOString();
@@ -243,6 +263,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ or
     return NextResponse.json({ error: 'Server error' }, { status: 500 });
   }
 }
+
+// Session（使用者改自己的訂單）或 HMAC 簽名（金流 webhook 以 system 身分回寫）其一即可。
+export const PATCH = withAnyAuth('/api/orders/[orderId]', handlePatch);
 
 async function handleDelete(request: AuthedRequest, { params }: { params: Promise<{ orderId: string }> }) {
   try {

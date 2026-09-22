@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyCheckMacValue } from '@/lib/ecpay';
 import { handlePaymentSuccess } from '@/lib/paymentSuccessHandler';
+import { internalFetch } from '@/lib/auth/internalFetch';
 import profilesService from '@/lib/profilesService';
 
 // Handle x-www-form-urlencoded data
@@ -59,10 +60,11 @@ export async function POST(req: NextRequest) {
                     } else if (res.status === 404) {
                         // If not found in plan-upgrades, try the standard orders API (for course enrollments)
                         console.log(`[ECPay Return] Order ${orderId} not found in plan-upgrades, trying standard orders API...`);
-                        res = await fetch(`${base}/api/orders/${encodeURIComponent(orderId)}`, {
+                        res = await internalFetch(`/api/orders/${encodeURIComponent(orderId)}`, {
                             method: 'PATCH',
-                            headers: { 'Content-Type': 'application/json' },
+                            signPath: '/api/orders/[orderId]',
                             body: JSON.stringify({ status: 'PAID' }),
+                            originRequest: req,
                         });
                         
                         if (res.ok) {
