@@ -277,6 +277,24 @@ export const TABLES = {
     indexes: [],
     stream: false,
   },
+
+  // Phase 5: AI Media GPU jobs (RunPod later; stub now). One row per job with a
+  // reserve→settle/refund lifecycle. byUser lists a user's jobs; byStatus lets the
+  // expiry sweeper find still-open jobs past their reservation deadline.
+  // Null-key safe: status/expiresAt/userId are written on every job incl. terminal.
+  gpuJobs: {
+    envVar: 'DYNAMODB_TABLE_GPU_JOBS',
+    defaultName: 'jvtutorcorner-gpu-jobs',
+    label: 'GpuJobs',
+    purpose: 'AI-Media-GPU-Jobs',
+    partitionKey: 'jobId',
+    attributes: { jobId: S, userId: S, status: S, createdAt: S, expiresAt: S },
+    indexes: [
+      { name: 'byUser', hash: 'userId', range: 'createdAt' },
+      { name: 'byStatus', hash: 'status', range: 'expiresAt' },
+    ],
+    stream: false,
+  },
 };
 
 /**

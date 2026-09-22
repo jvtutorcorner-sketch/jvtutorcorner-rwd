@@ -64,11 +64,14 @@ Resources:
           const http = require('http');
           exports.handler = async (event) => {
             const tier = (event && event.tier) || 'full';
-            console.log(`[Report] ${tier} tier triggered:`, new Date().toISOString());
+            // A rule may target a different cron route via `path` (e.g. the media
+            // reservation sweeper); default keeps the report behaviour unchanged.
+            const path = (event && event.path) || `/api/cron/daily-report?tier=${tier}`;
+            console.log(`[Cron] triggered ${path}:`, new Date().toISOString());
             const baseUrl = process.env.APP_BASE_URL;
             const cronSecret = process.env.CRON_SECRET;
             if (!baseUrl) return { statusCode: 500, body: 'APP_BASE_URL not set' };
-            const url = `${baseUrl}/api/cron/daily-report?tier=${tier}`;
+            const url = `${baseUrl}${path}`;
             console.log('[Report] Calling:', url);
             const body = JSON.stringify({ tier });
             return new Promise((resolve, reject) => {
@@ -162,6 +165,29 @@ Resources:
       Action: lambda:InvokeFunction
       Principal: events.amazonaws.com
       SourceArn: !GetAtt WeeklyRiskScheduleRule.Arn
+
+  # ─── Phase 5: AI Media reservation sweeper — every 5 minutes ───
+  # Refunds GPU media reservations whose deadline passed without settling (lost
+  # webhook / crashed worker), so points are never stuck.
+  MediaSweeperScheduleRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: jvtutor-media-sweeper-5m
+      Description: 'Refund expired GPU media reservations every 5 minutes'
+      ScheduleExpression: 'rate(5 minutes)'
+      State: ENABLED
+      Targets:
+        - Id: MediaSweeperTarget
+          Arn: !GetAtt DailyReportSchedulerFunction.Arn
+          Input: '{"path": "/api/cron/media-sweeper"}'
+
+  MediaSweeperLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref DailyReportSchedulerFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt MediaSweeperScheduleRule.Arn
 
 Outputs:
   LambdaFunctionArn:

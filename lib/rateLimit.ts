@@ -186,4 +186,6 @@ export const RATE_LIMIT_RULES = {
   forgotPasswordPerEmail: { scope: 'forgot:email', limit: 3, windowSeconds: 60 * 60 } as RateLimitRule,
   /** 同一 IP 1 小時內最多 10 次重寄驗證信 */
   resendVerificationPerIp: { scope: 'resend:ip', limit: 10, windowSeconds: 60 * 60 } as RateLimitRule,
+  /** 同一使用者 1 小時內最多 30 次送出 AI Media 生成任務(每次都會預扣點數,防洗版) */
+  mediaSubmitPerUser: { scope: 'media:submit:user', limit: 30, windowSeconds: 60 * 60 } as RateLimitRule,
 };
