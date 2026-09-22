@@ -10,6 +10,22 @@
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import nodemailer from 'nodemailer';
+import { randomUUID } from 'crypto';
+import { recordUsage } from '@/lib/ai/gateway/ledger';
+import { usageToMusd } from '@/lib/ai/gateway/pricing';
+
+// Meter a Gemini SDK response's token usage (fire-and-forget).
+async function meterReport(resp: any, model = 'gemini-2.0-flash') {
+  const u = resp?.usageMetadata; if (!u) return;
+  try {
+    await recordUsage({
+      requestId: randomUUID(), costCenter: 'ai',
+      actualCostMusd: usageToMusd(model, { inputTokens: u.promptTokenCount ?? 0, outputTokens: u.candidatesTokenCount ?? 0, reasoningTokens: u.thoughtsTokenCount ?? 0 }),
+      feature: 'daily-report', model, provider: 'GEMINI',
+      inputTokens: u.promptTokenCount ?? 0, outputTokens: u.candidatesTokenCount ?? 0, reasoningTokens: u.thoughtsTokenCount ?? 0, status: 'ok',
+    });
+  } catch (e) { console.warn('[DailyReport] metering failed (non-fatal)', e); }
+}
 import { analyzeProjectRisks, formatRisksAsMarkdown, RiskItem } from './platformRiskAnalyzer';
 import { runHealthCheck, formatHealthCheckAsMarkdown, HealthCheckResult } from './awsHealthChecker';
 
@@ -92,6 +108,7 @@ ${NEWS_SEARCH_QUERIES.map((q, i) => `${i + 1}. ${q}`).join('\n')}
 
     const result = await model.generateContent(searchPrompt);
     const response = result.response;
+    await meterReport(response);
     return response.text() || '無法取得新聞摘要';
   } catch (error: any) {
     console.error('[DailyReport] News fetch error:', error.message);
@@ -141,6 +158,7 @@ async function analyzeTechTrends(): Promise<string> {
 
     const result = await model.generateContent(trendPrompt);
     const response = result.response;
+    await meterReport(response);
     return response.text() || '無法生成技術趨勢分析';
   } catch (error: any) {
     console.error('[DailyReport] Trend analysis error:', error.message);

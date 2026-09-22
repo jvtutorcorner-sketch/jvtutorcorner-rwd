@@ -69,6 +69,19 @@ export function estimateTokens(text: string): number {
   return Math.ceil((text?.length ?? 0) / 4);
 }
 
+// Embedding models — USD per 1M input tokens.
+export const EMBEDDING_PRICES: Record<string, number> = {
+  'gemini-embedding-2-preview': 0.15,
+  'embedding-001': 0.15,
+  'text-embedding-3-small': 0.02,
+};
+
+/** Integer micro-USD for an embedding call (input tokens only). */
+export function embeddingUsageToMusd(model: string, inputTokens: number): number {
+  const perM = EMBEDDING_PRICES[model] ?? 0.15;
+  return Math.round(inputTokens * perM); // = inputTokens * perM/1e6 USD * 1e6 µ$
+}
+
 /**
  * Integer micro-USD for an STT (audio-input) call: the prompt tokens are audio,
  * priced at the model's audio rate (falls back to text input rate).

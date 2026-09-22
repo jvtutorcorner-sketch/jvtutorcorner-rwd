@@ -4,7 +4,7 @@ import nodemailer from 'nodemailer';
 import { ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { ddbDocClient } from './dynamo';
 import { LambdaClient, InvokeCommand } from '@aws-sdk/client-lambda';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { runWithIntegration } from './ai/gateway/gateway';
 import { generateHmacHeaders } from './auth/hmac';
 
 /**
@@ -296,70 +296,24 @@ async function downloadLineImageById(messageId: string, channelAccessToken: stri
     return null;
 }
 
+const LINE_VISION_DEFAULT_MODEL: Record<string, string> = {
+    GEMINI: 'gemini-2.0-flash',
+    OPENAI: 'gpt-4o',
+    ANTHROPIC: 'claude-3-5-sonnet-20241022',
+};
+
 async function analyzeLineImageWithVisionAI(imageBuffer: Buffer, aiIntegration: any, prompt: string): Promise<any> {
     const base64 = imageBuffer.toString('base64');
-    const apiKey = aiIntegration.config?.apiKey;
-    // Prefer model stored in DynamoDB (set via /apps), fall back to provider default
+    // Prefer model stored in DynamoDB (set via /apps), fall back to provider default.
     const configuredModel = aiIntegration.config?.models?.[0] || aiIntegration.config?.model;
-
-    if (aiIntegration.type === 'GEMINI') {
-        const model = configuredModel || 'gemini-2.0-flash';
-        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                contents: [{ parts: [{ text: prompt }, { inlineData: { mimeType: 'image/jpeg', data: base64 } }] }],
-                generationConfig: { response_mime_type: 'application/json', maxOutputTokens: 1024 }
-            })
-        });
-        if (!res.ok) throw new Error(`Gemini Vision error: ${res.status}`);
-        const data = await res.json();
-        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        try { return JSON.parse(text); } catch { return { raw: text }; }
-
-    } else if (aiIntegration.type === 'OPENAI') {
-        const model = configuredModel || 'gpt-4o';
-        const res = await fetch('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-            body: JSON.stringify({
-                model,
-                messages: [{
-                    role: 'user', content: [
-                        { type: 'text', text: prompt },
-                        { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64}` } }
-                    ]
-                }],
-                max_tokens: 1024, response_format: { type: 'json_object' }
-            })
-        });
-        if (!res.ok) throw new Error(`OpenAI Vision error: ${res.status}`);
-        const data = await res.json();
-        const text = data.choices?.[0]?.message?.content;
-        try { return JSON.parse(text); } catch { return { raw: text }; }
-
-    } else if (aiIntegration.type === 'ANTHROPIC') {
-        const model = configuredModel || 'claude-3-5-sonnet-20241022';
-        const res = await fetch('https://api.anthropic.com/v1/messages', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-            body: JSON.stringify({
-                model, max_tokens: 1024,
-                messages: [{
-                    role: 'user', content: [
-                        { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64 } },
-                        { type: 'text', text: prompt }
-                    ]
-                }]
-            })
-        });
-        if (!res.ok) throw new Error(`Anthropic Vision error: ${res.status}`);
-        const data = await res.json();
-        const text = data.content?.[0]?.text;
-        try { return JSON.parse(text); } catch { return { raw: text }; }
-    }
-
-    throw new Error(`Unsupported AI provider for LINE Vision: ${aiIntegration.type}`);
+    const res = await runWithIntegration(
+        { type: aiIntegration.type, config: { apiKey: aiIntegration.config?.apiKey, model: configuredModel } },
+        { prompt, images: [{ base64, mimeType: 'image/jpeg' }], jsonMode: true, maxTokens: 1024 },
+        { feature: 'line-vision', defaultModel: LINE_VISION_DEFAULT_MODEL[aiIntegration.type] || 'gpt-4o' }
+    );
+    if (!res.ok) throw new Error(`LINE Vision error: ${res.error}`);
+    const text = res.result.text;
+    try { return JSON.parse(text || ''); } catch { return { raw: text }; }
 }
 
 const LINE_LEARNING_CONTENT_ANALYSIS_PROMPT = `

@@ -2,6 +2,20 @@ import { NextResponse } from 'next/server';
 import { qdrantClient, ensureCollection } from '@/lib/qdrant';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { withAdminOrHmac, type AuthedRequest } from '@/lib/auth/apiGuard';
+import { randomUUID } from 'crypto';
+import { recordUsage } from '@/lib/ai/gateway/ledger';
+import { embeddingUsageToMusd, estimateTokens } from '@/lib/ai/gateway/pricing';
+
+async function meterEmbed(model: string, inputTokens: number) {
+    if (inputTokens <= 0) return;
+    try {
+        await recordUsage({
+            requestId: randomUUID(), costCenter: 'ai',
+            actualCostMusd: embeddingUsageToMusd(model, inputTokens),
+            feature: 'embedding', model, provider: 'GEMINI', inputTokens, outputTokens: 0, status: 'ok',
+        });
+    } catch (e) { console.warn('[qdrant-knowledge-base] metering failed (non-fatal)', e); }
+}
 
 export const runtime = 'nodejs';
 
@@ -63,6 +77,7 @@ export const POST = withAdminOrHmac('/api/workflows/qdrant-knowledge-base', asyn
             payload: Record<string, any>;
         }> = [];
 
+        let embedTokens = 0;
         for (let i = 0; i < docList.length; i++) {
             const doc = docList[i];
             const text = doc.text || String(doc);
@@ -70,7 +85,8 @@ export const POST = withAdminOrHmac('/api/workflows/qdrant-knowledge-base', asyn
             try {
                 // Generate embedding
                 const embeddingResult = await model.embedContent(text);
-                
+                embedTokens += estimateTokens(text);
+
                 const embedding = embeddingResult.embedding?.values;
 
                 if (!embedding || embedding.length === 0) {
@@ -93,6 +109,7 @@ export const POST = withAdminOrHmac('/api/workflows/qdrant-knowledge-base', asyn
                 // Continue with next document on embedding failure
             }
         }
+        await meterEmbed('embedding-001', embedTokens);
 
         if (points.length === 0) {
             return NextResponse.json({ ok: false, error: 'Failed to generate embeddings for any documents' }, { status: 500 });
@@ -144,6 +161,7 @@ export const GET = withAdminOrHmac('/api/workflows/qdrant-knowledge-base', async
         const model = genAI.getGenerativeModel({ model: 'embedding-001' });
 
         const embeddingResult = await model.embedContent(query);
+        await meterEmbed('embedding-001', estimateTokens(query));
 
         const queryVector = embeddingResult.embedding?.values;
 

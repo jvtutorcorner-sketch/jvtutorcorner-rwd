@@ -4,6 +4,7 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, GetCommand, ScanCommand, PutCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
 import { executeWebhookScript } from '@/lib/scriptExecutor';
 import { LEARNING_CONTENT_ANALYSIS_PROMPT } from '@/lib/learningContentAnalysis';
+import { runWithIntegration } from '@/lib/ai/gateway/gateway';
 
 const ddbRegion = process.env.CI_AWS_REGION || process.env.AWS_REGION;
 const ddbExplicitAccessKey = process.env.CI_AWS_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID;
@@ -296,214 +297,56 @@ function renderTemplate(template: string, data: Record<string, any>) {
 }
 
 // Text message API callers for each provider
+// LINE text/vision now route through the AI Gateway (usage captured + metered +
+// timeout/retry). The three text wrappers keep their (text, apiKey) signatures so
+// the POST dispatch below is unchanged; each pins its original model.
+const LINE_TEXT_MODEL: Record<string, string> = {
+    GEMINI: 'gemini-2.5-flash',
+    OPENAI: 'gpt-4-turbo',
+    ANTHROPIC: 'claude-3-5-sonnet-20241022',
+};
+
+async function callTextAI(provider: string, text: string, apiKey: string): Promise<string | null> {
+    const model = LINE_TEXT_MODEL[provider] || 'gpt-4-turbo';
+    const res = await runWithIntegration(
+        { type: provider, config: { apiKey, model } },
+        { prompt: text, maxTokens: 4096 },
+        { feature: 'line-text', defaultModel: model }
+    );
+    return res.ok ? res.result.text : null;
+}
+
 async function callGeminiText(text: string, apiKey: string): Promise<string | null> {
-    const model = 'gemini-2.5-flash';
-    try {
-        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                contents: [{ parts: [{ text }] }],
-                generationConfig: { maxOutputTokens: 4096 }
-            })
-        });
-        if (!res.ok) return null;
-        const data = await res.json();
-        return data.candidates?.[0]?.content?.parts?.[0]?.text || null;
-    } catch (err) {
-        console.error('[LINE Webhook] Error calling Gemini text API:', err);
-        return null;
-    }
+    return callTextAI('GEMINI', text, apiKey);
 }
-
 async function callOpenAIText(text: string, apiKey: string): Promise<string | null> {
-    try {
-        const res = await fetch('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${apiKey}`
-            },
-            body: JSON.stringify({
-                model: 'gpt-4-turbo',
-                messages: [{ role: 'user', content: text }],
-                max_tokens: 4096
-            })
-        });
-        if (!res.ok) return null;
-        const data = await res.json();
-        return data.choices?.[0]?.message?.content || null;
-    } catch (err) {
-        console.error('[LINE Webhook] Error calling OpenAI text API:', err);
-        return null;
-    }
+    return callTextAI('OPENAI', text, apiKey);
+}
+async function callAnthropicText(text: string, apiKey: string): Promise<string | null> {
+    return callTextAI('ANTHROPIC', text, apiKey);
 }
 
-async function callAnthropicText(text: string, apiKey: string): Promise<string | null> {
-    try {
-        const res = await fetch('https://api.anthropic.com/v1/messages', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'x-api-key': apiKey,
-                'anthropic-version': '2023-06-01'
-            },
-            body: JSON.stringify({
-                model: 'claude-3-5-sonnet-20241022',
-                max_tokens: 4096,
-                messages: [{ role: 'user', content: text }]
-            })
-        });
-        if (!res.ok) return null;
-        const data = await res.json();
-        return data.content?.[0]?.text || null;
-    } catch (err) {
-        console.error('[LINE Webhook] Error calling Anthropic text API:', err);
-        return null;
-    }
-}
+const LINE_VISION_MODEL: Record<string, string> = {
+    GEMINI: 'gemini-2.5-flash',
+    OPENAI: 'gpt-4-turbo',
+    ANTHROPIC: 'claude-3-5-sonnet-20241022',
+};
 
 async function analyzeImageWithVisionAPI(imageBuffer: Buffer, aiIntegration: any, prompt: string): Promise<any> {
     const base64Image = imageBuffer.toString('base64');
     const provider = aiIntegration.type;
-    const apiKey = aiIntegration.config?.apiKey;
-
+    const configuredModel = aiIntegration.config?.models?.[0] || aiIntegration.config?.model;
     try {
-        if (provider === 'GEMINI') {
-            return await analyzeWithGemini(base64Image, apiKey, prompt);
-        } else if (provider === 'OPENAI') {
-            return await analyzeWithOpenAI(base64Image, apiKey, prompt);
-        } else if (provider === 'ANTHROPIC') {
-            return await analyzeWithAnthropic(base64Image, apiKey, prompt);
-        } else {
-            console.error('[LINE Webhook] Unsupported provider:', provider);
-            return null;
-        }
+        const res = await runWithIntegration(
+            { type: provider, config: { apiKey: aiIntegration.config?.apiKey, model: configuredModel } },
+            { prompt, images: [{ base64: base64Image, mimeType: 'image/jpeg' }], jsonMode: true, maxTokens: 1024 },
+            { feature: 'line-vision', defaultModel: LINE_VISION_MODEL[provider] || 'gpt-4-turbo' }
+        );
+        if (!res.ok || !res.result.text) return null;
+        try { return JSON.parse(res.result.text); } catch { return { raw: res.result.text }; }
     } catch (err) {
         console.error(`[LINE Webhook] Error analyzing image with ${provider}:`, err);
         return null;
-    }
-}
-
-async function analyzeWithGemini(base64Image: string, apiKey: string, prompt: string): Promise<any> {
-    console.log('[LINE Webhook] Analyzing image with Gemini Vision...');
-    const model = 'gemini-2.5-flash';
-    
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            contents: [{
-                parts: [
-                    { text: prompt },
-                    { inlineData: { mimeType: 'image/jpeg', data: base64Image } }
-                ]
-            }],
-            generationConfig: { response_mime_type: 'application/json', maxOutputTokens: 1024 }
-        })
-    });
-
-    if (!res.ok) {
-        console.error('[LINE Webhook] Gemini error:', res.status);
-        return null;
-    }
-
-    const data = await res.json();
-    const responseText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!responseText) return null;
-    try {
-        if (typeof responseText === 'string') {
-            return JSON.parse(responseText);
-        }
-        return responseText;
-    } catch (err) {
-        console.warn('[LINE Webhook] Gemini returned non-JSON response; returning raw text', { err: String(err) });
-        return { raw: responseText };
-    }
-}
-
-async function analyzeWithOpenAI(base64Image: string, apiKey: string, prompt: string): Promise<any> {
-    console.log('[LINE Webhook] Analyzing image with OpenAI Vision...');
-    
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`
-        },
-        body: JSON.stringify({
-            model: 'gpt-4-turbo-with-vision',
-            messages: [{
-                role: 'user',
-                content: [
-                    { type: 'text', text: prompt },
-                    { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Image}` } }
-                ]
-            }],
-            max_tokens: 1024,
-            response_format: { type: "json_object" }
-        })
-    });
-
-    if (!res.ok) {
-        console.error('[LINE Webhook] OpenAI error:', res.status);
-        return null;
-    }
-
-    const data = await res.json();
-    const responseText = data.choices?.[0]?.message?.content;
-    if (!responseText) return null;
-    try {
-        if (typeof responseText === 'string') {
-            return JSON.parse(responseText);
-        }
-        // already an object
-        return responseText;
-    } catch (err) {
-        console.warn('[LINE Webhook] OpenAI returned non-JSON response; returning raw text', { err: String(err) });
-        return { raw: responseText };
-    }
-}
-
-async function analyzeWithAnthropic(base64Image: string, apiKey: string, prompt: string): Promise<any> {
-    console.log('[LINE Webhook] Analyzing image with Anthropic Vision...');
-    
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': apiKey,
-            'anthropic-version': '2023-06-01'
-        },
-        body: JSON.stringify({
-            model: 'claude-3-5-sonnet-20241022',
-            max_tokens: 1024,
-            messages: [{
-                role: 'user',
-                content: [
-                    { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64Image } },
-                    { type: 'text', text: prompt }
-                ]
-            }]
-        })
-    });
-
-    if (!res.ok) {
-        console.error('[LINE Webhook] Anthropic error:', res.status);
-        return null;
-    }
-
-    const data = await res.json();
-    const responseText = data.content?.[0]?.text;
-    if (!responseText) return null;
-    try {
-        if (typeof responseText === 'string') {
-            return JSON.parse(responseText);
-        }
-        return responseText;
-    } catch (err) {
-        console.warn('[LINE Webhook] Anthropic returned non-JSON response; returning raw text', { err: String(err) });
-        return { raw: responseText };
     }
 }
 
