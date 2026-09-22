@@ -249,6 +249,34 @@ export const TABLES = {
     indexes: [{ name: 'byCourseId', hash: 'courseId', range: 'startTime' }],
     stream: true,
   },
+
+  // Phase 4: AI-generated assessments (quiz/homework) per lesson. One row per
+  // assessment; questions live inside the item. Listed by sessionId.
+  assessments: {
+    envVar: 'DYNAMODB_TABLE_ASSESSMENTS',
+    defaultName: 'jvtutorcorner-assessments',
+    label: 'Assessments',
+    purpose: 'AI-Assessments',
+    partitionKey: 'sessionId',
+    sortKey: 'assessmentId',
+    attributes: { sessionId: S, assessmentId: S },
+    indexes: [],
+    stream: false,
+  },
+
+  // Phase 4: one student's answers + AI grade for one assessment. PK groups a
+  // teacher's read of all submissions to an assessment; SK is the student.
+  assessmentSubmissions: {
+    envVar: 'DYNAMODB_TABLE_ASSESSMENT_SUBMISSIONS',
+    defaultName: 'jvtutorcorner-assessment-submissions',
+    label: 'AssessmentSubmissions',
+    purpose: 'AI-Assessment-Submissions',
+    partitionKey: 'assessmentId',
+    sortKey: 'studentId',
+    attributes: { assessmentId: S, studentId: S },
+    indexes: [],
+    stream: false,
+  },
 };
 
 /**

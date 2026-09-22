@@ -108,9 +108,14 @@ export default function LessonTimelinePage() {
       <h1 style={{ fontSize: 22, fontWeight: 700, color: '#5b21b6', marginBottom: 4 }}>
         {data.lesson?.title || '課堂時間軸'}
       </h1>
-      <p style={{ color: '#6b7280', fontSize: 13, marginBottom: 20 }}>
+      <p style={{ color: '#6b7280', fontSize: 13, marginBottom: 8 }}>
         {data.lesson?.startTime ? new Date(data.lesson.startTime).toLocaleString() : ''} · 共 {segs.length} 段
         {isHost ? ' · 你可以點主題名稱重新命名' : ''}
+      </p>
+      <p style={{ marginBottom: 20 }}>
+        <a href={`/lessons/${encodeURIComponent(sessionId)}/assessments`} style={{ color: '#7c3aed', fontSize: 13, textDecoration: 'none' }}>
+          測驗 / 作業 →
+        </a>
       </p>
 
       {segs.length === 0 && <p style={{ color: '#9ca3af' }}>這堂課還沒有教學段落(老師尚未標記,或課程未結束)。</p>}

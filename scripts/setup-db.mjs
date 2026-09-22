@@ -19,7 +19,8 @@
  *
  *   Step keys: organizations, orgUnits, licenses, enrollments, courseSessions, classSummaries,
  *              planUpgrades, pointsEscrow, pointTransactions, aiUsageLedger, aiFeatureConfig,
- *              costRollups, lessonEvents, lessonSegments, profiles, courses
+ *              costRollups, lessonEvents, lessonSegments, assessments,
+ *              assessmentSubmissions, profiles, courses
  *
  *   Use --only whenever some declared index must NOT be created yet. An index on
  *   an attribute that deployed code still writes as NULL makes every write to
@@ -393,6 +394,8 @@ async function main() {
     { key: 'costRollups', name: 'Cost Rollups Table', fn: () => ensureTable(TABLES.costRollups) },
     { key: 'lessonEvents', name: 'Lesson Events Table', fn: () => ensureTable(TABLES.lessonEvents) },
     { key: 'lessonSegments', name: 'Lesson Segments Table', fn: () => ensureTable(TABLES.lessonSegments) },
+    { key: 'assessments', name: 'Assessments Table', fn: () => ensureTable(TABLES.assessments) },
+    { key: 'assessmentSubmissions', name: 'Assessment Submissions Table', fn: () => ensureTable(TABLES.assessmentSubmissions) },
     {
       key: 'profiles',
       name: 'Profiles Table Indexes',

@@ -169,6 +169,9 @@ const nextConfig: any = {
     // AI live teaching (Phase 3): lesson events + derived segments.
     DYNAMODB_TABLE_LESSON_EVENTS: process.env.DYNAMODB_TABLE_LESSON_EVENTS || 'jvtutorcorner-lesson-events',
     DYNAMODB_TABLE_LESSON_SEGMENTS: process.env.DYNAMODB_TABLE_LESSON_SEGMENTS || 'jvtutorcorner-lesson-segments',
+    // Phase 4: AI assessments + per-student submissions.
+    DYNAMODB_TABLE_ASSESSMENTS: process.env.DYNAMODB_TABLE_ASSESSMENTS || 'jvtutorcorner-assessments',
+    DYNAMODB_TABLE_ASSESSMENT_SUBMISSIONS: process.env.DYNAMODB_TABLE_ASSESSMENT_SUBMISSIONS || 'jvtutorcorner-assessment-submissions',
     // Phase 3b: client gate for the (inert) recording-consent UI. Unset = off.
     // Recording ALSO needs the server flag CLASS_SUMMARY_ENABLED + both-party
     // consent before anything is captured.

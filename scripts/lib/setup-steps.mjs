@@ -28,6 +28,8 @@ export const STEP_KEYS = Object.freeze([
   'costRollups',
   'lessonEvents',
   'lessonSegments',
+  'assessments',
+  'assessmentSubmissions',
   'profiles',
   'courses',
 ]);
