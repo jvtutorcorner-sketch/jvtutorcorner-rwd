@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { stripe } from '@/lib/stripe';
 import { handlePaymentSuccess } from '@/lib/paymentSuccessHandler';
+import { internalFetch } from '@/lib/auth/internalFetch';
 import profilesService from '@/lib/profilesService';
 import Stripe from 'stripe';
 
@@ -126,9 +127,11 @@ async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) 
             } else if (res.status === 404) {
                 // If not found in plan-upgrades, try the standard orders API (for course enrollments)
                 console.log(`[Stripe Webhook] Order ${orderId} not found in plan-upgrades, trying standard orders API...`);
-                res = await fetch(`${base}/api/orders/${encodeURIComponent(orderId)}`, {
+                // No originRequest here (this runs in handleCheckoutSessionCompleted, outside the
+                // POST handler); internalFetch falls back to NEXT_PUBLIC_BASE_URL for the base URL.
+                res = await internalFetch(`/api/orders/${encodeURIComponent(orderId)}`, {
                     method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
+                    signPath: '/api/orders/[orderId]',
                     body: JSON.stringify({ status: 'PAID' }),
                 });
 
