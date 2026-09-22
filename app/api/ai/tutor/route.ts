@@ -8,8 +8,11 @@ import { NextResponse } from 'next/server';
 import { withAuth, type AuthedRequest } from '@/lib/auth/apiGuard';
 import { resolveLessonContext } from '@/lib/lessonAI/lessonContext';
 import { isLessonSessionId } from '@/lib/lessonAI/sessionId';
-import { nextHintLevel, runTutor } from '@/lib/lessonAI/tutor';
-import { resolveFeature } from '@/lib/ai/entitlements';
+import { nextHintLevel, runTutor, questionHash, resolvePrevHintLevel } from '@/lib/lessonAI/tutor';
+import { listLessonEvents, appendLessonEvent } from '@/lib/lessonAI/lessonStore';
+import { TUTOR_HINT_EVENT } from '@/lib/lessonAI/eventTypes';
+import { resolveFeature, policyOverrideFromEntitlement } from '@/lib/ai/entitlements';
+import { checkFeatureLimits } from '@/lib/ai/limits';
 import { resolveProviderKey } from '@/lib/ai/gateway/keys';
 
 export const runtime = 'nodejs';
@@ -53,12 +56,27 @@ async function handlePost(req: AuthedRequest) {
     );
   }
 
-  const hintLevel = nextHintLevel(typeof body.prevHintLevel === 'number' ? body.prevHintLevel : 0);
+  // Usage limits (per-lesson / daily) from the entitlement, enforced via rollups.
+  const limit = await checkFeatureLimits(ent, { feature: 'tutor', sessionId, userId: req.session.userId });
+  if (!limit.allowed) {
+    return NextResponse.json(
+      { ok: false, error: 'Tutor usage limit reached', reason: limit.reason, used: limit.used, limit: limit.limit },
+      { status: 429 }
+    );
+  }
+
+  // Server-authoritative hint ladder: derive the previous level from THIS
+  // student's prior tutor_hint events for the same question (client input ignored).
+  const qh = questionHash(question);
+  const priorEvents = await listLessonEvents(sessionId, { latest: true, limit: 50 });
+  const prev = resolvePrevHintLevel(priorEvents, req.session.userId, qh);
+  const hintLevel = nextHintLevel(prev);
 
   const res = await runTutor({
     question,
     hintLevel,
     courseTitle: lc.courseSession.title,
+    policy: policyOverrideFromEntitlement(ent),
     ctx: {
       feature: 'tutor',
       resolveKey: resolveProviderKey,
@@ -74,6 +92,30 @@ async function handlePost(req: AuthedRequest) {
   if (!res.ok) {
     // On failure the gateway records no usage — the student is not charged.
     return NextResponse.json({ ok: false, error: '暫時無法回覆,請稍後再試', hintLevel }, { status: 502 });
+  }
+
+  // Log the hint as an AI-source lesson event so the ladder is server-tracked and
+  // the Timeline/Copilot can show tutor usage. No question text is stored.
+  try {
+    const startMs = Date.parse(lc.courseSession.startedAt || lc.courseSession.startTime || '') || Date.now();
+    const offsetSec = Math.max(0, Math.round((Date.now() - startMs) / 1000));
+    await appendLessonEvent(
+      sessionId,
+      {
+        eventId: res.requestId,
+        source: 'ai',
+        type: TUTOR_HINT_EVENT,
+        offsetSec,
+        ts: Date.now(),
+        confidence: 1,
+        actorRole: 'student',
+        track: 'student',
+        payload: { hintLevel, qh },
+      },
+      { courseId: lc.courseSession.courseId, createdBy: req.session.userId }
+    );
+  } catch (e) {
+    console.warn('[tutor] failed to log hint event (non-fatal)', e);
   }
 
   return NextResponse.json({

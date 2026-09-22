@@ -34,6 +34,10 @@ export function currentYyyymm(d = new Date()): string {
   return d.toISOString().slice(0, 7).replace('-', '');
 }
 
+export function currentYyyymmdd(d = new Date()): string {
+  return d.toISOString().slice(0, 10).replace(/-/g, '');
+}
+
 export interface TenantBudgetCheck {
   allowed: boolean;
   reason?: string;
@@ -48,16 +52,30 @@ export interface TenantBudgetCheck {
 export async function checkTenantBudget(orgId: string | undefined, estMusd: number): Promise<TenantBudgetCheck> {
   try {
     const month = currentYyyymm();
-    const evalScope = async (scopeKey: string, rollupKey: string): Promise<BudgetVerdict | null> => {
+    const day = currentYyyymmdd();
+    // Evaluate a scope's monthly AND daily cap; returns the verdict that denies
+    // (or the monthly verdict for reporting when both allow). Scopes / caps that
+    // aren't configured are skipped.
+    const evalScope = async (scopeKey: string, monthKey: string, dayKey: string): Promise<BudgetVerdict | null> => {
       const cfg = await getBudget(scopeKey);
-      if (!cfg || cfg.monthlyCapMusd == null) return null;
-      const roll = await getRollup(rollupKey);
-      const spent = Number(roll?.ai_musd) || 0;
-      return budgetVerdict({ spentMusd: spent, capMusd: cfg.monthlyCapMusd, estMusd, hardStop: cfg.hardStop });
+      if (!cfg) return null;
+      let monthlyV: BudgetVerdict | null = null;
+      let dailyV: BudgetVerdict | null = null;
+      if (cfg.monthlyCapMusd != null) {
+        const roll = await getRollup(monthKey);
+        monthlyV = budgetVerdict({ spentMusd: Number(roll?.ai_musd) || 0, capMusd: cfg.monthlyCapMusd, estMusd, hardStop: cfg.hardStop });
+      }
+      if (cfg.dailyCapMusd != null) {
+        const roll = await getRollup(dayKey);
+        dailyV = budgetVerdict({ spentMusd: Number(roll?.ai_musd) || 0, capMusd: cfg.dailyCapMusd, estMusd, hardStop: cfg.hardStop });
+      }
+      if (monthlyV && !monthlyV.allowed) return monthlyV;
+      if (dailyV && !dailyV.allowed) return dailyV;
+      return monthlyV ?? dailyV;
     };
 
-    const globalV = await evalScope('GLOBAL', `GLOBAL#${month}`);
-    const tenantV = orgId ? await evalScope(`TENANT#${orgId}`, `TENANT#${orgId}#${month}`) : null;
+    const globalV = await evalScope('GLOBAL', `GLOBAL#${month}`, `GLOBAL#${day}`);
+    const tenantV = orgId ? await evalScope(`TENANT#${orgId}`, `TENANT#${orgId}#${month}`, `TENANT#${orgId}#${day}`) : null;
     const denied = [globalV, tenantV].find((v) => v && !v.allowed) || null;
     if (denied) {
       return { allowed: false, reason: denied.reason, global: globalV ?? undefined, tenant: tenantV ?? undefined };

@@ -7,7 +7,7 @@
 // (deterministic, no LLM); only short-answers are graded by the model.
 
 import { randomUUID } from 'crypto';
-import { resolvePolicy } from '@/lib/ai/gateway/router';
+import { resolvePolicy, type PolicyOverride } from '@/lib/ai/gateway/router';
 import { runModel, type RunContext, type RunResult } from '@/lib/ai/gateway/gateway';
 import type { GenerateRequest } from '@/lib/ai/gateway/types';
 
@@ -197,10 +197,11 @@ export function totalScore(grades: QuestionGrade[]): { score: number; max: numbe
 
 export interface RunGenerateInput extends GeneratePromptInput {
   ctx: RunContext; // feature:'assessment'
+  policy?: PolicyOverride; // from ai-feature-config via policyOverrideFromEntitlement
 }
 export async function runGenerate(input: RunGenerateInput): Promise<RunResult> {
   const { systemInstruction, prompt } = buildGeneratePrompt(input);
-  const policy = resolvePolicy('assessment_gen');
+  const policy = resolvePolicy('assessment_gen', input.policy);
   const req: GenerateRequest = { prompt, systemInstruction, jsonMode: true, maxTokens: policy.maxTokens, temperature: 0.6 };
   return runModel(policy, req, input.ctx);
 }
@@ -210,10 +211,11 @@ export interface RunGradeShortInput {
   answers: AnswerMap;
   courseTitle?: string;
   ctx: RunContext; // feature:'assessment'
+  policy?: PolicyOverride; // from ai-feature-config via policyOverrideFromEntitlement
 }
 export async function runGradeShort(input: RunGradeShortInput): Promise<RunResult> {
   const { systemInstruction, prompt } = buildGradingPrompt(input.shortQuestions, input.answers, input.courseTitle);
-  const policy = resolvePolicy('grading');
+  const policy = resolvePolicy('grading', input.policy);
   const req: GenerateRequest = { prompt, systemInstruction, jsonMode: true, maxTokens: policy.maxTokens, temperature: 0 };
   return runModel(policy, req, input.ctx);
 }

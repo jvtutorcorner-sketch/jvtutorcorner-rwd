@@ -34,7 +34,7 @@ ddbDocClient.send = async (cmd) => {
   return { Item: undefined, Items: [] };
 };
 
-const { budgetVerdict, checkTenantBudget, currentYyyymm } = await import('../lib/ai/budget.ts');
+const { budgetVerdict, checkTenantBudget, currentYyyymm, currentYyyymmdd } = await import('../lib/ai/budget.ts');
 const { _clearBudgetCache } = await import('../lib/ai/budgetStore.ts');
 const { setAdapters, _resetBreakers, runModel } = await import('../lib/ai/gateway/gateway.ts');
 const { resolvePolicy } = await import('../lib/ai/gateway/router.ts');
@@ -52,6 +52,7 @@ const check = (l, c, d = '') => {
   }
 };
 const MONTH = currentYyyymm();
+const DAY = currentYyyymmdd();
 
 console.log('[1] pure budgetVerdict');
 check('無 cap → 允許', budgetVerdict({ spentMusd: 999999, estMusd: 100 }).allowed === true);
@@ -84,6 +85,19 @@ reset();
 budgets.set('TENANT#o1', { scopeKey: 'TENANT#o1', monthlyCapMusd: 1000, hardStop: false });
 rollups.set(`TENANT#o1#${MONTH}`, { ai_musd: 5000 });
 check('soft 超額 → 仍允許', (await checkTenantBudget('o1', 100)).allowed === true);
+
+reset();
+budgets.set('GLOBAL', { scopeKey: 'GLOBAL', dailyCapMusd: 1000, hardStop: true });
+rollups.set(`GLOBAL#${DAY}`, { ai_musd: 950 });
+check('日上限超額 hardStop → 拒絕', (await checkTenantBudget(undefined, 200)).allowed === false);
+reset();
+budgets.set('GLOBAL', { scopeKey: 'GLOBAL', dailyCapMusd: 1000, hardStop: true });
+rollups.set(`GLOBAL#${DAY}`, { ai_musd: 100 });
+check('日上限未超額 → 允許', (await checkTenantBudget(undefined, 200)).allowed === true);
+reset();
+budgets.set('TENANT#o1', { scopeKey: 'TENANT#o1', monthlyCapMusd: 100000, dailyCapMusd: 500, hardStop: true });
+rollups.set(`TENANT#o1#${DAY}`, { ai_musd: 500 });
+check('租戶日上限超額 → 拒絕(月未超)', (await checkTenantBudget('o1', 10)).allowed === false);
 
 console.log('\n[3] gateway runModel enforces tenant budget before calling provider');
 {
@@ -129,9 +143,19 @@ console.log('\n[3] gateway runModel enforces tenant budget before calling provid
   reset();
   _resetBreakers();
   adapterCalls = 0;
-  // no orgId → budget skipped entirely
+  // no orgId + no GLOBAL cap → allowed (backward compatible)
   const noOrg = await runModel(resolvePolicy('tutor'), { prompt: 'x' }, { feature: 'tutor', resolveKey: async () => ({ apiKey: 'k' }) });
-  check('無 orgId → 不做預算檢查、正常成功', noOrg.ok === true && adapterCalls === 1);
+  check('無 orgId + 無 GLOBAL cap → 正常成功', noOrg.ok === true && adapterCalls === 1);
+
+  // B2: GLOBAL budget applies to B2C traffic (no orgId) too.
+  reset();
+  _resetBreakers();
+  adapterCalls = 0;
+  budgets.set('GLOBAL', { scopeKey: 'GLOBAL', monthlyCapMusd: 1, hardStop: true });
+  rollups.set(`GLOBAL#${MONTH}`, { ai_musd: 1 });
+  const globalDenied = await runModel(resolvePolicy('tutor'), { prompt: 'x' }, { feature: 'tutor', resolveKey: async () => ({ apiKey: 'k' }) });
+  check('無 orgId 但 GLOBAL hardStop 超額 → runModel 拒絕', globalDenied.ok === false, globalDenied.ok ? '' : globalDenied.error);
+  check('GLOBAL 拒絕 → 未呼叫 provider', adapterCalls === 0);
 }
 
 console.log('\n[4] CSV escaping');

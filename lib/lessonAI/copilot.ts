@@ -5,7 +5,7 @@
 // this slice, so the model is told it cannot see what was said). Pure prompt
 // building + a metered, task-routed runCopilot() via resolvePolicy('copilot').
 
-import { resolvePolicy } from '@/lib/ai/gateway/router';
+import { resolvePolicy, type PolicyOverride } from '@/lib/ai/gateway/router';
 import { runModel, type RunContext, type RunResult } from '@/lib/ai/gateway/gateway';
 import type { GenerateRequest } from '@/lib/ai/gateway/types';
 
@@ -24,6 +24,7 @@ const TYPE_LABEL: Record<string, string> = {
   whiteboard_clear: '清空白板',
   class_started: '上課開始',
   class_ended: '下課',
+  tutor_hint: '學生使用 AI 助教',
 };
 
 export interface CopilotEventLite {
@@ -79,12 +80,13 @@ export function buildCopilotPrompt(input: CopilotPromptInput): { systemInstructi
 
 export interface RunCopilotInput extends CopilotPromptInput {
   ctx: RunContext; // feature:'copilot' + ledger dims + resolveKey
+  policy?: PolicyOverride; // from ai-feature-config via policyOverrideFromEntitlement
 }
 
 /** Run one Copilot suggestion through the metered, task-routed gateway. */
 export async function runCopilot(input: RunCopilotInput): Promise<RunResult> {
   const { systemInstruction, prompt } = buildCopilotPrompt(input);
-  const policy = resolvePolicy('copilot');
+  const policy = resolvePolicy('copilot', input.policy);
   const req: GenerateRequest = {
     prompt,
     systemInstruction,

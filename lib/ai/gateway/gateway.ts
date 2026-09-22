@@ -123,13 +123,14 @@ export async function runModel(policy: ModelPolicy, req: GenerateRequest, ctx: R
     return { ok: false, error: `estimated cost ${estimate()}µ$ exceeds cap ${policy.maxCostMusd}µ$`, requestId };
   }
 
-  // Tenant/global monthly AI budget (Phase 6). Only when orgId is set; scopes
+  // GLOBAL + tenant AI budget (monthly + daily). Always evaluated — the GLOBAL
+  // cap must apply to B2C traffic too, not only when an orgId is present. Scopes
   // without a configured cap are unaffected. Denies BEFORE any provider call, so
   // an over-budget request is never charged.
-  if (ctx.orgId) {
+  {
     const budget = await checkTenantBudget(ctx.orgId, estimate());
     if (!budget.allowed) {
-      return { ok: false, error: `tenant AI budget exceeded (${budget.reason || 'budget_exceeded'})`, requestId };
+      return { ok: false, error: `AI budget exceeded (${budget.reason || 'budget_exceeded'})`, requestId };
     }
   }
 

@@ -10,7 +10,8 @@ import { withAuth, type AuthedRequest } from '@/lib/auth/apiGuard';
 import { resolveLessonContext } from '@/lib/lessonAI/lessonContext';
 import { listLessonEvents, listLessonSegments } from '@/lib/lessonAI/lessonStore';
 import { runCopilot } from '@/lib/lessonAI/copilot';
-import { resolveFeature } from '@/lib/ai/entitlements';
+import { resolveFeature, policyOverrideFromEntitlement } from '@/lib/ai/entitlements';
+import { checkFeatureLimits } from '@/lib/ai/limits';
 import { resolveProviderKey } from '@/lib/ai/gateway/keys';
 
 export const runtime = 'nodejs';
@@ -39,6 +40,14 @@ async function handlePost(req: AuthedRequest, ctx: { params: Promise<{ sessionId
     );
   }
 
+  const limit = await checkFeatureLimits(ent, { feature: 'copilot', sessionId, userId: req.session.userId });
+  if (!limit.allowed) {
+    return NextResponse.json(
+      { ok: false, error: 'Copilot usage limit reached', reason: limit.reason, used: limit.used, limit: limit.limit },
+      { status: 429 }
+    );
+  }
+
   let body: { focus?: unknown } = {};
   try {
     body = await req.json();
@@ -60,6 +69,7 @@ async function handlePost(req: AuthedRequest, ctx: { params: Promise<{ sessionId
     segments: segLite,
     courseTitle: lc.courseSession.title,
     focus,
+    policy: policyOverrideFromEntitlement(ent),
     ctx: {
       feature: 'copilot',
       resolveKey: resolveProviderKey,

@@ -11,6 +11,10 @@
 /** Where an event came from — also its trust/priority tier. */
 export type EventSource = 'marker' | 'system' | 'ai' | 'time';
 
+/** AI-source event type logged when a student uses the Tutor. Carries the hint
+ * level + question hash in payload for the server-authoritative hint ladder. */
+export const TUTOR_HINT_EVENT = 'tutor_hint';
+
 /** The six teacher markers (zero AI cost, always available). */
 export type MarkerType =
   | 'important_concept' // point: highlight, does NOT cut a segment

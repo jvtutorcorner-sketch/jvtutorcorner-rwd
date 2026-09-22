@@ -6,11 +6,44 @@
 // → runModel). No streaming (Amplify SSR has no reliable SSE) — one JSON reply
 // inside the tutor task's 14s deadline.
 
-import { resolvePolicy } from '@/lib/ai/gateway/router';
+import { createHash } from 'crypto';
+import { resolvePolicy, type PolicyOverride } from '@/lib/ai/gateway/router';
 import { runModel, type RunContext, type RunResult } from '@/lib/ai/gateway/gateway';
 import type { GenerateRequest } from '@/lib/ai/gateway/types';
+import { TUTOR_HINT_EVENT } from './eventTypes';
 
 export const MAX_HINT_LEVEL = 4;
+
+/** Stable short hash of a question, so re-asking the SAME question advances the
+ * ladder while a NEW question resets it. Pure. */
+export function questionHash(question: string): string {
+  return createHash('sha256').update((question || '').trim().toLowerCase()).digest('hex').slice(0, 16);
+}
+
+/** Minimal shape read from stored lesson events for hint-ladder resolution. */
+export interface HintEventLike {
+  type?: string;
+  createdBy?: string;
+  payload?: Record<string, unknown> | undefined;
+}
+
+/**
+ * Server-authoritative previous hint level for (student, question): the newest
+ * tutor_hint event this student logged for the same question hash, else 0. This
+ * replaces the client-supplied prevHintLevel so a student can't re-ask at level 1
+ * repeatedly. `events` are chronological (ascending); the last match wins. Pure.
+ */
+export function resolvePrevHintLevel(events: HintEventLike[], userId: string, qh: string): number {
+  let level = 0;
+  for (const e of events) {
+    if (e.type !== TUTOR_HINT_EVENT) continue;
+    if (e.createdBy !== userId) continue;
+    if (!e.payload || e.payload.qh !== qh) continue;
+    const lv = Number(e.payload.hintLevel);
+    if (Number.isFinite(lv)) level = lv;
+  }
+  return level;
+}
 
 /**
  * The next hint level. A first ask (prev < 1) starts at 1; every later ask
@@ -61,12 +94,13 @@ export function buildTutorPrompt(input: TutorPromptInput): { systemInstruction: 
 
 export interface RunTutorInput extends TutorPromptInput {
   ctx: RunContext; // feature:'tutor' + ledger dims + resolveKey
+  policy?: PolicyOverride; // from ai-feature-config via policyOverrideFromEntitlement
 }
 
 /** Run one hint through the metered, task-routed gateway. */
 export async function runTutor(input: RunTutorInput): Promise<RunResult> {
   const { systemInstruction, prompt } = buildTutorPrompt(input);
-  const policy = resolvePolicy('tutor');
+  const policy = resolvePolicy('tutor', input.policy);
   const req: GenerateRequest = {
     prompt,
     systemInstruction,

@@ -78,6 +78,7 @@ const { recordUsage, getRollup } = mod;
 let failed = 0, passed = 0;
 const check = (l, c, d = '') => { if (c) { passed++; console.log(`  ✅ ${l}`); } else { failed++; console.log(`  ❌ ${l}${d ? `  (${d})` : ''}`); } };
 const yyyymm = new Date().toISOString().slice(0, 7).replace('-', '');
+const yyyymmdd = new Date().toISOString().slice(0, 10).replace(/-/g, '');
 
 console.log('[1] 多筆 usage → LESSON rollup 累加 + [2] micro-USD 整數');
 {
@@ -114,6 +115,20 @@ console.log('\n[5] GLOBAL rollup 跨 session 累加');
   const g = await getRollup(`GLOBAL#${yyyymm}`);
   check('GLOBAL requests = 5(r1..r5,去重後)', g?.requests === 5, `got ${g?.requests}`);
   check('GLOBAL total = 2855', g?.total_musd === 2855, `got ${g?.total_musd}`);
+}
+
+console.log('\n[6] B1/B2 new rollup keys: daily + per-feature-per-lesson/user');
+{
+  await recordUsage({ requestId: 'r6', costCenter: 'ai', actualCostMusd: 100, feature: 'tutor', sessionId: 's3', userId: 'u1', orgId: 'o1' });
+  await recordUsage({ requestId: 'r7', costCenter: 'ai', actualCostMusd: 100, feature: 'tutor', sessionId: 's3', userId: 'u1', orgId: 'o1' });
+  const perLesson = await getRollup('FEATURE#tutor#LESSON#s3');
+  check('FEATURE#tutor#LESSON#s3 requests = 2', perLesson?.requests === 2, `got ${perLesson?.requests}`);
+  const perUserDay = await getRollup(`FEATURE#tutor#USER#u1#${yyyymmdd}`);
+  check('FEATURE#tutor#USER#u1#day requests = 2', perUserDay?.requests === 2, `got ${perUserDay?.requests}`);
+  const gDay = await getRollup(`GLOBAL#${yyyymmdd}`);
+  check('GLOBAL#day requests >= 2', (gDay?.requests ?? 0) >= 2, `got ${gDay?.requests}`);
+  const tDay = await getRollup(`TENANT#o1#${yyyymmdd}`);
+  check('TENANT#o1#day total = 200', tDay?.total_musd === 200, `got ${tDay?.total_musd}`);
 }
 
 console.log(`\n${failed === 0 ? '✅ 全部通過' : '❌ 有失敗'} — passed ${passed}, failed ${failed}`);

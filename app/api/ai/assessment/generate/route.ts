@@ -11,7 +11,8 @@ import { withAuth, type AuthedRequest } from '@/lib/auth/apiGuard';
 import { resolveLessonContext } from '@/lib/lessonAI/lessonContext';
 import { isLessonSessionId } from '@/lib/lessonAI/sessionId';
 import { runGenerate, parseAssessment, type QuestionType } from '@/lib/lessonAI/assessment';
-import { resolveFeature } from '@/lib/ai/entitlements';
+import { resolveFeature, policyOverrideFromEntitlement } from '@/lib/ai/entitlements';
+import { checkFeatureLimits } from '@/lib/ai/limits';
 import { resolveProviderKey } from '@/lib/ai/gateway/keys';
 
 export const runtime = 'nodejs';
@@ -51,6 +52,14 @@ async function handlePost(req: AuthedRequest) {
     );
   }
 
+  const limit = await checkFeatureLimits(ent, { feature: 'assessment', sessionId, userId: req.session.userId });
+  if (!limit.allowed) {
+    return NextResponse.json(
+      { ok: false, error: 'Assessment usage limit reached', reason: limit.reason, used: limit.used, limit: limit.limit },
+      { status: 429 }
+    );
+  }
+
   const count = typeof body.count === 'number' ? body.count : Number(body.count) || 5;
   const difficulty = typeof body.difficulty === 'string' ? body.difficulty.slice(0, 20) : undefined;
   const types = Array.isArray(body.types)
@@ -63,6 +72,7 @@ async function handlePost(req: AuthedRequest) {
     difficulty,
     types,
     courseTitle: lc.courseSession.title,
+    policy: policyOverrideFromEntitlement(ent),
     ctx: {
       feature: 'assessment',
       resolveKey: resolveProviderKey,

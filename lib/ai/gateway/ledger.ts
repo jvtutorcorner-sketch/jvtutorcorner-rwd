@@ -66,14 +66,27 @@ function warnLocalLedgerOnce(): void {
   console.warn('[ledger] no AWS credentials — usage metering is in-memory only (LOCAL_USAGE); nothing is persisted. Set AWS credentials in a real deployment.');
 }
 
-/** Scope keys a usage entry rolls up into. Pure. */
-export function rollupScopeKeys(e: UsageEntry, yyyymm: string): string[] {
-  const keys: string[] = [`GLOBAL#${yyyymm}`, `FEATURE#${e.feature ?? 'unknown'}#${yyyymm}`];
+/**
+ * Scope keys a usage entry rolls up into. Pure.
+ * `yyyymmdd` (optional) adds the daily rollups used by daily budget caps (B2) and
+ * the per-feature/per-user daily count used by feature limits (B1).
+ */
+export function rollupScopeKeys(e: UsageEntry, yyyymm: string, yyyymmdd?: string): string[] {
+  const feature = e.feature ?? 'unknown';
+  const keys: string[] = [`GLOBAL#${yyyymm}`, `FEATURE#${feature}#${yyyymm}`];
   if (e.sessionId) keys.push(`LESSON#${e.sessionId}`);
   if (e.orgId) keys.push(`TENANT#${e.orgId}#${yyyymm}`);
   if (e.teacherId) keys.push(`TEACHER#${e.teacherId}#${yyyymm}`);
   if (e.courseId) keys.push(`COURSE#${e.courseId}#${yyyymm}`);
   if (e.userId) keys.push(`STUDENT#${e.userId}#${yyyymm}`);
+  // Per-feature-per-lesson count → enforces limits.perLesson (B1).
+  if (e.sessionId) keys.push(`FEATURE#${feature}#LESSON#${e.sessionId}`);
+  if (yyyymmdd) {
+    keys.push(`GLOBAL#${yyyymmdd}`); // daily global budget (B2)
+    if (e.orgId) keys.push(`TENANT#${e.orgId}#${yyyymmdd}`); // daily tenant budget (B2)
+    // Per-feature-per-user daily count → enforces limits.daily (B1).
+    if (e.userId) keys.push(`FEATURE#${feature}#USER#${e.userId}#${yyyymmdd}`);
+  }
   return keys;
 }
 
@@ -108,9 +121,10 @@ function buildLedgerItem(e: UsageEntry, createdAt: string) {
 export async function recordUsage(e: UsageEntry): Promise<{ ok: boolean; duplicate: boolean; error?: string }> {
   const createdAt = new Date().toISOString();
   const yyyymm = createdAt.slice(0, 7).replace('-', '');
+  const yyyymmdd = createdAt.slice(0, 10).replace(/-/g, '');
   const cost = Math.round(e.actualCostMusd);
   const centerAttr = e.costCenter === 'ai' ? 'ai_musd' : 'platform_musd';
-  const scopeKeys = rollupScopeKeys(e, yyyymm);
+  const scopeKeys = rollupScopeKeys(e, yyyymm, yyyymmdd);
   const ledgerItem = buildLedgerItem(e, createdAt);
 
   if (useDynamo) {

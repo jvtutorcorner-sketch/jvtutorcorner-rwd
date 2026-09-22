@@ -15,6 +15,10 @@
 
 import { hasPlanAccess, PLAN_LEVELS } from '@/lib/planAccess';
 import { getFeatureRows, type FeatureConfigRow } from '@/lib/ai/featureConfigStore';
+import type { PolicyOverride } from '@/lib/ai/gateway/router';
+import type { ModelChoice, ProviderName } from '@/lib/ai/gateway/types';
+
+const VALID_PROVIDERS: ProviderName[] = ['GEMINI', 'OPENAI', 'ANTHROPIC', 'OPENROUTER'];
 
 export interface FeatureSeed {
   defaultEnabled: boolean;
@@ -150,6 +154,43 @@ export function resolve(
   out.enabled = enabled;
   out.reason = enabled ? 'ok' : sawExplicit ? 'off' : 'default-off';
   return out;
+}
+
+function toModelChoice(v: unknown): ModelChoice | undefined {
+  if (!v || typeof v !== 'object') return undefined;
+  const o = v as Record<string, unknown>;
+  const provider = o.provider as ProviderName;
+  const model = o.model;
+  if (!VALID_PROVIDERS.includes(provider) || typeof model !== 'string' || !model) return undefined;
+  return { provider, model };
+}
+
+const num = (v: unknown): number | undefined =>
+  typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : undefined;
+
+/**
+ * Turn a resolved entitlement into a PolicyOverride for resolvePolicy(task, ...).
+ * Validates the ai-feature-config.model_policy shape (unknown providers dropped)
+ * and folds maxCostPerRequestMusd into the cost cap (min with any modelPolicy cap;
+ * resolvePolicy then mins again with the task's own cap). Returns undefined when
+ * nothing usable is configured, so callers pass it through untouched.
+ */
+export function policyOverrideFromEntitlement(ent: Entitlement): PolicyOverride | undefined {
+  const mp = (ent.modelPolicy ?? {}) as Record<string, unknown>;
+  const primary = toModelChoice(mp.primary);
+  const fallbacks = Array.isArray(mp.fallbacks)
+    ? mp.fallbacks.map(toModelChoice).filter((c): c is ModelChoice => !!c)
+    : undefined;
+  const maxCostMusd = min(num(mp.maxCostMusd), ent.maxCostPerRequestMusd);
+
+  const override: PolicyOverride = {};
+  if (primary) override.primary = primary;
+  if (fallbacks && fallbacks.length) override.fallbacks = fallbacks;
+  if (num(mp.maxTokens) != null) override.maxTokens = num(mp.maxTokens);
+  if (num(mp.timeoutMs) != null) override.timeoutMs = num(mp.timeoutMs);
+  if (maxCostMusd != null) override.maxCostMusd = maxCostMusd;
+
+  return Object.keys(override).length ? override : undefined;
 }
 
 /** Store-backed resolution for one feature in a context. */

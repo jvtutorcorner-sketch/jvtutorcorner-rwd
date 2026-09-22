@@ -20,7 +20,8 @@ ddbDocClient.send = async (cmd) => {
   return {};
 };
 
-const { nextHintLevel, buildTutorPrompt, runTutor, MAX_HINT_LEVEL } = await import('../lib/lessonAI/tutor.ts');
+const { nextHintLevel, buildTutorPrompt, runTutor, MAX_HINT_LEVEL, questionHash, resolvePrevHintLevel } = await import('../lib/lessonAI/tutor.ts');
+const { TUTOR_HINT_EVENT } = await import('../lib/lessonAI/eventTypes.ts');
 const { setAdapters, _resetBreakers } = await import('../lib/ai/gateway/gateway.ts');
 
 let failed = 0,
@@ -95,6 +96,43 @@ console.log('\n[4] provider failure charges nothing');
   });
   check('回覆失敗', res.ok === false);
   check('失敗時不寫帳(無 TransactWrite)', !sendCalls.includes('TransactWriteCommand'), sendCalls.join(','));
+}
+
+console.log('\n[5] server-authoritative hint ladder (B6)');
+{
+  const qhA = questionHash('  這題怎麼算? ');
+  const qhA2 = questionHash('這題怎麼算?'); // same question, different whitespace/case
+  const qhB = questionHash('另一題');
+  check('questionHash 對相同問題(去空白/大小寫)一致', qhA === qhA2 && qhA.length === 16);
+  check('不同問題 → 不同 hash', qhA !== qhB);
+
+  const ev = (userId, qh, hintLevel) => ({ type: TUTOR_HINT_EVENT, createdBy: userId, payload: { qh, hintLevel } });
+  check('無歷史 → prev 0', resolvePrevHintLevel([], 'stu1', qhA) === 0);
+  check('別人的事件被忽略', resolvePrevHintLevel([ev('stu2', qhA, 3)], 'stu1', qhA) === 0);
+  check('別題的事件被忽略(換題歸零)', resolvePrevHintLevel([ev('stu1', qhB, 3)], 'stu1', qhA) === 0);
+  check('同生同題 → 取最新等級', resolvePrevHintLevel([ev('stu1', qhA, 1), ev('stu1', qhA, 2)], 'stu1', qhA) === 2);
+  check('非 tutor_hint 型別被忽略', resolvePrevHintLevel([{ type: 'marker', createdBy: 'stu1', payload: { qh: qhA, hintLevel: 3 } }], 'stu1', qhA) === 0);
+  check('封頂:prev 4 → nextHintLevel 仍 4', nextHintLevel(resolvePrevHintLevel([ev('stu1', qhA, 4)], 'stu1', qhA)) === 4);
+}
+
+console.log('\n[6] policy override changes the model routed');
+{
+  _resetBreakers();
+  sendCalls = [];
+  let seenModel = '';
+  setAdapters({
+    OPENROUTER: async (_req, opts) => {
+      seenModel = opts.model;
+      return { text: 'ok', usage: { inputTokens: 5, outputTokens: 5, reasoningTokens: 0 }, model: opts.model, provider: 'OPENROUTER' };
+    },
+  });
+  const res = await runTutor({
+    question: 'x',
+    hintLevel: 1,
+    policy: { primary: { provider: 'OPENROUTER', model: 'google/gemini-2.5-flash-lite' } },
+    ctx: { feature: 'tutor', resolveKey: async () => ({ apiKey: 'k' }), userId: 'stu1', sessionId: 'lsn_abc' },
+  });
+  check('override → 走指定 provider/model', res.ok === true && seenModel === 'google/gemini-2.5-flash-lite', seenModel);
 }
 
 console.log('');

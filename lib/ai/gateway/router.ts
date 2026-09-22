@@ -101,12 +101,20 @@ export function resolvePolicy(task: Task, override?: PolicyOverride): ModelPolic
   const choices = spec.tiers.map(tierChoice);
   const primary = override?.primary ?? choices[0];
   const fallbacks = override?.fallbacks ?? choices.slice(1);
+  // Cost caps are most-restrictive: an override can only tighten the task's cap,
+  // never raise it (an entitlement layer must not license higher spend per call).
+  const maxCostMusd =
+    override?.maxCostMusd == null
+      ? spec.maxCostMusd
+      : spec.maxCostMusd == null
+        ? override.maxCostMusd
+        : Math.min(override.maxCostMusd, spec.maxCostMusd);
   return {
     primary,
     fallbacks,
     maxTokens: override?.maxTokens ?? spec.maxTokens,
     timeoutMs: override?.timeoutMs ?? spec.timeoutMs,
-    maxCostMusd: override?.maxCostMusd ?? spec.maxCostMusd,
+    maxCostMusd,
   };
 }
 

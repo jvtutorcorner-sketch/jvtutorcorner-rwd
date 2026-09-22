@@ -30,6 +30,18 @@ const ov = resolvePolicy('l1_detect', { primary: { provider: 'OPENROUTER', model
 check('override primary 生效', ov.primary.provider === 'OPENROUTER' && ov.primary.model.startsWith('google/'));
 check('override maxTokens 生效', ov.maxTokens === 256);
 
+// cost cap is most-restrictive: override can only tighten, never raise, the task cap.
+// tutor spec cap = 6000µ$.
+check('override cost cap 較嚴 → 取 override(3000)',
+  resolvePolicy('tutor', { maxCostMusd: 3000 }).maxCostMusd === 3000,
+  String(resolvePolicy('tutor', { maxCostMusd: 3000 }).maxCostMusd));
+check('override cost cap 較寬 → 仍取 spec(6000)',
+  resolvePolicy('tutor', { maxCostMusd: 9000 }).maxCostMusd === 6000,
+  String(resolvePolicy('tutor', { maxCostMusd: 9000 }).maxCostMusd));
+check('無 spec cap 的 task → 用 override cap',
+  resolvePolicy('l3_lesson', { maxCostMusd: 4000 }).maxCostMusd === 4000,
+  String(resolvePolicy('l3_lesson', { maxCostMusd: 4000 }).maxCostMusd));
+
 check('複雜度 FAST→chat_fast', chatTaskForComplexity('FAST') === 'chat_fast');
 check('複雜度 COMPLEX→chat_complex', chatTaskForComplexity('COMPLEX') === 'chat_complex');
 check('複雜度 BALANCED→chat', chatTaskForComplexity('BALANCED') === 'chat');
