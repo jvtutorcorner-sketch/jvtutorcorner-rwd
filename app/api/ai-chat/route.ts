@@ -8,6 +8,9 @@ import { PLATFORM_TOOLS, getToolDefinitions } from '@/lib/platform-skills';
 import { getAIModels } from '@/lib/aiModelsService';
 
 import { evaluatePromptComplexity } from '@/lib/smartRouterService';
+import { randomUUID } from 'crypto';
+import { recordUsage } from '@/lib/ai/gateway/ledger';
+import { usageToMusd } from '@/lib/ai/gateway/pricing';
 
 /**
  * Dynamically retrieves the AI configuration (API Key, Model, Provider).
@@ -37,9 +40,13 @@ async function getAIConfig(messages: any[] = [], useSmartRouter: boolean = false
             const { level, reason } = evaluatePromptComplexity(messages);
             routingReason = reason;
 
-            let selectedChildId = config.balancedModelId;
-            if (level === 'FAST' && config.fastModelId) selectedChildId = config.fastModelId;
-            else if (level === 'COMPLEX' && config.complexModelId) selectedChildId = config.complexModelId;
+            // SMART_ROUTER stores fastServiceId / smartServiceId (see
+            // lib/integrations/registry/providers/aiContainer.ts). The evaluator emits
+            // FAST/BALANCED/COMPLEX. Map FAST→fast, BALANCED/COMPLEX→smart, with the
+            // old *ModelId names kept as a fallback for any legacy config rows.
+            let selectedChildId = config.smartServiceId || config.balancedModelId;
+            if (level === 'FAST') selectedChildId = config.fastServiceId || config.fastModelId || selectedChildId;
+            else if (level === 'COMPLEX') selectedChildId = config.smartServiceId || config.complexModelId || selectedChildId;
 
             if (selectedChildId) {
                 const childIntegration = await getIntegration(selectedChildId);
@@ -129,6 +136,16 @@ async function postHandler(req: AuthedRequest) {
 
         let finalReply = '';
         const toolLogs: any[] = [];
+        // Accumulate token usage across all turns (tool-calling loop) for metering.
+        let inTok = 0, outTok = 0, reasoningTok = 0;
+        const addGeminiUsage = (resp: any) => {
+            const u = resp?.usageMetadata; if (!u) return;
+            inTok += u.promptTokenCount ?? 0; outTok += u.candidatesTokenCount ?? 0; reasoningTok += u.thoughtsTokenCount ?? 0;
+        };
+        const addOpenAiUsage = (data: any) => {
+            const u = data?.usage; if (!u) return;
+            inTok += u.prompt_tokens ?? 0; outTok += u.completion_tokens ?? 0; reasoningTok += u.completion_tokens_details?.reasoning_tokens ?? 0;
+        };
 
         if (provider === 'GEMINI') {
             const genAI = new GoogleGenerativeAI(apiKey);
@@ -155,6 +172,7 @@ async function postHandler(req: AuthedRequest) {
 
             let result = await chat.sendMessage(latestMessage);
             let response = result.response;
+            addGeminiUsage(response);
             let calls = response.functionCalls();
 
             // Loop to handle potential multiple tool calls or sequential logic
@@ -171,6 +189,7 @@ async function postHandler(req: AuthedRequest) {
                 }
                 result = await chat.sendMessage(toolResults.map(r => ({ functionResponse: r })));
                 response = result.response;
+                addGeminiUsage(response);
                 calls = response.functionCalls();
                 iterations++;
             }
@@ -203,6 +222,7 @@ async function postHandler(req: AuthedRequest) {
             };
 
             let data = await fetchChat(openaiMessages);
+            addOpenAiUsage(data);
             let message = data.choices[0].message;
 
             let iterations = 0;
@@ -223,12 +243,34 @@ async function postHandler(req: AuthedRequest) {
                     }
                 }
                 data = await fetchChat(openaiMessages);
+                addOpenAiUsage(data);
                 message = data.choices[0].message;
                 iterations++;
             }
             finalReply = message.content;
         } else {
             finalReply = '不支援的 AI 供應商進行工具調用。';
+        }
+
+        // Meter the whole chat turn (summed across the tool-calling loop).
+        if (inTok > 0 || outTok > 0) {
+            try {
+                await recordUsage({
+                    requestId: randomUUID(),
+                    costCenter: 'ai',
+                    actualCostMusd: usageToMusd(modelName, { inputTokens: inTok, outputTokens: outTok, reasoningTokens: reasoningTok }),
+                    feature: 'chat',
+                    model: modelName,
+                    provider: provider as any,
+                    userId: req.session.userId,
+                    inputTokens: inTok,
+                    outputTokens: outTok,
+                    reasoningTokens: reasoningTok,
+                    status: 'ok',
+                });
+            } catch (meterErr) {
+                console.warn('[AI Chat API] usage metering failed (non-fatal)', meterErr);
+            }
         }
 
         const responseData = {
