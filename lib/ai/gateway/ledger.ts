@@ -10,7 +10,7 @@
 // No consumers yet: the AI Gateway (Phase 2) and the RTC cost meter (Phase 1)
 // call this. Kept dependency-light and offline-testable.
 
-import { TransactWriteCommand, GetCommand, UpdateCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
+import { TransactWriteCommand, GetCommand, UpdateCommand, PutCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
 import { ddbDocClient } from '@/lib/dynamo';
 
 export const AI_USAGE_TABLE =
@@ -147,6 +147,32 @@ export async function recordUsage(e: UsageEntry): Promise<{ ok: boolean; duplica
     r.requests += 1;
   }
   return { ok: true, duplicate: false };
+}
+
+/**
+ * All usage-ledger rows for one tenant-month (byTenantMonth GSI) — the detailed
+ * source for a tenant cost report / CSV export. `tenantMonth` = `${orgId}#yyyymm`.
+ */
+export async function queryTenantMonthUsage(orgId: string, yyyymm: string): Promise<Record<string, unknown>[]> {
+  if (!orgId) return [];
+  const tenantMonth = `${orgId}#${yyyymm}`;
+  if (!useDynamo) return LOCAL_USAGE.filter((r) => r.tenantMonth === tenantMonth);
+  const out: Record<string, unknown>[] = [];
+  let esk: Record<string, unknown> | undefined;
+  do {
+    const res: any = await ddbDocClient.send(
+      new QueryCommand({
+        TableName: AI_USAGE_TABLE,
+        IndexName: 'byTenantMonth',
+        KeyConditionExpression: 'tenantMonth = :tm',
+        ExpressionAttributeValues: { ':tm': tenantMonth },
+        ExclusiveStartKey: esk,
+      })
+    );
+    out.push(...((res.Items || []) as Record<string, unknown>[]));
+    esk = res.LastEvaluatedKey;
+  } while (esk);
+  return out;
 }
 
 /** Read a rollup scope (dashboard / budget check). */

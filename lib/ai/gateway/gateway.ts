@@ -10,6 +10,7 @@
 
 import { randomUUID } from 'crypto';
 import { recordUsage } from './ledger';
+import { checkTenantBudget } from '../budget';
 import { estimateMusd, estimateTokens, usageToMusd } from './pricing';
 import { geminiGenerate } from './providers/gemini';
 import { openaiGenerate } from './providers/openai';
@@ -102,12 +103,33 @@ export async function runModel(policy: ModelPolicy, req: GenerateRequest, ctx: R
   const requestId = ctx.requestId ?? randomUUID();
   const chain: ModelChoice[] = [policy.primary, ...policy.fallbacks];
 
-  // Cost cap (worst-case estimate on the primary model).
-  if (policy.maxCostMusd != null) {
-    const promptText = req.prompt ?? (req.messages ?? []).map((m) => m.content).join('\n');
-    const est = estimateMusd(policy.primary.model, estimateTokens(promptText) + estimateTokens(req.systemInstruction ?? ''), policy.maxTokens);
-    if (est > policy.maxCostMusd) {
-      return { ok: false, error: `estimated cost ${est}µ$ exceeds cap ${policy.maxCostMusd}µ$`, requestId };
+  // Worst-case estimate on the primary model (shared by the per-request cap and
+  // the tenant budget check).
+  let estCache: number | undefined;
+  const estimate = () => {
+    if (estCache === undefined) {
+      const promptText = req.prompt ?? (req.messages ?? []).map((m) => m.content).join('\n');
+      estCache = estimateMusd(
+        policy.primary.model,
+        estimateTokens(promptText) + estimateTokens(req.systemInstruction ?? ''),
+        policy.maxTokens
+      );
+    }
+    return estCache;
+  };
+
+  // Per-request cost cap.
+  if (policy.maxCostMusd != null && estimate() > policy.maxCostMusd) {
+    return { ok: false, error: `estimated cost ${estimate()}µ$ exceeds cap ${policy.maxCostMusd}µ$`, requestId };
+  }
+
+  // Tenant/global monthly AI budget (Phase 6). Only when orgId is set; scopes
+  // without a configured cap are unaffected. Denies BEFORE any provider call, so
+  // an over-budget request is never charged.
+  if (ctx.orgId) {
+    const budget = await checkTenantBudget(ctx.orgId, estimate());
+    if (!budget.allowed) {
+      return { ok: false, error: `tenant AI budget exceeded (${budget.reason || 'budget_exceeded'})`, requestId };
     }
   }
 

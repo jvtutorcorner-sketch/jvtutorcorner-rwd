@@ -295,6 +295,20 @@ export const TABLES = {
     ],
     stream: false,
   },
+
+  // Phase 6 (Enterprise): per-scope AI spend budgets. One row per scope
+  // (GLOBAL | TENANT#<orgId>); the gateway checks the month's cost-rollup against
+  // the cap before a call and denies when a hardStop cap is exceeded.
+  aiBudgets: {
+    envVar: 'DYNAMODB_TABLE_AI_BUDGETS',
+    defaultName: 'jvtutorcorner-ai-budgets',
+    label: 'AiBudgets',
+    purpose: 'AI-Budgets',
+    partitionKey: 'scopeKey', // GLOBAL | TENANT#<orgId>
+    attributes: { scopeKey: S },
+    indexes: [],
+    stream: false,
+  },
 };
 
 /**
