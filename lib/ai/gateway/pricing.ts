@@ -69,5 +69,16 @@ export function estimateTokens(text: string): number {
   return Math.ceil((text?.length ?? 0) / 4);
 }
 
+/**
+ * Integer micro-USD for an STT (audio-input) call: the prompt tokens are audio,
+ * priced at the model's audio rate (falls back to text input rate).
+ */
+export function audioUsageToMusd(model: string, audioInputTokens: number, outputTokens: number): number {
+  const p = priceForModel(model);
+  const audioRate = p.audioInPerM ?? p.inPerM;
+  const usd = (audioInputTokens * audioRate + outputTokens * p.outPerM) / 1_000_000;
+  return Math.round(usd * MUSD_PER_USD);
+}
+
 // eslint no-unused-vars guard for ProviderName re-export consumers
 export type { ProviderName };

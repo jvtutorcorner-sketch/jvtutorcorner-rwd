@@ -52,7 +52,7 @@ export async function analyzeLearningContentImage(
     return { result: null, reason: 'AI learning-content analysis is not configured' };
   }
   try {
-    const text = await generateJson({ integration, prompt, images: [{ base64: imageBase64, mimeType }] });
+    const text = await generateJson({ integration, prompt, images: [{ base64: imageBase64, mimeType }], feature: 'learning-content-analysis' });
     const result = text ? parseJsonResponse(text) : null;
     return result ? { result } : { result: null, reason: 'AI provider returned no valid JSON result' };
   } catch (error: any) {

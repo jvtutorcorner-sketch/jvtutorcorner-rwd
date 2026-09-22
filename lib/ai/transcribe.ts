@@ -3,7 +3,10 @@
 // interface returns plain text per segment; the orchestrator interleaves segments by
 // their recorded start time. Server-only.
 
+import { randomUUID } from 'crypto';
 import { getActiveAIIntegration } from '@/lib/ai/llmClient';
+import { recordUsage } from '@/lib/ai/gateway/ledger';
+import { audioUsageToMusd } from '@/lib/ai/gateway/pricing';
 
 const STT_MODEL = process.env.CLASS_SUMMARY_STT_MODEL || 'gemini-1.5-flash';
 const STT_PROMPT = '請將這段中文（可能夾雜英文）教學音訊逐字轉成文字，只輸出逐字稿內容，不要加入說明或標點以外的符號。';
@@ -34,7 +37,25 @@ export async function transcribeAudio(audioBase64: string, mimeType = 'audio/web
       return null;
     }
     const data = await res.json();
-    return (data.candidates?.[0]?.content?.parts?.[0]?.text as string)?.trim() || null;
+    const text = (data.candidates?.[0]?.content?.parts?.[0]?.text as string)?.trim() || null;
+    // Meter the STT call (audio input priced at the model's audio rate).
+    const u = data.usageMetadata ?? {};
+    try {
+      await recordUsage({
+        requestId: randomUUID(),
+        costCenter: 'ai',
+        actualCostMusd: audioUsageToMusd(model, u.promptTokenCount ?? 0, u.candidatesTokenCount ?? 0),
+        feature: 'stt',
+        model,
+        provider: 'GEMINI',
+        inputTokens: u.promptTokenCount ?? 0,
+        outputTokens: u.candidatesTokenCount ?? 0,
+        status: text ? 'ok' : 'empty',
+      });
+    } catch (meterErr) {
+      console.warn('[transcribe] usage metering failed (non-fatal)', meterErr);
+    }
+    return text;
   } catch (err) {
     console.error('[transcribe] error', err);
     return null;

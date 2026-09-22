@@ -16,7 +16,7 @@ export interface ProcessDeps {
   getObjectBase64: (key: string) => Promise<{ base64: string; mimeType: string } | null>;
   getIntegration: () => Promise<LlmIntegration | null>;
   transcribe: (base64: string, mimeType: string) => Promise<string | null>;
-  generateJson: (args: { integration: LlmIntegration; prompt: string; images?: LlmImage[]; maxTokens?: number }) => Promise<string | null>;
+  generateJson: (args: { integration: LlmIntegration; prompt: string; images?: LlmImage[]; maxTokens?: number; feature?: string; requestId?: string }) => Promise<string | null>;
 }
 
 export type ProcessOutcome =
@@ -80,7 +80,7 @@ export async function processSummaryRow(row: ClassSummaryRow, deps: ProcessDeps)
   }
 
   const prompt = buildSummaryPrompt(transcriptText);
-  const raw = await deps.generateJson({ integration, prompt, images, maxTokens: 2048 });
+  const raw = await deps.generateJson({ integration, prompt, images, maxTokens: 2048, feature: 'class-summary' });
   const summary = raw ? parseSummaryJson(raw) : null;
   if (!summary) return { kind: 'failed', reason: 'no-valid-json' };
   if (summary.insufficient) return { kind: 'insufficient', summary, transcriptText };

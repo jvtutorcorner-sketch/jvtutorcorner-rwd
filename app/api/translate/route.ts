@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { withAuth, type AuthedRequest } from '@/lib/auth/apiGuard';
+import { getActiveAIIntegration } from '@/lib/ai/llmClient';
+import { runWithIntegration } from '@/lib/ai/gateway/gateway';
 
 const LOCALE_NAMES: Record<string, string> = {
   'zh-TW': 'Traditional Chinese (Taiwan)',
@@ -27,17 +28,24 @@ async function postHandler(req: AuthedRequest) {
       return NextResponse.json({ error: 'unsupported targetLocale' }, { status: 400 });
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      return NextResponse.json({ error: '系統尚未設定翻譯服務，請聯絡管理員設定 GEMINI_API_KEY。' }, { status: 503 });
+    // Prefer a configured GEMINI integration (metered via the gateway); fall back
+    // to the env key so translation keeps working before /apps is configured.
+    let integration = await getActiveAIIntegration(['GEMINI']);
+    if (!integration) {
+      const envKey = process.env.GEMINI_API_KEY;
+      if (!envKey) {
+        return NextResponse.json({ error: '系統尚未設定翻譯服務，請聯絡管理員設定 GEMINI 串接或 GEMINI_API_KEY。' }, { status: 503 });
+      }
+      integration = { type: 'GEMINI', config: { apiKey: envKey, model: 'gemini-1.5-flash' } };
     }
 
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-
     const prompt = `Translate the following user-generated text into ${targetLanguage}. Output only the translated text with no quotes, labels, or extra commentary:\n\n${text}`;
-    const result = await model.generateContent(prompt);
-    const translated = result.response.text().trim();
+    const res = await runWithIntegration(integration, { prompt, maxTokens: 1024 }, {
+      feature: 'translate',
+      userId: req.session.userId,
+      defaultModel: 'gemini-1.5-flash',
+    });
+    const translated = res.ok ? (res.result.text || '').trim() : '';
 
     if (!translated) {
       return NextResponse.json({ error: 'empty translation result' }, { status: 502 });
