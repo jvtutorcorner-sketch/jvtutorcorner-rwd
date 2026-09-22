@@ -81,6 +81,19 @@ export interface CourseSession {
   /** Owning organisation for a private/corporate cohort; null for public ones. */
   orgId?: string | null;
 
+  /**
+   * The order this occurrence bills against (1對1 / small-class). Present when the
+   * session was claimed from a classroom via ensureClassroomSession(); absent for
+   * B2B enrollment-based occurrences. Non-key attribute.
+   */
+  orderId?: string | null;
+
+  /**
+   * Cross-reference to the class-summaries row (buildSummaryId) for the same
+   * occurrence, so the AI summary (L3) and this session agree on identity.
+   */
+  summaryId?: string | null;
+
   /** 1-based occurrence number within the course ("第 3 梯次"). */
   sequence: number;
 

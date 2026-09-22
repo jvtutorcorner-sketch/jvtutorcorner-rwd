@@ -269,6 +269,85 @@ export async function createCourseSession(
   return session;
 }
 
+export interface EnsureClassroomSessionInput {
+  /** Deterministic lesson session id (lib/lessonAI/sessionId.ts). It IS the identity. */
+  id: string;
+  courseId: string;
+  teacherId: string;
+  startTime: string; // ISO scheduled start
+  endTime: string; // ISO scheduled end
+  orderId?: string | null;
+  orgId?: string | null;
+  roomId?: string | null;
+  summaryId?: string | null;
+  title?: string;
+}
+
+/**
+ * Idempotently claim the CourseSession that a classroom occurrence maps to.
+ *
+ * Unlike createCourseSession this takes a caller-supplied DETERMINISTIC id (both
+ * the teacher and the student derive the same one on entry, before any row
+ * exists), so the create race resolves via `attribute_not_exists(id)`: exactly
+ * one Put wins and the loser reads the existing row. No sequence scan — the id is
+ * the identity, sequence is cosmetic. Escrow release is NOT wired to this in
+ * Phase 3a; it stays on the existing /api/classroom/complete path.
+ */
+export async function ensureClassroomSession(
+  input: EnsureClassroomSessionInput
+): Promise<CourseSession> {
+  if (!input.id) throw new Error('[courseSession] id is required');
+  if (!input.courseId) throw new Error('[courseSession] courseId is required');
+  if (!input.startTime || !input.endTime) {
+    throw new Error('[courseSession] startTime and endTime are required');
+  }
+
+  const existing = await getCourseSession(input.id);
+  if (existing) return existing;
+
+  // Canonicalise defensively; fall back to the given id if the teacher can't be
+  // resolved (a session row is still better than none for the lesson tables).
+  const teacherId = await requireCanonicalTeacherId(input.teacherId).catch(() => input.teacherId);
+
+  const now = new Date().toISOString();
+  const session: CourseSession = {
+    id: input.id,
+    courseId: String(input.courseId),
+    teacherId,
+    orgId: input.orgId || undefined,
+    orderId: input.orderId || undefined,
+    summaryId: input.summaryId || undefined,
+    sequence: 0,
+    title: input.title,
+    startTime: input.startTime,
+    endTime: input.endTime,
+    roomId: input.roomId || undefined,
+    capacity: null,
+    status: 'SCHEDULED',
+    attendedCount: 0,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  try {
+    await ddbDocClient.send(
+      new PutCommand({
+        TableName: COURSE_SESSIONS_TABLE,
+        Item: session,
+        ConditionExpression: 'attribute_not_exists(id)',
+      })
+    );
+    console.log(`[courseSession] claimed classroom session ${session.id} course=${session.courseId}`);
+    return session;
+  } catch (err: any) {
+    if (err?.name === 'ConditionalCheckFailedException') {
+      const raced = await getCourseSession(input.id);
+      if (raced) return raced;
+    }
+    throw err;
+  }
+}
+
 /** Attach (or replace) the live classroom room for a session. */
 export async function setSessionRoom(
   sessionId: string,

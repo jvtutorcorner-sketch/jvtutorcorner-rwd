@@ -21,6 +21,11 @@ const PdfViewer = dynamic(() => import('@/components/PdfViewer'), { ssr: false }
 const ConsoleLogViewer = dynamic(() => import('@/components/ConsoleLogViewer'), { ssr: false });
 const NetworkSpeedMonitor = dynamic(() => import('@/components/NetworkSpeedMonitor'), { ssr: false });
 
+// Phase 3a — AI live teaching (markers / Timeline / Tutor).
+import { useLessonSession } from '@/lib/classroom/useLessonSession';
+import LessonMarkerBar from '@/components/classroom/LessonMarkerBar';
+import StudentTutorPanel from '@/components/classroom/StudentTutorPanel';
+
 type Role = 'teacher' | 'student' | 'assistant' | 'observer';
 
 const hexToRgbArray = (value: string | number[]): [number, number, number] => {
@@ -492,6 +497,9 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
   // Whiteboard WebRTC signaling rides RTM 'custom' messages; the canvas board
   // subscribes here so offer/answer/ICE relay over the classroom's realtime channel.
   const wbRtcSubRef = useRef<((m: { kind: string; data: unknown; from?: string; epoch?: string }) => void) | null>(null);
+  // Phase 3a: live teaching-marker relay (co-teacher / assistant). Set after the
+  // lesson hook resolves; read from onMessage without a stale closure.
+  const lessonMarkerRxRef = useRef<((m: { type: any; note?: string; at?: number }) => void) | null>(null);
 
   const { connected: rtmConnected, sendMessage: rtmSend } = useSignaling({
     channelName: effectiveChannelName,
@@ -528,6 +536,10 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
         const w = msg.payload.wbRtc as { kind: string; data: unknown; from?: string; epoch?: string };
         wbRtcSubRef.current?.({ kind: w.kind, data: w.data, from: w.from, epoch: w.epoch });
       }
+      // Phase 3a: a teaching marker from the other side (co-teacher/assistant).
+      if (msg?.type === 'custom' && msg.payload?.marker && msg.senderId !== userId) {
+        lessonMarkerRxRef.current?.(msg.payload.marker as { type: any; note?: string; at?: number });
+      }
       // Dispatch to whichever handler is currently registered
       rtmMessageCallbackRef.current?.(msg);
     },
@@ -548,6 +560,20 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
       return () => { if (wbRtcSubRef.current === cb) wbRtcSubRef.current = null; };
     },
   }), [presenceId]);
+
+  // Phase 3a — AI live teaching. Resolves the deterministic lesson session, drives
+  // teacher markers + class lifecycle events, and backs the student Tutor panel.
+  const lessonApi = useLessonSession({
+    courseId,
+    orderId,
+    isHost: isTeacher,
+    enabled: mounted,
+    rtmSend: useCallback((type: string, payload: Record<string, unknown>) => {
+      void rtmSendRef.current?.(type, payload);
+    }, []),
+  });
+  // Let onMessage relay remote markers into the hook without a stale closure.
+  lessonMarkerRxRef.current = lessonApi.pushRemoteMarker;
 
   const firstRemote = useMemo(() => {
     if (!remoteUsers || remoteUsers.length === 0) return null;
@@ -2005,6 +2031,11 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
 
   const endSession = async () => {
     try {
+      // Phase 3a: record class_ended so the Segmenter closes the last segment.
+      // Fire-and-forget; the server-side /api/classroom/complete path runs the
+      // actual finalize. Best-effort — never block ending the class.
+      try { lessonApi.endLesson(); } catch (e) { /* ignore */ }
+
       // 1. Broadcast end session notice
       const sessionBroadcastName = sessionParam || channelName || `classroom_session_ready_${courseId}`;
       try {
@@ -2761,6 +2792,16 @@ const ClientClassroom: React.FC<{ channelName?: string }> = ({ channelName }) =>
           </div>
         </div>
       )}
+
+      {/* Phase 3a — teacher teaching-marker row (independent of whiteboard state) */}
+      {isTeacher && lessonApi.ready && (
+        <div style={{ padding: '6px 0', display: 'flex', justifyContent: 'center', background: '#f8f9fa' }}>
+          <LessonMarkerBar api={lessonApi} />
+        </div>
+      )}
+
+      {/* Phase 3a — student AI Tutor (floating; gated server-side by plan) */}
+      {!isTeacher && <StudentTutorPanel sessionId={lessonApi.sessionId} />}
 
       {/* Duplicate detected modal removed entirely */}
 

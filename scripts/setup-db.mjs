@@ -18,8 +18,8 @@
  *   node scripts/setup-db.mjs --only=courseSessions --dry-run  # report, change nothing
  *
  *   Step keys: organizations, orgUnits, licenses, enrollments, courseSessions, classSummaries,
- *              pointTransactions, aiUsageLedger, costRollups,
- *              planUpgrades, pointsEscrow, profiles, courses
+ *              planUpgrades, pointsEscrow, pointTransactions, aiUsageLedger, aiFeatureConfig,
+ *              costRollups, lessonEvents, lessonSegments, profiles, courses
  *
  *   Use --only whenever some declared index must NOT be created yet. An index on
  *   an attribute that deployed code still writes as NULL makes every write to
@@ -391,6 +391,8 @@ async function main() {
     { key: 'aiUsageLedger', name: 'AI Usage Ledger Table', fn: () => ensureTable(TABLES.aiUsageLedger) },
     { key: 'aiFeatureConfig', name: 'AI Feature Config Table', fn: () => ensureTable(TABLES.aiFeatureConfig) },
     { key: 'costRollups', name: 'Cost Rollups Table', fn: () => ensureTable(TABLES.costRollups) },
+    { key: 'lessonEvents', name: 'Lesson Events Table', fn: () => ensureTable(TABLES.lessonEvents) },
+    { key: 'lessonSegments', name: 'Lesson Segments Table', fn: () => ensureTable(TABLES.lessonSegments) },
     {
       key: 'profiles',
       name: 'Profiles Table Indexes',

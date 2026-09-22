@@ -216,6 +216,39 @@ export const TABLES = {
     indexes: [],
     stream: false,
   },
+
+  // Append-only teaching events for one lesson (Phase 3). Every marker (teacher),
+  // system event (whiteboard/timer), AI event (Phase 3b L1) and time tick lands
+  // here; the Segmenter (lib/lessonAI/segmenter.ts) reads them to derive segments.
+  // stream:true so Phase 3b's Segmenter/L1 Lambda can consume it with no table
+  // change (no consumer yet in 3a — the finalize path reads it directly).
+  lessonEvents: {
+    envVar: 'DYNAMODB_TABLE_LESSON_EVENTS',
+    defaultName: 'jvtutorcorner-lesson-events',
+    label: 'LessonEvents',
+    purpose: 'Lesson-Events',
+    partitionKey: 'sessionId',
+    sortKey: 'sk', // `${ts}#${eventId}` — chronological within one lesson
+    attributes: { sessionId: S, sk: S },
+    indexes: [],
+    stream: true,
+  },
+
+  // Teaching segments derived by the Segmenter from lesson-events. One row per
+  // segment (seq, zero-padded string so lexical order = chronological). byCourseId
+  // powers cross-lesson reads (Phase 4). stream:true for Phase 3b L2 analysis.
+  // Null-key safe: the Segmenter always writes courseId + startTime.
+  lessonSegments: {
+    envVar: 'DYNAMODB_TABLE_LESSON_SEGMENTS',
+    defaultName: 'jvtutorcorner-lesson-segments',
+    label: 'LessonSegments',
+    purpose: 'Lesson-Segments',
+    partitionKey: 'sessionId',
+    sortKey: 'seq',
+    attributes: { sessionId: S, seq: S, courseId: S, startTime: S },
+    indexes: [{ name: 'byCourseId', hash: 'courseId', range: 'startTime' }],
+    stream: true,
+  },
 };
 
 /**

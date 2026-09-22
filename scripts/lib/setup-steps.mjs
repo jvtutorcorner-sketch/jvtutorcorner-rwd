@@ -26,6 +26,8 @@ export const STEP_KEYS = Object.freeze([
   'aiUsageLedger',
   'aiFeatureConfig',
   'costRollups',
+  'lessonEvents',
+  'lessonSegments',
   'profiles',
   'courses',
 ]);

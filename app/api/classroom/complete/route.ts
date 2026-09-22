@@ -8,8 +8,29 @@ import { writeAuditLog } from '@/lib/auditLogService';
 import { decideCompletion, parseOrderTime, COMPLETION_EARLY_WINDOW_MS, type CompletionOrder } from '@/lib/classroomCompletion';
 import { buildSummaryId } from '@/lib/classSummary/summaryLogic';
 import { markClassEnded } from '@/lib/classSummaryService';
+import { deriveLessonSessionId } from '@/lib/lessonAI/sessionId';
+import { finalizeLessonSegments } from '@/lib/lessonAI/finalize';
 
 const ORDERS_TABLE = process.env.DYNAMODB_TABLE_ORDERS || 'jvtutorcorner-orders';
+
+/**
+ * Derive this class's lesson session id and run the Segmenter over its events to
+ * (re)build the Timeline. Zero AI cost (markers/system/time only), so it runs for
+ * every completed class regardless of CLASS_SUMMARY_ENABLED. Fire-and-forget:
+ * never block or fail class completion on it. No-op when no events were recorded.
+ */
+function triggerLessonFinalize(courseId: string, order: CompletionOrder): void {
+  const startMs = parseOrderTime((order as { startTime?: string }).startTime ?? null);
+  if (startMs === null) return;
+  const endMs = parseOrderTime((order as { endTime?: string }).endTime ?? null);
+  const sessionId = deriveLessonSessionId(courseId, order.orderId, startMs);
+  void finalizeLessonSegments({
+    sessionId,
+    courseId,
+    lessonStartIso: new Date(startMs).toISOString(),
+    lessonEndIso: new Date(endMs ?? startMs).toISOString(),
+  }).catch((e) => console.warn('[classroom/complete] finalizeLessonSegments failed', e));
+}
 
 /**
  * Move this class's AI-summary row from RECORDING → PENDING so the background worker
@@ -103,7 +124,10 @@ async function handlePost(req: AuthedRequest) {
       return NextResponse.json({ ok: false, error: decision.error }, { status: decision.status });
     }
     if (decision.action === 'noop') {
-      if (order) triggerClassSummary(courseId, order);
+      if (order) {
+        triggerClassSummary(courseId, order);
+        triggerLessonFinalize(courseId, order);
+      }
       return NextResponse.json({ ok: true, released: false, reason: decision.reason, orderId: order?.orderId });
     }
 
@@ -126,6 +150,7 @@ async function handlePost(req: AuthedRequest) {
     });
 
     triggerClassSummary(courseId, order!);
+    triggerLessonFinalize(courseId, order!);
 
     return NextResponse.json({
       ok: true,
