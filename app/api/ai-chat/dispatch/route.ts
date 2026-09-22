@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { withAuth, type AuthedRequest } from '@/lib/auth/apiGuard';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { getDefault, getIntegration } from '@/lib/integrations/store';
 import { getDispatchPrompt, quickDispatchDb, getAgent, listAgents } from '@/lib/ai/agentsStore';
+import { runWithIntegration } from '@/lib/ai/gateway/gateway';
 
 /**
  * Get AI config for dispatch (reuses chatroom config or falls back to Gemini).
@@ -43,37 +43,16 @@ async function postHandler(req: AuthedRequest) {
         const aiConfig = await getDispatchAIConfig();
         if (aiConfig) {
             const dispatchPrompt = await getDispatchPrompt();
+            const dispatchModel = aiConfig.provider === 'GEMINI' ? 'gemini-2.0-flash' : 'gpt-4o-mini';
             try {
-                if (aiConfig.provider === 'GEMINI') {
-                    const genAI = new GoogleGenerativeAI(aiConfig.apiKey);
-                    const model = genAI.getGenerativeModel({
-                        model: 'gemini-2.0-flash',
-                        systemInstruction: dispatchPrompt,
-                        generationConfig: { responseMimeType: 'application/json' }
-                    });
-                    const result = await model.generateContent(query);
-                    const text = result.response.text();
-                    const parsed = JSON.parse(text);
+                const res = await runWithIntegration(
+                    { type: aiConfig.provider, config: { apiKey: aiConfig.apiKey, model: dispatchModel } },
+                    { prompt: query, systemInstruction: dispatchPrompt, jsonMode: true, temperature: 0.2, maxTokens: 1024 },
+                    { feature: 'dispatch', userId: req.session.userId, defaultModel: dispatchModel }
+                );
+                if (res.ok && res.result.text) {
+                    const parsed = JSON.parse(res.result.text);
                     if (parsed.dispatch) aiDispatch = parsed;
-                } else if (aiConfig.provider === 'OPENAI') {
-                    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${aiConfig.apiKey}` },
-                        body: JSON.stringify({
-                            model: 'gpt-4o-mini',
-                            messages: [
-                                { role: 'system', content: dispatchPrompt },
-                                { role: 'user', content: query }
-                            ],
-                            response_format: { type: 'json_object' },
-                            temperature: 0.2,
-                        })
-                    });
-                    if (response.ok) {
-                        const data = await response.json();
-                        const parsed = JSON.parse(data.choices[0].message.content);
-                        if (parsed.dispatch) aiDispatch = parsed;
-                    }
                 }
             } catch (aiErr) {
                 console.warn('[Dispatch] AI dispatch failed, using keyword fallback:', aiErr);

@@ -6,6 +6,22 @@ import { PutCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { getDefault } from '@/lib/integrations/store';
 import { v4 as uuidv4 } from 'uuid';
 import nodemailer from 'nodemailer';
+import { randomUUID } from 'crypto';
+import { recordUsage } from '@/lib/ai/gateway/ledger';
+import { usageToMusd } from '@/lib/ai/gateway/pricing';
+
+// Meter one Gemini response's token usage (fire-and-forget; never blocks chat).
+async function meterChat(resp: any, model: string, userId?: string) {
+    const u = resp?.usageMetadata; if (!u) return;
+    try {
+        await recordUsage({
+            requestId: randomUUID(), costCenter: 'ai',
+            actualCostMusd: usageToMusd(model, { inputTokens: u.promptTokenCount ?? 0, outputTokens: u.candidatesTokenCount ?? 0, reasoningTokens: u.thoughtsTokenCount ?? 0 }),
+            feature: 'chat-assistant', model, provider: 'GEMINI', userId,
+            inputTokens: u.promptTokenCount ?? 0, outputTokens: u.candidatesTokenCount ?? 0, reasoningTokens: u.thoughtsTokenCount ?? 0, status: 'ok',
+        });
+    } catch (e) { console.warn('[chat] metering failed (non-fatal)', e); }
+}
 
 const COURSES_TABLE = process.env.DYNAMODB_TABLE_COURSES || 'jvtutorcorner-courses';
 const TEACHERS_TABLE = process.env.DYNAMODB_TABLE_TEACHERS || 'jvtutorcorner-teachers';
@@ -195,6 +211,7 @@ ${customInstruction}
 
         const result = await chat.sendMessage(latestMessage);
         const response = result.response;
+        await meterChat(response, modelName, req.session.userId);
 
         const functionCalls = response.functionCalls();
 
@@ -286,6 +303,7 @@ ${customInstruction}
                         }
                     }]);
 
+                    await meterChat(followUpResult.response, modelName, req.session.userId);
                     return NextResponse.json({ reply: followUpResult.response.text() });
 
                 } catch (dbError: any) {
@@ -302,6 +320,7 @@ ${customInstruction}
                         }
                     }]);
 
+                    await meterChat(followUpResult.response, modelName, req.session.userId);
                     return NextResponse.json({ reply: followUpResult.response.text() });
                 }
             }
