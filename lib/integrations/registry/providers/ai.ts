@@ -34,6 +34,18 @@ export const AI_PROVIDERS: ProviderDefinition[] = [
         fields: llmFields(),
     },
     {
+        type: 'OPENROUTER',
+        category: 'ai',
+        defaults: { label: 'OpenRouter', desc: '單一金鑰存取多家模型(Gemini/GPT/Claude…),供 AI Gateway 依任務路由', icon: '🔀', badge: 'bg-purple-100 text-purple-800', sortOrder: 40, visible: true },
+        capabilities: { testConnection: true, multiInstance: true, toolPanels: ['ai-prompt'] },
+        fields: [
+            { key: 'apiKey', label: 'API Key', type: 'password', required: true, secret: true },
+            { key: 'models', label: '啟用模型', type: 'model-picker', required: false, help: 'OpenRouter 模型 id,如 google/gemini-2.5-flash、openai/gpt-4o-mini' },
+            { key: 'baseUrl', label: 'Base URL', type: 'text', required: false, help: '選填:自訂端點,預設 https://openrouter.ai/api' },
+            { key: 'systemInstruction', label: '系統指令 (System Instruction)', type: 'textarea', rows: 4, help: '選填' },
+        ],
+    },
+    {
         type: 'CONTEXT7',
         category: 'ai',
         defaults: { label: 'Context7 MCP', desc: '連結 Figma 與外部知識庫，為 AI 提供即時設計上下文與技術文檔', icon: '🎨', badge: 'bg-teal-100 text-teal-800', sortOrder: 90, visible: true },
