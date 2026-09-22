@@ -5,6 +5,7 @@
 // it instead of adding another copy. Server-only (reads API keys from DynamoDB).
 
 import { getFirstActiveOf } from '@/lib/integrations/store';
+import { runWithIntegration } from '@/lib/ai/gateway/gateway';
 
 export type LlmProvider = 'OPENAI' | 'ANTHROPIC' | 'GEMINI';
 
@@ -42,51 +43,6 @@ export async function getActiveAIIntegration(
   return null;
 }
 
-async function callGemini(apiKey: string, model: string, prompt: string, images: LlmImage[], maxTokens: number) {
-  const parts: any[] = [{ text: prompt }, ...images.map((i) => ({ inlineData: { mimeType: i.mimeType, data: i.base64 } }))];
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ parts }], generationConfig: { responseMimeType: 'application/json', maxOutputTokens: maxTokens } }),
-    }
-  );
-  if (!res.ok) return null;
-  const data = await res.json();
-  return (data.candidates?.[0]?.content?.parts?.[0]?.text as string) ?? null;
-}
-
-async function callOpenAI(apiKey: string, model: string, prompt: string, images: LlmImage[], maxTokens: number) {
-  const content: any[] = [
-    { type: 'text', text: prompt },
-    ...images.map((i) => ({ type: 'image_url', image_url: { url: `data:${i.mimeType};base64,${i.base64}` } })),
-  ];
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({ model, messages: [{ role: 'user', content }], max_tokens: maxTokens, response_format: { type: 'json_object' } }),
-  });
-  if (!res.ok) return null;
-  const data = await res.json();
-  return (data.choices?.[0]?.message?.content as string) ?? null;
-}
-
-async function callAnthropic(apiKey: string, model: string, prompt: string, images: LlmImage[], maxTokens: number) {
-  const content: any[] = [
-    ...images.map((i) => ({ type: 'image', source: { type: 'base64', media_type: i.mimeType, data: i.base64 } })),
-    { type: 'text', text: `${prompt}\n\n請只回傳 JSON。` },
-  ];
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({ model, max_tokens: maxTokens, messages: [{ role: 'user', content }] }),
-  });
-  if (!res.ok) return null;
-  const data = await res.json();
-  return (data.content?.[0]?.text as string) ?? null;
-}
-
 const DEFAULT_MODEL: Record<string, string> = {
   GEMINI: 'gemini-1.5-flash',
   OPENAI: 'gpt-4o-mini',
@@ -96,24 +52,31 @@ const DEFAULT_MODEL: Record<string, string> = {
 /**
  * Generate a JSON-mode completion from the given integration. `images` may be empty for
  * text-only prompts. Returns the raw model text (caller parses) or null on any failure.
+ *
+ * Now a thin shim over the AI Gateway (lib/ai/gateway): the actual provider call,
+ * timeout/retry/fallback and token-usage metering happen there. Callers may pass
+ * `feature`/`requestId`/dims to attribute the cost; existing callers that omit them
+ * still work and are metered under a generic feature.
  */
 export async function generateJson(args: {
   integration: LlmIntegration;
   prompt: string;
   images?: LlmImage[];
   maxTokens?: number;
+  feature?: string;
+  requestId?: string;
+  userId?: string;
+  sessionId?: string;
+  courseId?: string;
+  teacherId?: string;
+  orgId?: string;
 }): Promise<string | null> {
-  const { integration, prompt, images = [], maxTokens = 2048 } = args;
-  const apiKey = integration.config?.apiKey;
-  if (!apiKey) return null;
-  const model = integration.config?.model || DEFAULT_MODEL[integration.type] || 'gpt-4o-mini';
-  try {
-    if (integration.type === 'GEMINI') return await callGemini(apiKey, model, prompt, images, maxTokens);
-    if (integration.type === 'OPENAI') return await callOpenAI(apiKey, model, prompt, images, maxTokens);
-    if (integration.type === 'ANTHROPIC') return await callAnthropic(apiKey, model, prompt, images, maxTokens);
-    return null;
-  } catch (err) {
-    console.error('[llmClient] provider error:', (err as any)?.message || err);
-    return null;
-  }
+  const { integration, prompt, images = [], maxTokens = 2048, feature = 'llm-json', requestId, userId, sessionId, courseId, teacherId, orgId } = args;
+  if (!integration.config?.apiKey) return null;
+  const res = await runWithIntegration(
+    integration,
+    { prompt, images, jsonMode: true, maxTokens },
+    { feature, requestId, userId, sessionId, courseId, teacherId, orgId, defaultModel: DEFAULT_MODEL[integration.type] || 'gpt-4o-mini' }
+  );
+  return res.ok ? res.result.text : null;
 }
