@@ -17,21 +17,44 @@ export interface ModelPrice {
   audioInPerM?: number; // USD / 1M audio-input tokens (STT), when applicable
 }
 
-// Keyed by bare model id (provider-agnostic where the id is unique).
+// Keyed by bare model id after normalizeModelId (provider-agnostic where the id
+// is unique; OpenRouter `vendor/id` prefixes are stripped before lookup).
 export const MODEL_PRICES: Record<string, ModelPrice> = {
   // Google Gemini (OpenRouter / direct)
-  'gemini-2.5-flash-lite': { inPerM: 0.1, outPerM: 0.4, audioInPerM: 0.3 },
+  'gemini-3.1-pro': { inPerM: 2.0, outPerM: 12.0 }, // 2026-09-25
+  'gemini-3.1-flash-lite': { inPerM: 0.25, outPerM: 1.5 }, // 2026-09-25; 2.5 Flash-Lite 接替
+  'gemini-3.1-flash-lite-preview': { inPerM: 0.25, outPerM: 1.5 },
+  'gemini-2.5-flash-lite': { inPerM: 0.1, outPerM: 0.4, audioInPerM: 0.3 }, // 退役 2026-10-16~20
   'gemini-2.5-flash': { inPerM: 0.3, outPerM: 2.5, audioInPerM: 1.0 },
   'gemini-2.0-flash': { inPerM: 0.1, outPerM: 0.4, audioInPerM: 0.7 },
   'gemini-1.5-flash': { inPerM: 0.075, outPerM: 0.3, audioInPerM: 1.0 },
   'gemini-1.5-pro': { inPerM: 1.25, outPerM: 5.0 },
   // OpenAI
+  'gpt-5.4-mini': { inPerM: 0.75, outPerM: 4.5 }, // 2026-09-25
+  'gpt-5.4-nano': { inPerM: 0.2, outPerM: 1.25 }, // 2026-09-25
   'gpt-4o-mini': { inPerM: 0.15, outPerM: 0.6 },
   'gpt-4o': { inPerM: 2.5, outPerM: 10.0 },
   'gpt-4-turbo': { inPerM: 10.0, outPerM: 30.0 },
   // Anthropic
+  'claude-haiku-4-5': { inPerM: 1.0, outPerM: 5.0 }, // 2026-09-25
+  'claude-haiku-4.5': { inPerM: 1.0, outPerM: 5.0 }, // OpenRouter dotted id
+  'claude-haiku-4-5-20251001': { inPerM: 1.0, outPerM: 5.0 }, // Anthropic dated id
   'claude-3-5-haiku-20241022': { inPerM: 0.8, outPerM: 4.0 },
   'claude-3-5-sonnet-20241022': { inPerM: 3.0, outPerM: 15.0 },
+  // 中國模型 — 2026-09-25 概略快照，版本/價格變動快;正式計費前於 Phase 0b 以真實帳單校準。
+  // 以 OpenRouter bare id 為 key(vendor 前綴已由 normalizeModelId 去除)。
+  'deepseek-chat': { inPerM: 0.21, outPerM: 0.31 }, // DeepSeek V3.2 (OpenRouter)
+  'deepseek-v3.2': { inPerM: 0.21, outPerM: 0.31 },
+  'deepseek-r1': { inPerM: 0.55, outPerM: 2.19 }, // 推理模型;約略
+  'deepseek-reasoner': { inPerM: 0.55, outPerM: 2.19 },
+  'qwen-max': { inPerM: 0.78, outPerM: 3.9 }, // 阿里 Qwen3 Max
+  'qwen3-max': { inPerM: 0.78, outPerM: 3.9 },
+  'qwen-plus': { inPerM: 0.12, outPerM: 0.71 },
+  'qwen-turbo': { inPerM: 0.03, outPerM: 0.3 },
+  'kimi-k2': { inPerM: 1.0, outPerM: 4.0 }, // Moonshot Kimi K2 系列
+  'moonshot-v1': { inPerM: 1.0, outPerM: 4.0 },
+  'glm-4.6': { inPerM: 0.6, outPerM: 2.2 }, // 智譜 GLM;約略
+  'glm-4-plus': { inPerM: 0.6, outPerM: 2.2 },
 };
 
 // Conservative fallback for an unpriced model (mid-tier rates).
