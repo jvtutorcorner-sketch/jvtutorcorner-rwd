@@ -127,6 +127,12 @@ export default function AdminDashboard() {
             <Link href="/admin/analytics" className="text-sm font-medium text-gray-600 hover:text-green-600 flex items-center gap-2 p-2 rounded hover:bg-green-50 transition-colors">
               <span className="w-1.5 h-1.5 rounded-full bg-orange-400"></span> 網站流量分析 (GA4)
             </Link>
+            <Link href="/admin/ai-analytics" className="text-sm font-medium text-gray-600 hover:text-green-600 flex items-center gap-2 p-2 rounded hover:bg-green-50 transition-colors">
+              <span className="w-1.5 h-1.5 rounded-full bg-indigo-400"></span> 🤖 AI 效益分析
+            </Link>
+            <Link href="/admin/cost" className="text-sm font-medium text-gray-600 hover:text-green-600 flex items-center gap-2 p-2 rounded hover:bg-green-50 transition-colors">
+              <span className="w-1.5 h-1.5 rounded-full bg-indigo-400"></span> AI / RTC 成本
+            </Link>
           </div>
         </div>
 

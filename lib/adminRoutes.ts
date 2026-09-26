@@ -63,6 +63,10 @@ export const ADMIN_ROUTES: AdminRouteEntry[] = [
   { key: 'admin.settings.whiteboard', path: '/admin/settings/whiteboard', label: '白板與課堂互動設定', group: 'settings' },
   { key: 'admin.roles', path: '/admin/roles', label: '角色權限管理', group: 'roles' },
   { key: 'admin.analytics', path: '/admin/analytics', label: '網站流量分析 (GA4)', group: 'analytics' },
+  // Not under /admin/analytics: dept_admin has prefix access there, but these APIs are admin-only.
+  { key: 'admin.analytics.ai', path: '/admin/ai-analytics', label: 'AI 效益分析', group: 'analytics' },
+  { key: 'admin.analytics.cost', path: '/admin/cost', label: 'AI / RTC 成本', group: 'analytics' },
+  { key: 'admin.settings.aiFeatures', path: '/admin/ai-features', label: 'AI 功能開關', group: 'settings' },
   { key: 'admin.legacy.teacherEscrow', path: '/admin/teacher-escrow', label: '教師點數 Escrow（舊版）', group: 'legacy' },
 ];
 
