@@ -398,6 +398,7 @@ async function main() {
     { key: 'assessmentSubmissions', name: 'Assessment Submissions Table', fn: () => ensureTable(TABLES.assessmentSubmissions) },
     { key: 'gpuJobs', name: 'GPU Jobs Table', fn: () => ensureTable(TABLES.gpuJobs) },
     { key: 'aiBudgets', name: 'AI Budgets Table', fn: () => ensureTable(TABLES.aiBudgets) },
+    { key: 'analyticsEvents', name: 'Analytics Events Table', fn: () => ensureTable(TABLES.analyticsEvents) },
     {
       key: 'profiles',
       name: 'Profiles Table Indexes',

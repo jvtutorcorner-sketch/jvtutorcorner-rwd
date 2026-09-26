@@ -40,6 +40,7 @@
     "db:verify": "node scripts/verify-schema.mjs",
     "db:verify:template": "node scripts/verify-schema.mjs --template",
     "verify:course-sessions-index": "node --import ./scripts/lib/register-ts-resolve.mjs scripts/verify-course-sessions-index.mjs",
+    "verify:analytics": "node --import ./scripts/lib/register-ts-resolve.mjs scripts/verify-analytics.mjs",
     "lambda:build": "node scripts/build-lambda.mjs",
     "db:migrate:teacher-ids": "node scripts/migrate-teacher-ids.mjs",
     "test:audit-coverage": "node scripts/audit-enterprise-general-test-coverage.mjs",

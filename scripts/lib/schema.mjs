@@ -309,6 +309,23 @@ export const TABLES = {
     indexes: [],
     stream: false,
   },
+
+  // Product analytics events for the AI benefit KPIs (lib/analytics/eventStore.ts)
+  // plus manually entered metrics. Event rows: pk `EVT#yyyy-mm-dd` (UTC day),
+  // sk `${type}#${eventId}` (conditional Put dedupes retries). Manual rows:
+  // pk `MANUAL#<metricKey>`, sk = period. Reports Query one day at a time, so no
+  // GSI is needed. See docs/ai-platform/ai-feature-benefit-assessment-2026-09-27.md.
+  analyticsEvents: {
+    envVar: 'DYNAMODB_TABLE_ANALYTICS_EVENTS',
+    defaultName: 'jvtutorcorner-analytics-events',
+    label: 'AnalyticsEvents',
+    purpose: 'Analytics-Events',
+    partitionKey: 'pk',
+    sortKey: 'sk',
+    attributes: { pk: S, sk: S },
+    indexes: [],
+    stream: false,
+  },
 };
 
 /**
