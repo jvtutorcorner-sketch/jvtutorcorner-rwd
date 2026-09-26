@@ -151,6 +151,150 @@ console.log('\n[5] 推薦 holdout 排序');
   check('熱門度訊號數:排除 0.5 與缺值', countPopularitySignals([...cands, { id: 'd', title: 'D', category: 'x', tags: [] }]) === 2);
 }
 
+console.log('\n[6] 彙整:週報');
+const agg = await import('../lib/analytics/aggregate.ts');
+let seq = 0;
+const ev = (type, ts, props = {}) => ({ type, ts, eventId: props.eventId ?? `e${++seq}`, pk: `EVT#${ts.slice(0, 10)}`, sk: `${type}#x`, appEnv: 'dev', ...props });
+const OK = { status: 'ok' }, MEM = { status: 'memory' }, BAD = { status: 'unavailable', hint: 'P-1' };
+{
+  const days = ['2026-09-21', '2026-09-22', '2026-09-23', '2026-09-24'];
+  const ledger = [
+    { feature: 'tutor', actualCostMusd: 100, createdAt: '2026-09-21T01:00:00Z' },
+    { feature: 'tutor', actualCostMusd: 100, createdAt: '2026-09-22T01:00:00Z' },
+    { feature: 'tutor', actualCostMusd: 100, createdAt: '2026-09-23T01:00:00Z' },
+    { feature: 'tutor', actualCostMusd: 5000, createdAt: '2026-09-24T01:00:00Z' },
+    { feature: 'chat-assistant', actualCostMusd: 40, createdAt: '2026-09-22T02:00:00Z' },
+    { feature: 'tutor', actualCostMusd: 999, createdAt: '2026-09-25T01:00:00Z' }, // 期間外
+  ];
+  const events = [
+    ev('ai_error', '2026-09-22T03:00:00Z', { feature: 'tutor', reason: 'provider' }),
+    ev('chat_message', '2026-09-22T02:00:00Z', { userId: 'u1', channel: 'widget' }),
+    ev('line_message', '2026-09-23T02:00:00Z', { msgType: 'text', uidHash: 'h' }),
+  ];
+  const w = agg.aggregateWeekly(days, ledger, events);
+  check('tutor 4 天請求 = 4、成本 = 5300', w.featureTotals.find((f) => f.feature === 'tutor')?.requests === 4 && w.featureTotals.find((f) => f.feature === 'tutor')?.musd === 5300);
+  check('期間外的 ledger 列不計', w.totals.musd === 5340, `${w.totals.musd}`);
+  check('tutor 錯誤率 = 1/(4+1)', w.featureTotals.find((f) => f.feature === 'tutor')?.errorRate === 0.2);
+  check('每日訊息量', w.daily['2026-09-22'].widgetMessages === 1 && w.daily['2026-09-23'].lineMessages === 1);
+  check('異常:tutor 09-24 成本 > 3× 平均', w.anomalies.length === 1 && w.anomalies[0].day === '2026-09-24' && w.anomalies[0].feature === 'tutor');
+}
+
+console.log('\n[7] 彙整:對話、轉換視窗');
+{
+  const msgs = [
+    ev('chat_message', '2026-09-10T01:00:00Z', { userId: 'a', channel: 'widget' }),
+    ev('chat_message', '2026-09-10T05:00:00Z', { userId: 'a', channel: 'widget' }),
+    ev('chat_message', '2026-09-11T01:00:00Z', { userId: 'a', channel: 'widget' }),
+    ev('chat_message', '2026-09-10T02:00:00Z', { userId: 'b', channel: 'widget' }),
+  ];
+  const convs = agg.buildConversations(msgs);
+  check('對話 = 使用者 × UTC 日 → 3 段', convs.length === 3);
+  const handoffs = [
+    ev('chat_handoff', '2026-09-11T04:59:00Z', { userId: 'a', department: 'CS' }), // a 09-10 的最後訊息 +24h 內;也在 09-11 對話內
+    ev('chat_handoff', '2026-09-12T02:30:00Z', { userId: 'b', department: 'CS' }), // b 最後訊息 +24h 之後
+  ];
+  const sr = agg.selfResolve(convs, handoffs);
+  check('自助解決:a 兩段都轉真人、b 超過 24h 算解決 → 1/3', sr.resolved === 1 && sr.total === 3, JSON.stringify(sr));
+
+  const clicks = [ev('course_click', '2026-09-01T00:00:00Z', { userId: 'u', courseId: 'c1', src: 'recommendation' })];
+  const buyIn = [ev('course_purchase', '2026-09-07T23:00:00Z', { userId: 'u', courseId: 'c1', orderId: 'o', paymentMethod: 'points' })];
+  const buyOut = [ev('course_purchase', '2026-09-08T01:00:00Z', { userId: 'u', courseId: 'c1', orderId: 'o', paymentMethod: 'points' })];
+  const buyOther = [ev('course_purchase', '2026-09-02T00:00:00Z', { userId: 'u', courseId: 'c2', orderId: 'o', paymentMethod: 'points' })];
+  check('6 天 23 小時內購買同課程 → 算轉換', agg.clickToPurchase(clicks, buyIn).converted === 1);
+  check('7 天 1 小時 → 不算', agg.clickToPurchase(clicks, buyOut).converted === 0);
+  check('買了別門課 → 不算', agg.clickToPurchase(clicks, buyOther).converted === 0);
+  const dup = agg.dedupeEvents([ev('course_purchase', '2026-09-02T00:00:00Z', { eventId: 'o9', userId: 'u', courseId: 'c', orderId: 'o9', paymentMethod: 'x' }), ev('course_purchase', '2026-09-03T00:00:00Z', { eventId: 'o9', userId: 'u', courseId: 'c', orderId: 'o9', paymentMethod: 'x' })]);
+  check('跨日重複購買事件去重', dup.length === 1);
+  check('z 檢定:空組 → null、相同比例 → 0', agg.zTwoProp(1, 0, 1, 10) === null && Math.abs(agg.zTwoProp(10, 100, 20, 200)) < 1e-9);
+  check('z 檢定已知值(50/100 vs 30/100 ≈ 2.887)', Math.abs(agg.zTwoProp(50, 100, 30, 100) - 2.8868) < 0.001, String(agg.zTwoProp(50, 100, 30, 100)));
+}
+
+console.log('\n[8] 彙整:月報 KPI 與狀態');
+{
+  const now = new Date('2026-10-20T00:00:00Z'); // 202609 的 +7 日視窗已結束
+  const ledger = [
+    { feature: 'chat-assistant', actualCostMusd: 300, createdAt: '2026-09-05T00:00:00Z', userId: 'a' },
+    { feature: 'line-text', actualCostMusd: 200, createdAt: '2026-09-05T00:00:00Z' },
+    { feature: 'line-text', actualCostMusd: 100, createdAt: '2026-09-06T00:00:00Z' },
+    { feature: 'copilot', actualCostMusd: 1000, createdAt: '2026-09-07T00:00:00Z', sessionId: 's1' },
+    { feature: 'tutor', actualCostMusd: 500, createdAt: '2026-09-07T00:00:00Z', sessionId: 's1' },
+    { feature: 'assessment', actualCostMusd: 300, createdAt: '2026-09-08T00:00:00Z', sessionId: 's2' },
+  ];
+  const events = [
+    ev('chat_message', '2026-09-05T00:00:00Z', { userId: 'a', channel: 'widget' }),
+    ev('chat_message', '2026-09-05T00:10:00Z', { userId: 'a', channel: 'widget' }),
+    ev('chat_message', '2026-09-06T00:00:00Z', { userId: 'b', channel: 'widget' }),
+    ev('course_purchase', '2026-09-09T00:00:00Z', { userId: 'a', courseId: 'c1', orderId: 'o1', paymentMethod: 'points' }),
+    ev('assessment_generated', '2026-09-08T00:00:00Z', { sessionId: 's2', requestId: 'r1', questionCount: 5 }),
+    ev('assessment_generated', '2026-09-08T01:00:00Z', { sessionId: 's2', requestId: 'r2', questionCount: 5 }),
+    ev('assessment_dispatched', '2026-09-08T02:00:00Z', { sessionId: 's2', assessmentId: 'x', generateRequestId: 'r2', questionCount: 5 }),
+    ev('rec_impression', '2026-09-10T00:00:00Z', { userId: 'a', courseIds: ['c1', 'c2', 'c3'], arm: 'treatment' }),
+    ev('course_click', '2026-09-10T00:01:00Z', { userId: 'a', courseId: 'c2', src: 'recommendation' }),
+    ev('rec_served', '2026-09-10T00:00:00Z', { userId: 'a', arm: 'treatment', personalized: true, interactionCount: 3, n: 4, popNonDefault: 1 }),
+    ev('rec_served', '2026-09-10T00:00:00Z', { arm: 'guest', personalized: false, interactionCount: 0, n: 4, popNonDefault: 1 }),
+  ];
+  const sessions = [{ id: 's1', teacherId: 't1' }, { id: 's2', teacherId: 't1' }, { id: 's3', teacherId: 't2' }];
+  const manual = [{ metricKey: 'chat_error_sample', period: '202609', value: 2, sampleSize: 50, updatedBy: 'x', updatedAt: '' }];
+  const m = agg.buildMonthly({ month: '202609', now, ledger: { src: OK, rows: ledger }, events: { src: OK, rows: events }, sessions: { src: OK, rows: sessions }, manual: { src: OK, rows: manual } });
+  const k = (id) => m.kpis.find((x) => x.id === id);
+  check('小幫手每則成本 = 300/3 = 100µ$', k('chat_cost_per_msg_widget').value === 100);
+  check('LINE 每則成本 = 300/2 = 150µ$', k('chat_cost_per_msg_line').value === 150);
+  check('對話類月費 = 600µ$', k('chat_monthly_cost').value === 600);
+  check('對話 → 7 日購課 = a 買了 / 2 位 = 0.5,樣本不足', k('chat_to_purchase_7d').value === 0.5 && k('chat_to_purchase_7d').lowSample === true);
+  check('AI 使用率 = 2/3 課堂', Math.abs(k('teacher_feature_usage').value - 2 / 3) < 1e-9);
+  check('每堂 AI 成本 = 1800/2 = 900µ$', k('teacher_cost_per_lesson').value === 900 && m.lessonCost.medianMusd === 300 && m.lessonCost.p90Musd === 1500);
+  check('題目採用率 = 1/2', k('assessment_adoption').value === 0.5);
+  check('老師數 2、每人 1.5 堂', k('active_teachers').value === 2 && k('sessions_per_teacher').value === 1.5);
+  check('推薦曝光 3 卡、CTR 1/3', k('rec_impressions').value === 3 && Math.abs(k('rec_ctr').value - 1 / 3) < 1e-9);
+  check('個人化覆蓋率 1/2、熱門度有效率 2/8', k('personalization_coverage').value === 0.5 && k('popularity_signal_validity').value === 0.25);
+  check('目錄沒有點擊 → no_denominator(不是 0%)', k('catalog_to_purchase_7d').status === 'no_denominator' && k('catalog_to_purchase_7d').value === null);
+  check('差異缺一方 → no_denominator', k('rec_vs_catalog_diff').status === 'no_denominator');
+  check('人工錯誤率 = 2/50', k('chat_error_rate').value === 0.04 && k('chat_error_rate').status === 'ok');
+  check('人工工時未填 → manual_missing', k('cs_hours').status === 'manual_missing');
+  check('摘要開啟率 → 待補(not_instrumented)', k('summary_open_rate').status === 'not_instrumented');
+  check('題目修改率 → 不適用', k('assessment_edit_rate').status === 'not_applicable');
+  check('月報不含季度 KPI', !k('repurchase_in_quarter'));
+
+  const m2 = agg.buildMonthly({ month: '202609', now: new Date('2026-10-03T00:00:00Z'), ledger: { src: BAD, rows: [] }, events: { src: MEM, rows: events }, sessions: { src: OK, rows: sessions }, manual: { src: OK, rows: [] } });
+  const k2 = (id) => m2.kpis.find((x) => x.id === id);
+  check('ledger 不可用 → 成本 KPI unavailable、value null', k2('chat_monthly_cost').status === 'unavailable' && k2('chat_monthly_cost').value === null);
+  check('混用 ledger(不可用)+ 事件 → unavailable', k2('chat_cost_per_msg_widget').status === 'unavailable');
+  check('記憶體模式事件 → memory', k2('widget_msg_volume').status === 'memory');
+  const m3 = agg.buildMonthly({ month: '202609', now: new Date('2026-10-03T00:00:00Z'), ledger: { src: OK, rows: ledger }, events: { src: OK, rows: events }, sessions: { src: OK, rows: sessions }, manual: { src: OK, rows: [] } });
+  check('月底後 7 日內 → 轉換類 KPI partial', m3.kpis.find((x) => x.id === 'chat_to_purchase_7d').status === 'partial');
+}
+
+console.log('\n[9] 彙整:季報 holdout 比較');
+{
+  const events = [];
+  const imp = (u, arm, ts) => events.push(ev('rec_impression', ts, { userId: u, courseIds: ['c1', 'c2'], arm }));
+  imp('t1', 'treatment', '2026-10-02T00:00:00Z');
+  imp('t2', 'treatment', '2026-10-02T00:00:00Z');
+  imp('h1', 'holdout', '2026-10-02T00:00:00Z');
+  imp('t1', 'holdout', '2026-10-05T00:00:00Z'); // 之後比例變更:仍以第一次曝光的組別為準
+  events.push(ev('course_click', '2026-10-02T01:00:00Z', { userId: 't1', courseId: 'c1', src: 'recommendation' }));
+  events.push(ev('course_purchase', '2026-10-03T00:00:00Z', { userId: 't1', courseId: 'c1', orderId: 'o1', paymentMethod: 'points' }));
+  events.push(ev('course_purchase', '2026-11-03T00:00:00Z', { userId: 't1', courseId: 'c9', orderId: 'o2', paymentMethod: 'points' }));
+  const q = agg.buildQuarterly({ quarter: '2026Q4', from: '2026-10-01', to: '2026-12-31', now: new Date('2027-01-10T00:00:00Z'), months: [], events: { src: OK, rows: events } });
+  const t = q.arms.find((a) => a.arm === 'treatment'), h = q.arms.find((a) => a.arm === 'holdout');
+  check('組別以第一次曝光為準:treatment 2 人、holdout 1 人', t.users === 2 && h.users === 1);
+  check('treatment 卡片 6(含 t1 第二次曝光)、點擊 1', t.cards === 6 && t.recClicks === 1, `${t.cards}/${t.recClicks}`);
+  check('treatment 推薦→購買 1/1、7 日內任一購課 1/2', t.recPurchase.rate === 1 && t.anyPurchase.rate === 0.5);
+  check('樣本 < 300 → 警示只看趨勢', q.warnings.some((w) => w.includes('只看趨勢')));
+  check('沒有個人化請求 → 警示兩組會相同', q.warnings.some((w) => w.includes('個人化覆蓋率接近 0')));
+  check('季內回購率 = t1 買 2 次 / 1 位', q.repurchase.value === 1 && q.repurchase.status === 'ok');
+  const qBad = agg.buildQuarterly({ quarter: '2026Q4', from: '2026-10-01', to: '2026-12-31', now: new Date(), months: [], events: { src: BAD, rows: [] } });
+  check('事件不可用 → 無分組、回購 unavailable', qBad.arms.length === 0 && qBad.repurchase.status === 'unavailable');
+}
+
+console.log('\n[10] CSV');
+{
+  const csv = await import('../lib/analytics/csv.ts');
+  const out = csv.kpiRowsCsv([{ id: 'x', section: 'chat', name: '名稱 "含引號"', tier: 'G', unit: 'pct', value: 0.5, status: 'ok', formula: 'a, b' }], 32, '202609');
+  check('CSV 以 BOM 開頭', out.charCodeAt(0) === 0xfeff);
+  check('CSV 引號跳脫、逗號包在引號內', out.includes('"名稱 ""含引號"""') && out.includes('"a, b"') && out.includes('"50.0%"'));
+}
+
 console.log('');
 if (failed === 0) console.log(`✅ analytics 全數通過(${passed} 項)`);
 else console.log(`❌ analytics 有 ${failed} 項失敗(通過 ${passed})`);
