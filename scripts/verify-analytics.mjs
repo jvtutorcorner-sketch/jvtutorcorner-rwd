@@ -295,6 +295,38 @@ console.log('\n[10] CSV');
   check('CSV 引號跳脫、逗號包在引號內', out.includes('"名稱 ""含引號"""') && out.includes('"a, b"') && out.includes('"50.0%"'));
 }
 
+console.log('\n[11] 報表流程(記憶體模式 ledger/事件 + 假 DynamoDB 課堂查詢)');
+{
+  delete process.env.AWS_ACCESS_KEY_ID;
+  delete process.env.AWS_SECRET_ACCESS_KEY;
+  delete process.env.CI_AWS_ACCESS_KEY_ID;
+  store._resetLocalAnalytics();
+  const { recordUsage } = await import('../lib/ai/gateway/ledger.ts');
+  const reports = await import('../lib/analytics/reports.ts');
+  const now = new Date();
+  const today = now.toISOString().slice(0, 10);
+  await recordUsage({ requestId: 'rep-1', costCenter: 'ai', actualCostMusd: 250, feature: 'chat-assistant', userId: 'u1' });
+  await recordUsage({ requestId: 'rep-2', costCenter: 'ai', actualCostMusd: 750, feature: 'copilot', sessionId: 'sess-1' });
+  await store.recordEvent({ type: 'chat_message', userId: 'u1', channel: 'widget' });
+  await store.recordEvent({ type: 'ai_error', feature: 'copilot', reason: 'budget' });
+
+  const w = await reports.weeklyReport(today, today, now);
+  check('週報:ledger/事件來源 = memory', w.sources.ledger.status === 'memory' && w.sources.events.status === 'memory');
+  check('週報:成本 1000µ$、請求 2、錯誤 1、訊息 1', w.report.totals.musd === 1000 && w.report.totals.requests === 2 && w.report.totals.errors === 1 && w.report.totals.widgetMessages === 1, JSON.stringify(w.report.totals));
+  check('週報:rollup 對帳與 ledger 一致', w.rollupCheck?.[0]?.musd === 1000, JSON.stringify(w.rollupCheck));
+
+  const month = today.slice(0, 7).replace('-', '');
+  const m = await reports.monthlyReport(month, now);
+  const k = (id) => m.report.kpis.find((x) => x.id === id);
+  check('月報:小幫手每則成本 = 250µ$(memory)', k('chat_cost_per_msg_widget').value === 250 && k('chat_cost_per_msg_widget').status === 'memory');
+  check('月報:課堂來源 ok 但本月 0 堂 → 使用率 no_denominator', m.report.sources.sessions.status === 'ok' && k('teacher_feature_usage').status === 'no_denominator');
+
+  failNext = Object.assign(new Error('Requested resource not found'), { name: 'ResourceNotFoundException' });
+  const m2 = await reports.monthlyReport(month, now);
+  check('課堂表不存在 → sessions unavailable + P-2 提示', m2.report.sources.sessions.status === 'unavailable' && m2.report.sources.sessions.hint.startsWith('P-2'));
+  check('依賴課堂的 KPI → unavailable;不依賴的照常', m2.report.kpis.find((x) => x.id === 'active_teachers').status === 'unavailable' && m2.report.kpis.find((x) => x.id === 'widget_msg_volume').value === 1);
+}
+
 console.log('');
 if (failed === 0) console.log(`✅ analytics 全數通過(${passed} 項)`);
 else console.log(`❌ analytics 有 ${failed} 項失敗(通過 ${passed})`);

@@ -98,3 +98,16 @@ export function quarterlyCsv(r: QuarterlyReport, fx: number): string {
   );
   return BOM + armCsv + '\n\n' + kpiCsv;
 }
+
+/** A downloadable CSV response (never cached). */
+export function csvResponse(filename: string, body: string): Response {
+  return new Response(body, {
+    headers: {
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Cache-Control': 'private, no-store',
+    },
+  });
+}
+
+export const NO_STORE = { 'Cache-Control': 'private, no-store' } as const;
