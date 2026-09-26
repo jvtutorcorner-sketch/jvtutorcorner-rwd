@@ -144,22 +144,23 @@ export default function ClientHomePage({
   }
 
   const userName = user?.firstName || user?.email?.split('@')[0] || t('guest_learner_fallback');
-  // 個人化推薦：有 API 結果用它，否則退回真實課程前三筆
-  const displayRecs: CourseLike[] =
-    recommendations.length > 0 ? recommendations : courses.slice(0, 3);
+  // 個人化推薦只顯示「熱門/最新課程」區沒出現過的課程，避免同一頁出現兩次同樣的卡片。
+  // 去重後沒有任何一筆就整段不渲染（載入中仍留 spinner，避免版面跳動）。
+  const shownCourseIds = new Set(courses.map((c) => c.id));
+  const displayRecs: CourseLike[] = recommendations
+    .filter((rec) => !shownCourseIds.has(rec.id))
+    .slice(0, 3);
+  const showRecsSection = showRecommendations && (recsLoading || displayRecs.length > 0);
+  // Hero 沒有輪播圖時會改畫 ClassroomMock，教學體驗區就不要再畫第二張。
+  const showExperienceVisual = carouselImages.length > 0;
 
-  const FEATURES = [
-    { icon: '🎓', titleKey: 'feature_pro_teachers_title', descKey: 'feature_pro_teachers_desc' },
-    { icon: '💬', titleKey: 'feature_realtime_title', descKey: 'feature_realtime_desc' },
-    { icon: '📚', titleKey: 'feature_diverse_title', descKey: 'feature_diverse_desc' },
-    { icon: '🕐', titleKey: 'feature_anytime_title', descKey: 'feature_anytime_desc' },
-  ];
-
+  // 原本獨立的「為什麼選擇我們」區與這裡重複講視訊/白板，已合併成單一清單。
   const EXPERIENCE_POINTS = [
     { icon: '🎥', titleKey: 'exp_video_title', descKey: 'exp_video_desc' },
     { icon: '🖌️', titleKey: 'exp_whiteboard_title', descKey: 'exp_whiteboard_desc' },
     { icon: '📄', titleKey: 'exp_materials_title', descKey: 'exp_materials_desc' },
-    { icon: '⚡', titleKey: 'exp_live_title', descKey: 'exp_live_desc' },
+    { icon: '🎓', titleKey: 'exp_teachers_title', descKey: 'exp_teachers_desc' },
+    { icon: '🕐', titleKey: 'exp_anytime_title', descKey: 'exp_anytime_desc' },
   ];
 
   const HOW_IT_WORKS = [
@@ -277,7 +278,7 @@ export default function ClientHomePage({
       </section>
 
       {/* ── 3. Hot / latest courses ─────────────────────────────── */}
-      <section className="section-personalized">
+      <section className="section-light">
         <div className="section-container">
           <div className="section-header-enhanced">
             <div>
@@ -301,8 +302,8 @@ export default function ClientHomePage({
       </section>
 
       {/* ── 4. Personalised recommendations (keep #tour-recommendation); admin-controlled via /admin/settings ─── */}
-      {showRecommendations && (
-        <section className="section-light" id="tour-recommendation">
+      {showRecsSection && (
+        <section className="section-personalized" id="tour-recommendation">
           <div className="section-container">
             <div className="section-header-enhanced">
               <div>
@@ -328,14 +329,12 @@ export default function ClientHomePage({
                 <div className="loading-spinner"></div>
                 <p>{t('loading_recommendations')}</p>
               </div>
-            ) : displayRecs.length > 0 ? (
-              <div className="card-grid card-grid--scroll">
-                {displayRecs.slice(0, 3).map((course) => (
+            ) : (
+              <div className="card-grid">
+                {displayRecs.map((course) => (
                   <CourseCard key={course.id} course={course} className="card-personalized" />
                 ))}
               </div>
-            ) : (
-              <p className="home-empty">{t('home_courses_empty')}</p>
             )}
           </div>
         </section>
@@ -361,31 +360,15 @@ export default function ClientHomePage({
         </section>
       )}
 
-      {/* ── 6. Platform features ────────────────────────────────── */}
-      <section className="section-white">
-        <div className="section-container">
-          <div className="section-header-enhanced text-center home-section-center">
-            <h2 className="section-title-large">{t('home_features_title')}</h2>
-          </div>
-          <div className="home-features-grid">
-            {FEATURES.map((f, i) => (
-              <Reveal as="div" key={f.titleKey} delay={i * 80} className="home-feature-card">
-                <div className="home-feature-icon" aria-hidden="true">{f.icon}</div>
-                <h3 className="home-feature-title">{t(f.titleKey)}</h3>
-                <p className="home-feature-desc">{t(f.descKey)}</p>
-              </Reveal>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── 7. Teaching experience ──────────────────────────────── */}
+      {/* ── 6. Teaching experience（已吸收原「為什麼選擇我們」區） ── */}
       <section className="section-dark home-experience">
         <div className="section-container">
-          <div className="home-experience-grid">
-            <Reveal className="home-experience-visual">
-              <ClassroomMock size="lg" liveLabel={t('classroom_live_label')} />
-            </Reveal>
+          <div className={`home-experience-grid${showExperienceVisual ? '' : ' home-experience-grid--solo'}`}>
+            {showExperienceVisual && (
+              <Reveal className="home-experience-visual">
+                <ClassroomMock size="lg" liveLabel={t('classroom_live_label')} />
+              </Reveal>
+            )}
             <div className="home-experience-text">
               <h2 className="section-title-large">{t('home_experience_title')}</h2>
               <p className="section-subtitle">{t('home_experience_subtitle')}</p>
@@ -400,7 +383,7 @@ export default function ClientHomePage({
                   </li>
                 ))}
               </ul>
-              <Link href="/courses" className="btn-primary">{t('hero_cta_explore')}</Link>
+              <Link href="/courses" className="btn-primary">{t('home_experience_cta')}</Link>
             </div>
           </div>
         </div>
@@ -425,25 +408,21 @@ export default function ClientHomePage({
         </div>
       </section>
 
-      {/* ── 9. Become a teacher ─────────────────────────────────── */}
+      {/* ── 8. 結尾 CTA（原「成為老師」band 與 final CTA 合併） ── */}
       <section className="section-accent home-become-teacher">
         <div className="section-container home-band-inner">
           <div>
-            <h2 className="home-band-title">{t('become_teacher_title')}</h2>
-            <p className="home-band-subtitle">{t('become_teacher_subtitle')}</p>
+            <h2 className="home-band-title">{t('final_cta_title')}</h2>
+            <p className="home-band-subtitle">{t('final_cta_subtitle')}</p>
           </div>
-          <Link href="/login/register?role=teacher" className="btn-primary home-band-btn">
-            {t('become_teacher_button')}
-          </Link>
-        </div>
-      </section>
-
-      {/* ── 10. Final CTA ───────────────────────────────────────── */}
-      <section className="section-personalized home-final-cta">
-        <div className="section-container home-final-inner">
-          <h2 className="section-title-large">{t('final_cta_title')}</h2>
-          <p className="section-subtitle">{t('final_cta_subtitle')}</p>
-          <Link href="/courses" className="btn-primary">{t('hero_cta_explore')}</Link>
+          <div className="home-band-actions">
+            <Link href="/courses" className="btn-primary home-band-btn">
+              {t('final_cta_primary')}
+            </Link>
+            <Link href="/login/register?role=teacher" className="btn-secondary home-band-btn--ghost">
+              {t('become_teacher_button')}
+            </Link>
+          </div>
         </div>
       </section>
     </div>

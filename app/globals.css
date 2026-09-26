@@ -106,9 +106,10 @@ body {
 }
 
 /* Sectioning Utilities */
+/* 首頁背景由亮到暗：white → light → personalized → teachers → dark → accent。 */
 .section-white {
-  background-color: #f1f5f9;
-  background-image: linear-gradient(rgba(255, 255, 255, 0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.5) 1px, transparent 1px);
+  background-color: #ffffff;
+  background-image: linear-gradient(rgba(148, 163, 184, 0.14) 1px, transparent 1px), linear-gradient(90deg, rgba(148, 163, 184, 0.14) 1px, transparent 1px);
   background-size: 50px 50px;
   padding: 100px 0;
 }
@@ -3040,33 +3041,8 @@ a {
   padding: 32px 0;
 }
 
-/* ── Features ──────────────────────────────────────────────────────────── */
+/* ── Section headers ──────────────────────────────────────────────────── */
 .home-section-center { text-align: center; align-items: center; }
-.home-features-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 20px;
-}
-.home-feature-card {
-  background: var(--surface);
-  border-radius: var(--radius-card);
-  border: 1px solid rgba(0, 0, 0, 0.05);
-  box-shadow: var(--shadow-card);
-  padding: 28px 22px;
-  text-align: center;
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
-}
-.home-feature-card:hover {
-  transform: translateY(-6px);
-  box-shadow: var(--shadow-card-hover);
-}
-.home-feature-icon {
-  font-size: 2.2rem;
-  line-height: 1;
-  margin-bottom: 14px;
-}
-.home-feature-title { font-size: 1.15rem; font-weight: 700; margin: 0 0 8px; color: var(--ink-900); }
-.home-feature-desc { font-size: 0.9rem; color: var(--ink-500); line-height: 1.6; margin: 0; }
 
 /* ── Teaching experience ───────────────────────────────────────────────── */
 .home-experience { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); }
@@ -3080,6 +3056,8 @@ a {
   align-items: center;
 }
 .home-experience-visual { display: flex; justify-content: center; }
+/* Hero 已經畫了 ClassroomMock 時這裡不再重畫，版面退化為單欄。 */
+.home-experience-grid--solo { grid-template-columns: 1fr; max-width: 760px; margin: 0 auto; }
 .home-experience-text { display: flex; flex-direction: column; gap: 18px; }
 .home-experience-list {
   list-style: none;
@@ -3121,9 +3099,14 @@ a {
 .home-band-subtitle { font-size: 1.05rem; color: rgba(255, 255, 255, 0.85); margin: 0; }
 .home-band-btn { flex-shrink: 0; background: #fff; color: var(--brand-700); }
 .home-band-btn:hover { background: #f8fafc; filter: none; }
-.home-final-cta { text-align: center; }
-.home-final-inner { display: flex; flex-direction: column; align-items: center; gap: 8px; }
-.home-final-inner .btn-primary { margin-top: 12px; }
+.home-band-actions { display: flex; gap: 12px; flex-shrink: 0; flex-wrap: wrap; }
+.home-band-btn--ghost {
+  flex-shrink: 0;
+  background: transparent;
+  color: #fff;
+  border: 1.5px solid rgba(255, 255, 255, 0.6);
+}
+.home-band-btn--ghost:hover { background: rgba(255, 255, 255, 0.12); border-color: rgba(255, 255, 255, 0.9); }
 
 /* ── Footer ────────────────────────────────────────────────────────────── */
 .home-footer {
@@ -3162,7 +3145,6 @@ a {
 
 /* ═══════════════════════ Responsive (redesign) ═══════════════════════════ */
 @media (max-width: 1024px) {
-  .home-features-grid { grid-template-columns: repeat(2, 1fr); }
   .home-experience-grid { grid-template-columns: 1fr; gap: 32px; }
   .home-experience-visual { order: -1; }
   .home-footer-inner { grid-template-columns: 1fr; gap: 28px; }
@@ -3190,13 +3172,13 @@ a {
     max-width: 320px;
   }
   .home-band-inner { flex-direction: column; align-items: flex-start; text-align: left; }
-  .home-band-btn { width: 100%; }
+  .home-band-actions { width: 100%; flex-direction: column; }
+  .home-band-btn, .home-band-btn--ghost { width: 100%; }
 }
 
 @media (max-width: 640px) {
   .home-search-form { flex-direction: column; }
   .home-search-btn { width: 100%; }
-  .home-features-grid { grid-template-columns: 1fr; }
   .hero-highlights { gap: 8px 16px; }
   .home-band-title { font-size: 1.5rem; }
   .btn-primary, .btn-secondary { min-height: 48px; }
