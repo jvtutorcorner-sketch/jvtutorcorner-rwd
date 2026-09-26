@@ -14,7 +14,7 @@ export interface CourseClickEvent {
   courseName?: string;
   tags?: string[];
   timestamp?: number;
-  source?: 'homepage' | 'search' | 'category' | 'notification' | 'recommendation';
+  source?: 'homepage' | 'catalog' | 'search' | 'category' | 'notification' | 'recommendation';
 }
 
 export interface UserFeedbackEvent {
@@ -38,6 +38,8 @@ async function postTracking(path: string, body: unknown): Promise<void> {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
+      // A card click navigates away immediately; keepalive lets the request finish.
+      keepalive: true,
     });
     if (!res.ok && res.status !== 401) {
       console.warn(`${path} failed: ${res.status}`);
@@ -55,6 +57,16 @@ export async function trackCourseClick(event: CourseClickEvent): Promise<void> {
     timestamp: event.timestamp || Date.now(),
     source: event.source || 'homepage',
   });
+}
+
+/**
+ * Track that the recommendation cards were shown (denominator of recommendation
+ * CTR). The server assigns the experiment arm from the session.
+ */
+export async function trackRecImpression(courseIds: string[]): Promise<void> {
+  const ids = courseIds.filter(Boolean).slice(0, 10);
+  if (ids.length === 0) return;
+  await postTracking('/api/tracking/rec-impression', { courseIds: ids });
 }
 
 /** Track like/dislike feedback on a recommendation. */

@@ -96,6 +96,8 @@ function TeacherView({ sessionId, assessments, onChange }: { sessionId: string; 
   const [count, setCount] = useState(5);
   const [difficulty, setDifficulty] = useState('中等');
   const [draft, setDraft] = useState<Question[] | null>(null);
+  // requestId of the generate call behind `draft`; sent on dispatch for the AI adoption-rate KPI.
+  const [draftRequestId, setDraftRequestId] = useState<string | null>(null);
   const [title, setTitle] = useState('');
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -114,6 +116,7 @@ function TeacherView({ sessionId, assessments, onChange }: { sessionId: string; 
       if (res.status === 403) setNotice(j?.requiredPlan ? `AI 出題需 ${j.requiredPlan} 方案` : 'AI 出題未開放');
       else if (res.ok && j?.ok) {
         setDraft(j.questions);
+        setDraftRequestId(typeof j.requestId === 'string' ? j.requestId : null);
         setTitle(topic);
       } else setNotice(j?.error || '出題失敗');
     } catch {
@@ -130,11 +133,12 @@ function TeacherView({ sessionId, assessments, onChange }: { sessionId: string; 
       const res = await fetch(`/api/lessons/${encodeURIComponent(sessionId)}/assessments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, questions: draft }),
+        body: JSON.stringify({ title, questions: draft, ...(draftRequestId ? { generateRequestId: draftRequestId } : {}) }),
       });
       const j = await res.json().catch(() => null);
       if (res.ok && j?.ok) {
         setDraft(null);
+        setDraftRequestId(null);
         setTopic('');
         onChange();
       } else setNotice(j?.error || '派發失敗');

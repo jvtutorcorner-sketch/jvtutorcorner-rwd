@@ -102,7 +102,7 @@ export default async function CoursesPage(props?: CoursesPageProps) {
           <>
             <div className="card-grid">
               {paginatedCourses.map((course) => (
-                <CourseCard key={course.id} course={course} />
+                <CourseCard key={course.id} course={course} trackSource="catalog" />
               ))}
             </div>
             <Pagination

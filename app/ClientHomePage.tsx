@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { TeacherCard } from '@/components/TeacherCard';
 import { CourseCard } from '@/components/CourseCard';
 import { getStoredUser, type StoredUser } from '@/lib/mockAuth';
+import { trackRecImpression } from '@/lib/trackingUtils';
 import { useT } from '@/components/IntlProvider';
 import { subjectKey } from '@/lib/subjectI18n';
 import OnboardingQuestionnaire from '@/components/OnboardingQuestionnaire';
@@ -151,6 +152,16 @@ export default function ClientHomePage({
     .filter((rec) => !shownCourseIds.has(rec.id))
     .slice(0, 3);
   const showRecsSection = showRecommendations && (recsLoading || displayRecs.length > 0);
+
+  // 推薦卡片曝光(CTR 分母)。只記登入者,與點擊追蹤的母體一致;同一組卡片只送一次(StrictMode 會重跑 effect)。
+  const recIdsKey = displayRecs.map((c) => String(c.id)).join(',');
+  const lastImpressionRef = useRef<string>('');
+  useEffect(() => {
+    if (!user || !showRecsSection || recsLoading || !recIdsKey) return;
+    if (lastImpressionRef.current === recIdsKey) return;
+    lastImpressionRef.current = recIdsKey;
+    void trackRecImpression(recIdsKey.split(','));
+  }, [user, showRecsSection, recsLoading, recIdsKey]);
   // Hero 沒有輪播圖時會改畫 ClassroomMock，教學體驗區就不要再畫第二張。
   const showExperienceVisual = carouselImages.length > 0;
 
@@ -292,7 +303,7 @@ export default function ClientHomePage({
           {courses.length > 0 ? (
             <div className="card-grid card-grid--scroll">
               {courses.map((course) => (
-                <CourseCard key={course.id} course={course} />
+                <CourseCard key={course.id} course={course} trackSource="homepage" />
               ))}
             </div>
           ) : (
@@ -332,7 +343,7 @@ export default function ClientHomePage({
             ) : (
               <div className="card-grid">
                 {displayRecs.map((course) => (
-                  <CourseCard key={course.id} course={course} className="card-personalized" />
+                  <CourseCard key={course.id} course={course} className="card-personalized" trackSource="recommendation" />
                 ))}
               </div>
             )}
