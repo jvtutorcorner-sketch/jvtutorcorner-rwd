@@ -15,6 +15,7 @@ import { getUserPoints, setUserPoints, applyPointsDelta } from '@/lib/pointsStor
 import { assertPlanId, classifyCatalogueId } from '@/lib/plans';
 import { buildInteractionItems, putInteractions } from '@/lib/interactionsStore';
 import { SUBJECT_TO_TAGS } from '@/lib/surveyTagMap';
+import { recordEvent } from '@/lib/analytics/eventStore';
 
 const ORDERS_TABLE = process.env.DYNAMODB_TABLE_ORDERS || 'jvtutorcorner-orders';
 const UPGRADES_TABLE = process.env.DYNAMODB_TABLE_PLAN_UPGRADES || 'jvtutorcorner-plan-upgrades';
@@ -259,6 +260,14 @@ export async function handlePaymentSuccess(
         console.log(`[Payment Success Handler] Successfully activated enrollment ${enrollmentId}`);
         // Behavioural signal for the recommender (best-effort, never blocks).
         await trackCoursePurchase(userId, enrollmentId, itemType);
+        // Analytics purchase. dedupeKey=orderId: a webhook and a return URL can
+        // both get past the non-atomic COMPLETED check above.
+        if (orderItem.courseId) {
+          await recordEvent(
+            { type: 'course_purchase', userId, orderId, courseId: String(orderItem.courseId), paymentMethod },
+            { dedupeKey: orderId }
+          );
+        }
       } catch (enrollErr: any) {
         console.error(`[Payment Success Handler] Failed to activate enrollment ${enrollmentId}:`, enrollErr);
         // We will continue to mark order as COMPLETED anyway to not block the flow

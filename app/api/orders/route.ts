@@ -8,6 +8,7 @@ import { hasPlanAccess } from '@/lib/planAccess';
 import { createEscrow } from '@/lib/pointsEscrow';
 import { withAuth, withAdmin, AuthedRequest } from '@/lib/auth/apiGuard';
 import { writeAuditLog } from '@/lib/auditLogService';
+import { recordEvent } from '@/lib/analytics/eventStore';
 
 // DynamoDB client initialization
 const ddbRegion = process.env.CI_AWS_REGION || process.env.AWS_REGION;
@@ -208,6 +209,15 @@ async function handlePost(request: AuthedRequest) {
       Item: order,
     });
     await docClient.send(command);
+
+    // A points order is settled right here and never reaches
+    // lib/paymentSuccessHandler.ts, so the analytics purchase is recorded here.
+    if (paymentMethod === 'points' && order.status === 'PAID') {
+      await recordEvent(
+        { type: 'course_purchase', userId, orderId, courseId: String(courseId), paymentMethod: 'points' },
+        { dedupeKey: orderId }
+      );
+    }
 
     // ── Close the order <-> enrollment loop, server-side ──────────────────────
     //

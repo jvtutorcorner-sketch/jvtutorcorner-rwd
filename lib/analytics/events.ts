@@ -29,7 +29,7 @@ export type AnalyticsEventInput =
   | { type: 'course_purchase'; userId: string; orderId: string; courseId: string; paymentMethod: string }
   | { type: 'chat_message'; userId?: string; channel: 'widget' }
   | { type: 'chat_handoff'; userId?: string; department: string }
-  | { type: 'line_message'; msgType: string; linked: boolean; uidHash: string }
+  | { type: 'line_message'; msgType: string; uidHash: string }
   | { type: 'assessment_generated'; userId?: string; sessionId: string; requestId: string; questionCount: number }
   | { type: 'assessment_dispatched'; userId?: string; sessionId: string; assessmentId: string; generateRequestId?: string; questionCount: number }
   | { type: 'ai_error'; userId?: string; feature: string; reason: AiErrorReason; provider?: string };

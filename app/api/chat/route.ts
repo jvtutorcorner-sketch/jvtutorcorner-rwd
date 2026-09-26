@@ -9,6 +9,7 @@ import nodemailer from 'nodemailer';
 import { randomUUID } from 'crypto';
 import { recordUsage } from '@/lib/ai/gateway/ledger';
 import { usageToMusd } from '@/lib/ai/gateway/pricing';
+import { recordEvent } from '@/lib/analytics/eventStore';
 
 // Meter one Gemini response's token usage (fire-and-forget; never blocks chat).
 async function meterChat(resp: any, model: string, userId?: string) {
@@ -130,6 +131,8 @@ async function postHandler(req: AuthedRequest) {
         // Initialize Gemini with the retrieved key
         const genAI = new GoogleGenerativeAI(apiKey);
         const { messages } = await req.json();
+        // One user message per POST. A "conversation" is (userId, UTC day) in the reports.
+        await recordEvent({ type: 'chat_message', userId: req.session.userId, channel: 'widget' });
 
         // Convert generic chat history to Gemini's format
         // CRITICAL: Gemini history must start with 'user' and alternate roles.
@@ -224,6 +227,7 @@ ${customInstruction}
 
                 const ticketId = uuidv4();
                 console.log(`[AI Agent]Tool Triggered: notify_department.Department: ${department}, Contact: ${userContact}`);
+                await recordEvent({ type: 'chat_handoff', userId: req.session.userId, department: String(department || 'General') });
 
                 try {
                     // Attempt to save to DynamoDB. If table doesn't exist, we will catch the error.
@@ -234,6 +238,8 @@ ${customInstruction}
                             department: department || 'General',
                             message: message,
                             userContact: userContact,
+                            userId: req.session.userId,
+                            source: 'chat-assistant',
                             status: 'open',
                             createdAt: new Date().toISOString(),
                         }
@@ -334,6 +340,9 @@ ${customInstruction}
 
     } catch (error: any) {
         console.error('❌ [AI Chat API] Global Error:', error);
+        // This route calls Gemini directly (not through the gateway), so its
+        // failures are recorded here for the weekly error rate.
+        await recordEvent({ type: 'ai_error', userId: req.session.userId, feature: 'chat-assistant', reason: 'provider', provider: 'GEMINI' });
         if (error.response) {
             try {
                 const errorData = error.response;

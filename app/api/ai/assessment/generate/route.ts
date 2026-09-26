@@ -14,6 +14,7 @@ import { runGenerate, parseAssessment, type QuestionType } from '@/lib/lessonAI/
 import { resolveFeature, policyOverrideFromEntitlement } from '@/lib/ai/entitlements';
 import { checkFeatureLimits } from '@/lib/ai/limits';
 import { resolveProviderKey } from '@/lib/ai/gateway/keys';
+import { recordEvent } from '@/lib/analytics/eventStore';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -88,6 +89,12 @@ async function handlePost(req: AuthedRequest) {
 
   const questions = parseAssessment(res.result.text || '');
   if (!questions) return NextResponse.json({ ok: false, error: '無法解析出題結果,請再試一次' }, { status: 502 });
+
+  // Denominator of the AI question adoption rate (dispatched ÷ generated).
+  await recordEvent(
+    { type: 'assessment_generated', userId: req.session.userId, sessionId, requestId: res.requestId, questionCount: questions.length },
+    { dedupeKey: res.requestId }
+  );
 
   return NextResponse.json({ ok: true, questions, model: res.model, requestId: res.requestId });
 }

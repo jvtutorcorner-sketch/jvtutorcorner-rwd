@@ -24,6 +24,8 @@ export interface StoredAssessment {
   title: string;
   questions: AssessmentQuestion[];
   status: AssessmentStatus;
+  /** requestId of the AI generate call this draft came from (absent = written by hand). */
+  generateRequestId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -49,6 +51,7 @@ export async function createAssessment(input: {
   title: string;
   questions: AssessmentQuestion[];
   status?: AssessmentStatus;
+  generateRequestId?: string;
 }): Promise<StoredAssessment> {
   const now = new Date().toISOString();
   const item: StoredAssessment = {
@@ -59,6 +62,7 @@ export async function createAssessment(input: {
     title: input.title,
     questions: input.questions,
     status: input.status || 'dispatched',
+    ...(input.generateRequestId ? { generateRequestId: input.generateRequestId } : {}),
     createdAt: now,
     updatedAt: now,
   };

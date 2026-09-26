@@ -10,7 +10,14 @@
 // inversion only when no record carries an occupancy figure.
 
 import { SUBJECT_TO_TAGS } from '@/lib/surveyTagMap';
-import type { CourseCandidate } from '@/lib/recommendationEngine';
+import {
+  generateRecommendations,
+  type CourseCandidate,
+  type PinnedItems,
+  type RecommendationResult,
+  type UserInteraction,
+} from '@/lib/recommendationEngine';
+import type { RecArm } from '@/lib/analytics/events';
 
 export type CourseRecord = Record<string, any>;
 
@@ -75,4 +82,25 @@ export function computePopularity(records: CourseRecord[]): Map<string, number> 
     else scores.set(String(c.id), 1 - (s - min) / span);
   }
   return scores;
+}
+
+/**
+ * Rank for one experiment arm. The holdout arm ignores the user's interactions
+ * and gets exactly the cold-start popularity ranking, so comparing the arms
+ * measures what personalisation adds. Guests are never in the holdout.
+ */
+export function rankForArm(
+  arm: RecArm | 'guest',
+  interactions: UserInteraction[],
+  candidates: CourseCandidate[],
+  pinned: PinnedItems = {}
+): RecommendationResult & { personalized: boolean } {
+  const used = arm === 'holdout' ? [] : interactions;
+  const result = generateRecommendations(used, candidates, pinned);
+  return { ...result, personalized: used.length > 0 };
+}
+
+/** How many ranked courses carry a real popularity signal (not null, not the neutral 0.5). */
+export function countPopularitySignals(courses: CourseCandidate[]): number {
+  return courses.filter((c) => typeof c.popularityScore === 'number' && c.popularityScore !== 0.5).length;
 }

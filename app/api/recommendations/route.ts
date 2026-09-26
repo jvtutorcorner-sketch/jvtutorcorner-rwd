@@ -9,9 +9,18 @@
 import { NextResponse } from 'next/server';
 import { ddbDocClient } from '@/lib/dynamo';
 import { QueryCommand } from '@aws-sdk/lib-dynamodb';
-import { generateRecommendations, type UserInteraction } from '@/lib/recommendationEngine';
+import { type UserInteraction } from '@/lib/recommendationEngine';
 import { listPublishedCourses } from '@/app/courses/_data';
-import { toCourseCandidate, computePopularity } from '@/lib/recommendationCandidates';
+import {
+  toCourseCandidate,
+  computePopularity,
+  rankForArm,
+  countPopularitySignals,
+} from '@/lib/recommendationCandidates';
+import { extractTokenFromRequest, getSession } from '@/lib/auth/sessionManager';
+import { assignArm } from '@/lib/analytics/holdout';
+import { recordEvent } from '@/lib/analytics/eventStore';
+import type { RecArm } from '@/lib/analytics/events';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -41,6 +50,21 @@ async function fetchInteractionsFromDynamo(userId: string): Promise<UserInteract
   }
 }
 
+/**
+ * The signed-in user's id from the session cookie, if any. Tracking events and
+ * interaction rows are keyed on session.userId, which can differ from the
+ * client-stored profile id the homepage sends as ?userId, so the session wins.
+ */
+async function sessionUserId(req: Request): Promise<string | undefined> {
+  const token = extractTokenFromRequest(req);
+  if (!token) return undefined;
+  try {
+    return (await getSession(token))?.userId || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 async function buildResponse(userId: string | undefined, interactions: UserInteraction[]) {
   // Candidate pool = live published courses (DynamoDB, test rows filtered, bundled
   // fallback when the DB is empty) — the SAME id space the homepage renders, so
@@ -60,13 +84,28 @@ async function buildResponse(userId: string | undefined, interactions: UserInter
   const slot4 = byRecency[0] ?? null;
   const slot10 = activeCourses[activeCourses.length - 1] ?? null;
 
-  const result = generateRecommendations(interactions, activeCourses, { slot4, slot10 });
+  // 10% holdout (lib/analytics/holdout.ts): popularity-only ranking, so the
+  // quarterly report can measure what personalisation adds.
+  const arm: RecArm | 'guest' = userId ? assignArm(userId) : 'guest';
+  const result = rankForArm(arm, interactions, activeCourses, { slot4, slot10 });
+
+  await recordEvent({
+    type: 'rec_served',
+    ...(userId ? { userId } : {}),
+    arm,
+    personalized: result.personalized,
+    interactionCount: interactions.length,
+    n: result.courses.length,
+    popNonDefault: countPopularitySignals(result.courses),
+  });
 
   return NextResponse.json({
     ok: true,
     userId: userId ?? 'guest',
     recommendations: result.courses,
     meta: {
+      arm,
+      personalized: result.personalized,
       mmrAlpha: result.mmrAlphaUsed,
       isNewUser: result.isNewUser,
       interactionCount: interactions.length,
@@ -89,7 +128,7 @@ async function buildResponse(userId: string | undefined, interactions: UserInter
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
-  const userId = searchParams.get('userId') ?? undefined;
+  const userId = (await sessionUserId(req)) ?? searchParams.get('userId') ?? undefined;
 
   let interactions: UserInteraction[] = [];
   if (userId) {
@@ -102,10 +141,11 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { userId, guestSeeds = [] } = body as {
+    const { userId: bodyUserId, guestSeeds = [] } = body as {
       userId?: string;
       guestSeeds?: UserInteraction[];
     };
+    const userId = (await sessionUserId(req)) ?? bodyUserId;
 
     let interactions: UserInteraction[] = [];
 

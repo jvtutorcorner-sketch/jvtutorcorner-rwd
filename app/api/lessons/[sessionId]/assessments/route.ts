@@ -10,6 +10,7 @@ import { resolveLessonContext } from '@/lib/lessonAI/lessonContext';
 import { normalizeQuestions, redactForStudent } from '@/lib/lessonAI/assessment';
 import { createAssessment, listAssessmentsBySession, getSubmission } from '@/lib/lessonAI/assessmentStore';
 import { resolveFeature } from '@/lib/ai/entitlements';
+import { recordEvent } from '@/lib/analytics/eventStore';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -32,7 +33,7 @@ async function handlePost(req: AuthedRequest, ctx: { params: Promise<{ sessionId
     return NextResponse.json({ ok: false, error: 'Assessment is not available on your plan', reason: ent.reason }, { status: 403 });
   }
 
-  let body: { title?: unknown; questions?: unknown };
+  let body: { title?: unknown; questions?: unknown; generateRequestId?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -43,6 +44,11 @@ async function handlePost(req: AuthedRequest, ctx: { params: Promise<{ sessionId
     return NextResponse.json({ ok: false, error: 'At least one valid question is required' }, { status: 400 });
   }
   const title = typeof body.title === 'string' && body.title.trim() ? body.title.trim().slice(0, 120) : '課堂測驗';
+  // Links the dispatched assessment to the AI generate call it came from.
+  const generateRequestId =
+    typeof body.generateRequestId === 'string' && /^[\w-]{1,64}$/.test(body.generateRequestId)
+      ? body.generateRequestId
+      : undefined;
 
   const assessment = await createAssessment({
     sessionId,
@@ -51,7 +57,19 @@ async function handlePost(req: AuthedRequest, ctx: { params: Promise<{ sessionId
     title,
     questions,
     status: 'dispatched',
+    generateRequestId,
   });
+  await recordEvent(
+    {
+      type: 'assessment_dispatched',
+      userId: req.session.userId,
+      sessionId,
+      assessmentId: assessment.assessmentId,
+      ...(generateRequestId ? { generateRequestId } : {}),
+      questionCount: questions.length,
+    },
+    { dedupeKey: assessment.assessmentId }
+  );
   return NextResponse.json({ ok: true, assessment });
 }
 

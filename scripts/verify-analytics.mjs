@@ -132,6 +132,25 @@ console.log('\n[4] eventStore DynamoDB 模式(假 DynamoDB)');
   delete process.env.ANALYTICS_STORE;
 }
 
+console.log('\n[5] 推薦 holdout 排序');
+{
+  const { rankForArm, countPopularitySignals } = await import('../lib/recommendationCandidates.ts');
+  const { generateRecommendations } = await import('../lib/recommendationEngine.ts');
+  const cands = [
+    { id: 'a', title: 'A', category: '英文', tags: ['english'], createdAt: '2026-09-01', popularityScore: 1 },
+    { id: 'b', title: 'B', category: '數學', tags: ['math'], createdAt: '2026-09-02', popularityScore: 0.5 },
+    { id: 'c', title: 'C', category: '日文', tags: ['japanese'], createdAt: '2026-09-03', popularityScore: 0.2 },
+  ];
+  const inter = [{ tag: 'japanese', weight: 5, createdAt: new Date().toISOString(), source: 'click' }];
+  const hold = rankForArm('holdout', inter, cands);
+  const cold = generateRecommendations([], cands);
+  check('holdout = cold-start 熱門排序(忽略互動)', eq(hold.courses.map((c) => c.id), cold.courses.map((c) => c.id)) && hold.personalized === false);
+  const treat = rankForArm('treatment', inter, cands);
+  check('treatment 有互動 → personalized', treat.personalized === true && treat.isNewUser === false);
+  check('guest 沿用傳入的 seeds', rankForArm('guest', inter, cands).personalized === true);
+  check('熱門度訊號數:排除 0.5 與缺值', countPopularitySignals([...cands, { id: 'd', title: 'D', category: 'x', tags: [] }]) === 2);
+}
+
 console.log('');
 if (failed === 0) console.log(`✅ analytics 全數通過(${passed} 項)`);
 else console.log(`❌ analytics 有 ${failed} 項失敗(通過 ${passed})`);

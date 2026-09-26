@@ -7,6 +7,8 @@
 import { NextResponse } from 'next/server';
 import { withAuth, type AuthedRequest } from '@/lib/auth/apiGuard';
 import { buildInteractionItems, putInteractions } from '@/lib/interactionsStore';
+import { recordEvent } from '@/lib/analytics/eventStore';
+import { normalizeClickSrc } from '@/lib/analytics/events';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -31,6 +33,15 @@ async function handlePost(req: AuthedRequest) {
       metadata: { userTimestamp: timestamp },
     });
     const interactionsCreated = await putInteractions(items);
+
+    // Analytics click (recorded even when the course has no tags, which writes
+    // zero recommender rows above). Feeds CTR / click→purchase KPIs.
+    await recordEvent({
+      type: 'course_click',
+      userId: req.session.userId,
+      courseId: String(courseId),
+      src: normalizeClickSrc(source),
+    });
 
     return NextResponse.json({ ok: true, courseId, interactionsCreated });
   } catch (error) {

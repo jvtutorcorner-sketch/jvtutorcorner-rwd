@@ -6,6 +6,7 @@ import { executeWebhookScript } from '@/lib/scriptExecutor';
 import { extractTokenFromRequest, getSession } from '@/lib/auth/sessionManager';
 import { LEARNING_CONTENT_ANALYSIS_PROMPT } from '@/lib/learningContentAnalysis';
 import { runWithIntegration } from '@/lib/ai/gateway/gateway';
+import { recordEvent } from '@/lib/analytics/eventStore';
 
 async function isLineSimulationAllowed(request: Request): Promise<boolean> {
     if (process.env.NODE_ENV !== 'production') return true;
@@ -435,6 +436,17 @@ export async function POST(request: Request, context: { params: Promise<{ integr
             if (!replyToken || !lineUid) {
                 console.warn('[LINE Webhook] Missing replyToken or lineUid in event');
                 continue;
+            }
+
+            // Message volume for the AI Chat KPIs — counted before the custom-script
+            // and AI branches so every handled message is included. Only a hash of
+            // the LINE uid is stored; simulations are not counted.
+            if (event.type === 'message' && !isSimulation) {
+                await recordEvent({
+                    type: 'line_message',
+                    msgType: String(event.message?.type || 'unknown'),
+                    uidHash: crypto.createHash('sha256').update(lineUid).digest('hex').slice(0, 16),
+                });
             }
 
             if (event.type === 'message' || event.type === 'postback') {

@@ -16,6 +16,8 @@ import { geminiGenerate } from './providers/gemini';
 import { openaiGenerate } from './providers/openai';
 import { anthropicGenerate } from './providers/anthropic';
 import { openrouterGenerate } from './providers/openrouter';
+import { recordEvent } from '@/lib/analytics/eventStore';
+import type { AiErrorReason } from '@/lib/analytics/events';
 import type {
   GenerateRequest,
   GenerateResult,
@@ -96,6 +98,18 @@ async function callWithTimeout(
 }
 
 /**
+ * Failed requests write no ledger row (that would inflate rollup request
+ * counts), so they are counted as analytics events for the weekly error rate.
+ * recordEvent never throws and is time-bounded.
+ */
+async function recordAiError(ctx: RunContext, requestId: string, reason: AiErrorReason, provider?: string): Promise<void> {
+  await recordEvent(
+    { type: 'ai_error', userId: ctx.userId, feature: ctx.feature ?? 'unknown', reason, ...(provider ? { provider } : {}) },
+    { dedupeKey: requestId }
+  );
+}
+
+/**
  * Run a request against a model policy with reliability + metering.
  * Records exactly one usage row per requestId on the first success.
  */
@@ -120,6 +134,7 @@ export async function runModel(policy: ModelPolicy, req: GenerateRequest, ctx: R
 
   // Per-request cost cap.
   if (policy.maxCostMusd != null && estimate() > policy.maxCostMusd) {
+    await recordAiError(ctx, requestId, 'cost_cap');
     return { ok: false, error: `estimated cost ${estimate()}µ$ exceeds cap ${policy.maxCostMusd}µ$`, requestId };
   }
 
@@ -130,6 +145,7 @@ export async function runModel(policy: ModelPolicy, req: GenerateRequest, ctx: R
   {
     const budget = await checkTenantBudget(ctx.orgId, estimate());
     if (!budget.allowed) {
+      await recordAiError(ctx, requestId, 'budget');
       return { ok: false, error: `AI budget exceeded (${budget.reason || 'budget_exceeded'})`, requestId };
     }
   }
@@ -187,6 +203,7 @@ export async function runModel(policy: ModelPolicy, req: GenerateRequest, ctx: R
     }
   }
   void now0;
+  await recordAiError(ctx, requestId, 'provider', policy.primary.provider);
   return { ok: false, error: lastErr, requestId };
 }
 
