@@ -28,6 +28,7 @@ const BASE_KEY_MAP: Record<string, string> = {
   '/enrollments': 'breadcrumb_enrollments',
   '/refunds': 'breadcrumb_refunds',
   '/apps': 'breadcrumb_apps',
+  '/daily': 'daily_title',
 };
 
 export default function PageBreadcrumb() {

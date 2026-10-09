@@ -14,10 +14,13 @@ const SETTINGS_ID = 'homepage';
 
 export interface HomepageSettings {
   showRecommendations: boolean;
+  /** 「AI 每日一句」短片區塊（#daily-phrases）；影片由 /admin/daily-phrases 管理。 */
+  showDailyPhrases: boolean;
 }
 
 const DEFAULT_SETTINGS: HomepageSettings = {
   showRecommendations: false,
+  showDailyPhrases: false,
 };
 
 export async function getHomepageSettings(): Promise<HomepageSettings> {
@@ -31,6 +34,10 @@ export async function getHomepageSettings(): Promise<HomepageSettings> {
         typeof res.Item.showRecommendations === 'boolean'
           ? res.Item.showRecommendations
           : DEFAULT_SETTINGS.showRecommendations,
+      showDailyPhrases:
+        typeof res.Item.showDailyPhrases === 'boolean'
+          ? res.Item.showDailyPhrases
+          : DEFAULT_SETTINGS.showDailyPhrases,
     };
   } catch (err) {
     console.warn('[homepageSettingsService] getHomepageSettings failed, using defaults:', (err as Error).message);

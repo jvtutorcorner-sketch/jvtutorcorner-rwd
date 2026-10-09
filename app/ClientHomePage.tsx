@@ -11,6 +11,8 @@ import { subjectKey } from '@/lib/subjectI18n';
 import OnboardingQuestionnaire from '@/components/OnboardingQuestionnaire';
 import ClassroomMock from '@/components/home/ClassroomMock';
 import Reveal from '@/components/home/Reveal';
+import DailyPhrases from '@/components/home/DailyPhrases';
+import type { DailyPhrasePublic } from '@/lib/dailyPhraseService';
 import { Carousel } from '@/components/Carousel';
 
 const GUEST_STORAGE_KEY = 'jv_survey_seeds';
@@ -32,6 +34,8 @@ interface ClientHomePageProps {
   initialCarouselImages?: string[];
   /** 後台 /admin/settings 控制的開關；關閉時不渲染個人化推薦區塊、也不打 /api/recommendations。 */
   showRecommendations?: boolean;
+  /** 「AI 每日一句」短片；後台開關關閉或沒有已發布影片時是空陣列，區塊整段不渲染。 */
+  dailyPhrases?: DailyPhrasePublic[];
 }
 
 export default function ClientHomePage({
@@ -41,6 +45,7 @@ export default function ClientHomePage({
   coursesHeading,
   initialCarouselImages = [],
   showRecommendations = true,
+  dailyPhrases = [],
 }: ClientHomePageProps) {
   const t = useT();
   const [user, setUser] = useState<StoredUser | null>(null);
@@ -173,6 +178,15 @@ export default function ClientHomePage({
     { icon: '🎓', titleKey: 'exp_teachers_title', descKey: 'exp_teachers_desc' },
     { icon: '🕐', titleKey: 'exp_anytime_title', descKey: 'exp_anytime_desc' },
   ];
+
+  const FAQ_ITEMS = [1, 2, 3, 4, 5].map((n) => ({ q: `faq_q${n}`, a: `faq_a${n}` }));
+  const TEACHER_AI_PHASES = [
+    { n: '01', title: 'feat_phase_before_title', desc: 'feat_phase_before_desc' },
+    { n: '02', title: 'feat_phase_during_title', desc: 'feat_phase_during_desc' },
+    { n: '03', title: 'feat_phase_after_title', desc: 'feat_phase_after_desc' },
+  ];
+  const featuredDaily = dailyPhrases[0];
+  const moreDaily = dailyPhrases.slice(1);
 
   const HOW_IT_WORKS = [
     { step: '01', titleKey: 'how_it_works_step1_title', descKey: 'how_it_works_step1_desc' },
@@ -312,6 +326,17 @@ export default function ClientHomePage({
         </div>
       </section>
 
+      {/* ── 3b. 中段 CTA 橫幅 ───────────────────────────────────── */}
+      <section className="home-cta-band">
+        <div className="section-container home-cta-band-inner">
+          <div>
+            <h2 className="home-cta-band-title">{t('home_cta_band_title')}</h2>
+            <p className="home-cta-band-subtitle">{t('home_cta_band_subtitle')}</p>
+          </div>
+          <Link href="/teachers" className="btn-primary">{t('home_cta_band_button')}</Link>
+        </div>
+      </section>
+
       {/* ── 4. Personalised recommendations (keep #tour-recommendation); admin-controlled via /admin/settings ─── */}
       {showRecsSection && (
         <section className="section-personalized" id="tour-recommendation">
@@ -371,6 +396,58 @@ export default function ClientHomePage({
         </section>
       )}
 
+      {/* ── 5b. 圖文交錯功能區塊：AI 每日一句（後台開關控制）＋ 老師的 AI 教學工具 ── */}
+      <section className="section-white home-features">
+        <div className="section-container">
+          {featuredDaily && (
+            <div className="home-feature" id="daily-phrases">
+              <Reveal className="home-feature-media">
+                <DailyPhrases items={[featuredDaily]} />
+              </Reveal>
+              <div className="home-feature-text">
+                <span className="home-feature-eyebrow">{t('daily_ai_badge')}</span>
+                <h2 className="section-title-large">{t('daily_title')}</h2>
+                <p className="section-subtitle">{t('daily_subtitle')}</p>
+                <p className="home-feature-cta-text">{t('daily_cta_text')}</p>
+                <div className="home-feature-actions">
+                  <Link href="/courses" className="btn-primary">{t('daily_cta_button')}</Link>
+                  <Link href="/daily" className="section-link-cta">{t('daily_view_all_arrow')}</Link>
+                </div>
+              </div>
+              {moreDaily.length > 0 && (
+                <div className="home-feature-more">
+                  <h3 className="home-feature-more-title">{t('daily_feature_more')}</h3>
+                  <DailyPhrases items={moreDaily} />
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="home-feature home-feature--reverse">
+            <Reveal className="home-feature-media">
+              <ol className="home-phases">
+                {TEACHER_AI_PHASES.map((p) => (
+                  <li key={p.n} className="home-phase">
+                    <span className="home-phase-n" aria-hidden="true">{p.n}</span>
+                    <div>
+                      <h3 className="home-phase-title">{t(p.title)}</h3>
+                      <p className="home-phase-desc">{t(p.desc)}</p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </Reveal>
+            <div className="home-feature-text">
+              <h2 className="section-title-large">{t('feat_teacher_ai_title')}</h2>
+              <p className="section-subtitle">{t('feat_teacher_ai_desc')}</p>
+              <div className="home-feature-actions">
+                <Link href="/login/register?role=teacher" className="btn-primary">{t('feat_teacher_ai_cta')}</Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* ── 6. Teaching experience（已吸收原「為什麼選擇我們」區） ── */}
       <section className="section-dark home-experience">
         <div className="section-container">
@@ -414,6 +491,24 @@ export default function ClientHomePage({
                 <h3>{t(step.titleKey)}</h3>
                 <p>{t(step.descKey)}</p>
               </Reveal>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── 7b. FAQ ─────────────────────────────────────────────── */}
+      <section className="section-light home-faq" id="faq">
+        <div className="section-container">
+          <div className="section-header-enhanced text-center home-section-center">
+            <h2 className="section-title-large">{t('faq_title')}</h2>
+            <p className="section-subtitle">{t('faq_subtitle')}</p>
+          </div>
+          <div className="home-faq-list">
+            {FAQ_ITEMS.map((item) => (
+              <details key={item.q} className="home-faq-item">
+                <summary>{t(item.q)}</summary>
+                <p>{t(item.a)}</p>
+              </details>
             ))}
           </div>
         </div>

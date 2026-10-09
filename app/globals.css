@@ -3094,6 +3094,212 @@ a {
   justify-content: space-between;
   gap: 24px;
   flex-wrap: wrap;
+/* ── AI 每日一句 (homepage #daily-phrases rail + /daily grid) ──────────── */
+.home-daily { background: linear-gradient(180deg, #f5f3ff 0%, #faf5ff 100%); }
+.daily-page { min-height: 70vh; }
+.daily-rail {
+  display: flex;
+  gap: 18px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  padding: 4px 2px 14px;
+  -webkit-overflow-scrolling: touch;
+}
+.daily-rail > .daily-card { flex: 0 0 220px; scroll-snap-align: start; }
+/* 影片少、排不滿時置中；排不下開始捲動時 auto margin 會歸零，不會裁掉第一張。 */
+.daily-rail > .daily-card:first-child { margin-left: auto; }
+.daily-rail > .daily-card:last-child { margin-right: auto; }
+.daily-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 230px));
+  justify-content: center;
+  gap: 28px 22px;
+}
+.daily-card { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.daily-card-media {
+  position: relative;
+  aspect-ratio: 9 / 16;
+  border-radius: 16px;
+  overflow: hidden;
+  background: linear-gradient(160deg, var(--brand-400), var(--brand-700)) center / cover no-repeat;
+  box-shadow: 0 8px 24px rgba(76, 29, 149, 0.16);
+}
+.daily-card-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: #000; }
+.daily-card-play {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* 全站的 button 規則用 !important 上了底色與陰影，這裡要蓋回來才看得到封面圖。 */
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0) 55%, rgba(15, 23, 42, 0.45) 100%) !important;
+  box-shadow: none !important;
+}
+.daily-card-play:hover { filter: none; }
+.daily-card-play-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--brand-700);
+  font-size: 1.2rem;
+  padding-left: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.3);
+  transition: transform 0.2s ease;
+}
+.daily-card-play:hover .daily-card-play-icon,
+.daily-card-play:focus-visible .daily-card-play-icon { transform: scale(1.08); }
+.daily-card-play:focus-visible { outline: 3px solid var(--brand-300); outline-offset: -3px; }
+.daily-card-badge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.7);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 600;
+  pointer-events: none;
+}
+.daily-card-body { display: flex; flex-direction: column; gap: 4px; }
+.daily-card-day { font-size: 0.78rem; font-weight: 700; color: var(--brand-700); letter-spacing: 0.4px; }
+.daily-card-phrase { font-size: 1.02rem; font-weight: 700; line-height: 1.35; color: var(--ink-900); margin: 0; }
+.daily-card-translation { font-size: 0.9rem; color: var(--ink-500); margin: 0; }
+.daily-card-note { font-size: 0.82rem; color: var(--ink-400); line-height: 1.5; margin: 2px 0 0; }
+.daily-cta {
+  margin-top: 28px;
+  padding: 18px 22px;
+  border-radius: 16px;
+  background: #fff;
+  border: 1px solid rgba(124, 58, 237, 0.18);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.daily-cta-text { margin: 0; font-weight: 600; color: var(--ink-700); }
+@media (max-width: 768px) {
+  .daily-rail { margin: 0 -16px; padding: 4px 16px 12px; gap: 14px; }
+  .daily-rail > .daily-card { flex-basis: min(62vw, 240px); }
+  .daily-rail > .daily-card:first-child { margin-left: 0; }
+  .daily-rail > .daily-card:last-child { margin-right: 0; }
+  .daily-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px 14px; }
+  .daily-cta { flex-direction: column; align-items: stretch; text-align: center; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .daily-card-play-icon { transition: none; }
+}
+
+/* ── Hero 標語標籤 ─────────────────────────────────────────────────────── */
+.hero-highlights { gap: 10px; }
+.hero-highlights li {
+  padding: 6px 14px 6px 32px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  font-size: 0.88rem;
+}
+.hero-highlights li::before { left: 13px; top: 6px; }
+
+/* ── 中段 CTA 橫幅 ─────────────────────────────────────────────────────── */
+.home-cta-band { background: #fff; padding: 36px 0; border-top: 1px solid rgba(124, 58, 237, 0.12); border-bottom: 1px solid rgba(124, 58, 237, 0.12); }
+.home-cta-band-inner { display: flex; align-items: center; justify-content: space-between; gap: 20px; flex-wrap: wrap; }
+.home-cta-band-title { font-size: 1.5rem; font-weight: 800; color: var(--ink-900); margin: 0 0 6px; }
+.home-cta-band-subtitle { margin: 0; color: var(--ink-500); }
+
+/* ── 圖文交錯功能區塊 ───────────────────────────────────────────────────── */
+.home-features .home-feature + .home-feature { margin-top: 88px; }
+.home-feature {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 56px;
+  align-items: center;
+}
+.home-feature--reverse .home-feature-media { order: 2; }
+.home-feature-media { display: flex; justify-content: center; }
+.home-feature-media .daily-rail { overflow: visible; padding: 0; }
+.home-feature-media .daily-rail > .daily-card { flex-basis: 270px; }
+.home-feature-text { display: flex; flex-direction: column; gap: 16px; align-items: flex-start; }
+.home-feature-eyebrow {
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(124, 58, 237, 0.1);
+  color: var(--brand-700);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+.home-feature-cta-text { margin: 0; font-weight: 600; color: var(--ink-700); }
+.home-feature-actions { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.home-feature-more { grid-column: 1 / -1; }
+.home-feature-more-title { font-size: 1.05rem; font-weight: 700; color: var(--ink-700); margin: 0 0 12px; text-align: center; }
+.home-phases { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; width: 100%; max-width: 440px; }
+.home-phase {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  padding: 18px 20px;
+  border-radius: 16px;
+  background: #fff;
+  border: 1px solid rgba(124, 58, 237, 0.16);
+  box-shadow: 0 8px 22px rgba(76, 29, 149, 0.08);
+}
+.home-phase-n {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  color: #fff;
+  background: linear-gradient(135deg, var(--brand-400), var(--brand-700));
+}
+.home-phase-title { margin: 0 0 4px; font-size: 1.02rem; font-weight: 700; color: var(--ink-900); }
+.home-phase-desc { margin: 0; font-size: 0.9rem; color: var(--ink-500); line-height: 1.55; }
+
+/* ── FAQ ───────────────────────────────────────────────────────────────── */
+.home-faq-list { max-width: 780px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+.home-faq-item { background: #fff; border-radius: 14px; border: 1px solid rgba(124, 58, 237, 0.14); padding: 0 20px; }
+.home-faq-item[open] { box-shadow: 0 8px 22px rgba(76, 29, 149, 0.08); }
+.home-faq-item summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 18px 28px 18px 0;
+  position: relative;
+  font-weight: 700;
+  color: var(--ink-900);
+}
+.home-faq-item summary::-webkit-details-marker { display: none; }
+.home-faq-item summary::after {
+  content: '+';
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 1.4rem;
+  font-weight: 400;
+  color: var(--brand-600);
+}
+.home-faq-item[open] summary::after { content: '\2212'; }
+.home-faq-item summary:focus-visible { outline: 3px solid var(--brand-300); outline-offset: 2px; border-radius: 8px; }
+.home-faq-item p { margin: 0; padding: 0 0 18px; color: var(--ink-500); line-height: 1.65; }
+@media (max-width: 900px) {
+  .home-feature { grid-template-columns: 1fr; gap: 28px; }
+  .home-feature--reverse .home-feature-media { order: 0; }
+  .home-features .home-feature + .home-feature { margin-top: 56px; }
+  .home-cta-band-inner { flex-direction: column; align-items: flex-start; }
+}
+
 }
 .home-band-title { font-size: 2rem; font-weight: 800; margin: 0 0 8px; color: #fff; }
 .home-band-subtitle { font-size: 1.05rem; color: rgba(255, 255, 255, 0.85); margin: 0; }
