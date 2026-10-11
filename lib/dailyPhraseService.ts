@@ -6,7 +6,7 @@
 import { ddbDocClient } from '@/lib/dynamo';
 import { DeleteCommand, GetCommand, PutCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 
-const DAILY_PHRASES_TABLE = process.env.DYNAMODB_TABLE_DAILY_PHRASES || 'jvtutorcorner-daily-phrases';
+const DAILY_PHRASES_TABLE = process.env.DYNAMODB_TABLE_AI_ZONE_CONTENT || 'jvtutorcorner-ai-zone-content';
 
 export const DAILY_MEDIA_PREFIX = 'daily/';
 

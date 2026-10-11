@@ -1,6 +1,6 @@
-// One-off: create the jvtutorcorner-daily-phrases table.
+// One-off: create the jvtutorcorner-ai-zone-content table.
 //
-// Backs lib/dailyPhraseService.ts — one item per "AI 每日一句" clip (PK: id),
+// Backs lib/dailyPhraseService.ts — AI zone content (one item per clip, PK: id),
 // managed from /admin/daily-phrases and shown on the homepage (#daily-phrases)
 // and /daily. Without this table the admin page cannot save, and the public
 // pages just render no clips.
@@ -15,7 +15,7 @@ import {
   DescribeTableCommand,
 } from '@aws-sdk/client-dynamodb';
 
-const TABLE = process.env.DYNAMODB_TABLE_DAILY_PHRASES || 'jvtutorcorner-daily-phrases';
+const TABLE = process.env.DYNAMODB_TABLE_AI_ZONE_CONTENT || 'jvtutorcorner-ai-zone-content';
 const region = process.env.AWS_REGION || process.env.CI_AWS_REGION;
 const accessKeyId = process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID;
 const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY || process.env.CI_AWS_SECRET_ACCESS_KEY;
@@ -55,7 +55,7 @@ async function main() {
       SSESpecification: { Enabled: true },
       Tags: [
         { Key: 'Project', Value: 'jvtutorcorner' },
-        { Key: 'Purpose', Value: 'Daily-Phrases' },
+        { Key: 'Purpose', Value: 'AI-Zone-Content' },
       ],
     })
   );
