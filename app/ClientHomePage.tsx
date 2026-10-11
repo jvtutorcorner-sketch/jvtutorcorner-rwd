@@ -29,7 +29,7 @@ interface ClientHomePageProps {
   teachers: TeacherLike[];
   categories: Array<{ subject: string; count: number }>;
   coursesHeading: 'popular' | 'latest';
-  /** 後台 /carousel 上傳的 Hero 輪播圖網址；空陣列時 Hero 改用純 CSS 的 ClassroomMock。 */
+  /** 後台 /carousel 上傳的 Hero 輪播圖網址；空陣列時 Hero 改用「真人老師＋AI 助教」互動情境圖（ClassroomMock）。 */
   initialCarouselImages?: string[];
   /** 後台 /admin/settings 控制的開關；關閉時不渲染個人化推薦區塊、也不打 /api/recommendations。 */
   showRecommendations?: boolean;
@@ -248,7 +248,7 @@ export default function ClientHomePage({
               </div>
             ) : (
               <div className="hero-premium-visual">
-                <ClassroomMock liveLabel={t('classroom_live_label')} />
+                <ClassroomMock alt={t('classroom_visual_alt')} />
               </div>
             )}
           </div>
@@ -461,7 +461,7 @@ export default function ClientHomePage({
         <div className="section-container">
           <div className="home-experience-grid">
             <Reveal className="home-experience-visual">
-              <ClassroomMock size="lg" liveLabel={t('classroom_live_label')} />
+              <ClassroomMock size="lg" alt={t('classroom_visual_alt')} />
             </Reveal>
             <div className="home-experience-text">
               <h2 className="section-title-large">{t('home_experience_title')}</h2>
