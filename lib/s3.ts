@@ -17,16 +17,22 @@ const getAwsConfig = () => {
 
   const accessKey = process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID;
   const secretKey = process.env.AWS_SECRET_ACCESS_KEY || process.env.CI_AWS_SECRET_ACCESS_KEY;
+  // Amplify SSR 的執行角色給的是臨時金鑰（ASIA…），一定要連 session token 一起簽；
+  // 只給金鑰不給 token，簽出來的網址會被 S3 回 InvalidAccessKeyId。lib/dynamo.ts 本來就有帶。
+  const sessionToken = process.env.AWS_SESSION_TOKEN || process.env.CI_AWS_SESSION_TOKEN;
   const bucketName = process.env.CI_AWS_S3_BUCKET_NAME || process.env.AWS_S3_BUCKET_NAME;
 
-  return { awsRegion, accessKey, secretKey, bucketName };
+  return { awsRegion, accessKey, secretKey, sessionToken, bucketName };
 };
 
 const getS3Client = () => {
-  const { awsRegion, accessKey, secretKey } = getAwsConfig();
+  const { awsRegion, accessKey, secretKey, sessionToken } = getAwsConfig();
   return new S3Client({
     region: awsRegion,
-    credentials: accessKey && secretKey ? { accessKeyId: accessKey, secretAccessKey: secretKey } : undefined,
+    credentials:
+      accessKey && secretKey
+        ? { accessKeyId: accessKey, secretAccessKey: secretKey, ...(sessionToken ? { sessionToken } : {}) }
+        : undefined,
   });
 };
 
