@@ -52,7 +52,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ path
     const localPath = aiZoneLocalPath(key);
     if (!contentType || !localPath) return NextResponse.json({ error: 'Invalid path' }, { status: 400 });
 
-    // 1. 本機開發：沒有物件儲存時 ai-zone/items/upload 會寫到 .uploads/daily
+    // 1. 本機開發：沒有物件儲存時 ai-zone/items/upload 會寫到 .uploads/ai-zone
     if (fs.existsSync(localPath)) return serveLocalFile(req, localPath, contentType);
 
     // 2. 物件儲存（S3 或 R2）

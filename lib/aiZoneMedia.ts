@@ -1,7 +1,7 @@
 // lib/aiZoneMedia.ts
 //
 // 「AI 每日一句」媒體檔的存放位置：有物件儲存（S3 / R2）就放那裡，
-// 沒有（本機開發）就放 .uploads/daily，兩者都由 /api/uploads/ai-zone/* 送出。
+// 沒有（本機開發）就放 .uploads/ai-zone，兩者都由 /api/uploads/ai-zone/* 送出。
 import fs from 'fs';
 import path from 'path';
 import { deleteObjectKey, uploadToS3 } from '@/lib/s3';
@@ -18,9 +18,9 @@ export function aiZoneStorageConfigured(): boolean {
   return process.env.NODE_ENV === 'production' || !!(process.env.AWS_ACCESS_KEY_ID || process.env.CI_AWS_ACCESS_KEY_ID);
 }
 
-export const AI_ZONE_LOCAL_DIR = path.resolve(process.cwd(), '.uploads', 'daily');
+export const AI_ZONE_LOCAL_DIR = path.resolve(process.cwd(), '.uploads', 'ai-zone');
 
-/** key 對應的本機路徑；key 不在 daily/ 底下或想跳出目錄時回 null。 */
+/** key 對應的本機路徑；key 不在 ai-zone/ 底下或想跳出目錄時回 null。 */
 export function aiZoneLocalPath(key: string): string | null {
   if (!key.startsWith(AI_ZONE_MEDIA_PREFIX)) return null;
   const full = path.resolve(AI_ZONE_LOCAL_DIR, key.slice(AI_ZONE_MEDIA_PREFIX.length));

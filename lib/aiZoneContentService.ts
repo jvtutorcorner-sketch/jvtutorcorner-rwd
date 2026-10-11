@@ -1,7 +1,7 @@
 // lib/aiZoneContentService.ts
 //
 // AI 專區的內容（短片、課程單元…）：首頁 #ai-zone 區塊與 /ai-zone 專頁的資料來源，
-// 由 /ai-zone/manage 上傳與管理。影片與封面存在物件儲存的 daily/ 底下，
+// 由 /ai-zone/manage 上傳與管理。影片與封面存在物件儲存的 ai-zone/ 底下，
 // 資料表只存 key —— 對外網址一律經 /api/uploads/ai-zone/*（見 aiZoneMediaUrl）。
 import { ddbDocClient } from '@/lib/dynamo';
 import { DeleteCommand, GetCommand, PutCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
@@ -9,10 +9,10 @@ import { DeleteCommand, GetCommand, PutCommand, ScanCommand } from '@aws-sdk/lib
 const AI_ZONE_TABLE = process.env.DYNAMODB_TABLE_AI_ZONE_CONTENT || 'jvtutorcorner-ai-zone-content';
 
 /**
- * 物件在 bucket 裡的資料夾。沿用最早上線時的 `daily/`：Amplify 執行角色的 IAM 政策
- * 就是對這個前綴授權（jvtutorcorner-uploads/daily/*），改名要同步改 IAM 並搬檔案。
+ * 物件在 bucket 裡的資料夾。Amplify 執行角色的 IAM 政策是對這個前綴授權
+ * （jvtutorcorner-uploads/ai-zone/*），改名要同步改 IAM 並搬檔案。
  */
-export const AI_ZONE_MEDIA_PREFIX = 'daily/';
+export const AI_ZONE_MEDIA_PREFIX = 'ai-zone/';
 
 /** 允許上傳的媒體類型 → 副檔名。副檔名由這裡決定，不採信使用者的檔名。 */
 export const AI_ZONE_MEDIA_TYPES: Record<string, string> = {
@@ -25,8 +25,8 @@ export const AI_ZONE_MEDIA_TYPES: Record<string, string> = {
 export const AI_ZONE_VIDEO_MAX_BYTES = 30 * 1024 * 1024;
 export const AI_ZONE_POSTER_MAX_BYTES = 5 * 1024 * 1024;
 
-const VIDEO_KEY_RE = /^daily\/[A-Za-z0-9_-]+\.mp4$/;
-const POSTER_KEY_RE = /^daily\/[A-Za-z0-9_-]+\.(jpg|png|webp)$/;
+const VIDEO_KEY_RE = /^ai-zone\/[A-Za-z0-9_-]+\.mp4$/;
+const POSTER_KEY_RE = /^ai-zone\/[A-Za-z0-9_-]+\.(jpg|png|webp)$/;
 
 export interface AiZoneItem {
   id: string;
