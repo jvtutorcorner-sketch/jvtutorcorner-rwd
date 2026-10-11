@@ -3,8 +3,8 @@ import path from 'path';
 import fs from 'fs';
 import { Readable } from 'stream';
 import { getObjectBuffer, getSignedUrlForKey } from '@/lib/s3';
-import { DAILY_MEDIA_PREFIX } from '@/lib/dailyPhraseService';
-import { dailyLocalPath, dailyStorageBucket } from '@/lib/dailyPhraseMedia';
+import { AI_ZONE_MEDIA_PREFIX } from '@/lib/aiZoneContentService';
+import { aiZoneLocalPath, aiZoneStorageBucket } from '@/lib/aiZoneMedia';
 
 const CONTENT_TYPES: Record<string, string> = {
   '.mp4': 'video/mp4',
@@ -47,16 +47,16 @@ function serveLocalFile(req: NextRequest, fullPath: string, contentType: string)
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
   try {
-    const key = `${DAILY_MEDIA_PREFIX}${(await params).path.join('/')}`;
+    const key = `${AI_ZONE_MEDIA_PREFIX}${(await params).path.join('/')}`;
     const contentType = CONTENT_TYPES[path.extname(key).toLowerCase()];
-    const localPath = dailyLocalPath(key);
+    const localPath = aiZoneLocalPath(key);
     if (!contentType || !localPath) return NextResponse.json({ error: 'Invalid path' }, { status: 400 });
 
-    // 1. 本機開發：沒有物件儲存時 daily-phrases/upload 會寫到 .uploads/daily
+    // 1. 本機開發：沒有物件儲存時 ai-zone/items/upload 會寫到 .uploads/daily
     if (fs.existsSync(localPath)) return serveLocalFile(req, localPath, contentType);
 
     // 2. 物件儲存（S3 或 R2）
-    if (!dailyStorageBucket()) return NextResponse.json({ error: 'File not found' }, { status: 404 });
+    if (!aiZoneStorageBucket()) return NextResponse.json({ error: 'File not found' }, { status: 404 });
 
     // 正式環境一律轉址到簽名網址：影片超過 Lambda 的 6MB 回應上限，Range 也交給儲存端處理。
     if (process.env.NODE_ENV === 'production' || process.env.USE_S3_REDIRECT === 'true') {
@@ -72,7 +72,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ path
       return NextResponse.json({ error: 'File not found' }, { status: 404 });
     }
   } catch (error) {
-    console.error('[uploads/daily] failed:', error);
+    console.error('[uploads/ai-zone] failed:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

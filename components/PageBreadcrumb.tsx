@@ -14,7 +14,7 @@ const BASE_KEY_MAP: Record<string, string> = {
   '/student_courses': 'orders_my_orders',
   '/profile': 'profile_label',
   '/students': 'students_label',
-  '/daily': 'daily_title',
+  '/ai-zone': 'aizone_title',
 };
 
 export default function PageBreadcrumb() {

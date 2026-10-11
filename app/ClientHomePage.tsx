@@ -10,8 +10,8 @@ import { subjectKey } from '@/lib/subjectI18n';
 import OnboardingQuestionnaire from '@/components/OnboardingQuestionnaire';
 import ClassroomMock from '@/components/home/ClassroomMock';
 import Reveal from '@/components/home/Reveal';
-import DailyPhrases from '@/components/home/DailyPhrases';
-import type { DailyPhrasePublic } from '@/lib/dailyPhraseService';
+import AiZoneCards from '@/components/home/AiZoneCards';
+import type { AiZoneItemPublic } from '@/lib/aiZoneContentService';
 import { Carousel } from '@/components/Carousel';
 
 const GUEST_STORAGE_KEY = 'jv_survey_seeds';
@@ -33,8 +33,8 @@ interface ClientHomePageProps {
   initialCarouselImages?: string[];
   /** 後台 /admin/settings 控制的開關；關閉時不渲染個人化推薦區塊、也不打 /api/recommendations。 */
   showRecommendations?: boolean;
-  /** 「AI 每日一句」短片；後台開關關閉或沒有已發布影片時是空陣列，區塊整段不渲染。 */
-  dailyPhrases?: DailyPhrasePublic[];
+  /** AI 專區內容；後台開關關閉或沒有已發布內容時是空陣列，區塊整段不渲染。 */
+  aiZoneItems?: AiZoneItemPublic[];
 }
 
 export default function ClientHomePage({
@@ -44,7 +44,7 @@ export default function ClientHomePage({
   coursesHeading,
   initialCarouselImages = [],
   showRecommendations = true,
-  dailyPhrases = [],
+  aiZoneItems = [],
 }: ClientHomePageProps) {
   const t = useT();
   const [user, setUser] = useState<StoredUser | null>(null);
@@ -173,8 +173,8 @@ export default function ClientHomePage({
     { n: '02', title: 'feat_phase_during_title', desc: 'feat_phase_during_desc' },
     { n: '03', title: 'feat_phase_after_title', desc: 'feat_phase_after_desc' },
   ];
-  const featuredDaily = dailyPhrases[0];
-  const moreDaily = dailyPhrases.slice(1);
+  const featuredItem = aiZoneItems[0];
+  const moreItems = aiZoneItems.slice(1);
 
   const HOW_IT_WORKS = [
     { step: '01', titleKey: 'how_it_works_step1_title', descKey: 'how_it_works_step1_desc' },
@@ -386,28 +386,28 @@ export default function ClientHomePage({
         </section>
       )}
 
-      {/* ── 5b. 圖文交錯功能區塊：AI 每日一句（後台開關控制）＋ 老師的 AI 教學工具 ── */}
+      {/* ── 5b. 圖文交錯功能區塊：AI 專區（後台開關控制）＋ 老師的 AI 教學工具 ── */}
       <section className="section-light home-features">
         <div className="section-container">
-          {featuredDaily && (
-            <div className="home-feature" id="daily-phrases">
+          {featuredItem && (
+            <div className="home-feature" id="ai-zone">
               <Reveal className="home-feature-media">
-                <DailyPhrases items={[featuredDaily]} />
+                <AiZoneCards items={[featuredItem]} />
               </Reveal>
               <div className="home-feature-text">
-                <span className="home-feature-eyebrow">{t('daily_ai_badge')}</span>
-                <h2 className="section-title-large">{t('daily_title')}</h2>
-                <p className="section-subtitle">{t('daily_subtitle')}</p>
-                <p className="home-feature-cta-text">{t('daily_cta_text')}</p>
+                <span className="home-feature-eyebrow">{t('aizone_ai_badge')}</span>
+                <h2 className="section-title-large">{t('aizone_title')}</h2>
+                <p className="section-subtitle">{t('aizone_subtitle')}</p>
+                <p className="home-feature-cta-text">{t('aizone_cta_text')}</p>
                 <div className="home-feature-actions">
-                  <Link href="/courses" className="btn-primary">{t('daily_cta_button')}</Link>
-                  <Link href="/daily" className="section-link-cta">{t('daily_view_all_arrow')}</Link>
+                  <Link href="/courses" className="btn-primary">{t('aizone_cta_button')}</Link>
+                  <Link href="/ai-zone" className="section-link-cta">{t('aizone_view_all_arrow')}</Link>
                 </div>
               </div>
-              {moreDaily.length > 0 && (
+              {moreItems.length > 0 && (
                 <div className="home-feature-more">
-                  <h3 className="home-feature-more-title">{t('daily_feature_more')}</h3>
-                  <DailyPhrases items={moreDaily} />
+                  <h3 className="home-feature-more-title">{t('aizone_feature_more')}</h3>
+                  <AiZoneCards items={moreItems} />
                 </div>
               )}
             </div>

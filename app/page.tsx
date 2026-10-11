@@ -4,7 +4,7 @@ import { listPublicTeachers, type TeacherRecord } from '@/app/teachers/_data';
 import { pageOpenGraph } from '@/lib/seo';
 import { getCarouselImages } from '@/lib/carousel-db';
 import { getHomepageSettings } from '@/lib/homepageSettingsService';
-import { listPublishedDailyPhrases } from '@/lib/dailyPhraseService';
+import { listPublishedAiZoneItems } from '@/lib/aiZoneContentService';
 import ClientHomePage from './ClientHomePage';
 
 // Server Component。首頁內容以真實課程/老師為主，可短期快取。
@@ -24,7 +24,7 @@ export const metadata: Metadata = {
 const HOT_COURSES_COUNT = 6;
 const FEATURED_TEACHERS_COUNT = 6;
 const MAX_CATEGORIES = 8;
-const DAILY_PHRASES_COUNT = 6;
+const AI_ZONE_COUNT = 6;
 
 /** 課程排序鍵：優先真實報名人數，其次建立/上架時間。 */
 function courseRecency(c: CourseRecord): number {
@@ -34,12 +34,12 @@ function courseRecency(c: CourseRecord): number {
 }
 
 export default async function HomePage() {
-  const [courses, teachers, carouselImages, homepageSettings, dailyPhrases] = await Promise.all([
+  const [courses, teachers, carouselImages, homepageSettings, aiZoneItems] = await Promise.all([
     listPublishedCourses(),
     listPublicTeachers(),
     getCarouselImages(),
     getHomepageSettings(),
-    listPublishedDailyPhrases(),
+    listPublishedAiZoneItems(),
   ]);
 
   // 熱門課程：有人報名 → 依報名數；全為 0 → 依最新上架，並改用「最新課程」標題
@@ -87,7 +87,7 @@ export default async function HomePage() {
       coursesHeading={coursesHeading}
       initialCarouselImages={carouselImages.map((img) => img.url)}
       showRecommendations={homepageSettings.showRecommendations}
-      dailyPhrases={homepageSettings.showDailyPhrases ? dailyPhrases.slice(0, DAILY_PHRASES_COUNT) : []}
+      aiZoneItems={homepageSettings.showAiZone ? aiZoneItems.slice(0, AI_ZONE_COUNT) : []}
     />
   );
 }

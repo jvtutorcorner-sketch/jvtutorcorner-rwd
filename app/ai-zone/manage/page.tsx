@@ -1,22 +1,23 @@
 'use client';
 
-// /admin/daily-phrases — 上傳與管理「AI 每日一句」短片。
-// 已發布的影片出現在 /daily；首頁區塊另由 /admin/settings 的開關控制。
+// /ai-zone/manage — 上傳與管理 AI 專區的內容（短片、課程單元…）。
+// 已發布的內容出現在 /ai-zone；首頁區塊另由 /admin/settings 的開關控制。
 
 import { useEffect, useRef, useState } from 'react';
-import type { DailyPhrasePublic, DailyPhraseRecord } from '@/lib/dailyPhraseService';
+import type { AiZoneItemPublic, AiZoneItem } from '@/lib/aiZoneContentService';
 
-type AdminItem = DailyPhraseRecord & DailyPhrasePublic;
+type AdminItem = AiZoneItem & AiZoneItemPublic;
 
 interface FormState {
-  day: string;
-  phrase: string;
-  translation: string;
+  order: string;
+  label: string;
+  title: string;
+  subtitle: string;
   note: string;
   published: boolean;
 }
 
-const EMPTY_FORM: FormState = { day: '', phrase: '', translation: '', note: '', published: true };
+const EMPTY_FORM: FormState = { order: '', label: '', title: '', subtitle: '', note: '', published: true };
 
 /** 用影片第 1 秒的畫面當封面，順便量出片長。 */
 async function capturePoster(file: File): Promise<{ poster: Blob | null; durationSec: number | null }> {
@@ -52,7 +53,7 @@ async function capturePoster(file: File): Promise<{ poster: Blob | null; duratio
 
 /** 先試瀏覽器直傳；API 回 409（本機 / 沒有物件儲存）時改走伺服端上傳。回傳物件 key。 */
 async function uploadMedia(blob: Blob, fileName: string): Promise<string> {
-  const presign = await fetch('/api/daily-phrases/presign', {
+  const presign = await fetch('/api/ai-zone/items/presign', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ mimeType: blob.type, fileSize: blob.size }),
@@ -68,13 +69,13 @@ async function uploadMedia(blob: Blob, fileName: string): Promise<string> {
 
   const formData = new FormData();
   formData.append('file', blob, fileName);
-  const res = await fetch('/api/daily-phrases/upload', { method: 'POST', body: formData });
+  const res = await fetch('/api/ai-zone/items/upload', { method: 'POST', body: formData });
   const data = await res.json().catch(() => null);
   if (!res.ok || !data?.key) throw new Error(data?.error || `上傳失敗（${res.status}）`);
   return data.key;
 }
 
-export default function AdminDailyPhrasesPage() {
+export default function AdminAiZoneCardsPage() {
   const [items, setItems] = useState<AdminItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
@@ -88,7 +89,7 @@ export default function AdminDailyPhrasesPage() {
 
   async function load() {
     try {
-      const res = await fetch('/api/daily-phrases?all=1');
+      const res = await fetch('/api/ai-zone/items?all=1');
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.error || res.statusText);
       setItems(data.items);
@@ -116,9 +117,10 @@ export default function AdminDailyPhrasesPage() {
     resetForm();
     setEditingId(item.id);
     setForm({
-      day: String(item.day),
-      phrase: item.phrase,
-      translation: item.translation,
+      order: String(item.order),
+      label: item.label || '',
+      title: item.title,
+      subtitle: item.subtitle || '',
       note: item.note,
       published: item.published,
     });
@@ -135,9 +137,10 @@ export default function AdminDailyPhrasesPage() {
     setMessage(null);
     try {
       const payload: Record<string, unknown> = {
-        day: Number(form.day),
-        phrase: form.phrase,
-        translation: form.translation,
+        order: Number(form.order),
+        label: form.label,
+        title: form.title,
+        subtitle: form.subtitle,
         note: form.note,
         published: form.published,
       };
@@ -151,7 +154,7 @@ export default function AdminDailyPhrasesPage() {
         payload.posterKey = await uploadMedia(posterFile, posterFile.name);
       }
 
-      const res = await fetch('/api/daily-phrases', {
+      const res = await fetch('/api/ai-zone/items', {
         method: editingId ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(editingId ? { id: editingId, ...payload } : payload),
@@ -172,7 +175,7 @@ export default function AdminDailyPhrasesPage() {
   async function togglePublished(item: AdminItem) {
     setBusy(true);
     try {
-      const res = await fetch('/api/daily-phrases', {
+      const res = await fetch('/api/ai-zone/items', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: item.id, published: !item.published }),
@@ -188,10 +191,10 @@ export default function AdminDailyPhrasesPage() {
   }
 
   async function handleDelete(item: AdminItem) {
-    if (!window.confirm(`確定刪除 Day ${item.day}「${item.phrase}」？影片檔也會一併刪除。`)) return;
+    if (!window.confirm(`確定刪除「${item.title}」？影片檔也會一併刪除。`)) return;
     setBusy(true);
     try {
-      const res = await fetch(`/api/daily-phrases?id=${encodeURIComponent(item.id)}`, { method: 'DELETE' });
+      const res = await fetch(`/api/ai-zone/items?id=${encodeURIComponent(item.id)}`, { method: 'DELETE' });
       const data = await res.json().catch(() => null);
       if (!res.ok || !data?.ok) throw new Error(data?.error || res.statusText);
       if (editingId === item.id) resetForm();
@@ -209,9 +212,9 @@ export default function AdminDailyPhrasesPage() {
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
-      <h1 className="text-2xl font-bold text-gray-900">AI 每日一句</h1>
+      <h1 className="text-2xl font-bold text-gray-900">AI 專區內容管理</h1>
       <p className="text-sm text-gray-500 mt-1 mb-6">
-        已發布的影片會出現在 <a className="text-purple-700 underline" href="/daily">/daily</a>
+        已發布的內容會出現在 <a className="text-purple-700 underline" href="/ai-zone">/ai-zone</a>
         ；首頁區塊要另外到 <a className="text-purple-700 underline" href="/admin/settings">系統設定</a> 開啟。
         影片請用 9:16 直式 mp4（建議 720×1280、30MB 以內）。
       </p>
@@ -241,40 +244,50 @@ export default function AdminDailyPhrasesPage() {
           />
         </label>
         <label className="text-sm text-gray-700">
-          Day
+          排序（數字大的排前面）
           <input
             type="number"
             min={1}
             max={9999}
             required
             className={`${inputClass} mt-1`}
-            value={form.day}
-            onChange={(e) => setForm({ ...form, day: e.target.value })}
+            value={form.order}
+            onChange={(e) => setForm({ ...form, order: e.target.value })}
           />
         </label>
         <label className="text-sm text-gray-700">
-          句型（英文）
+          標籤（例如「單元 2」）
+          <input
+            type="text"
+            maxLength={24}
+            className={`${inputClass} mt-1`}
+            value={form.label}
+            onChange={(e) => setForm({ ...form, label: e.target.value })}
+          />
+        </label>
+        <label className="text-sm text-gray-700">
+          標題
           <input
             type="text"
             required
-            maxLength={200}
+            maxLength={120}
             className={`${inputClass} mt-1`}
-            value={form.phrase}
-            onChange={(e) => setForm({ ...form, phrase: e.target.value })}
+            value={form.title}
+            onChange={(e) => setForm({ ...form, title: e.target.value })}
           />
         </label>
         <label className="text-sm text-gray-700">
-          中文翻譯
+          副標題
           <input
             type="text"
             maxLength={200}
             className={`${inputClass} mt-1`}
-            value={form.translation}
-            onChange={(e) => setForm({ ...form, translation: e.target.value })}
+            value={form.subtitle}
+            onChange={(e) => setForm({ ...form, subtitle: e.target.value })}
           />
         </label>
         <label className="text-sm text-gray-700">
-          用法說明
+          說明
           <input
             type="text"
             maxLength={300}
@@ -331,7 +344,7 @@ export default function AdminDailyPhrasesPage() {
               />
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 text-xs">
-                  <span className="font-semibold text-purple-700">Day {item.day}</span>
+                  <span className="font-semibold text-purple-700">{item.label || `#${item.order}`}</span>
                   <span
                     className={`rounded-full px-2 py-0.5 ${
                       item.published ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
@@ -341,8 +354,8 @@ export default function AdminDailyPhrasesPage() {
                   </span>
                   {item.durationSec && <span className="text-gray-400">{item.durationSec} 秒</span>}
                 </div>
-                <p className="mt-1 font-semibold text-gray-900 break-words">{item.phrase}</p>
-                <p className="text-sm text-gray-600 break-words">{item.translation}</p>
+                <p className="mt-1 font-semibold text-gray-900 break-words">{item.title}</p>
+                <p className="text-sm text-gray-600 break-words">{item.subtitle}</p>
                 {item.note && <p className="mt-1 text-xs text-gray-500 break-words">{item.note}</p>}
                 <div className="mt-3 flex flex-wrap gap-3 text-sm">
                   <button type="button" disabled={busy} onClick={() => startEdit(item)} className={actionClass}>

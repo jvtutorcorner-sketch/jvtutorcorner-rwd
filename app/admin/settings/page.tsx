@@ -65,7 +65,7 @@ export default function AdminSettingsPage() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [saving, setSaving] = useState(false);
   const [homepageShowRecommendations, setHomepageShowRecommendations] = useState(true);
-  const [homepageShowDailyPhrases, setHomepageShowDailyPhrases] = useState(false);
+  const [homepageShowAiZoneCards, setHomepageShowAiZoneCards] = useState(false);
   const [homepageSaving, setHomepageSaving] = useState(false);
   const [homepageMsg, setHomepageMsg] = useState<string | null>(null);
   const [selectedMenuRows, setSelectedMenuRows] = useState<string[]>([]);
@@ -185,14 +185,14 @@ export default function AdminSettingsPage() {
       const data = await res.json();
       if (res.ok && data.ok) {
         setHomepageShowRecommendations(!!data.settings?.showRecommendations);
-        setHomepageShowDailyPhrases(!!data.settings?.showDailyPhrases);
+        setHomepageShowAiZoneCards(!!data.settings?.showAiZone);
       }
     } catch (error) {
       console.error('Failed to load homepage settings:', error);
     }
   }
 
-  async function saveHomepageSettings(patch: { showRecommendations?: boolean; showDailyPhrases?: boolean }) {
+  async function saveHomepageSettings(patch: { showRecommendations?: boolean; showAiZone?: boolean }) {
     setHomepageSaving(true);
     setHomepageMsg(null);
     try {
@@ -204,7 +204,7 @@ export default function AdminSettingsPage() {
       const data = await res.json().catch(() => null);
       if (res.ok && data?.ok) {
         setHomepageShowRecommendations(!!data.settings?.showRecommendations);
-        setHomepageShowDailyPhrases(!!data.settings?.showDailyPhrases);
+        setHomepageShowAiZoneCards(!!data.settings?.showAiZone);
         setHomepageMsg('已儲存');
       } else {
         setHomepageMsg('儲存失敗：' + (data?.error || res.statusText || '未知錯誤'));
@@ -451,7 +451,7 @@ export default function AdminSettingsPage() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <h3 style={{ margin: 0 }}>首頁設定</h3>
-            <p style={{ color: '#666', fontSize: '14px', margin: '4px 0 0 0' }}>控制首頁「個人化推薦」與「AI 每日一句」區塊是否顯示。每日一句的影片在 <a href="/admin/daily-phrases">每日一句管理</a> 上傳。</p>
+            <p style={{ color: '#666', fontSize: '14px', margin: '4px 0 0 0' }}>控制首頁「個人化推薦」與「AI 專區」區塊是否顯示。AI 專區的內容在 <a href="/ai-zone/manage">AI 專區內容管理</a> 上傳。</p>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -466,11 +466,11 @@ export default function AdminSettingsPage() {
             <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <input
                 type="checkbox"
-                checked={homepageShowDailyPhrases}
+                checked={homepageShowAiZoneCards}
                 disabled={homepageSaving}
-                onChange={(e) => saveHomepageSettings({ showDailyPhrases: e.target.checked })}
+                onChange={(e) => saveHomepageSettings({ showAiZone: e.target.checked })}
               />
-              顯示 AI 每日一句區塊
+              顯示 AI 專區區塊
             </label>
             {homepageMsg && (
               <span style={{ color: homepageMsg.startsWith('已儲存') ? '#0b6' : '#c00', fontSize: '13px' }}>{homepageMsg}</span>

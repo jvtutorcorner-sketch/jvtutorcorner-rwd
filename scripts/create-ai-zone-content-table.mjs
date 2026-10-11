@@ -1,11 +1,11 @@
 // One-off: create the jvtutorcorner-ai-zone-content table.
 //
-// Backs lib/dailyPhraseService.ts — AI zone content (one item per clip, PK: id),
-// managed from /admin/daily-phrases and shown on the homepage (#daily-phrases)
-// and /daily. Without this table the admin page cannot save, and the public
+// Backs lib/aiZoneContentService.ts — AI zone content (one item per clip, PK: id),
+// managed from /ai-zone/manage and shown on the homepage (#ai-zone)
+// and /ai-zone. Without this table the admin page cannot save, and the public
 // pages just render no clips.
 //
-//   node --env-file=.env.local scripts/create-daily-phrases-table.mjs
+//   node --env-file=.env.local scripts/create-ai-zone-content-table.mjs
 // Idempotent: skips if the table already exists.
 
 import 'dotenv/config';
@@ -39,13 +39,13 @@ async function exists() {
 }
 
 async function main() {
-  console.log(`[daily-phrases-table] region=${region} table=${TABLE}`);
+  console.log(`[ai-zone-content-table] region=${region} table=${TABLE}`);
   const status = await exists();
   if (status) {
-    console.log(`[daily-phrases-table] already exists (status=${status}); nothing to do.`);
+    console.log(`[ai-zone-content-table] already exists (status=${status}); nothing to do.`);
     return;
   }
-  console.log('[daily-phrases-table] creating…');
+  console.log('[ai-zone-content-table] creating…');
   await client.send(
     new CreateTableCommand({
       TableName: TABLE,
@@ -62,13 +62,13 @@ async function main() {
   for (let i = 0; i < 60; i++) {
     const s = await exists();
     if (s === 'ACTIVE') break;
-    console.log(`[daily-phrases-table] status=${s}… waiting`);
+    console.log(`[ai-zone-content-table] status=${s}… waiting`);
     await sleep(3000);
   }
-  console.log('[daily-phrases-table] ✅ ready.');
+  console.log('[ai-zone-content-table] ✅ ready.');
 }
 
 main().catch((e) => {
-  console.error('[daily-phrases-table] FAILED:', e);
+  console.error('[ai-zone-content-table] FAILED:', e);
   process.exit(1);
 });

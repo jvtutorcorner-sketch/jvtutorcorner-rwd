@@ -19,7 +19,7 @@ export const POST = withAdmin(async (req: AuthedRequest) => {
     // 整筆覆寫會把另一個開關洗回預設。
     const settings: HomepageSettings = { ...(await getHomepageSettings()) };
     if (typeof body.showRecommendations === 'boolean') settings.showRecommendations = body.showRecommendations;
-    if (typeof body.showDailyPhrases === 'boolean') settings.showDailyPhrases = body.showDailyPhrases;
+    if (typeof body.showAiZone === 'boolean') settings.showAiZone = body.showAiZone;
 
     const saved = await saveHomepageSettings(settings);
     if (!saved) {
