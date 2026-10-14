@@ -210,8 +210,8 @@ export default function ClientHomePage({
 
       {/* ── 1. Hero ─────────────────────────────────────────────── */}
       <section className="home-hero-premium">
-        <div className="hero-premium-container">
-          <div className="hero-premium-content">
+        <div className={`hero-premium-container${carouselImages.length > 0 ? ' hero-premium-container--wide' : ''}`}>
+          <div className={`hero-premium-content${carouselImages.length > 0 ? ' hero-premium-content--carousel' : ''}`}>
             <div className="hero-premium-text">
               <h1 className="hero-premium-title">
                 {user ? t('hero_title_user').replace('{name}', userName) : t('hero_title_guest')}

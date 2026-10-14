@@ -1889,7 +1889,11 @@ h3+h2 {
   position: relative;
 }
 
+/* 有後台輪播圖時：圖放大（原本只佔右欄約 480px），文字欄縮小、容器放寬、外框變薄 */
+.hero-premium-container--wide { max-width: 1360px; }
+.hero-premium-content--carousel { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); gap: 40px; }
 .hero-premium-carousel .carousel {
+  padding: 8px;
   border-radius: 16px;
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -3032,7 +3036,7 @@ a {
   .aiz-rail > .aiz-card { flex-basis: min(62vw, 240px); }
   .aiz-rail > .aiz-card:first-child { margin-left: 0; }
   .aiz-rail > .aiz-card:last-child { margin-right: 0; }
-  .aiz-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px 14px; }
+  .aiz-grid { grid-template-columns: repeat(auto-fit, minmax(140px, 200px)); justify-content: center; gap: 20px 14px; }
   .aiz-cta { flex-direction: column; align-items: stretch; text-align: center; }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -3134,6 +3138,9 @@ a {
 .home-faq-item summary:focus-visible { outline: 3px solid var(--brand-300); outline-offset: 2px; border-radius: 8px; }
 .home-faq-item p { margin: 0; padding: 0 0 18px; color: var(--ink-500); line-height: 1.65; }
 @media (max-width: 900px) {
+  .home-feature-text { align-items: center; text-align: center; }
+  .home-feature-actions { justify-content: center; }
+  .home-feature-media .aiz-rail > .aiz-card { flex-basis: min(72vw, 270px); }
   .home-feature { grid-template-columns: 1fr; gap: 28px; }
   .home-feature--reverse .home-feature-media { order: 0; }
   .home-features .home-feature + .home-feature { margin-top: 56px; }
