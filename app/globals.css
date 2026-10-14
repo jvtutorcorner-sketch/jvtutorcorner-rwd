@@ -3071,6 +3071,26 @@ a {
 .home-tint--amber { background-color: #fffbeb; background-image: none; }
 .home-tint--rose { background-color: #fdf2f8; background-image: none; border-top: 0; }
 
+/* AI 專區的文字換行：讓每行長度均勻，避免最後一行只剩 1–2 個字（中文標點會單獨掉到下一行）。
+   text-wrap 不支援的舊瀏覽器會退回一般換行，版面不會壞，只是可能出現單字落行。 */
+.home-feature-text h2,
+.home-feature-text .section-subtitle,
+.home-feature-cta-text,
+.home-feature-more-title,
+.home-phase-title,
+.home-phase-desc,
+.aiz-page .section-title-large,
+.aiz-page .section-subtitle,
+.aiz-cta-text,
+.aiz-card-phrase,
+.aiz-card-translation,
+.aiz-card-note,
+.home-cta-band-title,
+.home-cta-band-subtitle {
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+}
+
 /* ── 圖文交錯功能區塊 ───────────────────────────────────────────────────── */
 .home-feature-section { padding: 88px 0; }
 .home-feature {
@@ -3152,6 +3172,7 @@ a {
   .home-feature-text { align-items: center; text-align: center; }
   .home-feature-actions { justify-content: center; }
   .home-feature-media .aiz-rail > .aiz-card { flex-basis: min(72vw, 270px); }
+  .home-feature-media .aiz-card-body { text-align: center; }
   .home-feature { grid-template-columns: 1fr; gap: 28px; }
   .home-feature--reverse .home-feature-media { order: 0; }
   .home-feature-section { padding: 56px 0; }
