@@ -256,7 +256,7 @@ export default function ClientHomePage({
       </section>
 
       {/* ── 2. Search ───────────────────────────────────────────── */}
-      <section className="section-white home-search-section">
+      <section className="section-white home-search-section home-tint--white">
         <div className="section-container">
           <Reveal className="home-search-inner">
             <h2 className="section-title-large">{t('home_search_title')}</h2>
@@ -291,7 +291,7 @@ export default function ClientHomePage({
       </section>
 
       {/* ── 3. Hot / latest courses ─────────────────────────────── */}
-      <section className="section-personalized">
+      <section className="section-personalized home-tint--sky">
         <div className="section-container">
           <div className="section-header-enhanced">
             <div>
@@ -327,7 +327,7 @@ export default function ClientHomePage({
 
       {/* ── 4. Personalised recommendations (keep #tour-recommendation); admin-controlled via /admin/settings ─── */}
       {showRecommendations && (
-        <section className="section-light" id="tour-recommendation">
+        <section className="section-light home-tint--lavender" id="tour-recommendation">
           <div className="section-container">
             <div className="section-header-enhanced">
               <div>
@@ -368,7 +368,7 @@ export default function ClientHomePage({
 
       {/* ── 5. Featured teachers ────────────────────────────────── */}
       {teachers.length > 0 && (
-        <section className="section-teachers">
+        <section className="section-teachers home-tint--warm">
           <div className="section-container">
             <div className="section-header-enhanced">
               <div>
@@ -386,11 +386,11 @@ export default function ClientHomePage({
         </section>
       )}
 
-      {/* ── 5b. 圖文交錯功能區塊：AI 專區（後台開關控制）＋ 老師的 AI 教學工具 ── */}
-      <section className="section-light home-features">
-        <div className="section-container">
-          {featuredItem && (
-            <div className="home-feature" id="ai-zone">
+      {/* ── 5b. AI 專區（後台開關控制；沒有已發布內容時整段不渲染） ── */}
+      {featuredItem && (
+        <section className="home-feature-section home-tint--violet" id="ai-zone">
+          <div className="section-container">
+            <div className="home-feature">
               <Reveal className="home-feature-media">
                 <AiZoneCards items={[featuredItem]} />
               </Reveal>
@@ -411,8 +411,13 @@ export default function ClientHomePage({
                 </div>
               )}
             </div>
-          )}
+          </div>
+        </section>
+      )}
 
+      {/* ── 5c. 老師的 AI 教學工具 ───────────────────────────────── */}
+      <section className="home-feature-section home-tint--emerald">
+        <div className="section-container">
           <div className="home-feature home-feature--reverse">
             <Reveal className="home-feature-media">
               <ol className="home-phases">
@@ -439,7 +444,7 @@ export default function ClientHomePage({
       </section>
 
       {/* ── 6. Platform features ────────────────────────────────── */}
-      <section className="section-white">
+      <section className="section-white home-tint--white">
         <div className="section-container">
           <div className="section-header-enhanced text-center home-section-center">
             <h2 className="section-title-large">{t('home_features_title')}</h2>
@@ -484,7 +489,7 @@ export default function ClientHomePage({
       </section>
 
       {/* ── 8. How it works (keep .how-it-works-grid × 3) ───────── */}
-      <section className="section-white" id="how-it-works">
+      <section className="section-white home-tint--indigo" id="how-it-works">
         <div className="section-container">
           <div className="section-header-enhanced text-center home-section-center">
             <h2 className="section-title-large">{t('how_it_works_title')}</h2>
@@ -503,7 +508,7 @@ export default function ClientHomePage({
       </section>
 
       {/* ── 8b. FAQ ─────────────────────────────────────────────── */}
-      <section className="section-light home-faq" id="faq">
+      <section className="section-light home-faq home-tint--amber" id="faq">
         <div className="section-container">
           <div className="section-header-enhanced text-center home-section-center">
             <h2 className="section-title-large">{t('faq_title')}</h2>
@@ -534,7 +539,7 @@ export default function ClientHomePage({
       </section>
 
       {/* ── 10. Final CTA ───────────────────────────────────────── */}
-      <section className="section-personalized home-final-cta">
+      <section className="section-personalized home-final-cta home-tint--rose">
         <div className="section-container home-final-inner">
           <h2 className="section-title-large">{t('final_cta_title')}</h2>
           <p className="section-subtitle">{t('final_cta_subtitle')}</p>

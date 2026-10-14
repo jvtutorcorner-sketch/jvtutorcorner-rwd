@@ -3060,8 +3060,19 @@ a {
 .home-cta-band-title { font-size: 1.5rem; font-weight: 800; color: var(--ink-900); margin: 0 0 6px; }
 .home-cta-band-subtitle { margin: 0; color: var(--ink-500); }
 
+/* ── 每個區塊各自的底色：相鄰的區塊不會同色（深色的教學體驗區與紫色橫幅維持原樣） ── */
+.home-tint--white { background-color: #ffffff; background-image: none; }
+.home-tint--sky { background-color: #eff6ff; background-image: none; border-top: 0; }
+.home-tint--lavender { background-color: #f5f3ff; background-image: none; }
+.home-tint--warm { background-color: #fff7ed; background-image: none; border-top: 0; }
+.home-tint--violet { background-color: #f5f3ff; background-image: linear-gradient(180deg, #ede9fe 0%, #f5f3ff 100%); }
+.home-tint--emerald { background-color: #ecfdf5; background-image: linear-gradient(180deg, #d1fae5 0%, #ecfdf5 100%); }
+.home-tint--indigo { background-color: #eef2ff; background-image: none; }
+.home-tint--amber { background-color: #fffbeb; background-image: none; }
+.home-tint--rose { background-color: #fdf2f8; background-image: none; border-top: 0; }
+
 /* ── 圖文交錯功能區塊 ───────────────────────────────────────────────────── */
-.home-features .home-feature + .home-feature { margin-top: 88px; }
+.home-feature-section { padding: 88px 0; }
 .home-feature {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -3143,7 +3154,7 @@ a {
   .home-feature-media .aiz-rail > .aiz-card { flex-basis: min(72vw, 270px); }
   .home-feature { grid-template-columns: 1fr; gap: 28px; }
   .home-feature--reverse .home-feature-media { order: 0; }
-  .home-features .home-feature + .home-feature { margin-top: 56px; }
+  .home-feature-section { padding: 56px 0; }
   .home-cta-band-inner { flex-direction: column; align-items: flex-start; }
 }
 
